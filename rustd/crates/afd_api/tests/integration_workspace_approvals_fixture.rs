@@ -14,14 +14,16 @@ use afd_auth::directory::Digest;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+};
 
 use crate::integration_workspace_approvals::SUBJECT;
 
-/// The seeded gate's sweeper deadline, in the millisecond epoch the column
-/// stores. Far enough past this fixture's `created_at` of 1 that no test seeding
-/// through it races the timeout sweeper; no assertion reads it back.
-const GATE_TIMEOUT_AT: i64 = 10_000;
+/// The seeded gates' expiry: 2100-01-01, far past any run, so no test seeding
+/// through it races the expiry sweeper or a locking validity check; no assertion
+/// reads it back.
+const GATE_EXPIRES_AT: &str = "2100-01-01T00:00:00Z";
 
 pub(crate) struct Fixture {
     lane: TestDatabase,
@@ -67,32 +69,29 @@ impl Fixture {
     pub(crate) async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Approval live', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'approval', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'approval-live@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, TRUE, NULL, 1, 1)",
+        TenantSeed::new(&self.tenant)
+            .name("Approval live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .name("approval")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            self.subject,
+            "approval-live@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(self.subject)
-        .bind(&self.user)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the authenticated approval tenant seeds");
+        .expect("its person seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), self.subject)
+            .insert(&mut *connection)
+            .await
+            .expect("its API key seeds");
         FleetSeed::new(
             &self.fleet,
             self.workspace.as_str(),
@@ -100,26 +99,27 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("approval")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the approval fleet seeds");
         sqlx::query(
-            "INSERT INTO core.fleet_approval_gates \
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind, \
-                proposed_action, evidence, blast_radius, timeout_at, resolved_by, status, \
+            "INSERT INTO fleet.approval_gates \
+               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
+                proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
                 detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push', 'tool', \
-                     'open a pull request', '{}', 'one repository', $6, '', 'pending', \
-                     '', 1, NULL, $5, 0, 32)",
+                     'open a pull request', '{}', 'one repository', $6::timestamptz, '', \
+                     'pending', '', '1970-01-01T00:00:00.001Z', \
+                     '1970-01-01T00:00:00.001Z', $5, 0, 32)",
         )
         .bind(&self.gate)
         .bind(&self.fleet)
         .bind(self.workspace.as_str())
         .bind(&self.action)
         .bind(&self.event)
-        .bind(GATE_TIMEOUT_AT)
+        .bind(GATE_EXPIRES_AT)
         .execute(&mut *connection)
         .await
         .expect("the authenticated approval gate seeds");
@@ -133,7 +133,8 @@ impl Fixture {
         self.seed_gate("spend", 2).await
     }
 
-    /// One more pending gate, of `kind`, raised at `created_at`.
+    /// One more pending gate, of `kind`, raised `created_at` milliseconds past the
+    /// epoch.
     ///
     /// The instant is a parameter because the tie-break needs two rows sharing
     /// one: a cursor that carried only the instant would skip the second, and a
@@ -147,20 +148,21 @@ impl Fixture {
         let second = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
-            "INSERT INTO core.fleet_approval_gates \
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind, \
-                proposed_action, evidence, blast_radius, timeout_at, resolved_by, status, \
+            "INSERT INTO fleet.approval_gates \
+               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
+                proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
                 detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'stripe', 'charge', $7, \
-                     'refund a customer', '{}', 'one account', $6, '', 'pending', \
-                     '', $8, NULL, $5, 0, 32)",
+                     'refund a customer', '{}', 'one account', $6::timestamptz, '', \
+                     'pending', '', to_timestamp($8::bigint / 1000.0), \
+                     to_timestamp($8::bigint / 1000.0), $5, 0, 32)",
         )
         .bind(&second)
         .bind(fleet)
         .bind(self.workspace.as_str())
         .bind(mint_id())
         .bind(mint_id())
-        .bind(GATE_TIMEOUT_AT)
+        .bind(GATE_EXPIRES_AT)
         .bind(kind)
         .bind(created_at)
         .execute(&mut *connection)
@@ -181,7 +183,7 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("approval-other")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await
@@ -194,11 +196,7 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("SET LOCAL fleet.allow_gate_purge = 'on'")
-            .execute(&mut *transaction)
-            .await
-            .expect("the fixture opts into the guarded approval purge");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

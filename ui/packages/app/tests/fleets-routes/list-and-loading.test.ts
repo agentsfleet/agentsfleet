@@ -1,4 +1,5 @@
-import { FLEET_ID } from "../helpers/draft-fixtures";
+import { FLEET_ID, FLEET_DETAIL } from "../helpers/draft-fixtures";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -93,7 +94,9 @@ describe("fleets routes — list and loading", () => {
       ),
     );
     expect(markup).toContain(`href="/w/ws_1/fleets/${FLEET_ID}"`);
-    expect(markup).toContain("platform-ops");
+    expect(markup).toContain(agentDisplayName(FLEET_ID));
+    expect(markup).toContain(FLEET_DETAIL.definition.description);
+    expect(markup).not.toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
   });
 

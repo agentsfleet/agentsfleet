@@ -18,7 +18,6 @@
 
 use crate::seed;
 use crate::support;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::admit::Refusal;
 use afd_fleet::lease::{Delivery, Ended};
@@ -36,7 +35,7 @@ const SECOND_LABEL: &str = "approval_denied";
 /// An operator-readable instruction, to prove it lands beside the label.
 const DETAIL: &str = "top up the workspace balance";
 
-/// Two columns of one `core.fleet_events` row, as text.
+/// Two columns of one `fleet.events` row, as text.
 async fn failure_of(fixtures: &Fixtures, fleet: &str, event: &str) -> (String, Option<String>) {
     let mut connection = fixtures
         .database
@@ -44,8 +43,8 @@ async fn failure_of(fixtures: &Fixtures, fleet: &str, event: &str) -> (String, O
         .await
         .expect("a pooled connection");
     let row = sqlx::query(
-        "SELECT status, failure_label, failure_detail
-           FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2",
+        "SELECT status, failure_reason, failure_detail
+           FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2",
     )
     .bind(fleet)
     .bind(event)
@@ -54,7 +53,7 @@ async fn failure_of(fixtures: &Fixtures, fleet: &str, event: &str) -> (String, O
     .expect("the event row must be readable");
 
     let status: String = row.try_get(0).expect("status is text");
-    let label: String = row.try_get(1).expect("failure_label is text");
+    let label: String = row.try_get(1).expect("failure_reason is text");
     let detail: Option<String> = row.try_get(2).expect("failure_detail is nullable text");
     assert_eq!(status, "gate_blocked", "the row must be terminal");
     (label, detail)
@@ -67,14 +66,13 @@ async fn received(fixtures: &Fixtures) -> (Uuid7, String) {
         fleet,
         ..
     } = seeded::<1>(fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let leases = fixtures.leases();
-    let held = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
+    let held = crate::seed::select_fleet_within_rotations(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
     assert_eq!(
         leases
-            .record_received(&held, now)
+            .record_received(&held)
             .await
             .expect("the narrative log must open")
             .delivery,
@@ -89,7 +87,6 @@ async fn received(fixtures: &Fixtures) -> (Uuid7, String) {
 async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, event) = received(&fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let ended = fixtures
         .leases()
@@ -100,7 +97,6 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
                 label: FIRST_LABEL,
                 detail: DETAIL,
             },
-            now,
         )
         .await
         .expect("the refusal must write");
@@ -137,7 +133,6 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     // and the event that a human denied would carry a billing refusal instead.
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, event) = received(&fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     let leases = fixtures.leases();
 
     let first = leases
@@ -148,12 +143,11 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
                 label: FIRST_LABEL,
                 detail: DETAIL,
             },
-            now,
         )
         .await
         .expect("the first refusal must write");
     let second = leases
-        .block(&fleet, &event, Refusal::labelled(SECOND_LABEL), now)
+        .block(&fleet, &event, Refusal::labelled(SECOND_LABEL))
         .await
         .expect("a second refusal is not a fault");
 
@@ -175,11 +169,10 @@ async fn test_a_refusal_with_no_instruction_stores_null_rather_than_empty() {
     // "there was nothing to tell".
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, event) = received(&fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     fixtures
         .leases()
-        .block(&fleet, &event, Refusal::labelled(FIRST_LABEL), now)
+        .block(&fleet, &event, Refusal::labelled(FIRST_LABEL))
         .await
         .expect("the refusal must write");
 

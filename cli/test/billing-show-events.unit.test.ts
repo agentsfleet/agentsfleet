@@ -34,7 +34,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 500 * ONE_CENT_NANOS,
+              balance_nanos: String(500 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -69,7 +69,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 471 * ONE_CENT_NANOS,
+              balance_nanos: String(471 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -108,7 +108,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 250 * ONE_CENT_NANOS,
+              balance_nanos: String(250 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -122,27 +122,27 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     );
     await runWith(program);
     const body = JSON.parse(rec.stdout[0] ?? "{}") as {
-      balance_nanos: number;
+      balance_nanos: string;
       is_exhausted: boolean;
       events: Array<{
         event_id: string;
-        receive_nanos: number;
-        stage_nanos: number;
-        total_nanos: number;
+        receive_nanos: string;
+        stage_nanos: string;
+        total_nanos: string;
         token_count_input: number;
         token_count_output: number;
       }>;
       next_cursor: string | null;
     };
-    expect(body.balance_nanos).toBe(250 * ONE_CENT_NANOS);
+    expect(body.balance_nanos).toBe(String(250 * ONE_CENT_NANOS));
     expect(body.is_exhausted).toBe(false);
     expect(body.events).toHaveLength(1);
     const ev = body.events[0];
     if (!ev) throw new Error("expected grouped event");
     expect(ev.event_id).toBe("evt_1");
-    expect(ev.receive_nanos).toBe(ONE_CENT_NANOS);
-    expect(ev.stage_nanos).toBe(2 * ONE_CENT_NANOS);
-    expect(ev.total_nanos).toBe(3 * ONE_CENT_NANOS);
+    expect(ev.receive_nanos).toBe(String(ONE_CENT_NANOS));
+    expect(ev.stage_nanos).toBe(String(2 * ONE_CENT_NANOS));
+    expect(ev.total_nanos).toBe(String(3 * ONE_CENT_NANOS));
     expect(ev.token_count_input).toBe(820);
     expect(ev.token_count_output).toBe(1040);
     expect(body.next_cursor).toBe("tok_for_page_2");
@@ -152,8 +152,8 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     const rec = makeRecorder();
     const items: Array<Record<string, unknown>> = [];
     for (const eid of ["evt_a", "evt_b", "evt_c"]) {
-      items.push({ ...RECEIVE_ROW, event_id: eid, recorded_at: items.length });
-      items.push({ ...STAGE_ROW, event_id: eid, recorded_at: items.length });
+      items.push({ ...RECEIVE_ROW, event_id: eid, recorded_at: new Date(items.length).toISOString() });
+      items.push({ ...STAGE_ROW, event_id: eid, recorded_at: new Date(items.length).toISOString() });
     }
     const program = billingShowEffectFromArgs({
       limit: "2",
@@ -165,7 +165,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: TEST_CHARGE_NANOS * ONE_CENT_NANOS,
+              balance_nanos: String(TEST_CHARGE_NANOS * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }
@@ -193,7 +193,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 100 * ONE_CENT_NANOS,
+              balance_nanos: String(100 * ONE_CENT_NANOS),
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }

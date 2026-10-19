@@ -22,11 +22,11 @@
 use crate::queue;
 use crate::seed;
 use crate::support;
-use afd_core::clock::UnixMillis;
 use afd_fleet::lease::Kind;
 
 use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, Seeded, seeded, seeded_parts};
 use self::support::Fixtures;
+use crate::rows::{LAPSE, Row};
 
 /// A ready fleet with an event is assigned, with the envelope intact.
 ///
@@ -43,12 +43,10 @@ async fn test_select_assigns_a_ready_fleets_event() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
-    let acquired =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet)
-            .await
-            .expect("a ready fleet holding an event is leasable");
+    let acquired = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
+        .await
+        .expect("a ready fleet holding an event is leasable");
 
     assert_eq!(acquired.kind, Kind::Fresh, "a first pull is not a reclaim");
     assert_eq!(acquired.fleet_id.as_str(), fleet);
@@ -59,10 +57,7 @@ async fn test_select_assigns_a_ready_fleets_event() {
     assert_eq!(acquired.actor, ACTOR);
     assert_eq!(acquired.event_type, EVENT_TYPE);
     assert_eq!(acquired.request_json, REQUEST_JSON);
-    assert_eq!(
-        acquired.event_created_at,
-        UnixMillis::from_millis(fixtures.enrolled_at())
-    );
+    assert_eq!(acquired.event_created_at, fixtures.enrolled_at());
     assert!(
         acquired.reused.is_none(),
         "a fresh pull carries no prior billing; the caller bills it"
@@ -93,13 +88,12 @@ async fn test_an_unmarked_fleet_is_not_discovered() {
         ..
     } = seeded::<1>(&fixtures).await;
     queue::clear_ready(fixtures.queue(), &fleet).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     // A full rotation, because one poll proves nothing: since §4 it samples ONE
     // of sixteen partitions, so a single `None` is as likely to mean "wrong
     // partition" as "nothing marked". A rotation visits every partition once.
     let acquired =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, now, &fleet).await;
+        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet).await;
 
     assert!(
         acquired.is_none(),
@@ -118,7 +112,7 @@ async fn test_an_unmarked_fleet_is_not_discovered() {
 ///
 /// # Why the lapsed re-poll is a FRESH pull here and not a reclaim
 ///
-/// Reclaim reads `fleet.runner_leases` for a still-`active` row, and this
+/// Reclaim reads `runner.leases` for a still-`active` row, and this
 /// suite never writes one: `select` ASSIGNS work, and the row is written by
 /// the issue verb, which does not exist yet. So the fleet has no dead holder
 /// to take work back from, and the pass correctly falls through to the fresh
@@ -139,15 +133,14 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
-    let held = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
+    let held = crate::seed::select_fleet_within_rotations(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
 
     // A full rotation: one poll could miss the claimed fleet's partition and
     // answer `None` for a reason that has nothing to do with the claim.
-    let refused = crate::seed::select_fleet_within_rotations(&leases, &second, now, &fleet).await;
+    let refused = crate::seed::select_fleet_within_rotations(&leases, &second, &fleet).await;
     assert!(
         refused.is_none(),
         "one fleet, one holder — the second runner polls on"
@@ -155,11 +148,13 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
 
     // Past the holder's expiry the same fleet becomes winnable again, and the
     // SAME event comes back re-fenced rather than being lost with the claim.
-    let lapsed = held.leased_until.saturating_add_millis(1);
+    fixtures
+        .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
+        .await;
     // Scoped like the two acquisitions above it. `seeded::<2>` leaves a second
     // fleet leasable, so an unscoped poll could win THAT one and then be
     // compared, event id and fence, against a claim it never displaced.
-    let regained = crate::seed::select_fleet_within_rotations(&leases, &second, lapsed, &fleet)
+    let regained = crate::seed::select_fleet_within_rotations(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 
@@ -203,7 +198,6 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
 async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let poison = queue::enqueue_cutover_era(
         fixtures.queue(),
@@ -228,25 +222,19 @@ async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
 
     // One rotation visits this fleet's partition exactly once, so the poison is
     // met once and dropped, and the rotation ends with nothing leasable.
-    let first = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner, now).await;
+    let first = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner).await;
     assert!(
         first.is_none(),
         "the poll meets the undecodable entry first and has nothing to lease yet"
     );
 
-    // One millisecond later, and that is not cosmetic: `release` sets
-    // `leased_until = now` and the claim admits `leased_until < now`, so a
-    // second poll at the same instant could never re-claim the slot however
-    // correct the drop was.
-    let later = UnixMillis::from_millis(fixtures.enrolled_at() + 1);
     // Narrowed to THIS fleet, unlike the poll above: the assertion that follows
     // names this fleet's own entry, and the readiness cursor is process-global,
     // so an unnarrowed poll can answer a sibling suite's work and fail here for
     // a reason that has nothing to do with the poison.
-    let second =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, later, &fleet)
-            .await
-            .expect("the fleet must still be leasable once the undecodable entry is gone");
+    let second = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
+        .await
+        .expect("the fleet must still be leasable once the undecodable entry is gone");
     assert_eq!(
         second.event_id, good,
         "the entry behind the poison must be reachable; if this is the poison id \
@@ -279,11 +267,10 @@ async fn test_a_fault_after_the_claim_frees_the_claim() {
         .expect("the lane's Dragonfly takes a plain write");
     queue::mark_ready(fixtures.queue(), &fleet).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
 
     let mut faulted = false;
     for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
-        if leases.select(&first, &[], now).await.is_err() {
+        if leases.select(&first, &[]).await.is_err() {
             faulted = true;
             break;
         }
@@ -294,9 +281,8 @@ async fn test_a_fault_after_the_claim_frees_the_claim() {
     );
 
     let fleet_id = afd_core::id::Uuid7::parse(&fleet).expect("a seeded fleet id parses");
-    let later = UnixMillis::from_millis(fixtures.enrolled_at() + 1);
     let regained = leases
-        .claim(&fleet_id, &second, later, afd_core::timing::LEASE_TTL_MS)
+        .claim(&fleet_id, &second, afd_core::timing::LEASE_TTL)
         .await
         .expect("the claim statement answers");
     assert!(

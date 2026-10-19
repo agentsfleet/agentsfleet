@@ -26,6 +26,7 @@ export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "billing",
   "fleet",
   "memory",
+  "chat",
 ];
 
 export interface ReadOnlyCommandRow {
@@ -59,6 +60,7 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
   { args: ["billing", "show", "--json"], requiredKey: "balance_nanos" },
   { args: ["list", "--json"], isList: true, itemsKey: "items", label: "fleet list" },
+  { args: ["chat", "list", "--json"], isList: true, itemsKey: "items" },
 ];
 
 export interface PerFleetReadOnlyCommandRow {
@@ -144,6 +146,8 @@ export interface RequiresPositionalArgRow {
 // `logs [fleet_id]` has an optional positional. Bare `logs` exits 2 with a
 // domain-specific stem that the generic missing-argument check does not match.
 export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
+  { args: ["chat", "rename"], missingArgName: "draft-id" },
+  { args: ["chat", "delete"], missingArgName: "draft-id" },
   { args: ["workspace", "create"], missingArgName: "name" },
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
@@ -203,6 +207,7 @@ export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
 // covered by their own command's tests instead.
 export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["library"],
+  ["chat"],
 ];
 
 // A value-taking flag with its value omitted. The parser raises

@@ -41,7 +41,7 @@ use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_vault::Vault;
 
 /// The key every fixture in this lane seals and opens under.
@@ -49,9 +49,6 @@ use afd_vault::Vault;
 /// The same value the sibling crates' fixtures use. A row written under any
 /// other key refuses at the open and never reaches the arm under test.
 const FIXTURE_KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-/// The instant every fixture row is stamped with.
-const SEEDED_AT: i64 = 1_700_000_000_000;
 
 /// A Slack app bag carrying all three fields an operator registers at once.
 const SLACK_BAG: &str = r#"{"client_id":"slack-client-1","client_secret":"slack-secret-1","signing_secret":"slack-signing-1"}"#;
@@ -81,32 +78,22 @@ impl Deployment {
     /// Opens the shared lane and seeds the tenant and workspace rows the
     /// vault's foreign key requires.
     pub(crate) async fn create() -> Self {
-        afd_db::test_util::install_subscriber();
+        afd_core::test_util::trace::install_subscriber();
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
         let admin = mint_id();
 
         let mut connection = database.acquire().await.expect("a pooled connection");
-        sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at) \
-             VALUES ($1::uuid, 'a connector fixture', $2, $2)",
-        )
-        .bind(&tenant)
-        .bind(SEEDED_AT)
-        .execute(&mut *connection)
-        .await
-        .expect("the tenant row must insert");
-        sqlx::query(
-            "INSERT INTO core.workspaces (id, tenant_id, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3)",
-        )
-        .bind(&admin)
-        .bind(&tenant)
-        .bind(SEEDED_AT)
-        .execute(&mut *connection)
-        .await
-        .expect("the admin workspace row must insert");
+        TenantSeed::new(&tenant)
+            .name("a connector fixture")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant row must insert");
+        WorkspaceSeed::new(&admin, &tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the admin workspace row must insert");
         drop(connection);
 
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
@@ -134,9 +121,10 @@ impl Deployment {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(
             "INSERT INTO vault.secrets \
-               (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag, \
-                nonce, ciphertext, tag, kek_version, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)",
+               (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag, \
+                secret_nonce, secret_ciphertext, secret_tag, kek_version, created_at, \
+                updated_at) \
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
         )
         .bind(mint_id())
         .bind(self.admin.as_str())
@@ -148,7 +136,6 @@ impl Deployment {
         .bind(sealed.payload_ciphertext())
         .bind(sealed.payload_tag().as_slice())
         .bind(sealed.kek_version())
-        .bind(SEEDED_AT)
         .execute(&mut *connection)
         .await
         .expect("the app bag must insert");
@@ -157,7 +144,7 @@ impl Deployment {
     /// Drops this fixture's rows; the workspace cascade takes the bags with it.
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("DELETE FROM core.workspaces WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.workspaces WHERE id = $1::uuid")
             .bind(self.admin.as_str())
             .execute(&mut *connection)
             .await

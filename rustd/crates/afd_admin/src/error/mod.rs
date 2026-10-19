@@ -40,15 +40,10 @@ enum ErrorKind {
         #[source]
         source: afd_core::error::Error,
     },
-    #[error("could not draw entropy for a model identifier")]
+    #[error("could not mint a model identifier")]
     Entropy {
         #[source]
         source: afd_crypto::error::Error,
-    },
-    #[error("a model identifier could not represent the current instant")]
-    Mint {
-        #[source]
-        source: afd_core::error::Error,
     },
 }
 
@@ -60,9 +55,7 @@ impl Error {
             ErrorKind::Inference { .. } => error_code::INVALID_REQUEST,
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } | ErrorKind::Row { .. } => error_code::INTERNAL_DB_QUERY,
-            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -75,7 +68,7 @@ impl Error {
             }
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             ErrorKind::Query { .. } | ErrorKind::Row { .. } => DETAIL_DATABASE_ERROR,
-            ErrorKind::Entropy { .. } | ErrorKind::Mint { .. } => "Internal operation failed",
+            ErrorKind::Entropy { .. } => "Internal operation failed",
         }
     }
 
@@ -90,7 +83,6 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_inference::Error => Inference,
     afd_db::Error => Datastore,
     afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Mint,
 );
 
 pub(super) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {

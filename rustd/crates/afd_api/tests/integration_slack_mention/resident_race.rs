@@ -74,9 +74,10 @@ async fn write_uncommitted_binding(
     winner: &Uuid7,
 ) {
     sqlx::query(
-        "INSERT INTO core.connector_channels \
-           (id, provider, external_account_id, external_channel_id, fleet_id, kind, created_at) \
-         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, 1)",
+        "INSERT INTO connector.channels \
+           (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, \
+            created_at, updated_at) \
+         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, now(), now())",
     )
     .bind(mint_id())
     .bind(PROVIDER.id())
@@ -107,7 +108,7 @@ fn spawn_latecomer_bind(
                 &team,
                 &channel,
                 &loser,
-                afd_core::clock::UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await
     })
@@ -123,7 +124,7 @@ async fn waiting_on_a_lock(fixture: &Fixture) -> bool {
         let mut connection = fixture.database().acquire().await.expect("a connection");
         let waiting: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM pg_stat_activity \
-             WHERE wait_event_type = 'Lock' AND query LIKE '%INSERT INTO core.connector_channels AS c%'",
+             WHERE wait_event_type = 'Lock' AND query LIKE '%INSERT INTO connector.channels AS c%'",
         )
         .fetch_one(&mut *connection)
         .await
@@ -141,7 +142,7 @@ async fn waiting_on_a_lock(fixture: &Fixture) -> bool {
 async fn bound_fleets(fixture: &Fixture) -> i64 {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query_scalar(
-        "SELECT COUNT(*) FROM core.connector_channels \
+        "SELECT COUNT(*) FROM connector.channels \
          WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3",
     )
     .bind(PROVIDER.id())

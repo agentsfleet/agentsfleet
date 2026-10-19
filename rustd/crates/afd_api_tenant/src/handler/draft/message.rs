@@ -110,12 +110,7 @@ pub(crate) async fn cancel<D: Services>(
 ) -> Result<Response, Refusal> {
     let cancellation = services
         .authoring()
-        .cancel(
-            access(&owned, &person),
-            &id(&path)?,
-            input::cutoff(&body)?,
-            services.now(),
-        )
+        .cancel(access(&owned, &person), &id(&path)?, input::cutoff(&body)?)
         .await
         .map_err(authoring_refusal)?;
     Ok(Json(render::cancellation(cancellation)).into_response())

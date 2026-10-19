@@ -29,9 +29,6 @@ use afd_crypto::aad::Aad;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_vault::StoredEnvelope;
-use sqlx::FromRow as _;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
 use crate::error::{Result, query, vault_open};
 
@@ -126,14 +123,14 @@ impl Vault {
     /// distinction in the log instead.
     pub async fn open(&self, key: KeyRef<'_>) -> Result<Option<SecretBytes>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::SELECT_SECRET)
+        let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
             .bind(key.workspace_id.as_str())
             .bind(key.name)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SECRET))?;
 
-        row.map(|row| self.decrypt(&row, key)).transpose()
+        stored.map(|stored| self.decrypt(stored, key)).transpose()
     }
 
     /// Every credential in `names` this workspace holds, in ONE read.
@@ -155,36 +152,45 @@ impl Vault {
             return Ok(Vec::new());
         }
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_SECRETS_BY_NAMES)
+        let rows = sqlx::query_as::<_, NamedEnvelope>(sql::SELECT_SECRETS_BY_NAMES)
             .bind(workspace_id.as_str())
             .bind(names)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_SECRETS))?;
 
-        rows.iter()
+        rows.into_iter()
             .map(|row| {
-                let name: String = row.try_get("key_name").map_err(query(CONTEXT_SECRETS))?;
                 let key = KeyRef {
                     workspace_id,
-                    name: &name,
+                    name: &row.key_name,
                 };
-                let plaintext = self.decrypt(row, key)?;
+                let plaintext = self.decrypt(row.envelope, key)?;
                 Ok(Held {
-                    name: name.into_boxed_str(),
+                    name: row.key_name.into_boxed_str(),
                     plaintext,
                 })
             })
             .collect()
     }
 
-    /// Decode by column name without opening a connection or changing the caller's transaction.
-    fn decrypt(&self, row: &PgRow, key: KeyRef<'_>) -> Result<SecretBytes> {
-        StoredEnvelope::from_row(row)
-            .map_err(query(CONTEXT_SECRET))?
+    /// Opens one decoded envelope under the workspace and name it is bound to.
+    ///
+    /// Takes the decoded columns rather than a row, so no connection is opened
+    /// and the caller's transaction is left as it was.
+    fn decrypt(&self, stored: StoredEnvelope, key: KeyRef<'_>) -> Result<SecretBytes> {
+        stored
             .into_envelope()
             .map_err(vault_open)?
             .open(&self.kek, &Aad::new(key.workspace_id.as_str(), key.name))
             .map_err(vault_open)
     }
+}
+
+/// One row of a batch read: the name it is stored under, and its envelope.
+#[derive(Debug, sqlx::FromRow)]
+struct NamedEnvelope {
+    key_name: String,
+    #[sqlx(flatten)]
+    envelope: StoredEnvelope,
 }

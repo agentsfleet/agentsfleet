@@ -21,17 +21,18 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::{Cursor, Page};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{TenantSeed, TestDatabase};
 use afd_tenant::apikey::{ApiKeySort, ApiKeys, Description, KeyName, Listing, MintRequest};
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 /// The instant this fixture's first key is stamped with.
-pub(crate) const NOW_MS: i64 = 1_770_000_000_000;
+pub(crate) const NOW: Timestamp = Timestamp::constant(1_770_000_000, 0);
 
 /// How many keys a page answers.
 ///
@@ -69,24 +70,31 @@ impl ApiKeyLane {
         lane
     }
 
-    /// Mints one key called `name`, stamped at `at_ms`.
+    /// Mints one key called `name`, then backdates it to `at`.
     ///
-    /// The instant is a PARAMETER rather than a clock read, which is the whole
-    /// reason this helper exists: every claim the paging suite makes is a claim
-    /// about the ordering of `created_at`, and a fixture that stamped "now"
-    /// could only ever write one instant — or worse, a handful separated by
-    /// however long the inserts happened to take.
-    pub(crate) async fn mint_key(&self, name: &str, at_ms: i64) {
+    /// The instant is a PARAMETER rather than the database clock's stamp,
+    /// which is the whole reason this helper exists: every claim the paging
+    /// suite makes is a claim about the ordering of `created_at`, and the
+    /// insert's `now()` writes whatever instants the inserts happened to take.
+    /// So the store mints the key and the fixture moves its stamp.
+    pub(crate) async fn mint_key(&self, name: &str, at: Timestamp) {
         let request = MintRequest {
             tenant: &self.tenant,
             name: KeyName::parse(name).expect("the fixture names are well formed"),
             description: Description::parse(None).expect("an absent description is legal"),
             created_by: MINTED_BY,
         };
-        self.keys
-            .mint(&request, UnixMillis::from_millis(at_ms))
+        let minted = self
+            .keys
+            .mint(&request, at)
             .await
             .expect("minting a fixture key");
+        sqlx::query("UPDATE identity.api_keys SET created_at = $2 WHERE id = $1::uuid")
+            .bind(minted.id.as_str())
+            .bind(at.to_sqlx())
+            .execute(&mut *self.connection().await)
+            .await
+            .expect("backdating a fixture key");
     }
 
     /// One page of this tenant's keys.
@@ -118,15 +126,10 @@ impl ApiKeyLane {
 
     /// Seeds the tenant every key hangs from.
     async fn seed_tenant(&self) {
-        sqlx::query(
-            "INSERT INTO core.tenants (id, name, created_at, updated_at)
-             VALUES ($1::uuid, $1::text, $2, $2)",
-        )
-        .bind(self.tenant.as_str())
-        .bind(NOW_MS)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("seeding a tenant");
+        TenantSeed::new(self.tenant.as_str())
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("seeding a tenant");
     }
 }
 
@@ -136,5 +139,5 @@ fn mint() -> Uuid7 {
     Entropy::new()
         .fill(&mut bytes)
         .expect("the host draws entropy");
-    Uuid7::encode(UnixMillis::from_millis(NOW_MS), bytes).expect("a well-formed identifier")
+    Uuid7::encode(NOW, bytes).expect("a well-formed identifier")
 }

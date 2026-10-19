@@ -20,10 +20,10 @@ const FAILURE_COPY: Readonly<Record<string, string>> = {
   reduce_context: "Shorten the request or instructions before trying again.",
   retry_message: "Send a new message to try again.",
   await_accounting: "The provider outcome is still being reconciled. Wait before retrying.",
-  review_setup: "Review setup again before continuing.",
+  review_setup: "The setup changed. Check the updated instructions, then try again.",
 };
 
-export function DraftConversation({client, view, onReview, children}: {client: DraftClient; view: DraftView; onReview: () => void; children?: ReactNode}) {
+export function DraftConversation({client, view, children}: {client: DraftClient; view: DraftView; children?: ReactNode}) {
   const running = view.messages.some(isRunning);
   const adapter = useMemo(() => ({
     messages: view.messages, isRunning: running, convertMessage: toThreadMessage,
@@ -34,7 +34,7 @@ export function DraftConversation({client, view, onReview, children}: {client: D
     onCancel: () => client.stop(),
   }), [client, view.messages, running]);
   const runtime = useExternalStoreRuntime<Message>(adapter);
-  const empty = view.messages.length === 0 && !view.fleet;
+  const empty = view.messages.length === 0 && !view.fleet && !view.draft && !view.preview;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col" aria-label="Private fleet setup conversation">
@@ -46,7 +46,7 @@ export function DraftConversation({client, view, onReview, children}: {client: D
             {children}
           </div>
           <ThreadPrimitive.ViewportFooter className={cn("mx-auto w-full max-w-measure bg-background py-md", !empty && "sticky bottom-0")}>
-            <ChatComposer client={client} view={view} running={running} onReview={onReview} />
+            <ChatComposer client={client} view={view} running={running} />
           </ThreadPrimitive.ViewportFooter>
           {empty ? <ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} /> : null}
         </ThreadPrimitive.Viewport>

@@ -4,20 +4,13 @@ use afd_core::error_code;
 use afd_wire::authoring::FailureReason;
 use sqlx::PgConnection;
 
-use super::{guard::Attempt, report::verdict};
-use crate::{Error, Result, error::raise::query, funnel::Owed};
+use super::{guard::Attempt, report::verdict, sql};
+use crate::{
+    Error, Result, error::raise::query, funnel::Owed, model::dispatch_status, types::MessageState,
+};
 
 const CONTEXT: &str = "record authoring failure evidence";
-const FAILED: &str = "failed";
-const UNRESOLVED: &str = "\
-SELECT EXISTS(SELECT 1 FROM fleet.authoring_dispatches
-WHERE attempt_id=$1::uuid AND status IN ('pending','unknown'))";
-const ATTEMPT: &str = "\
-UPDATE fleet.authoring_attempts SET daemon_failure=COALESCE(daemon_failure,$2),updated_at=$3
-WHERE id=$1::uuid";
-const MESSAGE: &str = "\
-UPDATE core.authoring_messages SET state=$3,failure_reason=$4,finished_at=$5,updated_at=$5
-WHERE draft_id=$1::uuid AND sequence=$2 AND state=$6";
+const FAILED: &str = MessageState::Failed.as_str();
 
 /// Returns whether this refusal has an owner action backed by daemon evidence.
 ///
@@ -35,39 +28,35 @@ pub(crate) async fn record(
         error_code::AUTHORING_TOKEN => FailureReason::ContextTooLarge,
         _ => return Ok(false),
     };
-    let now: i64 = sqlx::query_scalar(crate::sql::CLOCK)
-        .fetch_one(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    sqlx::query(ATTEMPT)
+    sqlx::query(sql::RECORD_FAILURE)
         .bind(attempt.id.as_str())
         .bind(verdict::reason(reason))
-        .bind(now)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
-    let unresolved: bool = sqlx::query_scalar(UNRESOLVED)
+    let unresolved: bool = sqlx::query_scalar(sql::UNRESOLVED)
         .bind(attempt.id.as_str())
+        .bind(dispatch_status::PENDING)
+        .bind(dispatch_status::UNKNOWN)
         .fetch_one(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     let visible = if unresolved {
         FailureReason::ProviderUsageUnknown
     } else {
-        attempt.daemon_failure.unwrap_or(reason)
+        attempt.failure_reason.unwrap_or(reason)
     };
-    let changed = sqlx::query(MESSAGE)
+    // Every caller holds the guard, which proved the message running under the
+    // draft's lock that every writer of a message takes: this write finishes it.
+    sqlx::query(crate::sql::message::FAIL)
         .bind(attempt.draft_id.as_str())
         .bind(attempt.message_sequence)
         .bind(FAILED)
         .bind(verdict::reason(visible))
-        .bind(now)
         .bind(crate::types::RUNNING)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
-    if changed.rows_affected() == 1 {
-        owed.finished(connection, attempt.into(), FAILED).await?;
-    }
+    owed.finished(connection, attempt.into(), FAILED).await?;
     Ok(true)
 }

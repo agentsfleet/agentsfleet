@@ -62,4 +62,6 @@ afr_tools = { workspace = true, features = ["test-util"] }
 # A mint that mints nothing, and a transport that records, for the loop suites.
 afr_egress = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
+# The instant the test mint's fixed clock stands at.
+jiff.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time", "test-util"] }

@@ -26,6 +26,8 @@ mod report_reads;
 mod report_seed;
 #[path = "support/fleet_requests.rs"]
 mod requests;
+#[path = "support/fleet_rows.rs"]
+mod rows;
 #[path = "support/fleet_lease_seed.rs"]
 mod seed;
 #[path = "support/fleet_setup.rs"]

@@ -1,18 +1,14 @@
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::FixedClock;
 
-use super::{REFRESH_MARGIN_MILLIS, Vault};
+use super::{REFRESH_MARGIN, Vault};
 use crate::admission::Admission;
 use afd_core::error_code::GH_MINT_FAILED;
 
 use crate::error::Error;
-use crate::fixture::{GRAFANA_TOKEN, LEASE_ID, policy, shown};
+use crate::fixture::{GRAFANA_TOKEN, LEASE_ID, START, TOKEN_LIFETIME, policy, shown};
 use crate::refusal::Refusal;
 use crate::testing::CountingMint;
 
-/// When every suite's clock starts.
-const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
-/// A minted token's lifetime: one hour.
-const HOUR: i64 = 3_600_000;
 /// The token the mint answers.
 const MINTED: &str = "ghs_minted_token";
 
@@ -20,7 +16,7 @@ const MINTED: &str = "ghs_minted_token";
 async fn should_fill_a_static_placeholder_from_secrets_map() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
-    let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
+    let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(LEASE_ID, &mint, &clock);
 
     let filled = vault
@@ -41,7 +37,7 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     let policy = policy(false);
     let admission = Admission::new(&policy);
     let clock = FixedClock::at(START);
-    let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
+    let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(LEASE_ID, &mint, &clock);
 
     for _call in 0..3 {
@@ -55,7 +51,7 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     }
     assert_eq!(mint.asked(), 1);
 
-    clock.advance_millis(HOUR - REFRESH_MARGIN_MILLIS);
+    clock.advance(TOKEN_LIFETIME.saturating_sub(REFRESH_MARGIN));
     let refilled = vault.fill(admission, "token ${secrets.github.token}").await;
 
     assert_eq!(
@@ -96,7 +92,7 @@ async fn should_refuse_with_the_daemons_words_when_the_mint_is_refused() {
 async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
-    let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
+    let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(LEASE_ID, &mint, &clock);
     let echoed = format!("upstream echoed {MINTED}");
 
@@ -118,7 +114,7 @@ async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
 async fn should_refuse_a_minted_credentials_field_other_than_its_token() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
-    let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
+    let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(LEASE_ID, &mint, &clock);
 
     let filled = vault

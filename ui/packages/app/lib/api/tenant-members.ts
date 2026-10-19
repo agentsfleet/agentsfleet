@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { decodeOnePage, isEpochMs, isNonEmptyString, isRecord } from "./decode";
+import { decodeOnePage, isInstant, isNonEmptyString, isRecord } from "./decode";
 import { isAccountRole } from "./workspaces";
 import type { AccountRole } from "./workspaces-types";
 
@@ -15,8 +15,8 @@ export type MemberSummary = {
   display_name: string | null;
   email: string;
   role: AccountRole;
-  /** When they joined the account, epoch milliseconds. */
-  joined_at: number;
+  /** When they joined the account, an RFC 3339 instant. */
+  joined_at: string;
 };
 
 const decodeMember = (value: unknown): MemberSummary => {
@@ -26,7 +26,7 @@ const decodeMember = (value: unknown): MemberSummary => {
     (value.display_name !== null && typeof value.display_name !== "string") ||
     !isNonEmptyString(value.email) ||
     !isAccountRole(value.role) ||
-    !isEpochMs(value.joined_at)
+    !isInstant(value.joined_at)
   ) {
     throw new Error("member is invalid");
   }

@@ -15,16 +15,16 @@
 //! run meters forward from where the dead holder stopped, which is the whole
 //! reason the cursor survives a claim.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::DeliveryStage;
 use afd_observability::producers;
 use afd_runner::capacity::choice;
 use afd_wire::lease::LeaseKind;
+use jiff::Timestamp;
 use sqlx::Connection as _;
 
 use crate::error::{Result, query};
-use crate::lease::envelope::{Acquired, Kind};
+use crate::lease::envelope::Acquired;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -81,7 +81,7 @@ impl Leases {
         runner_id: &Uuid7,
         acquired: &Acquired,
         billed: Billed<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Option<Issued>> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
@@ -105,30 +105,27 @@ impl Leases {
             tenant_id: billed.tenant_id,
             event_id: &acquired.event_id,
             receipt: acquired.receipt.as_str(),
-            actor: &acquired.actor,
-            event_type: &acquired.event_type,
-            event_created_at: acquired.event_created_at.as_millis(),
+            event_created_at: acquired.event_created_at,
             posture: billed.posture,
             provider: billed.provider,
             model: billed.model,
             fencing_token: acquired.fence.as_i64(),
-            leased_until: acquired.leased_until.as_millis(),
             status: sql::LEASE_STATUS_ACTIVE,
-            now: capacity.now(),
+            checked_at: capacity.now(),
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
-            reset_meters: acquired.kind == Kind::Fresh,
         }
         .bind()
         .execute(&mut *transaction)
         .await
         .map_err(query(CONTEXT_ISSUE))?;
         // The tally arm is the statement's own row count, and it writes
-        // exactly when the fenced lease did.
-        if written.rows_affected() == 0 {
-            return Ok(None);
-        }
-        if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {
+        // exactly when the fenced lease did. The choice record cannot miss
+        // here — the host row is locked since `capacity` read its version —
+        // and is checked beside the fence the way the authoring claim checks it.
+        if written.rows_affected() == 0
+            || !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await?
+        {
             return Ok(None);
         }
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
@@ -138,7 +135,7 @@ impl Leases {
     }
 
     /// Draw the independent lease and audit identities.
-    fn mint(&self, now: UnixMillis) -> Result<(Uuid7, Uuid7)> {
+    fn mint(&self, now: Timestamp) -> Result<(Uuid7, Uuid7)> {
         let lease_id = self.entropy().uuid7(now)?;
         let event_row_id = self.entropy().uuid7(now)?;
         Ok((lease_id, event_row_id))
@@ -146,13 +143,10 @@ impl Leases {
 }
 
 fn record_issued(lease_id: &Uuid7, runner_id: &Uuid7, acquired: &Acquired) {
-    let elapsed = afd_core::clock::now().saturating_millis_since(acquired.event_created_at);
-    if let Ok(millis) = u64::try_from(elapsed) {
-        producers::fleet::delivery_stage(
-            DeliveryStage::EventToLease,
-            core::time::Duration::from_millis(millis),
-        );
-    }
+    producers::fleet::delivery_stage(
+        DeliveryStage::EventToLease,
+        afd_core::clock::elapsed(acquired.event_created_at, afd_core::clock::now()),
+    );
 
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.

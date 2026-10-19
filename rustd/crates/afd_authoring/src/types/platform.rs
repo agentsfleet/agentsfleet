@@ -1,6 +1,7 @@
 //! Platform curation owns display copy and visibility, never private chat.
 
 use super::LibraryCard;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -11,8 +12,9 @@ pub struct PlatformLibrary {
     pub card: LibraryCard,
     /// Explicit platform publication state.
     pub published: bool,
-    /// Last mutation, in Unix milliseconds.
-    pub updated_at: i64,
+    /// Last mutation.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: Timestamp,
 }
 
 /// Conditional operator-owned metadata edit.

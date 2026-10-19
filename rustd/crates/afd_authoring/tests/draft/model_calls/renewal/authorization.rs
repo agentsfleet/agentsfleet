@@ -21,7 +21,7 @@ async fn missing_or_invalid_model_settings_deny_renewal_with_durable_recovery() 
         let a = Attempt::start(&f, f.access(), Source::Blank).await;
         let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
         let before = snapshot(&f, &a).await;
-        sqlx::query("UPDATE core.model_library SET inference=NULLIF($2::jsonb,'null'::jsonb) WHERE id=$1::uuid")
+        sqlx::query("UPDATE model.platform_models SET inference=NULLIF($2::jsonb,'null'::jsonb) WHERE id=$1::uuid")
             .bind(f.catalogue.first().expect("owned catalogue model").as_str()).bind(inference).execute(&mut *f.connection().await).await.expect("changed saved model");
         let error = f
             .drafts
@@ -32,7 +32,7 @@ async fn missing_or_invalid_model_settings_deny_renewal_with_durable_recovery() 
         assert_eq!(error.current_state(), Some("unavailable"));
         assert_eq!(snapshot(&f, &a).await, before);
         let saved: (String, String) = sqlx::query_as(
-            "SELECT state,failure_reason FROM core.authoring_messages WHERE draft_id=$1::uuid",
+            "SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1::uuid",
         )
         .bind(a.draft.id.as_str())
         .fetch_one(&mut *f.connection().await)
@@ -54,7 +54,7 @@ async fn an_underreserved_attempt_cannot_extend_its_lease() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     let before = snapshot(&f, &a).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET reserved_nanos=1 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=1 WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -67,7 +67,7 @@ async fn an_underreserved_attempt_cannot_extend_its_lease() {
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(snapshot(&f, &a).await, before);
     let reason: String =
-        sqlx::query_scalar("SELECT daemon_failure FROM fleet.authoring_attempts WHERE id=$1::uuid")
+        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1::uuid")
             .bind(a.id.as_str())
             .fetch_one(&mut *f.connection().await)
             .await
@@ -87,7 +87,7 @@ async fn a_removed_host_cannot_extend_or_meter_a_private_lease() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     let before = snapshot(&f, &a).await;
-    sqlx::query("UPDATE fleet.runners SET admin_state='removed' WHERE id=$1::uuid")
+    sqlx::query("UPDATE runner.runners SET status='removed' WHERE id=$1::uuid")
         .bind(f.runner.as_str())
         .execute(&mut *f.connection().await)
         .await

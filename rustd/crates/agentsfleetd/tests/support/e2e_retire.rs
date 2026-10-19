@@ -46,21 +46,19 @@ pub(crate) async fn retire_fleet(booted: &Booted, fleet: &str) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE core.fleets SET status = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1::uuid")
         .bind(fleet)
         .bind(RETIRED.as_str())
         .execute(&mut *connection)
         .await
         .expect("the fleet must retire");
-    sqlx::query(
-        "UPDATE fleet.runner_leases SET status = $3 WHERE fleet_id = $1::uuid AND status = $2",
-    )
-    .bind(fleet)
-    .bind(LEASE_STATUS_ACTIVE)
-    .bind(LEASE_STATUS_EXPIRED)
-    .execute(&mut *connection)
-    .await
-    .expect("the fleet's open leases must expire");
+    sqlx::query("UPDATE runner.leases SET status = $3 WHERE fleet_id = $1::uuid AND status = $2")
+        .bind(fleet)
+        .bind(LEASE_STATUS_ACTIVE)
+        .bind(LEASE_STATUS_EXPIRED)
+        .execute(&mut *connection)
+        .await
+        .expect("the fleet's open leases must expire");
     ReadyIndex::new(booted.queue.clone())
         .force_clear(fleet)
         .await

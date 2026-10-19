@@ -20,6 +20,9 @@ workspace = true
 # A provider's posture — which key pays for a call — is the billing plane's
 # vocabulary, read here to decide which credential to dial with.
 afd_billing.workspace = true
+# The catalogue identity columns, decoded the one way the admin service writes
+# them (`afd_admin::catalogue::MetadataColumns`).
+afd_admin.workspace = true
 afd_core.workspace = true
 afd_inference.workspace = true
 # Opening a sealed handle.
@@ -38,14 +41,16 @@ afd_fleet_runtime.workspace = true
 afd_webhook.workspace = true
 # The minted-credential shape the runner is answered with.
 afd_wire.workspace = true
-# The GitHub App flow: a signed assertion, its digest, and the client that
-# exchanges it for an installation token.
-http.workspace = true
+# Every instant a mint, a cache entry or a stored row carries.
+jiff.workspace = true
+# The `TIMESTAMPTZ` bridge for those instants: row fields decode through it and
+# a cursor boundary binds through it.
+jiff-sqlx.workspace = true
+# The GitHub App flow: the RS256 App JWT. Its two REST calls ride `reqwest`.
 jsonwebtoken.workspace = true
 # The broker's short-lived credential cache. A mint that already happened for
 # this workspace and handle is not re-run inside its TTL.
 moka = { workspace = true, features = ["future"] }
-octocrab.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
 # A credential's bytes are wiped when the value holding them is dropped.
@@ -72,6 +77,9 @@ test-util = [
 afd_core = { workspace = true, features = ["test-util"] }
 # The unreachable pool a platform row fails to open against.
 afd_db = { workspace = true, features = ["test-util"] }
+# `RepositoryBinding::from_parts`, so the GitHub mint's cases build a binding
+# without a stored config document to parse.
+afd_fleet_runtime = { workspace = true, features = ["test-util"] }
 # A loopback GitHub for the mint's two calls, so the token request's body is
 # read by a real HTTP server rather than searched for in socket bytes.
 axum.workspace = true

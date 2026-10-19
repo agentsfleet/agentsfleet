@@ -445,7 +445,7 @@ family counts suppression. The only bound is the shared batch queue, `SPAN_QUEUE
 counting.
 
 Why it matters: an idle runner sends one heartbeat every 10 s
-(`HEARTBEAT_INTERVAL_MS` in `rustd/crates/afd_core/src/timing.rs`), and each
+(`HEARTBEAT_INTERVAL` in `rustd/crates/afd_core/src/timing.rs`), and each
 one is a matched request and therefore a span. Span volume grows with runner
 count until a route policy fills the declared `reason` set (`noisy_route`,
 `runner_rejection_budget`, `server_error_budget`, `sampled_success_budget`,
@@ -685,14 +685,14 @@ rather than bounded.
 **Model attribution carries no metric-family series cap.**
 The cost families copy the run's model name into `gen_ai.request.model`
 (`rustd/crates/afd_observability/src/producers/cost.rs`). Runtime dispatch resolves
-the saved model reference through `core.model_library` for both owner and
-platform models (`rustd/crates/afd_credential/src/provider/registered/sql.rs`).
+the saved model reference through `model.platform_models` for both owner and
+platform models (`rustd/crates/afd_credential/src/provider/registered/sql/mod.rs`).
 Catalogue updates can add model identities over time. The families declare no
 ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
 only bound is the SDK's default of 2,000 series per stream: past it, new
 `(model, …)` combinations are folded into one `otel.metric.overflow` series, and
 their spend is no longer told apart in the export. Exact per-model cost stays a
-Postgres query against `billing.usage_ledger`. A provider with no
+Postgres query against `billing.usage_lines`. A provider with no
 well-known name **omits the attribute and keeps the measurement** on the
 `fleet.delivery` span, and the omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`

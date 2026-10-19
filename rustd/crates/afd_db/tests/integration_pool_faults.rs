@@ -35,8 +35,9 @@ pub(crate) mod fault_net;
 #[path = "support/lane.rs"]
 pub(crate) mod lane;
 
-use self::fault_net::{FaultProxy, install_subscriber};
-use self::lane::{ACQUIRE_BUDGET_MS, CONNECT_BUDGET, config_through, lane_database, lane_target};
+use self::fault_net::FaultProxy;
+use self::lane::{ACQUIRE_BUDGET, CONNECT_BUDGET, config_through, lane_database, lane_target};
+use afd_core::test_util::trace::install_subscriber;
 
 /// One migration that would apply cleanly, so the only thing that can go wrong
 /// is the transaction the migrator opens to apply it in.
@@ -129,7 +130,7 @@ async fn test_losing_the_datastore_after_connect_is_not_reported_as_capacity() {
 }
 
 /// A migrator whose connection dies at the transaction it is about to open
-/// reports the `BEGIN` that failed, not a migration that did.
+/// reports a failed bookkeeping statement, not a migration that did.
 ///
 /// The distinction is the whole point of the branch. Nothing has been applied
 /// and nothing has failed to apply — the connection went away between the
@@ -173,7 +174,7 @@ async fn test_a_connection_that_dies_at_begin_reports_the_transaction() {
         "no migration ran, so none may be reported as failed: {error}"
     );
     assert!(
-        error.to_string().contains("migrate.begin_tx"),
+        error.to_string().contains("migrate.bookkeeping"),
         "the failure must name the operation that produced it: {error}"
     );
 
@@ -210,7 +211,7 @@ async fn test_warming_a_pool_whose_datastore_went_away_reports_the_shortfall() {
         (DbRole::Api.url_knob(), url.as_str()),
         (
             "DATABASE_ACQUIRE_TIMEOUT_MS",
-            &ACQUIRE_BUDGET_MS.to_string(),
+            &afd_core::clock::saturating_millis(ACQUIRE_BUDGET).to_string(),
         ),
         ("DATABASE_POOL_SIZE_API", "1"),
         ("DATABASE_MIN_POOL_SIZE_API", "1"),

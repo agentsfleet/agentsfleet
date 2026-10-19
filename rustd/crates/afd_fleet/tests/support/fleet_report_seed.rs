@@ -16,8 +16,9 @@
 
 use std::sync::Arc;
 
-use afd_billing::{Accounts, Charged, Cumulative, Meter, Posture, SliceRates};
-use afd_core::clock::UnixMillis;
+use afd_billing::ledger::LedgerBiller;
+use afd_billing::nanos::MS_PER_SEC;
+use afd_billing::{Accounts, Posture, RUN_NANOS_PER_SEC};
 use afd_core::id::Uuid7;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
@@ -27,9 +28,13 @@ use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_fleet::lease::Plane;
+use afd_fleet::lease::sql::meter::Metering;
+use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases, Settled};
 use afd_memory::Memories;
+use jiff::Timestamp;
 
+use crate::rows::Row;
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -48,40 +53,15 @@ pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
 /// exactly the reading RULE UFS exists to prevent.
 pub(crate) const SLICE_MS: i64 = 1_000;
 
-/// A run fee of one nano per millisecond, in the per-SECOND unit the rate
-/// column is quoted in.
-///
-/// Numerically [`SLICE_MS`] and deliberately not written as it: a price and a
-/// duration coincide here only because both units are thousandths, and tying
-/// them together would make a change to one silently change the other.
-pub(crate) const RUN_FEE_PER_SEC: i64 = 1_000;
+/// [`SLICE_MS`] as a span, for the instants a suite reports at.
+pub(crate) const SLICE: std::time::Duration =
+    std::time::Duration::from_millis(SLICE_MS.unsigned_abs());
 
-/// What one [`SLICE_MS`] slice costs at [`ONE_NANO_PER_MS`].
+/// What one [`SLICE_MS`] slice costs at the run fee every lease pays.
 ///
-/// One nano per millisecond over a thousand milliseconds. Derived rather than
-/// written so the assertions read as the arithmetic they are checking.
-pub(crate) const SLICE_NANOS: i64 = SLICE_MS * RUN_FEE_PER_SEC / 1_000;
-
-/// Rates that price a slice at exactly one nano per millisecond of runtime.
-///
-/// Chosen so the arithmetic in an assertion is legible: the run fee is quoted
-/// per SECOND, so a thousand nanos per second is one per millisecond. Token
-/// tiers are zero, which keeps every assertion below about the run fee alone —
-/// the token arithmetic has its own pure tests in `money::nanos`.
-pub(crate) const ONE_NANO_PER_MS: SliceRates = SliceRates {
-    run_nanos_per_sec: RUN_FEE_PER_SEC,
-    input_nanos_per_mtok: 0,
-    cached_input_nanos_per_mtok: 0,
-    output_nanos_per_mtok: 0,
-};
-
-/// A meter carrying no tokens, at [`ONE_NANO_PER_MS`].
-pub(crate) fn run_fee_meter() -> Meter {
-    Meter {
-        cumulative: Cumulative::default(),
-        rates: ONE_NANO_PER_MS,
-    }
-}
+/// Derived rather than written so the assertions read as the arithmetic they
+/// are checking; [`run_fee`] rounds a partial nano up, as the rater does.
+pub(crate) const SLICE_NANOS: i64 = SLICE_MS * RUN_NANOS_PER_SEC / MS_PER_SEC;
 
 /// One issued, active lease with a funded tenant behind it.
 ///
@@ -90,6 +70,10 @@ pub(crate) fn run_fee_meter() -> Meter {
 /// disagree about what "an issued lease" means.
 pub(crate) struct Held {
     pub(crate) fixtures: Fixtures,
+    /// The issued lease as the work its usage lines name.
+    pub(crate) lease_key: Uuid7,
+    /// What the lease's slices are priced against.
+    pub(crate) pricing: Pricing,
     pub(crate) leases: Leases,
     pub(crate) runner: Uuid7,
     pub(crate) spare: Uuid7,
@@ -101,7 +85,7 @@ pub(crate) struct Held {
     pub(crate) tenant: String,
     pub(crate) event_id: String,
     /// When the lease was issued, by the database clock.
-    pub(crate) now: UnixMillis,
+    pub(crate) now: Timestamp,
 }
 
 /// Runs §2 far enough to leave one active lease on one funded fleet.
@@ -119,17 +103,15 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-    fixtures
-        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
-        .await;
+    let now = fixtures.enrolled_at();
+    fixtures.seed_wallet(&tenant, DEEP_POOL).await;
 
-    let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
+    let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, &fleet)
         .await
         .expect("the seeded fleet is leasable");
     assert_eq!(
         leases
-            .record_received(&acquired, now)
+            .record_received(&acquired)
             .await
             .expect("the narrative log must open")
             .delivery,
@@ -137,31 +119,6 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         "a newly leased event has no row yet"
     );
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
-    // The receive charge, which the PLANE writes and this fixture drives the
-    // STORE past. `Leases::record_received` opens the narrative log; the ledger
-    // row is `Accounts::debit_receive`, reached through `money_gates` on the
-    // pull path. A fixture that skipped it left ONE ledger row per event, so
-    // every suite asserting the two-rows-per-event invariant was measuring the
-    // fixture's shortcut rather than the
-    // `ON CONFLICT (event_id, charge_type, fleet_id)` arm that holds it there.
-    //
-    // Called once, on the `Delivery::First` asserted above — the same condition
-    // the plane matches on, and the reason that assertion is not decorative.
-    Accounts::new(fixtures.database.clone(), Entropy::new())
-        .debit_receive(
-            Charged {
-                tenant_id: &tenant_id,
-                workspace_id: &acquired.workspace_id,
-                fleet_id: &acquired.fleet_id,
-                event_id: &acquired.event_id,
-                posture: Posture::Platform,
-                model: MODEL,
-                event_created_at: acquired.event_created_at,
-            },
-            now,
-        )
-        .await
-        .expect("the receive charge must reach the ledger");
     let issued = leases
         .issue(
             &runner,
@@ -178,12 +135,16 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         .expect("the lease row must be written")
         .expect("the claim is still held");
     let event_id = acquired.event_id.clone();
+    let lease_key = issued.lease_id.clone();
+    let pricing = fixtures.pricing(issued.lease_id.as_str()).await;
     // The issue instant, which issue stamps from the database clock; a slice
     // the suites report is measured from it, as the report's charge is.
     let now = fixtures.metered_since(&fleet).await;
 
     Held {
         fixtures,
+        lease_key,
+        pricing,
         leases,
         runner,
         spare,
@@ -196,10 +157,40 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
     }
 }
 
+impl Held {
+    /// Ages the lease's meter by one [`SLICE`], as a second of runtime would,
+    /// and answers the stamp the next settle or renewal measures from.
+    ///
+    /// Settles and renewals meter up to the database's clock, so a test runs a
+    /// slice by moving the meter's start back rather than by naming an instant.
+    pub(crate) async fn run_a_slice(&self) -> Timestamp {
+        self.fixtures
+            .age(
+                Row::Lease(self.issued.lease_id.as_str()),
+                crate::lease_reads::COLUMN_LAST_METERED,
+                SLICE,
+            )
+            .await;
+        self.fixtures.metered_since(&self.fleet).await
+    }
+
+    /// The wall time between `from` and the meter's stamp now, which is the
+    /// slice the last settle or renewal charged for.
+    pub(crate) async fn metered_from(&self, from: Timestamp) -> i64 {
+        let to = self.fixtures.metered_since(&self.fleet).await;
+        afd_core::clock::saturating_millis_signed(afd_core::clock::elapsed(from, to))
+    }
+}
+
+/// What the run fee charges for `wall_ms` of runtime, rounded up to the nano.
+pub(crate) const fn run_fee(wall_ms: i64) -> i64 {
+    (wall_ms * RUN_NANOS_PER_SEC + MS_PER_SEC - 1) / MS_PER_SEC
+}
+
 /// The key every fixture in this lane seals and opens under.
 ///
 /// The same value `agentsfleetd`'s end-to-end suite uses, and that is the whole
-/// point of it. `core.platform_provider_defaults` has `provider` as its PRIMARY
+/// point of it. `model.platform_defaults` has `provider` as its PRIMARY
 /// KEY, so the row is a fact about the deployment rather than about a test, and
 /// both suites seed it with `ON CONFLICT DO NOTHING` — whichever runs first
 /// owns it, and the secret it names is opened by the other. Under two different
@@ -227,23 +218,36 @@ impl Fixtures {
         leases: &Leases,
         lease_id: &str,
         runner: &Uuid7,
-        meter: Meter,
+        requests: &[afd_wire::usage::RequestUsage],
         succeeded: bool,
-        at: UnixMillis,
+        at: Timestamp,
     ) -> Settled {
+        let pricing = self.pricing(lease_id).await;
+        let lease_key = Uuid7::parse(lease_id).expect("a lease id is a v7 spelling");
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         leases
-            .claim_and_settle(&mut connection, lease_id, runner, meter, succeeded, at)
+            .claim_and_settle(
+                &mut connection,
+                Metering {
+                    lease_id,
+                    runner_id: runner,
+                    requests,
+                },
+                &lease_key,
+                &pricing,
+                succeeded,
+                at,
+            )
             .await
             .expect("the settle must reach the datastore")
     }
 
-    /// The whole lease plane, for the two verbs that need more than the store.
-    ///
-    /// The report and renew SQL is provable through [`Leases`] alone, which is
-    /// why the suites next door use that. The coverage GATES are not: they read
-    /// the wallet through `Accounts` and the fleet's ceiling through the config
-    /// parser, so proving a refusal needs the composed plane the daemon builds.
+    /// What the seeded fleet's lease is priced against: its posture, provider
+    /// and model, read from the catalogue as the lease path reads them.
+    pub(crate) async fn pricing(&self, lease_id: &str) -> Pricing {
+        Pricing::load(&self.database, Posture::Platform, PROVIDER, MODEL, lease_id).await
+    }
+
     #[expect(
         clippy::disallowed_methods,
         reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
@@ -254,7 +258,12 @@ impl Fixtures {
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             leases: self.leases(),
             gates: self.gates(),
-            accounts: Accounts::new(self.database.clone(), Entropy::new()),
+            accounts: Accounts::new(self.database.clone()),
+            biller: Arc::new(LedgerBiller::new(
+                self.database.clone(),
+                Entropy::new(),
+                Arc::new(afd_core::clock::SystemClock),
+            )),
             memories: Memories::new(self.database.clone(), Entropy::new()),
             providers: Providers::new(self.database.clone(), Arc::clone(&kek), Entropy::new()),
             vault: Vault::new(self.database.clone(), kek),

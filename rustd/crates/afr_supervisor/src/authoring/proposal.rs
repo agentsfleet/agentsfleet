@@ -18,7 +18,6 @@ pub(super) async fn apply(
 ) -> Result<(ModelMessage, bool)> {
     let request = ActivityRequest {
         fence: lease.fence.clone(),
-        deletion_generation: lease.deletion_generation.clone(),
         sequence: lease.sequence.clone(),
         activity_sequence: sequence.to_string(),
         event: ActivityEvent::Proposal {

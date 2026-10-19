@@ -8,8 +8,8 @@
 //! # Why the money is settled before the event row is closed
 //!
 //! The reverse order looks tidier — end the work, then bill for it — and it
-//! loses money on the cap path. A run that reaches `MAX_RUNTIME_MS` is racing
-//! the reclaim sweep, and the sweep bumps `fencing_seq`. Settle first and the
+//! loses money on the cap path. A run that reaches `MAX_RUNTIME` is racing
+//! the reclaim sweep, and the sweep bumps `fencing_token`. Settle first and the
 //! affinity lock inside the statement holds the sweep off until the charge
 //! commits. Settle second and the sweep wins the fence, the settle is refused,
 //! and the last slice of a twelve-hour run is never charged to anyone.
@@ -33,20 +33,22 @@
 //! attaches the instrument. An exporter fused into the money path would be one
 //! a report could not settle without.
 
-use afd_core::clock::UnixMillis;
-use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
 use afd_wire::report::ReportRequest;
+use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::commit::{Committed, TerminalReport};
 use crate::lease::pull::Plane;
 use crate::lease::settle::Reported;
 use crate::lease::tool_trace::{self, TraceOwner};
+use crate::lease::usage::{self, Pricing};
 use crate::lease::verdict::{Terminal, Verdict};
+use afd_billing::Nanos;
+use afd_billing::biller::Release;
 use afd_billing::rates::Posture;
-use afd_billing::{Cumulative, Meter, Nanos};
+
+pub use tokens::RunTokens;
 
 /// What one settled report leaves its caller with.
 ///
@@ -99,12 +101,16 @@ pub struct Reconciled {
     /// as many. The report still answers success: a runner told to retry
     /// forever is how a finished answer gets thrown away.
     pub repeated: bool,
+    /// The tokens the run's usage lines record, every renewal's and the
+    /// report's: what its cost metrics and delivery span describe.
+    pub tokens: RunTokens,
 }
 
 impl Plane {
     /// Record one runner's terminal result for a lease it holds.
     ///
-    /// Answers what the final slice drained, so the caller can meter it, and
+    /// Answers what the final slice's usage line cost, so the caller can meter
+    /// it, and
     /// the two identifiers that were only knowable INSIDE this call: the report
     /// names a lease, and which fleet and workspace that lease belonged to is
     /// something the load resolved. The caller needs both to report the run,
@@ -117,25 +123,36 @@ impl Plane {
     /// with [`stale_fence`](crate::error) — neither writes anything. Also
     /// reports a datastore that would not answer, in which case the lease is
     /// left `active` for the runner to re-report against and nothing was
-    /// charged.
+    /// logged.
     pub async fn report(
         &self,
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Reconciled> {
         let lease_id = request.lease_id.as_ref();
         let Some(lease) = self.leases.load_for_report(lease_id, runner_id).await? else {
             return Err(lease_not_found());
         };
 
+        let lease_key = Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
         let tool_calls = stored_trace(&lease, request);
-        let meter = self.price_final_slice(&lease, request).await;
-        let report = terminal(
+        let pricing = Pricing::load(
+            self.leases.pool(),
+            posture_of(&lease),
+            &lease.provider,
+            &lease.model,
             lease_id,
-            runner_id,
-            &lease,
-            meter,
+        )
+        .await;
+        let report = terminal(
+            Subject {
+                id: lease_id,
+                key: &lease_key,
+                runner: runner_id,
+                row: &lease,
+            },
+            &pricing,
             request,
             tool_calls.as_deref(),
             now,
@@ -145,69 +162,53 @@ impl Plane {
             Committed::Fenced => Err(stale_fence()),
             Committed::AlreadySettled => {
                 self.acknowledge_again(&lease, lease_id).await;
-                Ok(reconciled(lease, Nanos::ZERO, true))
+                Ok(reconciled(lease, Nanos::ZERO, true, RunTokens::default()))
             }
             Committed::Settled {
-                charged,
+                settlement,
                 closed,
                 owed,
             } => {
+                let charged = usage::charged(settlement.as_deref());
+                if let Some(settled) = settlement.as_deref() {
+                    self.settle_usage(settled).await;
+                }
+                self.release_usage(&lease_key, release_of(request)).await;
                 self.announce(runner_id, request, &lease, closed, charged, now)
                     .await;
                 if let Some(owing) = owed {
-                    self.queue_owed_answer(&owing, &lease, request.response_text.as_ref(), now)
+                    self.queue_owed_answer(&owing, &lease, request.response_text.as_ref())
                         .await;
                 }
-                Ok(reconciled(lease, charged, false))
+                let tokens = self.leases.run_tokens(&lease_key).await;
+                Ok(reconciled(lease, charged, false, tokens))
             }
         }
     }
+}
 
-    /// Price the final slice, fail-OPEN.
-    ///
-    /// The rate resolution is fail-OPEN and the posture is stated here rather
-    /// than inside the resolver: a datastore fault while pricing must not
-    /// refuse a report whose run has already happened, because the run cannot
-    /// be un-run and the alternative is charging nothing at all. So a fault
-    /// meters run-fee-only, exactly as `buildMeterInputs` does — the difference
-    /// is that [`afd_billing::Accounts::meter`] hands the decision UP to here,
-    /// where it is one line a reader can find, instead of absorbing it eight
-    /// frames down.
-    async fn price_final_slice(&self, lease: &Reported, request: &ReportRequest<'_>) -> Meter {
-        let posture = posture_of(lease);
-        let cumulative = Cumulative::reported(
-            request.input_tokens,
-            request.cached_input_tokens,
-            request.output_tokens,
-        );
-        match self
-            .accounts
-            .meter(posture, &lease.provider, &lease.model, cumulative)
-            .await
-        {
-            Ok(meter) => meter,
-            Err(failure) => {
-                let fleet = lease.fleet_id.as_str();
-                let Logged { error_code, reason } = failure.logged();
-                // The counts are the run's totals: whatever no priced renewal
-                // charged goes uncharged, including tokens a faulted renewal
-                // held for later (`renew::hold_tokens`). Logged so the loss is
-                // visible rather than silent.
-                tracing::warn!(
-                    error_code,
-                    fleet_id = fleet,
-                    lease_id = request.lease_id.as_ref(),
-                    input_tokens = cumulative.input,
-                    cached_input_tokens = cumulative.cached,
-                    output_tokens = cumulative.output,
-                    reason,
-                    event = "report_rates_unverified_run_fee_only",
-                    "the catalogue could not be read; the final slice meters runtime only and its tokens go uncharged"
-                );
-                self.accounts.run_fee_meter(cumulative)
-            }
-        }
+/// Why a reported lease's hold is released.
+fn release_of(request: &ReportRequest<'_>) -> Release {
+    if Verdict::of(
+        request.outcome,
+        request.failure_reason,
+        request.failure_detail.as_ref(),
+    )
+    .succeeded()
+    {
+        Release::Completed
+    } else {
+        Release::Failed
     }
+}
+
+/// The lease a report is about, by its three names and its row.
+#[derive(Clone, Copy)]
+struct Subject<'a> {
+    id: &'a str,
+    key: &'a Uuid7,
+    runner: &'a Uuid7,
+    row: &'a Reported,
 }
 
 /// Everything the report's transaction needs, assembled from the wire request.
@@ -218,19 +219,19 @@ impl Plane {
 /// clamped rather than refused — the run happened either way, and refusing it
 /// here would lose the answer over a telemetry field.
 fn terminal<'a>(
-    lease_id: &'a str,
-    runner_id: &'a Uuid7,
-    lease: &'a Reported,
-    meter: Meter,
+    lease: Subject<'a>,
+    pricing: &'a Pricing,
     request: &'a ReportRequest<'a>,
     tool_calls: Option<&'a str>,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> TerminalReport<'a> {
     TerminalReport {
-        lease_id,
-        runner_id,
-        lease,
-        meter,
+        lease_id: lease.id,
+        runner_id: lease.runner,
+        lease: lease.row,
+        lease_key: lease.key,
+        requests: &request.requests.0,
+        pricing,
         outcome: Terminal {
             verdict: Verdict::of(
                 request.outcome,
@@ -244,21 +245,9 @@ fn terminal<'a>(
         },
         last_event_id: request.checkpoint.last_event_id.as_ref(),
         last_response: request.checkpoint.last_response.as_ref(),
-        held_until: held_until(request.held_until_ms, now),
+        held_until: request.held_until,
         now,
     }
-}
-
-/// When the sandbox the run left held lapses, as the slot records it: never
-/// past one idle window from now, whatever the runner asked, so a runner
-/// cannot steer a fleet to itself for longer than a hold lasts. A deadline
-/// already past holds nothing.
-fn held_until(asked_ms: Option<i64>, now: UnixMillis) -> Option<UnixMillis> {
-    let latest = now.saturating_add_millis(SANDBOX_HOLD_IDLE_MS);
-    asked_ms
-        .map(UnixMillis::from_millis)
-        .filter(|asked| *asked > now)
-        .map(|asked| asked.min(latest))
 }
 
 /// The run's tool trace as the event row stores it, fenced to `lease`.
@@ -276,8 +265,9 @@ fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String>
 /// Takes the lease BY VALUE: every string field moves into the answer rather
 /// than being cloned, which is why the two call sites read the lease's columns
 /// through this and not before it.
-fn reconciled(lease: Reported, charged: Nanos, repeated: bool) -> Reconciled {
+fn reconciled(lease: Reported, charged: Nanos, repeated: bool, tokens: RunTokens) -> Reconciled {
     Reconciled {
+        tokens,
         charged,
         fleet_id: lease.fleet_id,
         workspace_id: lease.workspace_id,
@@ -313,6 +303,7 @@ fn posture_of(lease: &Reported) -> Posture {
 }
 
 mod steps;
+mod tokens;
 
 #[cfg(test)]
 mod tests;

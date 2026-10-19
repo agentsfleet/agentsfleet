@@ -26,8 +26,6 @@ pub(crate) mod raw;
 mod repository;
 mod trigger;
 
-use std::sync::Arc;
-
 use garde::Validate as _;
 
 use crate::error::{Error, ErrorKind, Result, missing};
@@ -36,7 +34,7 @@ use crate::name::{CredentialName, FleetName};
 pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::budget::{Budget, BudgetCeiling};
 pub use self::condition::Condition;
-pub use self::gates::{Behavior, DEFAULT_TIMEOUT_MS, GatePolicy, GateRule};
+pub use self::gates::{Behavior, DEFAULT_TIMEOUT, GatePolicy, GateRule};
 pub use self::policy::{ContextBudget, Network};
 pub use self::repository::{Access, Reach, Recorded, RepositoryBinding};
 pub use self::trigger::{
@@ -144,17 +142,6 @@ impl FleetConfig {
         }
         parsed.validate()?;
         Self::resolve(parsed)
-    }
-
-    /// Reads a document and shares it.
-    ///
-    /// The claim path's entry point: one parse, then an `Arc` every gate reads
-    /// concurrently.
-    ///
-    /// # Errors
-    /// Whichever rule the document broke.
-    pub fn stored_shared(document: &str) -> Result<Arc<Self>> {
-        Self::stored(document).map(Arc::new)
     }
 
     /// Applies the rules serde cannot know.

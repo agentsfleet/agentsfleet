@@ -13,6 +13,7 @@ afterEach(() => cleanup());
 const KNOWN_PROVIDER = "atlas-cloud";
 const UNLISTED_PROVIDER = "lambda-labs";
 const MODEL_ID = "claude-sonnet-5-5";
+const MODEL_NAME = "Sonnet 5.5";
 const TRAILING = "Default";
 /** The neutral badge fill, and the info colour a status badge carries. */
 const NEUTRAL = "bg-muted";
@@ -69,10 +70,15 @@ describe("ModelName", () => {
   });
 
   it("shows the marketed name, keeps the id on hover and reaches it by a copy button", () => {
-    renderCell(<ModelName modelId={MODEL_ID} />);
-    expect(screen.getByTitle(MODEL_ID).textContent).toBe("Sonnet 5.5");
+    renderCell(<ModelName modelId={MODEL_ID} displayName={MODEL_NAME} />);
+    expect(screen.getByTitle(MODEL_ID).textContent).toBe(MODEL_NAME);
     expect(screen.getByRole("button", { name: `Copy model id: ${MODEL_ID}` })).toBeTruthy();
     expect(screen.queryByLabelText(PLATFORM_MANAGED_LABEL)).toBeNull();
+  });
+
+  it("keeps an uncatalogued model's exact identifier as its name", () => {
+    renderCell(<ModelName modelId={MODEL_ID} />);
+    expect(screen.getByTitle(MODEL_ID).textContent).toBe(MODEL_ID);
   });
 
   it("carries the platform lock only when the row is a platform admin's", () => {

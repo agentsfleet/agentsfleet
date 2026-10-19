@@ -1,4 +1,6 @@
 import { request, requestWithRetry } from "./client";
+import { EventsPageSchema, type EventRow, type EventsPage } from "./event-history-schema";
+export type { EventRow, EventsPage } from "./event-history-schema";
 
 import type { RetryOptions } from "./retry";
 import { buildQuery } from "./events-types";
@@ -12,7 +14,7 @@ function fleetScope(workspaceId: string, fleetId: string): string {
   return `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
 }
 
-// Operator-visible event rows from `core.fleet_events`. Mirrors the
+// Operator-visible event rows from `fleet.events`. Mirrors the
 // server's `EventRow` envelope verbatim (no shim, no rename) — the
 // dashboard renders the same shape it queries.
 //
@@ -27,41 +29,6 @@ export type EventType = "chat" | "webhook" | "cron" | "continuation";
 export type EventStatusValue = EventStatus | (string & {});
 
 export type EventTypeValue = EventType | (string & {});
-
-export type EventRow = {
-  event_id: string;
-  fleet_id: string;
-  workspace_id: string;
-  actor: string;
-  event_type: EventTypeValue;
-  status: EventStatusValue;
-  tokens: number | null;
-  wall_ms: number | null;
-  failure_label: string | null;
-  /**
-   * Human-readable cause line from the runner's classification site (which
-   * check failed, and why). `null` on success or when an older runner omitted
-   * it — every surface then falls back to the canned `failure_label` sentence.
-   */
-  failure_detail: string | null;
-  resumes_event_id: string | null;
-  /**
-   * Summed telemetry `credit_deducted_nanos` for this event — server truth
-   * (M131 §2). `null` when the event recorded no telemetry: the ledger renders
-   * that as unknown (`—`), never a fabricated zero, and never derives cost from
-   * `tokens`.
-   */
-  cost_nanos: number | null;
-  /** epoch milliseconds */
-  created_at: number;
-  /** epoch milliseconds */
-  updated_at: number;
-};
-
-export type EventsPage = {
-  items: EventRow[];
-  next_cursor: string | null;
-};
 
 /**
  * One event with everything recorded about it — the list row plus the two
@@ -110,12 +77,12 @@ export async function listFleetEvents(
   opts?: Omit<EventsQuery, "fleet_id">,
   retry?: RetryOptions,
 ): Promise<EventsPage> {
-  return requestWithRetry<EventsPage>(
+  return EventsPageSchema.parse(await requestWithRetry<unknown>(
     `${fleetScope(workspaceId, fleetId)}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
     retry,
-  );
+  ));
 }
 
 export type ThreadPage = {
@@ -178,11 +145,11 @@ export async function listWorkspaceEvents(
   token: string,
   opts?: EventsQuery,
 ): Promise<EventsPage> {
-  return request<EventsPage>(
+  return EventsPageSchema.parse(await request<unknown>(
     `/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
-  );
+  ));
 }
 
 /**
@@ -197,7 +164,7 @@ export async function listWorkspaceEvents(
  */
 export type FleetCountersSnapshot = {
   events_processed?: number;
-  budget_used_nanos?: number;
+  budget_used_nanos?: string;
 };
 
 export type ActivityLiveFrame =
@@ -210,7 +177,7 @@ export type ActivityLiveFrame =
       actor: string;
       event_type?: EventTypeValue;
       message?: string;
-      created_at?: number;
+      created_at?: string;
     }
   // The row as the lease verb opened it: who raised it, how it entered, and
   // the row's own instant. Every field past the identifier is optional on the
@@ -221,7 +188,7 @@ export type ActivityLiveFrame =
       event_id: string;
       actor: string;
       event_type?: EventTypeValue;
-      created_at?: number;
+      created_at?: string;
       /** What a person typed, on a steer's frame only. */
       message?: string;
     } & FleetCountersSnapshot)

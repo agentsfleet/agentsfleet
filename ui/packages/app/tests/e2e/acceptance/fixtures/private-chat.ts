@@ -14,13 +14,12 @@ export const NEW_FLEET = "fleets/new";
 
 /** The words the shipped chat shows, held here so a spec pins what a person reads. */
 export const CHAT_COPY = {
-  review: "Review setup",
-  reviewDialog: "Review fleet setup",
-  editSetup: "Edit setup",
+  setup: "Fleet setup",
+  editSetup: "Edit instructions",
   instructions: "Instructions",
-  updateReview: "Update draft and review",
+  updateInstructions: "Update instructions",
   save: "Save fleet",
-  apply: "Apply reviewed setup",
+  apply: "Save changes",
   applied: "Fleet setup updated. New work uses this setup revision.",
   savedSetup: "Saved fleet setup",
   openFleet: "Open fleet",
@@ -41,15 +40,15 @@ export function historyEntry(page: Page, draftId: string): Locator {
   return page.locator(`a[href$="?draft=${encodeURIComponent(draftId)}"]`);
 }
 
-export function reviewButton(page: Page): Locator {
-  return page.getByRole("button", { name: CHAT_COPY.review, exact: true });
+export function saveSetupButton(page: Page): Locator {
+  return setupSummary(page).getByRole("button", {name: CHAT_COPY.save, exact: true});
 }
 
-export function reviewDialog(page: Page): Locator {
-  return page.getByRole("dialog", { name: CHAT_COPY.reviewDialog });
+export function setupSummary(page: Page): Locator {
+  return page.getByRole("region", {name: CHAT_COPY.setup, exact: true});
 }
 
-/** The saved-fleet result. The chat and the open review dialog each render one, so callers scope it. */
+/** The saved-fleet result remains in the conversation and survives a reload. */
 export function savedSetup(scope: Page | Locator): Locator {
   return scope.getByLabel(CHAT_COPY.savedSetup, { exact: true });
 }
@@ -61,7 +60,7 @@ export function chatUnavailable(page: Page): Locator {
 /** Opens a chat by the address its history entry links to and waits for its candidate. */
 export async function openDraft(page: Page, workspaceId: string, draftId: string): Promise<void> {
   await page.goto(draftHref(workspaceId, draftId));
-  await expect(reviewButton(page)).toBeVisible();
+  await expect(setupSummary(page)).toBeVisible();
 }
 
 /** Sends `text` from the composer with the keyboard, the way a person would. */

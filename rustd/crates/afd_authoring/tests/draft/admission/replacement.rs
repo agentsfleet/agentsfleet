@@ -6,6 +6,7 @@ use afd_core::{
     error_code::{AUTHORING_MODEL, AUTHORING_STATE},
     id::Uuid7,
 };
+use afd_credential::provider::PLATFORM_MODEL_REF;
 use serde_json::json;
 
 fn patch(value: serde_json::Value) -> DraftPatch {
@@ -29,7 +30,7 @@ async fn etag(f: &super::Fixture, draft: &Uuid7) -> String {
 async fn disabled_model_refuses_queued_replacement_and_recovers_after_idle_replacement() {
     let f = funded(1).await;
     let draft = queue(&f, "Selected model is disabled mid-draft").await;
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(f.model.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -59,7 +60,9 @@ async fn disabled_model_refuses_queued_replacement_and_recovers_after_idle_repla
         "no obligation for a refusal"
     );
     let idle = f.drafts.read(f.access(), &draft.id).await.expect("reload");
-    assert_eq!(idle.authoring_model_ref, f.model.to_string());
+    // Deleting a tenant model sets every pointer to it NULL, which reads as
+    // the platform default; this fixture configures none, so it is no escape.
+    assert_eq!(idle.authoring_model_ref, PLATFORM_MODEL_REF);
     for (forced, why) in [
         (
             patch(json!({"title":"rename only"})),

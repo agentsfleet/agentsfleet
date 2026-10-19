@@ -23,7 +23,7 @@ describe("listTenantWorkspaces", () => {
   it("GET /v1/tenants/me/workspaces with bearer, returns envelope", async () => {
     fetchMock.mockResolvedValue(
       okResponse({
-        items: [{ id: "ws_1", name: "alpha", created_at: 100, ...OWN }],
+        items: [{ id: "ws_1", name: "alpha", created_at: "1970-01-01T00:00:00.1Z", ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,
@@ -139,19 +139,26 @@ describe("listTenantWorkspaces", () => {
         next_cursor: null,
       },
       {
-        items: [{ id: "", name: "bad", created_at: 1, ...OWN }],
+        items: [{ id: "", name: "bad", created_at: "1970-01-01T00:00:00.001Z", ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,
       },
       {
-        items: [{ id: "ws_1", name: 42, created_at: 1, ...OWN }],
+        items: [{ id: "ws_1", name: 42, created_at: "1970-01-01T00:00:00.001Z", ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,
       },
       {
         items: [{ id: "ws_1", name: "bad", created_at: Number.NaN, ...OWN }],
+        tenant_id: TENANT_ID,
+        total: null,
+        next_cursor: null,
+      },
+      {
+        // An epoch-millisecond number is refused, never read as a time.
+        items: [{ id: "ws_1", name: "bad", created_at: 1_700_000_000_000, ...OWN }],
         tenant_id: TENANT_ID,
         total: null,
         next_cursor: null,

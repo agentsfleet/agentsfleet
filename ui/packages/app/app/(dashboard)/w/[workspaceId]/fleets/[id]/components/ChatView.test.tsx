@@ -50,9 +50,9 @@ function turn(over: Partial<EventDetail> = {}): EventDetail {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    cost_nanos: 40_000_000,
-    created_at: SEED_AT,
-    updated_at: SEED_AT,
+    cost_nanos: "40000000",
+    created_at: new Date(SEED_AT).toISOString(),
+    updated_at: new Date(SEED_AT).toISOString(),
     ...over,
   };
 }
@@ -64,10 +64,10 @@ function summary(over: Partial<FleetRunSummary> = {}): FleetRunSummary {
       status: "processed",
       failure_label: null,
       failure_detail: null,
-      created_at: SEED_AT,
+      created_at: new Date(SEED_AT).toISOString(),
       tokens: INITIAL_TOKENS,
       wall_ms: 12_000,
-      cost_nanos: 40_000_000,
+      cost_nanos: "40000000",
     },
     latestAvailable: true,
     pendingApprovals: 0,
@@ -79,7 +79,7 @@ function summary(over: Partial<FleetRunSummary> = {}): FleetRunSummary {
 function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>> = {}): LiveFrame {
   return {
     kind: FRAME_KIND.EVENT_COMPLETE,
-    ...turn({ event_id: "evt_live", tokens: COMPLETED_TOKENS, created_at: SEED_AT + 60_000 }),
+    ...turn({ event_id: "evt_live", tokens: COMPLETED_TOKENS, created_at: new Date(SEED_AT + 60_000).toISOString() }),
     fleet_status: STATUS_ACTIVE,
     pending_approvals: 0,
     ...over,
@@ -147,7 +147,7 @@ describe("ChatView — the run summary as a view over the stream", () => {
       event_id: "evt_live",
       actor: "cron:*",
       event_type: "cron",
-      created_at: SEED_AT + 60_000,
+      created_at: new Date(SEED_AT + 60_000).toISOString(),
     });
     emit(completion({ pending_approvals: 1 }));
 
@@ -247,7 +247,7 @@ describe("ChatView — the run summary as a view over the stream", () => {
   it("a reconnect backfill's terminal row moves the strip like a frame would", async () => {
     render(view(summary()));
     act(() => {
-      reconcileServerRows(FLEET_ID, [turn({ event_id: "evt_missed", tokens: COMPLETED_TOKENS, created_at: SEED_AT + 1 })]);
+      reconcileServerRows(FLEET_ID, [turn({ event_id: "evt_missed", tokens: COMPLETED_TOKENS, created_at: new Date(SEED_AT + 1).toISOString() })]);
     });
     expect(await screen.findByText("1,200")).toBeTruthy();
   });

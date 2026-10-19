@@ -14,7 +14,7 @@
 //! worth taking.
 
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use crate::error::{Result, query, row_malformed, runner_vanished};
 use crate::policy::{AssignmentColumns, StoredVerdict};
@@ -25,9 +25,9 @@ use crate::store::Runners;
 const CONTEXT_SELF_READ: &str = "runner self read";
 
 /// The table every column here comes from, for a malformed-value report.
-const TABLE_RUNNERS: &str = "fleet.runners";
+const TABLE_RUNNERS: &str = "runner.runners";
 
-/// One `fleet.runners` row, as columns.
+/// One `runner.runners` row, as columns.
 ///
 /// Owned, because the pooled connection is released before the caller reads it;
 /// the JSON columns stay TEXT so the caller can deserialise a borrowing wire
@@ -41,19 +41,58 @@ const TABLE_RUNNERS: &str = "fleet.runners";
 pub struct SelfRow {
     /// The runner's identifier, already proven canonical.
     pub id: Uuid7,
-    /// Operator-facing administrative state.
+    /// Operator-facing status.
     pub status: String,
     /// The host it runs on.
     pub host_id: String,
-    /// Epoch milliseconds of the last beat; [`sql::LAST_SEEN_NEVER`] when it has
-    /// never connected.
-    pub last_seen_at: i64,
+    /// The last beat; [`sql::NEVER_SEEN`] when it has never connected.
+    pub last_seen_at: Timestamp,
     /// What the operator assigned, as stored.
     pub assignment: AssignmentColumns,
     /// What the host last reported it can enforce, as stored JSON.
     pub capability_report_json: Option<String>,
     /// The verdict the row currently holds.
     pub verdict: StoredVerdict,
+}
+
+/// [`sql::runner::SELECT_RUNNER_SELF`]'s row, by column name.
+#[derive(Debug, sqlx::FromRow)]
+struct SelfColumns {
+    id: String,
+    status: String,
+    host_id: String,
+    sandbox_tier: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    last_seen_at: Timestamp,
+    network_policy: String,
+    registry_allowlist: String,
+    worker_count: i32,
+    capability_report: Option<String>,
+    degraded_reason: Option<String>,
+    sandbox_config: Option<String>,
+}
+
+impl SelfColumns {
+    /// The row, its identifier proven canonical.
+    fn parse(self) -> Result<SelfRow> {
+        Ok(SelfRow {
+            id: Uuid7::parse(&self.id).map_err(row_malformed(TABLE_RUNNERS, "id"))?,
+            status: self.status,
+            host_id: self.host_id,
+            last_seen_at: self.last_seen_at,
+            assignment: AssignmentColumns {
+                sandbox_tier: self.sandbox_tier,
+                network_policy: self.network_policy,
+                registry_allowlist_json: self.registry_allowlist,
+                worker_count: self.worker_count,
+                sandbox_config_json: self.sandbox_config,
+            },
+            capability_report_json: self.capability_report,
+            verdict: StoredVerdict {
+                reason: self.degraded_reason,
+            },
+        })
+    }
 }
 
 impl Runners {
@@ -71,33 +110,12 @@ impl Runners {
     /// remedy is to re-enrol the host rather than to retry.
     pub async fn self_record(&self, runner: &Uuid7) -> Result<SelfRow> {
         let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(sql::runner::SELECT_RUNNER_SELF)
+        let found = sqlx::query_as::<_, SelfColumns>(sql::runner::SELECT_RUNNER_SELF)
             .bind(runner.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SELF_READ))?;
         // Fail closed rather than answer 200 for a phantom runner.
-        let row = found.ok_or_else(runner_vanished)?;
-
-        let column = query(CONTEXT_SELF_READ);
-        let id: String = row.try_get(0).map_err(&column)?;
-        Ok(SelfRow {
-            id: Uuid7::parse(&id).map_err(row_malformed(TABLE_RUNNERS, "id"))?,
-            status: row.try_get(1).map_err(&column)?,
-            host_id: row.try_get(2).map_err(&column)?,
-            last_seen_at: row.try_get(4).map_err(&column)?,
-            assignment: AssignmentColumns {
-                sandbox_tier: row.try_get(3).map_err(&column)?,
-                network_policy: row.try_get(5).map_err(&column)?,
-                registry_allowlist_json: row.try_get(6).map_err(&column)?,
-                worker_count: row.try_get(7).map_err(&column)?,
-                extra_binds_json: row.try_get(11).map_err(&column)?,
-            },
-            capability_report_json: row.try_get(8).map_err(&column)?,
-            verdict: StoredVerdict {
-                degraded: row.try_get(9).map_err(&column)?,
-                reason: row.try_get(10).map_err(&column)?,
-            },
-        })
+        found.ok_or_else(runner_vanished)?.parse()
     }
 }

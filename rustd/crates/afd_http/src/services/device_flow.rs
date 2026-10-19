@@ -1,7 +1,7 @@
 //! The HTTP device-flow login seam: opening, approving and redeeming one sign-in.
 
-use afd_core::clock::UnixMillis;
 use afd_tenant::session::{Fingerprint, Opened, Redeemed, Waiting, input};
+use jiff::Timestamp;
 
 /// Opening, approving and redeeming one command-line login.
 ///
@@ -18,7 +18,7 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
     fn open(
         &self,
         opening: &input::Opening<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Opened>> + Send;
 
     /// Reads where a login has got to.
@@ -38,7 +38,7 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
         session_id: &str,
         approval: &input::Approval<'_>,
         approver: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send;
 
     /// Presents a code, redeeming the session if it matches.
@@ -51,7 +51,7 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
         session_id: &str,
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send;
 
     /// Cancels every in-flight login `owner` holds, answering their ids.
@@ -72,7 +72,7 @@ impl DeviceFlow for afd_tenant::session::Sessions {
     fn open(
         &self,
         opening: &input::Opening<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Opened>> + Send {
         Self::open(self, opening, now)
     }
@@ -86,7 +86,7 @@ impl DeviceFlow for afd_tenant::session::Sessions {
         session_id: &str,
         approval: &input::Approval<'_>,
         approver: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
         Self::approve(self, session_id, approval, approver, now)
     }
@@ -96,7 +96,7 @@ impl DeviceFlow for afd_tenant::session::Sessions {
         session_id: &str,
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send {
         Self::verify(self, session_id, code, fingerprint, now)
     }

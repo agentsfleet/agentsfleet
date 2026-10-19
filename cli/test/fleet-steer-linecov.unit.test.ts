@@ -52,7 +52,7 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (isPost(input)) return postedEvent<T>();
       // Recovery poll finds the event already PROCESSED.
-      return { items: [{ event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }] } as T;
+      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
     };
 
     const exit = await Effect.runPromiseExit(
@@ -118,7 +118,7 @@ describe("steer — onTurnError classifies CliError turn failures via the _tag a
         if (postCount === 1) return {} as T; // no event_id → ServerError
         return postedEvent<T>();
       }
-      return { items: [{ event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }] } as T;
+      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
     };
 
     const exit = await Effect.runPromiseExit(
@@ -149,7 +149,7 @@ describe("steer — single-shot SSE error path is shielded by the recovery poll"
     const rec = makeRecorder();
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (isPost(input)) return postedEvent<T>();
-      return { items: [{ event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }] } as T;
+      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
     };
 
     const exit = await Effect.runPromiseExit(

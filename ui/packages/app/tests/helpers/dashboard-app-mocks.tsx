@@ -154,7 +154,7 @@ export function addSecretFormMock() {
 
 export function secretsListMock() {
   return {
-    default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string; created_at: number }[] }) =>
+    default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string; created_at: string }[] }) =>
       secrets.length === 0
         ? React.createElement("p", { "data-secrets-empty": workspaceId }, "No secrets stored yet")
         : React.createElement(
@@ -186,7 +186,7 @@ export function resetDashboardMocks() {
     total: 3,
     cursor: null,
   });
-  getTenantBillingMock.mockResolvedValue({ balance_nanos: 5 * NANOS_PER_USD, is_exhausted: false, exhausted_at: null });
+  getTenantBillingMock.mockResolvedValue({ balance_nanos: String(5 * NANOS_PER_USD), is_exhausted: false, exhausted_at: null });
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   listFleetEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   stopFleetMock.mockResolvedValue(undefined);

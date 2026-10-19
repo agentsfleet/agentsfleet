@@ -9,13 +9,31 @@ use afr_providers::Usage;
 use super::{Ending, narrow, report};
 use crate::test_support::{FENCING, FLEET_ID, LEASE_ID, answer, lease};
 
+/// Each request line's fresh input, cached input and output.
+fn requests(report: &afd_wire::report::ReportRequest<'_>) -> Vec<(u32, u32, u32)> {
+    report
+        .requests
+        .0
+        .iter()
+        .map(|line| {
+            (
+                line.input_tokens,
+                line.cached_input_tokens,
+                line.output_tokens,
+            )
+        })
+        .collect()
+}
+
 /// A meter that counted `input` fresh, `cached_input` cached and `output`.
 fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
     let meter = Meter::default();
     meter.add(Usage {
         input,
         cached_input,
-        cache_written: 0,
+        cache_write: 0,
+        cache_write_5m: 0,
+        cache_write_1h: 0,
         output,
     });
     meter
@@ -44,15 +62,11 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
     assert_eq!(report.response_text, "done");
     assert_eq!(report.checkpoint.last_response, "done");
     assert_eq!(report.checkpoint.last_event_id, lease.event.event_id);
+    assert_eq!(report.tokens, 8, "the result's total, for the history");
     assert_eq!(
-        (
-            report.tokens,
-            report.input_tokens,
-            report.cached_input_tokens,
-            report.output_tokens
-        ),
-        (8, 3, 1, 4),
-        "the whole prompt and the completion, then the three counts apart"
+        requests(&report),
+        [(3, 1, 4)],
+        "the meter's one request line"
     );
     assert_eq!(report.telemetry.time_to_first_token_ms, 120);
     assert_eq!(report.telemetry.wall_ms, 2_000);
@@ -110,14 +124,10 @@ fn a_run_that_never_finished_still_reports_what_it_spent() {
     assert_eq!(report.failure_reason, Some(FailureClass::RunnerCrash));
     assert_eq!(report.failure_detail, "the engine broke mid-run");
     assert_eq!(report.response_text, "");
+    assert_eq!(report.tokens, 12);
     assert_eq!(
-        (
-            report.tokens,
-            report.input_tokens,
-            report.cached_input_tokens,
-            report.output_tokens
-        ),
-        (12, 7, 2, 3),
+        requests(&report),
+        [(7, 2, 3)],
         "the turns the meter counted before the break are billed"
     );
 }
@@ -152,7 +162,7 @@ fn a_count_past_the_wire_width_saturates() {
 }
 
 #[test]
-fn a_finished_run_bills_its_result_not_the_meter() {
+fn a_finished_run_bills_its_requests_and_reports_its_result_total() {
     let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Ran {
         output: answer(),
@@ -169,13 +179,12 @@ fn a_finished_run_bills_its_result_not_the_meter() {
     );
 
     assert_eq!(
-        (
-            report.tokens,
-            report.input_tokens,
-            report.cached_input_tokens,
-            report.output_tokens
-        ),
-        (8, 3, 1, 4),
-        "what the engine handed back is what is billed; the meter is the fallback"
+        report.tokens, 8,
+        "the history shows what the engine handed back"
+    );
+    assert_eq!(
+        requests(&report),
+        [(100, 50, 25)],
+        "billing charges each request the meter saw, never the result's sum"
     );
 }

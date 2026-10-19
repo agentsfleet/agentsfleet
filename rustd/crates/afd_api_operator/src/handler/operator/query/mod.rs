@@ -14,6 +14,7 @@ use afd_core::spelling::from_spelling;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
 use afd_validate::Limit;
 use garde::Validate as _;
+use jiff::Timestamp;
 
 const QUERY_LIMIT: &str = "limit";
 const QUERY_STARTING_AFTER: &str = "starting_after";
@@ -70,7 +71,7 @@ pub(super) const DETAIL_BAD_LEASE_CURSOR: &str = "starting_after must be a lease
 pub(super) const DETAIL_BAD_WORKSPACE: &str = "workspace_id must be a workspace id";
 pub(super) const DETAIL_BAD_FLEET: &str =
     "fleet must be a fleet id or name, at most 200 characters";
-pub(super) const DETAIL_BAD_EVENTS: &str = "limit must be between 1 and 100; starting_after must be a cursor from a previous page; event_type must be a comma-separated set of runner event types; since/until must be millis";
+pub(super) const DETAIL_BAD_EVENTS: &str = "limit must be between 1 and 100; starting_after must be a cursor from a previous page; event_type must be a comma-separated set of runner event types; since/until must be RFC 3339 instants";
 
 pub(super) fn page(params: &HashMap<String, String>) -> Result<PageQuery, &'static str> {
     let limit = requested_limit(params, DETAIL_BAD_PAGE)?;
@@ -114,8 +115,8 @@ pub(super) fn events(params: &HashMap<String, String>) -> Result<EventQuery, &'s
         .map(|raw| event_types(raw))
         .transpose()?
         .unwrap_or_default();
-    let since = optional_i64(params.get(QUERY_SINCE))?;
-    let until = optional_i64(params.get(QUERY_UNTIL))?;
+    let since = optional_instant(params.get(QUERY_SINCE))?;
+    let until = optional_instant(params.get(QUERY_UNTIL))?;
     let filter = RunnerEventFilter::new(event_types, since, until).ok_or(DETAIL_BAD_EVENTS)?;
     Ok(EventQuery {
         cursor,
@@ -126,7 +127,7 @@ pub(super) fn events(params: &HashMap<String, String>) -> Result<EventQuery, &'s
 
 pub(super) fn format(cursor: &KeysetCursor) -> String {
     Cursor::Timestamp {
-        at_ms: cursor.created_at(),
+        at: cursor.created_at(),
         id: cursor.id().as_str().to_owned(),
     }
     .to_string()
@@ -135,11 +136,11 @@ pub(super) fn format(cursor: &KeysetCursor) -> String {
 /// A timestamp boundary whose identifier is a version-7 id. The text form
 /// parses as a cursor too, and is refused: these lists sort by `created_at`.
 fn cursor(raw: &str) -> Result<KeysetCursor, &'static str> {
-    let Ok(Cursor::Timestamp { at_ms, id }) = Cursor::parse(raw) else {
+    let Ok(Cursor::Timestamp { at, id }) = Cursor::parse(raw) else {
         return Err(DETAIL_BAD_PAGE);
     };
     let id = Uuid7::parse(&id).map_err(|_invalid| DETAIL_BAD_PAGE)?;
-    Ok(KeysetCursor::new(at_ms, id))
+    Ok(KeysetCursor::new(at, id))
 }
 
 /// The page size a list asked for, inside the keyset lists' ceiling, or that
@@ -182,8 +183,8 @@ fn parse_event_types(
         .collect()
 }
 
-fn optional_i64(raw: Option<&String>) -> Result<Option<i64>, &'static str> {
-    raw.map(|value| value.parse::<i64>().map_err(|_invalid| DETAIL_BAD_EVENTS))
+fn optional_instant(raw: Option<&String>) -> Result<Option<Timestamp>, &'static str> {
+    raw.map(|value| afd_wire::instant::parse(value).map_err(|_invalid| DETAIL_BAD_EVENTS))
         .transpose()
 }
 

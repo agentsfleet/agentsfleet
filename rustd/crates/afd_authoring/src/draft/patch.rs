@@ -10,8 +10,9 @@ use crate::{
     model, sql,
     types::{Draft, DraftPatch, DraftState, QUEUED, RUNNING},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_fleet_runtime::definition::{ConfigOp, EditBatch};
+use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
 const CONTEXT: &str = "edit private draft";
@@ -33,7 +34,7 @@ impl Drafts {
         id: &Uuid7,
         expected: Option<&str>,
         patch: DraftPatch,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Draft> {
         let patch = garde::Unvalidated::new(patch).validate()?.into_inner();
         nonempty(&patch)?;
@@ -59,9 +60,7 @@ impl Drafts {
         sqlx::query(sql::draft::PATCH)
             .bind(id.as_str())
             .bind(title)
-            .bind(authoring)
-            .bind(&patch.runtime_model_ref)
-            .bind(now.as_millis())
+            .bind(model::tenant_model(authoring))
             .bind(&patch.instance_name)
             .execute(&mut *tx)
             .await
@@ -78,7 +77,7 @@ impl Drafts {
         connection: &mut PgConnection,
         locked: &read::Locked,
         mut patch: DraftPatch,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         if let Some(reference) = patch.runtime_model_ref.take() {
             patch.config_ops.push(ConfigOp::Add {
@@ -93,7 +92,7 @@ impl Drafts {
             connection,
             &locked.id,
             locked
-                .current_candidate_id
+                .head_candidate_id
                 .as_ref()
                 .ok_or_else(|| invalid(NO_CANDIDATE))?,
         )
@@ -113,7 +112,6 @@ impl Drafts {
                 draft: &locked.id,
                 revision,
                 definition: &definition,
-                now,
             },
         )
         .await?;
@@ -122,9 +120,9 @@ impl Drafts {
 }
 
 pub(crate) async fn idle(connection: &mut PgConnection, locked: &read::Locked) -> Result<()> {
-    if locked.state != DraftState::Editing {
+    if locked.status != DraftState::Editing {
         return Err(ErrorKind::State {
-            current: locked.state.as_str(),
+            current: locked.status.as_str(),
         }
         .into());
     }

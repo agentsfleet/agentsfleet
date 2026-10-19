@@ -9,12 +9,12 @@
 
 use std::time::Instant;
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Access;
 use afd_wire::policy::ExecutionPolicy;
+use jiff::Timestamp;
 
 use afd_approval::{Origin, Requested, Wanted};
 
@@ -38,7 +38,7 @@ impl Plane {
         &self,
         runner_id: &Uuid7,
         admitted: Admission2,
-        now: UnixMillis,
+        now: Timestamp,
         began: Instant,
     ) -> Result<Step<Leased>> {
         let declared = self
@@ -84,7 +84,6 @@ impl Plane {
                         label::BINDING_UNENFORCEABLE,
                         runner_id,
                         reason,
-                        now,
                     )
                     .await
                     .map(Step::Stop);
@@ -116,7 +115,7 @@ impl Plane {
         acquired: &Acquired,
         credential: &str,
         integration: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Step<Leased>> {
         let asked = self
             .grants
@@ -134,7 +133,7 @@ impl Plane {
         let reason = format!("{credential} needs a grant for {integration}");
         match answers(written(asked, &acquired.fleet_id, integration)) {
             Ungranted::Ends => self
-                .refused(acquired, label::GRANT_DENIED, runner_id, &reason, now)
+                .refused(acquired, label::GRANT_DENIED, runner_id, &reason)
                 .await
                 .map(Step::Stop),
             waits => no_work(runner_id, &reason).map(|answer| waits.ending(answer)),
@@ -146,7 +145,7 @@ impl Plane {
         runner_id: &Uuid7,
         admitted: &Admission2,
         policy: ExecutionPolicy<'_>,
-        now: UnixMillis,
+        now: Timestamp,
         began: Instant,
     ) -> Result<Step<Leased>> {
         // LAST, and only once everything above succeeded.
@@ -167,26 +166,21 @@ impl Plane {
         else {
             return claim_lost(runner_id, &admitted.acquired);
         };
+        self.hold_issued(
+            &issued.lease_id,
+            &admitted.billed.tenant_id,
+            &admitted.acquired.workspace_id,
+            admitted.billed.floor,
+        )
+        .await;
         // Here, and not at the claim: a claim is an affinity token, and the
         // dozen refusals between it and this line — a stopped fleet, an
         // unparseable event, a denied budget, an unauthorised branch — end
         // without a lease row. Counting one there would make the gauge climb
         // on requests that were refused.
         afd_observability::producers::fleet::runner::lease_taken(runner_id.as_str());
-        let runner_id = runner_id.as_str();
-        let lease_id = issued.lease_id.as_str();
-        let fleet_id = admitted.acquired.fleet_id.as_str();
-        let agentsfleet_event_id = admitted.acquired.event_id.as_str();
-        let queue_wait_ms = queue_wait::of(&admitted.acquired, queue_wait::issued_at(now, began));
-        tracing::info!(
-            event = EVENT_LEASED,
-            runner_id,
-            lease_id,
-            fleet_id,
-            agentsfleet_event_id,
-            queue_wait_ms,
-            "a lease was issued"
-        );
+        let issued_at = queue_wait::issued_at(now, began);
+        log_issued(runner_id, &issued.lease_id, &admitted.acquired, issued_at);
         let history = history::turns(
             self.thread.as_ref(),
             &admitted.acquired,
@@ -337,6 +331,26 @@ const fn answers(asked: Option<Requested>) -> Ungranted {
 }
 
 mod queue_wait;
+
+/// The `runner_lease_issued` line, with how long the event waited for a runner.
+fn log_issued(runner_id: &Uuid7, lease_id: &Uuid7, acquired: &Acquired, issued_at: Timestamp) {
+    // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
+    // scores the dead copy.
+    let runner_id = runner_id.as_str();
+    let lease_id = lease_id.as_str();
+    let fleet_id = acquired.fleet_id.as_str();
+    let agentsfleet_event_id = acquired.event_id.as_str();
+    let queue_wait_ms = queue_wait::of(acquired, issued_at);
+    tracing::info!(
+        event = EVENT_LEASED,
+        runner_id,
+        lease_id,
+        fleet_id,
+        agentsfleet_event_id,
+        queue_wait_ms,
+        "a lease was issued"
+    );
+}
 
 #[cfg(test)]
 mod tests;

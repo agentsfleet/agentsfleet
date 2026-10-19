@@ -12,9 +12,9 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Event ingress | ONE — six producers | `steer` / `webhook` / `webhook_app` / `schedule_fire` / `gate_continuation` / `slack_mention` (`rustd/crates/afd_admission/src/admission.rs`, `Producer`) each commit a `core.fleet_admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt. Slack mentions reach admission through `rustd/crates/afd_api_ingress/src/handler/mention/mod.rs` (M206_002) | §B. TRIGGER |
+| Event ingress | ONE — six producers | `steer` / `webhook` / `webhook_app` / `schedule_fire` / `gate_continuation` / `slack_mention` (`rustd/crates/afd_admission/src/admission.rs`, `Producer`) each commit a `fleet.admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt. Slack mentions reach admission through `rustd/crates/afd_api_ingress/src/handler/mention/mod.rs` (M206_002) | §B. TRIGGER |
 | Hot-path writes | 12 in the worker's order, then 3 for the answer | `lease` does 1–6, `report` does 7–15; 1–12 are row-equivalent to the deleted worker (cutover Invariant 2), and 13–15 record and queue the answer the run owes | §Steer flow end-to-end |
-| Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet_admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet_events` (one row per delivery) · `fleet_obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet_sessions` (one row per fleet, UPSERT) · `billing.usage_ledger` (two rows per FLEET-event — a receive and a stage — UNIQUE `(event_id, charge_type, fleet_id)`, so one event id charged by two fleets holds four rows, not two) | §The five durable stores |
+| Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet.admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet.events` (one row per delivery) · `fleet.obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet.sessions` (one row per fleet, UPSERT) · `billing.usage_lines` (one row per measured slice of a lease, UNIQUE `(work_type, work_id, seq)`, with the lease's money held in `billing.holds`) | §The five durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the ledger's UNIQUE `(event_id, charge_type, fleet_id)` | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | `Leases::claim_and_settle` fences, flips, settles and dedups in one statement | §C. EXECUTE |
 | Shared Dragonfly handle | one multiplexed connection per daemon | short-lived commands only: `XADD`, the readiness index's `HRANDFIELD`, non-blocking `XREADGROUP`, `SPUBLISH`, `XACK` | §Connection topology |
@@ -24,10 +24,10 @@ Every row is extracted from the sections below; the owner column names the secti
 | Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
 | Activation guarantee | stream + group before `active` | Save calls `ensure_group` within a 5-second limit (`rustd/crates/afd_authoring/src/creation/activate.rs`); a miss leaves the retained fleet `installing` for an explicit retry, never a deleted row | §A. SAVE |
 | Server-Sent Events (SSE) sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
-| Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
+| Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet.events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
-| Cancel latency | none: a running lease is never cancelled | kill and pause write only `core.fleets.status`; the run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME_MS` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
-| Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
+| Cancel latency | none: a running lease is never cancelled | kill and pause write only `fleet.fleets.status`; the run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
+| Lease ownership | at most one active lease per fleet | atomic `runner.fleet_slots` claim + monotonic `fencing_token` | §One active lease per fleet |
 | Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 4 |
 | Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; Dragonfly keys namespaced by unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |
 
@@ -35,7 +35,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 Each trap is enforced in its owner section; this list is the index.
 
-- The live tail is the eyeballs surface, not the audit surface; durable history is `core.fleet_events` (§Two streams + one pub/sub channel).
+- The live tail is the eyeballs surface, not the audit surface; durable history is `fleet.events` (§Two streams + one pub/sub channel).
 - A connection held across a blocking `SSUBSCRIBE` can never return to a pool (§Connection topology).
 - Never acquire a second Postgres connection while holding one — that is how a pool deadlocks (§The Postgres pool).
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
@@ -67,7 +67,7 @@ The same sequence told for two fleets at once, a Pull Request and a Slack thread
 
 | Decision | Reason | Where / artifact |
 |---|---|---|
-| Two per-delivery tables (`fleet_events` + `billing.usage_ledger`) | different write authorities and retention rules | §The five durable stores |
+| A narrative table and a usage table (`fleet.events` + `billing.usage_lines`) | different write authorities and retention rules | §The five durable stores |
 | `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
 | Dedicated Dragonfly tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
@@ -94,7 +94,7 @@ Headings are stable — specs cite them by text; insert new sections, never rena
 
 | Process | Role |
 |---|---|
-| **`agentsfleetd`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Dragonfly pool, and the Vault. Each of the seven admission producers (§Facts) commits an admission row and then `XADD`s to `fleet:{id}:events` — single ingress, and the row is what makes the acceptance durable when the append does not land. On `lease` it peeks the readiness index, claims a fleet, reads its next event with a non-blocking `XREADGROUP`, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `SPUBLISH`er on `fleet:{id}:activity`. Dispatches bounded authoring model calls through daemon-held keys; ordinary runtime inference stays in the runner supervisor. |
+| **`agentsfleetd`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Dragonfly pool, and the Vault. Each of the seven admission producers (§Facts) commits an admission row and then `XADD`s to `fleet:{id}:events` — single ingress, and the row is what makes the acceptance durable when the append does not land. On `lease` it peeks the readiness index, claims a fleet, reads its next event with a non-blocking `XREADGROUP`, runs the gates + billing + secret resolution, and issues a `runner.leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `SPUBLISH`er on `fleet:{id}:activity`. Dispatches bounded authoring model calls through daemon-held keys; ordinary runtime inference stays in the runner supervisor. |
 | **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `agt_r` token. Holds **zero datastore credentials**. A trusted supervisor runs the agent loop and holds the model key. A lease that needs one gets a sandbox (bubblewrap, Landlock, seccomp, cgroups) that runs tool calls and nothing else. The sandbox gets a network namespace of its own unless the runner's network policy is `allow_all`. Credential substitution happens in the supervisor at send time ([`runner_execution.md`](./runner_execution.md#process-model)). The supervisor forwards activity frames to `agentsfleetd` over the `activity` verb. |
 
 Streams and tables: §"Two streams + one pub/sub channel" and §"The five durable stores: who owns what".
@@ -131,7 +131,7 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║  agentsfleetd (HTTP)                   ║
            ║  POST /v1/.../fleets/{id}/messages     ║
            ║  ────────────────────────────────────  ║
-           ║  INSERT core.fleet_admissions          ║   ← the acceptance;
+           ║  INSERT fleet.admissions               ║   ← the acceptance;
            ║                                        ║     the XADD is its
            ║                                        ║     receipt.
            ║  XADD fleet:{id}:events *              ║   ← single ingress.
@@ -139,8 +139,8 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║       type=chat                        ║     the same XADD.
            ║       workspace_id=<uuid>              ║
            ║       request=<msg-json>               ║
-           ║       created_at=<epoch_ms>            ║
-           ║       event_id=<created_at>-<seq>      ║
+           ║       created_at=<rfc3339>             ║
+           ║       event_id=<admission id>          ║
            ║  SPUBLISH fleet:{id}:activity          ║   ← every screen shows
            ║    {kind:"event_admitted",             ║     the message, waiting
            ║     event_id, actor, message}          ║     (steers only; a
@@ -161,20 +161,20 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║  ────────────────────────────────────  ║     used to do, now on
            ║  Leases::select():                     ║     the request thread:
            ║   peek the readiness index →           ║
-           ║   claim fleet.runner_affinity          ║   ← narrative log opens
-           ║   (sticky pref), bump fencing_seq →    ║     (mutable)
+           ║   claim runner.fleet_slots             ║   ← narrative log opens
+           ║   (sticky pref), bump fencing_token →  ║     (mutable)
            ║   non-blocking XREADGROUP              ║
-           ║  1. INSERT core.fleet_events           ║   ← live: pub/sub frame
+           ║  1. INSERT fleet.events                ║   ← live: pub/sub frame
            ║     (status='received')                ║     (ephemeral, no ACK)
            ║  2. SPUBLISH fleet:{id}:activity       ║
            ║     {kind:"event_received"}            ║   See
-           ║  3. balance, budget, receive debit,    ║   [`capabilities.md`](./capabilities.md)
-           ║     approval gates; run metered per    ║   for each gate layer.
-           ║     /renew, settled at report          ║
+           ║  3. balance, budget, approval gates;   ║   [`capabilities.md`](./capabilities.md)
+           ║     the lease is held, its usage       ║   for each gate layer.
+           ║     logged per /renew and at report    ║
            ║  4. resolve secrets_map from vault     ║
-           ║  5. READ core.fleet_sessions           ║   ← read with the fleet
+           ║  5. READ fleet.sessions                ║   ← read with the fleet
            ║     context_json                       ║     row; handed to no lease
-           ║  6. issue fleet.runner_leases row      ║
+           ║  6. issue runner.leases row            ║
            ║     (lease_expires_at, fencing)        ║
            ║  → 200 { lease }                       ║   (shape: API reference
            ║                                        ║    › Runner plane)
@@ -209,23 +209,23 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
            ║  POST /v1/runners/me/reports           ║
            ║  ────────────────────────────────────  ║
            ║   claim_and_settle: compare-and-set —  ║   ← fence + flip + dedup
-           ║     UPDATE runner_leases               ║     in one statement
+           ║     UPDATE runner.leases               ║     in one statement
            ║     SET status=reported                ║     (stale token → reject
-           ║     FROM runner_affinity               ║      UZ-RUN-005)
+           ║     FROM runner.fleet_slots            ║      UZ-RUN-005)
            ║     WHERE status=active AND            ║
-           ║       fencing_token >= fencing_seq     ║
-           ║   7. UPDATE core.fleet_events          ║   ← narrative log closes
+           ║       fencing_token >= slot token      ║
+           ║   7. UPDATE fleet.events               ║   ← narrative log closes
            ║      status='processed'                ║     (same row)
            ║      response_text=<content>           ║
            ║   8. SPUBLISH fleet:{id}:activity      ║   ← live: terminal frame
            ║      {kind:"event_complete"}           ║
-           ║   9. UPSERT billing.usage_ledger       ║   ← billing/latency
-           ║      (reconcile actuals)               ║     audit, one row per charge
-           ║  10. UPSERT core.fleet_sessions        ║   ← resume cursor:
+           ║   9. INSERT billing.usage_lines        ║   ← usage, one row per
+           ║      (the final slice)                 ║     slice; settled after commit
+           ║  10. UPSERT fleet.sessions             ║   ← resume cursor:
            ║      context_json                      ║     advances the
            ║  11. XACK fleet:{id}:events            ║     bookmark
            ║  12. release affinity (token-guard)    ║
-           ║  13. INSERT core.fleet_obligations     ║   ← the answer is OWED
+           ║  13. INSERT fleet.obligations          ║   ← the answer is OWED
            ║      receipt=NULL delivered_at=NULL    ║     (in the transaction)
            ║  14. XADD connector:outbound           ║   ← after the commit
            ║  15. UPDATE …obligations SET receipt   ║   ← the entry id, recorded
@@ -270,57 +270,57 @@ A retry that arrives **after** the commit — the response was lost, not the wor
 
 The flow writes five Postgres tables. Each answers a distinct user question and has its own cardinality, mutability, and retention rule. The cutover moved the writer from the per-Fleet worker thread to the lease/report path; shapes and write order did not change.
 
-Two of the five arrived after that cutover and bracket the others. `core.fleet_admissions` records work this deployment ACCEPTED, committed before a producer is told yes. `core.fleet_obligations` records an answer this deployment OWES, committed with the result that produced it. They are deliberate mirror images, and the property they share is the one the whole datastore design turns on: **PostgreSQL records it before Dragonfly carries it, and the stream entry is a receipt written back afterwards.** A stream entry is not a durable record of intent, so anything whose loss would strand work is a row first and an entry second.
+Two of the five arrived after that cutover and bracket the others. `fleet.admissions` records work this deployment ACCEPTED, committed before a producer is told yes. `fleet.obligations` records an answer this deployment OWES, committed with the result that produced it. They are deliberate mirror images, and the property they share is the one the whole datastore design turns on: **PostgreSQL records it before Dragonfly carries it, and the stream entry is a receipt written back afterwards.** A stream entry is not a durable record of intent, so anything whose loss would strand work is a row first and an entry second.
 
 Read the primary keys and the shape falls out:
 
 ```
-  fleet_admissions   PK id  + UNIQUE (producer, producer_key)   one row per ACCEPTANCE
-  fleet_events       PK (fleet_id, event_id)                    one row per EVENT
-  fleet_obligations  PK id  + UNIQUE (fleet_id, event_id)       one row per ANSWER
-  fleet_sessions     PK fleet_id                                one row per FLEET
+  fleet.admissions   PK id  + UNIQUE (producer, producer_key)   one row per ACCEPTANCE
+  fleet.events       PK id  + UNIQUE (fleet_id, event_id)       one row per EVENT
+  fleet.obligations  PK id  + UNIQUE (fleet_id, event_id)       one row per ANSWER
+  fleet.sessions     PK fleet_id                                one row per FLEET
 ```
 
-Three of them grow with traffic. `fleet_sessions` does not — it is a cursor, not a log, which is why "where does this fleet resume" is a primary-key lookup rather than a sort over its history.
+Three of them grow with traffic. `fleet.sessions` does not — it is a cursor, not a log, which is why "where does this fleet resume" is a primary-key lookup rather than a sort over its history.
 
 One event's life across all four:
 
 ```
   a message arrives
       │
-      ├─▶ fleet_admissions   INSERT  "accepted"          before the producer hears yes
+      ├─▶ fleet.admissions   INSERT  "accepted"          before the producer hears yes
       │                                                  dedupes the PRODUCER's retry
-      ├─▶ fleet_events       INSERT  status='received'   the narrative opens
+      ├─▶ fleet.events       INSERT  status='received'   the narrative opens
       │                                                  dedupes REDELIVERY
       │   ┌── a runner executes ──┐
       │   │                       │
-      ├─▶ fleet_events       UPDATE  status='processed', response_text
-      ├─▶ fleet_obligations  INSERT  "owed"              ← same transaction as the money
-      ├─▶ fleet_sessions     UPSERT  context_json        the resume cursor moves
+      ├─▶ fleet.events       UPDATE  status='processed', response_text
+      ├─▶ fleet.obligations  INSERT  "owed"              ← same transaction as the money
+      ├─▶ fleet.sessions     UPSERT  context_json        the resume cursor moves
       │
-      └─▶ fleet_obligations  UPDATE  delivered_at        a person received it
+      └─▶ fleet.obligations  UPDATE  delivered_at        a person received it
 ```
 
 The two ledgers are not symmetric, and the asymmetry is **who can retry**. A producer holds its own `producer_key` and repeats it, so an admission deduplicates on the PRODUCER's identity. A destination has no such key — a chat provider cannot tell us "this is the same message" — so an obligation deduplicates on the event that produced the answer, the only stable identity this side owns.
 
 That decides the direction of error, too. An uncertain admission is REFUSED, because a 4xx is what stops a provider retrying. An uncertain obligation is RE-SENT, because the path is at-least-once and a duplicate message in a thread is visible and recoverable by a person, while an answer never sent is neither.
 
-`fleet_events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow: an event has a genuine vocabulary — `received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest — where a delivery has exactly two facts. The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
+`fleet.events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow: an event has a genuine vocabulary — `received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest — where a delivery has exactly two facts. The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
-| `core.fleet_admissions` | **One row per acceptance** | INSERT, then UPDATE `receipt` and `delivered_at` | "Did we accept this work, and has a runner taken it?" — committed before the producer is told yes, so a lost queue loses no accepted work. `UNIQUE (producer, producer_key)` is what makes a producer's retry one row rather than two runs. |
-| `core.fleet_obligations` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" — committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
-| `core.fleet_sessions` | **One row per Fleet** | UPSERT — replaced at each report | "Where did this Fleet leave off?" — the resume bookmark, and only that. The lease path reads it with the fleet row and hands it to no lease; the report path replaces it. "Which fleet is executing right now" is `fleet.runner_leases`, which has the fencing token and the expiry that make the answer trustworthy. |
-| `core.fleet_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
-| `billing.usage_ledger` | **Two rows per fleet-event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type, fleet_id)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `fleet_events` via `(fleet_id, event_id)` — NOT `event_id` alone, which slot 916 made non-identifying: two fleets may hold the same event id, and joining on it would aggregate one fleet's spend into the other's. |
+| `fleet.admissions` | **One row per acceptance** | INSERT, then UPDATE `receipt` and `delivered_at` | "Did we accept this work, and has a runner taken it?" — committed before the producer is told yes, so a lost queue loses no accepted work. `UNIQUE (producer, producer_key)` is what makes a producer's retry one row rather than two runs. |
+| `fleet.obligations` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" — committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
+| `fleet.sessions` | **One row per Fleet** | UPSERT — replaced at each report | "Where did this Fleet leave off?" — the resume bookmark, and only that. The lease path reads it with the fleet row and hands it to no lease; the report path replaces it. "Which fleet is executing right now" is `runner.leases`, which has the fencing token and the expiry that make the answer trustworthy. |
+| `fleet.events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
+| `billing.usage_lines` | **One row per measured slice** of a lease: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, seq)`, where the work is the lease. The lease's money is held in `billing.holds` and taken from `billing.wallets` by the biller after commit (billing §3, §11). | INSERT in the lease's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did event X's run use, and what did it cost?" — billing audit and the source of fleet budgets. Joinable to `fleet.events` via `(fleet_id, event_id)` — NOT `event_id` alone, which is not unique across fleets. |
 
-Why two per-delivery tables (`fleet_events` + `billing.usage_ledger`) instead of one? They have different write authorities and retention rules:
+Why a narrative table and a usage table (`fleet.events` + `billing.usage_lines`) instead of one? They have different write authorities and retention rules:
 
-- `fleet_events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
-- `billing.usage_ledger` holds numeric audit columns — small, immutable once written, retained for billing reconciliation independent of whether the conversation row is purged.
+- `fleet.events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
+- `billing.usage_lines` holds numeric audit columns — small, priced once and never repriced, retained for billing reconciliation independent of whether the conversation row is purged; it has no foreign keys, so a line outlives the fleet, workspace and price row it names.
 
-The durable lease bookkeeping (`fleet.runner_leases`, `fleet.runner_affinity`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `fleet` schema and never carries user strings.
+The durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `fleet` schema and never carries user strings.
 
 ### The list read and the detail read are different reads
 
@@ -330,11 +330,11 @@ Three surfaces changed with it: the events table's prose cell, the fleet header'
 
 `tool_calls`, the run's bounded tool trace (at most 200 calls and 64 KiB; [Runner Fleet, Live activity](./runner_fleet.md#live-activity-the-sse-tail)), is a third body column under the same rule. The transcript and the single-event read select it, and the list never does. A row from before the column existed holds `NULL`, which reads as "not recorded", never as "no tools ran".
 
-A call's full arguments and output are a fourth body that no page read selects. They live in `core.fleet_tool_call_details` (`schema/925`), a child table of `core.fleet_events`, one row per saved call, cascading on `(fleet_id, event_id)`. The rows are keyed by the lease's fencing token and the runner's call number, and a page never reads them: "show all" reads one call through `GET …/events/{event_id}/tool-calls/{call_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
+A call's full arguments and output are a fourth body that no page read selects. They live in `fleet.tool_calls` (`schema/1710_fleet_tool_calls.sql`), a child table of `fleet.events`, one row per saved call, cascading on `(fleet_id, event_id)`. The rows are keyed by the lease's fencing token and the runner's call number, and a page never reads them: "show all" reads one call through `GET …/events/{event_id}/tool-calls/{call_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
 
-The runner lease carries no second copy either. It used to hold its own `request_json`, a duplicate of the payload the event row already stored, written on every lease. Reclaim joins `core.fleet_events` on `(fleet_id, event_id)` to read the body instead; both tables cascade from the same parent, so the join cannot dangle.
+The runner lease carries no second copy either. It used to hold its own `request_json`, a duplicate of the payload the event row already stored, written on every lease. Reclaim joins `fleet.events` on `(fleet_id, event_id)` to read the body instead; both tables cascade from the same parent, so the join cannot dangle.
 
-**Partitioning is not done here, but its key is.** The ledger's uniqueness is fleet-scoped since slot 916 — `(event_id, charge_type, fleet_id)` — so a partition key may carry the fleet without splitting a row's own arbiter. `billing.usage_ledger` carries the originating event's creation time rather than the write time. A renewal firing hours after its receive row would otherwise land in a different partition, miss the conflict target, and silently duplicate ledger rows. Carrying the column now means a later partitioning decision has a stable key already present and needs no backfill; the machinery itself waits for a measurement that demands it.
+**Partitioning is not done here.** A usage line's arbiter is `(work_type, work_id, seq)` and it is written once, so a later partition key by `created_at` never splits a line from its own conflict target; the machinery waits for a measurement that demands it.
 
 ## Two streams + one pub/sub channel — and the one that retired
 
@@ -347,9 +347,9 @@ Two Dragonfly surfaces carry a fleet's work: a durable stream for ingress, and a
 | `fleet:ready:{p}:wake` | Sharded pub/sub channel (no consumer group, no persistence) | Sixteen, one per readiness partition, each on its partition's slot | The readiness doorbell: a mark rings its partition so lease polls look there first. How it works: [`runner_fleet.md`](./runner_fleet.md) §"Datastore topology" | One per mark |
 | `fleet:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-fleet threads — and there are no per-fleet threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `Fleets::ensure_stream` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
-`fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
+`fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `fleet.events`; the pub/sub channel is the eyeballs surface, not the audit surface.
 
-**Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its SSE connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side. On every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `core.fleet_events` list, keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events` (mirror of the SSE proxy; the `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel). No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
+**Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its SSE connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side. On every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `fleet.events` list, keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events` (mirror of the SSE proxy; the `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel). No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
@@ -418,7 +418,7 @@ size-1 pool and deliberately declines to assert the third.
 
 ## Config reload — pull-per-lease, no signal
 
-Canonical: [`runner_fleet.md` §Config](./runner_fleet.md) — config resolves fresh from `core.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal. What is specific to this flow: status works the same way — the assignment scan filters `core.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
+Canonical: [`runner_fleet.md` §Config](./runner_fleet.md) — config resolves fresh from `fleet.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal. What is specific to this flow: status works the same way — the assignment scan filters `fleet.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
 
 ## End-to-end sequence
 
@@ -503,8 +503,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 ```
    Common envelope (every XADD on fleet:{id}:events carries these
    five fields. The canonical event_id is the ADMISSION ROW's
-   `<created_at>-<seq>`, minted in PostgreSQL before the append and
-   keeping the `<millis>-<n>` shape every reader was written against.
+   UUIDv7 `id`, minted before the append.
    The stream entry id is the physical RECEIPT of that append — it is
    what `acknowledge` takes, and it is not an identity: a replayed
    admission earns a second receipt for one event_id):
@@ -514,8 +513,8 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
        type          chat | webhook | cron | continuation
        workspace_id  <uuid>
        request       <opaque JSON — the message + metadata>
-       created_at    <epoch milliseconds; project bigint convention>
-       event_id      <created_at>-<seq>, the admission row's logical id; the
+       created_at    <RFC 3339 in UTC; when the admission row was stored>
+       event_id      <uuid>, the admission row's id; the
                      append adds it as a sixth field
 
    STEER     agentsfleet steer <fleet_id> "morning health check"
@@ -523,21 +522,21 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                → XADD fleet:{id}:events *
                       actor=steer:kishore  type=chat
                       workspace_id=<ws>    request=<msg>
-                      created_at=<ms>
+                      created_at=<rfc3339>
                → 202 { event_id }                ← CLI uses event_id
                                                    to filter SSE frames
 
    GITHUB    App posts pull_request or workflow_run
    APP         → POST /v1/ingress/github
                  verify platform github-app.webhook_secret BEFORE payload read
-                 installation.id → core.connector_installs → workspace
+                 installation.id → connector.installs → workspace
                  repository.full_name + event + approved grant
                     → active fleet subscriptions
                  authenticated-body-digest/fleet replay slot
                → XADD fleet:{id}:events * for each exact match
                       actor=github-app      type=webhook
                       workspace_id=<ws>     request=<normalized-json>
-                      created_at=<ms>
+                      created_at=<rfc3339>
                → 202
 
                `repositories` is required and fail-closed, with replay per fleet
@@ -548,7 +547,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                  POST /v1/webhooks/{fleet_id}/github
                with a workspace `<source>.webhook_secret`. The fleet identifier
                is already in the URL, so this route does not require
-               `repositories` and does not use `core.connector_installs`.
+               `repositories` and does not use `connector.installs`.
 
                The internal Clerk endpoint that bootstraps our own tenants
                on `user.created` is NOT this surface. Its path is in the
@@ -565,7 +564,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                → atomically suppresses replay + XADD fleet:{id}:events *
                       actor=cron:<schedule_id>  type=cron
                       workspace_id=<ws>        request=<schedule-event-json>
-                      created_at=<ms>
+                      created_at=<rfc3339>
 
    CONTINUATION  agentsfleetd re-enqueue (chunk-continuation or
                  user-resumed fulfillment)
@@ -573,7 +572,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                       actor=continuation:<original_actor>
                       type=continuation
                       workspace_id=<ws>  request=<continuation-msg>
-                      created_at=<ms>
+                      created_at=<rfc3339>
                  The new event's row carries
                  resumes_event_id=<immediate_parent_event_id>.
                  Continuation actor is FLAT — never re-nests
@@ -613,16 +612,16 @@ an old holder resumed after a reclaim writes nothing: `UZ-RUN-005`, `current_sta
 QStash fire does, keyed `run:<event_id>` by the leased event so a reclaimed
 lease replays the run, and both record `actor=cron:<schedule_id>`. A run-now's
 refusals are listed in API reference › Runner plane (Run a schedule now). A
-schedule's runs are its history rows under that actor, read through slot 930's
+schedule's runs are its history rows under that actor, read through slot 1700's
 `(fleet_id, actor, created_at, event_id)` index, so a page never walks the
-fleet's whole history. A `once` schedule (slot 928) retires inside that one
+fleet's whole history. A `once` schedule (slot 1750) retires inside that one
 fire seam: the fire is admitted, then the schedule is claimed `deleting` and
 removed from QStash. A `once` fire is keyed by the schedule alone, so a run-now
 racing its QStash fire replays it rather than admitting a second run. A QStash
 fire dropped because the fleet takes no work also retires a `once` schedule,
 since its moment has passed; a retirement whose claim is held answers
 `UZ-SCHED-006`, so QStash repeats the fire. A `once` row keeps the instant it
-was set for (slot 931, `fire_at`), and a sync after that instant removes one
+was set for (slot 1750, `fire_at`), and a sync after that instant removes one
 QStash never registered rather than registering an expression whose next match
 is a year away; one QStash already holds stays, so a delayed callback finds it.
 A pause that removes a one-off upstream puts its key back to its own id, so a
@@ -658,8 +657,8 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        live runner holds;
        order them the rotation's partition first, then sticky by
        last_runner_id, ties at random, and keep at most 64;
-       claim the per-fleet fleet.runner_affinity slot (wins iff free or
-       its leased_until has passed) and bump the monotonic fencing_seq.
+       claim the per-fleet runner.fleet_slots slot (wins iff free or
+       its lease_expires_at has passed) and bump the monotonic fencing_token.
        A lease past lease_expires_at is RECLAIMED: its event envelope +
        billing are reused, re-fenced with a higher token. Otherwise take
        the group's oldest pending entry (XAUTOCLAIM, min-idle 0), else a
@@ -668,25 +667,24 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        An entry missing any of its six fields (the five envelope fields
        and event_id) is dropped and the slot released.
 
-     1. INSERT core.fleet_events                  ← narrative log opens
+     1. INSERT fleet.events                       ← narrative log opens
           (status='received', actor, request_json)
           ON CONFLICT (fleet_id, event_id) keeps the row (idempotent on replay)
-        + stamp core.fleet_admissions.delivered_at on the same connection,
+        + stamp fleet.admissions.delivered_at on the same connection,
           on both arms (the reconcile pass reads an unstamped row as lost work)
         A redelivery whose row is already terminal is acknowledged and stops here.
      2. SPUBLISH fleet:{id}:activity { kind:"event_received", event_id, actor }
      3. Gates + billing (mirror of afd_billing):
-          balance gate → budget gate → receive debit → approval gate; the run
-          is metered per /renew and settled at report.
+          balance gate → budget gate → approval gate. Admission charges
+          nothing: once the lease is issued its first hold is reserved, and
+          each /renew and the report log the slice's usage, settled through
+          the biller after commit (billing §3).
           The BUDGET gate is the fleet's own ceiling, resolved from the config
-          the session already carries; it sits after the tenant credit pool and
-          before any debit, so a refused event is never charged. Both it and the
-          balance gate fail OPEN on a datastore fault — a metering outage must
-          not halt every fleet on the platform.
-          The receive debit fires on FIRST DELIVERY only: the balance debit is
-          not replay-guarded (only the ledger row is), so a pending-entry re-delivery
-          that already paid must not pay twice.
-          Blocked → UPDATE core.fleet_events status='gate_blocked',
+          the session already carries; it sits after the tenant credit pool,
+          so a refused event is never charged. Both it and the balance gate
+          fail OPEN on a datastore fault — a metering outage must not halt
+          every fleet on the platform.
+          Blocked → UPDATE fleet.events status='gate_blocked',
                                               failure_label=<gate>
                     → SPUBLISH fleet:{id}:activity
                         { kind:"event_complete", status:"gate_blocked" }
@@ -703,12 +701,12 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         secrets_map and is never substituted into a tool placeholder. The
         runner's supervisor uses it for the inference call only, and
         agentsfleetd keeps it live only through the synchronous lease write.
-     5. read core.fleet_sessions.context_json with the fleet row; it is
+     5. read fleet.sessions.context_json with the fleet row; it is
         handed to no lease
-     6. issue fleet.runner_leases row              ← durable ownership
-          (lease_id, fencing_token, lease_expires_at = now + LEASE_TTL_MS)
-          fenced on the claim: if the slot's fencing_seq moved or its
-          leased_until passed, nothing is written and the poll answers no-work.
+     6. issue runner.leases row              ← durable ownership
+          (lease_id, fencing_token, lease_expires_at = now + LEASE_TTL)
+          fenced on the claim: if the slot's fencing_token moved or its
+          lease_expires_at passed, nothing is written and the poll answers no-work.
      → 200 { lease } (fields: API reference › Runner plane; instructions:
        [runner_fleet.md](./runner_fleet.md) §"Running one event")
 
@@ -739,30 +737,30 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
      Leases::claim_and_settle (afd_fleet/src/lease/settle.rs): one
      compare-and-set statement —
-       UPDATE fleet.runner_leases SET status=reported
-       FROM fleet.runner_affinity
-       WHERE status='active' AND fencing_token >= fencing_seq
+       UPDATE runner.leases SET status=reported
+       FROM runner.fleet_slots
+       WHERE status='active' AND fencing_token >= slot token
        RETURNING <lease fields>
        (fence + flip + dedup in one statement; a stale/reclaimed holder is
         rejected with UZ-RUN-005 and mutates nothing)
 
-     7. UPDATE core.fleet_events                  ← narrative log closes
+     7. UPDATE fleet.events                       ← narrative log closes
           SET status = outcome==ok ? 'processed' : 'fleet_error',
               response_text, completed_at = now()
      8. SPUBLISH fleet:{id}:activity { kind:"event_complete", event_id, status }
-     9. INSERT/reconcile billing.usage_ledger ← billing/latency,
-          (UNIQUE (event_id, charge_type, fleet_id), token_count, ttft_ms,
-           wall_seconds, ...)
-    10. UPSERT core.fleet_sessions                ← the bookmark
+     9. INSERT billing.usage_lines           ← the final slice, priced
+          (UNIQUE (work_type, work_id, seq)); after commit the biller settles
+          it and releases the lease's hold
+    10. UPSERT fleet.sessions                     ← the bookmark
           SET context_json = { last_event_id, last_response },
               checkpoint_at = now()
     11. XACK fleet:{id}:events                    ← consumer cursor advances
-    12. release affinity (WHERE fencing_seq = $token)  ← token-guarded
+    12. release slot (WHERE fencing_token = $token)    ← token-guarded
 
    Runner dies mid-event → its lease expires at lease_expires_at; the next
    lease's reclaim path re-issues the event to another runner with a higher
    fencing_token. Step 1's ON CONFLICT and the ledger's UNIQUE key keep
-   the replay safe — exactly one fleet_events row, one ledger row per charge,
+   the replay safe — exactly one fleet.events row, one ledger row per charge,
    regardless of how many redelivery attempts occur. A late report from the
    dead runner is fenced out at claim_and_settle (UZ-RUN-005).
 ```
@@ -850,11 +848,11 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
    HISTORY   agentsfleet events {id} [--actor=…] [--since=2h]
              Dashboard /fleets/{id}/events
-               → reads core.fleet_events (cursor-paginated).
+               → reads fleet.events (cursor-paginated).
 
-   RESUME    no user-facing command reads core.fleet_sessions. The lease
+   RESUME    no user-facing command reads fleet.sessions. The lease
              path reads it with the fleet row and hands it to no lease.
-             "Busy or idle" is fleet.runner_leases, which has the fencing
+             "Busy or idle" is runner.leases, which has the fencing
              token and the expiry that make the answer trustworthy.
 
    Both browser registries backfill durable event rows after reconnect,
@@ -862,14 +860,14 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    A publish missed while the HTTP stream stayed open is therefore
    recovered by that backfill rather than lost silently.
    Transient token chunks are not durable history; settled rows are.
-   Live tail is best-effort; core.fleet_events remains the durable record.
+   Live tail is best-effort; fleet.events remains the durable record.
 ```
 
 ## Multi-tenancy boundary
 
 | Layer | Tenant isolation mechanism |
 |---|---|
-| Postgres (`core.fleets`, `core.fleet_events`, etc.) | Enforced in the application, not by the database. `afd_tenant`'s `AUTHORIZE_WORKSPACE` resolves the caller's tenant and the workspace's owner in one statement, and `afd_api` mounts it as a layer in front of every route whose path carries a workspace — so no handler is in a position to forget it. Every control-plane statement filters by `workspace_id` or `fleet_id` explicitly. **No `ROW LEVEL SECURITY` policy is declared anywhere in `schema/`, and no `current_setting('app.workspace_id')` is read.** Re-adding database policies would need a transaction per request, because `sqlx` returns a connection to the pool between requests and a session-level setting would leak one tenant's identifier onto the next. |
+| Postgres (`fleet.fleets`, `fleet.events`, etc.) | Enforced in the application, not by the database. `afd_tenant`'s `AUTHORIZE_WORKSPACE` resolves the caller's tenant and the workspace's owner in one statement, and `afd_api` mounts it as a layer in front of every route whose path carries a workspace — so no handler is in a position to forget it. Every control-plane statement filters by `workspace_id` or `fleet_id` explicitly. **No `ROW LEVEL SECURITY` policy is declared anywhere in `schema/`, and no `current_setting('app.workspace_id')` is read.** Re-adding database policies would need a transaction per request, because `sqlx` returns a connection to the pool between requests and a session-level setting would leak one tenant's identifier onto the next. |
 | Dragonfly data plane (`fleet:{id}:events`) | Key namespaced by fleet UUID (globally unique); no cross-tenant collision possible. Dragonfly has no per-row authorization of any kind, so the protection is the same shape as the row above it: the key is unguessable and every path to it goes through the ownership check. |
 | Runner ↔ control plane | The `agt_r` token authenticates the runner per call, and a lease carries one fleet's event and scoped secrets ([`runner_fleet.md`](./runner_fleet.md) §"Registering a runner"). |
 | Runner supervisor and sandbox | Secrets stay in the supervisor, substituted at send time, and a sandbox holds no credential ([`runner_execution.md`](./runner_execution.md) §"Credentials"). |
@@ -878,9 +876,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
 Before the cutover, a single worker thread owned all events for a Fleet, and the concern was round-robin across worker replicas breaking per-fleet continuity. That model is gone. Ownership is now a **durable lease**, not a thread:
 
-- `fleet.runner_affinity` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_seq`. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently. The claim is the only writer of `fencing_seq`, so every fencing token a lease carries is a value a claim returned.
+- `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_token`. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently. The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
-- Continuity across runs lives in `agentsfleetd`, never in runner-local state, so any runner can pick up the next run. Today only fleet memory reaches the next lease; the session checkpoint is saved to `core.fleet_sessions` and handed to no lease ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). Sticky routing (prefer `last_runner_id`, random among the rest, `rustd/crates/afd_fleet/src/lease/sql/lease/mod.rs`) is a hint for warm-sandbox reuse, never ownership.
+- Continuity across runs lives in `agentsfleetd`, never in runner-local state, so any runner can pick up the next run. Today only fleet memory reaches the next lease; the session checkpoint is saved to `fleet.sessions` and handed to no lease ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). Sticky routing (prefer `last_runner_id`, random among the rest, `rustd/crates/afd_fleet/src/lease/sql/lease/mod.rs`) is a hint for warm-sandbox reuse, never ownership.
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency and its bound: [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model".
 

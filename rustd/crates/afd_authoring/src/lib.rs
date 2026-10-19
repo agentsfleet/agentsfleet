@@ -8,6 +8,7 @@
 #![deny(clippy::self_named_module_files)]
 
 mod access;
+pub mod billing_sweep;
 mod candidate;
 mod catalogue;
 mod creation;

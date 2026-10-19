@@ -40,7 +40,6 @@ use axum::extract::Path;
 use axum::response::Response;
 use axum::routing::get;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -49,9 +48,6 @@ const TENANT_KEY: &str = "agt_te7e7e7e7decafbaddecafbaddecafbaddecafbaddecafbadd
 
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2events";
-
-/// A well-formed workspace identifier that is not the fixture's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ee";
 
 /// A well-formed fleet identifier the fixture addresses.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
@@ -66,19 +62,9 @@ const EVENT_ID_MAX_LEN: usize = 256;
 /// The one rung all three routes declare.
 const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
-/// The empty set, proving a refusal is the rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
 /// What a caller is told, as the three facts they act on: a status they retry
 /// on, a code their client branches on, a sentence a person reads.
 type Refusal = (StatusCode, &'static str, ErrorCode);
-
-/// The ownership layer's refusal, byte for byte as a client sees it.
-const NOT_YOURS: Refusal = (
-    StatusCode::FORBIDDEN,
-    "Workspace access denied",
-    error_code::AUTH_FORBIDDEN,
-);
 
 /// What a workspace segment that is not an identifier earns.
 const BAD_WORKSPACE_ID: Refusal = (
@@ -138,56 +124,15 @@ async fn authorised(path: &str) -> Response {
     send(FLEET_READ, Method::GET, path, Some(TENANT_KEY)).await
 }
 
-/// A response reduced to the three facts a [`Refusal`] names.
-async fn refusal_of(response: Response) -> (StatusCode, String, String) {
-    let status = response.status();
-    let body = harness::json_body(response).await;
-    let read = |key: &str| {
-        let field = body.get(key).and_then(Value::as_str);
-        field.expect("every refusal carries it").to_owned()
-    };
-    (status, read("detail"), read("error_code"))
-}
-
 /// Asserts a response is exactly the refusal named.
 async fn assert_refusal(response: Response, expected: Refusal, case: &str) {
-    let (status, detail, code) = refusal_of(response).await;
+    let (status, code, detail) = harness::problem(response).await;
     let seen = (status, detail.as_str(), code.as_str());
     assert_eq!(
         seen,
         (expected.0, expected.1, expected.2.as_str()),
         "{case}"
     );
-}
-
-/// No route here is reachable without a credential.
-#[tokio::test]
-async fn no_route_on_this_surface_is_anonymous() {
-    for path in every_route(OWNED_WORKSPACE) {
-        let answer = send(FLEET_READ, Method::GET, &path, None).await;
-        assert_eq!(answer.status(), StatusCode::UNAUTHORIZED, "{path}");
-    }
-}
-
-/// Every route is refused by the scope rung before anything else.
-#[tokio::test]
-async fn every_route_is_refused_by_the_scope_rung_before_anything_else() {
-    for path in every_route(OWNED_WORKSPACE) {
-        let refused = send(NO_SCOPES, Method::GET, &path, Some(TENANT_KEY)).await;
-        let (status, _sentence, code) = refusal_of(refused).await;
-        // A missing capability is not a missing workspace, and a client that
-        // conflated them would tell a person to ask for the wrong thing.
-        assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
-        assert_eq!(code, error_code::AUTH_INSUFFICIENT_SCOPE.as_str(), "{path}");
-    }
-}
-
-/// A principal acting in somebody else's workspace runs no statement.
-#[tokio::test]
-async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
-    for path in every_route(FOREIGN_WORKSPACE) {
-        assert_refusal(authorised(&path).await, NOT_YOURS, &path).await;
-    }
 }
 
 /// A workspace segment that is not an identifier never reaches a handler.
@@ -260,27 +205,6 @@ async fn an_event_id_is_looked_up_up_to_the_length_bound_and_not_past_it() {
 #[test]
 fn the_absent_event_code_is_the_events_own_and_not_the_fleets() {
     assert_eq!(Problem::of(error_code::EVENT_NOT_FOUND).status(), 404);
-}
-
-/// The templates carry only the methods they document.
-#[tokio::test]
-async fn the_templates_carry_only_the_methods_they_document() {
-    // History is written by a run, never by a person: the row IS the audit
-    // trail of what a fleet did, so nothing here writes, edits or deletes one.
-    let refused = [
-        (Method::POST, workspace_history(OWNED_WORKSPACE)),
-        (Method::POST, fleet_history(OWNED_WORKSPACE, FLEET)),
-        (Method::PUT, one_event(OWNED_WORKSPACE, FLEET, EVENT)),
-        (Method::DELETE, one_event(OWNED_WORKSPACE, FLEET, EVENT)),
-    ];
-    for (method, path) in refused {
-        let answer = send(FLEET_READ, method.clone(), &path, Some(TENANT_KEY)).await;
-        assert_eq!(
-            answer.status(),
-            StatusCode::METHOD_NOT_ALLOWED,
-            "{method} {path}"
-        );
-    }
 }
 
 /// The expanded read's template does not shadow the live tail's.

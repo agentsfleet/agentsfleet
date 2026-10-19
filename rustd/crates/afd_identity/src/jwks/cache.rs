@@ -2,9 +2,11 @@
 //! Failed fetches retain the last confirmed set without renewing its age.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use afd_auth::verifier::VerifyError;
-use afd_core::clock::{Clock, UnixMillis};
+use afd_core::clock::{Clock, after};
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::jwks::key_set::JwkKeySet;
@@ -14,17 +16,17 @@ use crate::jwks::source::KeySetSource;
 ///
 /// Six hours, matching `docs/AUTH.md`'s "Cached for 6 h, refreshed on `kid`
 /// miss".
-pub const DEFAULT_TTL_MS: i64 = 6 * 60 * 60 * 1_000;
+pub const DEFAULT_TTL: Duration = Duration::from_hours(6);
 
 /// Maximum outage tolerance after the normal refresh window.
-pub const STALE_GRACE_MS: i64 = 15 * 60 * 1_000;
+pub const STALE_GRACE: Duration = Duration::from_mins(15);
 
 /// Shortest interval between fetch ATTEMPTS, successful or not.
 ///
 /// It bounds two different storms with one number: key-id misses during a
 /// rotation, and retries while the provider is down. The six-hour refresh is
 /// always far above it, so it only ever bites the miss path.
-pub const REFRESH_MIN_INTERVAL_MS: i64 = 30 * 1_000;
+pub const REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Why a refresh was attempted. Carried for the log line, and to decide whether
 /// a set that is already fresh makes the attempt unnecessary.
@@ -40,7 +42,7 @@ pub(crate) enum Reason {
 #[derive(Debug, Clone)]
 struct Held {
     keys: Arc<JwkKeySet>,
-    fetched_at: UnixMillis,
+    fetched_at: Timestamp,
 }
 
 /// The key set this verifier holds, and the policy for replacing it.
@@ -48,7 +50,7 @@ struct Held {
 pub(crate) struct KeyCache<S> {
     source: S,
     clock: Arc<dyn Clock>,
-    ttl_ms: i64,
+    ttl: Duration,
     held: tokio::sync::RwLock<Option<Held>>,
     /// The single-flight gate. Held across the fetch, which happens with the
     /// `held` lock RELEASED so a cache hit never queues behind a slow provider.
@@ -57,15 +59,15 @@ pub(crate) struct KeyCache<S> {
 
 /// When the last fetch was attempted, guarded by the flight gate.
 #[derive(Debug, Clone, Copy)]
-struct LastAttempt(Option<UnixMillis>);
+struct LastAttempt(Option<Timestamp>);
 
 impl<S: KeySetSource> KeyCache<S> {
     /// Builds a cache over `source`.
-    pub(crate) fn new(source: S, clock: Arc<dyn Clock>, ttl_ms: i64) -> Self {
+    pub(crate) fn new(source: S, clock: Arc<dyn Clock>, ttl: Duration) -> Self {
         Self {
             source,
             clock,
-            ttl_ms,
+            ttl,
             held: tokio::sync::RwLock::new(None),
             flight: tokio::sync::Mutex::new(LastAttempt(None)),
         }
@@ -108,8 +110,8 @@ impl<S: KeySetSource> KeyCache<S> {
         let Some(entry) = held.as_ref() else {
             return Err(VerifyError::KeySetUnavailable);
         };
-        let ceiling = self.ttl_ms.max(0).saturating_add(STALE_GRACE_MS);
-        if self.clock.now().saturating_millis_since(entry.fetched_at) > ceiling {
+        let ceiling = self.ttl.saturating_add(STALE_GRACE);
+        if self.clock.now() > after(entry.fetched_at, ceiling) {
             return Err(VerifyError::KeySetUnavailable);
         }
         if entry.keys.find(kid).is_none() {
@@ -136,7 +138,7 @@ impl<S: KeySetSource> KeyCache<S> {
 
     /// Whether `entry` is within its time-to-live.
     fn is_fresh(&self, entry: &Held) -> bool {
-        self.clock.now().saturating_millis_since(entry.fetched_at) <= self.ttl_ms
+        self.clock.now() <= after(entry.fetched_at, self.ttl)
     }
 
     /// One flight at a time, rate-limited, and never fatal.
@@ -153,7 +155,7 @@ impl<S: KeySetSource> KeyCache<S> {
             return;
         }
         if let LastAttempt(Some(previous)) = *last
-            && entered.saturating_millis_since(previous) < REFRESH_MIN_INTERVAL_MS
+            && entered < after(previous, REFRESH_MIN_INTERVAL)
         {
             // Rate-limited. The caller serves whatever set we still hold, which
             // is the same thing it would do after a failed fetch.

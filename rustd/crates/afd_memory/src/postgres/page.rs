@@ -17,58 +17,26 @@ use crate::page::View;
 
 /// Free-text search, first page. `$1` fleet, `$2` shared workspace,
 /// `$3` escaped pattern, `$4` limit.
-const SEARCH_ENTRIES: &str = "\
-SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
-FROM memory.memory_entries
-WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-  AND (key ILIKE $3 ESCAPE '\\' OR content ILIKE $3 ESCAPE '\\')
-ORDER BY created_at DESC, key DESC, fleet_id DESC
-LIMIT $4";
+const SEARCH_ENTRIES: &str = include_str!("sql/search_entries.sql");
 
 /// [`SEARCH_ENTRIES`] past a boundary. `$4` instant, `$5` key, `$6` writer,
 /// `$7` limit.
-const SEARCH_ENTRIES_AFTER: &str = "\
-SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
-FROM memory.memory_entries
-WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-  AND (key ILIKE $3 ESCAPE '\\' OR content ILIKE $3 ESCAPE '\\')
-  AND (created_at, key, fleet_id) < ($4, $5, $6::uuid)
-ORDER BY created_at DESC, key DESC, fleet_id DESC
-LIMIT $7";
+const SEARCH_ENTRIES_AFTER: &str = include_str!("sql/search_entries_after.sql");
 
 /// One category, first page. `$3` category, `$4` limit.
-const SELECT_ENTRIES_IN_CATEGORY: &str = "\
-SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
-FROM memory.memory_entries
-WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-  AND category = $3
-ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $4";
+const SELECT_ENTRIES_IN_CATEGORY: &str = include_str!("sql/select_entries_in_category.sql");
 
 /// [`SELECT_ENTRIES_IN_CATEGORY`] past a boundary. `$4` instant, `$5` key,
 /// `$6` writer, `$7` limit.
-const SELECT_ENTRIES_IN_CATEGORY_AFTER: &str = "\
-SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
-FROM memory.memory_entries
-WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-  AND category = $3
-  AND (created_at, key, fleet_id) < ($4, $5, $6::uuid)
-ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $7";
+const SELECT_ENTRIES_IN_CATEGORY_AFTER: &str =
+    include_str!("sql/select_entries_in_category_after.sql");
 
 /// Everything, first page. `$3` limit.
-const SELECT_RECENT_ENTRIES: &str = "\
-SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
-FROM memory.memory_entries
-WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $3";
+const SELECT_RECENT_ENTRIES: &str = include_str!("sql/select_recent_entries.sql");
 
 /// [`SELECT_RECENT_ENTRIES`] past a boundary. `$3` instant, `$4` key,
 /// `$5` writer, `$6` limit.
-const SELECT_RECENT_ENTRIES_AFTER: &str = "\
-SELECT fleet_id::text, key, content, category, workspace_visible, created_at, updated_at
-FROM memory.memory_entries
-WHERE (fleet_id = $1::uuid OR (workspace_id = $2::uuid AND workspace_visible))
-  AND (created_at, key, fleet_id) < ($3, $4, $5::uuid)
-ORDER BY created_at DESC, key DESC, fleet_id DESC LIMIT $6";
+const SELECT_RECENT_ENTRIES_AFTER: &str = include_str!("sql/select_recent_entries_after.sql");
 
 /// The statement `view` runs, on a first page or a continuation.
 pub(super) const fn statement(view: View<'_>, resuming: bool) -> &'static str {

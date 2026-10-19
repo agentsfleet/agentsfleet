@@ -24,41 +24,14 @@ async fn test_outbound_obligations_survive_worker_replacement() {
     let event = "1700000000-3";
     owe_and_queue(&harness, 5, event).await;
 
-    // The host that dies, taking the entry into its own pending list.
-    let mut departed = reader_named(&OutboundHarness::config(), "host-that-died").await;
-    let taken = departed
-        .read_blocking(BLOCK_MS)
-        .await
-        .expect("the group offers the entry")
-        .expect("an entry was queued for it");
-    assert_eq!(taken.event_id, event, "the host took this fixture's answer");
-    drop(departed);
-
+    let host_that_died = take_and_die().await;
+    assert_eq!(host_that_died, event, "the host took this fixture's answer");
     assert_eq!(
         harness.pending_count().await,
         1,
         "the dead host still holds it — an entry delivered and never acknowledged"
     );
-
-    // Its replacement, under a new hostname.
-    let mut replacement = reader_named(&OutboundHarness::config(), "host-that-replaced-it").await;
-    assert!(
-        replacement
-            .read_pending()
-            .await
-            .expect("the pending read answers")
-            .is_none(),
-        "a new hostname inherits NOTHING: the pending list it reads is its own, \
-         and the dead host's is not offered to it"
-    );
-    assert!(
-        replacement
-            .read_blocking(BLOCK_MS)
-            .await
-            .expect("the blocking read answers")
-            .is_none(),
-        "and the entry is never re-offered as new, so no worker can reach it"
-    );
+    assert_replacement_reaches_nothing().await;
 
     assert_eq!(
         awaiting_delivery(&harness).await,
@@ -71,6 +44,57 @@ async fn test_outbound_obligations_survive_worker_replacement() {
     // the answer twice — which is why `delivered_at` is stamped by the poster
     // and not by the acknowledgement: a row leaves this set only when somebody
     // actually got it.
+    reappend_and_deliver(&harness, 5, event).await;
+
+    assert!(
+        awaiting_delivery(&harness).await.is_empty(),
+        "re-appended and delivered: the answer survived its worker"
+    );
+    assert!(
+        entries_on(&redis).await >= 1,
+        "the re-append put a real entry on the real stream"
+    );
+}
+
+/// The host that dies: it reads the entry into its own pending list and is
+/// dropped. Answers the event it took.
+async fn take_and_die() -> String {
+    let mut departed = reader_named(&OutboundHarness::config(), "host-that-died").await;
+    let taken = departed
+        .read_blocking(BLOCK)
+        .await
+        .expect("the group offers the entry")
+        .expect("an entry was queued for it");
+    drop(departed);
+    taken.event_id
+}
+
+/// Its replacement, under a new hostname, inherits nothing and is offered
+/// nothing new.
+async fn assert_replacement_reaches_nothing() {
+    let mut replacement = reader_named(&OutboundHarness::config(), "host-that-replaced-it").await;
+    assert!(
+        replacement
+            .read_pending()
+            .await
+            .expect("the pending read answers")
+            .is_none(),
+        "a new hostname inherits NOTHING: the pending list it reads is its own, \
+         and the dead host's is not offered to it"
+    );
+    assert!(
+        replacement
+            .read_blocking(BLOCK)
+            .await
+            .expect("the blocking read answers")
+            .is_none(),
+        "and the entry is never re-offered as new, so no worker can reach it"
+    );
+}
+
+/// The producer's recovery, by hand: re-append the answer, record the new
+/// entry as the `nth` obligation's receipt, and deliver it.
+async fn reappend_and_deliver(harness: &OutboundHarness, nth: u8, event: &str) {
     let again = harness
         .queue
         .enqueue(OutboundJob {
@@ -83,31 +107,12 @@ async fn test_outbound_obligations_survive_worker_replacement() {
         })
         .await
         .expect("the re-append is accepted");
-    obligation::record_reappended(
-        &harness.database,
-        &obligation_id(5),
-        again.as_str(),
-        UnixMillis::from_millis(SEEDED_AT),
-    )
-    .await
-    .expect("recording the re-append");
-    obligation::stamp_delivered(
-        &harness.database,
-        FLEET,
-        event,
-        UnixMillis::from_millis(SEEDED_AT + 30),
-    )
-    .await
-    .expect("the re-appended answer is delivered");
-
-    assert!(
-        awaiting_delivery(&harness).await.is_empty(),
-        "re-appended and delivered: the answer survived its worker"
-    );
-    assert!(
-        entries_on(&redis).await >= 1,
-        "the re-append put a real entry on the real stream"
-    );
+    obligation::record_reappended(&harness.database, &obligation_id(nth), again.as_str())
+        .await
+        .expect("recording the re-append");
+    obligation::stamp_delivered(&harness.database, FLEET, event)
+        .await
+        .expect("the re-appended answer is delivered");
 }
 
 /// A lost consumer group leaves the answer owed.

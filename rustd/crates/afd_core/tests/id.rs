@@ -5,8 +5,13 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
+use jiff::Timestamp;
+
+/// The instant `millis` after the epoch, for a fixture.
+fn at(millis: i64) -> Timestamp {
+    Timestamp::from_millisecond(millis).expect("a fixture instant is in range")
+}
 
 /// An arbitrary representable instant, and the millisecond after it.
 ///
@@ -165,11 +170,8 @@ fn should_reject_uppercase_through_serde_too() {
 /// in either half fails here rather than at the first `::uuid` bind.
 #[test]
 fn should_mint_an_identifier_its_own_parser_accepts() {
-    let minted = Uuid7::encode(
-        UnixMillis::from_millis(1_724_600_000_000),
-        [0xab; ENTROPY_LEN],
-    )
-    .expect("a representable instant mints");
+    let minted = Uuid7::encode(at(1_724_600_000_000), [0xab; ENTROPY_LEN])
+        .expect("a representable instant mints");
     assert_eq!(minted.as_str().len(), afd_core::id::TEXT_LEN);
     assert_eq!(
         Uuid7::parse(minted.as_str()).expect("a minted identifier re-parses"),
@@ -184,13 +186,9 @@ fn should_mint_an_identifier_its_own_parser_accepts() {
 /// cursor and cache key actually compares.
 #[test]
 fn should_sort_minted_identifiers_by_the_instant_they_carry() {
-    let earlier = Uuid7::encode(UnixMillis::from_millis(AN_INSTANT_MS), [0xff; ENTROPY_LEN])
-        .expect("representable");
-    let later = Uuid7::encode(
-        UnixMillis::from_millis(ONE_MILLISECOND_LATER_MS),
-        [0x00; ENTROPY_LEN],
-    )
-    .expect("representable");
+    let earlier = Uuid7::encode(at(AN_INSTANT_MS), [0xff; ENTROPY_LEN]).expect("representable");
+    let later =
+        Uuid7::encode(at(ONE_MILLISECOND_LATER_MS), [0x00; ENTROPY_LEN]).expect("representable");
     // Entropy is deliberately inverted: if the timestamp were not leading and
     // big-endian, the all-`0xff` entropy would sort the EARLIER one last.
     assert!(
@@ -201,21 +199,19 @@ fn should_sort_minted_identifiers_by_the_instant_they_carry() {
     );
 }
 
-/// An instant past the 48-bit field is refused, never truncated.
+/// The last instant a `Timestamp` holds still fits the 48-bit field.
 ///
 /// `uuid::Builder::from_unix_timestamp_millis` MASKS an oversized value into
-/// the field. Masking would mint an identifier that sorts wrongly for the rest
-/// of the row's life, so `Uuid7::encode` refuses instead — the behaviour the
-/// delegation to `uuid` must not lose, and the reason the bound stays
-/// hand-written when the bit layout does not.
+/// the field, which would mint an identifier that sorts wrongly for the rest
+/// of the row's life. `Uuid7::encode` carries no upper-bound check because the
+/// field runs to the year 10889 and a `Timestamp` ends at 9999; this pins that.
 #[test]
-fn should_refuse_an_instant_the_48_bit_field_cannot_hold() {
-    // One millisecond past the largest value six bytes hold.
-    let past_the_field = 0xffff_ffff_ffff_i64 + 1;
-    let err = Uuid7::encode(UnixMillis::from_millis(past_the_field), [0; ENTROPY_LEN])
-        .expect_err("year 10889 and beyond is unrepresentable");
-    assert_eq!(err.code(), afd_core::error_code::UUIDV7_INVALID_ID_SHAPE);
-    assert!(err.is_id_shape());
+fn should_mint_the_last_instant_a_timestamp_holds() {
+    let minted = Uuid7::encode(Timestamp::MAX, [0; ENTROPY_LEN]).expect("year 9999 fits");
+    assert_eq!(
+        Uuid7::parse(minted.as_str()).expect("a minted identifier re-parses"),
+        minted
+    );
 }
 
 /// A pre-epoch instant is refused rather than wrapped.
@@ -225,7 +221,7 @@ fn should_refuse_an_instant_the_48_bit_field_cannot_hold() {
 /// downstream can detect it.
 #[test]
 fn should_refuse_an_instant_before_the_unix_epoch() {
-    let err = Uuid7::encode(UnixMillis::from_millis(-1), [0; ENTROPY_LEN])
+    let err = Uuid7::encode(at(-1), [0; ENTROPY_LEN])
         .expect_err("a pre-epoch instant is unrepresentable");
     assert_eq!(err.code(), afd_core::error_code::UUIDV7_INVALID_ID_SHAPE);
 }

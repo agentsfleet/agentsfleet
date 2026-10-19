@@ -102,3 +102,29 @@ fn a_provider_path_segment_is_bounded_like_the_body() {
         );
     }
 }
+
+/// Postgres refuses NUL inside `text`: a NUL in the body's provider or model,
+/// or in the `DELETE` path's provider, is refused here, before the store would
+/// answer it as a 500.
+#[test]
+fn a_nul_in_a_provider_or_model_is_refused_before_the_store() {
+    for (provider, model) in [
+        ("anth\\u0000ropic", "claude-opus-5"),
+        ("anthropic", "claude\\u0000"),
+    ] {
+        let body = format!(
+            r#"{{"provider":"{provider}","source_workspace_id":"{WORKSPACE}","model":"{model}","base_url":null}}"#
+        );
+        assert!(
+            matches!(request(body.as_bytes()), Err((code, _)) if code == error_code::INVALID_REQUEST),
+            "{body} reached the store"
+        );
+    }
+    let segment = ProviderSegment {
+        provider: "anth\0ropic".to_owned(),
+    };
+    assert!(
+        segment.validate().is_err(),
+        "a NUL path segment reached the store"
+    );
+}

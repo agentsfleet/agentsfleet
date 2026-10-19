@@ -26,7 +26,7 @@ impl Ticket {
     /// A concurrent placement invalidates this choice before another insert.
     #[must_use]
     pub const fn permits(self, capacity: Capacity, kind: LeaseKind) -> bool {
-        self.revision == capacity.claim_revision && self.accepted.contains(kind)
+        self.revision == capacity.lease_version && self.accepted.contains(kind)
     }
 }
 
@@ -69,7 +69,7 @@ pub async fn record(
 ) -> Result<bool> {
     let result = sqlx::query(sql::RECORD_CHOICE)
         .bind(runner.as_str())
-        .bind(capacity.claim_revision)
+        .bind(capacity.lease_version)
         .bind(kind.as_str())
         .execute(&mut **transaction)
         .await

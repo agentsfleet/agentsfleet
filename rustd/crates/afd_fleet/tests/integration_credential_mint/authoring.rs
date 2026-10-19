@@ -7,12 +7,13 @@ use crate::requests;
 
 /// A live authoring attempt held by the same runner, in the same workspace.
 const AUTHORING: &str = "\
-INSERT INTO fleet.authoring_attempts(id,lease_id,runner_id,workspace_id,tenant_id,creator_id,
-draft_id,message_sequence,fence,deletion_generation,capability_hash,model_snapshot,status,
-lease_expires_at,deadline,reserved_nanos,settled_nanos,usage_unknown,calls,input_tokens,
-output_tokens,activity_sequence,created_at,updated_at)
-SELECT $1::uuid,$2::uuid,$3::uuid,f.workspace_id,f.tenant_id,$1::uuid,$1::uuid,1,1,0,$1,'{}',
-$5,$6,$6,0,0,false,0,0,0,0,$7,$7 FROM core.fleets f WHERE f.id=$4::uuid";
+INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,
+draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
+lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
+reported_runtime_ms,last_activity_sequence,created_at,updated_at)
+SELECT $1::uuid,$2::uuid,$3::uuid,f.workspace_id,f.tenant_id,$1::uuid,$1::uuid,1,1,$1,'{}',
+$5,now() + $6::interval,now() + $6::interval,0,false,0,0,0,0,now(),now()
+FROM fleet.fleets f WHERE f.id=$4::uuid";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
@@ -27,10 +28,10 @@ async fn test_an_authoring_lease_has_no_credential_mint_rights() {
         &format!(r#"{{"integration":"static","token":"{OWNER_TOKEN}"}}"#),
     )
     .await;
-    let attempt = new_id();
-    let authoring = new_id();
+    let attempt = mint_id();
+    let authoring = mint_id();
     seed_authoring(&fixtures, &owner, &attempt, &authoring).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let now = fixtures.enrolled_at();
     let plane = fixtures.plane();
 
     let refused = plane
@@ -49,7 +50,7 @@ async fn test_an_authoring_lease_has_no_credential_mint_rights() {
     assert!(
         fixtures
             .leases()
-            .mint_scope(&owner.runner, &authoring, now)
+            .mint_scope(&owner.runner, &authoring)
             .await
             .expect("the read must succeed")
             .is_none(),
@@ -82,8 +83,7 @@ async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &str, lease
         .bind(owner.runner.as_str())
         .bind(&owner.fleet)
         .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
-        .bind(NOW_MS + LEASE_WINDOW_MS)
-        .bind(NOW_MS)
+        .bind(LEASE_WINDOW)
         .execute(&mut *connection)
         .await
         .expect("the live authoring attempt must insert");
@@ -96,7 +96,7 @@ async fn remove_authoring(fixtures: &Fixtures, attempt: &str) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("DELETE FROM fleet.authoring_attempts WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1::uuid")
         .bind(attempt)
         .execute(&mut *connection)
         .await

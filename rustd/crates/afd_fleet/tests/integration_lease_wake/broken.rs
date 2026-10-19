@@ -6,7 +6,6 @@
 //! Each test overwrites a key with a string, which every hash and stream
 //! command refuses, and restores it before cleaning up.
 
-use afd_core::clock::UnixMillis;
 use afd_dragonfly::streams::fleet_stream_key;
 
 use super::scene::{partition, scene};
@@ -48,14 +47,7 @@ async fn test_both_peeks_refused_fail_the_poll() {
     scene.raw(&rotation, CMD_SET, Some(NOT_A_HASH)).await;
     scene.raw(&rung, CMD_SET, Some(NOT_A_HASH)).await;
 
-    let (polled, _cost) = scene
-        .leases
-        .select_measured(
-            &fleet.runners[0],
-            &[],
-            UnixMillis::from_millis(scene.fixtures.enrolled_at()),
-        )
-        .await;
+    let (polled, _cost) = scene.leases.select_measured(&fleet.runners[0], &[]).await;
     scene.raw(&rotation, CMD_DEL, None).await;
     scene.raw(&rung, CMD_DEL, None).await;
 
@@ -82,14 +74,7 @@ async fn test_a_rung_claim_that_faults_leaves_the_ring_clear() {
         .physical_key(&fleet_stream_key(&fleet.id));
     scene.raw(&stream, CMD_SET, Some(NOT_A_HASH)).await;
 
-    let (polled, _cost) = scene
-        .leases
-        .select_measured(
-            &fleet.runners[0],
-            &[],
-            UnixMillis::from_millis(scene.fixtures.enrolled_at()),
-        )
-        .await;
+    let (polled, _cost) = scene.leases.select_measured(&fleet.runners[0], &[]).await;
     scene.raw(&stream, CMD_DEL, None).await;
 
     assert!(polled.is_err(), "the rung fleet's stream read faulted");

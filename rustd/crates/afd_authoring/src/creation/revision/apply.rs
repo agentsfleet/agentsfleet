@@ -7,7 +7,8 @@ use crate::{
     replay, review,
     types::{AppliedRevision, ApplyRevision, SaveSource},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
 use sqlx::Connection as _;
 
 impl Creations {
@@ -23,7 +24,7 @@ impl Creations {
         expected: Option<&str>,
         operation: &Uuid7,
         request: ApplyRevision,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<AppliedRevision> {
         let request = garde::Unvalidated::new(request).validate()?;
         let revision = self
@@ -41,14 +42,23 @@ impl Creations {
         expected: Option<&str>,
         operation: &Uuid7,
         request: &garde::Valid<ApplyRevision>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Uuid7> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:fleet:{fleet}:revision", access.workspace);
         let digest = replay::digest(&**request)?;
-        if let Some(id) = replay::find(&mut tx, &scope, operation, &person.id, &digest).await? {
+        if let Some(id) = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::FleetRevision,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?
+        {
             return Ok(id);
         }
         let captured = self
@@ -62,7 +72,16 @@ impl Creations {
             )
             .await?;
         let row = read::lock(&mut tx, access.workspace, fleet).await?;
-        if let Some(id) = replay::find(&mut tx, &scope, operation, &person.id, &digest).await? {
+        if let Some(id) = replay::find(
+            &mut tx,
+            &scope,
+            replay::Resource::FleetRevision,
+            operation,
+            &person.id,
+            &digest,
+        )
+        .await?
+        {
             return Ok(id);
         }
         validate(&captured, &row, expected)?;
@@ -72,7 +91,7 @@ impl Creations {
             &mut tx,
             &captured.context,
             &captured.candidate,
-            now.as_millis(),
+            now,
         )
         .await?;
         checked.require_digest(&request.review_digest)?;
@@ -87,7 +106,6 @@ impl Creations {
                 operation,
                 digest: &digest,
                 resource: &revision,
-                now,
             },
         )
         .await?;
@@ -96,9 +114,16 @@ impl Creations {
                 .await?;
             revision
         } else {
-            replay::find(&mut tx, &scope, operation, &person.id, &digest)
-                .await?
-                .ok_or(ErrorKind::Gone)?
+            replay::find(
+                &mut tx,
+                &scope,
+                replay::Resource::FleetRevision,
+                operation,
+                &person.id,
+                &digest,
+            )
+            .await?
+            .ok_or(ErrorKind::Gone)?
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(revision)
@@ -110,14 +135,14 @@ fn validate(
     row: &super::super::stored::Stored,
     expected: Option<&str>,
 ) -> Result<()> {
-    let current = etag(&row.id, row.setup_version);
+    let current = etag(&row.id, row.head_revision);
     if expected.ok_or(ErrorKind::Precondition)? != current {
         return Err(ErrorKind::Stale { etag: current }.into());
     }
     if row.status == KILLED {
         return Err(ErrorKind::State { current: "killed" }.into());
     }
-    super::target(captured, &row.id, row.setup_version)?;
+    super::target(captured, &row.id, row.head_revision)?;
     captured.candidate.definition.validate_for_save()?;
     if captured.candidate.policy_semantics != afd_fleet_runtime::definition::POLICY_SEMANTICS {
         return Err(ErrorKind::Policy.into());

@@ -70,7 +70,7 @@ export function RunnerHeader({
   // Painted at confirm, reconciled inside the same transition: success refreshes
   // the server tree, and a 409 or any failure ends the transition so the badge
   // falls back to the server-rendered state on its own.
-  const [adminState, paintAdminState] = useOptimistic(runner.admin_state);
+  const [adminState, paintAdminState] = useOptimistic(runner.status);
 
   function requestAction(action: RunnerStateAction) {
     setError(null);
@@ -221,7 +221,7 @@ export function RunnerHeader({
           {/* A destructive control renders from the state the server confirmed,
               never from the optimistic paint: Delete must not appear while the
               revoke that would allow it is still unanswered. */}
-          {canWrite && canDelete(runner.admin_state) ? (
+          {canWrite && canDelete(runner.status) ? (
             <Button
               variant="destructive"
               size="sm"

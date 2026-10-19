@@ -4,6 +4,7 @@ mod foreign;
 mod pagination;
 mod platform;
 mod publication;
+mod removal;
 
 use super::{fixture::Fixture, json_body, mint, send, send_with_headers};
 use axum::{Router, response::Response};

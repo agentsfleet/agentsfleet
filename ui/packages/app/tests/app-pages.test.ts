@@ -45,7 +45,7 @@ vi.mock("@/lib/workspace", () => ({
   listTenantWorkspacesCached: vi
     .fn()
     .mockResolvedValue({
-      items: [{ id: "ws_1", name: "Alpha", created_at: 1, account: { tenant_id: "tenant_own", owner_name: "You" }, role: "owner" }],
+      items: [{ id: "ws_1", name: "Alpha", created_at: "1970-01-01T00:00:00.001Z", account: { tenant_id: "tenant_own", owner_name: "You" }, role: "owner" }],
       total: 1,
     }),
 }));

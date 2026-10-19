@@ -50,7 +50,7 @@ fn stored_and_query_failures_retain_their_causes() -> Result<(), &'static str> {
     let malformed_id = afd_core::id::Uuid7::parse("not-a-runner")
         .err()
         .ok_or("the malformed runner fixture unexpectedly parsed")?;
-    let malformed = super::row_malformed("core.runners", "id")(malformed_id);
+    let malformed = super::row_malformed("runner.runners", "id")(malformed_id);
     assert_database_error(&malformed);
 
     let query =
@@ -60,7 +60,7 @@ fn stored_and_query_failures_retain_their_causes() -> Result<(), &'static str> {
     let json = serde_json::from_str::<serde_json::Value>("{")
         .err()
         .ok_or("the malformed JSON fixture unexpectedly parsed")?;
-    let stored = super::stored_json("core.runners", "capability_report")(json);
+    let stored = super::stored_json("runner.runners", "capability_report")(json);
     assert_database_error(&stored);
     Ok(())
 }

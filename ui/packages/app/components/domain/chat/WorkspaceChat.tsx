@@ -11,12 +11,11 @@ import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DraftClient } from "@/lib/api/drafts";
 import { isRunning } from "@/lib/api/draft-types";
 import { useCurrentUser } from "@/lib/auth/client";
-import { EVENTS } from "@/lib/analytics/events";
-import { captureProductEvent } from "@/lib/analytics/posthog";
-import { useDraftSidebarBridge } from "@/components/layout/DraftSidebarHistory";
-import { SetupProgress } from "./SetupProgress";
+import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
 import { ScheduleSync } from "./ScheduleSync";
 import { ChatAvailability, ChatModelAvailability } from "./ChatAvailability";
+import { FleetSetup } from "./FleetSetup";
+import { DraftChatHeading } from "./DraftChatHeading";
 
 type Props = {account: string; workspace: string; draft?: string; source?: Source; canPublishPlatform?: boolean};
 const ignore = (): void => undefined;
@@ -24,20 +23,22 @@ const DraftConversation = nextDynamic(() => import("./DraftConversation").then((
   ssr: false,
   loading: () => <Skeleton className="min-h-0 w-full flex-1" aria-label="Loading conversation" />,
 });
-const ReviewSetup = nextDynamic(() => import("./ReviewSetup").then((module) => module.ReviewSetup));
 
 export function WorkspaceChat(props: Props) {
   const {isLoaded, isSignedIn, userId} = useCurrentUser();
   if (!isLoaded) return <Skeleton className="h-80 w-full" aria-label="Loading your private chat" />;
   if (!isSignedIn || !userId) return <Alert variant="warning">Sign in again to open private fleet chat.</Alert>;
   const identity = {account: props.account, workspace: props.workspace, subject: userId};
-  return <OwnedChat key={JSON.stringify(identity)} {...props} identity={identity} />;
+  return <OwnedChat key={JSON.stringify([identity, props.draft, props.source])} {...props} identity={identity} />;
 }
 
 function OwnedChat({identity, draft, source, canPublishPlatform}: Props & {identity: DraftIdentity}) {
   const [client, setClient] = useState<DraftClient | null>(null);
-  const {account, workspace, subject} = identity;
+  const [opening, setOpening] = useState(true);
+  const [reload, setReload] = useState<(() => Promise<void>) | null>(null);
+  const [selection] = useState(() => ({identity, draft, source, canPublishPlatform}));
   useEffect(() => {
+    const {identity: {account, workspace, subject}, draft, source, canPublishPlatform} = selection;
     const current = new DraftClient({account, workspace, subject}, canPublishPlatform ? async (body, operation) => {
       const result = await stagePlatformLibraryAction(body, operation);
       if (!result.ok) throw new SetupUnavailable(result.error, result.status ?? 502, {code: result.errorCode});
@@ -45,40 +46,45 @@ function OwnedChat({identity, draft, source, canPublishPlatform}: Props & {ident
     } : undefined);
     setClient(current);
     if (source) current.fresh(source);
-    void current.initialize().then(async () => { if (draft) await current.resume(draft); }).catch(ignore);
-    return () => current.dispose();
-  }, [account, workspace, subject, draft, source, canPublishPlatform]);
-  return client ? <ChatSurface client={client} workspace={identity.workspace} subject={identity.subject} /> : <Skeleton className="h-80 w-full" />;
+    let disposed = false;
+    const open = async (): Promise<void> => {
+      setOpening(true);
+      try {
+        await current.initialize();
+        if (draft) await current.resume(draft);
+        else if (source) await current.refreshSetup();
+      } finally {if (!disposed) setOpening(false);}
+    };
+    setReload(() => open);
+    void open().catch(ignore);
+    return () => {disposed = true; current.dispose();};
+  }, [selection]);
+  return client && reload ? <ChatSurface client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="h-80 w-full" aria-label="Loading setup chat" />;
 }
 
-function ChatSurface({client, workspace, subject}: {client: DraftClient; workspace: string; subject: string}) {
+function ChatSurface({client, workspace, subject, opening, selected, reload}: {client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  const [reviewOpen, setReviewOpen] = useState(false);
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
   const retrySchedule = (schedule: Schedule): void => { void client.syncSchedule(schedule).catch(ignore); };
-  const review = (): void => {
-    setReviewOpen(true);
-    captureProductEvent(EVENTS.draft_review_opened, {workspace_id: workspace, draft_id: view.draft?.id});
-    void client.review().catch(ignore);
-  };
   return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col gap-md" data-fleet-authoring>
-    {view.error ? <ChatError client={client} view={view} workspace={workspace} /> : null}
+    {view.error ? <ChatError client={client} view={view} workspace={workspace} reload={reload} /> : null}
     {view.notice ? <Alert>{view.notice}</Alert> : null}
+    {opening ? <Skeleton className="h-80 w-full" aria-label="Loading setup chat" /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
+    <DraftChatHeading key={view.draft?.id} client={client} view={view} />
     <ScheduleSync schedules={view.schedules} busy={view.busy} onRetry={retrySchedule} />
     <ChatModelAvailability client={client} view={view} workspace={workspace} />
-    <DraftConversation client={client} view={view} onReview={review}>
-      {view.fleet ? <SetupProgress fleet={view.fleet} definition={view.fleet.definition ?? view.draft?.candidate?.definition} workspace={workspace} busy={view.busy}
-        onContinue={() => { void client.retry().catch(ignore); }} onRetrySchedule={retrySchedule} /> : null}
+    <DraftConversation client={client} view={view}>
+      <FleetSetup client={client} view={view} workspace={workspace} />
     </DraftConversation>
-    {reviewOpen ? <ReviewSetup client={client} view={view} workspace={workspace} open={reviewOpen} onOpenChange={setReviewOpen} /> : null}
+    </>}
   </div>;
 }
 
-function ChatError({client, view, workspace}: {client: DraftClient; view: DraftView; workspace: string}) {
+function ChatError({client, view, workspace, reload}: {client: DraftClient; view: DraftView; workspace: string; reload: () => Promise<void>}) {
   return <ChatAvailability title={view.inaccessible ? "Chat is unavailable" : "We couldn’t complete that"} actions={<>
         <Button size="sm" variant="secondary" disabled={view.busy} onClick={() => {
           if (view.inaccessible) window.location.reload();
-          else void (view.draft || view.pending ? client.retry() : client.initialize()).catch(ignore);
+          else void (view.draft || view.pending ? client.retry() : reload()).catch(ignore);
         }}>{view.inaccessible ? "Reload" : "Retry"}</Button>
         <Button size="sm" variant="ghost" asChild><Link href={`/w/${workspace}/fleets`}>Your fleets</Link></Button>
     </>}>{view.error}</ChatAvailability>;

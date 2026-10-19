@@ -1,7 +1,7 @@
 //! The platform provider default a suite seeds, removed by the suite that
 //! created it.
 //!
-//! `core.platform_provider_defaults` is keyed by provider, so the row is one
+//! `model.platform_defaults` is keyed by provider, so the row is one
 //! per deployment and every test in a run that needs it shares it: the first
 //! to arrive writes it (`ON CONFLICT DO NOTHING`) and the rest reuse it. The
 //! row used to outlive the run, pointing at a workspace whose key the suite's
@@ -26,18 +26,18 @@ use super::lane_url;
 use crate::pool::Db;
 
 /// Seeds the default when no provider row exists, answering whether it did.
-const INSERT_DEFAULT: &str = "INSERT INTO core.platform_provider_defaults \
-     (provider, source_workspace_id, active, model, context_cap_tokens, created_at, updated_at) \
-     VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5) \
-     ON CONFLICT (provider) DO NOTHING \
-     RETURNING provider";
+///
+/// The default points at a catalogue row, so the model is written too unless
+/// the catalogue already has it. Its prices are zero: a suite that meters
+/// seeds its own priced row first, and this one leaves that row as it is. The
+/// catalogue row outlives the hold; the lane reset clears it.
+const INSERT_DEFAULT: &str = include_str!("sql/insert_platform_default.sql");
 
 /// Removes exactly the row this process inserted.
-const DELETE_DEFAULT: &str = "DELETE FROM core.platform_provider_defaults \
-     WHERE provider = $1 AND source_workspace_id = $2::uuid";
+const DELETE_DEFAULT: &str = include_str!("sql/delete_platform_default.sql");
 
 /// Which database a connection is on, so the drop deletes from that one.
-const CURRENT_DATABASE: &str = "SELECT current_database()";
+const CURRENT_DATABASE: &str = include_str!("sql/current_database.sql");
 
 /// How long a new holder waits between looks while a delete is running.
 const DELETE_POLL: Duration = Duration::from_millis(10);
@@ -54,8 +54,55 @@ pub struct DefaultSeed<'a> {
     /// The context ceiling the default carries.
     pub context_cap_tokens: i32,
     /// The instant stamped on the row.
-    pub created_at: i64,
+    pub created_at: jiff::Timestamp,
 }
+
+impl DefaultSeed<'_> {
+    /// Writes the default unless the provider already has one, answering
+    /// whether this call wrote it. The fallible twin of
+    /// [`PlatformDefault::hold`], for a caller that reports a held default
+    /// instead of reusing it, and removes its own with [`Self::release`].
+    ///
+    /// # Errors
+    /// [`crate::Error`] when the insert fails.
+    pub async fn claim<'e>(self, executor: impl sqlx::PgExecutor<'e>) -> crate::Result<bool> {
+        let inserted: Option<String> = sqlx::query_scalar(INSERT_DEFAULT)
+            .bind(self.provider)
+            .bind(self.source_workspace_id)
+            .bind(self.model)
+            .bind(self.context_cap_tokens)
+            .bind(jiff_sqlx::ToSqlx::to_sqlx(self.created_at))
+            .bind(super::mint_id())
+            .bind(super::platform_model::FIXTURE_INFERENCE)
+            .fetch_optional(executor)
+            .await
+            .map_err(|source| crate::error::query(CLAIM_CONTEXT, source))?;
+        Ok(inserted.is_some())
+    }
+
+    /// Removes the default `provider` holds, but only while it still names
+    /// `source_workspace_id`, so a default another caller wrote is never the
+    /// one removed. A default already gone is not an error.
+    ///
+    /// # Errors
+    /// [`crate::Error`] when the delete fails.
+    pub async fn release<'e>(
+        executor: impl sqlx::PgExecutor<'e>,
+        provider: &str,
+        source_workspace_id: &str,
+    ) -> crate::Result<()> {
+        sqlx::query(DELETE_DEFAULT)
+            .bind(provider)
+            .bind(source_workspace_id)
+            .execute(executor)
+            .await
+            .map_err(|source| crate::error::query(REMOVAL_CONTEXT, source))?;
+        Ok(())
+    }
+}
+
+/// The operation a failed claim is reported under.
+const CLAIM_CONTEXT: &str = "claiming a platform default";
 
 /// The row this process inserted, and the database it lives in.
 #[derive(Debug, Clone)]
@@ -101,7 +148,9 @@ impl PlatformDefault {
             .bind(seed.source_workspace_id)
             .bind(seed.model)
             .bind(seed.context_cap_tokens)
-            .bind(seed.created_at)
+            .bind(jiff_sqlx::ToSqlx::to_sqlx(seed.created_at))
+            .bind(super::mint_id())
+            .bind(super::platform_model::FIXTURE_INFERENCE)
             .fetch_optional(&mut *connection)
             .await
             .unwrap_or_else(|failure| panic!("the platform default seed must run: {failure}"));
@@ -176,20 +225,21 @@ impl Drop for PlatformDefault {
         let provider = self.provider.clone();
         let removed = std::thread::spawn(move || remove(&provider, &created)).join();
         states().entry(self.provider.clone()).or_default().deleting = false;
-        // A panicked removal has no failure to name, so its line has no code.
-        let (error_code, reason) = match unremoved(removed) {
-            None => return,
-            Some(Unremoved::Failed(Logged { error_code, reason })) => (Some(error_code), reason),
-            Some(Unremoved::Panicked) => (None, REMOVAL_PANICKED.to_owned()),
+        let Some(left) = unremoved(removed) else {
+            return;
         };
+        let (error_code, reason) = left.line();
         tracing::warn!(
             error_code,
-            event = "test_platform_default_not_removed",
+            event = NOT_REMOVED,
             reason,
             "the platform default this run seeded could not be removed; reset the lane"
         );
     }
 }
+
+/// The line a hold that could not remove its row is logged under.
+const NOT_REMOVED: &str = "test_platform_default_not_removed";
 
 /// What a removal that panicked says in place of a failure's sentence.
 const REMOVAL_PANICKED: &str = "the removal thread panicked";
@@ -202,6 +252,17 @@ enum Unremoved {
     Failed(Logged),
     /// The removal thread panicked, so there is no failure to name.
     Panicked,
+}
+
+impl Unremoved {
+    /// The code and sentence the drop's line carries. A panicked removal has
+    /// no failure to name, so its line has no code.
+    fn line(self) -> (Option<&'static str>, String) {
+        match self {
+            Self::Failed(Logged { error_code, reason }) => (Some(error_code), reason),
+            Self::Panicked => (None, REMOVAL_PANICKED.to_owned()),
+        }
+    }
 }
 
 /// Why a removal left its row behind, or `None` when it did not.
@@ -253,31 +314,5 @@ fn remove(provider: &str, created: &Created) -> crate::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use afd_core::error_code::Coded as _;
-
-    use super::{Unremoved, unremoved};
-
-    #[test]
-    fn a_leftover_platform_default_reason_carries_no_code_prefix() {
-        assert_eq!(
-            unremoved(Ok(Ok(()))),
-            None,
-            "a removed row leaves nothing to say"
-        );
-        for (kind, failure) in crate::error::one_of_each_kind() {
-            let logged = failure.logged();
-            assert!(
-                !logged.reason.is_empty() && !logged.reason.contains("[UZ-"),
-                "{kind}: {}",
-                logged.reason
-            );
-            assert_eq!(
-                unremoved(Ok(Err(failure))),
-                Some(Unremoved::Failed(logged)),
-                "{kind}: the line keeps the failure's code beside its sentence"
-            );
-        }
-        assert_eq!(unremoved(Err(Box::new("boom"))), Some(Unremoved::Panicked));
-    }
-}
+#[path = "platform_default_tests.rs"]
+mod tests;

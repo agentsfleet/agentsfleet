@@ -50,13 +50,13 @@ does not install a runner binary, write a token, or start a service.
 
 ## Create the runner
 
-The Human signs in to the matching dashboard and opens **Configuration →
-Runners → Create runner**.
+The Human signs in to the matching dashboard and opens **Avatar → Platform →
+Runners → Add runner**.
 
 | Field | Value |
 |---|---|
 | Host identifier | Exact `tailscale-hostname` from 1Password |
-| Sandbox tier | `landlock_full` |
+| Isolation | **Landlock** (`landlock_full` on the API) |
 | Labels | `dev` or `prod`, matching the environment |
 
 Store the once-revealed `agt_r` value in the concealed `runner-token` field on

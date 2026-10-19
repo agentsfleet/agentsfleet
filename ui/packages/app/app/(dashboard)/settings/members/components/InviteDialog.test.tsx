@@ -17,11 +17,11 @@ const INVITE: InviteSummary = {
   id: "inv_1",
   email: "carol@example.com",
   role: ACCOUNT_ROLE.member,
-  expires_at: Date.UTC(2026, 9, 7),
-  created_at: Date.UTC(2026, 8, 30),
+  expires_at: new Date(Date.UTC(2026, 9, 7)).toISOString(),
+  created_at: new Date(Date.UTC(2026, 8, 30)).toISOString(),
   link: "https://app.agentsfleet.net/invites/inv_1",
   email_status: EMAIL_STATUS.sent,
-  email_sent_at: Date.UTC(2026, 8, 30),
+  email_sent_at: new Date(Date.UTC(2026, 8, 30)).toISOString(),
 };
 const INVITE_BUTTON = "Invite";
 const EMAIL_FIELD = "Email";

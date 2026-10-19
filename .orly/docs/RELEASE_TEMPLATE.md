@@ -54,7 +54,8 @@ in their existing entry structure.
 - Bug fix → patch.
 - Pre-v1.0 breaking → minor (semver 0.x carve-out); call out under Upgrading.
 - Post-v1.0 breaking → major.
-- Internal-only refactor: terse `<Update>` with `tags={["Internal", ...]}`, one-paragraph summary, skip section structure. Prefer folding into the next user-visible release.
+- Internal-only cleanup receives no changelog entry. A reader-visible effect
+  follows the normal entry rules.
 - Parallel branches reconcile their version source against the current default
   branch and run the repository's declared synchronization check. This never
   authorizes rebasing or force-pushing a published branch.

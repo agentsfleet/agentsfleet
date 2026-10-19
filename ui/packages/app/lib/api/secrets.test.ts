@@ -80,10 +80,10 @@ describe("createSecret", () => {
 
 describe("secret narrowing helpers", () => {
   const MIXED = [
-    { kind: "provider_key", name: "anthropic", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
-    { kind: "provider_key", name: "openai", created_at: 2, provider: "openai" },
-    { kind: "custom_endpoint", name: "vllm", created_at: 3, provider: "openai-compatible", base_url: "https://vllm.corp/v1" },
-    { kind: "custom_secret", name: "STRIPE", created_at: 4 },
+    { kind: "provider_key", name: "anthropic", created_at: "1970-01-01T00:00:00.001Z", provider: "anthropic", model: "claude-sonnet-4-6" },
+    { kind: "provider_key", name: "openai", created_at: "1970-01-01T00:00:00.002Z", provider: "openai" },
+    { kind: "custom_endpoint", name: "vllm", created_at: "1970-01-01T00:00:00.003Z", provider: "openai-compatible", base_url: "https://vllm.corp/v1" },
+    { kind: "custom_secret", name: "STRIPE", created_at: "1970-01-01T00:00:00.004Z" },
   ] as const;
 
   it("providerKeysOf keeps only provider_key rows", async () => {
@@ -109,7 +109,7 @@ describe("secret narrowing helpers", () => {
 
   it("each helper returns an empty array when no row matches", async () => {
     const { providerKeysOf, customEndpointsOf, customSecretsOf } = await import("./secrets");
-    const onlySecret = [{ kind: "custom_secret", name: "X", created_at: 1 }] as const;
+    const onlySecret = [{ kind: "custom_secret", name: "X", created_at: "1970-01-01T00:00:00.001Z" }] as const;
     expect(providerKeysOf([...onlySecret])).toEqual([]);
     expect(customEndpointsOf([...onlySecret])).toEqual([]);
     expect(customSecretsOf([])).toEqual([]);

@@ -16,158 +16,130 @@
 )]
 
 use crate::queue;
-use crate::seed;
-use crate::support;
-use afd_billing::{Cumulative, Meter, SliceRates};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL_MS, MAX_RUNTIME_MS};
-use afd_fleet::lease::{Billed, Delivery, Renewed};
+use afd_core::timing::{LEASE_TTL, MAX_RUNTIME};
+use afd_fleet::lease::sql::meter::Metering;
+use afd_fleet::lease::usage::Pricing;
+use afd_fleet::lease::{Leases, Renewed};
+use jiff::Timestamp;
 
-use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
-use self::support::Fixtures;
+use crate::report_seed::{Held, held};
+use crate::rows::{LAPSE, Row};
+use crate::seed::{MODEL, PROVIDER};
 
-/// A pool deep enough that nothing under test clamps against it.
-const DEEP_POOL: i64 = 1_000_000_000_000;
-
-/// Rates that charge nothing at all.
-///
-/// These tests are about the DEADLINE arithmetic, not the money: a slice that
-/// charged would make every assertion below depend on the wallet's depth as
-/// well as on the clamp, and the charge has its own coverage in the report
-/// suite next door.
-const FREE: SliceRates = SliceRates {
-    run_nanos_per_sec: 0,
-    input_nanos_per_mtok: 0,
-    cached_input_nanos_per_mtok: 0,
-    output_nanos_per_mtok: 0,
-};
-
-/// A meter that prices every slice at zero.
-fn free_meter() -> Meter {
-    Meter {
-        cumulative: Cumulative::default(),
-        rates: FREE,
-    }
-}
-
-/// Dimension 3.4a — a renewal near the ceiling is clamped to it, not past it.
-///
-/// Three renewals, and the middle one is the assertion. An ordinary renewal
-/// takes `now + LEASE_TTL_MS`, because that is the smaller of the two arms. A
-/// lease whose `created_at + MAX_RUNTIME_MS` falls INSIDE that window takes the
-/// ceiling instead — and the run gets the remainder of its budget rather than a
-/// full fresh TTL. A clamp that took the wrong arm would let a wedged agent
-/// renew forever, one TTL at a time, which is the whole failure `MAX_RUNTIME_MS`
-/// exists to prevent.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_renew_clamps_to_the_hard_ceiling() {
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [runner],
-        fleet,
-        tenant,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-    fixtures
-        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
-        .await;
-
-    let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
-        .await
-        .expect("the seeded fleet is leasable");
+/// One renewal of `lease`, reporting no tokens.
+async fn extend(
+    leases: &Leases,
+    lease: &str,
+    runner: &Uuid7,
+    priced: (&Uuid7, &Pricing),
+    now: Timestamp,
+) -> afd_fleet::Result<Renewed> {
+    let (lease_key, pricing) = priced;
     leases
-        .record_received(&acquired, now)
-        .await
-        .expect("the narrative log must open");
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
-    let issued = leases
-        .issue(
-            &runner,
-            &acquired,
-            Billed {
-                tenant_id: &tenant_id,
-                posture: POSTURE,
-                provider: PROVIDER,
-                model: MODEL,
+        .extend(
+            Metering {
+                lease_id: lease,
+                runner_id: runner,
+                requests: &[],
             },
+            lease_key,
+            pricing,
             now,
         )
         .await
-        .expect("the lease row must be written")
-        .expect("the claim is still held");
+}
+
+/// The deadline a renewal granted, when it extended.
+fn deadline(renewed: &Renewed) -> Option<Timestamp> {
+    match renewed {
+        Renewed::Extended { expires_at, .. } => Some(*expires_at),
+        Renewed::MaxRuntime | Renewed::Lost => None,
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_renew_clamps_to_the_hard_ceiling() {
+    let Held {
+        fixtures,
+        leases,
+        runner,
+        issued,
+        fleet,
+        now,
+        lease_key,
+        pricing,
+        ..
+    } = held().await;
     let lease = issued.lease_id.as_str();
 
     // An ordinary renewal, well inside the ceiling: the TTL arm wins. Renewal
     // reads the database clock and stamps that instant as the meter's next
     // start, so the deadline is stated against the stamp it wrote.
-    let early = leases
-        .extend(lease, &runner, free_meter(), now)
+    let early = extend(&leases, lease, &runner, (&lease_key, &pricing), now)
         .await
         .expect("the extend must reach the datastore");
     let renewed_at = fixtures.metered_since(&fleet).await;
     assert_eq!(
-        early,
-        Renewed::Extended {
-            expires_at: renewed_at.saturating_add_millis(LEASE_TTL_MS),
-            charged: afd_billing::Nanos::ZERO,
-        },
+        deadline(&early),
+        Some(afd_core::clock::after(renewed_at, LEASE_TTL)),
         "with hours of budget left, a renewal takes the full lease TTL"
     );
     assert_eq!(
-        fixtures.affinity_column(&fleet, "leased_until").await,
-        Some(
-            renewed_at
-                .saturating_add_millis(LEASE_TTL_MS)
-                .as_millis()
-                .to_string()
-        ),
+        fixtures
+            .instant(Row::Slot(&fleet), "lease_expires_at")
+            .await,
+        Some(afd_core::clock::after(renewed_at, LEASE_TTL)),
         "the SLOT moves with the lease — advancing one without the other is what \
          gets a healthy run reclaimed mid-flight"
     );
 
     // The run has been going almost its whole budget: the ceiling now falls
     // inside the TTL window of the database clock, so the ceiling arm wins.
-    let nearly_spent = fixtures.database_now().await - MAX_RUNTIME_MS + (LEASE_TTL_MS / 2);
-    fixtures.backdate_lease(lease, nearly_spent).await;
-    let ceiling = UnixMillis::from_millis(nearly_spent + MAX_RUNTIME_MS);
+    let nearly_spent = MAX_RUNTIME.saturating_sub(LEASE_TTL / 2);
+    fixtures
+        .age(Row::Lease(lease), "created_at", nearly_spent)
+        .await;
+    let started = fixtures
+        .instant(Row::Lease(lease), "created_at")
+        .await
+        .expect("the lease row carries its start");
+    let ceiling = afd_core::clock::after(started, MAX_RUNTIME);
 
-    let clamped = leases
-        .extend(lease, &runner, free_meter(), now)
+    let clamped = extend(&leases, lease, &runner, (&lease_key, &pricing), now)
         .await
         .expect("the extend must reach the datastore");
     assert_eq!(
-        clamped,
-        Renewed::Extended {
-            expires_at: ceiling,
-            charged: afd_billing::Nanos::ZERO,
-        },
+        deadline(&clamped),
+        Some(ceiling),
         "inside the last TTL of its budget, a run is given the remainder and not a fresh window"
     );
     assert_eq!(
-        fixtures.lease_column(lease, "lease_expires_at").await,
-        Some(ceiling.as_millis().to_string()),
+        fixtures
+            .instant(Row::Lease(lease), "lease_expires_at")
+            .await,
+        Some(ceiling),
         "the clamped instant is what the row carries, so the runner's kill deadline is the real one"
     );
 
     // Past the ceiling by the database clock, the guard's `capped > now`
     // fails and nothing moves.
-    let spent = fixtures.database_now().await - MAX_RUNTIME_MS - 1;
-    fixtures.backdate_lease(lease, spent).await;
+    fixtures
+        .age(Row::Lease(lease), "created_at", LEASE_TTL)
+        .await;
     assert_eq!(
-        leases
-            .extend(lease, &runner, free_meter(), now)
+        extend(&leases, lease, &runner, (&lease_key, &pricing), now)
             .await
             .expect("a capped renewal is an answer, not a fault"),
         Renewed::MaxRuntime,
         "past its ceiling a run cannot renew at all — it stops and reports"
     );
     assert_eq!(
-        fixtures.lease_column(lease, "lease_expires_at").await,
-        Some(ceiling.as_millis().to_string()),
+        fixtures
+            .instant(Row::Lease(lease), "lease_expires_at")
+            .await,
+        Some(ceiling),
         "and the refused renewal advanced nothing"
     );
 
@@ -185,58 +157,30 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_renew_after_reclaim_is_lost() {
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [first, second],
+    let Held {
+        fixtures,
+        leases,
+        runner: first,
+        spare: second,
+        issued,
         fleet,
-        tenant,
+        now,
+        lease_key,
+        pricing,
         ..
-    } = seeded::<2>(&fixtures).await;
-    let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
-    fixtures
-        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
-        .await;
-
-    let acquired = crate::seed::select_fleet_within_rotations(&leases, &first, now, &fleet)
-        .await
-        .expect("the seeded fleet is leasable");
-    assert_eq!(
-        leases
-            .record_received(&acquired, now)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
-        Delivery::First,
-        "a newly leased event has no row yet"
-    );
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
-    let issued = leases
-        .issue(
-            &first,
-            &acquired,
-            Billed {
-                tenant_id: &tenant_id,
-                posture: POSTURE,
-                provider: PROVIDER,
-                model: MODEL,
-            },
-            now,
-        )
-        .await
-        .expect("the lease row must be written")
-        .expect("the claim is still held");
+    } = held().await;
     let lease = issued.lease_id.as_str();
 
     // The holder stalls past its TTL and the work is taken back.
-    let lapsed = now.saturating_add_millis(LEASE_TTL_MS + 1);
-    crate::seed::select_fleet_within_rotations(&leases, &second, lapsed, &fleet)
+    fixtures
+        .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
+        .await;
+    crate::seed::select_fleet_within_rotations(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 
     assert_eq!(
-        leases
-            .extend(lease, &first, free_meter(), lapsed)
+        extend(&leases, lease, &first, (&lease_key, &pricing), now)
             .await
             .expect("a lost renewal is an answer, not a fault"),
         Renewed::Lost,
@@ -262,60 +206,33 @@ async fn test_renew_after_reclaim_is_lost() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_renew_coverage_refuses_an_empty_wallet() {
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [runner],
-        fleet,
-        tenant,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    let leases = fixtures.leases();
-    let now = UnixMillis::from_millis(fixtures.enrolled_at());
     // Funded at issue: the lease must be grantable, or this test would be
     // proving the ISSUE gate and not the renewal one.
-    fixtures
-        .seed_wallet(&tenant, DEEP_POOL, fixtures.enrolled_at())
-        .await;
+    let Held {
+        fixtures,
+        runner,
+        issued,
+        fleet,
+        tenant,
+        now,
+        ..
+    } = held().await;
     // Priced, so the run has a floor to fail to cover. The catalogue ships
     // EMPTY and `MODEL` is a fixture spelling no admin would curate, so without
     // this the estimate is `Unpriceable`, its floor is zero, a zero balance
     // covers zero, and the CREDITS gate admits — leaving the BUDGET gate to
     // refuse and this test asserting the wrong code for the right outcome.
-    fixtures
-        .seed_model_rate(PROVIDER, MODEL, fixtures.enrolled_at())
-        .await;
-
-    let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, now, &fleet)
-        .await
-        .expect("the seeded fleet is leasable");
-    leases
-        .record_received(&acquired, now)
-        .await
-        .expect("the narrative log must open");
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
-    let issued = leases
-        .issue(
-            &runner,
-            &acquired,
-            Billed {
-                tenant_id: &tenant_id,
-                posture: POSTURE,
-                provider: PROVIDER,
-                model: MODEL,
-            },
-            now,
-        )
-        .await
-        .expect("the lease row must be written")
-        .expect("the claim is still held");
+    fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let lease = issued.lease_id.as_str();
+    let original = fixtures
+        .instant(Row::Lease(lease), "lease_expires_at")
+        .await
+        .expect("the issued lease has a deadline");
     let plane = fixtures.plane();
 
     // The pool runs dry mid-run. Nothing about the lease changes; the gate is
     // read LIVE, which is the property this asserts.
-    fixtures
-        .seed_wallet(&tenant, 0, fixtures.enrolled_at())
-        .await;
+    fixtures.seed_wallet(&tenant, 0).await;
 
     let refusal = plane
         .renew(
@@ -333,8 +250,10 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     );
 
     assert_eq!(
-        fixtures.lease_column(lease, "lease_expires_at").await,
-        Some(acquired.leased_until.as_millis().to_string()),
+        fixtures
+            .instant(Row::Lease(lease), "lease_expires_at")
+            .await,
+        Some(original),
         "a refused renewal advances nothing — the lease expires on its original deadline"
     );
 

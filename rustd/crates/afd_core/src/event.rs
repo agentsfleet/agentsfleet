@@ -1,5 +1,5 @@
-//! The words `core.fleet_events` stores in its `status` and `failure_label`
-//! columns.
+//! The words `fleet.events` stores in its `status` and `failure_reason`
+//! columns (`failure_reason` reaches the wire as `failure_label`).
 //!
 //! # Why here and not in `afd_wire`
 //!
@@ -23,7 +23,7 @@
 //! `afd_approval` — a second and third spelling at a second and third write
 //! site, which is a row one plane writes that another cannot recognise.
 
-/// The stored spellings of `core.fleet_events.status`.
+/// The stored spellings of `fleet.events.status`.
 pub mod status {
     /// The status an event opens in.
     ///
@@ -51,13 +51,13 @@ pub mod status {
 
     /// A thread row for a message admitted and waiting for a runner.
     ///
-    /// Never stored: `core.fleet_events` gains the row only at lease. The
+    /// Never stored: `fleet.events` gains the row only at lease. The
     /// thread read derives it from the admission ledger's undelivered rows,
     /// so a screen opened while a message waits shows it waiting.
     pub const QUEUED: &str = "queued";
 }
 
-/// Why a gate refused an event, as `core.fleet_events.failure_label`.
+/// Why a gate refused an event, as `fleet.events.failure_reason`.
 ///
 /// One ownership site (RULE UFS) — the webhook path, the steer path and the
 /// dashboard all read these strings, and a second spelling at a second write

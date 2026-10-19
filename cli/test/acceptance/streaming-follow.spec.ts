@@ -5,7 +5,8 @@ import { makeStubbedStateDir } from "./fixtures/state-dir.ts";
 
 const WORKSPACE_ID = "01910000-0000-7000-8000-000000a6e711";
 const FLEET_ID = "01910000-0000-7000-8000-000000a67e57";
-const EVENT_ID = "1729874000000-acceptance";
+const EVENT_ID = "01910000-0000-7000-8000-000000e1e711";
+const EVENT_PATH = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`;
 // A well-formed command-line credential: the load check refuses anything
 // else, so a session-token-shaped stub reads as logged out.
 const TEST_TOKEN = `afc_${"f".repeat(64)}`;
@@ -77,7 +78,7 @@ function sseResponse(status: string): Response {
 function requestKind(pathname: string): "messages" | "stream" | "poll" | "unknown" {
   if (pathname.endsWith("/messages")) return "messages";
   if (pathname.endsWith("/events/stream")) return "stream";
-  if (pathname.endsWith("/events")) return "poll";
+  if (pathname === EVENT_PATH) return "poll";
   return "unknown";
 }
 
@@ -104,7 +105,7 @@ function startSteerStub(mode: ServerMode): StubServer {
         const status = mode === SERVER_MODE.explicitFailure
           ? STATUS_FLEET_ERROR
           : STATUS_PROCESSED;
-        return jsonResponse({ items: [{ event_id: EVENT_ID, status }] });
+        return jsonResponse({ event_id: EVENT_ID, status });
       }
       return jsonResponse({ error: "not found" }, 404);
     },

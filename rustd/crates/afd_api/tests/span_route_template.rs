@@ -11,19 +11,18 @@
 )]
 
 use crate::harness;
-mod recorder;
 
+use afd_core::test_util::trace::{Capture, CapturedSpan};
 use afd_observability::semconv;
 use axum::body::Body;
 use http::{Method, Request};
 use tower::ServiceExt as _;
 
 use self::harness::Fleet;
-use self::recorder::{Recorder, SpanRecord};
 
 /// Drives one request and returns every span it opened.
-async fn spans_for(method: Method, path: &str) -> Vec<SpanRecord> {
-    let recorder = Recorder::install();
+async fn spans_for(method: Method, path: &str) -> Vec<CapturedSpan> {
+    let capture = Capture::install();
     let router = Fleet::new().router();
     let request = Request::builder()
         .method(method)
@@ -31,7 +30,7 @@ async fn spans_for(method: Method, path: &str) -> Vec<SpanRecord> {
         .body(Body::empty())
         .expect("the test request is well formed");
     let _response = router.oneshot(request).await.expect("axum is infallible");
-    recorder.spans()
+    capture.spans()
 }
 
 /// The span names the template, the method, and the status it answered.
@@ -43,17 +42,10 @@ async fn test_span_route_template() {
         .find(|span| span.name == "http.server.request")
         .expect("a matched request opens a server span");
 
+    assert_eq!(span.field(semconv::ATTR_HTTP_ROUTE), Some("/healthz"));
+    assert_eq!(span.field(semconv::ATTR_HTTP_REQUEST_METHOD), Some("GET"));
     assert_eq!(
-        span.field(semconv::ATTR_HTTP_ROUTE).as_deref(),
-        Some("/healthz")
-    );
-    assert_eq!(
-        span.field(semconv::ATTR_HTTP_REQUEST_METHOD).as_deref(),
-        Some("GET")
-    );
-    assert_eq!(
-        span.field(semconv::ATTR_HTTP_RESPONSE_STATUS_CODE)
-            .as_deref(),
+        span.field(semconv::ATTR_HTTP_RESPONSE_STATUS_CODE),
         Some("200"),
         "the status is recorded after the handler answers, not left empty"
     );
@@ -125,7 +117,7 @@ async fn test_no_span_attribute_carries_a_concrete_path() {
         .find(|span| span.name == "http.server.request")
         .expect("a matched request opens a server span");
     assert_eq!(
-        server.field(semconv::ATTR_HTTP_ROUTE).as_deref(),
+        server.field(semconv::ATTR_HTTP_ROUTE),
         Some("/readyz"),
         "the template is the mounted string, with no query and no parameters"
     );
@@ -141,7 +133,7 @@ async fn test_no_span_attribute_carries_a_concrete_path() {
 /// is the only way to tell those two implementations apart.
 #[tokio::test]
 async fn test_a_parameterised_route_reports_its_template() {
-    let recorder = Recorder::install();
+    let capture = Capture::install();
     let router = axum::Router::new()
         .route(
             "/v1/workspaces/{workspace_id}/secrets/{secret_name}",
@@ -156,7 +148,7 @@ async fn test_a_parameterised_route_reports_its_template() {
         .expect("the test request is well formed");
     let _response = router.oneshot(request).await.expect("axum is infallible");
 
-    let spans = recorder.spans();
+    let spans = capture.spans();
     let span = spans
         .iter()
         .find(|span| span.name == "http.server.request")

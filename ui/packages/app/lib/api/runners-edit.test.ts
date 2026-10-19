@@ -11,7 +11,7 @@ beforeEach(() => {fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock);});
 afterEach(() => vi.unstubAllGlobals());
 describe("runner edit transport", () => {
   it.each<RunnerEdit>([{labels: []}, {labels: ["gpu", "gpu", "us-east"]}, {assigned_policy}, {assigned_policy, labels: ["gpu"]}])("sends one PATCH for edit %j and returns all nullable reply fields", async (edit) => {
-    const reply = {id: "runner/one", admin_state: "active", assigned_policy: edit.assigned_policy ?? null, labels: edit.labels ? [...new Set(edit.labels)] : null, selftest_requested_at: null};
+    const reply = {id: "runner/one", status: "active", assigned_policy: edit.assigned_policy ?? null, labels: edit.labels ? [...new Set(edit.labels)] : null, selftest_requested_at: null};
     fetchMock.mockResolvedValueOnce(response(reply));
     expect(await updateRunner("session", "runner/one", edit)).toEqual(reply);
     expect(fetchMock).toHaveBeenCalledOnce();

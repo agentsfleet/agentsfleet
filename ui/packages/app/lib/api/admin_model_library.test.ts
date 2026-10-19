@@ -1,42 +1,14 @@
+import { ADMIN_MODEL, METADATA, PRICE } from "@/tests/helpers/catalogue-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listAdminModels, createAdminModel, updateAdminModel, deleteAdminModel, setPlatformDefault, listPlatformKeys, activePlatformDefault, type PlatformKey } from "./admin_model_library";
-import { nanosToUsdPerMtok, usdPerMtokToNanos } from "./admin-model-library-types";
-import { NANOS_PER_USD } from "../types";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 afterEach(() => fetchMock.mockReset());
 
 function okJson(body: unknown) {
-  return { ok: true, status: 200, statusText: "OK", json: async () => body };
+  return new Response(JSON.stringify(body), { status: 200 });
 }
-
-// ── Rate conversion: $/1M ⇄ integer nanos (billing spine lives in integers) ──
-describe("nanos ⇄ $/1M conversion", () => {
-  it("should render stored nanos as $/1M tokens", () => {
-    expect(nanosToUsdPerMtok(3_000_000_000)).toBe(3); // $3/M input (Sonnet)
-    expect(nanosToUsdPerMtok(550_000_000)).toBe(0.55); // $0.55/M
-    expect(nanosToUsdPerMtok(0)).toBe(0); // self-managed-only model
-  });
-
-  it("should convert $/1M entry to integer nanos at submit", () => {
-    expect(usdPerMtokToNanos(0.55)).toBe(550_000_000);
-    expect(usdPerMtokToNanos(2.19)).toBe(2_190_000_000);
-    expect(usdPerMtokToNanos(0)).toBe(0);
-  });
-
-  it("should round to an integer nanos (no fractional nanos reach the wire)", () => {
-    // 0.000000001 $/M = 1 nano exactly; a sub-nano entry rounds, never NaN/float.
-    expect(Number.isInteger(usdPerMtokToNanos(2.191))).toBe(true);
-    expect(usdPerMtokToNanos(1 / 3)).toBe(Math.round((1 / 3) * NANOS_PER_USD));
-  });
-
-  it("should round-trip a catalogue rate within a nano", () => {
-    for (const usd of [0, 0.1, 0.95, 2.19, 15, 75]) {
-      expect(nanosToUsdPerMtok(usdPerMtokToNanos(usd))).toBeCloseTo(usd, 6);
-    }
-  });
-});
 
 // ── Authed admin client: correct verb + path + body to the wire contract ─────
 describe("admin model catalogue client", () => {
@@ -50,15 +22,8 @@ describe("admin model catalogue client", () => {
   });
 
   it("should POST a new catalogue row as JSON", async () => {
-    fetchMock.mockResolvedValue(okJson({ id: "u1" }));
-    const body = {
-      provider: "fireworks",
-      model_id: "glm-5.2",
-      context_cap_tokens: 128000,
-      input_nanos_per_mtok: 550_000_000,
-      cached_input_nanos_per_mtok: 140_000_000,
-      output_nanos_per_mtok: 2_190_000_000,
-    };
+    fetchMock.mockResolvedValue(okJson(ADMIN_MODEL));
+    const body = { provider: ADMIN_MODEL.provider, model_id: ADMIN_MODEL.model_id, metadata: METADATA, prices: [PRICE] };
     await createAdminModel("tok", body);
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/v1/admin/models");
@@ -68,12 +33,7 @@ describe("admin model catalogue client", () => {
 
   it("should PATCH caps/rates by id (identity stays immutable)", async () => {
     fetchMock.mockResolvedValue(okJson({ id: "u1", updated: true }));
-    await updateAdminModel("tok", "u1", {
-      context_cap_tokens: 200000,
-      input_nanos_per_mtok: 1,
-      cached_input_nanos_per_mtok: 0,
-      output_nanos_per_mtok: 2,
-    });
+    await updateAdminModel("tok", "u1", { metadata: METADATA, prices: [PRICE] });
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/v1/admin/models/u1");
     expect(init.method).toBe("PATCH");
@@ -119,8 +79,8 @@ describe("admin model catalogue client", () => {
 
 // ── Active-default selection: the one active row (or null) drives the badge ───
 describe("activePlatformDefault", () => {
-  const active: PlatformKey = { provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 2 };
-  const inactive: PlatformKey = { provider: "anthropic", source_workspace_id: "ws1", model: null, active: false, updated_at: 1 };
+  const active: PlatformKey = { provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: "1970-01-01T00:00:00.002Z" };
+  const inactive: PlatformKey = { provider: "anthropic", source_workspace_id: "ws1", model: null, active: false, updated_at: "1970-01-01T00:00:00.001Z" };
 
   it("returns the single active row when one is set", () => {
     expect(activePlatformDefault({ keys: [inactive, active] })).toBe(active);
@@ -130,4 +90,34 @@ describe("activePlatformDefault", () => {
     expect(activePlatformDefault({ keys: [inactive] })).toBeNull();
     expect(activePlatformDefault({ keys: [] })).toBeNull();
   });
+});
+
+it("returns complete metadata and preserves nanos beyond JavaScript's safe integer range", async () => {
+  const model = { ...ADMIN_MODEL, prices: [{ ...PRICE, input_nanos_per_mtok: "9223372036854775807" }] };
+  fetchMock.mockResolvedValue(okJson({ models: [model] }));
+  expect((await listAdminModels("token")).models[0]).toEqual(model);
+});
+it("refuses malformed read rows", async () => {
+  fetchMock.mockResolvedValue(okJson({ models: [{ id: "invalid" }] }));
+  await expect(listAdminModels("token")).rejects.toThrow();
+});
+it("leaves the server's schedule refusal visible to the editor", async () => {
+  const detail = "date ranges for one tier overlap";
+  fetchMock.mockResolvedValue(new Response(JSON.stringify({ detail, error_code: "UZ-LIBRARY-003" }), { status: 400 }));
+  await expect(updateAdminModel("token", "u1", { metadata: METADATA, prices: [PRICE] })).rejects.toMatchObject({ message: detail, status: 400 });
+});
+
+it.each([{ updated: true }, { id: "u1", updated: "yes" }])("refuses a malformed PATCH result %j", async (body) => {
+  fetchMock.mockResolvedValue(okJson(body));
+  await expect(updateAdminModel("token", "u1", { metadata: METADATA, prices: [PRICE] })).rejects.toThrow();
+});
+it("sends exact int64 write amounts and preserves nulls on PATCH", async () => {
+  fetchMock.mockResolvedValue(okJson({ id: "u1", updated: true }));
+  const prices = [{ ...PRICE, input_nanos_per_mtok: "9223372036854775807", cache_write_5m_nanos_per_mtok: "1" }];
+  await updateAdminModel("token", "a/b", { metadata: METADATA, prices });
+  const [url, init] = fetchMock.mock.calls[0]!;
+  expect(url).toContain("/a%2Fb");
+  expect(init.body).toContain('"input_nanos_per_mtok":"9223372036854775807"');
+  expect(init.body).toContain('"cache_write_5m_nanos_per_mtok":"1"');
+  expect(init.body).toContain('"cache_write_nanos_per_mtok":null');
 });

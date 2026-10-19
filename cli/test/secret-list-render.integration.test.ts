@@ -13,15 +13,14 @@ import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.t
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const SECRETS = `/v1/workspaces/${WS_ID}/secrets`;
-const CREATED_MS = 1700000000000;
-const CREATED_ISO = new Date(CREATED_MS).toISOString();
+const CREATED_AT = "2023-11-14T22:13:20Z";
 
 const routes: MockRoutes = {
   [`GET ${SECRETS}`]: () =>
     jsonResponse(200, {
       secrets: [
-        { name: "github", created_at: CREATED_MS, kind: "custom_secret" },
-        { name: "fireworks", created_at: CREATED_MS, kind: "provider_key" },
+        { name: "github", created_at: CREATED_AT, kind: "custom_secret" },
+        { name: "fireworks", created_at: CREATED_AT, kind: "provider_key" },
         { name: "no-kind", created_at: null },
       ],
     }),
@@ -63,12 +62,10 @@ describe("secret list rendering", () => {
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         const text = out.read();
-        // The column reports how long ago, not when. The half of this that
-        // was always load-bearing survives: a raw epoch integer is never what
-        // a reader is handed.
+        // The column reports how long ago, not when: the wire instant is
+        // never what a reader is handed in the table.
         expect(text).toMatch(/\d+[smhdy]\b/);
-        expect(text).not.toContain(String(CREATED_MS));
-        expect(text).not.toContain(CREATED_ISO);
+        expect(text).not.toContain(CREATED_AT);
       });
     });
   });
@@ -100,7 +97,7 @@ describe("secret list rendering", () => {
             secrets: [
               {
                 name: "github",
-                created_at: CREATED_MS,
+                created_at: CREATED_AT,
                 kind: "custom_secret",
                 value: "ghp_THIS_MUST_NEVER_PRINT",
                 data: { token: "ghp_ALSO_NEVER" },

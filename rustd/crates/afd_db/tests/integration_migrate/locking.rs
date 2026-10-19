@@ -1,4 +1,4 @@
-//! Advisory-lock, failure-ledger, retry, and availability proofs.
+//! Advisory-lock, failed-slot, retry, and availability proofs.
 
 use std::sync::LazyLock;
 
@@ -13,7 +13,7 @@ async fn test_migrate_advisory_lock_contention() {
     let first = database.open(DbRole::Migrator, &[]).await;
     let second = database.open(DbRole::Migrator, &[]).await;
 
-    // A bound long enough for the loser to outlast a full 47-migration apply,
+    // A bound long enough for the loser to outlast a full apply of every slot,
     // short enough that a genuine deadlock fails the test rather than the lane.
     let policy = RetryPolicy::new(120, Duration::from_millis(250));
     let migrator = Migrator::new().with_retry_policy(policy);
@@ -34,9 +34,8 @@ async fn test_migrate_advisory_lock_contention() {
     );
 
     let mut connection = first.acquire().await.unwrap();
-    let ledger = Ledger::read(&mut connection).await.unwrap();
     assert_eq!(
-        ledger.applied,
+        applied_versions(&mut connection).await,
         canonical_versions(),
         "the ledger must hold one row per version, no duplicates"
     );
@@ -47,14 +46,13 @@ async fn test_migrate_advisory_lock_contention() {
     database.cleanup().await;
 }
 
-/// Dimension 2.3 — a migration that fails records a failure row and is never
-/// recorded as applied.
+/// A slot that fails is never recorded, and the slot before it stays applied:
+/// each slot is its own transaction.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_migrate_failure_bookkeeping() {
-    // Built on first use rather than in a `const` context: the migrator takes
-    // a `'static` slice, and a `LazyLock` gives one while the constructor runs
-    // as the code under test rather than at compile time.
+async fn test_a_failed_slot_is_never_recorded() {
+    // Built on first use: the migrator takes a `'static` slice, and a
+    // `LazyLock` gives one while the constructor runs as the code under test.
     static FAILING: LazyLock<[Migration; 2]> = LazyLock::new(|| {
         [
             Migration::for_test(
@@ -81,41 +79,25 @@ async fn test_migrate_failure_bookkeeping() {
     assert!(error.is_migration_failed(), "got {error}");
     assert!(
         error.to_string().contains("900002"),
-        "the failure must name the version: {error}"
+        "names the slot: {error}"
     );
 
     let mut connection = db.acquire().await.unwrap();
-    let ledger = Ledger::read(&mut connection).await.unwrap();
-
+    let applied = applied_versions(&mut connection).await;
     assert!(
-        ledger.applied.contains(&900_001),
-        "the migration that succeeded stays applied"
+        applied.contains(&900_001),
+        "the slot that succeeded stays applied"
     );
     assert!(
-        !ledger.applied.contains(&900_002),
-        "a failed migration must never be recorded as applied"
+        !applied.contains(&900_002),
+        "a failed slot is never recorded"
     );
-
-    let failure = ledger
-        .failures
-        .get(&900_002)
-        .expect("the failure must be recorded for an operator to find");
-    assert!(
-        !failure.error_text.is_empty(),
-        "the failure row must say what went wrong"
-    );
-    assert!(failure.failed_at > 0, "failed_at must be a real timestamp");
-
-    // The transaction rolled back, so the failing migration left nothing behind.
-    let leftover: i64 = sqlx::query(
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'afd_migrate_probe'",
-    )
-    .fetch_one(&mut *connection)
-    .await
-    .unwrap()
-    .try_get(0)
-    .unwrap();
-    assert_eq!(leftover, 1, "the successful migration's table must survive");
+    let probe: bool = sqlx::query("SELECT to_regclass('public.afd_migrate_probe') IS NOT NULL")
+        .fetch_one(&mut *connection)
+        .await
+        .unwrap()
+        .get(0);
+    assert!(probe, "the successful slot's table survives");
     drop(connection);
 
     db.close().await;

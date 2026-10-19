@@ -10,11 +10,21 @@
 
 use afd_db::Db;
 use afd_db::test_util::mint_id;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::workspace::access::ROLE_OWNER;
 
 /// What a seed reports when the lane gives it no connection.
 const NO_CONNECTION: &str = "an API connection";
+
+/// When a seeded account opened: one millisecond past the epoch, so every row a
+/// case writes through the store sorts after it.
+const SIGNED_UP_AT: Timestamp = Timestamp::constant(0, 1_000_000);
+
+/// When a seeded membership began: after the account it joins, still before
+/// anything a case writes.
+const HELD_FROM: Timestamp = Timestamp::constant(0, 2_000_000);
 
 /// One person's account as signup leaves it, less the wallet.
 #[derive(Debug, Clone, Copy)]
@@ -35,7 +45,9 @@ pub struct Signup<'a> {
     pub workspace: &'a str,
 }
 
-/// Writes `person`'s tenant, user, owner membership and workspace, all at 1.
+/// Writes `person`'s tenant, user, owner membership and workspace, all at
+/// [`SIGNED_UP_AT`]. Backdated rather than stamped by the database clock: a
+/// case reads the seeded rows as the oldest.
 ///
 /// # Panics
 /// When the lane's Postgres will not take the rows.
@@ -43,18 +55,18 @@ pub async fn sign_up(database: &Db, person: &Signup<'_>) {
     let mut connection = database.acquire().await.expect(NO_CONNECTION);
     sqlx::query(
         "WITH tenant AS ( \
-           INSERT INTO core.tenants (id, name, created_at, updated_at) \
-           VALUES ($1::uuid, $2, 1, 1) \
+           INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+           VALUES ($1::uuid, $2, $10, $10) \
          ), person AS ( \
-           INSERT INTO core.users \
+           INSERT INTO identity.users \
              (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-           VALUES ($3::uuid, $1::uuid, $4, $5, $6, 1, 1) \
+           VALUES ($3::uuid, $1::uuid, $4, $5, $6, $10, $10) \
          ), membership AS ( \
-           INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-           VALUES ($7::uuid, $1::uuid, $3::uuid, $8, 1) \
+           INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
+           VALUES ($7::uuid, $1::uuid, $3::uuid, $8, $10) \
          ) \
-         INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-         VALUES ($9::uuid, $1::uuid, $2, $4, 1)",
+         INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
+         VALUES ($9::uuid, $1::uuid, $2, $10)",
     )
     .bind(person.tenant)
     .bind(person.name)
@@ -65,29 +77,46 @@ pub async fn sign_up(database: &Db, person: &Signup<'_>) {
     .bind(mint_id())
     .bind(ROLE_OWNER)
     .bind(person.workspace)
+    .bind(SIGNED_UP_AT.to_sqlx())
     .execute(&mut *connection)
     .await
     .expect("a signed-up person seeds");
 }
 
-/// `user` in `tenant`'s account with `role` from time 2, whatever they held.
+/// `user` in `tenant`'s account with `role` from [`HELD_FROM`], whatever they
+/// held.
+///
+/// Replaced rather than updated: `identity.memberships` is append-only, so a
+/// role change is a removal and a fresh row, in one transaction.
 ///
 /// # Panics
 /// When the lane's Postgres will not take the row.
 pub async fn hold(database: &Db, tenant: &str, user: &str, role: &str) {
     let mut connection = database.acquire().await.expect(NO_CONNECTION);
+    let mut transaction = sqlx::Acquire::begin(&mut *connection)
+        .await
+        .expect("the membership transaction opens");
     sqlx::query(
-        "INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 2) \
-         ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+        "DELETE FROM identity.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
+    )
+    .bind(tenant)
+    .bind(user)
+    .execute(&mut *transaction)
+    .await
+    .expect("the old membership clears");
+    sqlx::query(
+        "INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)",
     )
     .bind(mint_id())
     .bind(tenant)
     .bind(user)
     .bind(role)
-    .execute(&mut *connection)
+    .bind(HELD_FROM.to_sqlx())
+    .execute(&mut *transaction)
     .await
     .expect("the membership is set");
+    transaction.commit().await.expect("the membership commits");
 }
 
 /// Removes `tenants` and everything that cascades from them.
@@ -96,7 +125,7 @@ pub async fn hold(database: &Db, tenant: &str, user: &str, role: &str) {
 /// When the lane's Postgres will not remove them.
 pub async fn delete_accounts(database: &Db, tenants: &[&str]) {
     let mut connection = database.acquire().await.expect(NO_CONNECTION);
-    sqlx::query("DELETE FROM core.tenants WHERE id = ANY($1::uuid[])")
+    sqlx::query("DELETE FROM identity.tenants WHERE id = ANY($1::uuid[])")
         .bind(tenants)
         .execute(&mut *connection)
         .await

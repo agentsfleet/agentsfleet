@@ -5,17 +5,17 @@
 //! bytes or a pending gate becomes unreachable, and a prefix spelled inline at
 //! one call site is precisely how that agreement ends (RULE UFS).
 
+use std::time::Duration;
+
 use afd_api_wire::approval::GateStatus;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::spelling::from_spelling;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_dragonfly::{Dragonfly, ReadyIndex};
-use sqlx::Row as _;
 
 use super::sql;
-use crate::error::{Result, query};
+use crate::error::{DETAIL_GATE_REFERENCE_UNWRITABLE, Result, encoded, query};
 use crate::gate::decision::{Answer, answer};
 use crate::gate::pending::{Evaluation, GateRef, evaluate};
 
@@ -25,22 +25,19 @@ const CONTEXT_STATUS: &str = "approval gate status";
 /// The durable fallback answered where the mirror did not.
 const EVENT_DB_FALLBACK: &str = "approval_decision_db_fallback_used";
 
-/// How long a reference outlives its own deadline, in seconds.
+/// How long a reference outlives the timeout it was raised with.
 ///
 /// A re-encountered event has to be able to resolve its gate AFTER the deadline
 /// passes — that is what produces the timeout — so the key cannot expire at the
-/// deadline. The grace covers the sweeper's cadence plus clock slop between
-/// this daemon and Dragonfly.
-const REF_GRACE_SECONDS: i64 = 600;
+/// deadline. The grace covers the sweeper's cadence plus the gap between the
+/// database stamping the deadline and Dragonfly starting the key's clock.
+const REF_GRACE: Duration = Duration::from_mins(10);
 
-/// The floor a reference's lifetime is clamped to, in seconds.
+/// The floor a reference's lifetime is clamped to.
 ///
-/// A gate raised with a deadline already in the past would otherwise compute a
-/// negative expiry and be rejected by Dragonfly.
-const REF_MINIMUM_SECONDS: i64 = 7_200;
-
-/// Milliseconds in a second, for the deadline-to-expiry conversion.
-const MILLIS_PER_SECOND: i64 = 1_000;
+/// A gate raised with a zero timeout would otherwise get a key that dies before
+/// the poll which resolves it.
+const REF_MINIMUM: Duration = Duration::from_hours(2);
 
 /// Every Dragonfly key the approval gate uses.
 ///
@@ -154,7 +151,8 @@ impl Gates {
         Ok(stored.and_then(|raw| serde_json::from_str(&raw).ok()))
     }
 
-    /// Record that `event_id` is waiting on `reference`.
+    /// Record that `event_id` is waiting on `reference`, for long enough to
+    /// outlive a gate raised with `timeout`.
     ///
     /// # Errors
     /// Reports a queue that would not answer.
@@ -163,15 +161,12 @@ impl Gates {
         fleet_id: &Uuid7,
         event_id: &str,
         reference: &GateRef,
+        timeout: Duration,
     ) -> Result<()> {
-        let lifetime = reference_lifetime(reference, afd_core::clock::now());
-        // Infallible for this shape — a two-field record of a string and an
-        // integer has no serializer error to reach — but the failure is not
-        // swallowed: an unwritable reference would leave a parked event unable
-        // to find its own gate, which is the one outcome worth an error.
-        let encoded = serde_json::to_string(reference).map_err(|_shape| {
-            crate::error::rejected(crate::error::DETAIL_GATE_REFERENCE_UNWRITABLE)
-        })?;
+        let lifetime = reference_lifetime(timeout);
+        // An unwritable reference would leave a parked event unable to find
+        // its own gate, which is the one outcome worth an error.
+        let encoded = encoded(reference, DETAIL_GATE_REFERENCE_UNWRITABLE)?;
         self.queue
             .set_for(
                 &key::event_ref(fleet_id.as_str(), event_id),
@@ -187,69 +182,90 @@ impl Gates {
     /// Reads the mirror first and the durable row only when the mirror is
     /// silent, which is one round trip on the path that runs and two on the
     /// path that should not. See the module note on [`super::pending`] for why
-    /// the fallback exists at all.
+    /// the fallback exists at all. The durable read also answers whether the
+    /// deadline has passed, on the database clock — a gate still waiting is
+    /// exactly the one whose answer the mirror does not hold.
     ///
     /// # Errors
     /// Reports a queue or datastore that would not answer.
-    pub async fn evaluate(&self, reference: &GateRef, now: UnixMillis) -> Result<Evaluation> {
-        Ok(evaluate(reference, self.answer(reference).await?, now))
-    }
-
-    /// The decision for `reference`, from whichever store has one.
-    async fn answer(&self, reference: &GateRef) -> Result<Option<Answer>> {
+    pub async fn evaluate(&self, reference: &GateRef) -> Result<Evaluation> {
         let action = reference.action_id().as_str();
         let mirrored = self.queue.get_string(&key::response(action)).await?;
         if let Some(answer) = mirrored.as_deref().and_then(Answer::parse) {
-            return Ok(Some(answer));
+            return Ok(evaluate(Some(answer), false));
         }
 
-        let durable = self.status(action).await?.and_then(answer);
+        // A reference whose row cannot be found has no deadline to lapse: the
+        // park writes the row before the reference, so only a purge removes
+        // it. Waiting is the fail-safe direction, and the key's own lifetime
+        // ends the wait.
+        let Some(standing) = self.standing(action).await? else {
+            return Ok(Evaluation::Pending);
+        };
+        let durable = standing.status.and_then(answer);
         if let Some(answer) = durable {
             // Only reachable in the window a mirror write missed, which is what
             // makes it worth a line: this is the metric that says the write
             // side has a gap, and it is silent when it does not.
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let outcome = answer.as_str();
             tracing::info!(
                 event = EVENT_DB_FALLBACK,
                 action_id = action,
-                outcome = answer.as_str(),
+                outcome,
                 "the decision mirror was absent and the durable row answered"
             );
         }
-        Ok(durable)
+        Ok(evaluate(durable, standing.lapsed))
     }
 
-    /// The durable status of `action_id`, or nothing if it has no row.
-    async fn status(&self, action_id: &str) -> Result<Option<GateStatus>> {
+    /// Where `action_id`'s newest gate stands, or nothing if it has no row.
+    async fn standing(&self, action_id: &str) -> Result<Option<Standing>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::SELECT_GATE_STATUS)
+        let row = sqlx::query_as::<_, StoredStanding>(sql::SELECT_GATE_STATUS)
             .bind(action_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_STATUS))?;
 
-        row.map(|row| row.try_get::<String, _>(0).map_err(query(CONTEXT_STATUS)))
-            .transpose()
+        Ok(row.map(|stored| Standing {
             // A spelling this daemon does not know is treated as no status at
             // all, which leaves the gate PENDING. Guessing in either direction
             // would either release an event on an unrecognised word or kill one.
-            .map(|stored| stored.as_deref().and_then(from_spelling::<GateStatus>))
+            status: from_spelling::<GateStatus>(&stored.status),
+            lapsed: stored.lapsed,
+        }))
     }
 }
 
-/// How long a reference should live, in seconds.
+/// The durable gate row as [`sql::SELECT_GATE_STATUS`] returns it.
+#[derive(Debug, sqlx::FromRow)]
+struct StoredStanding {
+    status: String,
+    lapsed: bool,
+}
+
+/// Where a gate stands: its status, when this build knows the word, and
+/// whether its deadline has passed on the database clock.
+#[derive(Debug, Clone, Copy)]
+struct Standing {
+    status: Option<GateStatus>,
+    lapsed: bool,
+}
+
+/// How long a reference should live, in the whole seconds Dragonfly's `EX`
+/// takes.
 ///
-/// The deadline plus a grace, floored at the minimum — so a gate raised with a
-/// deadline already behind it still gets a key that outlives the poll which
-/// will resolve it, rather than a negative expiry Dragonfly refuses.
+/// The timeout plus a grace, floored at the minimum. A span and not a
+/// deadline: the database stamped the deadline as `now()` plus this same
+/// timeout, so the key outlives it by the grace without either side reading a
+/// clock to compare. This is the one place the span becomes a count.
 ///
-/// Saturating: a deadline at the edge of the clock's range, or a host clock
-/// set before 1970, must cost a clamped lifetime rather than an overflow that
-/// aborts the daemon.
-fn reference_lifetime(reference: &GateRef, now: UnixMillis) -> i64 {
-    let remaining = reference.deadline().saturating_millis_since(now) / MILLIS_PER_SECOND;
-    remaining
-        .saturating_add(REF_GRACE_SECONDS)
-        .max(REF_MINIMUM_SECONDS)
+/// Saturating: a timeout at the edge of the range must cost a clamped lifetime
+/// rather than an overflow that aborts the daemon.
+fn reference_lifetime(timeout: Duration) -> i64 {
+    let lifetime = timeout.saturating_add(REF_GRACE).max(REF_MINIMUM);
+    i64::try_from(lifetime.as_secs()).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]

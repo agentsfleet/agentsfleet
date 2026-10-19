@@ -6,7 +6,7 @@ mod sql;
 mod write;
 
 use afd_api_wire::schedule::Patch;
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 
 /// One conditional edit, with the workspace proven by the mounted route.
 #[derive(Debug, Clone, Copy)]
@@ -21,6 +21,4 @@ pub struct EditRequest<'a> {
     pub expected: Option<&'a str>,
     /// An overlay or an independent schedule edit.
     pub patch: &'a Patch,
-    /// Audit time; fence expiry uses the database clock.
-    pub now: UnixMillis,
 }

@@ -24,7 +24,7 @@ use afd_tenant::sql::invite::{LOCK_INVITE, SELECT_PENDING_FOR_EMAIL, SELECT_TENA
 use afd_tenant::sql::member::SELECT_MEMBERS;
 use afd_tenant::sql::workspace::{AUTHORIZE_WORKSPACE, SELECT_SUBJECT_ACCOUNTS};
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
-use sqlx::{AssertSqlSafe, Row as _};
+use sqlx::{AssertSqlSafe, FromRow as _};
 
 /// Enough rows per table that a sequential scan loses to an index probe.
 const SEEDED: i32 = 3000;
@@ -48,28 +48,29 @@ async fn seed(database: &Db, prefix: &str) {
            SELECT g, $1 || '-' || lpad(to_hex(g), 4, '0') || '-7000-8000-' AS stem \
            FROM generate_series(1, $2) g \
          ), tenants AS ( \
-           INSERT INTO core.tenants (id, name, created_at, updated_at) \
-           SELECT (stem || '000000000001')::uuid, 'plan-' || $1, 1, 1 FROM n \
+           INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+           SELECT (stem || '000000000001')::uuid, 'plan-' || $1, now(), now() FROM n \
          ), people AS ( \
-           INSERT INTO core.users \
+           INSERT INTO identity.users \
              (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
            SELECT (stem || '000000000002')::uuid, (stem || '000000000001')::uuid, \
-                  'user_plan_' || $1 || '_' || g, 'plan@example.test', NULL, 1, 1 FROM n \
+                  'user_plan_' || $1 || '_' || g, 'plan@example.test', NULL, now(), now() FROM n \
          ), memberships AS ( \
-           INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
+           INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
            SELECT (stem || '000000000003')::uuid, (stem || '000000000001')::uuid, \
-                  (stem || '000000000002')::uuid, $3, 1 FROM n \
+                  (stem || '000000000002')::uuid, $3, now() FROM n \
          ), workspaces AS ( \
-           INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
+           INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
            SELECT (stem || '000000000004')::uuid, (stem || '000000000001')::uuid, \
-                  'plan-' || g, 'plan', 1 FROM n \
+                  'plan-' || g, now() FROM n \
          ) \
-         INSERT INTO core.invites \
-           (id, tenant_id, email, role, invited_by, expires_at, email_attempts, \
-            created_at, updated_at) \
+         INSERT INTO identity.invites \
+           (id, tenant_id, email, role, status, invited_by_user_id, expires_at, \
+            email_attempt_count, created_at, updated_at) \
          SELECT (stem || '000000000005')::uuid, (stem || '000000000001')::uuid, \
-                'guest-' || $1 || '-' || g || '@plan.test', $3, \
-                (stem || '000000000002')::uuid, 9000000000000, 0, 1, 1 FROM n",
+                'guest-' || $1 || '-' || g || '@plan.test', $3, 'pending', \
+                (stem || '000000000002')::uuid, now() + interval '1 day', 0, now(), now() \
+         FROM n",
     )
     .bind(prefix)
     .bind(SEEDED)
@@ -77,10 +78,12 @@ async fn seed(database: &Db, prefix: &str) {
     .execute(&mut *connection)
     .await
     .expect("the plan rows seed");
-    sqlx::query("ANALYZE core.workspaces, core.users, core.memberships, core.invites")
-        .execute(&mut *connection)
-        .await
-        .expect("the planner's statistics refresh");
+    sqlx::query(
+        "ANALYZE identity.workspaces, identity.users, identity.memberships, identity.invites",
+    )
+    .execute(&mut *connection)
+    .await
+    .expect("the planner's statistics refresh");
 }
 
 /// One statement to explain: its parameter types and the arguments for row one.
@@ -122,7 +125,10 @@ async fn plan(database: &Db, prefix: &str, probe: &Probe<'_>, mode: &str) -> Vec
     .await
     .expect("the prepared statement and the mode are released");
     rows.iter()
-        .map(|row| row.try_get::<String, _>(0).expect("a plan line is text"))
+        .map(|row| {
+            let (line,) = <(String,)>::from_row(row).expect("a plan line is text");
+            line
+        })
         .collect()
 }
 
@@ -184,7 +190,7 @@ impl Seeded {
         // By the run's own tenant name, never by an id pattern: fixture ids from
         // `mint_id` all start alike, so a prefix match here once removed every
         // tenant the concurrent suites had seeded.
-        sqlx::query("DELETE FROM core.tenants WHERE name = 'plan-' || $1")
+        sqlx::query("DELETE FROM identity.tenants WHERE name = 'plan-' || $1")
             .bind(&self.prefix)
             .execute(&mut *connection)
             .await
@@ -221,15 +227,15 @@ async fn test_team_reads_plan_as_index_probes() {
         (
             "pending invitations",
             SELECT_TENANT_PENDING,
-            "text, bigint",
-            format!("{}, 2", seeded.row(1)),
+            "text",
+            seeded.row(1),
             &["invites"][..],
         ),
         (
             "waiting for an address",
             SELECT_PENDING_FOR_EMAIL,
-            "text, bigint, text",
-            format!("{address}, 2, {owner}"),
+            "text, text",
+            format!("{address}, {owner}"),
             &["invites", "tenants", "memberships"][..],
         ),
         (

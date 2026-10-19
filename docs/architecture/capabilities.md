@@ -15,7 +15,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Capability layers | 2 | the Definition's `instructions_md` is advisory; its reviewed `config` plus approved grants are binding, enforced by the runner | §1 |
-| `trigger.type` vs `event_type` | orthogonal fields | different homes (the setup's `config` vs `core.fleet_events`), never the same value | §1.1 |
+| `trigger.type` vs `event_type` | orthogonal fields | different homes (the setup's `config` vs `fleet.events`), never the same value | §1.1 |
 | Tool primitives | the runner's published catalog, e.g. `http_request` · the `file_*` tools · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | [`runner_execution.md`](./runner_execution.md) §"Tool catalog" |
 | Mintable integrations | short-lived tokens, minted per lease | GitHub App: daemon-signed RS256 JSON Web Token (JWT) exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
 | Vault secret shapes | 2 | static (stores the value, resolved at lease) vs mintable (stores a handle, never a token) | §3 |
@@ -55,7 +55,7 @@ These are two different fields on two different tables. Mixing them up is the mo
 | Field | Where it lives | Values | What it tags |
 |---|---|---|---|
 | `trigger.type` | the setup's `config` (static, reviewed) | `webhook` / `cron` / `mention` | **How a Fleet gets triggered**: the wiring fixed at Save or a later reviewed revision. |
-| `event_type` | `core.fleet_events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
+| `event_type` | `fleet.events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
 
 A fleet that declares no trigger receives only `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` fleet receives `event_type: webhook`. A continuation event, which `agentsfleetd` writes when an approval gate resolves (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`), carries `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
 
@@ -75,7 +75,7 @@ The runner hosts every published tool; `tools:` selects which the model is offer
 |---|---|---|
 | Work assignment + kill | `agentsfleetd` assigns the next event on `lease` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per lease). Kill stops new leases; a lease already running runs to its end or to its fleet's stored budget ceiling ([`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause"). | agentsfleetd control plane |
 | Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model — outbound is the only network surface"). | Lease ExecutionPolicy |
-| Event stream + history | Every steer / webhook / cron event lands on `fleet:{id}:events` with actor provenance. `core.fleet_events` rows are opened at receive and closed at completion. | Event ingest + history path |
+| Event stream + history | Every steer / webhook / cron event lands on `fleet:{id}:events` with actor provenance. `fleet.events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub App + manual) | Both receivers verify the signature, bind the delivery to subscribed fleets and refuse replays before queueing. The App records actor `github-app`; the manual receiver records `webhook:<source>` ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution"). | App ingress + webhook receiver |
 | Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`rustd/crates/afd_crypto/src/lib.rs`). Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`) — never a token — which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
 | Integration credential broker | `agentsfleetd` mints a short-lived, workspace-scoped token per mintable integration on demand; the App private key never leaves the daemon ([`connectors.md`](./connectors.md) §"Credential use remains separate from event receipt"). | Credential broker (daemon-side) |
@@ -141,7 +141,7 @@ flowchart TD
 ### What each layer catches
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the fleet works. Forces the fleet to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
-- **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.fleet_events`; they just leave the active language-model context.
+- **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `fleet.events`; they just leave the active language-model context.
 - **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every model turn the runner compares the prompt's tokens with that fraction of `context_cap_tokens`. Past it, the runner logs `context_cap_reached` and offers no more tools. It tells the model to answer with what it has and say what was not done (`rustd/crates/afr_agent/src/context/mod.rs`, `loop/mod.rs`). A cap of 0, which the daemon could not resolve, never trips. The fleet's instructions tell it to write a durable snapshot (`memory_store`) before then, as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner's supervisor loads that fleet's prior memory from `agentsfleetd` over the runner's authenticated API, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
@@ -159,7 +159,7 @@ The runtime ships with model-tier-aware defaults the user inherits without any c
 - `memory_checkpoint_every: 5` and `stage_chunk_threshold: 0.75` for every model — checkpoint cadence and chunk-trigger fraction don't meaningfully change with context size.
 - `tool_window: auto` resolves per lease from the active model's context cap: **30** when the cap is at least one million tokens, **10** when it is at or below two hundred thousand, and **20** for every cap in between or an unknown cap (`rustd/crates/afd_gate/src/policy/context.rs`).
 
-Each lease reads the selected model's physical window from `core.model_library`, for either an owner registration or the active `platform-default`. The setup's operating cap defaults to that window; an authored cap changes wrap-up behavior only (`rustd/crates/afd_credential/src/provider/registered/sql.rs`, `rustd/crates/afd_gate/src/policy/build/mod.rs`). See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
+Each lease reads the selected model's physical window from `model.platform_models`, for either an owner registration or the active `platform-default`. The setup's operating cap defaults to that window; an authored cap changes wrap-up behavior only (`rustd/crates/afd_credential/src/provider/registered/sql/mod.rs`, `rustd/crates/afd_gate/src/policy/build/mod.rs`). See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
 
 ### When a user does want to override (rare)
 
@@ -191,7 +191,7 @@ The selection is deterministic and documented so a confused "why does my fleet r
 
 - Never logs raw secret bytes
 - Never echoes secrets in the fleet's context
-- Never persists secrets in `core.fleet_events`
+- Never persists secrets in `fleet.events`
 - Never lets the GitHub App private key leave the daemon — it is platform-side; the lease envelope, the `secrets_map`, and the runner never carry it
 - Never lets the fleet reach a host outside its `network.allow` list
 - Never lets the fleet exceed its `budget` caps without trip-blocking

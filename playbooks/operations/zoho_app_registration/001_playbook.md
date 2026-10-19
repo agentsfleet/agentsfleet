@@ -56,7 +56,7 @@ founding deployment after all provider bags are synced.
 
 1. Indy connects a test Zoho Desk organization from the dashboard.
 2. Orly confirms the callback completes for the expected tenant.
-3. Orly confirms the vaulted `fleet:zoho` handle has the organization-correct
+3. Orly confirms the workspace's vaulted `zoho` credential has the organization-correct
    regional accounts base.
 4. Orly proves one token refresh succeeds after the initial access token is no
    longer current.

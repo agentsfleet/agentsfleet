@@ -18,7 +18,7 @@ import { deriveTileLiveness } from "@/lib/wall/tile-liveness";
 
 export const WORKSPACE_ID = "ws_wall";
 export const EVENT_CREATED_AT_MS = 1_700_000_000_000;
-export const SPENT_NANOS = 2_000_000_000;
+export const SPENT_NANOS = "2000000000";
 export const LIVE_LABEL = "live";
 export const LAST_KNOWN_LABEL = "last known";
 export const CURRENT_LABEL = "current";

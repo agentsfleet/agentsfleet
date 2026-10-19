@@ -2,6 +2,7 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::Definition;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 /// Bounded Library or immutable-history walk.
@@ -31,8 +32,9 @@ pub struct RevisionSummary {
     pub revision: String,
     /// Content identity.
     pub canonical_digest: String,
-    /// UTC milliseconds.
-    pub created_at: i64,
+    /// Publication time.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: Timestamp,
 }
 
 /// Publishes an idle chat candidate as a new reusable entry.
@@ -97,8 +99,9 @@ pub struct LibraryRevision {
     pub requirements: super::Requirements,
     /// Pinned policy meaning.
     pub policy_semantics: String,
-    /// UTC milliseconds.
-    pub created_at: i64,
+    /// Publication time.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: Timestamp,
 }
 
 /// Gallery/owned card excludes private text and instructions.
@@ -112,8 +115,9 @@ pub struct LibraryCard {
     pub description: String,
     /// Audience, platform or tenant.
     pub visibility: String,
-    /// UTC milliseconds.
-    pub created_at: i64,
+    /// Publication time.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: Timestamp,
     /// Immutable head requirements.
     pub requirements: super::Requirements,
     /// Authored credential reasons; empty when none were supplied.

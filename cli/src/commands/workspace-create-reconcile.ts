@@ -25,7 +25,7 @@ export interface WorkspaceCreateResult {
   readonly workspace_id: string;
   readonly name: string;
   readonly tenant_id: string;
-  readonly created_at?: number;
+  readonly created_at?: string;
   readonly request_id?: string;
 }
 

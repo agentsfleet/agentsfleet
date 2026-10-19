@@ -142,6 +142,20 @@ fn answer(request: &Request, control: &Control, writer: &Writer) -> Answer {
         Reply::Raw(raw) => raw.as_bytes().to_vec(),
         Reply::Hangup => return Answer::Hangup,
         Reply::Silent => return Answer::Nothing,
+        Reply::RawThenSilent { raw, answered } => {
+            // `seen` already holds this request, so the count includes it.
+            let count = control
+                .seen
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .iter()
+                .filter(|name| **name == request.name)
+                .count();
+            if count > answered {
+                return Answer::Nothing;
+            }
+            raw.as_bytes().to_vec()
+        }
         Reply::SubscribeAck => confirmation("ssubscribe", argument),
         Reply::UnsubscribeAck => confirmation("sunsubscribe", argument),
         Reply::HeldSubscribeAck(hold) => {

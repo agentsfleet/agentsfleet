@@ -287,7 +287,7 @@ async fn standing_keys() -> BTreeSet<String> {
             gate_id: "g".to_owned(),
             action_id: "a".to_owned(),
             outcome: "approved".to_owned(),
-            resolved_at: 1,
+            resolved_at: afd_db::test_util::SEEDED_AT,
             resolved_by: "someone".to_owned(),
         },
     ))

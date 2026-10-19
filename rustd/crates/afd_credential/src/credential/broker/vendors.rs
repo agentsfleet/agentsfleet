@@ -8,7 +8,7 @@ use serde_json::Value;
 use zeroize::Zeroizing;
 
 use super::Ask;
-use crate::credential::outcome::{Minted, Outcome};
+use crate::credential::outcome::{Minted, NEVER_EXPIRES, Outcome};
 use crate::credential::platform::Platform;
 use crate::credential::{github, oauth};
 use crate::secrets::connector::{Connector, Exchange};
@@ -69,7 +69,8 @@ impl Exchanger for Vendors {
                             app,
                             handle: ask.handle,
                             binding: ask.binding,
-                            now_ms: ask.now_ms,
+                            http: &self.http,
+                            now: ask.now,
                         })
                         .await
                     }
@@ -87,7 +88,7 @@ impl Exchanger for Vendors {
                                 handle: ask.handle,
                                 token_url,
                                 http: &self.http,
-                                now_ms: ask.now_ms,
+                                now: ask.now,
                             })
                             .await
                         }
@@ -114,8 +115,8 @@ pub(super) fn stored(handle: &Value) -> Outcome {
             Outcome::Ok(Minted {
                 token: Zeroizing::new(token.to_owned()),
                 // A stored credential has no upstream expiry this daemon knows
-                // of, so it carries the far-future sentinel.
-                expires_at_ms: i64::MAX,
+                // of.
+                expires_at: NEVER_EXPIRES,
                 rotated_refresh_token: None,
             })
         })

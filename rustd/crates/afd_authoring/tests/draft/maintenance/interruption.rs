@@ -9,14 +9,14 @@ use afd_wire::authoring::FailureReason;
 async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing_its_bound() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET reserved_nanos=30000000,lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=30000000,lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str()).execute(&mut *f.connection().await).await.expect("interrupted worker");
     f.drafts
         .maintain()
         .await
         .expect("production maintenance pass");
     let saved: (String, i64, i32) = sqlx::query_as(
-        "SELECT status,reserved_nanos,calls FROM fleet.authoring_attempts WHERE id=$1::uuid",
+        "SELECT status,reserved_nanos,call_count FROM authoring.attempts WHERE id=$1::uuid",
     )
     .bind(a.id.as_str())
     .fetch_one(&mut *f.connection().await)
@@ -46,15 +46,16 @@ async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing
     f.cleanup().await;
 }
 
-/// A maintenance pass expires every lane's stale attempts, so the proof reads
-/// only the steps about its own draft.
+/// A maintenance pass expires every lane's stale attempts, so another lane's
+/// pass may be the one that expires this attempt; the suite's shared recorder
+/// sees its step either way, and the count is over every pass.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_expired_attempt_reports_its_message_finished_once_across_passes() {
     use super::super::funnel::{FINISHED, about, only, property};
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -84,7 +85,7 @@ async fn another_workers_sweep_reports_to_the_same_workspace_recorder() {
     let f = Fixture::create().await;
     let worker = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE fleet.authoring_attempts SET lease_expires_at=0 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at=to_timestamp(0) WHERE id=$1::uuid")
         .bind(a.id.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -104,5 +105,85 @@ async fn another_workers_sweep_reports_to_the_same_workspace_recorder() {
         "another workspace cannot contaminate the assertion"
     );
     worker.cleanup().await;
+    f.cleanup().await;
+}
+
+/// The attempt's stored status, and its message's.
+async fn statuses(f: &Fixture, a: &Attempt) -> (String, String) {
+    sqlx::query_as(
+        "SELECT a.status, m.status FROM authoring.attempts a \
+         JOIN authoring.messages m ON m.draft_id=a.draft_id AND m.sequence=a.message_sequence \
+         WHERE a.id=$1::uuid",
+    )
+    .bind(a.id.as_str())
+    .fetch_one(&mut *f.connection().await)
+    .await
+    .expect("the attempt and its message")
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn an_attempt_renewed_while_the_pass_waited_on_its_lock_is_left_running() {
+    // Its own database: a pass sweeps every lane's expired private state, and
+    // this proof's pass must not sweep another proof's.
+    let f = Fixture::isolated().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
+        .bind(a.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("a lapsed lease the pass will find");
+    let mut holder = f.connection().await;
+    sqlx::query("BEGIN")
+        .execute(&mut *holder)
+        .await
+        .expect("renewal transaction");
+    let pid: i32 = sqlx::query_scalar(
+        "UPDATE authoring.attempts SET lease_expires_at=now()+interval '1 minute' \
+         WHERE id=$1::uuid RETURNING pg_backend_pid()",
+    )
+    .bind(a.id.as_str())
+    .fetch_one(&mut *holder)
+    .await
+    .expect("a renewal holds the row");
+    let (pass, ()) = tokio::join!(f.drafts.maintain(), async {
+        f.waits_on(pid, 1).await;
+        sqlx::query("COMMIT")
+            .execute(&mut *holder)
+            .await
+            .expect("the renewal commits");
+    });
+    drop(holder);
+    pass.expect("the pass runs");
+    assert_eq!(
+        statuses(&f, &a).await,
+        ("active".to_owned(), "running".to_owned()),
+        "rechecked under the lock, the renewed attempt is not expired"
+    );
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn an_expired_attempt_whose_message_already_finished_keeps_that_finish() {
+    // Its own database: a pass sweeps every lane's expired private state, and
+    // this proof's pass must not sweep another proof's.
+    let f = Fixture::isolated().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    sqlx::query(
+        "WITH stopped AS (UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$2::uuid) \
+         UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid",
+    )
+    .bind(a.id.as_str())
+    .bind(a.draft.id.as_str())
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("a stopped message on a lapsed lease");
+    f.drafts.maintain().await.expect("the pass runs");
+    assert_eq!(
+        statuses(&f, &a).await,
+        ("awaiting_accounting".to_owned(), "cancelled".to_owned()),
+        "the money waits; the earlier finish stands"
+    );
     f.cleanup().await;
 }

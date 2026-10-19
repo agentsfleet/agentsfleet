@@ -37,6 +37,10 @@ async-trait.workspace = true
 base64.workspace = true
 const_format.workspace = true
 hex.workspace = true
+# Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
+# jiff-sqlx.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -58,6 +62,11 @@ afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_observability = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
+# The mocked entropy source, so a proof can make one draw fail.
+afd_crypto = { workspace = true, features = ["test-util"] }
+# The fleet purge, so the deletion-matrix test (Dimension 4.1) drives both
+# erasure roots from one fixture. Already in the tree through afd_approval.
+afd_fleet_lifecycle.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util"] }
 
 [features]

@@ -1,6 +1,9 @@
 //! Shared fleet reads retain setup progress without exposing any private conversation.
 
-use super::{CONTEXT, Creations, SetupProgress, etag, progress, sql, stored::Stored};
+use super::{
+    CONTEXT, Creations, SetupProgress, etag, progress, sql,
+    stored::{Stored, StoredRow},
+};
 use crate::{
     Access, Result, access,
     error::{ErrorKind, raise::query},
@@ -9,10 +12,9 @@ use crate::{
 };
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::Definition;
+use jiff::Timestamp;
 use serde::Serialize;
 use sqlx::{Connection as _, PgConnection};
-
-const PENDING: &str = "pending";
 
 /// Native fleet snapshot used by browser and terminal adapters.
 #[derive(Debug, Serialize)]
@@ -39,10 +41,12 @@ pub struct SavedFleet {
     pub setup: SetupProgress,
     /// Initial admission outcome, independent of completed work.
     pub start: StartOutcome,
-    /// Creation time, UTC milliseconds.
-    pub created_at: i64,
-    /// Latest resource mutation, UTC milliseconds.
-    pub updated_at: i64,
+    /// Creation time.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: Timestamp,
+    /// Latest resource mutation.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: Timestamp,
     /// Exact activity count.
     pub events_processed: String,
     /// Exact billed nanos.
@@ -84,14 +88,14 @@ impl Creations {
         connection: &mut PgConnection,
         row: &Stored,
     ) -> Result<Review> {
-        let mut context = row.setup_context.context.clone();
+        let mut context = row.accepted.context.clone();
         context.linked_fleet_id = Some(row.id.clone());
         review::build(
             &self.setup,
             connection,
             &context,
-            &row.setup_context.candidate(row.definition.clone()),
-            afd_core::clock::now().as_millis(),
+            &row.accepted.candidate(row.definition.clone()),
+            afd_core::clock::now(),
         )
         .await
     }
@@ -109,24 +113,23 @@ pub(super) async fn lock(
         .await
         .map_err(query(CONTEXT))?;
     locked.ok_or(ErrorKind::FleetMissing)?;
-    let row: Option<String> = sqlx::query_scalar(sql::LOCKED)
+    let row: Option<StoredRow> = sqlx::query_as(sql::LOCKED)
         .bind(fleet.as_str())
         .bind(workspace.as_str())
-        .bind(PENDING)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    crate::draft::value(&row.ok_or(ErrorKind::FleetMissing)?)
+    row.ok_or(ErrorKind::FleetMissing)?.decode()
 }
 
 fn project(row: Stored, review: &Review) -> SavedFleet {
     let setup = progress::current(&row, review);
     SavedFleet {
         etag: etag(&row.id, row.resource_version),
-        setup_etag: etag(&row.id, row.setup_version),
-        setup_revision: row.setup_version.to_string(),
-        needs_re_review: row.setup_context.review_digest != review.review_digest,
-        policy_semantics: row.setup_context.policy_semantics,
+        setup_etag: etag(&row.id, row.head_revision),
+        setup_revision: row.head_revision.to_string(),
+        needs_re_review: row.accepted.review_digest != review.review_digest,
+        policy_semantics: row.accepted.policy_semantics,
         id: row.id,
         name: row.name,
         status: row.status,

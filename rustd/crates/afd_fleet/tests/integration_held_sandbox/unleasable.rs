@@ -9,13 +9,17 @@
 )]
 
 use afd_core::id::Uuid7;
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
-use afd_fleet::lease::sql::ADMIN_STATE_DRAINED;
+use afd_core::timing::SANDBOX_HOLD_IDLE;
+use afd_fleet::lease::sql::RUNNER_STATUS_DRAINED;
+use jiff::Timestamp;
 
-use super::{at, hold, live, slot};
+use super::{hold, live, slot};
 use crate::queue;
 use crate::seed::{self, Seeded, seeded};
 use crate::support::Fixtures;
+
+/// Why a fixture runner reads degraded; nothing reads the words.
+const DEGRADED_REASON: &str = "fixture: degraded";
 
 /// What makes a beating holder one that cannot lease.
 enum Unfit {
@@ -31,13 +35,14 @@ impl Unfit {
         let mut connection = fixtures.database.acquire().await.expect("a connection");
         let statement = match self {
             Self::Degraded => {
-                sqlx::query("UPDATE fleet.runners SET degraded = TRUE WHERE id = $1::uuid")
+                sqlx::query("UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1::uuid")
                     .bind(runner.as_str())
+                    .bind(DEGRADED_REASON)
             }
             Self::Drained => {
-                sqlx::query("UPDATE fleet.runners SET admin_state = $2 WHERE id = $1::uuid")
+                sqlx::query("UPDATE runner.runners SET status = $2 WHERE id = $1::uuid")
                     .bind(runner.as_str())
-                    .bind(ADMIN_STATE_DRAINED)
+                    .bind(RUNNER_STATUS_DRAINED)
             }
         };
         statement
@@ -49,7 +54,7 @@ impl Unfit {
 
 /// Whether another runner's poll leases a fleet whose holder beat at
 /// enrolment, held it live, and then became `unfit`; and the slot after.
-async fn taken_from(unfit: Unfit) -> (bool, (Option<i64>, Option<String>), String) {
+async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<String>), String) {
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded {
         runners: [holder, other],
@@ -63,18 +68,12 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<i64>, Option<String>), Strin
         &fixtures,
         &fleet,
         &holder,
-        fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS,
+        fixtures.after(SANDBOX_HOLD_IDLE),
     )
     .await;
     unfit.apply(&fixtures, &holder).await;
 
-    let found = seed::select_fleet_within_rotations(
-        &leases,
-        &other,
-        at(fixtures.enrolled_at() + 1),
-        &fleet,
-    )
-    .await;
+    let found = seed::select_fleet_within_rotations(&leases, &other, &fleet).await;
     let after = slot(&fixtures, &fleet).await;
 
     queue::clear_ready(fixtures.queue(), &fleet).await;

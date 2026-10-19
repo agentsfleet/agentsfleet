@@ -1,6 +1,7 @@
 // The daemon validates authored setup; this client validates what it consumes.
 
 import { Effect, Schema } from "effect";
+import { instant } from "../../lib/instant.ts";
 import { ServerError } from "../../errors/index.ts";
 
 export const DRAFT_STATE = { editing: "editing", saving: "saving", closed: "closed" } as const;
@@ -40,7 +41,7 @@ export const ReviewSchema = Schema.Struct({
     target_setup_revision: Schema.optionalKey(decimal),
   }),
   requirements: object, readiness: Schema.Array(check), review_digest: Schema.String,
-  policy_semantics: Schema.String, observed_at: Schema.Number,
+  policy_semantics: Schema.String, observed_at: instant,
 });
 export const AcceptedSchema = Schema.Struct({
   status: Schema.Literal("accepted"), sequence: decimal, replayed: Schema.Boolean,
@@ -55,7 +56,7 @@ export const CreatedSchema = Schema.Struct({...DraftSchema.fields, accepted: Acc
 export const MessageSchema = Schema.Struct({
   sequence: decimal, operation_id: Schema.String, role: Schema.Literals(Object.values(MESSAGE_ROLE)),
   state: Schema.Literals(Object.values(MESSAGE_STATE)), text: Schema.optionalKey(Schema.String),
-  created_at: Schema.Number, failure: Schema.optionalKey(Schema.Struct({
+  created_at: instant, failure: Schema.optionalKey(Schema.Struct({
     reason: Schema.String, error_code: Schema.String, recovery_action: Schema.String,
   })),
 });

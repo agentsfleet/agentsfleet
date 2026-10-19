@@ -97,6 +97,20 @@ fn rejects_unknown_or_wrong_api_dialects() {
 }
 
 #[test]
+fn a_native_api_refuses_any_saved_dialect() {
+    for api in [InferenceApi::Gemini, InferenceApi::Ollama] {
+        let mut value = settings(api);
+        assert!(Configured::new(&value, 100).is_ok(), "{api:?} without one");
+        value.dialect = Some("openai".into());
+        assert_eq!(
+            Configured::new(&value, 100).unwrap_err().code(),
+            afd_core::error_code::INVALID_REQUEST,
+            "{api:?} has no dialect table to look one up in"
+        );
+    }
+}
+
+#[test]
 fn a_credential_endpoint_restriction_cannot_be_replaced_by_catalogue_routing() {
     let value = settings(InferenceApi::Chat);
     let route = Configured::new(&value, 100).unwrap();
@@ -159,11 +173,12 @@ impl HttpClientExt for Capture {
 
     fn send_streaming<T>(
         &self,
-        _: Request<T>,
+        req: Request<T>,
     ) -> impl Future<Output = http::Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes> + WasmCompatSend,
     {
+        self.0.lock().unwrap().push(req.map(Into::into));
         std::future::ready(Err(http::Error::instance(std::io::Error::other(
             UNUSED_OPERATION,
         ))))
@@ -232,6 +247,8 @@ async fn uses_persisted_destinations_and_accepts_arbitrary_configured_model_iden
         assert_eq!(request.uri().host(), Some("inference.example"));
         assert_eq!(request.uri().path(), suffix);
         assert!(request.headers().contains_key(header));
+        assert_eq!(request.uri().query(), None, "a non-Gemini URL is untouched");
+        assert!(!request.headers().contains_key(header_key::KEY_HEADER));
         let body: serde_json::Value = serde_json::from_slice(request.body()).unwrap();
         assert_eq!(
             body.get("model"),
@@ -240,5 +257,70 @@ async fn uses_persisted_destinations_and_accepts_arbitrary_configured_model_iden
         if api == InferenceApi::Messages {
             assert_eq!(body.get("max_tokens"), Some(&serde_json::json!(37)));
         }
+    }
+}
+
+/// The key a Gemini route is given; no captured URL or error may contain it.
+const GEMINI_KEY: &str = "gemini-hidden-credential";
+
+/// rig's Gemini wire puts the key in the URL; the route's transport moves it
+/// to `x-goog-api-key` before any transport sees the request, unary and
+/// streamed alike.
+#[tokio::test]
+async fn a_gemini_request_carries_its_key_in_a_header_never_in_its_url() {
+    use futures_util::StreamExt as _;
+
+    let value = settings(InferenceApi::Gemini);
+    let route = Configured::new(&value, 100).unwrap();
+    let capture = Capture::default();
+    let model = route.model("gemini-next", GEMINI_KEY, capture.clone());
+    let unary = model
+        .call(CompletionRequest::new(Message::user("hello")))
+        .await
+        .unwrap_err();
+    let mut streamed = model
+        .stream(CompletionRequest::new(Message::user("hello")))
+        .unwrap();
+    let frame = streamed.next().await;
+    let seen = capture.0.lock().unwrap();
+    assert_eq!(seen.len(), 2, "one unary and one streamed send");
+    for request in seen.iter() {
+        assert_eq!(request.uri().host(), Some("inference.example"));
+        assert!(!request.uri().to_string().contains(GEMINI_KEY));
+        assert_eq!(
+            request.headers().get(header_key::KEY_HEADER).unwrap(),
+            GEMINI_KEY
+        );
+        assert!(!format!("{request:?}").contains(GEMINI_KEY));
+    }
+    for rendered in [
+        unary.to_string(),
+        format!("{unary:?}"),
+        format!("{frame:?}"),
+    ] {
+        assert!(!rendered.contains(GEMINI_KEY));
+    }
+}
+
+/// A Gemini key that decodes to something no header may carry is refused at
+/// the wrapper: the request never reaches the transport, so it is never sent
+/// with the key left in its URL, and the refusal does not repeat the key.
+#[tokio::test]
+async fn a_gemini_key_that_cannot_be_a_header_is_never_sent() {
+    // rig splices the key into the query raw; `%0A` decodes to a newline.
+    let key = format!("{GEMINI_KEY}%0A");
+    let value = settings(InferenceApi::Gemini);
+    let route = Configured::new(&value, 100).unwrap();
+    let capture = Capture::default();
+    let model = route.model("gemini-next", &key, capture.clone());
+
+    let error = model
+        .call(CompletionRequest::new(Message::user("hello")))
+        .await
+        .unwrap_err();
+
+    assert!(capture.0.lock().unwrap().is_empty(), "nothing was sent");
+    for rendered in [error.to_string(), format!("{error:?}")] {
+        assert!(!rendered.contains(GEMINI_KEY));
     }
 }

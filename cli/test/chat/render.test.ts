@@ -46,7 +46,7 @@ describe("scriptable chat output", () => {
 describe("schedule registration outcomes", () => {
   // The published `View` carries more than the client consumes; the outcome fields must survive decoding.
   const view = {...FAILED_SCHEDULE, cron: "0 9 * * *", timezone: "UTC", message: "triage", source: "trigger",
-    once: false, status: "active", etag: '"schedule-1"', created_at: 1, updated_at: 1};
+    once: false, status: "active", etag: '"schedule-1"', created_at: "1970-01-01T00:00:00.001Z", updated_at: "1970-01-01T00:00:00.001Z"};
 
   test("decoding a fleet or an applied revision keeps each schedule's sync outcome", async () => {
     const fleet = await Effect.runPromise(decode(FleetSchema, {...FLEET, schedules: [view]}));

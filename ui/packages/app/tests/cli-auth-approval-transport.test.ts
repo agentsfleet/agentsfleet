@@ -34,7 +34,7 @@ async function approve(response: Response) {
   const fetchMock = vi.fn()
     .mockResolvedValueOnce(Response.json({
       status: "pending", cli_public_key: "peer-key", token_name: "terminal",
-      expires_at_ms: Date.now() + 300_000,
+      expires_at: new Date(Date.now() + 300_000).toISOString(),
     }))
     .mockResolvedValueOnce(response);
   vi.stubGlobal("fetch", fetchMock);

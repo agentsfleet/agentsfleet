@@ -17,17 +17,13 @@
 //! survives the whole layer stack and arrives as the envelope and status a
 //! client branches on.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::code_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -79,20 +75,6 @@ fn paged(query: &str) -> String {
 /// One fully authorised read.
 async fn reading(path: &str) -> axum::response::Response {
     send(FLEET_READ, Method::GET, path, "").await
-}
-
-/// Reads a problem document's `error_code` back.
-async fn code_of(response: axum::response::Response) -> String {
-    field_of(response, "error_code").await
-}
-
-/// Reads one string field out of a problem document.
-async fn field_of(response: axum::response::Response, name: &str) -> String {
-    let document = harness::json_body(response).await;
-    let carried = document.get(name).and_then(Value::as_str);
-    carried
-        .expect("every refusal carries the field the case reads")
-        .to_owned()
 }
 
 /// A fleet id that is not an identifier never reaches a statement.
@@ -193,7 +175,11 @@ async fn a_continuation_this_walk_did_not_issue_is_refused() {
 /// own request being wrong.
 #[tokio::test]
 async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() {
-    let issued = "MTcwMDAwMDAwMDAwMDoxNzAwMDAwMDAwMDAwLTA";
+    let issued = afd_events::Cursor::after(
+        jiff::Timestamp::constant(1_700_000_000, 0),
+        "01924f4e-0000-7000-8000-00000000fee7",
+    )
+    .encode();
     for query in [
         "",
         "limit=1",

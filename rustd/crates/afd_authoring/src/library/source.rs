@@ -32,7 +32,7 @@ pub(super) async fn capture(
         &Uuid7::parse(&id.ok_or(ErrorKind::Hidden)?)?,
     )
     .await?;
-    if locked.current_candidate_id.as_ref() != Some(candidate) {
+    if locked.head_candidate_id.as_ref() != Some(candidate) {
         return Err(ErrorKind::State {
             current: "candidate_changed",
         }

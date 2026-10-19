@@ -18,7 +18,6 @@ mod plans;
 mod read;
 mod receipt_recovery;
 
-use afd_core::clock;
 use afd_core::event::status;
 use afd_core::id::Uuid7;
 use afd_dragonfly::streams::FleetStreams;
@@ -38,39 +37,46 @@ const BODY: &str = r#"{"message":"wait for me"}"#;
 const PAGE: i64 = 26;
 
 /// What a lease writes to the admission when a runner takes it.
-const MARK_DELIVERED: &str = "UPDATE core.fleet_admissions SET delivered_at = $2 \
+const MARK_DELIVERED: &str = "UPDATE fleet.admissions SET delivered_at = now() \
      WHERE fleet_id = $1::uuid AND delivered_at IS NULL";
 
 /// The two indexes that hold only undelivered admissions, keyed on the fleet
-/// and the admission order (`schema/910`, `schema/914`).
+/// and the admission order (`schema/1720_fleet_admissions.sql`).
 const IN_FLIGHT_INDEXES: [&str; 2] = [
-    "idx_fleet_admissions_undelivered",
-    "idx_fleet_admissions_delivery_lookup",
+    "idx_admissions_undelivered",
+    "idx_admissions_delivery_lookup",
 ];
 
 /// Ledger history, most of it delivered, across many fleets of one workspace:
-/// `$1` tenant, `$2` instant, `$3` fleets, `$4` admissions per fleet.
+/// `$1` tenant, `$2` instant, `$3` fleets, `$4` admissions per fleet. Each
+/// admission is a millisecond after the one before it.
 const SEED_LEDGER: &str = "
 WITH workspace AS (
-    INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-    VALUES (uuidv7(), $1::uuid, 'queued-plan', 'queued-plan', $2)
+    INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
+    VALUES (uuidv7(), $1::uuid, 'queued-plan', $2::timestamptz)
     RETURNING id
 ), fleets AS (
-    INSERT INTO core.fleets
-      (id, workspace_id, tenant_id, name, config_json, status,
+    INSERT INTO fleet.fleets
+      (id, workspace_id, tenant_id, name, status, required_tags,
+       memory_reads_workspace, memory_publishes_workspace, resource_version,
        created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1::uuid, 'queued-plan-' || f,
-           '{}'::jsonb, 'active', $2, $2
+    SELECT uuidv7(), workspace.id, $1::uuid, 'queued-plan-' || f, 'active',
+           '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspace, generate_series(1, $3) f
     RETURNING id, workspace_id
 )
-INSERT INTO core.fleet_admissions
+INSERT INTO fleet.admissions
   (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor,
    event_type, request_json, event_created_at, receipt, delivered_at,
    replay_count, created_at, updated_at)
 SELECT uuidv7(), fleets.id, fleets.workspace_id, 'steer', fleets.id || ':' || a,
-       'digest', 'steer:api', 'chat', '{}', $2 + a, a || '-0',
-       CASE WHEN a % 50 = 0 THEN NULL ELSE $2 + a END, 0, $2 + a, $2 + a
+       'digest', 'steer:api', 'chat', '{}',
+       $2::timestamptz + a * interval '1 millisecond', a || '-0',
+       CASE WHEN a % 50 = 0 THEN NULL
+            ELSE $2::timestamptz + a * interval '1 millisecond' END,
+       0,
+       $2::timestamptz + a * interval '1 millisecond',
+       $2::timestamptz + a * interval '1 millisecond'
   FROM fleets, generate_series(1, $4) a";
 
 /// A page smaller than what waits, so the walk must cross a page boundary.

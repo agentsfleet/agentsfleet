@@ -16,7 +16,8 @@ struct Stored {
 
 use crate::{Result, error::ErrorKind, validate};
 use afd_api_wire::schedule::{Override, Status};
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 /// Immutable schedule fields copied from the selected native setup revision.
@@ -103,6 +104,6 @@ pub struct RecipeSet<'a> {
     pub setup_revision: i64,
     /// Validated cron recipes in Definition order.
     pub recipes: &'a [Recipe],
-    /// Audit time of this setup edit.
-    pub now: UnixMillis,
+    /// Mints a new slot's schedule id; Postgres stamps the rows themselves.
+    pub now: Timestamp,
 }

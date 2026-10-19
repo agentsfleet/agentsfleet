@@ -4,26 +4,26 @@ mod activity;
 mod proposal;
 mod receipt;
 mod source;
+mod sql;
 
 use crate::{
     Result,
     error::raise::{query, stored},
-    sql,
     types::Candidate,
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_fleet_runtime::definition::{Definition, POLICY_SEMANTICS, canonical_digest};
-use serde::Deserialize;
 use sqlx::PgConnection;
 
-pub(crate) use source::resolve;
+pub(crate) use source::{Captured, resolve};
 const CONTEXT: &str = "read or append immutable candidate";
 
-#[derive(Deserialize)]
+/// [`crate::sql::candidate::READ`]'s row, by column name.
+#[derive(sqlx::FromRow)]
 struct Stored {
-    id: Uuid7,
+    id: String,
     revision: i64,
-    definition: Definition,
+    definition: String,
     canonical_digest: String,
     policy_semantics: String,
 }
@@ -33,19 +33,18 @@ pub(crate) async fn read(
     draft: &Uuid7,
     id: &Uuid7,
 ) -> Result<Candidate> {
-    let value: String = sqlx::query_scalar(sql::candidate::READ)
+    let row: Stored = sqlx::query_as(crate::sql::candidate::READ)
         .bind(id.as_str())
         .bind(draft.as_str())
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT))?;
-    let stored: Stored = serde_json::from_str(&value).map_err(stored)?;
     Ok(Candidate {
-        id: stored.id,
-        revision: stored.revision.to_string(),
-        definition: stored.definition,
-        canonical_digest: stored.canonical_digest,
-        policy_semantics: stored.policy_semantics,
+        id: Uuid7::parse(&row.id)?,
+        revision: row.revision.to_string(),
+        definition: serde_json::from_str(&row.definition).map_err(stored)?,
+        canonical_digest: row.canonical_digest,
+        policy_semantics: row.policy_semantics,
     })
 }
 
@@ -54,7 +53,6 @@ pub(crate) struct Replacement<'a> {
     pub(crate) draft: &'a Uuid7,
     pub(crate) revision: i64,
     pub(crate) definition: &'a Definition,
-    pub(crate) now: UnixMillis,
 }
 
 pub(crate) async fn append(
@@ -66,26 +64,22 @@ pub(crate) async fn append(
         draft,
         revision,
         definition,
-        now,
     } = replacement;
     let digest = canonical_digest(definition)?;
     let value = serde_json::to_string(definition).map_err(stored)?;
-    sqlx::query(sql::candidate::INSERT)
+    sqlx::query(crate::sql::candidate::INSERT)
         .bind(id.as_str())
         .bind(draft.as_str())
         .bind(revision)
         .bind(value)
         .bind(&digest)
         .bind(POLICY_SEMANTICS)
-        .bind(now.as_millis())
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
-    sqlx::query(sql::candidate::SELECT_HEAD)
+    sqlx::query(crate::sql::candidate::SELECT_HEAD)
         .bind(draft.as_str())
         .bind(id.as_str())
-        .bind(revision)
-        .bind(now.as_millis())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

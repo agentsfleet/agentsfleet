@@ -10,8 +10,8 @@ import { INVITES_PATH } from "@/app/(dashboard)/invites/copy";
 import { InviteNotice, inviteNoticeText } from "./InviteNotice";
 import { accountLabel } from "./workspace-groups";
 
-const FROM_JOHN: WaitingInvite = { id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: 1 };
-const FROM_MARY: WaitingInvite = { id: "inv_2", account: { tenant_id: "t_mary", owner_name: "Mary" }, expires_at: 1 };
+const FROM_JOHN: WaitingInvite = { id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: "1970-01-01T00:00:00.001Z" };
+const FROM_MARY: WaitingInvite = { id: "inv_2", account: { tenant_id: "t_mary", owner_name: "Mary" }, expires_at: "1970-01-01T00:00:00.001Z" };
 const NOTICE = "invite-notice";
 
 beforeEach(() => pathname.mockReturnValue("/w/ws_1/fleets"));

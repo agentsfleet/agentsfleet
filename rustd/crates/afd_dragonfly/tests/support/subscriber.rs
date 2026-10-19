@@ -1,16 +1,7 @@
-//! One enabled tracing subscriber for Dragonfly integration-test binaries.
+//! The tracing subscriber for the binaries that path-include `fake_redis`.
+//!
+//! `fake_redis/mod.rs` re-exports `crate::subscriber::install_subscriber`, and
+//! `afd_admission` and `afd_fleet` include both files by path, so the name stays
+//! here while the one implementation is `afd_core`'s.
 
-/// Installs a subscriber so event fields execute on success and failure paths.
-///
-/// `tracing` checks whether a callsite is enabled before evaluating its fields.
-/// A sink keeps test output quiet while still proving those expressions.
-pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _ignored = tracing::subscriber::set_global_default(subscriber);
-    });
-}
+pub(crate) use afd_core::test_util::trace::install_subscriber;

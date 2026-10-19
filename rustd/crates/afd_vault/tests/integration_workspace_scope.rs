@@ -14,7 +14,7 @@
 use afd_core::id::Uuid7;
 use afd_vault::Deleted;
 
-use crate::support::{Lane, body, named};
+use crate::support::{Lane, MINTED_AT, body, named};
 
 /// The name both workspaces hold.
 const SHARED_NAME: &str = "shared-provider";
@@ -35,7 +35,7 @@ async fn the_vault_never_reads_another_workspaces_key() {
     let neighbour = lane.another_workspace().await;
     lane.store(SHARED_NAME, MINE).await;
     lane.vault
-        .create(&neighbour, &named(SHARED_NAME), &body(THEIRS), Lane::now())
+        .create(&neighbour, &named(SHARED_NAME), &body(THEIRS), MINTED_AT)
         .await
         .expect("the neighbour's copy of the name stores");
 
@@ -55,12 +55,7 @@ async fn the_vault_never_reads_another_workspaces_key() {
     );
 
     lane.vault
-        .replace(
-            &lane.workspace,
-            &named(SHARED_NAME),
-            &body(REPLACED),
-            Lane::now(),
-        )
+        .replace(&lane.workspace, &named(SHARED_NAME), &body(REPLACED))
         .await
         .expect("the held name replaces");
     assert_eq!(

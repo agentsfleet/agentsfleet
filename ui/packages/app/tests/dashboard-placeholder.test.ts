@@ -212,8 +212,8 @@ describe("placeholder pages", () => {
   it("billing settings page renders balance and real usage without placeholder payment tabs", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
-      balance_nanos: 4_710_000_000,
-      updated_at: 1,
+      balance_nanos: "4710000000",
+      updated_at: "1970-01-01T00:00:00.001Z",
       is_exhausted: false,
       exhausted_at: null,
     });
@@ -228,11 +228,11 @@ describe("placeholder pages", () => {
           charge_type: CHARGE_TYPE.receive,
           posture: PROVIDER_MODE.platform,
           model: "kimi-k2.6",
-          credit_deducted_nanos: 1,
+          credit_deducted_nanos: "1",
           token_count_input: null,
           token_count_output: null,
           wall_ms: null,
-          recorded_at: 1,
+          recorded_at: "1970-01-01T00:00:00.001Z",
         },
       ],
     });
@@ -250,8 +250,8 @@ describe("placeholder pages", () => {
   it("billing settings page threads the URL cursor and page size into the charges fetch", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
-      balance_nanos: 1,
-      updated_at: 1,
+      balance_nanos: "1",
+      updated_at: "1970-01-01T00:00:00.001Z",
       is_exhausted: false,
       exhausted_at: null,
     });
@@ -276,10 +276,10 @@ describe("placeholder pages", () => {
   it("billing settings page propagates a failed ledger read instead of claiming zero charges", async () => {
     mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
-      balance_nanos: 0,
-      updated_at: 1,
+      balance_nanos: "0",
+      updated_at: "1970-01-01T00:00:00.001Z",
       is_exhausted: true,
-      exhausted_at: 2,
+      exhausted_at: "1970-01-01T00:00:00.002Z",
     });
     listTenantBillingChargesMock.mockRejectedValue(new Error("503"));
     const { default: Page } =

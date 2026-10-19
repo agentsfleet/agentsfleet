@@ -200,7 +200,7 @@ const RENAMED_ACCOUNT: &str = "Renamed account";
 /// Gives `tenant`'s account a stored name of its own.
 async fn rename_account(fixture: &Fixture, tenant: &str) {
     let mut connection = fixture.database.acquire().await.expect("a connection");
-    sqlx::query("UPDATE core.tenants SET name = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE identity.tenants SET name = $2 WHERE id = $1::uuid")
         .bind(tenant)
         .bind(RENAMED_ACCOUNT)
         .execute(&mut *connection)

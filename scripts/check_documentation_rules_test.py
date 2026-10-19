@@ -44,7 +44,7 @@ class OpenApiTextTests(unittest.TestCase):
         self.assertTrue(any("DOC-23" in issue for issue in self.lint(text)))
 
     def test_rejects_internal_storage_detail(self) -> None:
-        text = VALID_OPENAPI.replace("Returns fleets visible to the caller.", "Reads rows from core.fleets.")
+        text = VALID_OPENAPI.replace("Returns fleets visible to the caller.", "Reads rows from fleet.fleets.")
         self.assertTrue(any("DOC-22" in issue for issue in self.lint(text)))
 
 

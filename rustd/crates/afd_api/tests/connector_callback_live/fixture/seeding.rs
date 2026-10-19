@@ -1,11 +1,12 @@
 //! Seeding the rows a live callback walk needs before it can run.
 //!
 //! Split from the fixture's own construction and teardown beside it: that half
-//! is about a lane and a router, and this half is a long SQL arrangement of
-//! tenant, workspaces, owner and key. They changed for different reasons and
+//! is about a lane and a router, and this half is the arrangement of tenant,
+//! workspaces, owner and key. They changed for different reasons and
 //! together they put the file over its length cap.
 
 use super::*;
+use afd_db::test_util::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed};
 
 impl Fixture {
     pub(crate) async fn seed(&self) {
@@ -26,34 +27,34 @@ impl Fixture {
     async fn seed_rows(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Connector callback live', 1, 1) \
-             ), workspaces AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'connected', $3, 1), \
-                      ($4::uuid, $1::uuid, 'platform-admin', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($5::uuid, $1::uuid, $3, 'connector-live@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($6::uuid, $1::uuid, 'fixture', '', $7, $3, TRUE, NULL, 1, 1)",
+        TenantSeed::new(&self.tenant)
+            .name("Connector callback live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        for (workspace, name) in [
+            (&self.workspace, "connected"),
+            (&self.admin, "platform-admin"),
+        ] {
+            WorkspaceSeed::new(workspace.as_str(), &self.tenant)
+                .name(name)
+                .insert(&mut *connection)
+                .await
+                .expect("its workspaces seed");
+        }
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            &self.subject,
+            "connector-live@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(&self.subject)
-        .bind(self.admin.as_str())
-        .bind(&self.user)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the tenant, its workspaces and its owner seed");
+        .expect("its owner seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), &self.subject)
+            .insert(&mut *connection)
+            .await
+            .expect("the owner's API key seeds");
 
         // The bystander: a second person of the same tenant, with a credential
         // of their own. Without one, presenting the starter's token would
@@ -61,25 +62,25 @@ impl Fixture {
         // than on the state binding this fixture exists to exercise.
         let bystander_digest =
             Digest::of(&Presented::new(&self.bystander_token).expect("the token is valid"));
-        sqlx::query(
-            "WITH person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($1::uuid, $2::uuid, $3, 'connector-bystander@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($4::uuid, $2::uuid, 'bystander', '', $5, $3, TRUE, NULL, 1, 1)",
+        UserSeed::new(
+            &self.bystander_user,
+            &self.tenant,
+            &self.bystander,
+            "connector-bystander@example.test",
         )
-        .bind(&self.bystander_user)
-        .bind(&self.tenant)
-        .bind(&self.bystander)
-        .bind(&self.bystander_key)
-        .bind(bystander_digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the bystander person and credential seed");
+        .expect("the bystander person seeds");
+        ApiKeySeed::new(
+            &self.bystander_key,
+            &self.tenant,
+            bystander_digest.as_str(),
+            &self.bystander,
+        )
+        .name("bystander")
+        .insert(&mut *connection)
+        .await
+        .expect("the bystander's credential seeds");
     }
 
     /// Seals `document` into the admin workspace under `key`.
@@ -96,7 +97,7 @@ impl Fixture {
                 &self.admin,
                 &SecretName::parse(key).expect("the vault key is a storable name"),
                 &SecretBody::parse(&raw).expect("the fixture credential is a storable body"),
-                UnixMillis::from_millis(1),
+                afd_db::test_util::SEEDED_AT,
             )
             .await;
         // Named in the message rather than left to `expect`: this seals two
@@ -140,16 +141,13 @@ impl Fixture {
     /// while a runner opened the wrong one.
     pub(crate) async fn secret_names(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
+        sqlx::query_scalar(
             "SELECT key_name FROM vault.secrets WHERE workspace_id = $1::uuid ORDER BY key_name",
         )
         .bind(self.workspace.as_str())
         .fetch_all(&mut *connection)
         .await
         .expect("the workspace's secret names read")
-        .iter()
-        .map(|row| row.get("key_name"))
-        .collect()
     }
 
     pub(crate) async fn cleanup(self) {
@@ -167,13 +165,13 @@ impl Fixture {
             // rather than on this fixture, so a row left behind is one the
             // next test on this shared lane meets as "held elsewhere" — which
             // is the product working and the fixture leaking.
-            sqlx::query("DELETE FROM core.connector_installs WHERE workspace_id = $1::uuid")
+            sqlx::query("DELETE FROM connector.installs WHERE workspace_id = $1::uuid")
                 .bind(workspace.as_str())
                 .execute(&mut *transaction)
                 .await
                 .expect("the fixture's routing rows clean up");
         }
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

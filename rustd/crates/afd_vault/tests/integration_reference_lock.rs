@@ -27,7 +27,7 @@ use afd_core::error_code;
 use afd_vault::{Deleted, SecretBody};
 use serde_json::value::RawValue;
 
-use crate::support::{Lane, body, named};
+use crate::support::{Lane, MINTED_AT, body, named};
 
 /// A provider key, as an operator would store one.
 const PROVIDER_KEY: &str = r#"{"provider":"anthropic","api_key":"sk-live"}"#;
@@ -70,7 +70,7 @@ async fn a_create_on_a_taken_name_refuses_and_leaves_the_held_body_alone() {
             &lane.workspace,
             &named("anthropic-prod"),
             &body(REPLACEMENT),
-            Lane::now(),
+            MINTED_AT,
         )
         .await
         .expect_err("a held name is not free");
@@ -95,10 +95,9 @@ async fn two_creates_racing_one_name_resolve_to_one_winner() {
     let name = named("contended");
     let (mine, theirs) = (body(PROVIDER_KEY), body(REPLACEMENT));
     let (left, right) = tokio::join!(
+        lane.vault.create(&lane.workspace, &name, &mine, MINTED_AT),
         lane.vault
-            .create(&lane.workspace, &name, &mine, Lane::now()),
-        lane.vault
-            .create(&lane.workspace, &name, &theirs, Lane::now()),
+            .create(&lane.workspace, &name, &theirs, MINTED_AT),
     );
 
     let refusals = [&left, &right].into_iter().filter(|r| r.is_err()).count();
@@ -122,12 +121,7 @@ async fn a_replace_creates_nothing_when_the_name_is_not_held() {
 
     let refused = lane
         .vault
-        .replace(
-            &lane.workspace,
-            &named("never-stored"),
-            &body(PROVIDER_KEY),
-            Lane::now(),
-        )
+        .replace(&lane.workspace, &named("never-stored"), &body(PROVIDER_KEY))
         .await
         .expect_err("claiming a name is create's job");
 

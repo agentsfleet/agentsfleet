@@ -17,10 +17,15 @@ pub struct FleetSummary<'a> {
     pub name: Cow<'a, str>,
     /// Current lifecycle state.
     pub status: Cow<'a, str>,
-    /// Creation time in Unix milliseconds.
-    pub created_at: i64,
-    /// Last mutation in Unix milliseconds.
-    pub updated_at: i64,
+    /// Creation time.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
+    /// Last mutation.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
+    /// The saved purpose, as the fleet's setup describes it; null while the
+    /// fleet has no saved setup.
+    pub description: Option<Cow<'a, str>>,
     /// Authored trigger projection.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
@@ -28,6 +33,7 @@ pub struct FleetSummary<'a> {
     /// Exact lifetime event count.
     pub events_processed: String,
     /// Exact lifetime spend in nanos.
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub budget_used_nanos: String,
 }
 

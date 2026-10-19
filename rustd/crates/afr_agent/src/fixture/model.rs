@@ -263,18 +263,20 @@ pub(crate) fn spent(input: u64, cached_input: u64, output: u64) -> Chunk {
     Chunk::Usage(Usage {
         input,
         cached_input,
-        cache_written: 0,
         output,
+        ..Usage::default()
     })
 }
 
-/// What a turn spent, `written` of its input going to the provider's cache.
+/// What a turn spent, besides `written` prompt tokens it wrote to the
+/// provider's cache for five minutes.
 pub(crate) fn spent_caching(input: u64, cached_input: u64, written: u64, output: u64) -> Chunk {
     Chunk::Usage(Usage {
         input,
         cached_input,
-        cache_written: written,
+        cache_write_5m: written,
         output,
+        ..Usage::default()
     })
 }
 

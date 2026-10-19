@@ -90,11 +90,7 @@ pub(crate) async fn create<D: Services>(
             NewSchedule {
                 fleet: &fleet,
                 source: afd_cron::Source::Api,
-                // A placeholder key until the first successful push records
-                // `fleet-schedule-{id}`, the id it is registered under. It has
-                // to be unique per fleet, which the fleet's own identifier plus
-                // the instant already is.
-                source_key: Some(&format!("{fleet_id}-{}", services.now().as_millis())),
+                provider_schedule_id: None,
                 cron: &input.cron,
                 timezone: &timezone,
                 message: &input.message,
@@ -105,7 +101,11 @@ pub(crate) async fn create<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 
-    rendered(created.map_err(refused)?, StatusCode::CREATED)
+    rendered(
+        created.map_err(refused)?,
+        StatusCode::CREATED,
+        services.now(),
+    )
 }
 
 /// `PATCH …/schedules/{schedule_id}`.
@@ -165,17 +165,19 @@ pub(crate) async fn patch<D: Services>(
     let expected = crate::handler::input::expected(&headers)?;
     let changed = services
         .schedules()
-        .edit(afd_cron::EditRequest {
-            workspace: &owned.workspace,
-            fleet: &fleet,
-            schedule: &schedule,
-            expected,
-            patch: &input,
-            now: services.now(),
-        })
+        .edit(
+            afd_cron::EditRequest {
+                workspace: &owned.workspace,
+                fleet: &fleet,
+                schedule: &schedule,
+                expected,
+                patch: &input,
+            },
+            services.now(),
+        )
         .await
         .map_err(afd_http::handler::schedule::edit_refusal)?;
-    rendered(changed, StatusCode::OK)
+    rendered(changed, StatusCode::OK, services.now())
 }
 
 /// `DELETE …/schedules/{schedule_id}` — see the module note on why it does not.
@@ -233,7 +235,7 @@ pub(crate) async fn purge<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 
-    held_or(removed, StatusCode::OK)
+    held_or(removed, StatusCode::OK, services.now())
 }
 
 /// `POST …/schedules/{schedule_id}/sync`.
@@ -285,5 +287,5 @@ pub(crate) async fn sync<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 
-    held_or(synced, StatusCode::OK)
+    held_or(synced, StatusCode::OK, services.now())
 }

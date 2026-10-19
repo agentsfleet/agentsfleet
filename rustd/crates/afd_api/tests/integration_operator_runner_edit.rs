@@ -21,17 +21,16 @@ const SECOND_POLICY: &str = r#"{"sandbox_tier":"dev_none","network_policy":"allo
 
 /// Every column but the two a label write may move, as one comparable string.
 const ROW_BUT_LABELS: &str = "\
-SELECT (to_jsonb(r) - 'labels' - 'updated_at')::text FROM fleet.runners r WHERE r.id = $1::uuid";
+SELECT (to_jsonb(r) - 'labels' - 'updated_at')::text FROM runner.runners r WHERE r.id = $1::uuid";
 
 /// The stored label column, verbatim.
-const STORED_LABELS: &str = "SELECT labels::text FROM fleet.runners WHERE id = $1::uuid";
+const STORED_LABELS: &str = "SELECT labels::text FROM runner.runners WHERE id = $1::uuid";
 
 /// The whole row, for the edits that must change nothing.
-const WHOLE_ROW: &str = "SELECT to_jsonb(r)::text FROM fleet.runners r WHERE r.id = $1::uuid";
+const WHOLE_ROW: &str = "SELECT to_jsonb(r)::text FROM runner.runners r WHERE r.id = $1::uuid";
 
 /// How many events the runner's history holds, for the no-event repeat.
-const EVENT_COUNT: &str =
-    "SELECT count(*)::text FROM fleet.runner_events WHERE runner_id = $1::uuid";
+const EVENT_COUNT: &str = "SELECT count(*)::text FROM runner.events WHERE runner_id = $1::uuid";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

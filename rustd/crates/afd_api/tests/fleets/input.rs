@@ -9,16 +9,14 @@
 //! would be one a client waits on a round trip for.
 #![cfg(feature = "test-util")]
 #![expect(
-    clippy::expect_used,
     clippy::indexing_slicing,
-    reason = "test target: an unmet precondition should fail the test loudly, and a step \
-              indexes the problem body it just received"
+    reason = "test target: a step indexes the problem body it just received"
 )]
 
 use crate::harness;
+use crate::harness::{assert_reached_the_verb, detail_of};
 
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -57,33 +55,16 @@ async fn authorised(method: Method, path: &str, body: &str) -> axum::response::R
     harness::send(&router, method, path, Some(TENANT_KEY), body).await
 }
 
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Asserts the request got PAST the edge and reached the store.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    assert_eq!(
-        detail_of(response).await,
-        afd_fleet_lifecycle::error::detail::DATABASE_UNAVAILABLE,
-        "{case}: the refusal is the store's, not a layer's"
-    );
-}
-
 #[tokio::test]
 async fn a_cursor_this_daemon_never_issued_is_refused() {
-    for token in ["garbage", "notanumber:019abc", "1744000000000:not-a-uuid"] {
+    // The last is a well-formed text-sort token: a cursor some OTHER list
+    // issued, naming a sort this walk on `(created_at, id)` does not have.
+    for token in [
+        "garbage",
+        "notanumber:019abc",
+        "1744000000000:not-a-uuid",
+        "s:YWJj:01924f4e-0000-7000-8000-00000000f1ee",
+    ] {
         let path = format!("{}?starting_after={token}", collection());
         let response = authorised(Method::GET, &path, "").await;
 

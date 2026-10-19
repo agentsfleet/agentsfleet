@@ -46,7 +46,7 @@ pub(crate) enum ErrorKind {
     },
 
     /// A row came back in a shape this build cannot read.
-    #[error("core.fleet_approval_gates.{column} is not readable")]
+    #[error("fleet.approval_gates.{column} is not readable")]
     RowMalformed {
         column: &'static str,
         #[source]

@@ -47,7 +47,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   const overlap: EventRow = { ...row, fleet_id: fleet.id, workspace_id: workspaceId };
   const history: EventsPage = { items: [
     { ...overlap, event_id: MISSED_ID, actor: "webhook:stream-recovered",
-      created_at: createdAt + 1, tokens: 77,
+      created_at: new Date(createdAt + 1).toISOString(), tokens: 77,
       status: STATUS.FAILED, failure_label: "transport_loss", failure_detail: MISSED_MARKER },
     overlap,
   ], next_cursor: null };
@@ -137,8 +137,8 @@ test("native fleet streaming deduplicates completion and backfills after disconn
 function eventRow(createdAt: number): Omit<EventRow, "fleet_id" | "workspace_id"> {
   return {
     event_id: EVENT_ID, actor: `webhook:${LIVE_SENDER}`, event_type: "webhook", status: STATUS.PROCESSED,
-    created_at: createdAt, updated_at: createdAt, tokens: 12_345, wall_ms: 2_500,
-    cost_nanos: 1_250_000_000, failure_label: null, failure_detail: null,
+    created_at: new Date(createdAt).toISOString(), updated_at: new Date(createdAt).toISOString(), tokens: 12_345, wall_ms: 2_500,
+    cost_nanos: "1250000000", failure_label: null, failure_detail: null,
     resumes_event_id: null,
   };
 }
@@ -161,7 +161,7 @@ function openingFrames(complete: ReturnType<typeof eventRow>): string {
     // Older than the completed run, so the summary keeps reading that run's
     // figures instead of this one's empty "still working" line.
     frame(FRAME_KIND.EVENT_RECEIVED, {
-      event_id: STREAMING_ID, actor: `webhook:${STREAMING_SENDER}`, created_at: complete.created_at - 1,
+      event_id: STREAMING_ID, actor: `webhook:${STREAMING_SENDER}`, created_at: new Date(Date.parse(complete.created_at) - 1).toISOString(),
     }),
     frame(FRAME_KIND.CHUNK, {
       event_id: STREAMING_ID, text: STREAMING_MARKER, text_kind: "answer",

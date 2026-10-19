@@ -127,7 +127,7 @@ function DataTableBody<T extends DataTableRowData>({
           key={row.id}
           className={cn(
             "group/row border-b border-table-divider bg-table-row even:bg-table-row-alternate last:border-b-0 transition-colors duration-snap ease-snap hover:bg-table-row-hover focus-within:bg-table-row-hover motion-reduce:transition-none",
-            onRowClick && "cursor-pointer hover:shadow-table-indicator focus-within:shadow-table-indicator focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            onRowClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           )}
           onClick={onRowClick ? (event) => {
             if (event.defaultPrevented || (event.target instanceof Element && event.target.closest(INTERACTIVE_CELL_SELECTOR))) return;

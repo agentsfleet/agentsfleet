@@ -57,7 +57,7 @@ pub struct Resolution {
     /// The answer that stands.
     pub outcome: String,
     /// When it was given.
-    pub resolved_at: i64,
+    pub resolved_at: jiff::Timestamp,
     /// Who gave it.
     pub resolved_by: String,
 }
@@ -194,7 +194,10 @@ impl ProblemResponse {
             body.insert("gate_id".to_owned(), standing.gate_id.clone().into());
             body.insert("action_id".to_owned(), standing.action_id.clone().into());
             body.insert("outcome".to_owned(), standing.outcome.clone().into());
-            body.insert("resolved_at".to_owned(), standing.resolved_at.into());
+            body.insert(
+                "resolved_at".to_owned(),
+                standing.resolved_at.to_string().into(),
+            );
             body.insert(
                 "resolved_by".to_owned(),
                 standing.resolved_by.clone().into(),

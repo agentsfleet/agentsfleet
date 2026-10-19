@@ -104,8 +104,9 @@ pub enum Reply<'a> {
     /// The destination of an earlier event on the same fleet, copied inside
     /// the admission's own statement so no read can race the write.
     Inherit {
-        /// The logical id of the event whose destination is copied. An id this
-        /// ledger never minted, or an event recorded with none, copies none.
+        /// The id of the event whose destination is copied: its admission row's
+        /// `UUIDv7`. An id this ledger never minted, or an event recorded with
+        /// none, copies none.
         event_id: &'a str,
     },
 }

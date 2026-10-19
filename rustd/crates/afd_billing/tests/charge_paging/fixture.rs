@@ -1,44 +1,24 @@
+use afd_db::Db;
 use afd_db::test_util::mint_id;
-use afd_db::{Db, MIGRATIONS, Migration};
 
-pub(super) fn through(slot: i32) -> &'static [Migration] {
-    let end = MIGRATIONS.iter().position(|m| m.version() == slot).unwrap();
-    MIGRATIONS.get(..=end).unwrap()
+/// A tenant identifier the history is written under. Attempts and usage lines
+/// keep opaque owner identifiers (deletion matrix), so no tenant row is needed.
+pub(super) fn tenant() -> String {
+    mint_id()
 }
 
-pub(super) async fn seed(db: &Db) -> String {
-    let tenant = mint_id();
-    let mut connection = db.acquire().await.unwrap();
-    sqlx::query(
-        "INSERT INTO core.tenants(id,name,created_at,updated_at) VALUES($1::uuid,'paging',1,1)",
-    )
-    .bind(&tenant)
-    .execute(&mut *connection)
-    .await
-    .unwrap();
-    sqlx::query("INSERT INTO core.workspaces(id,tenant_id,created_at) VALUES($1::uuid,$1::uuid,1)")
-        .bind(&tenant)
-        .execute(&mut *connection)
-        .await
-        .unwrap();
-    sqlx::query("INSERT INTO fleet.runners(id,host_id,token_hash,sandbox_tier,admin_state,labels,network_policy,registry_allowlist,worker_count,degraded,last_seen_at,created_at,updated_at) VALUES($1::uuid,$1,$1,'dev_none','active','[]','deny_all_egress','[]',1,false,1,1,1)")
-        .bind(&tenant).execute(&mut *connection).await.unwrap();
-    tenant
-}
-
+/// Settled setup attempts `start..=end` for `tenant`, the `i`th created at
+/// second `i`.
 pub(super) async fn attempts(db: &Db, tenant: &str, start: i64, end: i64) {
-    sqlx::query("WITH ids AS (SELECT overlay(overlay(md5($1||i::text) placing '7' from 13) placing '8' from 17)::uuid AS id,i FROM generate_series($2::bigint,$3::bigint) i) INSERT INTO fleet.authoring_attempts(id,lease_id,runner_id,workspace_id,tenant_id,creator_id,draft_id,message_sequence,fence,deletion_generation,capability_hash,model_snapshot,status,lease_expires_at,deadline,reserved_nanos,settled_nanos,usage_unknown,calls,input_tokens,output_tokens,activity_sequence,created_at,updated_at) SELECT id,id,$1::uuid,$1::uuid,$1::uuid,$1::uuid,$1::uuid,i,1,0,id::text,'{\"model\":\"setup-model\",\"platform_managed\":true}','settled',1,1,17,17,false,1,23,29,0,i,i FROM ids")
+    sqlx::query("WITH ids AS (SELECT overlay(overlay(md5($1||i::text) placing '7' from 13) placing '8' from 17)::uuid AS id,i FROM generate_series($2::bigint,$3::bigint) i) INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,reported_runtime_ms,last_activity_sequence,created_at,updated_at) SELECT id,id,NULL,$1::uuid,$1::uuid,$1::uuid,$1::uuid,i,1,id::text,'{\"model\":\"setup-model\",\"platform_managed\":true}','settled',to_timestamp(i),to_timestamp(i),17,false,1,29,31,0,to_timestamp(i),to_timestamp(i) FROM ids")
         .bind(tenant).bind(start).bind(end)
         .execute(&mut *db.acquire().await.unwrap()).await.unwrap();
 }
 
-pub(super) async fn settlements(db: &Db, tenant: &str, start: i64, end: i64) {
-    sqlx::query("INSERT INTO billing.authoring_settlements(id,attempt_id,report_id,accounting_digest,outcome,usage,charged_nanos,created_at) SELECT id,id,id,id::text,'completed','{\"input_tokens\":23,\"output_tokens\":29,\"runtime_ms\":31}',17,created_at FROM fleet.authoring_attempts WHERE tenant_id=$1::uuid AND created_at BETWEEN $2 AND $3")
-        .bind(tenant).bind(start).bind(end)
+/// One settled setup usage line per attempt created at seconds `start..=end`,
+/// as a setup chat's report logs it.
+pub(super) async fn lines(db: &Db, tenant: &str, start: i64, end: i64) {
+    sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq,tenant_id,workspace_id,authoring_attempt_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,settled_at,created_at,updated_at) SELECT id,$4,id,0,tenant_id,workspace_id,id,'setup','setup-model','platform',created_at,23,0,0,0,0,29,31,0,17,created_at,created_at,created_at FROM authoring.attempts WHERE tenant_id=$1::uuid AND created_at BETWEEN to_timestamp($2) AND to_timestamp($3)")
+        .bind(tenant).bind(start).bind(end).bind(afd_billing::sql::work::AUTHORING_ATTEMPT)
         .execute(&mut *db.acquire().await.unwrap()).await.unwrap();
-}
-
-pub(super) async fn snapshot(db: &Db, tenant: &str) -> serde_json::Value {
-    sqlx::query_scalar("SELECT jsonb_agg(to_jsonb(s) - 'tenant_id' ORDER BY s.id) FROM billing.authoring_settlements s JOIN fleet.authoring_attempts a ON a.id=s.attempt_id WHERE a.tenant_id=$1::uuid")
-        .bind(tenant).fetch_one(&mut *db.acquire().await.unwrap()).await.unwrap()
 }

@@ -1,3 +1,4 @@
+import { ADMIN_MODEL } from "./helpers/catalogue-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import MakeDefaultDialog from "@/app/(dashboard)/admin/models/components/MakeDefaultDialog";
@@ -10,8 +11,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("platform default requires saved model configuration", () => {
   it.each(["fireworks", "openai-compatible"])("refuses an unconfigured %s row before saving a key", (provider) => {
-    const model: AdminModel = { id: "unconfigured", provider, model_id: "workspace-next", context_cap_tokens: 128000,
-      input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 };
+    const model: AdminModel = { ...ADMIN_MODEL, id: "unconfigured", provider, inference: undefined };
     render(<MakeDefaultDialog model={model} onDone={vi.fn()} onOpenChange={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "fixture-secret" } });
     expect(screen.getByText(/Edit this model to configure its inference API, URL and output limit/)).not.toBeNull();

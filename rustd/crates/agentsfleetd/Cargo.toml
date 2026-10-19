@@ -63,6 +63,8 @@ afd_credential.workspace = true
 # `signal::shutdown`, the stop `serve` waits on.
 afd_core = { workspace = true, features = ["signal"] }
 afd_events.workspace = true
+# The instant `Services::now` hands every handler.
+jiff.workspace = true
 # The composition root: this crate is the one that names which directory,
 # capability provider and verifier the generic HTTP shell is served through.
 # The operator's approval queue. Its own crate, not an `afd_fleet` module:
@@ -149,6 +151,8 @@ tracing-subscriber.workspace = true
 afd_core = { workspace = true, features = ["test-util"] }
 # The fleet rows the suites seed (`afd_db::test_util::FleetSeed`).
 afd_db = { workspace = true, features = ["test-util"] }
+# Instants a seed binds, encoded the way the store binds them.
+jiff-sqlx.workspace = true
 # `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
 # time paused and every task parked, the runtime advances to the next deadline
 # itself, so the ten-second timeout costs no wall clock in the unit lane.

@@ -67,6 +67,6 @@ export function groupEventRows(rows: EventRow[]): EventRowEntry[] {
 }
 
 /** A metric worth dimming: a failed run's zero is absence, not a measurement. */
-export function isZeroMetricOnFailure(row: EventRow, value: number | null): boolean {
-  return row.status === STATUS_FAILED && value === 0;
+export function isZeroMetricOnFailure(row: EventRow, value: number | string | null): boolean {
+  return row.status === STATUS_FAILED && (value === 0 || value === "0");
 }

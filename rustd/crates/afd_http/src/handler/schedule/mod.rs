@@ -54,12 +54,16 @@ pub fn refused(refusal: Refused) -> Refusal {
 ///
 /// # Errors
 /// `UZ-SCHED-006` for a superseded reconcile.
-pub fn rendered(reconciled: Reconciled, status: StatusCode) -> Result<Response, Refusal> {
+pub fn rendered(
+    reconciled: Reconciled,
+    status: StatusCode,
+    now: jiff::Timestamp,
+) -> Result<Response, Refusal> {
     match reconciled {
         Reconciled::Synced(schedule) | Reconciled::Failed(schedule) => Ok((
             status,
             [(http::header::ETAG, schedule.etag())],
-            Json(schedule.view()),
+            Json(schedule.view(now)),
         )
             .into_response()),
         Reconciled::Removed => Ok(StatusCode::NO_CONTENT.into_response()),
@@ -88,10 +92,14 @@ pub fn edit_refusal(error: afd_cron::Error) -> Refusal {
 /// # Errors
 /// `UZ-SCHED-002` for a schedule the fleet does not hold, and what
 /// [`rendered`] refuses.
-pub fn held_or(reconciled: Option<Reconciled>, status: StatusCode) -> Result<Response, Refusal> {
+pub fn held_or(
+    reconciled: Option<Reconciled>,
+    status: StatusCode,
+    now: jiff::Timestamp,
+) -> Result<Response, Refusal> {
     reconciled.map_or_else(
         || Err(not_found()),
-        |reconciled| rendered(reconciled, status),
+        |reconciled| rendered(reconciled, status, now),
     )
 }
 

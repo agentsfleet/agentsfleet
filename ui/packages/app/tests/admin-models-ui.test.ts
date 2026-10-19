@@ -1,3 +1,4 @@
+import { ADMIN_CATALOGUE, SOURCE_URL, VERIFIED_AT } from "./helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -46,9 +47,12 @@ function renderWithTooltipProvider(node: React.ReactElement) {
 // The catalogue is a design-system DataTable — scope a row by its (unique)
 // model_id cell and walk up to its <tr>.
 function fillModelSettings() {
-  for (const [label, value] of [["Context window (tokens)", "128000"], ["Inference base URL", "https://models.example.com/v1"], ["Model output limit (tokens)", "8192"]]) {
-    fireEvent.change(screen.getByLabelText(label!), { target: { value } });
-  }
+  for (const [label, value] of [
+    ["Catalogue display name", "GLM 5.2"], ["Context window (tokens)", "128000"],
+    ["Context source URL", SOURCE_URL], ["Context verified at", VERIFIED_AT],
+    ["Effective from", VERIFIED_AT], ["Price source URL", SOURCE_URL], ["Price verified at", VERIFIED_AT],
+    ["Input ($/1M)", "0.55"], ["Cached ($/1M)", "0.14"], ["Output ($/1M)", "2.19"],
+  ]) fireEvent.change(screen.getByLabelText(label!), { target: { value } });
 }
 
 function rowFor(modelId: string): HTMLElement {
@@ -62,10 +66,7 @@ async function loadedEditDialog(label: string) {
   return within(dialog as HTMLElement);
 }
 
-const CATALOGUE: AdminModel[] = [
-  { id: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000, inference: { api: "chat", base_url: "https://models.example.com/v1", max_output_tokens: 8192 } },
-  { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000, inference: { api: "messages", base_url: "https://anthropic.example.com/v1", max_output_tokens: 16384 } },
-];
+const CATALOGUE: AdminModel[] = ADMIN_CATALOGUE;
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => {
@@ -98,7 +99,8 @@ it("AddModelDialog > should convert $/1M entry to integer nanos when creating a 
   await waitFor(() => expect(createAdminModelActionMock).toHaveBeenCalledTimes(1));
   const arg = createAdminModelActionMock.mock.calls[0]![0];
   expect(arg.provider).toBe("fireworks");
-  expect(arg.input_nanos_per_mtok).toBe(550_000_000);
+  expect(arg.prices[0].input_nanos_per_mtok).toBe("550000000");
+  expect(arg.metadata.display_name).toBe("GLM 5.2");
   expect(onCreated).toHaveBeenCalledTimes(1);
 });
 
@@ -143,15 +145,10 @@ it("AddModelDialog > closes from Cancel without creating a model", async () => {
   expect(createAdminModelActionMock).not.toHaveBeenCalled();
 });
 
-it("CatalogueList — rows + rates + empty state > renders a priced row per catalogue model with $/1M rates", () => {
+it("CatalogueList — rows + rates + empty state > shows exact prices, the model name and an accessible model id", () => {
   renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
   expect(screen.getByTestId("data-table")).toBeTruthy();
-  expect(screen.getByTitle("glm-5.2")).toBeTruthy();
   expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
-});
-
-it("CatalogueList — rows + rates + empty state > the model cell shows the name and keeps the id on hover", () => {
-  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
   // The marketed name reads; the provider id a fleet config needs is the hover.
   const cell = screen.getByTitle("glm-5.2");
   expect(cell.textContent).toBe("GLM 5.2");
@@ -176,8 +173,8 @@ it("CatalogueList — rows + rates + empty state > sorts the Model column by the
   const kimi = "accounts/fireworks/models/kimi-k3";
   const haiku = "claude-haiku-5-5";
   const models = [
-    { ...base, id: "k", model_id: kimi },
-    { ...base, id: "h", model_id: haiku },
+    { ...base, id: "k", model_id: kimi, metadata: { ...base.metadata, display_name: "Kimi K3" } },
+    { ...base, id: "h", model_id: haiku, metadata: { ...base.metadata, display_name: "Haiku 5.5" } },
   ];
   renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
@@ -283,4 +280,18 @@ it("CatalogueList — Delete (icon-only, confirm-gated) > cancel on the dialog c
   await user.click(screen.getByRole("button", { name: /^cancel$/i }));
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
+});
+
+it("sorts unknown prices separately and preserves exact integer ordering in both directions", () => {
+  const base = CATALOGUE[0]!;
+  const unknown = {...base, id: "unknown", model_id: "unpriced", prices: []};
+  const cheap = {...base, id: "cheap", model_id: "cheap", prices: base.prices.map(price => ({...price, input_nanos_per_mtok: "1"}))};
+  const models = [base, unknown, cheap];
+  renderWithTooltipProvider(React.createElement(CatalogueList, {models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn()}));
+  const order = () => screen.getAllByTitle(/^(glm-5.2|unpriced|cheap)$/).map(cell => cell.getAttribute("title"));
+  const sort = screen.getByRole("button", {name: "Rates $/1M (in / cached / out)"});
+  fireEvent.click(sort);
+  expect(order()).toEqual([unknown.model_id, cheap.model_id, base.model_id]);
+  fireEvent.click(sort);
+  expect(order()).toEqual([base.model_id, cheap.model_id, unknown.model_id]);
 });

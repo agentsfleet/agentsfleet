@@ -120,3 +120,27 @@ async fn one_hundred_concurrent_publications_share_one_entry_and_revision() {
     );
     case.base.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_candidate_under_retired_policy_semantics_publishes_nothing() {
+    let case = Case::create().await;
+    let draft = case.draft().await;
+    let retired = case.base.retire_head(&draft.id).await;
+    let refused = case
+        .setup
+        .publish(
+            case.base.access(),
+            &mint(),
+            PublishLibrary {
+                draft_candidate_id: retired,
+                label: "ARGO".into(),
+            },
+            now(),
+        )
+        .await
+        .expect_err("stale policy needs a fresh review before it is shared");
+    assert_eq!(refused.code(), afd_core::error_code::AUTHORING_POLICY);
+    assert_eq!(case.counts().await, (0, 0, 0));
+    case.base.cleanup().await;
+}

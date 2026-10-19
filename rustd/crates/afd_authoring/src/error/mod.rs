@@ -135,6 +135,12 @@ pub(crate) enum ErrorKind {
         #[from]
         source: afd_crypto::error::Error,
     },
+    /// The biller answered with a fault its outage policy did not absorb.
+    #[error("the setup chat's biller refused the request")]
+    Billing {
+        #[from]
+        source: afd_billing::Error,
+    },
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
@@ -151,6 +157,7 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_runner::Error => Runner,
     afd_admission::Error => Admission,
     afd_approval::Error => Approval,
+    afd_billing::Error => Billing,
 );
 
 impl Error {
@@ -188,6 +195,7 @@ impl Error {
             ErrorKind::Runner { source } => source.code(),
             ErrorKind::Admission { source } => source.code(),
             ErrorKind::Approval { source } => source.code(),
+            ErrorKind::Billing { source } => source.code(),
             ErrorKind::Identifier { .. } | ErrorKind::Entropy { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }

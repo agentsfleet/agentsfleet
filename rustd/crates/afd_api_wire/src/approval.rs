@@ -20,7 +20,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-/// The spellings `core.fleet_approval_gates.status` stores.
+/// The spellings `fleet.approval_gates.status` stores.
 ///
 /// Declared HERE, in the crate both planes already read, because two crates
 /// write and read this one column: the runner plane parks a gate at `PENDING`
@@ -98,7 +98,7 @@ pub struct ApprovalSummary<'a> {
     /// The verb it wants.
     pub action_name: Cow<'a, str>,
     /// Which family of gate this is.
-    pub gate_kind: Cow<'a, str>,
+    pub gate_type: Cow<'a, str>,
     /// What the fleet proposes, in a person's words.
     pub proposed_action: Cow<'a, str>,
     /// How far the consequences reach.
@@ -108,11 +108,14 @@ pub struct ApprovalSummary<'a> {
     /// The resolver's note, empty while pending.
     pub detail: Cow<'a, str>,
     /// When it was raised.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// When it stops waiting.
-    pub timeout_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub expires_at: jiff::Timestamp,
     /// When it was resolved, or `null` while pending.
-    pub updated_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub resolved_at: Option<jiff::Timestamp>,
     /// Who resolved it, empty while pending.
     pub resolved_by: Cow<'a, str>,
     /// That person's display name, empty when this deployment holds no user
@@ -181,7 +184,8 @@ pub struct ResolvedResponse<'a> {
     /// Where it now stands.
     pub outcome: Cow<'a, str>,
     /// When it was decided.
-    pub resolved_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub resolved_at: jiff::Timestamp,
     /// Who decided it — not necessarily this caller.
     pub resolved_by: Cow<'a, str>,
 }

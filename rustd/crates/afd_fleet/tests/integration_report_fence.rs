@@ -21,6 +21,7 @@ use afd_fleet::lease::Committed;
 use crate::queue;
 use crate::report_commit::{RESPONSE_ACCEPTED, assert_nothing_landed, report};
 use crate::report_seed::held;
+use crate::rows::{LAPSE, Row};
 
 /// Dimension 7.3 — a superseded report commits nothing, by either route.
 #[tokio::test]
@@ -37,11 +38,11 @@ async fn test_a_superseded_report_commits_nothing() {
 
     // The holder dies and its work is taken back, which bumps the fleet's
     // fencing sequence past the token the first lease carries.
-    let lapsed = held
-        .now
-        .saturating_add_millis(afd_core::timing::LEASE_TTL_MS + 1);
+    held.fixtures
+        .age(Row::Slot(&held.fleet), "lease_expires_at", LAPSE)
+        .await;
     let reclaimed =
-        crate::seed::select_fleet_within_rotations(&held.leases, &held.spare, lapsed, &held.fleet)
+        crate::seed::select_fleet_within_rotations(&held.leases, &held.spare, &held.fleet)
             .await
             .expect("a lapsed claim is winnable");
     assert!(
@@ -54,8 +55,9 @@ async fn test_a_superseded_report_commits_nothing() {
             lease_id,
             &held.runner,
             &lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
-            lapsed,
+            held.now,
         ))
         .await
         .expect("a fenced report is an answer, not a fault");
@@ -75,8 +77,9 @@ async fn test_a_superseded_report_commits_nothing() {
             lease_id,
             &held.runner,
             &lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
-            lapsed,
+            held.now,
         ))
         .await
         .expect("a report against a row that is gone is an answer, not a fault");

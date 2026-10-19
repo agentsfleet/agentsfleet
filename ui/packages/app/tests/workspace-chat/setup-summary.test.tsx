@@ -1,7 +1,6 @@
 import type { Definition } from "@/lib/api/draft-types";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { TooltipProvider } from "@agentsfleet/design-system";
 import { SetupSummary } from "@/components/domain/chat/SetupSummary";
 import { REVIEW } from "@/tests/helpers/draft-fixtures";
 
@@ -65,23 +64,13 @@ it("explains event and mention sources without implying that delivery is connect
   expect(screen.queryByText(MANUAL)).toBeNull();
 });
 
-it.each([undefined, UTC, "Asia/Kolkata"])("previews scheduled timing in the runtime timezone: %s", (timezone) => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-18T02:00:00Z"));
-  render(<SetupSummary definition={definition([{type: "cron", schedule: SCHEDULE, timezone}])} />, {wrapper: TooltipProvider});
-  const timing = screen.getByText(/Next scheduled time/);
-  const text = timing.textContent;
-  expect(text).toContain(`Schedule timezone: ${timezone ?? UTC}`);
-  expect(timing.querySelector("time")?.getAttribute("datetime")).toBe(timezone === "Asia/Kolkata" ? "2026-10-18T03:30:00.000Z" : "2026-10-18T09:00:00.000Z");
-  expect(text).toContain("must be registered");
-});
-
 it.each([
-  {schedule: "invalid schedule", timezone: UTC},
-  {schedule: SCHEDULE, timezone: "Unknown/Timezone"},
-])("does not promise a next run when timing cannot be interpreted: $timezone $schedule", (trigger) => {
+  {schedule: SCHEDULE, timezone: UTC},
+  {schedule: "invalid schedule", timezone: "Unknown/Timezone"},
+])("shows schedule intent without predicting scheduler behavior: $schedule", (trigger) => {
   render(<SetupSummary definition={definition([{type: "cron", ...trigger}])} />);
-  expect(screen.getByText(/Timing could not be previewed/)).toBeTruthy();
-  expect(screen.queryByText(/Next scheduled time/)).toBeNull();
+  expect(screen.getByText("Schedule requested. Save the fleet to activate it.")).toBeTruthy();
+  expect(screen.queryByText(/Next scheduled time|Timing could not be previewed/)).toBeNull();
 });
 
 it("makes absent access and network permissions explicit and describes a ceiling rather than a fee", () => {
@@ -100,7 +89,7 @@ it("shows declared access and exact daily and monthly limits without rounding la
   expect(screen.getByText(/Connected accounts:/).closest("li")?.textContent).toContain(SOURCE);
   expect(screen.getByText(/Repositories:/).closest("li")?.textContent).toContain("owner/repo");
   expect(screen.getByText(/Tools:/).closest("li")?.textContent).toContain("read_file");
-  expect(screen.getByText(/Network:/).closest("li")?.textContent).toContain("Read-only policy enabled; see advanced details for exceptions.");
+  expect(screen.getByText(/Network:/).closest("li")?.textContent).toContain("Read-only policy enabled.");
   // Pin test: exact decimal limits must survive values beyond Number.MAX_SAFE_INTEGER.
   expect(screen.getByText(/Spending limit:/).closest("li")?.textContent).toContain("$0.000000001 per day; $9223372036.854775807 per month.");
 });

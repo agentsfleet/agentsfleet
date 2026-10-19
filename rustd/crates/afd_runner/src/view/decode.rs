@@ -1,104 +1,155 @@
 //! Stored runner rows decoded into owned operator-plane values.
+//!
+//! Each statement's row is a named `FromRow` struct, so a column is found by
+//! the name the statement gives it and never by a position a later column
+//! could shift. Liveness is derived at the `checked_at` the statement answered
+//! with — the database's clock, the one the live-lease test inside it used.
 
 use std::borrow::Cow;
 
 use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
-use afd_core::clock::UnixMillis;
+use afd_core::clock;
 use afd_core::id::Uuid7;
-use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
+use afd_core::timing::RUNNER_OFFLINE_AFTER;
 use afd_wire::runner::{
     AssignedPolicy, CapabilityReport, ExtraBind, RunnerLiveness, SelftestCheck, SelftestReport,
 };
+use jiff::Timestamp;
 use serde_json::Value;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
-use crate::error::{Result, admin_state_malformed, query, row_malformed, stored_json};
-use crate::policy::{self, AssignmentColumns, StoredVerdict};
+use crate::error::{Result, admin_state_malformed, row_malformed, stored_json};
+use crate::policy::{self, AssignmentColumns};
 use crate::sql;
 use crate::view::{RunnerDetail, RunnerItem};
 
-const CONTEXT_RUNNER_LIST: &str = "runner list page";
-const CONTEXT_RUNNER_DETAIL: &str = "runner detail";
-const CONTEXT_EVENT_LIST: &str = "runner event page";
-const TABLE_RUNNERS: &str = "fleet.runners";
-const TABLE_EVENTS: &str = "fleet.runner_events";
+const TABLE_RUNNERS: &str = "runner.runners";
+const TABLE_EVENTS: &str = "runner.events";
 const COLUMN_ID: &str = "id";
+const COLUMN_RUNNER_ID: &str = "runner_id";
 
-pub(super) fn runner_item(row: &PgRow, now: UnixMillis) -> Result<RunnerItem> {
-    base_item(
-        row,
-        8,
-        row.try_get(7).map_err(query(CONTEXT_RUNNER_LIST))?,
-        now,
-        CONTEXT_RUNNER_LIST,
-    )
+/// The columns every runner read selects, by name.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct ItemRow {
+    id: String,
+    host_id: String,
+    sandbox_tier: String,
+    status: String,
+    labels: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    last_seen_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    checked_at: Timestamp,
+    live_lease: bool,
+    network_policy: String,
+    registry_allowlist: String,
+    worker_count: i32,
+    capability_report: Option<String>,
+    degraded_reason: Option<String>,
+    sandbox_config: Option<String>,
 }
 
-pub(super) fn runner_detail(row: &PgRow, now: UnixMillis) -> Result<RunnerDetail> {
-    let column = query(CONTEXT_RUNNER_DETAIL);
-    let active_lease_count = row.try_get(7).map_err(&column)?;
-    Ok(RunnerDetail {
-        item: base_item(row, 13, active_lease_count > 0, now, CONTEXT_RUNNER_DETAIL)?,
-        active_lease_count,
-        active_fleet_count: row.try_get(8).map_err(&column)?,
-        leases_acquired: row.try_get(9).map_err(&column)?,
-        leases_succeeded: row.try_get(10).map_err(&column)?,
-        leases_failed: row.try_get(11).map_err(&column)?,
-        leases_expired: row.try_get(12).map_err(&column)?,
-        selftest_requested_at: row.try_get(20).map_err(&column)?,
-        selftest_completed_at: row.try_get(21).map_err(&column)?,
-        selftest: selftest(row, &column)?,
-    })
+/// The detail read: the item's columns, its counts and its last self-test.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct DetailRow {
+    #[sqlx(flatten)]
+    item: ItemRow,
+    active_lease_count: i64,
+    active_fleet_count: i64,
+    leases_acquired: i64,
+    leases_succeeded: i64,
+    leases_failed: i64,
+    leases_expired: i64,
+    selftest_requested_at: Option<jiff_sqlx::Timestamp>,
+    selftest_completed_at: Option<jiff_sqlx::Timestamp>,
+    selftest_checks: Option<String>,
+    selftest_sandbox_tier: Option<String>,
+    selftest_network_policy: Option<String>,
 }
 
-fn base_item(
-    row: &PgRow,
-    policy_at: usize,
-    has_live_lease: bool,
-    now: UnixMillis,
-    context: &'static str,
-) -> Result<RunnerItem> {
-    let column = query(context);
-    let id: String = row.try_get(0).map_err(&column)?;
-    let raw_admin_state: String = row.try_get(3).map_err(&column)?;
-    let labels_json: String = row.try_get(4).map_err(&column)?;
-    let last_seen_at = row.try_get(5).map_err(&column)?;
-    let columns = assignment(row, policy_at, &column)?;
-    let capability_json: Option<String> = row.try_get(policy_at + 3).map_err(&column)?;
-    let verdict = StoredVerdict {
-        degraded: row.try_get(policy_at + 4).map_err(&column)?,
-        reason: row.try_get(policy_at + 5).map_err(&column)?,
-    };
-    Ok(RunnerItem {
-        id: Uuid7::parse(&id).map_err(row_malformed(TABLE_RUNNERS, COLUMN_ID))?,
-        host_id: row.try_get(1).map_err(&column)?,
-        sandbox_tier: columns.sandbox_tier.clone(),
-        admin_state: afd_core::spelling::from_spelling(&raw_admin_state)
-            .ok_or_else(admin_state_malformed)?,
-        liveness: derive_liveness(last_seen_at, has_live_lease, now),
-        labels: labels(&labels_json)?,
-        last_seen_at,
-        created_at: row.try_get(6).map_err(&column)?,
-        assigned_policy: own_policy(columns.decode()?),
-        achievable: policy::capability(capability_json.as_deref()).map(own_capability),
-        degraded: verdict.degraded,
-        degraded_reason: verdict.reason,
-    })
+/// One history row, by name.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct EventRow {
+    id: String,
+    runner_id: String,
+    event_type: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    metadata: String,
 }
 
-fn assignment(
-    row: &PgRow,
-    at: usize,
-    column: &impl Fn(sqlx::Error) -> crate::error::Error,
-) -> Result<AssignmentColumns> {
-    Ok(AssignmentColumns {
-        sandbox_tier: row.try_get(2).map_err(column)?,
-        network_policy: row.try_get(at).map_err(column)?,
-        registry_allowlist_json: row.try_get(at + 1).map_err(column)?,
-        worker_count: row.try_get(at + 2).map_err(column)?,
-        extra_binds_json: row.try_get(at + 6).map_err(column)?,
-    })
+impl ItemRow {
+    /// The list row, its identifier, status and stored JSON proven.
+    pub(super) fn parse(self) -> Result<RunnerItem> {
+        let columns = AssignmentColumns {
+            sandbox_tier: self.sandbox_tier,
+            network_policy: self.network_policy,
+            registry_allowlist_json: self.registry_allowlist,
+            worker_count: self.worker_count,
+            sandbox_config_json: self.sandbox_config,
+        };
+        Ok(RunnerItem {
+            id: Uuid7::parse(&self.id).map_err(row_malformed(TABLE_RUNNERS, COLUMN_ID))?,
+            host_id: self.host_id,
+            sandbox_tier: columns.sandbox_tier.clone(),
+            status: afd_core::spelling::from_spelling(&self.status)
+                .ok_or_else(admin_state_malformed)?,
+            liveness: derive_liveness(self.last_seen_at, self.live_lease, self.checked_at),
+            labels: labels(&self.labels)?,
+            last_seen_at: self.last_seen_at,
+            created_at: self.created_at,
+            assigned_policy: own_policy(columns.decode()?),
+            achievable: policy::capability(self.capability_report.as_deref()).map(own_capability),
+            degraded: self.degraded_reason.is_some(),
+            degraded_reason: self.degraded_reason,
+        })
+    }
+}
+
+impl DetailRow {
+    /// The detail row, built on the list row's decode.
+    pub(super) fn parse(self) -> Result<RunnerDetail> {
+        let selftest = selftest(
+            self.selftest_checks,
+            self.selftest_sandbox_tier,
+            self.selftest_network_policy,
+        );
+        Ok(RunnerDetail {
+            item: self.item.parse()?,
+            active_lease_count: self.active_lease_count,
+            active_fleet_count: self.active_fleet_count,
+            leases_acquired: self.leases_acquired,
+            leases_succeeded: self.leases_succeeded,
+            leases_failed: self.leases_failed,
+            leases_expired: self.leases_expired,
+            selftest_requested_at: self
+                .selftest_requested_at
+                .map(jiff_sqlx::Timestamp::to_jiff),
+            selftest_completed_at: self
+                .selftest_completed_at
+                .map(jiff_sqlx::Timestamp::to_jiff),
+            selftest,
+        })
+    }
+}
+
+impl EventRow {
+    /// The history item, its identifiers, type and metadata proven.
+    pub(super) fn parse(self) -> Result<RunnerEventItem<'static>> {
+        Uuid7::parse(&self.id).map_err(row_malformed(TABLE_EVENTS, COLUMN_ID))?;
+        Uuid7::parse(&self.runner_id).map_err(row_malformed(TABLE_EVENTS, COLUMN_RUNNER_ID))?;
+        let event_type = serde_json::from_value::<RunnerEventType>(Value::String(self.event_type))
+            .map_err(stored_json(TABLE_EVENTS, "event_type"))?;
+        Ok(RunnerEventItem {
+            id: Cow::Owned(self.id),
+            runner_id: Cow::Owned(self.runner_id),
+            event_type,
+            occurred_at: self.created_at,
+            metadata: serde_json::from_str(&self.metadata)
+                .map_err(stored_json(TABLE_EVENTS, "metadata"))?,
+        })
+    }
 }
 
 fn own_policy(policy: AssignedPolicy<'_>) -> AssignedPolicy<'static> {
@@ -142,31 +193,28 @@ fn labels(raw: &str) -> Result<Vec<String>> {
     serde_json::from_str(raw).map_err(stored_json(TABLE_RUNNERS, "labels"))
 }
 
-fn selftest(
-    row: &PgRow,
-    column: &impl Fn(sqlx::Error) -> crate::error::Error,
-) -> Result<Option<SelftestReport<'static>>> {
-    let raw: Option<String> = row.try_get(22).map_err(column)?;
-    let all_ok: Option<bool> = row.try_get(23).map_err(column)?;
-    let tier: Option<String> = row.try_get(24).map_err(column)?;
-    let network: Option<String> = row.try_get(25).map_err(column)?;
-    let Some((raw, all_ok, tier, network)) = raw
-        .zip(all_ok)
-        .zip(tier)
-        .zip(network)
-        .map(|(((raw, all_ok), tier), network)| (raw, all_ok, tier, network))
-    else {
-        return Ok(None);
-    };
-    let checks = serde_json::from_str::<Vec<SelftestCheck<'_>>>(&raw)
-        .ok()
-        .map(|checks| checks.into_iter().map(own_check).collect());
-    Ok(checks.map(|checks| SelftestReport {
+/// The last complete self-test, when the row holds one.
+///
+/// Whether it passed is not a column: it is read from the checks, which the
+/// acceptor held to the host's own summary before they were stored. Checks
+/// that no longer parse read as no self-test, the way they always have.
+pub(super) fn selftest(
+    checks: Option<String>,
+    sandbox_tier: Option<String>,
+    network_policy: Option<String>,
+) -> Option<SelftestReport<'static>> {
+    let (raw, (tier, network)) = checks.zip(sandbox_tier.zip(network_policy))?;
+    let checks: Vec<SelftestCheck<'static>> = serde_json::from_str::<Vec<SelftestCheck<'_>>>(&raw)
+        .ok()?
+        .into_iter()
+        .map(own_check)
+        .collect();
+    Some(SelftestReport {
+        all_ok: checks.iter().all(|check| check.ok),
         checks,
-        all_ok,
         sandbox_tier: Cow::Owned(tier),
         network_policy: Cow::Owned(network),
-    }))
+    })
 }
 
 fn own_check(check: SelftestCheck<'_>) -> SelftestCheck<'static> {
@@ -177,38 +225,21 @@ fn own_check(check: SelftestCheck<'_>) -> SelftestCheck<'static> {
     }
 }
 
-pub(super) fn runner_event(row: &PgRow) -> Result<RunnerEventItem<'static>> {
-    let column = query(CONTEXT_EVENT_LIST);
-    let id: String = row.try_get(0).map_err(&column)?;
-    let runner_id: String = row.try_get(1).map_err(&column)?;
-    let raw_type: String = row.try_get(2).map_err(&column)?;
-    Uuid7::parse(&id).map_err(row_malformed(TABLE_EVENTS, COLUMN_ID))?;
-    Uuid7::parse(&runner_id).map_err(row_malformed(TABLE_EVENTS, "runner_id"))?;
-    let event_type = serde_json::from_value::<RunnerEventType>(Value::String(raw_type))
-        .map_err(stored_json(TABLE_EVENTS, "event_type"))?;
-    let metadata_raw: String = row.try_get(4).map_err(&column)?;
-    Ok(RunnerEventItem {
-        id: Cow::Owned(id),
-        runner_id: Cow::Owned(runner_id),
-        event_type,
-        occurred_at: row.try_get(3).map_err(&column)?,
-        metadata: serde_json::from_str(&metadata_raw)
-            .map_err(stored_json(TABLE_EVENTS, "metadata"))?,
-    })
-}
-
+/// What an operator reads a runner as, judged at `checked_at`.
+///
+/// Fresh is inclusive: a runner whose last beat is exactly the offline
+/// threshold old is still online, the same edge the liveness sweep keeps. A
+/// beat stamped after `checked_at` — a skewed clock — reads as fresh.
 pub(super) fn derive_liveness(
-    last_seen_at: i64,
+    last_seen_at: Timestamp,
     has_live_lease: bool,
-    now: UnixMillis,
+    checked_at: Timestamp,
 ) -> RunnerLiveness {
-    if last_seen_at == sql::LAST_SEEN_NEVER {
+    if last_seen_at == sql::NEVER_SEEN {
         RunnerLiveness::Registered
     } else if has_live_lease {
         RunnerLiveness::Busy
-    } else if now.saturating_millis_since(UnixMillis::from_millis(last_seen_at))
-        <= RUNNER_OFFLINE_AFTER_MS
-    {
+    } else if last_seen_at >= clock::before(checked_at, RUNNER_OFFLINE_AFTER) {
         RunnerLiveness::Online
     } else {
         RunnerLiveness::Offline
@@ -217,7 +248,7 @@ pub(super) fn derive_liveness(
 
 #[cfg(test)]
 mod tests {
-    use super::labels;
+    use super::{labels, selftest};
 
     #[test]
     fn malformed_stored_labels_are_not_silently_erased() {
@@ -225,5 +256,35 @@ mod tests {
         let code = result.as_ref().err().map(|error| error.code().as_str());
 
         assert_eq!(code, Some("UZ-INTERNAL-002"));
+    }
+
+    #[test]
+    fn a_self_test_passes_only_when_every_stored_check_did() {
+        let tier = || Some("dev_none".to_owned());
+        let network = || Some("deny_all_egress".to_owned());
+        let passed = r#"[{"name":"landlock","ok":true,"detail":""}]"#;
+        let failed = r#"[{"name":"landlock","ok":true,"detail":""},{"name":"seccomp","ok":false,"detail":"absent"}]"#;
+
+        let passed = selftest(Some(passed.to_owned()), tier(), network());
+        let failed = selftest(Some(failed.to_owned()), tier(), network());
+
+        assert_eq!(passed.map(|report| report.all_ok), Some(true));
+        assert_eq!(failed.map(|report| report.all_ok), Some(false));
+    }
+
+    #[test]
+    fn a_row_with_no_complete_self_test_reads_as_none() {
+        let checks = Some("[]".to_owned());
+
+        assert!(selftest(checks.clone(), None, Some("deny_all_egress".to_owned())).is_none());
+        assert!(selftest(None, Some("dev_none".to_owned()), None).is_none());
+        assert!(
+            selftest(
+                Some("not-json".to_owned()),
+                Some("t".to_owned()),
+                Some("n".to_owned())
+            )
+            .is_none()
+        );
     }
 }

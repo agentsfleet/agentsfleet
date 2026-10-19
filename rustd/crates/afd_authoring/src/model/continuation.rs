@@ -1,6 +1,6 @@
 //! Native provider state belongs to one authorized attempt and unchanged conversation.
 
-use super::{ModelCallInput, ModelCallResult, dispatch::CONTEXT};
+use super::{ModelCallInput, ModelCallResult, dispatch::CONTEXT, dispatch_status, sql};
 use crate::{
     Result,
     error::{
@@ -11,6 +11,7 @@ use crate::{
     replay,
 };
 use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
+use jiff::Timestamp;
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse},
     message::{AssistantMessage, Message},
@@ -19,10 +20,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::PgConnection;
 
-const READ: &str = "\
-SELECT native_reply::text,private_expires_at FROM fleet.authoring_dispatches
-WHERE attempt_id=$1::uuid AND call_index<$2 AND status='completed'
-AND native_reply IS NOT NULL ORDER BY call_index LIMIT $3";
+/// One [`sql::CONTINUATIONS`] row, by name.
+#[derive(sqlx::FromRow)]
+struct Saved {
+    native_reply: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    private_expires_at: Timestamp,
+}
 
 #[derive(Serialize, Deserialize)]
 pub(super) struct Continuation {
@@ -65,22 +69,26 @@ pub(super) async fn read(
     connection: &mut PgConnection,
     attempt: &Attempt,
     request: &garde::Valid<ModelCallInput>,
-    now: i64,
+    now: Timestamp,
 ) -> Result<Vec<Continuation>> {
-    let rows: Vec<(String, i64)> = sqlx::query_as(READ)
+    let rows: Vec<Saved> = sqlx::query_as(sql::CONTINUATIONS)
         .bind(attempt.id.as_str())
         .bind(i64::from(request.call_index))
+        .bind(dispatch_status::COMPLETED)
         .bind(super::budget::MAX_CALLS)
         .fetch_all(connection)
         .await
         .map_err(query(CONTEXT))?;
     rows.into_iter()
-        .map(|(raw, expires)| {
-            if expires <= now {
+        .map(|saved| {
+            if saved.private_expires_at <= now {
                 return Err(ErrorKind::Gone.into());
             }
-            garde::Unvalidated::new(Bounded { json: &raw }).validate()?;
-            serde_json::from_str(&raw).map_err(stored)
+            garde::Unvalidated::new(Bounded {
+                json: &saved.native_reply,
+            })
+            .validate()?;
+            serde_json::from_str(&saved.native_reply).map_err(stored)
         })
         .collect()
 }

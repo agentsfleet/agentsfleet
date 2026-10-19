@@ -11,7 +11,8 @@ reference is `.orly/docs/CHANGELOG_VOICE.md` (Mintlify-style) — read it before
 **Signal legend:**
 
 - 🤔 DECIDE — judgment-only; the agent writes to the voice below and self-audits.
-  No script gates it — it blocks the *turn* (the changelog entry), not a commit.
+  Voice remains a review judgment. `docs.language` rejects mechanical language
+  findings in changed prose; DOC-33 defines its scope.
 - 🟣 delegated — edit the declared changelog in its owning repository with
   that repository's branch rules and authorization.
 
@@ -35,10 +36,12 @@ a gate skip.
   `.orly/docs/CHANGELOG_VOICE.md` and `.orly/docs/DOCUMENTATION_RULES.md`; do not duplicate
   either list here.
 - **Bullets** follow `**Bold lead-noun** — consequence-first clause`.
-- **Never drop load-bearing facts** — error codes, endpoints, env vars, schema
-  names, money amounts stay verbatim.
-- **Internal cleanup** gets aggressive trimming, not a paragraph.
-- **History is archived, not rewritten** — past entries are an immutable record.
+- **Distill** with DOC-43 and the budget in `.orly/docs/CHANGELOG_VOICE.md`.
+  Select user-visible consequences instead of listing implementation changes.
+- **Keep facts needed to act.** Preserve exact technical tokens when needed;
+  link to the full reference. Required upgrade and safety steps stay inline.
+- **Internal-only cleanup** gets no release entry.
+- **History stays unchanged** unless the user explicitly requests an edit.
 - **Rate claims** match the repository's canonical billing constants and
   published rate tables, with both updated when the behavior changes.
 - **Rate constants** are declared once, in `afd_billing`'s `nanos.rs`, with the
@@ -48,7 +51,7 @@ a gate skip.
 ## Required output (self-audit line before committing the changelog)
 
 ```
-📝 CHANGELOG: <N> bullet(s) · no marketing words · load-bearing facts kept · history append-only
+📝 CHANGELOG: <N> words · <N> bullets · reader action clear · required facts kept · DOC-43 applied
 ```
 
 If the change is internal-only, emit instead:

@@ -23,6 +23,9 @@ use sqlx::Row as _;
 use crate::e2e::{Scenario, scenario_with};
 use crate::e2e_seed::{FLEET_CONFIG_JSON, seed_fleet};
 use crate::tail::lease;
+
+/// How long a held sync lease outlives the database clock: past the case.
+const SYNC_HOLD: std::time::Duration = std::time::Duration::from_secs(60);
 use crate::verbs::{FakeQStash, QSTASH_TOKEN, send};
 use crate::wire::{post, report_body};
 
@@ -142,11 +145,9 @@ impl Leased {
     pub(crate) async fn held(&self, source: Option<Source>) -> i64 {
         let statement = match source {
             Some(_) => {
-                "SELECT count(*) FROM core.fleet_schedules WHERE fleet_id = $1::uuid AND source = $2"
+                "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1::uuid AND source = $2"
             }
-            None => {
-                "SELECT count(*) FROM core.fleet_schedules WHERE fleet_id = $1::uuid AND $2 = ''"
-            }
+            None => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1::uuid AND $2 = ''",
         };
         let mut connection = self.connection().await;
         sqlx::query(statement)
@@ -172,10 +173,10 @@ impl Leased {
         let id = Entropy::new().uuid7(now).expect("an identifier");
         let mut connection = self.connection().await;
         sqlx::query(
-            "INSERT INTO core.fleet_schedules (id, fleet_id, source, source_key, cron_expression, \
-             timezone, message, desired_status, sync_status, generation, created_at, updated_at, \
-             once) VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'UTC', 'seeded', $6, 'synced', 1, $7, \
-             $7, $8)",
+            "INSERT INTO fleet.schedules (id, fleet_id, source, provider_schedule_id, \
+             cron_expression, timezone, message, desired_status, sync_status, resource_version, \
+             created_at, updated_at, once) VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'UTC', \
+             'seeded', $6, 'synced', 1, now(), now(), $7)",
         )
         .bind(id.as_str())
         .bind(fleet)
@@ -183,7 +184,6 @@ impl Leased {
         .bind(row.key)
         .bind(WEEKLY)
         .bind(row.desired_status)
-        .bind(now.as_millis())
         .bind(row.once)
         .execute(&mut *connection)
         .await
@@ -222,7 +222,7 @@ impl Leased {
     /// Moves the fleet's live sequence past this lease's, as a reclaim does.
     pub(crate) async fn supersede(&self) {
         self.on_fleet(
-            "UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1 WHERE fleet_id = $1::uuid",
+            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1::uuid",
         )
         .await;
     }
@@ -231,14 +231,17 @@ impl Leased {
     /// callback's admission would.
     pub(crate) async fn lease_woken_by_schedule(&self) {
         let mut connection = self.connection().await;
-        sqlx::query("UPDATE fleet.runner_leases SET actor = $2 WHERE id = $1::uuid")
-            .bind(&self.lease_id)
-            .bind(format!(
-                "{ACTOR_PREFIX}0195b4ba-8d3a-7000-8abc-00000000c401"
-            ))
-            .execute(&mut *connection)
-            .await
-            .expect("the lease's actor moves");
+        sqlx::query(
+            "UPDATE fleet.events SET actor = $2 \
+             WHERE id = (SELECT fleet_event_id FROM runner.leases WHERE id = $1::uuid)",
+        )
+        .bind(&self.lease_id)
+        .bind(format!(
+            "{ACTOR_PREFIX}0195b4ba-8d3a-7000-8abc-00000000c401"
+        ))
+        .execute(&mut *connection)
+        .await
+        .expect("the lease's actor moves");
     }
 
     /// Hands `schedule`'s row to another syncer for a minute, or back.
@@ -247,12 +250,14 @@ impl Leased {
         let token = held.then(|| Entropy::new().uuid7(now).expect("a token"));
         let mut connection = self.connection().await;
         sqlx::query(
-            "UPDATE core.fleet_schedules SET sync_token = $2::uuid, sync_lease_until = $3 \
+            "UPDATE fleet.schedules SET sync_token = $2::uuid, \
+             sync_lease_expires_at = CASE WHEN $3 THEN clock_timestamp() + $4::interval END \
              WHERE id = $1::uuid",
         )
         .bind(schedule)
         .bind(token.as_ref().map(afd_core::id::Uuid7::as_str))
-        .bind(held.then(|| now.as_millis() + 60_000))
+        .bind(held)
+        .bind(SYNC_HOLD)
         .execute(&mut *connection)
         .await
         .expect("the sync lease moves");
@@ -262,7 +267,7 @@ impl Leased {
     pub(crate) async fn admitted(&self, schedule: &str) -> i64 {
         let mut connection = self.connection().await;
         sqlx::query_scalar(
-            "SELECT count(*) FROM core.fleet_admissions WHERE workspace_id = $1::uuid AND actor = $2",
+            "SELECT count(*) FROM fleet.admissions WHERE workspace_id = $1::uuid AND actor = $2",
         )
         .bind(&self.run.workspace)
         .bind(format!("{ACTOR_PREFIX}{schedule}"))

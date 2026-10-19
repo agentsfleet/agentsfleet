@@ -21,13 +21,13 @@
 )]
 
 use afd_admission::{Admission, Admissions, Key, Producer};
-use afd_core::clock;
 use afd_wire::event::EventType;
 
 use afd_admission::Progress;
 
 use crate::integration_admission_recovery::{EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE};
 use crate::queue;
+use crate::rows::Row;
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -82,7 +82,7 @@ async fn a_replay_pass_against_a_dead_queue_repairs_nothing_and_raises_nothing()
         .expect("the row commits whatever the queue does");
     assert_eq!(
         fixtures
-            .admission_receipt(&fleet, &deferred.stored.id)
+            .text(Row::Admission(&deferred.stored.id), "receipt")
             .await,
         None,
         "an append that never happened records no receipt"
@@ -91,7 +91,7 @@ async fn a_replay_pass_against_a_dead_queue_repairs_nothing_and_raises_nothing()
     // The real clock, not a fixture instant: `replay` cuts off against
     // `created_at`, which `admit` stamps with `clock::now()`.
     let replayed = deferring(&fixtures)
-        .replay(clock::now(), NO_GRACE, EVERY_ROW)
+        .replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("a queue outage is the pass's outcome, never its error");
 
@@ -101,7 +101,7 @@ async fn a_replay_pass_against_a_dead_queue_repairs_nothing_and_raises_nothing()
     );
     assert_eq!(
         fixtures
-            .admission_receipt(&fleet, &deferred.stored.id)
+            .text(Row::Admission(&deferred.stored.id), "receipt")
             .await,
         None,
         "a refused append must not record a receipt for an entry nobody holds"
@@ -111,12 +111,12 @@ async fn a_replay_pass_against_a_dead_queue_repairs_nothing_and_raises_nothing()
     // finishes what the outage could not, which is what makes the outage arm
     // a deferral rather than a loss.
     live(&fixtures)
-        .replay(clock::now(), NO_GRACE, EVERY_ROW)
+        .replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs against both live datastores");
     assert!(
         fixtures
-            .admission_receipt(&fleet, &deferred.stored.id)
+            .text(Row::Admission(&deferred.stored.id), "receipt")
             .await
             .is_some(),
         "the row the outage deferred must still be repairable afterwards"
@@ -146,17 +146,12 @@ async fn a_reconcile_pass_that_cannot_probe_keeps_the_receipt() {
         .await
         .expect("a live queue admits and receipts in one call");
     let receipt = fixtures
-        .admission_receipt(&fleet, &healthy.stored.id)
+        .text(Row::Admission(&healthy.stored.id), "receipt")
         .await
         .expect("a live append records its receipt");
 
     let reconciled = deferring(&fixtures)
-        .reconcile(
-            clock::now(),
-            EVERY_FLEET,
-            EVERY_ROW,
-            &mut Progress::default(),
-        )
+        .reconcile(EVERY_FLEET, EVERY_ROW, &mut Progress::default())
         .await
         .expect("an unreachable fleet must not end a pass that has others to examine");
     assert_eq!(
@@ -164,7 +159,9 @@ async fn a_reconcile_pass_that_cannot_probe_keeps_the_receipt() {
         "a probe that could not be made must void nothing: {reconciled:?}"
     );
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &healthy.stored.id).await,
+        fixtures
+            .text(Row::Admission(&healthy.stored.id), "receipt")
+            .await,
         Some(receipt),
         "the receipt the probe could not disprove must survive the pass"
     );

@@ -46,31 +46,29 @@ pub enum Route {
 ///
 /// [`RefState::Found`] outranks EVERY policy outcome — including both that
 /// would otherwise pass: no policy at all, and [`Decision::AutoApprove`] from
-/// an emptied rules list. Those two are exactly what a mid-flight `config_json`
-/// PATCH produces, and honouring the recorded gate ahead of them is what stops
-/// such a PATCH from silently withdrawing a question already put to a human.
+/// an emptied rules list. Those two are exactly what a mid-flight Apply of a
+/// new setup produces, and honouring the recorded gate ahead of them is what
+/// stops such an Apply from silently withdrawing a question already put to a
+/// human.
 ///
 /// Waking a fleet and reconfiguring one are ONE scope today, so that PATCH asks
 /// for no approval of its own; splitting the two is separate work, and a gate
 /// this daemon already raised does not have to wait for it.
 #[must_use]
 pub const fn route(state: RefState, decision: Option<Decision>) -> Route {
-    // Checked before `decision` is even looked at, which is the ordering the
-    // whole module exists to state.
-    if matches!(state, RefState::Found) {
-        return Route::EvaluateRecorded;
-    }
-    match decision {
-        None | Some(Decision::AutoApprove) => Route::Pass,
-        Some(Decision::AutoKill) => Route::Kill,
-        Some(Decision::RequiresApproval) => match state {
-            // Answered above. Spelled rather than left to a catch-all so that
-            // adding a state to `RefState` fails the build here, at the one
-            // place that has to decide what it means.
-            RefState::Found => Route::EvaluateRecorded,
-            RefState::Unreadable => Route::Wait,
-            RefState::Absent => Route::RequestNew,
-        },
+    match (state, decision) {
+        // First, and whatever `decision` holds, which is the ordering the
+        // whole module exists to state.
+        (RefState::Found, _) => Route::EvaluateRecorded,
+        // Every other row names its states rather than leaving them to a
+        // catch-all, so adding a state to `RefState` fails the build here, at
+        // the one place that has to decide what it means.
+        (RefState::Absent | RefState::Unreadable, None | Some(Decision::AutoApprove)) => {
+            Route::Pass
+        }
+        (RefState::Absent | RefState::Unreadable, Some(Decision::AutoKill)) => Route::Kill,
+        (RefState::Unreadable, Some(Decision::RequiresApproval)) => Route::Wait,
+        (RefState::Absent, Some(Decision::RequiresApproval)) => Route::RequestNew,
     }
 }
 

@@ -17,19 +17,19 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Dragonfly connection budget | 3·R at normal boot | one shared command socket, one hub socket, one outbound reader socket per replica | §Connection budget after the cutover |
 | Idle request volume | `N_runners / poll_s` requests/sec | each idle poll = one bounded Dragonfly read (one partition's `HRANDFIELD`; a poll the readiness doorbell rang peeks a second partition with it) + one indexed auth read; ~72,000/hour at 20 runners, 1 s | §Per-request volume |
-| Idle-cost knob | `NO_WORK_RETRY_AFTER_MS` = 1000 | trades idle bill against idle pickup latency; single-sourced in `rustd/crates/afd_core/src/timing.rs` | §Tuneup knobs |
+| Idle-cost knob | `NO_WORK_RETRY_AFTER` = 1000 | trades idle bill against idle pickup latency; single-sourced in `rustd/crates/afd_core/src/timing.rs` | §Tuneup knobs |
 | Per-poll fan-out ceiling | `MAX_READY_CANDIDATES_PER_POLL` = 64, compile-time | randomized readiness slice; per-poll cost independent of population, even when the index is wrong | §The per-poll bound |
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Per-request volume |
 | Fleet count in the idle term | absent | fleet count appears only in the readiness *recovery* bound | §The per-poll bound |
 | Server-Sent Events (SSE) ceiling | `SSE_MAX_STREAMS` = 256 per replica, bound by file descriptors | async response bodies own semaphore permits; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
 | Dragonfly timeout | `DRAGONFLY_REQUEST_TIMEOUT_MS` = 5000 — do not raise | above 5 s is failure, not slowness | §Tuneup knobs |
 | Dragonfly connect timeout | `DRAGONFLY_CONNECT_TIMEOUT_MS` = 5000 | bounds establishment, not just commands; a dead endpoint refuses inside the budget instead of holding boot open | §Tuneup knobs |
-| Lease TTL | `LEASE_TTL_MS` = 30000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
+| Lease TTL | `LEASE_TTL` = 30000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
 | Admission ceiling | `DEFAULT_MAX_IN_FLIGHT` = 256, api-class only | compiled default; operational and stream routes use separate handling | §Tuneup knobs |
 | The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
 | Recurring-read indexes | one slot per table, plan-asserted | idle Postgres cost tracks work, not accumulated rows; runner sorts stay unindexed on purpose, because runners number about a hundred | §Which recurring Postgres reads are index-served |
-| Idle retry wait | up to `NO_WORK_RETRY_AFTER_MS` before another attempt | assignment and datastore work add latency; this is not a delivery bound | §Event-delivery latency |
+| Idle retry wait | up to `NO_WORK_RETRY_AFTER` before another attempt | assignment and datastore work add latency; this is not a delivery bound | §Event-delivery latency |
 | Outbound-answer consumer | blocking read, up to 5 seconds | owns one dedicated Dragonfly socket; does not block shared commands | §Tuneup knobs |
 | Failover reconnects | three connection owners per healthy replica | command managers reconnect; the hub retries and restores subscriptions; retry attempts are not bounded by socket count | §Datastore failover |
 
@@ -106,7 +106,7 @@ The cutover added one hop (the runner lease request) and removed another (the in
 
 An idle runner waits up to its retry interval before the next lease attempt.
 That interval is not an end-to-end latency bound: assignment, available workers, and datastore work add delay.
-Reducing `NO_WORK_RETRY_AFTER_MS` trades more readiness checks for shorter idle pickup waits.
+Reducing `NO_WORK_RETRY_AFTER` trades more readiness checks for shorter idle pickup waits.
 
 **Live-tail cadence.** The runner batches activity frames, one POST per batch. A batch goes when it reaches 64 KiB, or 250 ms after its first frame; no frame is posted eagerly (`rustd/crates/afr_supervisor/src/activity/mod.rs`, `MAX_BATCH_BYTES`, `FLUSH_EVERY`). The first visible token therefore waits up to 250 ms plus a round trip.
 
@@ -126,7 +126,7 @@ Idle cost is the runner lease-poll loop, fully idle:
 
 | Source | Requests per hour |
 |---|---|
-| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded Dragonfly read of the readiness index (one partition's `HRANDFIELD`, two when the readiness doorbell rang) and **one** indexed `fleet.runners` auth read (M143_001 removed the memo — see below) | `R_runners × 3600` at the 1 s default |
+| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded Dragonfly read of the readiness index (one partition's `HRANDFIELD`, two when the readiness doorbell rang) and **one** indexed `runner.runners` auth read (M143_001 removed the memo — see below) | `R_runners × 3600` at the 1 s default |
 | (No watcher loop, no per-fleet BLOCK loops — both deleted) | 0 |
 
 "Zero Postgres round-trips" is about the CANDIDATE SCAN, not authentication. The
@@ -143,15 +143,15 @@ every time makes a cordon, drain, revoke, or delete effective fleet-wide the mom
 it commits.
 
 Sizing consequence: at the 1 s default the auth read tracks the lease-poll rate
-above (`R_runners × 3600` per hour), against a `fleet.runners` table whose pages
+above (`R_runners × 3600` per hour), against a `runner.runners` table whose pages
 stay resident. At the ~100 runners the sizing assumes, that is a few hundred index
-probes a second. (`fleet.runners` is created by `schema/600_runners.sql` and
+probes a second. (`runner.runners` is created by `schema/1800_runner_runners.sql` and
 carries no separate index slot: the M154 rebuild retired the shared
 `033_hot_path_indexes` and moved each index into the slot owning its table.) Revisit when runner count or poll rate makes
 that measurable — AUTH.md records the replacement design (a short-lived signed
 credential verified locally) and the condition it must meet.
 
-For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
+For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 
 **The load-bearing shift:** the idle bill scales with **runner count**, not `(fleets + workers)` and not `runners × fleets`. A deployment with many idle fleets but few runners is cheap at idle; the cost follows the pollers, not the population.
 
@@ -159,7 +159,7 @@ For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Do
 
 ### The per-poll bound, and why cost no longer tracks fleet count
 
-An idle poll reads the readiness index and stops. A **busy** poll takes a randomized, server-bounded slice of that index and restricts the candidate query to it, capped at `MAX_READY_CANDIDATES_PER_POLL` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`, on the same axis `NO_WORK_RETRY_AFTER_MS` trades).
+An idle poll reads the readiness index and stops. A **busy** poll takes a randomized, server-bounded slice of that index and restricts the candidate query to it, capped at `MAX_READY_CANDIDATES_PER_POLL` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`, on the same axis `NO_WORK_RETRY_AFTER` trades).
 
 That ceiling is what makes per-poll cost independent of the population, and it holds **even when the index is wrong**. A stale or over-marked index costs extra candidate checks up to the ceiling and never more, so a hint failure degrades discovery fairness rather than cost. The index is a hint; the streams stay the system of record. (The index mechanism — the `fleet:ready` hash, its token semantics, the sweeper — is canonical in [`runner_fleet.md`](./runner_fleet.md) §"Datastore topology".)
 
@@ -176,19 +176,19 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 
 | Recurring read | Was | Now |
 |---|---|---|
-| Liveness sweep — due runners | Sequential scan + top-N sort of `fleet.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/afd_runner/src/sql/sweep.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/600_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
-| Liveness sweep — affinity expiry | Full scan of `fleet.runner_affinity`, once **per due runner per cycle** | `idx_runner_affinity_last_runner_id_leased_until`; also covers the unindexed `ON DELETE SET NULL` foreign key |
-| Reclaim — prior active lease | Scan of `fleet.runner_leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_runner_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
-| Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_fleet_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
-| Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_fleet_events_fleet_id_created_at_event_id` walked in order, because `stx_fleet_events_workspace_id_fleet_id` (slot 922) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |
+| Liveness sweep — due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/afd_runner/src/sql/sweep/mod.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/1800_runner_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
+| Liveness sweep — affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | `idx_fleet_slots_last_runner_id_lease_expires_at`; also covers the unindexed `ON DELETE SET NULL` foreign key |
+| Reclaim — prior active lease | Scan of `runner.leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
+| Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
+| Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_events_fleet_id_created_at_event_id` walked in order, because `stx_events_workspace_id_fleet_id` (slot 1700) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |
 | Fleet list page | Unserved — the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
-| Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (`schema/600_runners.sql`), and `core.api_keys` keeps only `idx_api_keys_tenant_id_active` (`schema/240_api_keys.sql`) |
+| Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (`schema/1800_runner_runners.sql`), and `identity.api_keys` keeps only `idx_api_keys_tenant_id_live` (`schema/1150_identity_api_keys.sql`) |
 
 **What this bounds:** idle Postgres cost now tracks the *work* an account is doing, not the number of rows it has accumulated. It does not bound cost per unit of work — that is still governed by traffic.
 
-**What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/afd_memory/src/sql.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
+**What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/afd_memory/src/sql/mod.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
 
-**One anti-pattern this replaced,** worth stating because it reads as an optimisation: the operator runner list resolved each row's lease-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner_leases` table once per request — 6 472 buffer hits against a 200 000-row lease table. Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is not "one lookup per row"; it is usually one whole-table build.
+**One anti-pattern this replaced,** worth stating because it reads as an optimisation: the operator runner list resolved each row's lease-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner.leases` table once per request — 6 472 buffer hits against a 200 000-row lease table. Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is not "one lookup per row"; it is usually one whole-table build.
 
 ---
 
@@ -198,13 +198,13 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 |---|---|---|---|
 | `DRAGONFLY_REQUEST_TIMEOUT_MS` | 5000 | Datastore tail-latency tolerance | No healthy datastore's p99 round-trip approaches 4 s, and in-region 6PN is far below that. **Do not raise it** — >5 s is failure, not slowness. |
 | `DRAGONFLY_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `DRAGONFLY_REQUEST_TIMEOUT_MS` never covered — that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
-| `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume **and** idle pickup latency. **Not busy-fleet delivery latency.** | On self-hosted Dragonfly the idle loop costs CPU on a machine already paid for, not a per-request charge; it sizes the machine rather than an invoice. Raise to 2000–5000 to cut idle load proportionally; idle pickup latency rises by the same factor. Single-sourced in `rustd/crates/afd_core/src/timing.rs`. |
-| `MAX_READY_CANDIDATES_PER_POLL` | 64 | Per-poll fan-out ceiling: the width of each randomized readiness peek and the most candidates one scan returns; a poll peeks at most two partitions, so its scan reads at most twice this many ids. **Not** an idle-cost knob — an idle poll examines zero regardless. | Compile-time, not env-driven. Lower it only if `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` shows busy polls doing more per-fleet work than the hot path can absorb. Raise it if labelled runners are visibly slow to find their eligible fleets (a narrow slice plus a selective label gate — see §"Per-request volume"). In `rustd/crates/afd_fleet/src/lease/assign/mod.rs`, on the same axis `NO_WORK_RETRY_AFTER_MS` trades: per-poll cost against discovery latency. |
-| `LEASE_TTL_MS` | 30000 | Reclaim latency floor **and** the increment each renewal adds. The runner checks every 5 s and renews a held lease within 10 s of its expiry, up to `MAX_RUNTIME_MS` (`rustd/crates/afr_supervisor/src/renew/mod.rs`, `rustd/crates/afd_core/src/timing.rs`). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
+| `NO_WORK_RETRY_AFTER` | 1000 | Idle lease-poll request volume **and** idle pickup latency. **Not busy-fleet delivery latency.** | On self-hosted Dragonfly the idle loop costs CPU on a machine already paid for, not a per-request charge; it sizes the machine rather than an invoice. Raise to 2000–5000 to cut idle load proportionally; idle pickup latency rises by the same factor. Single-sourced in `rustd/crates/afd_core/src/timing.rs`. |
+| `MAX_READY_CANDIDATES_PER_POLL` | 64 | Per-poll fan-out ceiling: the width of each randomized readiness peek and the most candidates one scan returns; a poll peeks at most two partitions, so its scan reads at most twice this many ids. **Not** an idle-cost knob — an idle poll examines zero regardless. | Compile-time, not env-driven. Lower it only if `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` shows busy polls doing more per-fleet work than the hot path can absorb. Raise it if labelled runners are visibly slow to find their eligible fleets (a narrow slice plus a selective label gate — see §"Per-request volume"). In `rustd/crates/afd_fleet/src/lease/assign/mod.rs`, on the same axis `NO_WORK_RETRY_AFTER` trades: per-poll cost against discovery latency. |
+| `LEASE_TTL` | 30000 | Reclaim latency floor **and** the increment each renewal adds. The runner checks every 5 s and renews a held lease within 10 s of its expiry, up to `MAX_RUNTIME` (`rustd/crates/afr_supervisor/src/renew/mod.rs`, `rustd/crates/afd_core/src/timing.rs`). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
 | `SSE_MAX_STREAMS` | 256 | Concurrent asynchronous SSE bodies per replica; shared by fleet, workspace and draft-progress tails. Zero is rejected at boot. Each stream holds a socket, and the daemon neither raises `RLIMIT_NOFILE` nor checks the knob against it: about 300 descriptors go to admitted requests, Postgres and Dragonfly first, so 256 is what a stock 1,024 soft limit leaves room for. | Raise only on a host whose descriptor limit is raised to match, after measuring stream refusals, memory, CPU, and proxy capacity. The tail itself held 4,096 streams inside every bound (below). Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
 | `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | `rustd/crates/agentsfleetd/src/serve/mod.rs` passes this constant (declared in `afd_http`'s `admission/mod.rs`) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
 | `agentsfleetd` API replica count | deployment-driven | HTTP requests per second (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
-| Runner count | operator-driven | Compute throughput; idle lease-poll request volume | Add hosts to add execution capacity — no datastore or coordination cost. Each idle runner adds one poll loop to the datastore's load (tune via `NO_WORK_RETRY_AFTER_MS`). |
+| Runner count | operator-driven | Compute throughput; idle lease-poll request volume | Add hosts to add execution capacity — no datastore or coordination cost. Each idle runner adds one poll loop to the datastore's load (tune via `NO_WORK_RETRY_AFTER`). |
 | assigned `worker_count` (per-runner, dashboard) | 1 | Concurrent leased fleets **per host** — the runner worker-pool size (M88_002), assigned on the runner row (M148) and delivered with the heartbeat. N workers each run the lease→execute→report unit; the per-fleet `affinity.claim` keeps two workers off the same fleet. | A host has spare cores/memory while one long fleet run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more fleets per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain** — one host loss drops N in-flight runs, not 1 (all re-leased by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. At the ceiling (`MAX_WORKERS` = 64, `afd_core/src/limits.rs`) and the 2-core sandbox default, any host under 128 cores is oversubscribed. |
 
 The lease path never passes `BLOCK` to Dragonfly.
@@ -220,7 +220,7 @@ Once Dragonfly connection count and request volume fit the machine, the next bot
 
 ### 1. `agentsfleetd` API replicas + Postgres write throughput (the usual answer now)
 
-The lease/report hot path does the durable writes the worker used to do — `INSERT fleet_events`, the receive debit at lease, the run metered on each `/renew`, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `fleet.runner_leases`/`runner_affinity` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
+The lease/report hot path does the durable writes the worker used to do — `INSERT fleet.events`, the run's usage logged on each `/renew` and settled through the biller, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `runner.leases`/`runner.fleet_slots` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
 
 Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock contention on the `fleet` tables. Fix: more `agentsfleetd` replicas + Postgres sizing in the deployment runbook.
 
@@ -307,7 +307,7 @@ Structured for a large language model (LLM) fleet or a `agentsfleet`-driven scal
 | `S` | Peak concurrent SSE tails | Product / dashboard usage |
 | `P_conn` | Datastore concurrent-connection ceiling | The machine's file-descriptor limit; no longer a plan tier |
 | `P_mem` | Configured `maxmemory` across the cluster's primaries | `scripts/dragonfly-cluster.sh` (512mb per node) |
-| `poll_s` | Runner idle poll interval = `NO_WORK_RETRY_AFTER_MS / 1000` | Config |
+| `poll_s` | Runner idle poll interval = `NO_WORK_RETRY_AFTER / 1000` | Config |
 
 ### Procedure
 
@@ -333,8 +333,8 @@ Step 3: Hot-path throughput (the real wall)
 Step 4: Emit configuration
   DRAGONFLY_REQUEST_TIMEOUT_MS = 5000    (do not raise)
   DRAGONFLY_CONNECT_TIMEOUT_MS = 5000    (raise only for a measured cross-region handshake)
-  NO_WORK_RETRY_AFTER_MS   = <step 2 result>
-  LEASE_TTL_MS             = 30000   (compile-time; renewal carries long runs)
+  NO_WORK_RETRY_AFTER   = <step 2 result>
+  LEASE_TTL             = 30000   (compile-time; renewal carries long runs)
   agentsfleetd_replicas         = <step 3 result>
   runner_hosts             = N
 ```
@@ -342,7 +342,7 @@ Step 4: Emit configuration
 ### Anti-patterns (do NOT do these)
 
 1. **Size Dragonfly connections by fleet or viewer count.** There is no per-fleet and no per-viewer connection. Normal boot opens `3·R` connections: shared commands, hub, and outbound reader.
-2. **Tune `XREADGROUP BLOCK`.** It no longer exists on the hot path. Use `NO_WORK_RETRY_AFTER_MS` for the idle-cost/latency trade.
+2. **Tune `XREADGROUP BLOCK`.** It no longer exists on the hot path. Use `NO_WORK_RETRY_AFTER` for the idle-cost/latency trade.
 3. **Add runners to fix lease/report latency.** Runners add compute, not control-plane throughput. Scale `agentsfleetd` replicas + Postgres for hot-path latency.
 4. **Raise `DRAGONFLY_REQUEST_TIMEOUT_MS` above 5000.** A healthy datastore's p99 is single-digit-ms, and in-region 6PN is below that; >5 s is failure, not slowness.
 5. **Put `SUBSCRIBE` on the shared command socket.** The hub owns a separate connection and fans out locally; request-path commands keep their multiplexed socket.
@@ -357,7 +357,7 @@ Step 4: Emit configuration
 
 ### Runner host loss
 
-A runner that dies holds no datastore connection to leak and no Dragonfly consumer to reclaim. Its in-flight lease expires at `lease_expires_at`; the next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Recovery latency is `LEASE_TTL_MS` + poll density, the floor that section calls S0. There is **no connection storm** on runner loss — the survivors just keep polling.
+A runner that dies holds no datastore connection to leak and no Dragonfly consumer to reclaim. Its in-flight lease expires at `lease_expires_at`; the next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Recovery latency is `LEASE_TTL` + poll density, the floor that section calls S0. There is **no connection storm** on runner loss — the survivors just keep polling.
 
 **Failure domain scales with the assigned `worker_count`.** A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one. Each lease expires and re-leases independently (no batch coupling), so no work is lost — but N runs restart instead of one. This is the cost of the per-host utilization win; `worker_count=1` keeps the failure domain at one run. Operators size N against this tradeoff.
 

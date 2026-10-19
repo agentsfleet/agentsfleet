@@ -57,4 +57,12 @@ afd_core::error_lifts!(Error, ErrorKind:
     hdrhistogram::errors::AdditionError => LatencyUnmergeable,
     hdrhistogram::RecordError => LatencyUnrecordable,
     afd_crypto::error::Error => CredentialUnsealable,
+    afd_vault::Error => CredentialUnstorable,
+    afd_core::error::Error => IdentifierRefused,
 );
+
+/// A shared seed's refusal, under its own kind: `afd_db`'s error lifts to
+/// [`ErrorKind::DatabaseUnavailable`] by default, which a refused row is not.
+pub(crate) fn seed_refused(source: afd_db::Error) -> Error {
+    ErrorKind::FixtureRefused { source }.into()
+}

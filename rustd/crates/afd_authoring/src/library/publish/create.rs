@@ -9,8 +9,9 @@ use crate::{
     replay,
     types::{PublishLibrary, Published},
 };
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
+use jiff::Timestamp;
 use sqlx::Connection as _;
 
 impl Setup {
@@ -23,7 +24,7 @@ impl Setup {
         access: Access<'_>,
         operation: &Uuid7,
         request: PublishLibrary,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Published> {
         let request = garde::Unvalidated::new(request).validate()?;
         let mut connection = self.drafts.database.acquire().await?;
@@ -51,7 +52,7 @@ impl Setup {
         let library = self.drafts.mint(now)?;
         let revision = self.drafts.mint(now)?;
         let receipt_id = self.drafts.mint(now)?;
-        let reservation = key.reservation(&receipt_id, access.workspace, &revision, now);
+        let reservation = key.reservation(&receipt_id, access.workspace, &revision);
         let fresh = replay::reserve(&mut tx, reservation).await?;
         let result = if fresh {
             persist::entry(
@@ -61,16 +62,14 @@ impl Setup {
                 &revision,
                 &request.label,
                 &candidate,
-                now,
             )
             .await?;
             let first = persist::NewRevision {
                 library: &library,
-                public_id: library.as_str(),
                 id: &revision,
                 number: 1,
             };
-            persist::append(&mut tx, first, &draft.id, &candidate, now).await?;
+            persist::append(&mut tx, first, &draft.id, &candidate).await?;
             super::accepted(&mut tx, &person.owner, &revision).await?
         } else {
             key.replayed(&mut tx).await?

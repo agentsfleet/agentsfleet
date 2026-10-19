@@ -20,9 +20,10 @@ const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
 /// A report from a runner that holds nothing.
 const REPORT: &str = r#"{"lease_id":"lease","event_id":"1-0","fencing_token":7,
     "outcome":"processed","failure_reason":null,"failure_detail":"",
-    "response_text":"done","tokens":3,"input_tokens":1,"cached_input_tokens":0,
-    "output_tokens":2,"telemetry":{"time_to_first_token_ms":4,"wall_ms":5},
+    "response_text":"done","tokens":3,"requests":[],"telemetry":{"time_to_first_token_ms":4,"wall_ms":5},
     "checkpoint":{"last_event_id":"1-0","last_response":""}}"#;
+/// The instant a holding runner's report names, as it writes it.
+const HELD_UNTIL: &str = "2026-10-18T06:10:00.250Z";
 /// A heartbeat answer releasing nothing.
 // pin test: literal is the contract
 const BEAT_ANSWER: &str = r#"{"heartbeat_interval_ms":10000,"status":"ok",
@@ -53,7 +54,7 @@ fn test_a_report_or_poll_naming_no_hold_holds_nothing() {
     let report: ReportRequest<'_> = serde_json::from_str(REPORT).unwrap();
     let poll: LeaseRequest<'_> = serde_json::from_str(r#"{"accepted_kinds":["fleet"]}"#).unwrap();
 
-    assert_eq!(report.held_until_ms, None);
+    assert_eq!(report.held_until, None);
     assert_eq!(poll.holds, HeldFleets::default());
     assert_eq!(poll.accepted_kinds, AcceptedKinds::FLEET);
 }
@@ -89,16 +90,27 @@ fn test_a_report_that_holds_nothing_writes_no_hold() {
 
     let written = serde_json::to_value(&report).unwrap();
 
-    assert!(written.get("held_until_ms").is_none(), "{written}");
+    assert!(written.get("held_until").is_none(), "{written}");
 }
 
 #[test]
 fn test_a_held_deadline_round_trips() {
-    let held = REPORT.replace(r#""lease_id""#, r#""held_until_ms":600000,"lease_id""#);
+    let held = REPORT.replace(
+        r#""lease_id""#,
+        &format!(r#""held_until":"{HELD_UNTIL}","lease_id""#),
+    );
 
     let report: ReportRequest<'_> = serde_json::from_str(&held).unwrap();
+    let written = serde_json::to_value(&report).unwrap();
 
-    assert_eq!(report.held_until_ms, Some(600_000));
+    let rewritten = written
+        .get("held_until")
+        .and_then(serde_json::Value::as_str);
+
+    // By value: jiff writes the shortest fraction, so `.250Z` comes back `.25Z`.
+    let sent: jiff::Timestamp = HELD_UNTIL.parse().unwrap();
+    assert_eq!(report.held_until, Some(sent));
+    assert_eq!(rewritten.map(|text| text.parse().unwrap()), Some(sent));
 }
 
 #[test]

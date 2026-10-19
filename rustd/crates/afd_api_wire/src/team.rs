@@ -34,18 +34,21 @@ pub struct InviteSummary<'a> {
     pub email: Cow<'a, str>,
     /// The role accepting it grants: `member`.
     pub role: Cow<'a, str>,
-    /// When it stops being acceptable, epoch milliseconds.
-    pub expires_at: i64,
-    /// When it was issued, epoch milliseconds.
-    pub created_at: i64,
+    /// When it stops being acceptable.
+    #[serde(with = "afd_wire::instant")]
+    pub expires_at: jiff::Timestamp,
+    /// When it was issued.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// The dashboard page the invitee opens to accept it.
     pub link: Cow<'a, str>,
     /// What became of its most recent email: `sent`, `failed`, or
     /// `unconfigured` when this deployment has no mail relay set up.
     pub email_status: Cow<'a, str>,
-    /// When the relay last accepted its email, epoch milliseconds; `null` if
+    /// When the relay last accepted its email; `null` if
     /// it never has.
-    pub email_sent_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub email_sent_at: Option<jiff::Timestamp>,
 }
 
 /// `POST /v1/tenants/me/invites/{invite_id}/send` — the invite email went.
@@ -64,8 +67,9 @@ pub struct WaitingInvite<'a> {
     pub id: Cow<'a, str>,
     /// The account accepting it joins.
     pub account: WorkspaceAccount<'a>,
-    /// When it stops being acceptable, epoch milliseconds.
-    pub expires_at: i64,
+    /// When it stops being acceptable.
+    #[serde(with = "afd_wire::instant")]
+    pub expires_at: jiff::Timestamp,
 }
 
 /// `POST /v1/users/me/invites/{invite_id}/accept` — the account joined.
@@ -90,8 +94,9 @@ pub struct MemberSummary<'a> {
     pub email: Cow<'a, str>,
     /// Their role: `owner` or `member`.
     pub role: Cow<'a, str>,
-    /// When they joined the account, epoch milliseconds.
-    pub joined_at: i64,
+    /// When they joined the account.
+    #[serde(with = "afd_wire::instant")]
+    pub joined_at: jiff::Timestamp,
 }
 
 /// One member of a workspace's account, as its thread names senders.

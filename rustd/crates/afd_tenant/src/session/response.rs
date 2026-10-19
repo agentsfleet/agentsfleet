@@ -19,8 +19,8 @@ pub struct Waiting {
     pub cli_public_key: String,
     /// What the credential will be called.
     pub token_name: String,
-    /// When the window closes, in milliseconds since the epoch.
-    pub expires_at_ms: i64,
+    /// When the window closes.
+    pub expires_at: jiff::Timestamp,
 }
 
 /// A redeemed login's sealed credential.

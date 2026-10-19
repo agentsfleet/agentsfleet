@@ -7,6 +7,7 @@
 //! own types, so a renamed field fails to compile rather than to parse.
 
 use std::borrow::Cow;
+use std::time::Duration;
 
 use afd_wire::policy::repository::{
     self, FIELD_BASE, FIELD_BODY, FIELD_DRAFT, FIELD_HEAD, FIELD_MAINTAINER_CAN_MODIFY, FIELD_REF,
@@ -17,11 +18,16 @@ use afd_wire::policy::{
     HttpRequestRule, Mintable, NetworkPolicy, RepositoryAccess, RepositoryBinding,
 };
 use afr_secrets::{FIELD_HOST, FIELD_TOKEN};
+use jiff::Timestamp;
 use serde_json::{Map, Value};
 
 use crate::error::Error;
 use crate::refusal::Refusal;
 
+/// When every suite's clock starts.
+pub const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
+/// A minted token's lifetime.
+pub const TOKEN_LIFETIME: Duration = Duration::from_hours(1);
 /// The lease every suite's guard belongs to.
 pub const LEASE_ID: &str = "lease-1";
 /// The bound repository.

@@ -10,11 +10,12 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
 use agentsfleetd::serve::Booted;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 
 use crate::e2e::{GOOD_KEK, PROVIDER};
 
@@ -60,8 +61,7 @@ fn provider_key_body() -> String {
 /// a fixture that wrote the ciphertext columns by hand would decrypt to a tag
 /// failure and look like a corrupt vault. The KEK is the one the daemon booted
 /// under, which is why [`GOOD_KEK`] is a constant both halves read.
-pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: UnixMillis) {
-    let at = now.as_millis();
+pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Timestamp) {
     let kek = Kek::from_hex(GOOD_KEK).expect("the lane key is well formed");
     let envelope = Sealer::new()
         .seal(
@@ -79,7 +79,7 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
     sqlx::query(
         "INSERT INTO vault.secrets
            (id, workspace_id, key_name, kek_version,
-            encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag,
+            dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag,
             created_at, updated_at,
             meta_kind, meta_provider, meta_has_key)
          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
@@ -96,7 +96,7 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
     .bind(envelope.payload_nonce().as_slice())
     .bind(envelope.payload_ciphertext())
     .bind(envelope.payload_tag().as_slice())
-    .bind(at)
+    .bind(now.to_sqlx())
     .bind(PROVIDER_KEY_KIND)
     .execute(&mut *connection)
     .await
@@ -105,7 +105,7 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
 
 /// The key name a tenant-plane scenario authenticates under.
 ///
-/// One name per tenant is enough: `uq_api_keys_tenant_id_key_name` is scoped
+/// One name per tenant is enough: `uq_api_keys_tenant_id_name` is scoped
 /// to the tenant, and every scenario mints its own tenant id.
 const TENANT_KEY_NAME: &str = "e2e-tenant-plane";
 
@@ -115,7 +115,7 @@ const TENANT_KEY_NAME: &str = "e2e-tenant-plane";
 /// the daemon's directory authenticates by digest lookup, so a seeded PLAIN
 /// token would prove a path nothing ships. The token itself never touches the
 /// database — the caller presents it over HTTP and the daemon re-digests it.
-pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, now: UnixMillis) {
+pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, now: Timestamp) {
     let presented =
         afd_auth::credential::Presented::new(token).expect("the fixture token is well formed");
     let digest = afd_auth::directory::Digest::of(&presented);
@@ -125,16 +125,16 @@ pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, 
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO core.api_keys
-           (id, tenant_id, key_name, description, key_hash, created_by, active,
+        "INSERT INTO identity.api_keys
+           (id, tenant_id, name, description, key_hash, created_by_subject,
             revoked_at, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, '', $4, 'e2e', TRUE, NULL, $5, $5)",
+         VALUES ($1::uuid, $2::uuid, $3, '', $4, 'e2e', NULL, $5, $5)",
     )
     .bind(afd_db::test_util::mint_id())
     .bind(tenant)
     .bind(TENANT_KEY_NAME)
     .bind(digest.as_str())
-    .bind(now.as_millis())
+    .bind(now.to_sqlx())
     .execute(&mut *connection)
     .await
     .expect("the tenant credential seed must run");
@@ -173,7 +173,7 @@ async fn seal_named(booted: &Booted, workspace: &str, name: &str, kind: Option<&
     sqlx::query(
         "INSERT INTO vault.secrets
            (id, workspace_id, key_name, kek_version,
-            encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag,
+            dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag,
             created_at, updated_at,
             meta_kind, meta_provider, meta_has_key)
          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
@@ -189,7 +189,7 @@ async fn seal_named(booted: &Booted, workspace: &str, name: &str, kind: Option<&
     .bind(envelope.payload_nonce().as_slice())
     .bind(envelope.payload_ciphertext())
     .bind(envelope.payload_tag().as_slice())
-    .bind(afd_core::clock::now().as_millis())
+    .bind(afd_core::clock::now().to_sqlx())
     .bind(kind)
     .bind(projected)
     .bind(kind.map(|_kind| true))

@@ -12,7 +12,7 @@ use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{ApiKeySeed, ModelSeed, TenantSeed, TestDatabase, WalletSeed, mint_id};
 use http::{Method, StatusCode, header};
 use serde_json::Value;
 
@@ -30,7 +30,7 @@ const FIRST_CHARGE: &str = "/v1/tenants/me/billing/charges?limit=1";
 
 /// The fleet the seeded charges name, and the name they captured.
 ///
-/// Neither row has a `core.fleets` row behind it, which is the state slot 915
+/// Neither row has a `fleet.fleets` row behind it, which is the state slot 915
 /// made writable: `fleet_id` stopped being a foreign key, so a charge may name
 /// a fleet that is gone. Distinct from each other on purpose — a handler that
 /// mapped the identifier into the name field would pass an equality check
@@ -118,8 +118,8 @@ async fn assert_wallet_reads_its_balance(router: &axum::Router, fixture: &Fixtur
     let (status, wallet) = exchange(router, Method::GET, BILLING, Some(&fixture.token), "").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        wallet.get("balance_nanos").and_then(Value::as_i64),
-        Some(BALANCE)
+        wallet.get("balance_nanos").and_then(Value::as_str),
+        Some(BALANCE.to_string().as_str())
     );
     assert_eq!(
         wallet.get("is_exhausted").and_then(Value::as_bool),
@@ -220,55 +220,40 @@ impl Fixture {
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Money lifecycle', 1, 1) \
-             ), credential AS ( \
-               INSERT INTO core.api_keys \
-                 (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                  revoked_at, created_at, updated_at) \
-               VALUES ($2::uuid, $1::uuid, 'fixture', '', $3, $4, TRUE, NULL, 1, 1) \
-             ) \
-             INSERT INTO billing.tenant_wallet \
-               (tenant_id, balance_nanos, grant_source, created_at, updated_at) \
-             VALUES ($1::uuid, $5, 'fixture:seed', 10, 10)",
-        )
-        .bind(&self.tenant)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .bind(SUBJECT)
-        .bind(BALANCE)
-        .execute(&mut *connection)
-        .await
-        .expect("the authenticated tenant and wallet seed");
+        TenantSeed::new(&self.tenant)
+            .name("Money lifecycle")
+            .insert(&mut *connection)
+            .await
+            .expect("the authenticated tenant seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its API key seeds");
+        WalletSeed::new(&self.tenant, BALANCE)
+            .insert(&mut *connection)
+            .await
+            .expect("its wallet seeds");
 
         for (index, id) in self.model_rows.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO core.model_library \
-                   (id, model_id, provider, context_cap_tokens, input_nanos_per_mtok, \
-                    cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) \
-                 VALUES ($1::uuid, $2, $3, 200000, 5, 1, 25, 1, $4)",
-            )
-            .bind(id)
-            .bind(format!("model-{index}"))
-            .bind(&self.provider)
-            .bind(1_745_884_800_000_i64 + i64::try_from(index).unwrap_or_default())
-            .execute(&mut *connection)
-            .await
-            .expect("the priced model seeds");
+            ModelSeed::new(id, &self.provider, &format!("model-{index}"), 200_000)
+                .rates(5, 1, 25)
+                .insert(&mut *connection)
+                .await
+                .expect("the priced model seeds");
         }
 
         for (index, id) in self.ledger_rows.iter().enumerate() {
-            let instant = 100_i64 + i64::try_from(index).unwrap_or_default();
+            let instant = 100_f64 + f64::from(u32::try_from(index).unwrap_or_default());
             sqlx::query(
-                "INSERT INTO billing.usage_ledger \
-                   (id, tenant_id, event_id, charge_type, posture, model, \
-                    credit_deducted_nanos, token_count_input, token_count_cached_input, \
-                    token_count_output, wall_ms, event_created_at, created_at, last_charged_at, \
-                    fleet_id, fleet_name) \
-                 VALUES ($1::uuid, $2::uuid, $3, 'stage', 'platform', $4, \
-                         7, 11, 2, 13, 17, $5, $5, $5, $6::uuid, $7)",
+                "INSERT INTO billing.usage_lines \
+                   (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, \
+                    event_id, provider, model, posture, requested_at, input_token_count, \
+                    cached_input_token_count, cache_write_token_count, \
+                    cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, \
+                    runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at) \
+                 VALUES ($1::uuid, 'fleet_lease', $1::uuid, 0, $2::uuid, $2::uuid, $6::uuid, $7, \
+                         $3, 'anthropic', $4, 'platform', to_timestamp($5), 11, 2, 0, 0, 0, 13, \
+                         17, 0, 7, to_timestamp($5), to_timestamp($5))",
             )
             .bind(id)
             .bind(&self.tenant)
@@ -285,7 +270,7 @@ impl Fixture {
 
     async fn remove_wallet(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
+        sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
@@ -294,17 +279,17 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM billing.usage_ledger WHERE tenant_id = $1::uuid")
+        sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
             .expect("the scoped ledger cleans up");
-        sqlx::query("DELETE FROM core.model_library WHERE provider = $1")
+        sqlx::query("DELETE FROM model.platform_models WHERE provider = $1")
             .bind(&self.provider)
             .execute(&mut *connection)
             .await
             .expect("the scoped catalogue cleans up");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

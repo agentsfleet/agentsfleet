@@ -28,7 +28,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::timing::HEARTBEAT_INTERVAL_MS;
+use afd_core::timing::HEARTBEAT_INTERVAL;
 use afd_runner::heartbeat::holds::prove;
 use afd_runner::{Beat, NO_REPORT};
 use afd_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets};
@@ -80,17 +80,15 @@ pub(crate) async fn handle<D: Services>(
     // it twice on the path every host takes every ten seconds is the kind of
     // cost that only shows up at fleet scale.
     let (beat, held) = read(&body);
-    match services
+    // One refusal for both failures. The reply's decode repeats the one the
+    // beat already passed on the same columns, so only the beat's own failure
+    // reaches it in practice; the reply's stays a `Result` rather than a panic.
+    services
         .runners()
         .heartbeat(runner.id(), &beat, held.as_ref(), services.now())
         .await
-    {
-        Ok(beat) => match payload(&beat) {
-            Ok(reply) => Json(reply).into_response(),
-            Err(error) => refuse(&error, EVENT),
-        },
-        Err(error) => refuse(&error, EVENT),
-    }
+        .and_then(|beat| payload(&beat).map(|reply| Json(reply).into_response()))
+        .unwrap_or_else(|error| refuse(&error, EVENT))
 }
 
 /// What the body carried, or nothing at all, beside its holds list proved
@@ -112,10 +110,10 @@ fn read(body: &[u8]) -> (HeartbeatRequest<'_>, Option<Valid<HeldFleets<'_>>>) {
 
 /// The cadence as the wire carries it.
 ///
-/// [`HEARTBEAT_INTERVAL_MS`] is an `i64` because every span beside it is
-/// compared against a `bigint` column; the wire quotes a duration, which is
-/// never negative. The assertion proves the narrowing before the cast, so a
-/// cadence edited past the wire's range fails the build rather than a beat.
+/// [`HEARTBEAT_INTERVAL`] is a `Duration`; the wire quotes it in whole
+/// milliseconds as a `u32`. The assertion proves the narrowing before the
+/// cast, so a cadence edited past the wire's range fails the build rather than
+/// a beat.
 #[expect(
     clippy::cast_possible_truncation,
     reason = "the const assertion inside this block proves the value sits \
@@ -124,10 +122,10 @@ fn read(body: &[u8]) -> (HeartbeatRequest<'_>, Option<Valid<HeldFleets<'_>>>) {
 )]
 const WIRE_INTERVAL_MS: u32 = {
     const _: () = assert!(
-        HEARTBEAT_INTERVAL_MS > 0 && HEARTBEAT_INTERVAL_MS <= u32::MAX as i64,
+        HEARTBEAT_INTERVAL.as_millis() > 0 && HEARTBEAT_INTERVAL.as_millis() <= u32::MAX as u128,
         "the heartbeat cadence must be a positive duration the wire can carry"
     );
-    HEARTBEAT_INTERVAL_MS as u32
+    HEARTBEAT_INTERVAL.as_millis() as u32
 };
 
 /// The beat as the wire shape, borrowing the assignment from the row.
@@ -154,7 +152,9 @@ fn payload(beat: &Beat) -> afd_runner::Result<HeartbeatResponse<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use afd_core::timing::{HEARTBEAT_INTERVAL_MS, RUNNER_OFFLINE_AFTER_MS};
+    use std::time::Duration;
+
+    use afd_core::timing::{HEARTBEAT_INTERVAL, RUNNER_OFFLINE_AFTER};
     use afd_runner::heartbeat::holds::fleets;
     use afd_wire::runner::HOLDS_MAX;
 
@@ -214,7 +214,7 @@ mod tests {
     /// second one that happens to agree today.
     #[test]
     fn test_the_served_cadence_is_the_enforced_cadence() {
-        assert_eq!(i64::from(WIRE_INTERVAL_MS), HEARTBEAT_INTERVAL_MS);
+        assert_eq!(u128::from(WIRE_INTERVAL_MS), HEARTBEAT_INTERVAL.as_millis());
     }
 
     /// The whole reason the cadence is served rather than held by the host: it
@@ -222,8 +222,8 @@ mod tests {
     #[test]
     fn test_the_served_cadence_stays_below_the_offline_threshold() {
         assert!(
-            i64::from(WIRE_INTERVAL_MS) < RUNNER_OFFLINE_AFTER_MS,
-            "a host beating at {WIRE_INTERVAL_MS}ms would be derived offline at {RUNNER_OFFLINE_AFTER_MS}ms"
+            Duration::from_millis(u64::from(WIRE_INTERVAL_MS)) < RUNNER_OFFLINE_AFTER,
+            "a host beating at {WIRE_INTERVAL_MS}ms would be derived offline at {RUNNER_OFFLINE_AFTER:?}"
         );
     }
 }

@@ -9,7 +9,7 @@ import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 import { FLEET } from "./chat/fixture.ts";
 import { AGENTSFLEET_STATUS } from "../src/constants/fleet-status.ts";
-import { FLEET_LIST_INVALID } from "../src/commands/fleet.ts";
+import { FLEET_LIST_INVALID } from "../src/commands/fleet-read.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
 const FLEET_ID = "01900000-0000-7000-8000-000000c0ffee";
@@ -32,7 +32,7 @@ describe("status", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
           jsonResponse(200, {
-            items: [{ id: FLEET_ID, name: "big-bot", status: "active", events_processed: "9007199254740993", budget_used_nanos: "123456789012345678901234567" }],
+            items: [{ id: FLEET_ID, name: "big-bot", status: "active", events_processed: "9007199254740993", budget_used_nanos: "9223372036854775807" }],
           }),
       };
       await withMockApi(routes, async (apiUrl) => {
@@ -44,7 +44,7 @@ describe("status", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toContain("9007199254740993");
-        expect(text).toContain("$123,456,789,012,345,678.9012");
+        expect(text).toContain("$9,223,372,036.8548");
       });
     });
   });
@@ -108,6 +108,7 @@ describe("status", () => {
   // used to throw a bare SyntaxError out of the table instead.
   test.each([
     ["a non-integer counter", { items: [{ id: FLEET_ID, name: "my-bot", status: "active", events_processed: "1", budget_used_nanos: "12.5" }] }],
+    ["an oversized monetary counter", { items: [{ id: FLEET_ID, name: "my-bot", status: "active", events_processed: "1", budget_used_nanos: "9223372036854775808" }] }],
     ["a missing counter", { items: [{ id: FLEET_ID, name: "my-bot", status: "active", events_processed: "1" }] }],
     ["a row without an identifier", { items: [{ name: "my-bot", status: "active", events_processed: "0", budget_used_nanos: "0" }] }],
     ["a body without items", {}],
@@ -138,7 +139,7 @@ describe("status", () => {
   test("--json emits the raw API JSON envelope", async () => {
     await authedScope(async () => {
       const payload = {
-        items: [{ id: FLEET_ID, name: "bot-a", status: "active", events_processed: "7", budget_used_nanos: "0", created_at: 1 }],
+        items: [{ id: FLEET_ID, name: "bot-a", status: "active", events_processed: "7", budget_used_nanos: "0", created_at: "1970-01-01T00:00:00.001Z" }],
         total: null, next_cursor: null,
       };
       const routes: MockRoutes = {

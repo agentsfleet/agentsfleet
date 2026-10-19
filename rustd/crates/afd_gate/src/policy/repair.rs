@@ -6,9 +6,9 @@
 //! never whose.
 //!
 //! The identifier is TEXT, and that is not an encoding detail to route around.
-//! `core.fleet_events` is keyed `(fleet_id, event_id)` with no surrogate — the
-//! `id UUID` it once carried was deleted as a column "written by the insert and
-//! read by nothing". Admission mints the key as `<millis>-<sequence>`, the shape
+//! `fleet.events` names a delivery by `(fleet_id, event_id)`; its `id UUID` is a
+//! row key Postgres mints for tool calls and leases to point at, never the
+//! event's identifier. Admission mints the key as `<millis>-<sequence>`, the shape
 //! a Dragonfly stream entry id has, because every surface that renders, sorts or
 //! pages on event ids was written against it. So there is no `Uuid7` in the
 //! system that identifies a fleet event, and a version of this function that
@@ -75,7 +75,7 @@ mod tests {
     use super::{MIN_REFERENCE_LEN, PREFIX, branch_for};
 
     /// An event identifier in the shape admission actually mints: the admission
-    /// instant and the sequence, which is what `core.fleet_events` stores.
+    /// instant and the sequence, which is what `fleet.events` stores.
     const LEDGER_EVENT: &str = "1900000000000-1";
 
     #[test]
@@ -118,7 +118,7 @@ mod tests {
         // The regression. This took `&Uuid7`, so the call site parsed the event
         // id as one and dropped the branch when that failed — which it always
         // did, because the id is `<millis>-<sequence>` text and never a v7.
-        // `core.fleet_events` holds other shapes too: an approval's
+        // `fleet.events` holds other shapes too: an approval's
         // continuation, and every event predating the ledger. Each must get its
         // own branch rather than none.
         for id in [

@@ -33,7 +33,10 @@ pub struct MintCredentialResponse<'a> {
     /// never echoed into a frame.
     #[serde(borrow)]
     pub token: Cow<'a, str>,
-    /// Epoch milliseconds after which it stops working, so the caller re-mints
-    /// before expiry rather than on failure.
-    pub expires_at_ms: i64,
+    /// When it stops working, so the caller re-mints before expiry rather than
+    /// on failure. A credential with no upstream expiry carries the far-future
+    /// instant `9999-12-30T22:00:00.999Z`, so the caller's one comparison covers
+    /// it.
+    #[serde(with = "crate::instant")]
+    pub expires_at: jiff::Timestamp,
 }

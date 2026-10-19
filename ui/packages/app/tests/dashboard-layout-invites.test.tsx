@@ -29,7 +29,7 @@ import { ShellFrame } from "@/components/layout/ShellFrame";
 import DashboardLayout from "@/app/(dashboard)/layout";
 import { loadWaitingInvites } from "@/app/(dashboard)/invites/load";
 
-const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: 1 }];
+const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: "1970-01-01T00:00:00.001Z" }];
 
 function shellProps(tree: ReactNode): { waitingInvites?: unknown } {
   if (!React.isValidElement(tree)) throw new Error("layout returned no element");

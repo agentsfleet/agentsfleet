@@ -25,9 +25,9 @@ function row(over: Partial<EventRow> = {}): EventRow {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    cost_nanos: 40_000_000,
-    created_at: OPENED_AT,
-    updated_at: OPENED_AT,
+    cost_nanos: "40000000",
+    created_at: new Date(OPENED_AT).toISOString(),
+    updated_at: new Date(OPENED_AT).toISOString(),
     ...over,
   };
 }
@@ -37,7 +37,7 @@ function opened(over: Partial<Extract<LiveFrame, { kind: "event_received" }>> = 
 }
 
 function received(): FleetEvent[] {
-  return applyLiveFrame([], opened({ event_type: "cron", created_at: OPENED_AT }));
+  return applyLiveFrame([], opened({ event_type: "cron", created_at: new Date(OPENED_AT).toISOString() }));
 }
 
 describe("event_received — the opening bracket", () => {
@@ -65,10 +65,10 @@ describe("event_received — a row the browser already holds", () => {
   it("adopts the daemon's instant on the operator's own steer, and keeps everything else", () => {
     const guessed = OPENED_AT - 90_000;
     const held: FleetEvent = {
-      ...rowToEvent(row({ actor: "steer:kishore", status: "received", created_at: guessed })),
+      ...rowToEvent(row({ actor: "steer:kishore", status: "received", created_at: new Date(guessed).toISOString() })),
       text: "deploy it",
     };
-    const [event] = applyLiveFrame([held], opened({ actor: "steer:kishore", created_at: OPENED_AT }));
+    const [event] = applyLiveFrame([held], opened({ actor: "steer:kishore", created_at: new Date(OPENED_AT).toISOString() }));
     expect(event?.createdAt.getTime()).toBe(OPENED_AT);
     expect(event?.text).toBe("deploy it");
   });
@@ -76,7 +76,7 @@ describe("event_received — a row the browser already holds", () => {
   it("keeps the row's identity when the frame carries no instant or the same one", () => {
     const held = rowToEvent(row({ status: "received" }));
     expect(applyLiveFrame([held], opened())[0]).toBe(held);
-    expect(applyLiveFrame([held], opened({ created_at: OPENED_AT }))[0]).toBe(held);
+    expect(applyLiveFrame([held], opened({ created_at: new Date(OPENED_AT).toISOString() }))[0]).toBe(held);
   });
 });
 
@@ -93,7 +93,7 @@ describe("event_complete — the closing bracket", () => {
       outcome: OUTCOME.COMPLETED,
       tokens: 1200,
       wallMs: 12_000,
-      costNanos: 40_000_000,
+      costNanos: "40000000",
     });
   });
 
@@ -105,6 +105,18 @@ describe("event_complete — the closing bracket", () => {
       pending_approvals: 0,
     });
     expect(event).toMatchObject({ tokens: null, wallMs: null, costNanos: null });
+  });
+
+  it("retains exact streamed costs above safe integers", () => {
+    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.EVENT_COMPLETE,
+      ...row({ cost_nanos: "9007199254740993" }), fleet_status: "active", pending_approvals: 0 });
+    expect(event?.costNanos).toBe("9007199254740993");
+  });
+
+  it("a numeric stream cost remains unknown instead of showing an imprecise charge", () => {
+    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.EVENT_COMPLETE,
+      ...row(), cost_nanos: 9007199254740992, fleet_status: "active", pending_approvals: 0 } as unknown as LiveFrame);
+    expect(event?.costNanos).toBeNull();
   });
 
   it("a refusal closes the row with its label and no figures", () => {
@@ -134,7 +146,7 @@ describe("event_complete — a row the timeline never opened", () => {
       status: "processed",
       tokens: 1200,
       wallMs: 12_000,
-      costNanos: 40_000_000,
+      costNanos: "40000000",
     });
     expect(events[0]?.createdAt.getTime()).toBe(OPENED_AT);
   });
@@ -183,7 +195,7 @@ describe("event_complete — a row the timeline never opened", () => {
 
 describe("rowToEvent", () => {
   it("carries a durable row's figures so a backfilled completion moves the strip too", () => {
-    expect(rowToEvent(row())).toMatchObject({ tokens: 1200, wallMs: 12_000, costNanos: 40_000_000 });
+    expect(rowToEvent(row())).toMatchObject({ tokens: 1200, wallMs: 12_000, costNanos: "40000000" });
     expect(rowToEvent(row({ cost_nanos: null }))).toMatchObject({ costNanos: null });
   });
 });

@@ -55,18 +55,34 @@ use sqlx::AssertSqlSafe;
 use crate::config::{DbRole, PoolConfig};
 use crate::pool::Db;
 
+mod billing;
+mod connector;
 mod fleet;
+mod fleet_event;
+mod identity;
 mod platform_default;
+mod platform_model;
 mod rows;
+mod runner;
 mod unreachable;
 
+pub use self::billing::WalletSeed;
+pub use self::connector::{GrantSeed, InstallSeed};
 pub use self::fleet::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
     FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
+pub use self::fleet_event::{EventKind, FleetEventSeed};
+pub use self::identity::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
+pub use self::platform_model::ModelSeed;
 pub use self::rows::OwnedRows;
+pub use self::runner::{RunnerPolicy, RunnerSeed};
 pub use self::unreachable::unreachable_db;
+
+/// The fixed instant fixtures stamp on the rows they seed: one millisecond past
+/// the epoch, so it survives `TIMESTAMPTZ(3)` unchanged.
+pub const SEEDED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 1_000_000);
 
 /// The environment knob naming the lane's admin connection.
 const LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -295,6 +311,16 @@ pub fn mint_id() -> String {
     )
 }
 
+/// [`mint_id`] as the typed identifier, for the suites that hold a `Uuid7`.
+///
+/// # Panics
+/// Never in practice: [`mint_id`] spells a canonical `UUIDv7` by construction.
+#[must_use]
+pub fn mint_uuid7() -> afd_core::id::Uuid7 {
+    afd_core::id::Uuid7::parse(&mint_id())
+        .unwrap_or_else(|failure| panic!("mint_id spells a canonical UUIDv7: {failure}"))
+}
+
 /// The lane's connection URL, or a panic naming the knob that is unset.
 fn lane_url() -> String {
     ProcessEnv.get(LANE_KNOB).unwrap_or_else(|| {
@@ -304,21 +330,9 @@ fn lane_url() -> String {
 
 /// Installs a subscriber so event macros actually run.
 ///
-/// `tracing::warn!` asks whether its callsite is enabled BEFORE it evaluates the
-/// fields inside it, so with no subscriber every field expression in every
-/// diagnostic is skipped — the failure path runs and the line reporting it does
-/// not, and llvm-cov scores those fields as never executed. Output goes to a
-/// sink; the point is evaluation, not reading.
-pub fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _already_set = tracing::subscriber::set_global_default(subscriber);
-    });
-}
+/// Re-exported for the live suites that already reach it through this seed
+/// home; the one implementation is `afd_core`'s.
+pub use afd_core::test_util::trace::install_subscriber;
 
 #[cfg(test)]
 mod tests;

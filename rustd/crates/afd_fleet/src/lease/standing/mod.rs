@@ -6,10 +6,7 @@
 //! schedules or another event's thread, and a holder a reclaim has superseded
 //! is refused before anything is read or written on its behalf.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
 use crate::error::{Result, lease_not_found, query, row_malformed, stale_fence};
 use crate::lease::pull::Plane;
@@ -21,7 +18,7 @@ use crate::lease::store::Leases;
 const CONTEXT_STANDING: &str = "lease standing lookup";
 
 /// The table a malformed column is reported against.
-const TABLE: &str = "fleet.runner_leases";
+const TABLE: &str = "runner.leases";
 
 /// The columns a malformed value is reported under.
 const COLUMN_FLEET: &str = "fleet_id";
@@ -47,9 +44,9 @@ pub struct Standing {
     pub actor: String,
 }
 
-/// A lease row as the `live_lease!` statements read it, before the fence
+/// A lease row as the `live_lease.sql` statements read it, before the fence
 /// is applied: what the standing proof and the tool-call records both read.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub(crate) struct LiveLease {
     /// The fleet the lease runs.
     pub(crate) fleet_id: String,
@@ -66,18 +63,6 @@ pub(crate) struct LiveLease {
 }
 
 impl LiveLease {
-    /// The row a `live_lease!` statement answered, in its column order.
-    pub(crate) fn read(row: &PgRow, context: &'static str) -> Result<Self> {
-        Ok(Self {
-            fleet_id: row.try_get(0).map_err(query(context))?,
-            workspace_id: row.try_get(1).map_err(query(context))?,
-            event_id: row.try_get(2).map_err(query(context))?,
-            fence: row.try_get(3).map_err(query(context))?,
-            live_seq: row.try_get(4).map_err(query(context))?,
-            actor: row.try_get(5).map_err(query(context))?,
-        })
-    }
-
     /// Whether this lease still holds the fleet, and `presented` is its own
     /// token.
     ///
@@ -117,9 +102,8 @@ impl Plane {
         runner_id: &Uuid7,
         lease_id: Uuid7,
         presented: u64,
-        now: UnixMillis,
     ) -> Result<Standing> {
-        let Some(read) = self.leases.standing_row(runner_id, &lease_id, now).await? else {
+        let Some(read) = self.leases.standing_row(runner_id, &lease_id).await? else {
             return Err(lease_not_found());
         };
         if !read.holds(presented) {
@@ -146,24 +130,15 @@ impl Plane {
 
 impl Leases {
     /// The lease `lease_id`, if `runner_id` holds it live.
-    async fn standing_row(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Option<LiveLease>> {
+    async fn standing_row(&self, runner_id: &Uuid7, lease_id: &Uuid7) -> Result<Option<LiveLease>> {
         let mut connection = self.pool().acquire().await?;
-        let found = sqlx::query(SELECT_STANDING)
+        sqlx::query_as(SELECT_STANDING)
             .bind(lease_id.as_str())
             .bind(runner_id.as_str())
             .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(now.as_millis())
             .fetch_optional(&mut *connection)
             .await
-            .map_err(query(CONTEXT_STANDING))?;
-        found
-            .map(|row| LiveLease::read(&row, CONTEXT_STANDING))
-            .transpose()
+            .map_err(query(CONTEXT_STANDING))
     }
 }
 

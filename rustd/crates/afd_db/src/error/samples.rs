@@ -4,11 +4,18 @@
 //! the next kind; behind `test-util` because production builds have no use
 //! for a sampler.
 
+use std::time::Duration;
+
 use super::{
     Error, ErrorKind, acquire_stalled, classify_acquire, invalid_bool_knob, query,
     unreachable_datastore,
 };
 use crate::config::DbRole;
+
+/// A slot the samples name: the first schema slot.
+const SAMPLE_SLOT: i64 = 1000;
+/// A slot no binary knows, for the schema-ahead sample.
+const SAMPLE_UNKNOWN_SLOT: i64 = 9999;
 
 /// One error of every kind, for tests that walk the whole surface.
 ///
@@ -46,39 +53,59 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "pool capacity",
             Error::new(ErrorKind::PoolCapacity {
                 role: DbRole::Api.tag(),
-                waited_ms: 2_000,
+                waited: Duration::from_secs(2),
             }),
         ),
         (
             "datastore unreachable",
-            unreachable_datastore(DbRole::Default.tag(), 10_000),
+            unreachable_datastore(DbRole::Default.tag(), Duration::from_secs(10)),
         ),
         (
             "acquire stalled",
-            acquire_stalled(DbRole::Api.tag(), 2_000, 5, 20),
+            acquire_stalled(DbRole::Api.tag(), Duration::from_secs(2), 5, 20),
         ),
         (
             "datastore unavailable",
-            classify_acquire(DbRole::Default.tag(), 2_000, sqlx::Error::PoolClosed),
+            classify_acquire(
+                DbRole::Default.tag(),
+                Duration::from_secs(2),
+                sqlx::Error::PoolClosed,
+            ),
         ),
         (
             "query",
-            query("migrate.ensure_tables", sqlx::Error::PoolClosed),
+            query("migrate.read_ledger", sqlx::Error::PoolClosed),
         ),
         (
             "migration failed",
             Error::new(ErrorKind::MigrationFailed {
-                version: 100,
+                version: SAMPLE_SLOT,
                 source: sqlx::Error::PoolClosed,
             }),
         ),
         (
             "lock unavailable",
-            Error::new(ErrorKind::MigrationLockUnavailable { waited_ms: 30_000 }),
+            Error::new(ErrorKind::MigrationLockUnavailable {
+                waited: Duration::from_secs(30),
+            }),
         ),
         (
             "schema ahead",
-            Error::new(ErrorKind::MigrationSchemaAhead { found: 999 }),
+            Error::new(ErrorKind::MigrationSchemaAhead {
+                found: SAMPLE_UNKNOWN_SLOT,
+            }),
+        ),
+        (
+            "slot edited",
+            Error::new(ErrorKind::MigrationEdited {
+                version: SAMPLE_SLOT,
+            }),
+        ),
+        (
+            "migrator refused",
+            Error::new(ErrorKind::MigrationRefused {
+                source: sqlx::migrate::MigrateError::Dirty(SAMPLE_SLOT),
+            }),
         ),
     ]
 }

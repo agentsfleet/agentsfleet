@@ -10,6 +10,7 @@
 )]
 
 use afd_core::error_code;
+use jiff::Timestamp;
 use zeroize::Zeroizing;
 
 use super::accept;
@@ -32,7 +33,7 @@ fn connector(name: &str) -> &'static dyn Connector {
 fn minted() -> Minted {
     Minted {
         token: Zeroizing::new("at_live".to_owned()),
-        expires_at_ms: 1_760_003_600_000,
+        expires_at: Timestamp::constant(1_760_003_600, 0),
         rotated_refresh_token: None,
     }
 }
@@ -186,7 +187,7 @@ async fn an_unrotated_refresh_token_reason_carries_no_code_prefix() {
     };
 
     test_dead::plane()
-        .persist_rotation(&scope, "github", &handle, &rotated, test_dead::AT)
+        .persist_rotation(&scope, "github", &handle, &rotated)
         .await;
 
     let line = log.only(super::EVENT_REFRESH_ROTATED);

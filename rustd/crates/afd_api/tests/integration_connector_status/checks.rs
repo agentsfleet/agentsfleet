@@ -106,7 +106,7 @@ pub(super) async fn the_catalogue_marks_only_what_is_held(
 /// still 204.
 ///
 /// The row is the half a vault read cannot see: an ingress resolves the
-/// provider account to a workspace through `core.connector_installs`, so a
+/// provider account to a workspace through `connector.installs`, so a
 /// disconnect that removed only the handle would leave deliveries routing to a
 /// workspace that can no longer answer them. Nothing here reaches a vendor —
 /// the disconnect path holds no HTTP client — which is what "leaves the

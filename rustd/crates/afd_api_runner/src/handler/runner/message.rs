@@ -99,7 +99,7 @@ pub(crate) async fn handle<D: Services>(
         .map_err(|_report| Refusal::malformed(DETAIL_TEXT))?;
     let interim = services
         .leases()
-        .message(runner.id(), lease(&lease_id)?, &request, services.now())
+        .message(runner.id(), lease(&lease_id)?, &request)
         .await
         .map_err(refused)?;
     let part = interim.part;

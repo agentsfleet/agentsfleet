@@ -16,9 +16,9 @@
 //! still active, so its mark still names live work, and clearing it would hide
 //! a running fleet from every later poll.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
 
 use super::sql;
 use crate::error::{Result, query};
@@ -68,21 +68,24 @@ impl Gates {
     ///
     /// The readiness clear is best-effort and does NOT reach the caller: a
     /// stale mark costs one wasted candidate check on a later poll, and the
-    /// fleet is already paused where it counts.
-    pub async fn pause(&self, fleet_id: &Uuid7, trigger: Trigger, now: UnixMillis) -> Result<()> {
+    /// fleet is already paused where it counts. The row is stamped on the
+    /// database clock.
+    pub async fn pause(&self, fleet_id: &Uuid7, trigger: Trigger) -> Result<()> {
         let mut connection = self.database().acquire().await?;
         sqlx::query(sql::PAUSE_FLEET)
-            .bind(now.as_millis())
+            .bind(FleetStatus::Paused.as_str())
             .bind(fleet_id.as_str())
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_PAUSE))?;
 
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let fleet = fleet_id.as_str();
+        let trigger_word = trigger.as_str();
         tracing::warn!(
             event = EVENT_FLEET_PAUSED,
             fleet_id = fleet,
-            trigger = trigger.as_str(),
+            trigger = trigger_word,
             "the fleet is stopped; no further work of its is admitted"
         );
 

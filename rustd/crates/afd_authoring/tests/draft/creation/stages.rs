@@ -10,13 +10,16 @@
 
 use super::super::{fixture::now, mint, refusal::Refusal};
 use super::fixture::{Case, NO_ADMISSIONS, NO_EVENTS, check};
+use afd_admission::{Admissions, Budgets};
+use afd_authoring::Creations;
 use afd_authoring::{
     SavedFleet,
     types::{DraftState, SaveFleet, Start, StartOutcome, StartState},
 };
+use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_dragonfly::{FleetStreams, fleet_stream_key};
-use sqlx::{Connection as _, PgConnection};
 
 /// The initial run each case asks for, so a repeated stage would show as a
 /// second admission.
@@ -97,7 +100,7 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
     let fleet = retained(&c, &key, request.clone()).await.id;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "core.fleets",
+        "fleet.fleets",
         "activate",
         fleet.as_str(),
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
@@ -147,7 +150,7 @@ async fn an_unsaved_receipt_answers_the_save_pending_and_the_same_key_accepts_th
     let fleet = retained(&c, &key, request.clone()).await.id;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "core.fleet_admissions",
+        "fleet.admissions",
         "receipt",
         fleet.as_str(),
         &format!("NEW.fleet_id='{fleet}'::uuid AND NEW.receipt IS NOT NULL"),
@@ -192,13 +195,10 @@ async fn a_refused_append_or_a_held_row_answers_pending_and_the_same_key_accepts
         .forget(fleet.as_str())
         .await
         .expect("the queue recovers");
-    let mut sibling = sibling_repair(&c, &fleet).await;
+    sibling_claim(&c, &fleet, SIBLING_HOLDS).await;
     let held = c.save(&key, request.clone()).await;
     assert_eq!(pending_event(&held), event, "a held row stays pending");
-    sqlx::query("COMMIT")
-        .execute(&mut sibling)
-        .await
-        .expect("the sibling finishes");
+    sibling_claim(&c, &fleet, SIBLING_RELEASES).await;
     assert_eq!(accepted(&c.save(&key, request).await), event);
     assert_eq!(c.stream_events(&fleet).await, std::slice::from_ref(&event));
     let rows = c.admissions(&fleet).await;
@@ -213,7 +213,7 @@ async fn a_refused_append_or_a_held_row_answers_pending_and_the_same_key_accepts
 /// The stream stage finished, then the fleet's stream key turned into a plain
 /// value: activation commits, and its append meets WRONGTYPE.
 async fn refuse_appends(c: &Case, fleet: &Uuid7) {
-    sqlx::query("UPDATE core.fleets SET setup_stream_ready=true WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET setup_stream_ready=true WHERE id=$1::uuid")
         .bind(fleet.as_str())
         .execute(&mut *c.base.connection().await)
         .await
@@ -228,21 +228,60 @@ async fn refuse_appends(c: &Case, fleet: &Uuid7) {
         .expect("occupy the stream key");
 }
 
-/// A sibling repair holding the fleet's admission row, as the replay sweep
-/// does while it confirms that row.
-async fn sibling_repair(c: &Case, fleet: &Uuid7) -> PgConnection {
-    let mut sibling = PgConnection::connect(&c.base.owner_url())
+/// A sibling repair's claim on the fleet's admission row, as a replay pass or
+/// another confirmation stamps it while it appends that row. Held, a
+/// confirmation answers pending; released, the next one appends the row.
+async fn sibling_claim(c: &Case, fleet: &Uuid7, stamp: &'static str) {
+    sqlx::query(stamp)
+        .bind(fleet.as_str())
+        .execute(&mut *c.base.connection().await)
         .await
-        .expect("sibling connects");
-    for step in [
-        "BEGIN",
-        "SELECT id FROM core.fleet_admissions WHERE fleet_id=$1::uuid FOR UPDATE",
-    ] {
-        sqlx::query(step)
-            .bind(fleet.as_str())
-            .execute(&mut sibling)
-            .await
-            .expect("hold the admission row");
-    }
-    sibling
+        .expect("the sibling's claim is written");
+}
+
+/// A sibling's claim, an hour out: longer than this test runs.
+const SIBLING_HOLDS: &str = "UPDATE fleet.admissions \
+     SET replay_claim_expires_at = statement_timestamp() + interval '1 hour' \
+     WHERE fleet_id = $1::uuid";
+
+/// The sibling finishing without a receipt: its claim is released.
+const SIBLING_RELEASES: &str =
+    "UPDATE fleet.admissions SET replay_claim_expires_at = NULL WHERE fleet_id = $1::uuid";
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn an_initial_run_over_the_fleet_backlog_budget_activates_blocked() {
+    let c = Case::create().await;
+    c.fund().await;
+    let full =
+        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()).with_budgets(Budgets {
+            fleet_backlog: 0,
+            ..Budgets::default()
+        });
+    let creations = Creations::new(c.setup.clone(), c.queue.clone(), full);
+    let start = Start::RunNow {
+        message: "Run once setup finishes".to_owned(),
+    };
+    let (_, request) = c.request("backlog-full", start).await;
+    let saved = creations
+        .save(c.base.access(), &mint(), request, now())
+        .await
+        .expect("a full backlog holds the run, not the setup");
+    assert_eq!(saved.status, "active");
+    let blocked = matches!(
+        &saved.start,
+        StartOutcome::RunNow {
+            state: StartState::Blocked,
+            event_id: None,
+            error_code: Some(code),
+        } if code == error_code::INTERNAL_DB_UNAVAILABLE.as_str()
+    );
+    assert!(
+        blocked,
+        "the run names the capacity refusal: {:?}",
+        saved.start
+    );
+    assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
+    assert_eq!(c.stream_events(&saved.id).await, NO_EVENTS);
+    c.cleanup().await;
 }

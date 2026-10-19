@@ -31,10 +31,11 @@ use rig_core::operation::Completion;
 use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 
 use crate::error::{Error, Result, raise};
-use crate::provider::{Call, Chunk, End, Provider, Replay, Request, Usage};
+use crate::provider::{Call, Chunk, End, Provider, Replay, Request};
 use crate::request;
 use crate::retry::ATTEMPTS;
-use afd_wire::inference::ModelInference;
+use crate::usage;
+use afd_wire::inference::{InferenceApi, ModelInference};
 use afd_wire::policy::ExecutionPolicy;
 
 /// The log line a turn opened again writes.
@@ -212,7 +213,7 @@ impl Reading {
             }
             Some(Err(failure)) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
             None => match self.stream.finish().await {
-                Ok(response) => Step::Continue(Pass::Ending(ending(response))),
+                Ok(response) => Step::Continue(Pass::Ending(ending(turns.settings.api, response))),
                 Err(failure) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
             },
         }
@@ -259,21 +260,11 @@ fn reopens(failure: &ProviderError) -> bool {
         && !raise::blocked(failure)
 }
 
-/// The chunks a finished turn ends on: what it spent, then its end.
-fn ending(response: CompletionResponse) -> Ending {
+/// The chunks a finished turn on `api` ends on: what it spent, then its end.
+fn ending(api: InferenceApi, response: CompletionResponse) -> Ending {
     let cut = response.finish_reason() == Some(FinishReason::Length);
+    let spent = usage::spent(api, &response.usage, &response.raw);
     let replay = Replay(response.head().with_content(response.choice));
-    let usage = response.usage;
-    // rig counts cache reads inside `input_tokens` on every wire; the daemon
-    // bills `input` and `cached_input` as two disjoint counts, so the reads
-    // come out of the prompt total here, once, where every wire meets.
-    let cached_input = usage.cached_input_tokens.unwrap_or(0);
-    let spent = Usage {
-        input: usage.input_tokens.unwrap_or(0).saturating_sub(cached_input),
-        cached_input,
-        cache_written: usage.cache_creation_input_tokens.unwrap_or(0),
-        output: usage.output_tokens.unwrap_or(0),
-    };
     let end = End { replay, cut };
     [Chunk::Usage(spent), Chunk::End(end)].into_iter()
 }

@@ -1,9 +1,13 @@
-//! The Postgres store: the memory module `afd_fleet` carried, moved behind
-//! [`MemoryStore`] with its window, upsert, sweep and eviction unchanged.
+//! The Postgres store: the window, the upsert with its sweep and cap, recall,
+//! the operator page, and forget. Reads live in `read`, writes in `write`.
+//!
+//! A store holds rows and answers for them; it decides nothing about who may
+//! read or publish. [`crate::Memories`] reads the grants from `fleet.fleets` and
+//! passes them in as `reads`, so a query enforces a grant by honouring one flag.
 //!
 //! # The role switch is a transaction, not a pair of statements
 //!
-//! `memory.memory_entries` is written as `memory_runtime`, a role the api pool
+//! `memory.entries` is written as `memory_runtime`, a role the api pool
 //! does not otherwise hold. `SET LOCAL ROLE` inside a transaction is restored
 //! by Postgres at COMMIT or ROLLBACK — including the rollback a dropped
 //! transaction performs — so there is no reset to fail and no connection can
@@ -14,23 +18,17 @@ mod page;
 mod read;
 mod write;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_wire::memory::{MemoryDelta, Visibility};
+use afd_wire::memory::Visibility;
 use sqlx::postgres::PgRow;
-use sqlx::{Acquire as _, PgConnection, Row as _};
+use sqlx::{Acquire as _, FromRow as _, PgConnection};
 
 use crate::error::detail::ROLE_SWITCH;
 use crate::error::{Error, Result, query, unavailable};
-use crate::page::{After, View};
-use crate::record::{Housekept, Owner, Record};
+use crate::record::Record;
 use crate::sql;
-use crate::store::MemoryStore;
-
-/// The name the flip's log lines give this store.
-const NAME: &str = "postgres";
 
 /// The durable memory store, over the api-role pool.
 #[derive(Debug, Clone)]
@@ -43,7 +41,7 @@ pub struct PgStore {
 ///
 /// The runner plane's verbs answer the internal database codes they always
 /// have; the operator surface answers `UZ-MEM-003` with a sentence naming the
-/// operation. Both are kept, so moving behind the trait changes no reply.
+/// operation.
 #[derive(Debug, Clone, Copy)]
 enum Failure {
     /// A runner-plane statement, named for the log.
@@ -102,78 +100,34 @@ impl PgStore {
     }
 }
 
+/// The seven columns every read returns, by name.
+#[derive(Debug, sqlx::FromRow)]
+struct EntryRow {
+    fleet_id: String,
+    key: String,
+    content: String,
+    category: String,
+    workspace_visible: bool,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: jiff::Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: jiff::Timestamp,
+}
+
 /// One row of the seven-column read every statement shares.
 fn record(row: &PgRow, failure: Failure) -> Result<Record> {
-    let column = |source| failure.raise(source);
-    let writer: String = row.try_get(0).map_err(column)?;
+    let row = EntryRow::from_row(row).map_err(|source| failure.raise(source))?;
     Ok(Record {
-        fleet: Uuid7::parse(&writer)?,
-        key: row.try_get(1).map_err(column)?,
-        content: row.try_get(2).map_err(column)?,
-        category: row.try_get(3).map_err(column)?,
-        visibility: if row.try_get(4).map_err(column)? {
+        fleet: Uuid7::parse(&row.fleet_id)?,
+        key: row.key,
+        content: row.content,
+        category: row.category,
+        visibility: if row.workspace_visible {
             Visibility::Workspace
         } else {
             Visibility::Fleet
         },
-        created_at_ms: row.try_get(5).map_err(column)?,
-        updated_at_ms: row.try_get(6).map_err(column)?,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     })
-}
-
-#[async_trait::async_trait]
-impl MemoryStore for PgStore {
-    fn name(&self) -> &'static str {
-        NAME
-    }
-
-    async fn window(&self, owner: Owner<'_>, reads: bool) -> Result<Vec<Record>> {
-        read::window(self, owner, reads).await
-    }
-
-    async fn upsert(
-        &self,
-        owner: Owner<'_>,
-        entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
-    ) -> Result<Housekept> {
-        write::upsert(self, owner, entries, now).await
-    }
-
-    async fn search(
-        &self,
-        owner: Owner<'_>,
-        reads: bool,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<Record>> {
-        read::search(self, owner, reads, query, limit).await
-    }
-
-    async fn page(
-        &self,
-        owner: Owner<'_>,
-        reads: bool,
-        view: View<'_>,
-        after: Option<After<'_>>,
-        limit: i64,
-    ) -> Result<Vec<Record>> {
-        read::page(self, owner, reads, view, after, limit).await
-    }
-
-    async fn forget(&self, owner: Owner<'_>, key: &str) -> Result<bool> {
-        write::forget(self, owner, key).await
-    }
-
-    async fn forget_stale(&self, owner: Owner<'_>, key: &str, seen_ms: i64) -> Result<bool> {
-        write::forget_stale(self, owner, key, seen_ms).await
-    }
-
-    async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {
-        read::export(self, workspace).await
-    }
-
-    async fn import(&self, workspace: &Uuid7, record: &Record) -> Result<()> {
-        write::import(self, workspace, record).await
-    }
 }

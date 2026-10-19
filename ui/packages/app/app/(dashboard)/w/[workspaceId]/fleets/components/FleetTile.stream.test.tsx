@@ -26,7 +26,7 @@ vi.mock("next/link", () => ({
 const TILES = 100;
 const CHUNK_FRAMES = 1_000;
 const TOOL = "search_repo";
-const COUNTERS = { events_processed: 9, budget_used_nanos: 2_000_000_000 };
+const COUNTERS = { events_processed: 9, budget_used_nanos: "2000000000" };
 
 setupWorkspaceWire();
 afterEach(cleanup);
@@ -35,9 +35,10 @@ function fleetAt(index: number): Fleet {
   return {
     id: `fleet_${index}`,
     name: `fleet ${index}`,
+    description: null,
     status: "active",
-    created_at: 0,
-    updated_at: 0,
+    created_at: "1970-01-01T00:00:00Z",
+    updated_at: "1970-01-01T00:00:00Z",
     budget_used_nanos: 0n,
     events_processed: 0n,
   };

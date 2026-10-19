@@ -29,15 +29,13 @@
 //! Memory is keyed by fleet. One fleet per channel means every thread in the
 //! channel shares one memory, and no other channel's resident can read it.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_fleet_runtime::definition::DEFINITION_SCHEMA_VERSION;
 use afd_fleet_runtime::{Definition, FleetName};
+use jiff::Timestamp;
 use serde_json::json;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
 use super::ChannelId;
 use crate::error::{self, COLUMN_FLEET, Result, row_unreadable, stored_fleet, stored_status};
@@ -75,8 +73,8 @@ pub struct Resident {
     pub name: FleetName,
     /// The complete native setup, never anything a person wrote.
     pub definition: Definition,
-    /// The definition's configuration as the fleet row stores it, which is
-    /// how a fleet already holding the name is recognised as this resident.
+    /// The definition's configuration as its revision stores it, which is how
+    /// a fleet already holding the name is recognised as this resident.
     /// A fleet a person saved under this name with the same policy reads as
     /// the resident too: the check tells a resident from a fleet with a policy
     /// of its own.
@@ -159,7 +157,7 @@ impl Ingress {
         channel: &ChannelId,
     ) -> Result<Option<BoundResident>> {
         let mut connection = self.database.acquire().await?;
-        let found = sqlx::query(sql::SELECT_RESIDENT)
+        let found: Option<ResidentRow> = sqlx::query_as(sql::SELECT_RESIDENT)
             .bind(provider)
             .bind(team)
             .bind(channel.as_str())
@@ -168,11 +166,12 @@ impl Ingress {
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_RESIDENT))?;
-        found.map(|row| bound(&row, CONTEXT_RESIDENT)).transpose()
+        found.map(ResidentRow::bound).transpose()
     }
 
     /// Binds `fleet` as `channel`'s resident unless `workspace` already has
-    /// one bound, and answers whichever fleet is bound there.
+    /// one bound, and answers whichever fleet is bound there. `now` mints the
+    /// binding's id; Postgres stamps the row.
     ///
     /// # Errors
     /// Reports entropy or an instant that would not mint the binding's id, a
@@ -184,7 +183,7 @@ impl Ingress {
         team: &str,
         channel: &ChannelId,
         fleet: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Uuid7> {
         let id = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
@@ -195,7 +194,6 @@ impl Ingress {
             .bind(channel.as_str())
             .bind(fleet.as_str())
             .bind(KIND_RESIDENT)
-            .bind(now.as_millis())
             .bind(workspace.as_str())
             .fetch_optional(connection.as_mut())
             .await
@@ -226,7 +224,7 @@ impl Ingress {
         resident: &Resident,
     ) -> Result<Option<Named>> {
         let mut connection = self.database.acquire().await?;
-        let found = sqlx::query(sql::SELECT_RESIDENT_NAMED)
+        let found: Option<NamedRow> = sqlx::query_as(sql::SELECT_RESIDENT_NAMED)
             .bind(workspace.as_str())
             .bind(resident.name.as_str())
             .bind(&resident.config_json)
@@ -235,28 +233,45 @@ impl Ingress {
             .map_err(error::query(CONTEXT_NAMED))?;
         found
             .map(|row| {
-                let unreadable = error::query(CONTEXT_NAMED);
-                let is_resident: bool = row.try_get(2).map_err(&unreadable)?;
-                if !is_resident {
+                if !row.is_resident {
                     return Ok(Named::Other);
                 }
-                bound(&row, CONTEXT_NAMED).map(Named::Resident)
+                row.resident.bound().map(Named::Resident)
             })
             .transpose()
     }
 }
 
-/// The resident a row's first two columns name: its fleet and that fleet's
-/// status, the shape both [`SELECT_RESIDENT`](sql::SELECT_RESIDENT) and
+/// A resident as a row names it: its fleet and that fleet's status, the shape
+/// both [`SELECT_RESIDENT`](sql::SELECT_RESIDENT) and
 /// [`SELECT_RESIDENT_NAMED`](sql::SELECT_RESIDENT_NAMED) lead with.
-fn bound(row: &PgRow, context: &'static str) -> Result<BoundResident> {
-    let unreadable = error::query(context);
-    let fleet: String = row.try_get(0).map_err(&unreadable)?;
-    let status: String = row.try_get(1).map_err(&unreadable)?;
-    Ok(BoundResident {
-        fleet: stored_fleet(&fleet)?,
-        status: stored_status(&status)?,
-    })
+#[derive(Debug, sqlx::FromRow)]
+struct ResidentRow {
+    /// The resident fleet, as text.
+    fleet_id: String,
+    /// The fleet's stored status word.
+    status: String,
+}
+
+impl ResidentRow {
+    /// The bound resident this row names.
+    fn bound(self) -> Result<BoundResident> {
+        Ok(BoundResident {
+            fleet: stored_fleet(&self.fleet_id)?,
+            status: stored_status(&self.status)?,
+        })
+    }
+}
+
+/// [`SELECT_RESIDENT_NAMED`](sql::SELECT_RESIDENT_NAMED)'s row: the fleet
+/// holding a resident's name, and whether it is that resident.
+#[derive(Debug, sqlx::FromRow)]
+struct NamedRow {
+    /// The fleet and its status.
+    #[sqlx(flatten)]
+    resident: ResidentRow,
+    /// Whether its configuration is the resident's own.
+    is_resident: bool,
 }
 
 #[cfg(test)]

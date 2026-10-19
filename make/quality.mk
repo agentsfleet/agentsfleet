@@ -48,9 +48,10 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 # policy set instead of a growing list, and so a new rule extends this line
 # rather than adding another near-duplicate wrapper.
 _model_allowlist_check:
-	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_model_allowlist_test.py
-	@python3 scripts/check_model_allowlist.py
+	@echo "→ [models] Checking curated identities, context evidence and exact sourced prices..."
+	@bun run tsc --project scripts/model-catalogue/tsconfig.json
+	@bun test scripts/model-catalogue
+	@bun scripts/model-catalogue/check.mjs
 
 
 # The Rust workspace. `cd` rather than `--manifest-path`: rust-toolchain.toml is
@@ -67,7 +68,7 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@# What no compiler pass sees: one component name per schema type, every
 	@# tracked schema/*.sql in the migration list, the stream ceiling on a
-	@# measured rung.
+	@# measured rung, no span held as integer milliseconds.
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source.py

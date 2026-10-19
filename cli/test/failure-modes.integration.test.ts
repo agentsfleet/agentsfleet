@@ -99,7 +99,7 @@ describe("failure modes — runtime / observability surface", () => {
           () => jsonResponse(200, {
             items: [
               {
-                created_at: 1700000000000,
+                created_at: "2023-11-14T22:13:20Z",
                 actor: "fleet",
                 status: "fleet_error",
                 error_code: "UZ-RUN-011",

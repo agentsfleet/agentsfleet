@@ -14,9 +14,10 @@
 //!
 //! # Order is a money-safety property
 //!
-//! Every gate that can refuse PERMANENTLY runs before the debit, so a refused
-//! event is never charged. The order is one readable sequence in this module,
-//! so a reader checks the rule without inferring it from statement order.
+//! Every gate that can refuse PERMANENTLY runs before the lease is issued and
+//! its hold placed, so a refused event is never charged. The order is one
+//! readable sequence in this module, so a reader checks the rule without
+//! inferring it from statement order.
 //!
 //! # What this pass does NOT do
 //!
@@ -33,17 +34,17 @@ mod verdict;
 
 pub use self::declined::Declined;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
+use jiff::Timestamp;
 
 use crate::error::Result;
-use crate::lease::event::Delivery;
+use afd_billing::biller::Biller;
 use afd_billing::rates::Posture;
-use afd_billing::{Accounts, Charged, Nanos};
+use afd_billing::{Accounts, Nanos};
 use afd_gate::gate::Waiting;
 
-use self::fault::{PAYER, RECEIPT};
+use self::fault::PAYER;
 
 /// The event's workspace names no tenant.
 const EVENT_TENANT_UNRESOLVED: &str = "lease_tenant_lookup_failed";
@@ -95,18 +96,15 @@ pub struct Billed {
     pub provider: Box<str>,
     /// The model the estimate was priced against.
     pub model: Box<str>,
-    /// What the receive charge drained.
-    ///
-    /// A VALUE rather than a metric emitted here: the caller records the
-    /// credit meter, and an exporter fused into the money path would be one a
-    /// run could not be admitted without.
-    pub drained: Nanos,
+    /// The floor the balance gate admitted against: what the lease's first
+    /// hold reserves once the lease is issued.
+    pub floor: Nanos,
 }
 
 /// Why an event was ended, and what an operator is told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Refusal {
-    /// The `core.fleet_events.failure_label` value.
+    /// The `fleet.events.failure_label` value.
     pub label: &'static str,
     /// An operator-readable recovery instruction, or empty.
     ///
@@ -147,8 +145,6 @@ pub struct Request<'a> {
     pub fleet_id: &'a Uuid7,
     /// The event being admitted.
     pub event_id: &'a str,
-    /// When the producer raised it.
-    pub event_created_at: UnixMillis,
     /// The fleet's declared ceiling, from the config resolved this lease.
     pub budget: Budget,
     /// Who supplies the provider key.
@@ -157,8 +153,6 @@ pub struct Request<'a> {
     pub provider: &'a str,
     /// The model resolved for this run.
     pub model: &'a str,
-    /// Whether this delivery is the first.
-    pub delivery: Delivery,
 }
 
 /// The workspace's payer, as the lease read it: found, unowned, or unread.
@@ -193,85 +187,43 @@ pub fn payer_gate(
 
 /// Run the money gates in the worker's order.
 ///
-/// Payer → balance → fleet budget → receipt. Every gate that can refuse
-/// permanently precedes the debit, so a refused event is never charged. The
-/// payer gate judges the read the caller made; it reads nothing itself.
+/// Payer → balance → fleet budget. Every gate that can refuse permanently
+/// runs before the lease is issued, so a refused event is never charged. The
+/// payer gate judges the read the caller made; it reads nothing itself. Nothing
+/// is charged here: the lease's hold is placed once it is issued, and its usage
+/// is charged as it runs.
 ///
 /// # Errors
 /// Datastore faults do NOT reach the caller as `Err` — each gate absorbs its
 /// own according to its declared posture. An `Err` here is a fault with no gate
-/// to absorb it, which today means an entropy or clock failure while minting
-/// the ledger row's identifier.
+/// to absorb it, which today is a payer read the payer gate does not absorb.
 pub async fn money_gates(
     accounts: &Accounts,
+    biller: &dyn Biller,
     payer: Payer,
     request: Request<'_>,
-    now: UnixMillis,
+    now: Timestamp,
 ) -> Result<Admission> {
     let tenant_id = match payer_gate(payer, request.workspace_id)? {
         Ok(found) => found,
         Err(stop) => return Ok(stop.into()),
     };
 
-    if let Some(stop) = gates::balance(accounts, &request, &tenant_id).await {
-        return Ok(stop.into());
-    }
-    if let Some(stop) = gates::fleet_budget(accounts, &request, now).await {
+    let floor = match gates::balance(accounts, biller, &request, &tenant_id, now).await {
+        Ok(floor) => floor,
+        Err(stop) => return Ok(stop.into()),
+    };
+    if let Some(stop) = gates::fleet_budget(accounts, &request).await {
         return Ok(stop.into());
     }
 
-    let drained = match charge(accounts, &request, &tenant_id, now).await {
-        Ok(drained) => drained,
-        Err(stop) => return Ok(stop.into()),
-    };
     Ok(Admission::Admit(Billed {
         tenant_id,
         posture: request.posture,
         provider: request.provider.into(),
         model: request.model.into(),
-        drained,
+        floor,
     }))
-}
-
-/// Record the receive charge, on a first delivery only.
-///
-/// Exhaustive over [`Delivery`], which is the whole guard: a redelivery is
-/// charged nothing because an earlier delivery already paid, and the balance
-/// drain is not replay-guarded the way the ledger row is.
-///
-/// `Err` carries a [`Declined`] rather than an [`Error`](crate::Error): at
-/// this point in the pass a fault has already been absorbed into a decision,
-/// and the caller's job is to return it, not to classify it again.
-async fn charge(
-    accounts: &Accounts,
-    request: &Request<'_>,
-    tenant_id: &Uuid7,
-    now: UnixMillis,
-) -> core::result::Result<Nanos, Declined> {
-    match request.delivery {
-        // A finished event never reaches admission — the pull path acknowledges
-        // it and stops before here. Spelled out rather than folded under a `_`
-        // so that stays true by compiler rather than by memory: if a caller ever
-        // does route one here, it must charge nothing, for the stronger version
-        // of `Repeat`'s reason — the run is not merely paid for, it is over.
-        Delivery::Repeat | Delivery::Terminal => Ok(Nanos::ZERO),
-        Delivery::First => {
-            let charged = Charged {
-                tenant_id,
-                workspace_id: request.workspace_id,
-                fleet_id: request.fleet_id,
-                event_id: request.event_id,
-                posture: request.posture,
-                model: request.model,
-                event_created_at: request.event_created_at,
-            };
-            accounts.debit_receive(charged, now).await.map_err(|fault| {
-                RECEIPT
-                    .absorb(&fault)
-                    .unwrap_or(Declined::Retry(Transient { at: RECEIPT.event }))
-            })
-        }
-    }
 }
 
 /// The refusal for a workspace that resolves to no tenant.

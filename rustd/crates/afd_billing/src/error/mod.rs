@@ -21,7 +21,7 @@ mod raise;
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
-    billing_wallet_missing, charges_cursor_invalid, query, row_malformed,
+    billing_wallet_missing, charge_overflow, charges_cursor_invalid, query, row_malformed,
 };
 
 /// The result every fallible function in this crate returns.
@@ -80,6 +80,13 @@ pub(crate) enum ErrorKind {
     #[error("a charges cursor this daemon never issued")]
     ChargesCursorInvalid,
 
+    /// A priced line or a balance would not fit in a signed 64-bit nano count.
+    ///
+    /// No source: nothing failed underneath; the arithmetic refused a value
+    /// rather than wrap it into a wrong charge.
+    #[error("a charge does not fit in a 64-bit nano count")]
+    ChargeOverflow,
+
     /// The pool would not give a connection.
     #[error("the billing store's datastore is unavailable")]
     Datastore {
@@ -99,7 +106,8 @@ impl Error {
             }
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Entropy { .. } => (
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ChargeOverflow => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,
             ),
@@ -131,11 +139,65 @@ impl Error {
     /// failure and never decides what to do about one, because fail-open and
     /// fail-closed belong beside the gate's name rather than beside the
     /// connection — the separation this crate is built around.
+    ///
+    /// Two shapes of one outage: the pool could not hand out a connection, or a
+    /// statement's connection was lost mid-flight (a failover, a reset socket, a
+    /// shutdown answer) as `afd_db::error::is_connection_lost` decides. A
+    /// statement that failed on its own terms (a constraint, a syntax or decode
+    /// error) is a defect, not an outage.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Datastore { .. })
+        match self.kind() {
+            ErrorKind::Datastore { .. } => true,
+            ErrorKind::Query { source, .. } => afd_db::error::is_connection_lost(source),
+            _ => false,
+        }
+    }
+
+    /// Whether a statement gave up waiting: on a row lock another transaction
+    /// held past the lock timeout (SQLSTATE `55P03`), or past the statement
+    /// timeout (`57014`).
+    ///
+    /// Contention, not an outage: the datastore answered, and it answered
+    /// "not now". It still leaves the biller without an answer, so
+    /// [`Self::is_unanswered`] counts it with an outage, and the outage policy
+    /// decides what the work does.
+    #[must_use]
+    pub fn is_contended(&self) -> bool {
+        let ErrorKind::Query { source, .. } = self.kind() else {
+            return false;
+        };
+        source
+            .as_database_error()
+            .and_then(sqlx::error::DatabaseError::code)
+            .is_some_and(|code| {
+                code == SQLSTATE_LOCK_NOT_AVAILABLE || code == SQLSTATE_QUERY_CANCELED
+            })
+    }
+
+    /// Whether the biller could not answer: an outage or contention. What the
+    /// outage policy turns on.
+    #[must_use]
+    pub fn is_unanswered(&self) -> bool {
+        self.is_datastore_unavailable() || self.is_contended()
+    }
+
+    /// Whether the payer has no wallet row at all.
+    ///
+    /// A gate admits such a tenant rather than refusing it: the row is written
+    /// at tenant creation, so its absence is an operator gap, and refusing every
+    /// run for it would turn a provisioning defect into an outage.
+    #[must_use]
+    pub fn is_wallet_missing(&self) -> bool {
+        matches!(self.kind(), ErrorKind::WalletMissing)
     }
 }
+
+/// A row lock was not granted within the lock timeout.
+const SQLSTATE_LOCK_NOT_AVAILABLE: &str = "55P03";
+
+/// The statement ran past its timeout and was cancelled.
+const SQLSTATE_QUERY_CANCELED: &str = "57014";
 
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The billing operation could not be completed";

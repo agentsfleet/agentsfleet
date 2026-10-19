@@ -58,7 +58,7 @@
 
 use afd_db::Db;
 use sqlx::pool::PoolConnection;
-use sqlx::{Connection as _, Postgres, Row as _};
+use sqlx::{Connection as _, FromRow as _, Postgres};
 
 use crate::datastores::postgres_count;
 use crate::error::{Error, ErrorKind, Result};
@@ -86,6 +86,10 @@ const READ: &str = "SELECT \
          WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
            AND query !~* '^\\s*(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE|ABORT)\\y'), \
        (SELECT xact_commit - sessions FROM pg_stat_database WHERE datname = current_database())";
+
+/// [`READ`]'s one row, by position: the statement sum, then the commits.
+#[derive(Debug, sqlx::FromRow)]
+struct Tallies(i64, i64);
 
 /// The statement tally, as a refusal names it.
 const STATEMENTS_FIELD: &str = "pg_stat_statements.calls";
@@ -180,9 +184,10 @@ pub async fn read(database: &Db) -> Result<StatementReading> {
         }
     }
     .map_err(unreadable)?;
+    let Tallies(statements, commits) = Tallies::from_row(&row).map_err(unreadable)?;
     Ok(StatementReading {
-        statements: postgres_count(row.try_get(0).map_err(unreadable)?, STATEMENTS_FIELD)?,
-        commits: postgres_count(row.try_get(1).map_err(unreadable)?, COMMITS_FIELD)?,
+        statements: postgres_count(statements, STATEMENTS_FIELD)?,
+        commits: postgres_count(commits, COMMITS_FIELD)?,
         flushed,
     })
 }

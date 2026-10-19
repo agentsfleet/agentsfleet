@@ -28,8 +28,8 @@ import { WorkspaceStore } from "./workspace-store";
 const FLEET_A = "fleet_a";
 const FLEET_B = "fleet_b";
 const STRANGER = "fleet_stranger";
-const STANDING = { events_processed: 3, budget_used_nanos: 900_000_000 };
-const MOVED = { events_processed: 4, budget_used_nanos: 900_000_000 };
+const STANDING = { events_processed: 3, budget_used_nanos: "900000000" };
+const MOVED = { events_processed: 4, budget_used_nanos: "900000000" };
 const OVERFLOW = MAX_LIVE_EVENTS + 50;
 // The first row the cap keeps once OVERFLOW settled rows have landed.
 const FIRST_KEPT = OVERFLOW - MAX_LIVE_EVENTS;

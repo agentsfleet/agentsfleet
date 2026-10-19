@@ -4,7 +4,7 @@ use super::*;
 
 /// How long the fixture's scheduler sync hold outlives database time: past the
 /// whole Apply it must refuse.
-const SYNC_HOLD_MS: i64 = 30_000;
+const SYNC_HOLD: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
@@ -44,14 +44,12 @@ async fn a_live_schedule_sync_refuses_the_entire_apply_and_keeps_its_private_dra
     let scheduled = Scheduled::create().await;
     let request = scheduled.improvement().await;
     let row = scheduled.read().await;
-    let hold = format!(
-        "UPDATE core.fleet_schedules SET sync_token=$2::uuid,sync_lease_until={}+$3 WHERE id=$1::uuid",
-        afd_db::statement::NOW_MS
-    );
-    sqlx::query(sqlx::AssertSqlSafe(hold))
+    sqlx::query(
+        "UPDATE fleet.schedules SET sync_token=$2::uuid,sync_lease_expires_at=clock_timestamp()+$3::interval WHERE id=$1::uuid",
+    )
         .bind(row["schedule_id"].as_str().expect("schedule ID"))
         .bind(mint().as_str())
-        .bind(SYNC_HOLD_MS)
+        .bind(SYNC_HOLD)
         .execute(
             &mut *scheduled
                 .fleet

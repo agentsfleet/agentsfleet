@@ -7,7 +7,7 @@ const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("./client", () => ({ request: requestMock }));
 
 import { listRunners, getRunner, listRunnerLeases, createRunner, updateRunnerAdminState, updateRunner, deleteRunner, listRunnerEvents, RUNNER_ADMIN_STATES, RUNNER_LIVENESS } from "./runners";
-import { parseLabels, parseRegistryAllowlist, RUNNER_ADMIN_ACTIONS, RUNNER_LIFECYCLE_EVENT_TYPES, RUNNER_EVENT_TYPES, SANDBOX_TIERS } from "./runners-types";
+import { hasBeenSeen, parseLabels, parseRegistryAllowlist, RUNNER_ADMIN_ACTIONS, RUNNER_LIFECYCLE_EVENT_TYPES, RUNNER_EVENT_TYPES, SANDBOX_TIERS } from "./runners-types";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -150,7 +150,7 @@ describe("createRunner", () => {
 
 describe("updateRunnerAdminState", () => {
   it("PATCHes the operator-plane runner action body", async () => {
-    requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "cordoned" });
+    requestMock.mockResolvedValueOnce({ id: "runner-1", status: "cordoned" });
     await updateRunnerAdminState("tok", "runner-1", "cordon");
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1",
@@ -169,7 +169,7 @@ describe("updateRunner", () => {
       worker_count: 2,
       extra_binds: [],
     };
-    requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "active", assigned_policy });
+    requestMock.mockResolvedValueOnce({ id: "runner-1", status: "active", assigned_policy });
     await updateRunner("tok", "runner-1", { assigned_policy, labels: ["gpu", "us-east"] });
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/fleets/runners/runner-1",
@@ -227,8 +227,8 @@ describe("listRunnerEvents", () => {
 });
 
 describe("RUNNER_LIFECYCLE_EVENT_TYPES", () => {
-  it("holds the eight non-lease tags and neither work record", () => {
-    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(8);
+  it("holds the nine non-lease tags and neither work record", () => {
+    expect(RUNNER_LIFECYCLE_EVENT_TYPES).toHaveLength(9);
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_acquired");
     expect(RUNNER_LIFECYCLE_EVENT_TYPES).not.toContain("lease_released");
   });
@@ -303,7 +303,18 @@ describe("wire constants mirror the daemon's enums", () => {
       "runner_draining",
       "runner_drained",
       "runner_revoked",
+      "runner_token_rotated",
       "runner_policy_assigned",
     ]);
+  });
+});
+
+describe("hasBeenSeen", () => {
+  it("reads the daemon's never-seen epoch as never connected", () => {
+    expect(hasBeenSeen("1970-01-01T00:00:00Z")).toBe(false);
+  });
+
+  it("reads any later beat as seen", () => {
+    expect(hasBeenSeen("2026-10-17T18:06:49Z")).toBe(true);
   });
 });

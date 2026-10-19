@@ -13,7 +13,6 @@
 
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_db::test_util::mint_id;
 use afd_mail::test_util::{FakeRelay, LOOPBACK, Session, bag_json};
 use afd_mail::{IDEMPOTENCY_HEADER, SMTP_RELAY_BAG};
@@ -54,7 +53,7 @@ async fn seal_relay(members: &Members, port: u16) {
             &members.john.workspace,
             &SecretName::parse(SMTP_RELAY_BAG).expect("a storable name"),
             &SecretBody::parse(&raw).expect("a storable body"),
-            UnixMillis::from_millis(1),
+            afd_db::test_util::SEEDED_AT,
         )
         .await;
     assert!(sealed.is_ok(), "the smtp-relay bag seals: {sealed:?}");

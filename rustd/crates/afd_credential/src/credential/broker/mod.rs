@@ -43,6 +43,7 @@ use std::sync::Arc;
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::{Recorded, RepositoryBinding};
+use jiff::Timestamp;
 use moka::future::Cache;
 use serde::Serialize;
 use serde_json::Value;
@@ -65,17 +66,13 @@ const MAX_CACHED_TOKENS: u64 = 8192;
 /// handle after a refresh names the same installation as the handle before it.
 /// A RECONNECT changes something else — the connect callbacks stamp
 /// `connected_at_ms` — and correctly misses.
-/// The stored expiry field, declared once (RULE UFS).
 ///
-/// It is named twice for different reasons — once as a field a rotation
-/// rewrites, once as a field the `Debug` rendering shows — and the two must
-/// stay the same word or a rotation would rewrite a key nothing reads.
-const FIELD_EXPIRES_AT_MS: &str = "expires_at_ms";
-
+/// These are the stored handle's own keys, written by `afd_connector`'s grant
+/// parser; a stored blob keeps its spelling, so `expires_at_ms` stays here.
 const ROTATING_FIELDS: [&str; 3] = [
     afd_core::credential::FIELD_REFRESH_TOKEN,
     "access_token",
-    FIELD_EXPIRES_AT_MS,
+    "expires_at_ms",
 ];
 
 /// What one runner is asking for.
@@ -90,7 +87,7 @@ pub struct Ask<'a> {
     /// rather than widening.
     pub binding: Option<&'a RepositoryBinding>,
     /// The instant every expiry decision is measured from.
-    pub now_ms: i64,
+    pub now: Timestamp,
 }
 
 /// What makes two asks the same cache entry.
@@ -175,10 +172,10 @@ impl Broker {
         };
 
         if let Some(cached) = self.cache.get(&key).await {
-            if cached.is_live(ask.now_ms) {
+            if cached.is_live(ask.now) {
                 return Outcome::Ok(Minted {
                     token: cached.token.clone(),
-                    expires_at_ms: cached.expires_at_ms,
+                    expires_at: cached.expires_at,
                     // A hit performed no exchange, so it rotated nothing.
                     rotated_refresh_token: None,
                 });
@@ -193,7 +190,7 @@ impl Broker {
             .entry_by_ref(&key)
             .or_try_insert_with(async {
                 match self.vendors.exchange(connector, ask).await {
-                    Outcome::Ok(minted) => Ok(Cached::new(minted, ask.now_ms)),
+                    Outcome::Ok(minted) => Ok(Cached::new(minted, ask.now)),
                     Outcome::ReconnectRequired => Err(Refused::Reconnect),
                     Outcome::MintFailed(retry) => Err(Refused::Failed(retry)),
                     Outcome::UnknownIntegration => Err(Refused::Unknown),
@@ -220,7 +217,7 @@ impl Broker {
                 }
                 Outcome::Ok(Minted {
                     token: cached.token,
-                    expires_at_ms: cached.expires_at_ms,
+                    expires_at: cached.expires_at,
                     rotated_refresh_token: rotated,
                 })
             }
@@ -229,7 +226,6 @@ impl Broker {
         }
     }
 
-    /// The connector this handle names, if the registry carries it.
     /// The connector an ask names, and the cache entry it reads and writes.
     ///
     /// A handle naming no connector is an unknown integration. One that would

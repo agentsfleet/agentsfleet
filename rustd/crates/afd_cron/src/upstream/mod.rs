@@ -14,7 +14,7 @@
 //!
 //! # Why the id is prefixed rather than the bare row id
 //!
-//! A `source_key` equal to the row's own id is how the reconciler recognises a
+//! A `provider_schedule_id` equal to the row's own id is how the reconciler recognises a
 //! schedule the scheduler never held (`service::never_registered`). Filing the
 //! schedule under the bare row id would make "registered" and "never
 //! registered" the same value, and a one-off resumed after its moment would be

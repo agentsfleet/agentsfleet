@@ -42,7 +42,9 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
 use crate::e2e::{Scenario, scenario};
-use crate::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
+use crate::reads::{
+    balance, counter_column, event_column, lease_column, lease_rows, ledger_rows, unsettled_lines,
+};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
     assert_no_lease_for_fleet_under_test, capable_beat, field, fleet_poll, get, json,
@@ -98,8 +100,8 @@ async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, 
     // misses this fleet's partition costs nothing — and about fifteen times in
     // sixteen that is true. The sixteenth is the bug: that throwaway request
     // WINS the lease, its body is dropped on the floor, and the lease is now
-    // held. `fleet.runner_affinity` then refuses to re-issue it while
-    // `leased_until` is in the future, so every one of the 128 polls below
+    // held. `runner.fleet_slots` then refuses to re-issue it while
+    // `lease_expires_at` is in the future, so every one of the 128 polls below
     // correctly answers `lease: null` and the test panics saying the event was
     // never offered. Measured at 2 failures in 15 local runs, and it is the red
     // `test-integration-rustd` lane on Pull Request #693.
@@ -169,14 +171,25 @@ async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &
         http,
         run,
         &format!("/v1/runners/me/leases/{lease_id}/renew"),
-        &json!({"input_tokens": 10, "cached_input_tokens": 2, "output_tokens": 3}),
+        &json!({"requests": [{
+            "seq": 0, "at": afd_core::clock::now().to_string(),
+            "input_tokens": 10, "cached_input_tokens": 2, "cache_write_tokens": 0,
+            "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0, "output_tokens": 3,
+        }]}),
     )
     .await;
     assert_eq!(renewed.status().as_u16(), 200);
+    let renewed = json(renewed).await;
+    assert_eq!(
+        field(&renewed, "recorded_through"),
+        &json!(0),
+        "the renewal recorded the one request line it carried"
+    );
     assert!(
-        field(&json(renewed).await, "lease_expires_at")
-            .as_i64()
-            .is_some_and(|expires| expires > run.seeded_at.as_millis()),
+        field(&renewed, "lease_expires_at")
+            .as_str()
+            .and_then(|expires| expires.parse::<jiff::Timestamp>().ok())
+            .is_some_and(|expires| expires > run.seeded_at),
         "renewal returns the live deadline the datastore advanced"
     );
 }
@@ -228,14 +241,17 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
         after < before,
         "a priced run draws the tenant's wallet down: {before:?} → {after:?}"
     );
-    assert_eq!(
-        ledger_rows(run).await,
-        2,
-        "one receive row and one stage row — the two-rows-per-event invariant, \
-         proven here across the two REQUESTS that write them rather than within one store call"
+    assert!(
+        ledger_rows(run).await >= 1,
+        "the run's usage is logged, at least the report's final slice"
     );
     assert_eq!(
-        counter_column(run, "succeeded").await.as_deref(),
+        unsettled_lines(run).await,
+        0,
+        "and every line is settled before the report answers"
+    );
+    assert_eq!(
+        counter_column(run, "succeeded_count").await.as_deref(),
         Some("1"),
         "the lifetime tally counts the completed run on the succeeded arm"
     );
@@ -264,6 +280,7 @@ async fn assert_replay_returns_the_stored_outcome(
     report: &Value,
 ) {
     let drawn = balance(run).await;
+    let logged = ledger_rows(run).await;
     let replay = post(http, run, "/v1/runners/me/reports", report).await;
     assert_eq!(
         replay.status().as_u16(),
@@ -278,8 +295,8 @@ async fn assert_replay_returns_the_stored_outcome(
     );
     assert_eq!(
         ledger_rows(run).await,
-        2,
-        "and it stays at two rows: nothing claimed, so nothing charged"
+        logged,
+        "and logs no line: nothing claimed, so nothing charged"
     );
     assert_eq!(
         balance(run).await,
@@ -292,7 +309,7 @@ async fn assert_replay_returns_the_stored_outcome(
         "and mutates nothing — the lease reads exactly as the first report left it"
     );
     assert_eq!(
-        counter_column(run, "succeeded").await.as_deref(),
+        counter_column(run, "succeeded_count").await.as_deref(),
         Some("1"),
         "the lifetime tally counts the run once, because it is gated on the claim \
          that the repeat did not win. The handler's product funnel and cost meters \

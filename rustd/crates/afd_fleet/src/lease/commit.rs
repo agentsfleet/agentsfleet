@@ -5,7 +5,7 @@
 //! were a settle that committed on its own
 //! followed by four best-effort writes that each logged their own failure, and
 //! the gap between them is where a run's answer could be lost for good — the
-//! wallet drawn down, the lease flipped to `reported`, and `core.fleet_events`
+//! wallet drawn down, the lease flipped to `reported`, and `fleet.events`
 //! still holding the row as `received` with no response in it. Nothing
 //! recovers that: the runner's retry is refused because the lease is no longer
 //! active, and the tenant has paid for an answer the platform cannot produce.
@@ -13,8 +13,8 @@
 //! # Why the money still goes first INSIDE the transaction
 //!
 //! [`super::report`] explains why the settle precedes everything else, and the
-//! reason survives the change: a run that reaches `MAX_RUNTIME_MS` races the
-//! reclaim sweep, and `CLAIM_AND_SETTLE` takes `FOR UPDATE OF l, a` — the
+//! reason survives the change: a run that reaches `MAX_RUNTIME` races the
+//! reclaim sweep, and `METER_LEASE` takes `FOR UPDATE OF l, a` — the
 //! affinity row lock that holds the sweep off until this commits. Running it
 //! first now holds that lock for the whole transaction rather than for one
 //! statement, which is strictly stronger: the sweep that would have bumped the
@@ -34,16 +34,18 @@
 //! "every failure branch must ROLLBACK" is satisfied here without a `match`
 //! per statement.
 
-use afd_billing::{Meter, Nanos};
-use afd_core::clock::UnixMillis;
+use afd_billing::biller::Settlement;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
+use jiff::Timestamp;
 use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query};
 use crate::lease::obligation::Owing;
 use crate::lease::settle::{Reported, Settled};
+use crate::lease::sql::meter::Metering;
 use crate::lease::store::Leases;
+use crate::lease::usage::Pricing;
 use crate::lease::verdict::Terminal;
 
 /// Statement name, for the context a transaction failure carries.
@@ -52,7 +54,7 @@ const CONTEXT_COMMIT: &str = "report commit";
 /// Everything one terminal report commits, by name.
 ///
 /// A struct rather than eight positional parameters for the reason
-/// [`SettleRow`](crate::lease::sql::report::SettleRow) is one: two of these are
+/// [`Metering`](crate::lease::sql::meter::Metering) is one: two of these are
 /// `&str` and two are instants, and a transposition between them writes a
 /// checkpoint under a response and compiles clean.
 #[derive(Debug)]
@@ -65,8 +67,12 @@ pub struct TerminalReport<'a> {
     /// The lease as the row holds it: the fleet, the money identities, the
     /// event, and the token the settle is fenced on.
     pub lease: &'a Reported,
-    /// What the final slice is priced from.
-    pub meter: Meter,
+    /// The lease's identifier as the work its usage lines name.
+    pub lease_key: &'a Uuid7,
+    /// One line per provider request no renewal acknowledged.
+    pub requests: &'a [afd_wire::usage::RequestUsage],
+    /// What the final slice is priced against.
+    pub pricing: &'a Pricing,
     /// The run's ending, as the event row will carry it.
     pub outcome: Terminal<'a>,
     /// The event the fleet's next run resumes after.
@@ -75,28 +81,30 @@ pub struct TerminalReport<'a> {
     pub last_response: &'a str,
     /// When the sandbox the run left held for the fleet's next event lapses;
     /// none when the runner holds nothing.
-    pub held_until: Option<UnixMillis>,
+    pub held_until: Option<Timestamp>,
     /// The instant every row this transaction writes is stamped with.
-    pub now: UnixMillis,
+    pub now: Timestamp,
 }
 
 /// What the report's transaction decided.
 ///
-/// Three arms, and the charge lives on exactly one of them — the same property
-/// [`Settled`] holds, carried up so a caller cannot read an amount off a report
-/// that committed nothing. The closed row rides [`Committed::Settled`] rather
+/// Three arms, and the usage line lives on exactly one of them — the same
+/// property [`Settled`] holds, carried up so a caller cannot settle a line off
+/// a report that committed nothing. The closed row rides [`Committed::Settled`] rather
 /// than being read again afterwards: the terminal write already returned it,
 /// and re-reading would answer about a row a concurrent reclaim may have moved
 /// on from.
 #[derive(Debug)]
 pub enum Committed {
-    /// The report won its fence and all five writes committed. The final slice
-    /// drained `charged`; `closed` is the row the terminal write ended, absent
+    /// The report won its fence and all its writes committed, the final
+    /// slice's usage line among them; `closed` is the row the terminal write
+    /// ended, absent
     /// when the event was already terminal and there was no new ending to
     /// announce.
     Settled {
-        /// What the final slice drained.
-        charged: Nanos,
+        /// The final slice's usage line, logged and still to be settled; `None`
+        /// when the last window measured nothing.
+        settlement: Option<Box<Settlement>>,
         /// The row this report ended, for the frame the caller announces.
         ///
         /// Boxed because a closing carries the whole event row and the fleet's
@@ -116,42 +124,60 @@ pub enum Committed {
         owed: Option<Owing>,
     },
     /// This runner already settled this lease and the earlier report committed
-    /// everything below. Nothing was written and nothing charged; what the
+    /// everything below. Nothing was written and nothing logged; what the
     /// runner is owed is the acknowledgement its lost response never carried.
     AlreadySettled,
-    /// A newer holder has the fleet. Nothing was written and nothing charged.
+    /// A newer holder has the fleet. Nothing was written and nothing logged.
     Fenced,
 }
 
 impl Leases {
-    /// Commit one terminal report: the money, the result, the cursor, the slot.
+    /// Commit one terminal report: the usage line, the result, the cursor, the
+    /// slot.
     ///
     /// One transaction, in that order, on one pooled connection. The queue is
     /// NOT acknowledged here and cannot be — see [`super::finalize`] — so a
     /// caller that returns success without acknowledging afterwards leaves the
     /// entry pending and redelivered, which is the safe direction.
     ///
+    /// The host's capacity lock comes first, as it does for a renewal
+    /// ([`Leases::extend`]): host row, then lease and slot rows. The metering
+    /// statement numbers its runtime line from the lines it counts, and under
+    /// READ COMMITTED a statement that waits on the lease row keeps its
+    /// starting snapshot for that count. Waiting on the host row in its own
+    /// statement means the metering statement starts after a racing renewal
+    /// committed, so it counts the renewal's line. The capacity read itself
+    /// gates nothing: a report from a cordoned, revoked or removed host still
+    /// settles, and the fence alone decides whether it wins.
+    ///
     /// # Errors
-    /// Reports an entropy source that could not produce the ledger row's
+    /// Reports an entropy source that could not produce the usage line's
     /// identifier, an instant that cannot be encoded, and a datastore that
-    /// would not answer at any of the five statements — in which case nothing
-    /// at all was written, including the charge and the obligation.
+    /// would not answer at any statement — in which case nothing at all was
+    /// written, including the usage line and the obligation.
     pub async fn commit_report(&self, report: TerminalReport<'_>) -> Result<Committed> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
+        let _held_until_commit =
+            afd_runner::capacity::lock(&mut transaction, report.runner_id).await?;
 
-        let charged = match self
+        let metering = Metering {
+            lease_id: report.lease_id,
+            runner_id: report.runner_id,
+            requests: report.requests,
+        };
+        let settlement = match self
             .claim_and_settle(
                 &mut transaction,
-                report.lease_id,
-                report.runner_id,
-                report.meter,
+                metering,
+                report.lease_key,
+                report.pricing,
                 report.outcome.verdict.succeeded(),
                 report.now,
             )
             .await?
         {
-            Settled::Claimed(nanos) => nanos,
+            Settled::Claimed(settlement) => settlement.map(Box::new),
             Settled::AlreadySettled => return Ok(Committed::AlreadySettled),
             Settled::Fenced => return Ok(Committed::Fenced),
         };
@@ -159,7 +185,7 @@ impl Leases {
 
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {
-            charged,
+            settlement,
             closed,
             owed,
         })
@@ -192,21 +218,15 @@ impl Leases {
         let answer = outcome.response_text;
 
         let closed = self
-            .mark_terminal(connection, &lease.fleet_id, &lease.event_id, outcome, now)
+            .mark_terminal(connection, &lease.fleet_id, &lease.event_id, outcome)
             .await?
             .map(Box::new);
         // The settling fence's records describe the run whose answer stands;
         // a reclaimed lease's are of a run that did not, so they go with it.
         self.drop_other_fences(connection, lease).await?;
-        self.checkpoint(
-            connection,
-            &lease.fleet_id,
-            last_event_id,
-            last_response,
-            now,
-        )
-        .await?;
-        self.release_through(connection, &lease.fleet_id, lease.fence, held_until, now)
+        self.checkpoint(connection, &lease.fleet_id, last_event_id, last_response)
+            .await?;
+        self.release_through(connection, &lease.fleet_id, lease.fence, held_until)
             .await?;
         // The fifth write, and the one that closes 7.6's window: the answer is
         // owed before anything tries to send it, so a process that dies between

@@ -32,8 +32,6 @@
 use std::collections::HashMap;
 
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
-use sqlx::postgres::PgRow;
 
 use crate::classified::Classified;
 use crate::error::{Result, query};
@@ -105,35 +103,42 @@ impl Directory {
             return Ok(HashMap::new());
         }
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_SECRET_DESCRIPTORS)
+        let rows = sqlx::query_as::<_, DescriptorRow>(sql::SELECT_SECRET_DESCRIPTORS)
             .bind(workspace.as_str())
             .bind(names)
             .fetch_all(connection.as_mut())
             .await
             .map_err(query(CONTEXT_DESCRIBE))?;
 
-        rows.iter().map(read_descriptor).collect()
+        Ok(rows.into_iter().map(DescriptorRow::into_entry).collect())
     }
 }
 
-/// Reads one descriptor row into its map entry.
-///
-/// Positional, matching every other read in this workspace: the statement's
-/// projection and this function are one contract, and reading by name would
-/// hide a projection that had drifted out of order.
-fn read_descriptor(row: &PgRow) -> Result<(Box<str>, Descriptor)> {
-    let unreadable = query(CONTEXT_DESCRIBE);
-    let name: String = row.try_get(0).map_err(&unreadable)?;
-    let stored_kind: Option<String> = row.try_get(1).map_err(&unreadable)?;
-    let provider: Option<String> = row.try_get(2).map_err(&unreadable)?;
-    let base_url: Option<String> = row.try_get(3).map_err(&unreadable)?;
-    // The column is nullable. Absent is "no key we can prove", which is what
-    // the page renders, and never a key this read failed to look for.
-    let has_key: Option<bool> = row.try_get(4).map_err(&unreadable)?;
+/// One descriptor row, read by column name: a renamed or dropped column fails
+/// the decode, and `test_every_sql_file_prepares` catches it before merge.
+#[derive(Debug, sqlx::FromRow)]
+struct DescriptorRow {
+    key_name: String,
+    meta_kind: Option<String>,
+    meta_provider: Option<String>,
+    meta_base_url: Option<String>,
+    meta_has_key: Option<bool>,
+}
 
-    let descriptor = Descriptor {
-        classified: Classified::classify(stored_kind.as_deref(), &name, provider, base_url),
-        has_key: has_key.unwrap_or_default(),
-    };
-    Ok((name.into_boxed_str(), descriptor))
+impl DescriptorRow {
+    /// The row as its map entry.
+    fn into_entry(self) -> (Box<str>, Descriptor) {
+        let descriptor = Descriptor {
+            classified: Classified::classify(
+                self.meta_kind.as_deref(),
+                &self.key_name,
+                self.meta_provider,
+                self.meta_base_url,
+            ),
+            // The column is nullable. Absent is "no key we can prove", which is
+            // what the page renders, and never a key this read failed to look for.
+            has_key: self.meta_has_key.unwrap_or_default(),
+        };
+        (self.key_name.into_boxed_str(), descriptor)
+    }
 }

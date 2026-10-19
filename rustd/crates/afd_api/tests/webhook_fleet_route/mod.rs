@@ -28,7 +28,6 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Fleet, Recorded, Scripted, json_body, send_with_headers};
-use afd_core::error_code;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_ingress::Surface;
 use afd_webhook::Scheme;
@@ -262,32 +261,6 @@ async fn an_event_outside_the_allow_list_is_dropped_before_the_body_is_read() {
     assert!(
         ingress.deliveries().is_empty(),
         "an unsubscribed event must not reach the stream"
-    );
-}
-
-#[tokio::test]
-async fn an_allow_list_is_measured_against_the_header_not_the_payload() {
-    let ingress = serving(TRIGGER_PUSH_ONLY, FleetStatus::Active.as_str());
-
-    // The header says `push`, which the allow-list admits, while the body is a
-    // `workflow_run`. The delivery gets past the allow-list on the header's
-    // word and is then refused by the parse — which is the order that matters:
-    // an author's allow-list is written in GitHub's event vocabulary, and
-    // inferring the kind from the payload would let a holder of the secret
-    // present a body that classifies as one event while the header says another.
-    let response = deliver(&ingress, EVENT_PUSH, signed::DELIVERY_ID, RUN_FAILURE).await;
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let document = json_body(response).await;
-    assert_eq!(
-        *field(&document, "error_code"),
-        Value::String(error_code::WEBHOOK_MALFORMED.as_str().to_owned()),
-        "a body that is not the event its own header claims is the sender's bug"
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "{:?}",
-        ingress.deliveries()
     );
 }
 

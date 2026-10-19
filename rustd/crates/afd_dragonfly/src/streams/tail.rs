@@ -162,7 +162,6 @@ mod tests {
                 .get("error_code")
                 .is_some_and(|code| !code.is_empty())
         );
-        let reason = dropped.fields.get("reason").expect("the drop names why");
-        assert!(!reason.is_empty() && !reason.contains("[UZ-"), "{reason}");
+        dropped.assert_uncoded_reason();
     }
 }

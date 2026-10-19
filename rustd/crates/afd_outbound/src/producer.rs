@@ -41,7 +41,6 @@
 
 use std::time::Duration;
 
-use afd_core::clock;
 use afd_db::Db;
 use afd_dragonfly::{OutboundJob, OutboundQueue};
 use tokio_util::sync::CancellationToken;
@@ -143,35 +142,20 @@ impl Producer {
     }
 
     /// One pass over both scans. Answers how many entries it appended.
+    ///
+    /// Reads no clock: each scan's age floor is a span the statement measures
+    /// against the database's own clock, the one that stamped the rows.
     async fn pass(&self) -> u64 {
-        let now = clock::now();
-        let uncommitted_before = now
-            .as_millis()
-            .saturating_sub(clock::saturating_millis_signed(MIN_AGE));
-        let lost_before = now
-            .as_millis()
-            .saturating_sub(clock::saturating_millis_signed(LOST_AFTER));
-
         let mut appended = 0;
         appended += self
             .requeue(
-                obligation::unreceipted(
-                    &self.database,
-                    clock::UnixMillis::from_millis(uncommitted_before),
-                    BATCH_LIMIT,
-                )
-                .await,
+                obligation::unreceipted(&self.database, MIN_AGE, BATCH_LIMIT).await,
                 "unreceipted",
             )
             .await;
         appended += self
             .requeue(
-                obligation::undelivered(
-                    &self.database,
-                    clock::UnixMillis::from_millis(lost_before),
-                    BATCH_LIMIT,
-                )
-                .await,
+                obligation::undelivered(&self.database, LOST_AFTER, BATCH_LIMIT).await,
                 "undelivered",
             )
             .await;
@@ -207,13 +191,8 @@ impl Producer {
                     break;
                 }
             };
-            if let Err(failure) = obligation::record_reappended(
-                &self.database,
-                &owed.id,
-                entry.as_str(),
-                clock::now(),
-            )
-            .await
+            if let Err(failure) =
+                obligation::record_reappended(&self.database, &owed.id, entry.as_str()).await
             {
                 // The entry IS on the queue and will be delivered. What failed
                 // is the record of it, so the next pass appends a second entry

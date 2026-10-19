@@ -21,6 +21,8 @@ categories.workspace = true
 test-util = ["afd_core/test-util", "afd_crypto/test-util"]
 
 [dependencies]
+# The ready token is minted at a `jiff::Timestamp`, the instant type afd_core uses.
+jiff.workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about Redis, and the one thing this crate can
 # say that nothing else can is that its pub/sub connection was re-established.

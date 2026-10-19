@@ -11,9 +11,9 @@
     reason = "test target: an unreadable document is a precondition failure"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_fleet::lease::activity::{ACTIVITY_VARIANTS, RenderedFrame, Target, rendered_frames};
+use jiff::Timestamp;
 use serde_json::Value;
 
 /// The fleet stream's path in the document.
@@ -28,11 +28,11 @@ const CALL_ID: &str = "call_id";
 /// The lease the sample frames are published for.
 fn target() -> Target {
     Target {
-        fleet_id: Uuid7::encode(UnixMillis::from_millis(0), [0; ENTROPY_LEN])
+        fleet_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [0; ENTROPY_LEN])
             .expect("a fixed identifier encodes"),
         event_id: String::new(),
-        lease_created_at: 0,
-        event_created_at: 0,
+        lease_created_at: jiff::Timestamp::UNIX_EPOCH,
+        event_created_at: jiff::Timestamp::UNIX_EPOCH,
         timing_eligible: true,
         fence: 1,
     }

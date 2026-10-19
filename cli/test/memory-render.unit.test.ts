@@ -30,8 +30,8 @@ describe("sharedBy — another fleet's entry names its writer", () => {
     const cap = newCapture();
     const envelope = {
       items: [
-        { key: "own", content: "a", category: "core", updated_at: 1765500300000, writer_fleet_id: FLEET_ID },
-        { key: "theirs", content: "b", category: "core", updated_at: 1765500200000, writer_fleet_id: WRITER_ID },
+        { key: "own", content: "a", category: "core", updated_at: "2025-12-12T00:45:00Z", writer_fleet_id: FLEET_ID },
+        { key: "theirs", content: "b", category: "core", updated_at: "2025-12-12T00:43:20Z", writer_fleet_id: WRITER_ID },
       ],
       total: 2,
       next_cursor: null,

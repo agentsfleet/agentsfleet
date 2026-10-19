@@ -26,7 +26,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{MODEL, POSTURE, scenario};
-use crate::reads::{assert_shape, lease_column};
+use crate::reads::{assert_shape, lease_column, line_output_tokens};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat,
     poll_for_seeded_lease, post, report_body,
@@ -34,84 +34,87 @@ use crate::wire::{
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
 ///
-/// `messages_posted` joined the list at schema/929. It is `NOT NULL DEFAULT 0`,
-/// so every lease carries it from the moment it is written, and the messages
-/// verb counts against it under the lease's fence.
+/// `posted_message_count` is `NOT NULL`, so every lease carries it from the
+/// moment it is written, and the messages verb counts against it under the
+/// lease's fence. The lease names its event by row id (`fleet_event_id`); the
+/// actor and type are read from the event, not copied onto the lease.
 const LEASE_SHAPE: &[&str] = &[
     "id",
     "runner_id",
     "fleet_id",
     "workspace_id",
     "tenant_id",
-    "event_id",
-    "actor",
-    "event_type",
+    "fleet_event_id",
     "event_created_at",
+    "receipt",
     "posture",
     "provider",
     "model",
-    "metered_input_tokens",
-    "metered_cached_tokens",
-    "metered_output_tokens",
     "last_metered_at",
     "fencing_token",
     "lease_expires_at",
     "status",
+    "posted_message_count",
     "created_at",
     "updated_at",
-    "receipt",
-    "messages_posted",
 ];
 
 /// The columns the narrative log's rows carry.
 const EVENT_SHAPE: &[&str] = &["id", "runner_id", "event_type", "metadata", "created_at"];
 
-/// The columns a `stage` ledger row carries after a settle.
+/// The columns the report's usage line carries once the biller settled it.
 ///
-/// `fleet_name` joined the list at schema/915. It is the fleet's name as it
-/// stood when the charge was written, captured by subselect inside each
-/// charging statement rather than bound by a caller — so its presence HERE, on
-/// a row the booted daemon wrote through the real settle path, is what proves
-/// the capture reaches production and not merely the statement text. A row
-/// whose fleet could not be read carries NULL and drops out of this list, which
-/// is why the fixture charges a fleet that exists.
+/// `fleet_name` is the fleet's name as it stood when the line was written, and
+/// `platform_model_price_id` the catalogue row it was priced at — so their
+/// presence HERE, on a line the booted daemon wrote through the real report
+/// and settle path, proves both reach production rather than merely the
+/// statement text. `authoring_attempt_id` belongs to setup chat and stays
+/// empty on a fleet line.
 const LEDGER_SHAPE: &[&str] = &[
     "id",
+    "work_type",
+    "work_id",
+    "seq",
     "tenant_id",
     "workspace_id",
     "fleet_id",
-    "event_id",
-    "charge_type",
-    "posture",
-    "model",
-    "credit_deducted_nanos",
-    "token_count_input",
-    "token_count_cached_input",
-    "token_count_output",
-    "wall_ms",
-    "event_created_at",
-    "created_at",
-    "last_charged_at",
     "fleet_name",
+    "event_id",
+    "provider",
+    "model",
+    "posture",
+    "requested_at",
+    "input_token_count",
+    "cached_input_token_count",
+    "cache_write_token_count",
+    "cache_write_5m_token_count",
+    "cache_write_1h_token_count",
+    "output_token_count",
+    "runtime_ms",
+    "platform_model_price_id",
+    "unpriced_token_count",
+    "charged_nanos",
+    "settled_at",
+    "created_at",
+    "updated_at",
 ];
 
 /// The columns one captured memory entry carries.
 ///
-/// No `workspace_id`, and the table has none: memory is scoped to a FLEET, and
-/// `(key, fleet_id)` is both the upsert's conflict target and the fleet's own
-/// overwrite mechanism. The write is authorised by a lease whose workspace the
-/// capture verb cross-checks, so the scope is enforced on the way in rather
-/// than denormalised onto every row.
+/// Memory is scoped to a FLEET: `(fleet_id, key)` is both the upsert's conflict
+/// target and the fleet's own overwrite mechanism. `workspace_id` rides along
+/// so a workspace-visible entry is readable by its siblings, and the capture
+/// verb cross-checks it against the lease that authorised the write.
 const MEMORY_SHAPE: &[&str] = &[
     "id",
+    "fleet_id",
+    "workspace_id",
     "key",
     "content",
     "category",
-    "fleet_id",
+    "workspace_visible",
     "created_at",
     "updated_at",
-    "workspace_id",
-    "workspace_visible",
 ];
 
 /// Dimension 7.2 — four tables, one scenario, four recorded shapes.
@@ -169,7 +172,7 @@ async fn test_seeded_row_shapes() {
 
     assert_shape(
         &run,
-        "fleet.runner_leases",
+        "runner.leases",
         "id = $1::uuid",
         &lease_id,
         LEASE_SHAPE,
@@ -177,7 +180,7 @@ async fn test_seeded_row_shapes() {
     .await;
     assert_shape(
         &run,
-        "fleet.runner_events",
+        "runner.events",
         "runner_id = $1::uuid",
         run.runner_id.as_str(),
         EVENT_SHAPE,
@@ -185,15 +188,15 @@ async fn test_seeded_row_shapes() {
     .await;
     assert_shape(
         &run,
-        "billing.usage_ledger",
-        "event_id = $1 AND charge_type = 'stage'",
+        "billing.usage_lines",
+        "event_id = $1 AND seq = (SELECT max(seq) FROM billing.usage_lines WHERE event_id = $1)",
         &run.event_id,
         LEDGER_SHAPE,
     )
     .await;
     assert_shape(
         &run,
-        "memory.memory_entries",
+        "memory.entries",
         "fleet_id = $1::uuid",
         &run.fleet,
         MEMORY_SHAPE,
@@ -214,11 +217,9 @@ async fn test_seeded_row_shapes() {
         "and the model it was priced at"
     );
     assert_eq!(
-        lease_column(&run, &lease_id, "metered_output_tokens")
-            .await
-            .as_deref(),
-        Some(OUTPUT_TOKENS.to_string().as_str()),
-        "the report advanced the lease's own cursor, not only the affinity's"
+        line_output_tokens(&run).await,
+        i64::from(OUTPUT_TOKENS),
+        "the runner's request lines carried the run's tokens onto the usage lines"
     );
 
     supervisor.shutdown().await;

@@ -45,8 +45,12 @@ tokio-util.workspace = true
 afd_sse.workspace = true
 # Pulling frames off a tail, which is a `Stream`.
 futures-util.workspace = true
-# The pool the lease path reads through, opened the way the daemon opens it.
-afd_db.workspace = true
+# The pool the lease path reads through, opened the way the daemon opens it,
+# and the shared seeds the lane's fixture rows are written through: the same
+# builders the integration suites use, so a schema change reaches the bench
+# with them. The release build names its package (`make/build.mk`), so this
+# feature never reaches the shipped daemon.
+afd_db = { workspace = true, features = ["test-util"] }
 # The readiness index and the fleet streams a poll peeks and reads.
 afd_dragonfly.workspace = true
 # `INFO commandstats`, for the Redis half of the attribution. The library never
@@ -64,10 +68,13 @@ afd_admission.workspace = true
 afd_crypto.workspace = true
 # The enrolment request shape a seeded runner is registered with.
 afd_wire.workspace = true
-# Seeding the tenant, workspace and fleet rows a ready fleet needs. No store
-# verb creates a fleet -- that is the tenant plane's -- so the lane inserts the
-# three rows directly, as the lease suites do.
+# The reads the lanes take of what they measured, and the connection the
+# shared seeds write through.
 sqlx.workspace = true
+# The instants the seeds stamp and the clock the paths are handed.
+jiff.workspace = true
+# Sealing the drain's platform credential through the vault's own write path.
+afd_vault.workspace = true
 # The concurrency the lanes exist to measure.
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 # The daemon's own lease instrument. Invariant 5: round trips per lease are
@@ -90,9 +97,8 @@ thiserror.workspace = true
 # `MapEnv`: the environment a test hands every knob reader instead of
 # mutating the process.
 afd_core = { workspace = true, features = ["test-util"] }
-# `Db::unreachable` and `Redis::unreachable`: handles that open no socket, so
-# the abort rail can be proven wired into a lane without a datastore to kill.
-afd_db = { workspace = true, features = ["test-util"] }
+# `Redis::unreachable`: a handle that opens no socket, so the abort rail can be
+# proven wired into a lane without a datastore to kill.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 
 [lints]

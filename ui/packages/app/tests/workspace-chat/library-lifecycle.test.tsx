@@ -28,7 +28,7 @@ it.each(["list", "inspection", "history"])("keeps the selected collection when a
     await act(async () => {
       pending.resolve(response(target === "list" ? {items: [LIBRARY_CARD], next_cursor: null} : target === "history" ? HISTORY : LIBRARY));
       for (let step = 0; step < delay; step += 1) await Promise.resolve();
-      flushSync(() => {fireEvent.mouseDown(screen.getByRole("tab", {name: "This workspace"}));});
+      flushSync(() => {fireEvent.mouseDown(screen.getByRole("tab", {name: "Workspace"}));});
     });
     expect(await screen.findByText(CURRENT_NAME)).toBeTruthy();
     expect(screen.queryByText(LIBRARY_CARD.name)).toBeNull();

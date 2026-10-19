@@ -3,7 +3,7 @@
 //! Split from [`super`] at the seam [`super::detail`] already names: that
 //! module is what we SAY, this one is what we DECIDE, and the enum next door is
 //! what happened. Every function here is a total match over
-//! [`ErrorKind`](super::ErrorKind), so a new kind fails the build until someone
+//! `ErrorKind`, so a new kind fails the build until someone
 //! has answered all three questions about it — which code a client matches on,
 //! which sentence it reads, and whether the work can ever run again.
 //!

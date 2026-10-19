@@ -70,6 +70,11 @@ afd_db = { workspace = true, features = ["test-util"] }
 # and respelling the RESP here is how the first fake and this one drifted.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
+# The ledger's stamps, read back as instants: the suites compare the
+# `TIMESTAMPTZ` columns the database wrote, through the same bridge the
+# workspace decodes them with.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 # The `tracing` capture the worker's failure-line test reads a `reason` back through.
 afd_core = { workspace = true, features = ["test-util"] }
 # `XPENDING` and `DEL` in `tests/support/outbound_harness.rs`. The library never
@@ -84,8 +89,7 @@ redis.workspace = true
 # against a loopback Slack, and a stand-in for an HTTP round trip would prove
 # nothing about the request this actually builds.
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time", "test-util", "net", "io-util"] }
-# Installed by the integration harness so event macros evaluate their fields;
-# see `install_subscriber` for why that is a correctness concern.
+# The attempt-count suite's capture layer (`tests/integration_attempt_count`).
 tracing-subscriber.workspace = true
 
 [lints]

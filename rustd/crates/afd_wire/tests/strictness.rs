@@ -19,7 +19,7 @@ use serde_json::Value;
 
 /// A complete, well-formed `LeaseResponse` — the truncation cases below cut it
 /// at several offsets and every cut must fail as a typed error.
-const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"kind":"fleet","lease_id":"lease_id","fencing_token":504,"lease_expires_at":931,"secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":426},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","limits":null,"history":[],"resume_hold":false},"retry_after_ms":34}"#;
+const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"kind":"fleet","lease_id":"lease_id","fencing_token":504,"lease_expires_at":"1970-01-01T00:00:00.931Z","secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":"1970-01-01T00:00:00.426Z"},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","limits":null,"history":[],"resume_hold":false},"retry_after_ms":34}"#;
 
 /// A malformed payload must produce a typed error, never a panic and never a
 /// half-built value. Truncation is the realistic shape: a connection dropped
@@ -67,10 +67,10 @@ fn test_wire_rejects_malformed() {
 /// A field carrying the wrong JSON type is rejected rather than coerced.
 #[test]
 fn should_reject_a_field_of_the_wrong_type() {
-    let ok = r#"{"input_tokens":1,"cached_input_tokens":0,"output_tokens":0}"#;
-    let string = r#"{"input_tokens":"1","cached_input_tokens":0,"output_tokens":0}"#;
-    let null = r#"{"input_tokens":null,"cached_input_tokens":0,"output_tokens":0}"#;
-    let fractional = r#"{"input_tokens":1.5,"cached_input_tokens":0,"output_tokens":0}"#;
+    let ok = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":1,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let string = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":"1","cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let null = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":null,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let fractional = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":1.5,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
     let _ = serde_json::from_str::<RenewRequest>(string).unwrap_err();
     let _ = serde_json::from_str::<RenewRequest>(null).unwrap_err();
     let _ = serde_json::from_str::<RenewRequest>(fractional).unwrap_err();
@@ -99,9 +99,9 @@ fn should_reject_an_unknown_enum_value() {
 /// be refused, which fails the moment a field is widened.
 #[test]
 fn should_refuse_values_past_each_declared_integer_width() {
-    // u32 — the cumulative token counters on renewal.
-    let at_max = r#"{"input_tokens":4294967295,"cached_input_tokens":0,"output_tokens":0}"#;
-    let past = r#"{"input_tokens":4294967296,"cached_input_tokens":0,"output_tokens":0}"#;
+    // u32 — a renewal's per-request token counts.
+    let at_max = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":4294967295,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let past = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":4294967296,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
     let _ = serde_json::from_str::<RenewRequest>(at_max).unwrap();
     let _ = serde_json::from_str::<RenewRequest>(past).unwrap_err();
 
@@ -204,7 +204,7 @@ fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
         r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[],"heartbeat_interval_ms":10000,"future":1}}"#
     );
     let own = format!(
-        r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":1,"assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
+        r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":"1970-01-01T00:00:00.001Z","assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
     );
     [
         ("heartbeat", heartbeat, |b| {
@@ -232,7 +232,7 @@ fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
         ),
         (
             "mint",
-            r#"{"token":"t","expires_at_ms":1,"future":1}"#.to_owned(),
+            r#"{"token":"t","expires_at":"1970-01-01T00:00:00.001Z","future":1}"#.to_owned(),
             |b| serde_json::from_slice::<MintCredentialResponse<'_>>(b).is_ok(),
         ),
         ("activity", r#"{"ok":true,"future":1}"#.to_owned(), |b| {
@@ -240,7 +240,7 @@ fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
         }),
         (
             "renew",
-            r#"{"lease_expires_at":9,"future":1}"#.to_owned(),
+            r#"{"lease_expires_at":"1970-01-01T00:00:00.009Z","future":1}"#.to_owned(),
             |b| serde_json::from_slice::<RenewResponse>(b).is_ok(),
         ),
         ("report", r#"{"ok":true,"future":1}"#.to_owned(), |b| {

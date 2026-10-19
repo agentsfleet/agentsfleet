@@ -3,6 +3,8 @@
 //! Split from [`super`] by concern (RULE FLL): a fixture builder compiled only
 //! under `test-util`, with nothing a production caller reaches.
 
+use std::time::Duration;
+
 use super::raise::{
     CODE_OUT_OF_MEMORY, certificate_rejected, classify, config_rejected, connect_timed_out,
     timed_out, unexpected_reply, wrong_type,
@@ -67,8 +69,11 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             certificate_rejected(ROLE, refusal(REFUSED)),
         ),
         ("config rejected", config_rejected(ROLE, refusal(REFUSED))),
-        ("connect timeout", connect_timed_out(ROLE, 5_000)),
-        ("timeout", timed_out(APPEND, 5_000)),
+        (
+            "connect timeout",
+            connect_timed_out(ROLE, Duration::from_secs(5)),
+        ),
+        ("timeout", timed_out(APPEND, Duration::from_secs(5))),
         ("command", classify(APPEND, STREAM, refusal(REFUSED))),
         ("wrong type", wrong_type("XGROUP", STREAM, "string")),
         (
@@ -153,7 +158,7 @@ fn unmintable() -> (afd_crypto::error::Error, afd_core::error::Error) {
         .uuid_randomness()
         .expect_err("a mocked source told to fail refuses the draw");
     let unencodable = afd_core::id::Uuid7::encode(
-        afd_core::clock::UnixMillis::from_millis(-1),
+        jiff::Timestamp::constant(-1, 0),
         [0; afd_core::id::ENTROPY_LEN],
     )
     .expect_err("an instant before the epoch has no version-7 spelling");

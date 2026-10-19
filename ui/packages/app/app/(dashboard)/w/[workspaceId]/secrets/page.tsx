@@ -4,7 +4,8 @@ import { PROVIDER_MODE } from "@/lib/types";
 import { getConnectorCatalogCached, getTenantProviderCached, listSecretsCached } from "./lib/reads";
 import SecretsList from "./components/SecretsList";
 import AddSecretDialog from "./components/AddSecretDialog";
-import { SECRETS_PAGE_DESCRIPTION, SECRETS_PAGE_TITLE } from "./copy";
+import { SECRETS_PAGE_TITLE } from "./copy";
+import { SecretsDescription } from "./components/SecretsDescription";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function SecretsPage({
 
   return (
     <PageLayout fullHeight className="h-full overflow-hidden">
-      <PageHeader description={SECRETS_PAGE_DESCRIPTION}>
+      <PageHeader description={<SecretsDescription />}>
         <PageTitle>{SECRETS_PAGE_TITLE}</PageTitle>
       </PageHeader>
 

@@ -27,10 +27,16 @@
 //! the request in hand had no datastore either way; what it stops doing is
 //! calling a refusal an outage.
 
+use std::time::Duration;
+
 use afd_core::error_code::{self, ErrorCode};
 
+#[cfg(any(test, feature = "test-util"))]
+mod answer;
 #[cfg(feature = "test-util")]
 mod samples;
+#[cfg(any(test, feature = "test-util"))]
+pub use self::answer::database_answer;
 
 #[cfg(feature = "test-util")]
 pub use self::samples::one_of_each_kind;
@@ -80,19 +86,25 @@ pub(crate) enum ErrorKind {
     #[error("{knob} must be true, false, 1 or 0")]
     InvalidBoolKnob { knob: &'static str },
 
-    #[error("waited {waited_ms}ms for a {role} connection and the pool had none")]
-    PoolCapacity { role: &'static str, waited_ms: u128 },
+    #[error("waited {waited:?} for a {role} connection and the pool had none")]
+    PoolCapacity {
+        role: &'static str,
+        waited: Duration,
+    },
 
-    #[error("the {role} datastore did not answer within {waited_ms}ms")]
-    DatastoreUnreachable { role: &'static str, waited_ms: u128 },
+    #[error("the {role} datastore did not answer within {waited:?}")]
+    DatastoreUnreachable {
+        role: &'static str,
+        waited: Duration,
+    },
 
     #[error(
-        "waited {waited_ms}ms for a {role} connection: the pool held {held} of {ceiling} and \
+        "waited {waited:?} for a {role} connection: the pool held {held} of {ceiling} and \
          could not open another"
     )]
     AcquireStalled {
         role: &'static str,
-        waited_ms: u128,
+        waited: Duration,
         held: u32,
         ceiling: u32,
     },
@@ -113,16 +125,25 @@ pub(crate) enum ErrorKind {
 
     #[error("migration {version} failed to apply")]
     MigrationFailed {
-        version: i32,
+        version: i64,
         #[source]
         source: sqlx::Error,
     },
 
-    #[error("the migration lock was held by another session for {waited_ms}ms")]
-    MigrationLockUnavailable { waited_ms: u128 },
+    #[error("the migration lock was held by another session for {waited:?}")]
+    MigrationLockUnavailable { waited: Duration },
 
     #[error("the ledger records version {found}, which this binary does not know")]
-    MigrationSchemaAhead { found: i32 },
+    MigrationSchemaAhead { found: i64 },
+
+    #[error("migration {version} was applied, and its file has changed since")]
+    MigrationEdited { version: i64 },
+
+    #[error("the migrator refused to run")]
+    MigrationRefused {
+        #[source]
+        source: sqlx::migrate::MigrateError,
+    },
 }
 
 impl Error {
@@ -193,13 +214,23 @@ impl Error {
         matches!(self.inner.kind, ErrorKind::MigrationFailed { .. })
     }
 
-    /// Whether the ledger refused this binary — lock held, or a version ahead.
+    /// Whether the migrator refused this binary — lock held, a version ahead,
+    /// or an applied slot edited.
     #[must_use]
     pub fn is_migration_refused(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::MigrationLockUnavailable { .. } | ErrorKind::MigrationSchemaAhead { .. }
+            ErrorKind::MigrationLockUnavailable { .. }
+                | ErrorKind::MigrationSchemaAhead { .. }
+                | ErrorKind::MigrationEdited { .. }
+                | ErrorKind::MigrationRefused { .. }
         )
+    }
+
+    /// Whether an applied slot's file changed after it was applied.
+    #[must_use]
+    pub fn is_migration_edited(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::MigrationEdited { .. })
     }
 
     /// The registry code a handler would surface for this failure.
@@ -218,7 +249,9 @@ impl Error {
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::MigrationFailed { .. }
             | ErrorKind::MigrationLockUnavailable { .. }
-            | ErrorKind::MigrationSchemaAhead { .. } => error_code::STARTUP_MIGRATION_CHECK,
+            | ErrorKind::MigrationSchemaAhead { .. }
+            | ErrorKind::MigrationEdited { .. }
+            | ErrorKind::MigrationRefused { .. } => error_code::STARTUP_MIGRATION_CHECK,
         }
     }
 }
@@ -228,12 +261,12 @@ impl Error {
 ///
 /// `sqlx` reports the capacity case as `PoolTimedOut` and everything else —
 /// refused connection, DNS failure, TLS handshake, an authentication rejection
-/// — as itself. `waited_ms` is the configured acquire timeout rather than a
+/// — as itself. `waited` is the configured acquire timeout rather than a
 /// measured duration: it is what the operator set, which is the number they
 /// need when deciding whether to raise it.
-pub(crate) fn classify_acquire(role: &'static str, waited_ms: u128, source: sqlx::Error) -> Error {
+pub(crate) fn classify_acquire(role: &'static str, waited: Duration, source: sqlx::Error) -> Error {
     match source {
-        sqlx::Error::PoolTimedOut => Error::new(ErrorKind::PoolCapacity { role, waited_ms }),
+        sqlx::Error::PoolTimedOut => Error::new(ErrorKind::PoolCapacity { role, waited }),
         other => Error::new(ErrorKind::DatastoreUnavailable {
             role,
             source: other,
@@ -246,6 +279,37 @@ pub(crate) fn query(context: &'static str, source: sqlx::Error) -> Error {
     Error::new(ErrorKind::Query { context, source })
 }
 
+/// Whether a statement failed because its connection to Postgres was lost
+/// rather than because of the statement.
+///
+/// The question an outage policy turns on: a socket that died mid-query, a
+/// pool that closed, a TLS stream that broke, or Postgres answering with a
+/// connection-exception (`08xxx`) or shutdown (`57P01`–`57P03`) code is an
+/// outage. A constraint, syntax or decode failure is a defect in the
+/// statement, and stays one however often it is retried.
+#[must_use]
+pub fn is_connection_lost(source: &sqlx::Error) -> bool {
+    match source {
+        sqlx::Error::Io(_)
+        | sqlx::Error::Tls(_)
+        | sqlx::Error::Protocol(_)
+        | sqlx::Error::PoolTimedOut
+        | sqlx::Error::PoolClosed
+        | sqlx::Error::WorkerCrashed => true,
+        sqlx::Error::Database(database) => database.code().is_some_and(|code| {
+            code.starts_with(SQLSTATE_CONNECTION_EXCEPTION)
+                || SQLSTATE_SHUTDOWN.contains(&code.as_ref())
+        }),
+        _ => false,
+    }
+}
+
+/// The SQLSTATE class every connection exception shares.
+const SQLSTATE_CONNECTION_EXCEPTION: &str = "08";
+
+/// Administrator shutdown, crash shutdown, and cannot-connect-now.
+const SQLSTATE_SHUTDOWN: [&str; 3] = ["57P01", "57P02", "57P03"];
+
 /// Builds the malformed-boolean-knob error, which callers outside this module
 /// need because the knobs they read are theirs, not this module's.
 #[must_use]
@@ -257,8 +321,8 @@ pub fn invalid_bool_knob(knob: &'static str) -> Error {
 ///
 /// The timeout path has no `sqlx::Error` of its own to carry — nothing came
 /// back — so the variant is built directly rather than classified.
-pub(crate) fn unreachable_datastore(role: &'static str, waited_ms: u128) -> Error {
-    Error::new(ErrorKind::DatastoreUnreachable { role, waited_ms })
+pub(crate) fn unreachable_datastore(role: &'static str, waited: Duration) -> Error {
+    Error::new(ErrorKind::DatastoreUnreachable { role, waited })
 }
 
 /// A pool below its ceiling that could not open a connection in time.
@@ -268,14 +332,17 @@ pub(crate) fn unreachable_datastore(role: &'static str, waited_ms: u128) -> Erro
 /// evidence there is.
 pub(crate) fn acquire_stalled(
     role: &'static str,
-    waited_ms: u128,
+    waited: Duration,
     held: u32,
     ceiling: u32,
 ) -> Error {
     Error::new(ErrorKind::AcquireStalled {
         role,
-        waited_ms,
+        waited,
         held,
         ceiling,
     })
 }
+
+#[cfg(test)]
+mod tests;

@@ -24,6 +24,8 @@ afd_validate.workspace = true
 garde.workspace = true
 # Same discipline as `afd_wire`: serde and serde_json at runtime, nothing else.
 serde.workspace = true
+# Every `_at` field is a `jiff::Timestamp`, written by `afd_wire::instant`.
+jiff.workspace = true
 serde_json.workspace = true
 # The schema compiler, off by default, exactly as in `afd_wire`.
 utoipa = { workspace = true, optional = true }

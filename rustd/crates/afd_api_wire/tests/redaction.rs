@@ -57,7 +57,7 @@ fn should_not_leak_a_minted_key_or_credential_through_debug() {
         id: Cow::Borrowed("key-id"),
         key_name: Cow::Borrowed("ci"),
         key: Cow::Borrowed(SECRET),
-        created_at: 1,
+        created_at: jiff::Timestamp::constant(1, 0),
     };
     let rendered = format!("{key:?}");
     assert!(!rendered.contains(SECRET), "api key leaked: {rendered}");

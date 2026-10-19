@@ -54,7 +54,7 @@ async fn unsupported_output_call_bounds_and_native_overflow_keep_known_usage() {
         }
         assert_eq!(provider.count(), 1);
         assert_eq!(fixture::receipts(&f, &a).await, (1, 1, false));
-        let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM fleet.authoring_dispatches WHERE attempt_id=$1::uuid")
+        let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
             .bind(a.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("retained accounting");
         assert_eq!(receipt, (true, "known".into()));
         f.cleanup().await;

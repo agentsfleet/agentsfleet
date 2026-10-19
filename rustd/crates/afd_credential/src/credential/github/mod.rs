@@ -1,27 +1,23 @@
 //! The GitHub App half of the mint: an App JWT exchanged for a scoped
 //! installation token.
 //!
-//! # What `octocrab` does, and the one thing it must not be asked to do
+//! # Two REST calls, written here
 //!
-//! The App JWT — `iss`, `iat`, `exp`, the RS256 signature, the refresh before
-//! expiry — is `octocrab`'s, and so is the transport. None of that is worth
-//! owning.
+//! The App JWT — `iss`, `iat`, `exp`, the RS256 signature — is one
+//! `jsonwebtoken::encode`, and the two calls are plain requests over the
+//! broker's shared `reqwest` client ([`api`]). Owning them is what keeps the
+//! security-relevant parts in view: the token request is ALWAYS posted with
+//! [`ScopedRequest`] as its body, because an empty body means the
+//! installation's FULL scope, and no client method that defaults to one is in
+//! reach.
 //!
-//! Its `installation_and_token()` is NOT used, and the reason is a security
-//! one rather than a stylistic one: that method posts a hardcoded `{}` body,
-//! and an empty body means the installation's FULL scope. It is also the only
-//! place in the crate that reaches this endpoint, so there is no scoped variant
-//! to prefer. The narrowing this milestone rests on is sent through the generic
-//! `post`, with [`ScopedRequest`] as the body.
+//! # Why the RESPONSE is read through an open map
 //!
-//! # And why the RESPONSE is not read through `octocrab::models` either
-//!
-//! `InstallationPermissions` is a struct of seven named fields with no
-//! catch-all, and `pull_requests` is not one of them. Deserialising into it
-//! would do two harmful things at once: make the permission a write mint
-//! REQUESTS unreadable, and silently DROP any permission GitHub granted that
-//! the struct does not model. A check written against it would pass while the
-//! token carried `administration: write`, which is the exact overreach the
+//! A typed permission model with a field per permission and no catch-all would
+//! do two harmful things at once: make a permission it does not model, such as
+//! `pull_requests`, unreadable, and silently DROP any permission GitHub granted
+//! that the struct does not name. A check written against it would pass while
+//! the token carried `administration: write`, which is the exact overreach the
 //! check exists to refuse — the typed model would make it invisible.
 //!
 //! So the response is read into [`Granted`], whose permission map is open.
@@ -35,8 +31,7 @@ use afd_fleet_runtime::config::RepositoryBinding;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::credential::outcome::{Outcome, Retry};
-
+mod api;
 mod exchange;
 mod request;
 
@@ -125,8 +120,8 @@ struct Reached {
 
 /// What GitHub actually minted.
 ///
-/// Deserialised into this rather than `octocrab::models::InstallationToken` —
-/// see the module header for why that model cannot be used safely here.
+/// Deserialised into this rather than a typed permission model — see the
+/// module header for why such a model cannot be used safely here.
 #[derive(Debug, Deserialize)]
 pub struct Granted {
     /// The installation token itself.
@@ -273,24 +268,5 @@ fn installation_id(stored: &Value) -> Option<u64> {
             .map(NonZeroU64::get),
         Value::String(text) => text.parse::<NonZeroU64>().ok().map(NonZeroU64::get),
         _not_an_id => None,
-    }
-}
-
-/// Sorts an exchange failure into what the caller should do about it.
-///
-/// A 401 or 404 is the installation being gone, which is a reconnect. Anything
-/// at or above 500 is the vendor, which is worth retrying. Every other status,
-/// and every failure to read what came back, is permanent. The split reads
-/// `octocrab`'s typed status rather than a raw `u16`.
-fn classify(error: &octocrab::Error) -> Outcome {
-    let octocrab::Error::GitHub { source, .. } = error else {
-        // No status at all: a transport failure, a timeout, a body that would
-        // not decode. Transient, because the request may never have been seen.
-        return Outcome::MintFailed(Retry::Transient);
-    };
-    match source.status_code {
-        http::StatusCode::UNAUTHORIZED | http::StatusCode::NOT_FOUND => Outcome::ReconnectRequired,
-        status if status.is_server_error() => Outcome::MintFailed(Retry::Transient),
-        _client_error => Outcome::MintFailed(Retry::Permanent),
     }
 }

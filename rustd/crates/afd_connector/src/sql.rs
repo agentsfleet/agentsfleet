@@ -2,8 +2,9 @@
 //!
 //! Public so a suite can take the same lock a writer takes without respelling
 //! it — the same reason `afd_cron::sql` and `afd_ingress::sql` are public. Nothing here is
-//! composed at runtime: every statement is a constant, and every value a caller
-//! supplies is a bind parameter.
+//! composed at runtime: every statement is a `.sql` file under `sql/`, every
+//! value a caller supplies is a bind parameter, and every stamp is the
+//! database clock's `now()`.
 
 /// Records which workspace a provider account's inbound events belong to.
 ///
@@ -11,15 +12,7 @@
 /// workspace, because an account can be MOVED: a Slack team reinstalled into a
 /// different workspace must re-point, not accumulate a second row that two
 /// readers would resolve differently.
-pub const UPSERT_INSTALL: &str = "\
-INSERT INTO core.connector_installs \
-  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at) \
-VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7) \
-ON CONFLICT (provider, external_account_id) DO UPDATE SET \
-  workspace_id = EXCLUDED.workspace_id, \
-  installed_by = EXCLUDED.installed_by, \
-  scopes = EXCLUDED.scopes, \
-  updated_at = EXCLUDED.updated_at";
+pub const UPSERT_INSTALL: &str = include_str!("sql/upsert_install.sql");
 
 /// Records an installation for the workspace that holds it, and ONLY that one.
 ///
@@ -28,15 +21,10 @@ ON CONFLICT (provider, external_account_id) DO UPDATE SET \
 /// it — and touches nothing otherwise, so a zero row count is the signal that
 /// another workspace holds the installation. The row count answers that
 /// without a `RETURNING` clause or a second round trip.
-pub const CLAIM_INSTALL: &str = "\
-INSERT INTO core.connector_installs \
-  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at) \
-VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7) \
-ON CONFLICT (provider, external_account_id) DO UPDATE SET \
-  installed_by = EXCLUDED.installed_by, \
-  scopes = EXCLUDED.scopes, \
-  updated_at = EXCLUDED.updated_at \
-WHERE core.connector_installs.workspace_id = EXCLUDED.workspace_id";
+///
+/// `$1` id · `$2` provider · `$3` account · `$4` workspace · `$5` scopes, the
+/// binds both install statements share.
+pub const CLAIM_INSTALL: &str = include_str!("sql/claim_install.sql");
 
 /// Lets go of every OTHER account this workspace routes for the provider.
 ///
@@ -56,18 +44,14 @@ WHERE core.connector_installs.workspace_id = EXCLUDED.workspace_id";
 ///
 /// [`Provider::grant_key`]: crate::provider::Provider::grant_key
 /// [`Grants::land`]: crate::grant::Grants::land
-pub const RELEASE_OTHER_INSTALLS: &str = "\
-DELETE FROM core.connector_installs \
-WHERE provider = $1 AND workspace_id = $2::uuid AND external_account_id <> $3";
+pub const RELEASE_OTHER_INSTALLS: &str = include_str!("sql/release_other_installs.sql");
 
 /// Forgets an account's routing rows when a workspace disconnects a provider.
 ///
 /// Scoped to the workspace as well as the provider: a disconnect must not
 /// remove a row another workspace owns, and the two-column predicate is what
 /// makes that a property of the statement rather than of the caller.
-pub const DELETE_WORKSPACE_INSTALLS: &str = "\
-DELETE FROM core.connector_installs \
-WHERE provider = $1 AND workspace_id = $2::uuid";
+pub const DELETE_WORKSPACE_INSTALLS: &str = include_str!("sql/delete_workspace_installs.sql");
 
 /// The workspace row, locked first by a connect's landing and by a Disconnect
 /// so the two take turns per workspace.
@@ -78,7 +62,4 @@ WHERE provider = $1 AND workspace_id = $2::uuid";
 /// workspace row exists before either. `FOR NO KEY UPDATE` rather than
 /// `FOR UPDATE`, so an insert that only references the workspace (it takes
 /// `FOR KEY SHARE`) is not held up. `$1` workspace.
-pub const LOCK_WORKSPACE: &str = "\
-SELECT 1 FROM core.workspaces \
-WHERE id = $1::uuid \
-FOR NO KEY UPDATE";
+pub const LOCK_WORKSPACE: &str = include_str!("sql/lock_workspace.sql");

@@ -2,6 +2,7 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::Definition;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 pub(crate) const EDITING: &str = "editing";
@@ -81,10 +82,18 @@ pub struct DraftCard {
     pub etag: String,
     /// Related fleet, when available.
     pub linked_fleet_id: Option<Uuid7>,
-    /// Last mutation time, Unix milliseconds.
-    pub updated_at: i64,
-    /// Private retention deadline, Unix milliseconds.
-    pub expires_at: Option<i64>,
+    /// Last mutation time.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: Timestamp,
+    /// Private retention deadline.
+    #[serde(with = "afd_wire::instant::option")]
+    pub expires_at: Option<Timestamp>,
+    /// The current candidate's revision, before the chat proposes one.
+    pub candidate_revision: Option<i64>,
+    /// The saved fleet's current setup revision, while a fleet is saved.
+    pub setup_revision: Option<i64>,
+    /// The Library revision this chat published, once it has.
+    pub publication_revision: Option<i64>,
 }
 
 /// Immutable normalized setup accepted from the drawer or proposal tool.
@@ -129,12 +138,14 @@ pub struct Draft {
     /// Receipt of an explicit publication of this creator's candidate.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publication: Option<super::Publication>,
-    /// Time activation closed the draft, in UTC milliseconds.
+    /// Time activation closed the draft.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub closed_at: Option<i64>,
-    /// Private retention deadline, in UTC milliseconds.
+    #[serde(with = "afd_wire::instant::option")]
+    pub closed_at: Option<Timestamp>,
+    /// Private retention deadline.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option")]
+    pub expires_at: Option<Timestamp>,
 }
 
 /// Durable message acceptance, independent of execution or completion.
@@ -182,11 +193,13 @@ pub struct Message {
     /// Bounded persistent recovery action on `failed`/`timed_out` messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<super::Failure>,
-    /// Request acceptance time, UTC milliseconds.
-    pub created_at: i64,
+    /// Request acceptance time.
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: Timestamp,
     /// Terminal time, absent while queued/running.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub finished_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option")]
+    pub finished_at: Option<Timestamp>,
 }
 
 /// A bounded keyset page; absence of a total is explicitly represented as null.
@@ -198,4 +211,57 @@ pub struct Page<T> {
     pub total: Option<u64>,
     /// Opaque boundary, null on the final page.
     pub next_cursor: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MessageState;
+
+    /// Funnel steps and the stored `authoring.messages.status` spell a state
+    /// with `as_str`; rows read back through serde. One drifting arm would turn
+    /// a written message into an unreadable one.
+    #[test]
+    fn every_message_state_reads_back_as_the_word_it_is_stored_under() {
+        for state in [
+            MessageState::Queued,
+            MessageState::Running,
+            MessageState::Completed,
+            MessageState::Cancelled,
+            MessageState::Failed,
+            MessageState::TimedOut,
+        ] {
+            let read: Option<MessageState> = crate::draft::word(state.as_str()).ok();
+            assert_eq!(read, Some(state), "{} reads back", state.as_str());
+        }
+    }
+
+    /// Spec Dimension 4.5: the runner wire lost its deletion generation, and
+    /// the draft message response kept the `operation_id` the message was
+    /// accepted under.
+    #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "a fixture id that fails to parse should fail the test"
+    )]
+    fn the_message_response_carries_its_operation_id() {
+        let operation = "01890a5d-ac96-774b-bcce-b302099a8063";
+        let message = super::Message {
+            sequence: "1".to_owned(),
+            operation_id: super::Uuid7::parse(operation).expect("a UUIDv7 fixture"),
+            role: "user",
+            state: MessageState::Queued,
+            text: None,
+            candidate_id: None,
+            usage: None,
+            failure: None,
+            created_at: jiff::Timestamp::UNIX_EPOCH,
+            finished_at: None,
+        };
+        let written = serde_json::to_value(&message).expect("a message writes");
+        assert_eq!(
+            written.get("operation_id"),
+            Some(&serde_json::json!(operation))
+        );
+        assert_eq!(written.get("deletion_generation"), None);
+    }
 }

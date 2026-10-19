@@ -21,12 +21,11 @@
 use std::time::Duration;
 
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::{ACKNOWLEDGED_HISTORY, TRIM_SLACK};
 use afd_dragonfly::{Dragonfly, OutboundJob, OutboundQueue};
 use afd_outbound::obligation::{self, Delivery};
-use afd_outbound::producer::Producer;
+use afd_outbound::producer::{MIN_AGE, Producer};
 use tokio_util::sync::CancellationToken;
 
 #[path = "support/obligation_seed.rs"]
@@ -42,9 +41,7 @@ mod seed;
 )]
 mod support;
 
-use seed::{
-    DESTINATION, FLEET, SEEDED_AT, WORKSPACE, clear_obligations, obligation_id, seed_parents,
-};
+use seed::{DESTINATION, FLEET, WORKSPACE, age, clear_obligations, obligation_id, seed_parents};
 use support::{OUTBOUND_LANE, OutboundHarness};
 
 const PROVIDER: &str = Provider::Slack.id();
@@ -57,8 +54,6 @@ const EVENT_ID_STEM: &str = "1760000000002-";
 /// Entries appended ABOVE the retained bound and its slack, so the trim
 /// reaches its floor calculation instead of returning early on a short stream.
 const ABOVE_THE_BOUND: usize = TRIM_SLACK + 50;
-/// A cutoff every seeded row is older than, so a scan sees all of them.
-const AFTER_EVERYTHING: i64 = SEEDED_AT + 1;
 /// More rows than this test seeds, so a limit never decides an assertion.
 const AMPLE: i64 = 64;
 /// Long enough for a pass to reach the refused append, short enough that a
@@ -96,7 +91,6 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
             event_id: EVENT_ID,
             answer,
         },
-        UnixMillis::from_millis(SEEDED_AT),
     )
     .await
     .expect("owing a delivery");
@@ -104,6 +98,8 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
         .commit()
         .await
         .expect("the report's transaction commits");
+    // Past `MIN_AGE`, so the producer's own pass takes the row.
+    age(&harness.database, EVENT_ID).await;
     written
 }
 
@@ -125,13 +121,9 @@ async fn a_refused_append_leaves_every_scanned_row_still_owed() {
 
     // `unreceipted`, not `undelivered`: a row whose append never happened has
     // a NULL receipt, which is the scan the producer's first pass runs.
-    let owed_before = obligation::unreceipted(
-        &harness.database,
-        UnixMillis::from_millis(AFTER_EVERYTHING),
-        AMPLE,
-    )
-    .await
-    .expect("the ledger answers a scan");
+    let owed_before = obligation::unreceipted(&harness.database, MIN_AGE, AMPLE)
+        .await
+        .expect("the ledger answers a scan");
     assert_eq!(owed_before.len(), 1, "the seeded row is the one owed");
 
     let token = CancellationToken::new();
@@ -152,13 +144,9 @@ async fn a_refused_append_leaves_every_scanned_row_still_owed() {
         .expect("a cancelled producer stops inside the budget")
         .expect("the producer task finished cleanly");
 
-    let owed_after = obligation::unreceipted(
-        &harness.database,
-        UnixMillis::from_millis(AFTER_EVERYTHING),
-        AMPLE,
-    )
-    .await
-    .expect("the ledger answers a scan");
+    let owed_after = obligation::unreceipted(&harness.database, MIN_AGE, AMPLE)
+        .await
+        .expect("the ledger answers a scan");
     assert_eq!(
         owed_after.len(),
         1,
@@ -186,13 +174,9 @@ async fn an_empty_answer_owes_nothing() {
         !owe_committed(&harness, &obligation_id(2), "").await,
         "an empty answer is not an obligation"
     );
-    let owed = obligation::unreceipted(
-        &harness.database,
-        UnixMillis::from_millis(AFTER_EVERYTHING),
-        AMPLE,
-    )
-    .await
-    .expect("the ledger answers a scan");
+    let owed = obligation::unreceipted(&harness.database, MIN_AGE, AMPLE)
+        .await
+        .expect("the ledger answers a scan");
     assert!(owed.is_empty(), "an empty answer wrote a row: {owed:?}");
 }
 

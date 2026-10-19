@@ -48,7 +48,7 @@ use crate::services::{Services, WorkspaceOwnership as _};
 /// not exist. The status is a requirement rather than a preference — a
 /// dashboard branches on it — and the collapse is what keeps the endpoint from
 /// being an oracle for which workspace identifiers are real.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
+pub const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// The refusal for a path segment that is not an identifier.
 const DETAIL_MALFORMED: &str = "workspace_id must be a valid UUIDv7";

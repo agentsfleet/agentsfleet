@@ -18,11 +18,13 @@
 //! moves time through the clock alone.
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use afd_core::clock::{Clock, UnixMillis};
+use afd_core::clock::Clock;
 use afd_core::id::Uuid7;
 use afr_sandbox::{Limits, Sandbox};
 use afr_telemetry::labels::SandboxHold;
+use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc, oneshot};
 
 mod built_under;
@@ -96,8 +98,8 @@ impl Release {
 pub(crate) struct Taken {
     /// The sandbox, for the taker to thaw.
     pub(crate) sandbox: Box<dyn Sandbox>,
-    /// How long it waited, in milliseconds.
-    pub(crate) held_ms: i64,
+    /// How long it waited.
+    pub(crate) held: Duration,
 }
 
 /// What a lease asks the task that owns the holds.
@@ -111,7 +113,7 @@ enum Request {
         key: HoldKey,
         lease: Uuid7,
         sandbox: Box<dyn Sandbox>,
-        reply: oneshot::Sender<Option<UnixMillis>>,
+        reply: oneshot::Sender<Option<Timestamp>>,
     },
     Release {
         fleet: Uuid7,
@@ -201,7 +203,7 @@ impl Holds {
         key: HoldKey,
         lease: Uuid7,
         sandbox: Box<dyn Sandbox>,
-    ) -> Option<UnixMillis> {
+    ) -> Option<Timestamp> {
         let (reply, answer) = oneshot::channel();
         let parked = Request::Park {
             key,
@@ -209,11 +211,12 @@ impl Holds {
             sandbox,
             reply,
         };
-        if let Err(closed) = self.requests.send(parked) {
-            if let Request::Park { key, sandbox, .. } = closed.0 {
-                keeper::destroy_now(&key.fleet, sandbox, Release::Shutdown).await;
-            }
-            return None;
+        // A request the stopped task never took comes back whole: its sandbox
+        // is destroyed here, and its reply, dropped with it, answers `None`.
+        if let Err(closed) = self.requests.send(parked)
+            && let Request::Park { key, sandbox, .. } = closed.0
+        {
+            keeper::destroy_now(&key.fleet, sandbox, Release::Shutdown).await;
         }
         answer.await.ok().flatten()
     }

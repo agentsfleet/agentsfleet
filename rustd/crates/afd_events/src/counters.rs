@@ -29,13 +29,19 @@ use afd_api_wire::tail::FleetCounters;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use sqlx::PgConnection;
-use sqlx::Row as _;
 
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::sql::SELECT_FLEET_COUNTERS;
 
 /// The context a refused counter read is reported under.
 const CONTEXT_COUNTERS: &str = "fleet activity counters";
+
+/// The counters as `fleet.activity_counters` spells them.
+#[derive(sqlx::FromRow)]
+struct StoredCounters {
+    event_count: i64,
+    budget_used_nanos: i64,
+}
 
 /// The log event a publisher emits when it goes out without its figures.
 const EVENT_COUNTERS_UNREAD: &str = "fleet_counters_unread";
@@ -47,8 +53,8 @@ const EVENT_COUNTERS_UNREAD: &str = "fleet_counters_unread";
 /// back, so the read costs one acquire and holds nothing across the publish.
 ///
 /// # Errors
-/// Reports a pool that would not give a connection, a statement that would
-/// not run, or a row this build cannot read.
+/// Reports a pool that would not give a connection, or a statement that would
+/// not run.
 pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounters> {
     let mut connection = database.acquire().await?;
     fleet_counters_on(&mut connection, fleet_id).await
@@ -56,20 +62,23 @@ pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounte
 
 /// The fleet's counters as the database has them, read on `connection`.
 ///
+/// Both columns are `COALESCE`d `BIGINT NOT NULL` read into `i64`, so the
+/// decode cannot fail and a refused read is the statement's.
+///
 /// # Errors
-/// Reports a statement that would not run, or a row this build cannot read.
+/// Reports a statement that would not run.
 pub async fn fleet_counters_on(
     connection: &mut PgConnection,
     fleet_id: &str,
 ) -> Result<FleetCounters> {
-    let row = sqlx::query(SELECT_FLEET_COUNTERS)
+    let stored = sqlx::query_as::<_, StoredCounters>(SELECT_FLEET_COUNTERS)
         .bind(fleet_id)
         .fetch_one(&mut *connection)
         .await
         .map_err(query(CONTEXT_COUNTERS))?;
     Ok(FleetCounters {
-        events_processed: row.try_get(0).map_err(row_malformed("events_processed"))?,
-        budget_used_nanos: row.try_get(1).map_err(row_malformed("budget_used_nanos"))?,
+        events_processed: stored.event_count,
+        budget_used_nanos: stored.budget_used_nanos,
     })
 }
 

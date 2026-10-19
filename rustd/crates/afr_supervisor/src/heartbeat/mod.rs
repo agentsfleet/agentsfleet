@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use afd_core::id::Uuid7;
 use afd_core::limits::WorkerCount;
-use afd_core::timing::HEARTBEAT_INTERVAL_MS;
+use afd_core::timing::HEARTBEAT_INTERVAL;
 use afd_wire::runner::{
     HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets, NetworkPolicy, SandboxTier,
 };
@@ -56,7 +56,7 @@ impl Assignment {
         Self {
             status: HeartbeatStatus::Ok,
             workers: 0,
-            interval: Duration::from_millis(HEARTBEAT_INTERVAL_MS.unsigned_abs()),
+            interval: HEARTBEAT_INTERVAL,
             egress: Egress::closed(),
         }
     }

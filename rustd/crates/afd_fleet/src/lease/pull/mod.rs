@@ -34,10 +34,10 @@
 //! — that last would need a new registry code. Any body, or none, gets that
 //! shape.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates, payer_gate};
@@ -84,8 +84,15 @@ pub struct Plane {
     pub leases: Leases,
     /// Approval gates and standing integration grants.
     pub gates: Gates,
-    /// Wallets, ceilings and the receive debit.
+    /// The payer, the issue-time floor and a fleet's spend: the reads a money
+    /// gate makes before anything moves.
     pub accounts: Accounts,
+    /// Holds, charges and releases money for every lease (billing §11).
+    ///
+    /// A trait object so the built-in ledger, a queue or a third-party
+    /// metering system all sit behind one call site; the daemon chooses which,
+    /// and its outage policy, where it builds the plane.
+    pub biller: std::sync::Arc<dyn afd_billing::biller::Biller>,
     /// What a fleet remembers between runs.
     ///
     /// A store of its own rather than a verb on [`Leases`]: the tables are a
@@ -153,7 +160,7 @@ impl Plane {
         runner_id: &Uuid7,
         held: &[Uuid7],
         degraded: bool,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<String> {
         self.poll(runner_id, held, degraded, now, None)
             .await
@@ -173,10 +180,10 @@ impl Plane {
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Step<Admission2>> {
         let installed = match self
-            .resolve_installed(&acquired, runner_id, now)
+            .resolve_installed(&acquired, runner_id)
             .await?
             .proceed()
         {
@@ -184,7 +191,7 @@ impl Plane {
             Err(ended) => return Ok(ended),
         };
 
-        let received = self.leases.record_received(&acquired, now).await?;
+        let received = self.leases.record_received(&acquired).await?;
         let delivery = received.delivery;
         if delivery == crate::lease::event::Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
@@ -197,8 +204,7 @@ impl Plane {
                 .publish_received(&acquired, received.opened_at, received.counters)
                 .await;
         }
-        self.billed(acquired, installed, delivery, runner_id, now)
-            .await
+        self.billed(acquired, installed, runner_id, now).await
     }
 
     /// The event's type, its payer, its provider and every gate, over a row
@@ -207,15 +213,14 @@ impl Plane {
         &self,
         acquired: Acquired,
         installed: Installed,
-        delivery: crate::lease::event::Delivery,
         runner_id: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Step<Admission2>> {
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             let label = label::EVENT_TYPE_UNSUPPORTED;
             return self
-                .refused(&acquired, label, runner_id, &reason, now)
+                .refused(&acquired, label, runner_id, &reason)
                 .await
                 .map(Step::Stop);
         };
@@ -225,16 +230,16 @@ impl Plane {
         let read = self.accounts.payer(&acquired.workspace_id).await;
         let tenant = match payer_gate(read, &acquired.workspace_id)? {
             Ok(tenant) => tenant,
-            Err(declined) => return self.ended(&acquired, declined, runner_id, now).await,
+            Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
         let resolved = self
             .providers
             .resolve_reference(&tenant, &installed.runtime_model_ref)
             .await?;
-        let gated = self.gated(&acquired, &installed, tenant, &resolved, delivery, now);
+        let gated = self.gated(&acquired, &installed, tenant, &resolved, now);
         let billed = match gated.await?.admitted() {
             Ok(billed) => billed,
-            Err(declined) => return self.ended(&acquired, declined, runner_id, now).await,
+            Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
         Ok(Step::Go(Admission2 {
             acquired,
@@ -292,21 +297,25 @@ impl Plane {
         installed: &Installed,
         tenant: Uuid7,
         resolved: &Resolved,
-        delivery: crate::lease::event::Delivery,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Admission> {
         let request = Request {
             workspace_id: &acquired.workspace_id,
             fleet_id: &acquired.fleet_id,
             event_id: &acquired.event_id,
-            event_created_at: acquired.event_created_at,
             budget: installed.config.budget(),
             posture: resolved.posture,
             provider: resolved.provider.as_ref(),
             model: resolved.model.as_ref(),
-            delivery,
         };
-        let money = money_gates(&self.accounts, Ok(Some(tenant)), request, now).await?;
+        let money = money_gates(
+            &self.accounts,
+            self.biller.as_ref(),
+            Ok(Some(tenant)),
+            request,
+            now,
+        )
+        .await?;
         if !matches!(money, Admission::Admit(_)) {
             return Ok(money);
         }
@@ -318,7 +327,7 @@ impl Plane {
         &self,
         acquired: &Acquired,
         installed: &Installed,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Option<Admission> {
         let verdict = self
             .gates

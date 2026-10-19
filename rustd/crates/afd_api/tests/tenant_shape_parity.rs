@@ -45,7 +45,7 @@ use serde_json::Value;
 pub(crate) const TEXT: &str = "fixture";
 
 /// A fixture instant, for the shapes that carry one.
-pub(crate) const WHEN: i64 = 1_760_000_000_000;
+pub(crate) const WHEN: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 
 /// The keys `value` serialises to, in the order it emits them.
 ///

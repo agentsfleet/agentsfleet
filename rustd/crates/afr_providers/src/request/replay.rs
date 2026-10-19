@@ -26,12 +26,15 @@ pub(super) fn restore(
             }
             AssistantContent::Text(_) => {}
             AssistantContent::ToolCall(call) => {
+                // By wire spelling: a call rig identified locally comes back
+                // through the loop as a wire id of the same text, and the two
+                // compare unequal as `CallId`s.
                 if let Some(index) = canonical.iter().position(|part| {
                     matches!(part,
-                    AssistantContent::ToolCall(candidate) if candidate.id == call.id)
+                    AssistantContent::ToolCall(candidate) if candidate.id.wire() == call.id.wire())
                 }) {
                     let replacement = canonical.remove(index);
-                    restored.push(if replacement.fingerprint() == block.fingerprint() {
+                    restored.push(if same_call(&replacement, call) {
                         block.clone()
                     } else {
                         replacement
@@ -45,4 +48,12 @@ pub(super) fn restore(
     AssistantMessage::new(restored)
         .with_origin(original.origin.clone())
         .with_stop(original.stop.clone())
+}
+
+/// The runtime kept `call` as the provider sent it: the same name and
+/// arguments, whatever spelling of its identity came back.
+fn same_call(replacement: &AssistantContent, call: &rig_core::message::ToolCall) -> bool {
+    matches!(replacement, AssistantContent::ToolCall(kept)
+        if kept.function.name == call.function.name
+            && kept.function.arguments == call.function.arguments)
 }

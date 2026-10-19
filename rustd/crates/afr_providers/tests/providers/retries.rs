@@ -8,7 +8,7 @@ use afr_agent::ResultOutcome;
 
 use super::support::wires::Wire;
 use super::support::{Fake, Reply, engine, lease, run};
-use super::{ANSWER, ATTEMPTS, RETRY_AFTER};
+use super::{ANSWER, ATTEMPTS};
 
 /// One 429 then success counts one retry, rate limited, under the provider's
 /// own name, and one completed turn: the retry is a send, not a second turn.
@@ -16,9 +16,11 @@ use super::{ANSWER, ATTEMPTS, RETRY_AFTER};
 async fn test_provider_retry_is_counted() {
     let wire = Wire::Messages;
     let fake = Fake::serve(vec![
+        // Asks for no wait: the count is under test here, and
+        // `test_provider_retry_honours_retry_after` proves the wait.
         Reply::Status {
             status: 429,
-            retry_after: Some(RETRY_AFTER),
+            retry_after: Some("0"),
         },
         wire.answer(ANSWER),
     ])

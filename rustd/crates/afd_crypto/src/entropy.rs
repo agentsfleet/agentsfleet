@@ -17,8 +17,8 @@
 //! The mock lives behind the `test-util` feature (`M-TEST-UTIL`), so a release
 //! build has no constructor that can weaken nonce generation.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use jiff::Timestamp;
 
 use crate::error::{Error, ErrorKind, Result};
 
@@ -122,7 +122,7 @@ impl Entropy {
     /// # Errors
     /// Reports a source that refused the draw, or an instant the identifier
     /// cannot carry.
-    pub fn uuid7(&self, at: UnixMillis) -> Result<Uuid7> {
+    pub fn uuid7(&self, at: Timestamp) -> Result<Uuid7> {
         Ok(Uuid7::encode(at, self.uuid_randomness()?)?)
     }
 

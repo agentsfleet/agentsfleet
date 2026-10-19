@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use backon::{ConstantBuilder, RetryableWithContext as _};
 use sqlx::pool::PoolConnection;
-use sqlx::{Executor as _, Postgres, Row as _};
+use sqlx::{Executor as _, Postgres};
 
 use afd_core::error_code;
 
@@ -30,6 +30,13 @@ use crate::error::{Error, ErrorKind, Result, query};
 
 /// The operations a failure names, one spelling each (RULE UFS).
 const OP_ACQUIRE: &str = "migrate.acquire_lock";
+
+/// Takes the migrate lock without waiting, answering whether it was free.
+const TRY_LOCK: &str = include_str!("sql/try_lock.sql");
+/// Releases the migrate lock this session holds.
+const UNLOCK: &str = include_str!("sql/unlock.sql");
+/// Asks whether the lock is free without keeping it past the transaction.
+const PROBE_LOCK: &str = include_str!("sql/probe_lock.sql");
 const OP_PROBE: &str = "migrate.probe_lock";
 
 /// The one key the schema migration lock is taken under, cluster-wide.
@@ -162,7 +169,7 @@ impl MigrationLock {
     pub async fn release(mut self) {
         let unlocked = self
             .connection
-            .execute(sqlx::query("SELECT pg_advisory_unlock($1)").bind(ADVISORY_KEY))
+            .execute(sqlx::query(UNLOCK).bind(ADVISORY_KEY))
             .await;
         if let Err(error) = unlocked {
             let error_code = error_code::INTERNAL_DB_QUERY.as_str();
@@ -177,12 +184,10 @@ impl MigrationLock {
 
 /// One poll for the lock on `connection`.
 async fn try_lock(connection: &mut PoolConnection<Postgres>) -> Result<(), Unheld> {
-    let acquired: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
+    let acquired: bool = sqlx::query_scalar(TRY_LOCK)
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)
         .await
-        .map_err(|source| Unheld::Failed(query(OP_ACQUIRE, source)))?
-        .try_get(0)
         .map_err(|source| Unheld::Failed(query(OP_ACQUIRE, source)))?;
     if acquired {
         Ok(())
@@ -201,7 +206,9 @@ fn exhausted(policy: RetryPolicy) -> Error {
         error_code,
         event = "migrate_lock_exhausted"
     );
-    Error::new(ErrorKind::MigrationLockUnavailable { waited_ms })
+    Error::new(ErrorKind::MigrationLockUnavailable {
+        waited: policy.budget(),
+    })
 }
 
 /// Whether the migration lock is currently free, without holding it.
@@ -214,11 +221,9 @@ fn exhausted(policy: RetryPolicy) -> Error {
 /// # Errors
 /// Returns a query error when the probe statement fails.
 pub async fn probe_available(connection: &mut PoolConnection<Postgres>) -> Result<bool> {
-    sqlx::query("SELECT pg_try_advisory_xact_lock($1)")
+    sqlx::query_scalar(PROBE_LOCK)
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)
         .await
-        .map_err(|source| query(OP_PROBE, source))?
-        .try_get(0)
         .map_err(|source| query(OP_PROBE, source))
 }

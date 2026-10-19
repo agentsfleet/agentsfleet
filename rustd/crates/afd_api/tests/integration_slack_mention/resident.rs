@@ -9,12 +9,12 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_ingress::slack::KIND_RESIDENT;
 use afd_memory::Memories;
 use afd_wire::memory::MemoryDelta;
+use jiff::Timestamp;
 
 use super::resident_bound::{resident_document, resident_name};
 use super::*;
@@ -36,7 +36,7 @@ fn mention_at(team: &str, event_id: &str, channel: &str, thread_ts: &str) -> Str
 async fn residents(fixture: &Fixture) -> Vec<String> {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query_scalar(
-        "SELECT name FROM core.fleets WHERE workspace_id = $1::uuid AND name LIKE $2 || '%' \
+        "SELECT name FROM fleet.fleets WHERE workspace_id = $1::uuid AND name LIKE $2 || '%' \
          ORDER BY name",
     )
     .bind(fixture.workspace().as_str())
@@ -50,9 +50,9 @@ async fn residents(fixture: &Fixture) -> Vec<String> {
 async fn bindings(fixture: &Fixture, channel: &str) -> i64 {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query_scalar(
-        "SELECT COUNT(*) FROM core.connector_channels \
+        "SELECT COUNT(*) FROM connector.channels \
          WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3 \
-           AND kind = $4",
+           AND binding_type = $4",
     )
     .bind(PROVIDER.id())
     .bind(&fixture.team)
@@ -77,9 +77,9 @@ async fn admitted(fixture: &Fixture, event_id: &str) -> Admitted {
 async fn assert_native_setup(fixture: &Fixture, fleet: &str) {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     let (status, policy, model): (String, Option<String>, Option<String>) = sqlx::query_as(
-        "SELECT f.status, r.policy_semantics, r.runtime_model_ref FROM core.fleets f \
-         LEFT JOIN core.fleet_definition_revisions r \
-           ON r.id = f.current_definition_revision_id AND r.fleet_id = f.id \
+        "SELECT f.status, r.policy_semantics, r.runtime_model_ref FROM fleet.fleets f \
+         LEFT JOIN fleet.revisions r \
+           ON r.id = f.head_revision_id AND r.fleet_id = f.id \
          WHERE f.id = $1::uuid",
     )
     .bind(fleet)
@@ -208,7 +208,7 @@ async fn a_fact_captured_in_one_channel_stays_there(
         visibility: afd_wire::memory::Visibility::Fleet,
     };
     memories
-        .capture(channel, &[fact], UnixMillis::from_millis(1_700_000_000_000))
+        .capture(channel, &[fact], Timestamp::constant(1_700_000_000, 0))
         .await
         .expect("the resident captures a fact");
 

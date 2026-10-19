@@ -2,21 +2,23 @@
 //!
 //! Split from [`super`], which owns the table's plain reads and the create. The
 //! line is whether a call participates in the single-syncer protocol: a claim
-//! takes the token and bumps the generation, a finalize gives it back and says
+//! takes the token and bumps the version, a finalize gives it back and says
 //! whether the push worked, and a delete is a finalize that removes the row
 //! instead. Every one of them is conditioned on the fence, and reading them
 //! together is how a reader checks that.
 //!
 //! `Ok(None)` throughout means "not mine, or not there" — see [`super`] on why
 //! that is an answer rather than a failure.
+//!
+//! None of them takes the caller's clock: Postgres stamps the row and judges
+//! the lease (see [`sql`] on whose clock).
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
 use afd_db::Precondition;
-use sqlx::{Acquire as _, FromRow as _, PgConnection};
+use sqlx::Acquire as _;
 
-use super::{Change, Refused, SYNC_LEASE_MS, Schedules};
+use super::{Change, Refused, SYNC_LEASE, Schedules, fire_at};
 use crate::error::{self, Result};
 use crate::model::{DesiredStatus, Schedule, SyncStatus};
 use crate::sql;
@@ -42,11 +44,8 @@ impl Schedules {
         schedule: &Uuid7,
         change: Change<'_>,
         token: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Option<Schedule>> {
-        let claimed = self
-            .claim(fleet, schedule, change, token, now, None)
-            .await?;
+        let claimed = self.claim(fleet, schedule, change, token, None).await?;
         // With no guard there is nothing to refuse.
         Ok(claimed.unwrap_or(None))
     }
@@ -59,7 +58,6 @@ impl Schedules {
         schedule: &Uuid7,
         change: Change<'_>,
         token: &Uuid7,
-        now: UnixMillis,
         guard: Option<&dyn Precondition>,
     ) -> Result<core::result::Result<Option<Schedule>, Refused>> {
         let mut connection = self.database.acquire().await?;
@@ -75,7 +73,7 @@ impl Schedules {
         {
             return Ok(Err(Refused::Unheld));
         }
-        let row = sqlx::query(sql::CLAIM_MUTATION)
+        let claimed = sqlx::query_as::<_, Schedule>(sql::CLAIM_MUTATION)
             .bind(schedule.as_str())
             .bind(fleet.as_str())
             .bind(change.cron)
@@ -84,16 +82,17 @@ impl Schedules {
             .bind(change.desired_status.map(DesiredStatus::as_str))
             .bind(SyncStatus::Syncing.as_str())
             .bind(token.as_str())
-            .bind(now.as_millis() + SYNC_LEASE_MS)
-            .bind(now.as_millis())
+            .bind(SYNC_LEASE)
             .fetch_optional(transaction.as_mut())
             .await
             .map_err(error::query(CONTEXT_CLAIM))?;
-        let claimed = match row.as_ref().map(Schedule::from_row).transpose() {
-            Ok(Some(claimed)) if claimed.once && moved(&change) => {
-                Some(set_fire_at(&mut transaction, &claimed, token, now).await?)
+        // Counted from the claim's own stamp; see `fire_at`.
+        let claimed = match claimed {
+            Some(claimed) if claimed.once && moved(&change) => {
+                let from = claimed.updated_at;
+                Some(fire_at::stamp(&mut transaction, &claimed, token, from).await?)
             }
-            claimed => claimed.map_err(error::query(CONTEXT_CLAIM))?,
+            claimed => claimed,
         };
         transaction
             .commit()
@@ -113,29 +112,22 @@ impl Schedules {
         fleet: &Uuid7,
         schedule: &Uuid7,
         token: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Option<Schedule>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::CLAIM_CURRENT)
+        sqlx::query_as::<_, Schedule>(sql::CLAIM_CURRENT)
             .bind(schedule.as_str())
             .bind(fleet.as_str())
             .bind(SyncStatus::Syncing.as_str())
             .bind(token.as_str())
-            .bind(now.as_millis() + SYNC_LEASE_MS)
-            .bind(now.as_millis())
+            .bind(SYNC_LEASE)
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_CLAIM))?;
-
-        row.as_ref()
-            .map(Schedule::from_row)
-            .transpose()
             .map_err(error::query(CONTEXT_CLAIM))
     }
 
     /// Releases a fence a push succeeded under.
     ///
-    /// `Ok(None)` when the claim is no longer this caller's: the generation
+    /// `Ok(None)` when the claim is no longer this caller's: the version
     /// moved on, or the lease expired and another syncer took the row. Not an
     /// error, and not a retry — the newer holder's state is the right one, and
     /// overwriting it is precisely what the fence exists to prevent.
@@ -151,24 +143,17 @@ impl Schedules {
         held: &Schedule,
         token: &Uuid7,
         registered: Option<&str>,
-        now: UnixMillis,
     ) -> Result<Option<Schedule>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::FINALIZE_SUCCESS)
+        sqlx::query_as::<_, Schedule>(sql::FINALIZE_SUCCESS)
             .bind(held.schedule_id.as_str())
-            .bind(held.generation)
+            .bind(held.resource_version)
             .bind(token.as_str())
             .bind(SyncStatus::Synced.as_str())
-            .bind(now.as_millis())
             .bind(registered)
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_WRITE))?;
-
-        row.as_ref()
-            .map(Schedule::from_row)
-            .transpose()
-            .map_err(error::query(CONTEXT_CLAIM))
+            .map_err(error::query(CONTEXT_WRITE))
     }
 
     /// Releases a fence a push failed under, keeping why on the row.
@@ -180,24 +165,17 @@ impl Schedules {
         held: &Schedule,
         token: &Uuid7,
         reason: &str,
-        now: UnixMillis,
     ) -> Result<Option<Schedule>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::FINALIZE_FAILURE)
+        sqlx::query_as::<_, Schedule>(sql::FINALIZE_FAILURE)
             .bind(held.schedule_id.as_str())
-            .bind(held.generation)
+            .bind(held.resource_version)
             .bind(token.as_str())
             .bind(SyncStatus::Failed.as_str())
             .bind(reason)
-            .bind(now.as_millis())
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_WRITE))?;
-
-        row.as_ref()
-            .map(Schedule::from_row)
-            .transpose()
-            .map_err(error::query(CONTEXT_CLAIM))
+            .map_err(error::query(CONTEXT_WRITE))
     }
 
     /// Removes a row whose upstream schedule is confirmed gone.
@@ -211,7 +189,7 @@ impl Schedules {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query(sql::DELETE_CLAIMED)
             .bind(held.schedule_id.as_str())
-            .bind(held.generation)
+            .bind(held.resource_version)
             .bind(token.as_str())
             .fetch_optional(connection.as_mut())
             .await
@@ -231,7 +209,7 @@ impl Schedules {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query(sql::HOLDS_FENCE)
             .bind(held.schedule_id.as_str())
-            .bind(held.generation)
+            .bind(held.resource_version)
             .bind(token.as_str())
             .fetch_optional(connection.as_mut())
             .await
@@ -244,25 +222,4 @@ impl Schedules {
 /// Whether `change` moves the moment a schedule fires at.
 const fn moved(change: &Change<'_>) -> bool {
     change.cron.is_some() || change.timezone.is_some()
-}
-
-/// Sets a claimed one-off for the moment its new expression and zone name.
-///
-/// Read from the row as the claim left it: an edit may name the expression
-/// or the zone alone.
-async fn set_fire_at(
-    connection: &mut PgConnection,
-    claimed: &Schedule,
-    token: &Uuid7,
-    now: UnixMillis,
-) -> Result<Schedule> {
-    let fire_at = crate::next::next_fire(&claimed.cron, &claimed.timezone, now);
-    let row = sqlx::query(sql::SET_FIRE_AT)
-        .bind(claimed.schedule_id.as_str())
-        .bind(token.as_str())
-        .bind(fire_at)
-        .fetch_one(connection)
-        .await
-        .map_err(error::query(CONTEXT_CLAIM))?;
-    Schedule::from_row(&row).map_err(error::query(CONTEXT_CLAIM))
 }

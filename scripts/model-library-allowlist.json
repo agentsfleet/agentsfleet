@@ -1,1158 +1,247 @@
 {
-  "_readme": [
-    "Curated input for `make seed-models` (scripts/seed-models.mjs). This file is the",
-    "anti-clutter mechanism: a gateway feed such as Poe's lists 341 models, embeddings and",
-    "superseded variants among them. Only what is listed here reaches core.model_library.",
-    "",
-    "Scope rule: current flagship plus at most one or two tiers down. A model that a",
-    "provider has superseded comes out on the next curation pass — this is not an archive.",
-    "",
-    "!! INTERNATIONAL RULE (Indy, Aug 16 2026). Where a vendor splits its service between",
-    "!! mainland China and an international arm, we price and dial the INTERNATIONAL",
-    "!! endpoint. The CN endpoint is never priced and carries unpriced_reason=cn_endpoint;",
-    "!! anyone who needs it reaches it as an OpenAI-compatible custom endpoint. This is why",
-    "!! `kimi` points at api.moonshot.ai (not .cn), `qwen` at dashscope-intl, and why",
-    "!! BytePlus rather than Volcengine/Ark/Doubao is the ByteDance name we care about.",
-    "",
-    "Every provider is EITHER priced (non-empty `models`) OR carries an `unpriced_reason`",
-    "from the vocabulary below. There is no third state: a provider with neither is a",
-    "curation gap, and scripts/check_model_allowlist.py fails on it.",
-    "",
-    "Two provider shapes:",
-    "  source=api     the provider publishes machine-readable pricing; `models` lists",
-    "                 only the ids to keep and rates are pulled live at run time.",
-    "  source=manual  no machine-readable feed; rates live here, hand-verified against",
-    "                 source_url on verified_at. The script warns when these go stale.",
-    "",
-    "Rates are USD per 1,000,000 tokens; the script converts to nanos (x 1e9) for",
-    "core.model_library. `cached_input` is the cache-READ price, never cache-write.",
-    "Where a provider publishes no cache discount, cached_input equals input on purpose",
-    "— a 0 there would silently zero-rate cached reads.",
-    "",
-    "`rate_basis: activation_floor` marks a row that exists only to satisfy the",
-    "UZ-PROVIDER-004 membership check (local runtimes). It is not a price and is never",
-    "billed: a local runtime is self-managed, where token cost is not charged.",
-    "",
-    "Providers are keyed on the name a fleet's policy selects, which the runner resolves",
-    "through its provider registry (rustd/crates/afr_providers/src/registry/mod.rs, over the",
-    "table it embeds, rustd/crates/afr_providers/assets/providers.json): `xai`, not its",
-    "alias `grok`.",
-    "",
-    "!! base_url is LOAD-BEARING, never decorative. It names the endpoint these rates were",
-    "!! priced for, and scripts/check_model_allowlist.py reads it to hold the international",
-    "!! rule. The runner dials whatever its registry maps the name to, so a name whose",
-    "!! registry entry resolves to a different continent than the one priced here is",
-    "!! recorded in registry_alias_collisions. Do not 'simplify' by dropping base_url: the",
-    "!! failure is silent — right price, wrong continent."
-  ],
-  "_maintenance": [
-    "Every field here is hand-maintained; nothing regenerates this file. When the",
-    "runner's provider table (rustd/crates/afr_providers/assets/providers.json) gains",
-    "or drops a name, add or remove its row here by hand. _model_allowlist_check",
-    "(scripts/check_model_allowlist.py) fails any provider listed here that is neither",
-    "priced nor carries an unpriced_reason; nothing compares this file with the table.",
-    "base_url never gets overwritten by anything (see registry_alias_collisions).",
-    "",
-    "dial=native   the provider is dialled by name, so the runner's registry owns the",
-    "              endpoint; a name the registry does not carry is refused at",
-    "              admission rather than dialled wrong."
-  ],
-  "verified_at": "2026-10-09",
-  "stale_after_days": 45,
-  "tiering_note": [
-    "core.model_library holds ONE rate triple per (provider, model_id), but some models",
-    "double their rate above a context threshold, charging the higher rate on ALL tokens",
-    "in the request. Those rows carry \"tier\": \"upper\" and are seeded at the HIGHER rate.",
-    "Rationale: a coding agent on a real repo crosses 200k routinely, so the upper tier is",
-    "the modal case, not the edge case. Under-billing is silent and unrecoverable;",
-    "over-billing is visible and refundable. Remove the upper-tier seeding once the schema",
-    "grows a tier column."
-  ],
-  "unpriced_reasons": {
-    "_readme": [
-      "Why a provider carries no rates. A provider has EITHER a non-empty `models` array",
-      "OR exactly one of these codes — never both, never neither (checked by",
-      "scripts/check_model_allowlist.py). `permanent` means no future curation pass will",
-      "price it; `pending` means the rate exists but could not be verified this pass."
-    ],
-    "cn_endpoint": "permanent — mainland-China endpoint. The international arm is priced instead (see the international rule in _readme); anyone who wants the CN endpoint reaches it as an OpenAI-compatible custom endpoint.",
-    "subscription_plan": "permanent — billed per seat or per plan. No per-token rate exists to charge against.",
-    "gateway_passthrough": "permanent — routes to partner infrastructure at the partner's rate. The partner is the thing to price, not the gateway.",
-    "deployment_scoped": "permanent — rates vary per customer deployment, region and commitment tier, and the provider carries no single base_url.",
-    "credentialed_feed": "pending — the vendor publishes rates only behind an authenticated endpoint; not verifiable during curation.",
-    "no_public_rates": "pending — the vendor publishes no per-token rate table at all.",
-    "awaiting_curation": "pending — newly added from the runner's provider table and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot.",
-    "operator_hosted": "permanent — runs on hardware the operator owns. No per-token price exists to charge against, and no vendor publishes one.",
-    "unsupported_wire": "pending — the vendor publishes per-token rates, but the runner implements no wire that reaches it; the provider's note names the missing piece. Priced again when that wire lands.",
-    "duplicate_spelling": "permanent — a second spelling of a provider already priced under its canonical name, on the same host at the same rates. Priced once so the catalogue does not carry every model of that host twice; the canonical entry's note names the duplicate."
-  },
-  "registry_alias_collisions": {
-    "_readme": [
-      "Provider names where OUR base_url deliberately differs from where the runner's",
-      "registry sends the same name. base_url is curated, never regenerated.",
-      "Source: rustd/crates/afr_providers/assets/providers.json, embedded by",
-      "rustd/crates/afr_providers/src/registry/mod.rs."
-    ]
-  },
-  "providers": {
-    "anthropic": {
-      "dial": "native",
-      "base_url": "https://api.anthropic.com",
-      "source": "manual",
-      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
-      "models": [
-        { "model_id": "claude-fable-5-1", "context_cap_tokens": 1000000, "input": 10, "cached_input": 0.25, "output": 50, "note": "Cache hits are 0.025x base input on Fable 5.1 (the page's footnote). Verified 2026-10-09." },
-        { "model_id": "claude-opus-5-5", "context_cap_tokens": 1000000, "input": 4, "cached_input": 0.2, "output": 20, "note": "Cache hits are 0.05x base input on Opus 5.5. Verified 2026-10-09." },
-        { "model_id": "claude-sonnet-5-5", "context_cap_tokens": 1000000, "input": 2, "cached_input": 0.1, "output": 10, "note": "Cache hits are 0.05x base input on Sonnet 5.5. Verified 2026-10-09." },
-        { "model_id": "claude-haiku-5-5", "context_cap_tokens": 1000000, "input": 0.5, "cached_input": 0.05, "output": 2.5, "tier": "upper", "note": "Base tier (prompts up to 100,000 tokens) is 0.10/0.01/0.50; a longer prompt, cache reads included, pays 0.50/0.05/2.50 on every token, so the upper tier is seeded per tiering_note. Verified 2026-10-09." }
+  "verified_at": "2026-10-18T13:32:07Z",
+  "pricing_unit": "USD per 1000000 tokens",
+  "models": [
+    {
+      "provider": "anthropic", "model_name": "claude-fable-5-1",
+      "display_name": "Fable 5.1", "advanced": false,
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.1/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "10", "cached_input": "0.25", "cache_write": null, "cache_write_5m": "12.5", "cache_write_1h": "20", "output": "50",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
-    "openai": {
-      "dial": "native",
-      "base_url": "https://api.openai.com/v1",
-      "source": "manual",
-      "source_url": "https://developers.openai.com/api/docs/pricing",
-      "models": [
-        { "model_id": "gpt-6-astra", "context_cap_tokens": 1050000, "input": 20, "cached_input": 2, "output": 75, "tier": "upper", "note": "Base tier is 10/1/50; a prompt over 272K input tokens pays 2x input and cache and 1.5x output on the whole request, so the upper tier is seeded per tiering_note. 922,000 max input, 128,000 max output. Verified 2026-10-09." },
-        { "model_id": "gpt-6.1-sol", "context_cap_tokens": 1050000, "input": 4, "cached_input": 0.2, "output": 15, "tier": "upper", "note": "Base tier is 2/0.10/10; long context as gpt-6-astra. Successor to gpt-6-sol and to gpt-5.3-codex for coding. Verified 2026-10-09." },
-        { "model_id": "gpt-6-luna", "context_cap_tokens": 1050000, "input": 0.2, "cached_input": 0.02, "output": 0.75, "tier": "upper", "note": "Base tier is 0.10/0.01/0.50; long context as gpt-6-astra. Verified 2026-10-09." }
+    {
+      "provider": "anthropic", "model_name": "claude-opus-5-5",
+      "display_name": "Opus 5.5", "advanced": false,
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-opus-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": "5", "cache_write_1h": "8", "output": "20",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
-    "gemini": {
-      "dial": "native",
-      "aliases": ["google", "google-gemini"],
-      "base_url": "https://generativelanguage.googleapis.com/v1beta",
-      "source": "manual",
-      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "models": [],
-      "unpriced_reason": "unsupported_wire",
-      "note": "Not dialable. The OpenAI-compatible endpoint (https://generativelanguage.googleapis.com/v1beta/openai/, https://ai.google.dev/gemini-api/docs/openai) returns each tool call's thought signature under extra_content.google.thought_signature, and \"When using Gemini 3 models, you must pass back thought signatures during function calling\" or the request fails with a 400 (https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures). rig's chat wire carries no extra_content field, and rig's native Gemini wire is one the runner does not implement, so the registry has no `gemini` entry and a lease naming it is refused at admission."
-    },
-    "deepseek": {
-      "dial": "native",
-      "base_url": "https://api.deepseek.com",
-      "display": "DeepSeek",
-      "source": "manual",
-      "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
-      "models": [
-        { "model_id": "deepseek-flash", "context_cap_tokens": 1000000, "input": 0.3, "cached_input": 0.006, "output": 1.2, "note": "DeepSeek-V4.1-Flash; the API spells it unversioned. Peak rate seeded: DeepSeek bills 01:00-04:00 and 06:00-10:00 UTC on weekdays at 2x off-peak, and the catalogue holds one rate (Indy chose peak, 2026-10-09). Verified 2026-10-09." },
-        { "model_id": "deepseek-v4-pro", "context_cap_tokens": 1000000, "input": 1.32, "cached_input": 0.044, "output": 3.96, "note": "Serves DeepSeek-V4-Pro-0813. Peak rate seeded: DeepSeek bills 01:00-04:00 and 06:00-10:00 UTC on weekdays at 2x off-peak, and the catalogue holds one rate (Indy chose peak, 2026-10-09). Verified 2026-10-09." }
+    {
+      "provider": "anthropic", "model_name": "claude-sonnet-5-5",
+      "display_name": "Sonnet 5.5", "advanced": false,
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.10", "cache_write": null, "cache_write_5m": "2.5", "cache_write_1h": "4", "output": "10",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
-    "kimi": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.ai/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "source_url": "https://platform.kimi.ai/docs/pricing/chat-k3",
-      "models": [
-        { "model_id": "kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4, "note": "The 2.7 generation ships ONLY in coding-specialised form — there is no plain kimi-k2.7." },
-        { "model_id": "kimi-k2.7-code-highspeed", "context_cap_tokens": 262144, "input": 1.9, "cached_input": 0.38, "output": 8, "note": "Latency tier, not a capability tier: exactly 2x standard across all three columns." }
+    {
+      "provider": "anthropic", "model_name": "claude-haiku-5-5",
+      "display_name": "Haiku 5.5", "advanced": false,
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.10", "cached_input": "0.01", "cache_write": null, "cache_write_5m": "0.125", "cache_write_1h": "0.20", "output": "0.50",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Tier uses the whole prompt, including cached reads and all cache writes; applies to every token in that request." },
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 100000,
+        "input": "0.50", "cached_input": "0.05", "cache_write": null, "cache_write_5m": "0.625", "cache_write_1h": "1", "output": "2.50",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Tier uses the whole prompt, including cached reads and all cache writes; applies to every token in that request." }
       ]
     },
-    "glm": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/paas/v4",
-      "display": "GLM",
-      "source": "manual",
-      "source_url": "https://docs.z.ai/guides/overview/pricing",
-      "models": [
-        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
-        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." }
-      ],
-      "note": "Keyed `glm`, not `zai`, on purpose: `zai` names the CODING endpoint (api.z.ai/api/coding/paas/v4, carried below as a subscription plan) while `glm` names the general paas path priced here. The runner's registry (rustd/crates/afr_providers/assets/providers.json) carries `glm` at this base URL over rig's `zai` dialect, per https://docs.z.ai/guides/develop/openai/python and https://docs.z.ai/api-reference/llm/chat-completion. The only priced GLM spelling: glm-global, zhipu and zhipu-global are the same host and carry none (duplicate_spelling)."
-    },
-    "minimax": {
-      "dial": "native",
-      "base_url": "https://api.minimax.io/v1",
-      "display": "MiniMax",
-      "source": "manual",
-      "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
-      "models": [
-        { "model_id": "MiniMax-M3", "context_cap_tokens": 1000000, "input": 0.6, "cached_input": 0.12, "output": 2.4, "tier": "upper", "note": "Base tier (<=512k input) is 0.30/0.06/1.20; above 512k every rate doubles." }
-      ],
-      "note": "The runner's registry carries `minimax` at this base URL over rig's `minimax` dialect, per https://platform.minimax.io/docs/api-reference/text-openai-api. The only priced MiniMax spelling: minimax-global, minimax-intl and minimax-io are the same host and carry none (duplicate_spelling)."
-    },
-    "qwen": {
-      "dial": "native",
-      "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-      "display": "Qwen",
-      "source": "manual",
-      "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
-      "models": [
-        { "model_id": "qwen3.8-max", "context_cap_tokens": 1000000, "input": 2, "cached_input": 0.25, "output": 6, "note": "Implicit (automatic) cache-read rate; explicit cache reads are 0.17. One tier up to 1M. Verified 2026-10-09." },
-        { "model_id": "qwen3.8-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.016, "output": 0.47, "note": "Verified 2026-10-09." }
-      ],
-      "note": "The runner's registry carries `qwen` at this base URL as a plain OpenAI-compatible gateway (rig has no DashScope dialect). Model Studio now documents a per-workspace Singapore host and says this domain \"remains fully functional\" (https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions); streaming tool calls are documented at https://www.alibabacloud.com/help/en/model-studio/qwen-function-calling. The only priced Qwen spelling: dashscope-intl and qwen-intl are the same host and carry none (duplicate_spelling). The US (Virginia) region is not carried: the registry has no entry for it, and Model Studio's pages disagree on its base URL (dashscope-us.aliyuncs.com on the compatibility page, a per-workspace us-east-1 host on the Chat Completions reference)."
-    },
-    "xai": {
-      "dial": "native",
-      "aliases": ["grok"],
-      "base_url": "https://api.x.ai",
-      "display": "xAI",
-      "source": "manual",
-      "source_url": "https://docs.x.ai/docs/pricing",
-      "models": [
-        { "model_id": "grok-4.7", "context_cap_tokens": 500000, "input": 4, "cached_input": 1, "output": 12, "tier": "upper", "note": "Base tier (under 200K prompt tokens) is 2/0.50/6; at 200K or more every token pays the upper rate. Verified 2026-10-09." },
-        { "model_id": "grok-4.3", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.4, "output": 5, "tier": "upper", "note": "Base tier is 1.25/0.20/2.50." }
+    {
+      "provider": "openai", "model_name": "gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol", "advanced": false,
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6.1-sol/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.10", "cache_write": "2.5", "cache_write_5m": null, "cache_write_1h": null, "output": "10",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
+        "input": "4", "cached_input": "0.20", "cache_write": "5", "cache_write_5m": null, "cache_write_1h": null, "output": "15",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
-    "groq": {
-      "dial": "native",
-      "base_url": "https://api.groq.com/openai/v1",
-      "display": "Groq",
-      "source": "manual",
-      "source_url": "https://console.groq.com/docs/models",
-      "models": [
-        { "model_id": "openai/gpt-oss-120b", "context_cap_tokens": 131072, "input": 0.15, "cached_input": 0.075, "output": 0.6 },
-        { "model_id": "openai/gpt-oss-20b", "context_cap_tokens": 131072, "input": 0.075, "cached_input": 0.0375, "output": 0.3 }
+    {
+      "provider": "openai", "model_name": "gpt-6-astra",
+      "display_name": "GPT-6 Astra", "advanced": false,
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-astra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "10", "cached_input": "1", "cache_write": "12.5", "cache_write_5m": null, "cache_write_1h": null, "output": "50",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
+        "input": "20", "cached_input": "2", "cache_write": "25", "cache_write_5m": null, "cache_write_1h": null, "output": "75",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
-    "mistral": {
-      "dial": "native",
-      "base_url": "https://api.mistral.ai/v1",
-      "display": "Mistral",
-      "source": "manual",
-      "source_url": "https://docs.mistral.ai/inference/pricing",
-      "models": [
-        { "model_id": "mistral-medium-latest", "context_cap_tokens": 256000, "input": 1.5, "cached_input": 0.15, "output": 7.5, "note": "Mistral publishes only a global '-90% on input' cache modifier, no per-model figure; cached_input is input x 0.10, derived." },
-        { "model_id": "mistral-large-latest", "context_cap_tokens": 256000, "input": 0.5, "cached_input": 0.05, "output": 1.5, "note": "The ladder is INVERTED: Large 3 is open-weight and cheaper than Medium 3.5. Do not assume Large > Medium > Small." },
-        { "model_id": "mistral-small-latest", "context_cap_tokens": 256000, "input": 0.15, "cached_input": 0.015, "output": 0.6 },
-        { "model_id": "codestral-latest", "context_cap_tokens": 128000, "input": 0.3, "cached_input": 0.03, "output": 0.9 }
+    {
+      "provider": "openai", "model_name": "gpt-6-luna",
+      "display_name": "GPT-6 Luna", "advanced": false,
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.10", "cached_input": "0.01", "cache_write": "0.125", "cache_write_5m": null, "cache_write_1h": null, "output": "0.50",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
+        "input": "0.20", "cached_input": "0.02", "cache_write": "0.25", "cache_write_5m": null, "cache_write_1h": null, "output": "0.75",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
-    "openrouter": {
-      "dial": "native",
-      "base_url": "https://openrouter.ai/api/v1",
-      "source": "api",
-      "endpoint": "https://openrouter.ai/api/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_read", "output": "pricing.completion" },
-      "models": [
-        "moonshotai/kimi-k3",
-        "moonshotai/kimi-k2.7-code",
-        "minimax/minimax-m3",
-        "anthropic/claude-opus-5.5",
-        "anthropic/claude-sonnet-5.5",
-        "anthropic/claude-fable-5.1"
+    {
+      "provider": "openai", "model_name": "gpt-5.6-terra",
+      "display_name": "GPT-5.6 Terra", "advanced": true,
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.20", "cache_write": "2.5", "cache_write_5m": null, "cache_write_1h": null, "output": "12",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
+        "input": "4", "cached_input": "0.40", "cache_write": "5", "cache_write_5m": null, "cache_write_1h": null, "output": "18",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
-    "fireworks": {
-      "dial": "native",
-      "base_url": "https://api.fireworks.ai/inference/v1",
-      "display": "Fireworks AI",
-      "source": "manual",
-      "source_url": "https://docs.fireworks.ai/serverless/pricing",
-      "models": [
-        { "model_id": "accounts/fireworks/models/kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "accounts/fireworks/models/glm-5p3", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
-        { "model_id": "accounts/fireworks/models/glm-5p3-flash", "context_cap_tokens": 1048576, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "Verified 2026-09-07." },
-        { "model_id": "accounts/fireworks/models/deepseek-v4p1-flash", "context_cap_tokens": 1048576, "input": 0.3, "cached_input": 0.006, "output": 1.2, "note": "Rate from 2026-10-01 per the changelog. Verified 2026-10-09." },
-        { "model_id": "accounts/fireworks/models/minimax-m3", "context_cap_tokens": 512000, "input": 0.3, "cached_input": 0.06, "output": 1.2 },
-        { "model_id": "accounts/fireworks/models/gpt-oss-120b", "context_cap_tokens": 131072, "input": 0.15, "cached_input": 0.015, "output": 0.6 }
-      ],
-      "note": "The only priced Fireworks spelling \u2014 `fireworks-ai` is the same host and carries none (duplicate_spelling). Fireworks' page claims a default 50% cached-input rate; real per-model ratios are 8-20% on the flagships. Always read the per-model row. FireRouter (firerouter/opus, released 2026-09-28) is not priced here: it routes each turn between Claude Opus 5.5, billed to an Anthropic key set on the Fireworks account, and Fireworks open models, so it has no fixed rate (Indy, 2026-10-09: no row until the platform's Fireworks account carries an Anthropic key)."
-    },
-    "together-ai": {
-      "dial": "native",
-      "aliases": ["together"],
-      "base_url": "https://api.together.xyz",
-      "display": "Together AI",
-      "source": "manual",
-      "source_url": "https://docs.together.ai/docs/serverless-models",
-      "models": [
-        { "model_id": "moonshotai/Kimi-K3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15, "note": "Standard rate; a promotion to 2026-10-11 is not seeded. Verified 2026-10-09." },
-        { "model_id": "zai-org/GLM-5.3", "context_cap_tokens": 1048575, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-10-09." },
-        { "model_id": "deepseek-ai/DeepSeek-V4.1-Flash", "context_cap_tokens": 1000000, "input": 0.3, "cached_input": 0.006, "output": 1.2, "note": "Verified 2026-10-09." },
-        { "model_id": "deepseek-ai/DeepSeek-V4-Pro-0813", "context_cap_tokens": 1048576, "input": 1.32, "cached_input": 0.13, "output": 3.96, "note": "Verified 2026-10-09." },
-        { "model_id": "MiniMaxAI/MiniMax-M3", "context_cap_tokens": 524288, "input": 0.3, "cached_input": 0.06, "output": 1.2 },
-        { "model_id": "Qwen/Qwen3.8-Flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.15, "output": 0.47, "note": "No cache-read discount published, so cached_input equals input. Verified 2026-10-09." }
+    {
+      "provider": "fireworks", "model_name": "accounts/fireworks/models/glm-5p3-flash",
+      "display_name": "GLM 5.3 Flash", "advanced": false,
+      "context": {"tokens":1048576,"source_url":"https://api.fireworks.ai/v1/accounts/fireworks/models/glm-5p3-flash#contextLength","verified_at":"2026-10-18T13:32:07Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.15", "cached_input": "0.03", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0.50",
+        "source_url": "https://fireworks.ai/models/fireworks/glm-5p3-flash", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
-    "novita": {
-      "dial": "native",
-      "aliases": ["novita-ai"],
-      "base_url": "https://api.novita.ai/openai/v1",
-      "display": "Novita",
-      "source": "manual",
-      "source_url": "https://novita.ai/pricing",
-      "models": [
-        { "model_id": "moonshotai/kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "moonshotai/kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4 },
-        { "model_id": "deepseek/deepseek-v4-pro-0813", "context_cap_tokens": 1048576, "input": 1.32, "cached_input": 0.044, "output": 3.96, "note": "Verified 2026-10-09." },
-        { "model_id": "deepseek/deepseek-v4.1-flash", "context_cap_tokens": 1048576, "input": 0.3, "cached_input": 0.006, "output": 1.2, "note": "Verified 2026-10-09." },
-        { "model_id": "zai-org/glm-5.3", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
-        { "model_id": "zai-org/glm-5.3-flash", "context_cap_tokens": 1048576, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price; Novita shows the same 50% promotion Z.ai does. Verified 2026-09-07." },
-        { "model_id": "qwen/qwen3.8-max", "context_cap_tokens": 1000000, "input": 2, "cached_input": 0.25, "output": 6, "note": "Verified 2026-10-09." }
+    {
+      "provider": "fireworks", "model_name": "accounts/fireworks/models/kimi-k3",
+      "display_name": "Kimi K3", "advanced": false,
+      "context": {"tokens":1048576,"source_url":"https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3#contextLength","verified_at":"2026-10-18T13:32:07Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "3", "cached_input": "0.30", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "15",
+        "source_url": "https://fireworks.ai/models/fireworks/kimi-k3", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
-    "aihubmix": {
-      "dial": "native",
-      "base_url": "https://aihubmix.com/v1",
-      "display": "AIHubMix",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "gateway_passthrough",
-      "note": "The /v1/models feed carries no pricing fields."
-    },
-    "ark": {
-      "dial": "native",
-      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-      "display": "Doubao",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `byteplus` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "astrai": {
-      "dial": "native",
-      "base_url": "https://as-trai.com/v1",
-      "display": "Astrai",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "gateway_passthrough",
-      "note": "Endpoint did not respond during curation."
-    },
-    "atlas-cloud": {
-      "dial": "native",
-      "aliases": ["atlas", "atlascloud"],
-      "base_url": "https://api.atlascloud.ai/v1",
-      "display": "Atlas Cloud",
-      "source": "api",
-      "endpoint": "https://api.atlascloud.ai/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_read", "output": "pricing.completion" },
-      "models": [
-        "deepseek-ai/deepseek-v4.1-flash",
-        "deepseek-ai/deepseek-v4-pro-0813",
-        "moonshotai/kimi-k3",
-        "zai-org/glm-5.3",
-        "zai-org/glm-5.3-flash",
-        "qwen/qwen3.8-max"
+    {
+      "provider": "fireworks", "model_name": "accounts/fireworks/models/deepseek-v4p1-flash",
+      "display_name": "DeepSeek V4.1 Flash", "advanced": false,
+      "context": {"tokens":1048576,"source_url":"https://api.fireworks.ai/v1/accounts/fireworks/models/deepseek-v4p1-flash#contextLength","verified_at":"2026-10-18T13:32:07Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.30", "cached_input": "0.006", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "1.20",
+        "source_url": "https://fireworks.ai/models/deepseek-ai/deepseek-v4p1-flash", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
-    "aws-bedrock": {
-      "dial": "native",
-      "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
-      "display": "Amazon Bedrock",
-      "source": "manual",
-      "source_url": "https://aws.amazon.com/bedrock/pricing/",
-      "models": [],
-      "unpriced_reason": "unsupported_wire",
-      "note": "Not dialable. Bedrock signs every request with AWS Signature Version 4 (https://docs.aws.amazon.com/bedrock/latest/APIReference/CommonParameters.html) and streams application/vnd.amazon.eventstream frames from /model/{modelId}/invoke-with-response-stream (https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithResponseStream.html). The runner implements neither, so the registry has no entry and a lease naming it is refused at admission."
-    },
-    "azure": {
-      "dial": "native",
-      "aliases": ["azure-openai", "azure_openai"],
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "deployment_scoped",
-      "note": "Azure OpenAI rates are per deployment, region and commitment tier; there is no single endpoint or rate to seed."
-    },
-    "baichuan": {
-      "dial": "native",
-      "base_url": "https://api.baichuan-ai.com/v1",
-      "display": "Baichuan",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint. Reach it as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "baidu": {
-      "dial": "native",
-      "base_url": "https://aip.baidubce.com",
-      "display": "Qianfan",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint. Reach it as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "bedrock": {
-      "dial": "native",
-      "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
-      "display": "Amazon Bedrock",
-      "source": "manual",
-      "source_url": "https://aws.amazon.com/bedrock/pricing/",
-      "models": [],
-      "unpriced_reason": "unsupported_wire",
-      "note": "Not dialable. Bedrock signs every request with AWS Signature Version 4 (https://docs.aws.amazon.com/bedrock/latest/APIReference/CommonParameters.html) and streams application/vnd.amazon.eventstream frames from /model/{modelId}/invoke-with-response-stream (https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithResponseStream.html). The runner implements neither, so the registry has no entry and a lease naming it is refused at admission."
-    },
-    "bigmodel": {
-      "dial": "native",
-      "base_url": "https://open.bigmodel.cn/api/paas/v4",
-      "display": "GLM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `glm` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "build.nvidia.com": {
-      "dial": "native",
-      "base_url": "https://integrate.api.nvidia.com/v1",
-      "display": "NVIDIA NIM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "no_public_rates",
-      "note": "No per-token pricing exists — credits retired Sep 2025, production needs an AI Enterprise licence."
-    },
-    "byteplus": {
-      "dial": "native",
-      "base_url": "https://ark.ap-southeast.bytepluses.com/api/v3",
-      "display": "BytePlus",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "gateway_passthrough",
-      "note": "BytePlus is ByteDance's international arm, but its ModelArk feed requires a key and its per-token text pricing is not published. Volcengine/Ark/Doubao are the CN arm."
-    },
-    "byteplus-plan": {
-      "dial": "native",
-      "base_url": "https://ark.ap-southeast.bytepluses.com/api/coding/v3",
-      "display": "BytePlus",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Coding plan endpoint — subscription, not per-token."
-    },
-    "cerebras": {
-      "dial": "native",
-      "base_url": "https://api.cerebras.ai/v1",
-      "display": "Cerebras",
-      "source": "manual",
-      "source_url": "https://www.cerebras.ai/pricing",
-      "models": [
-        { "model_id": "gpt-oss-120b", "context_cap_tokens": 131072, "input": 0.35, "cached_input": 0.35, "output": 0.75, "note": "cached_input == input: Cerebras publishes no cache-read discount." }
-      ],
-      "note": "Cerebras' pricing page sells tiers rather than a per-model table; this rate is from their pay-per-token announcement. Re-verify before the next seed."
-    },
-    "chutes": {
-      "dial": "native",
-      "base_url": "https://chutes.ai/api/v1",
-      "display": "Chutes",
-      "source": "api",
-      "endpoint": "https://llm.chutes.ai/v1/models",
-      "rate_unit": "per_million",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_read", "output": "pricing.completion" },
-      "models": [
-        "moonshotai/Kimi-K3-TEE",
-        "zai-org/GLM-5.2-TEE",
-        "deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
-        "Qwen/Qwen3.5-397B-A17B-TEE"
+    {
+      "provider": "openrouter", "model_name": "meta/muse-wonder",
+      "display_name": "Muse Wonder", "advanced": false,
+      "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#meta/muse-wonder","verified_at":"2026-10-18T13:32:07Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "20",
+        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; exact rates from OpenRouter's models API." }
       ]
     },
-    "cloudflare": {
-      "dial": "native",
-      "base_url": "https://gateway.ai.cloudflare.com/v1",
-      "display": "Cloudflare AI Gateway",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "gateway_passthrough",
-      "note": "AI Gateway proxies to whichever upstream the user configures; the upstream is what carries a rate."
-    },
-    "cloudflare-ai": {
-      "dial": "native",
-      "base_url": "https://gateway.ai.cloudflare.com/v1",
-      "display": "Cloudflare AI Gateway",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "gateway_passthrough",
-      "note": "AI Gateway proxies to whichever upstream the user configures; the upstream is what carries a rate."
-    },
-    "cohere": {
-      "dial": "native",
-      "base_url": "https://api.cohere.com/compatibility",
-      "display": "Cohere",
-      "source": "manual",
-      "source_url": "https://cohere.com/pricing",
-      "models": [
-        { "model_id": "command-a-03-2025", "context_cap_tokens": 256000, "input": 2.5, "cached_input": 2.5, "output": 10 },
-        { "model_id": "command-r7b-12-2024", "context_cap_tokens": 128000, "input": 0.0375, "cached_input": 0.0375, "output": 0.15 }
-      ],
-      "note": "cached_input == input: Cohere publishes no cache-read price."
-    },
-    "copilot": {
-      "dial": "native",
-      "base_url": "https://api.githubcopilot.com",
-      "display": "GitHub Copilot",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Billed per seat; there is no per-token rate to charge against."
-    },
-    "dashscope": {
-      "dial": "native",
-      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "display": "Qwen",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `qwen` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "dashscope-intl": {
-      "dial": "native",
-      "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-      "display": "Qwen",
-      "source": "manual",
-      "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `qwen` — same host, same rates. Priced once under `qwen`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
-    },
-    "doubao": {
-      "dial": "native",
-      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-      "display": "Doubao",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `byteplus` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "evolink": {
-      "dial": "native",
-      "base_url": "https://direct.evolink.ai/v1",
-      "display": "Evolink",
-      "source": "manual",
-      "models": [],
-      "note": "Model feed requires a key.",
-      "unpriced_reason": "gateway_passthrough"
-    },
-    "fireworks-ai": {
-      "dial": "native",
-      "base_url": "https://api.fireworks.ai/inference/v1",
-      "display": "Fireworks AI",
-      "source": "manual",
-      "source_url": "https://docs.fireworks.ai/serverless/pricing",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `fireworks` \u2014 same host, same rates. Priced ONCE under `fireworks` (Indy, Sep 07, 2026: \"two FIREWORKS and FIREWORKS-AI? keep one\"), because every row seeded here rendered a second copy of every Fireworks model in the dashboard's catalogue. A tenant whose credential names `fireworks-ai` resolves to the same endpoint and should be pointed at `fireworks`."
-    },
-    "github-copilot": {
-      "dial": "native",
-      "base_url": "https://api.githubcopilot.com",
-      "display": "GitHub Copilot",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Billed per seat; there is no per-token rate to charge against."
-    },
-    "glm-cn": {
-      "dial": "native",
-      "base_url": "https://open.bigmodel.cn/api/paas/v4",
-      "display": "GLM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `glm` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "glm-global": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/paas/v4",
-      "display": "GLM",
-      "source": "manual",
-      "source_url": "https://docs.z.ai/guides/overview/pricing",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `glm` — same host, same rates. Priced once under `glm`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
-    },
-    "huggingface": {
-      "dial": "native",
-      "base_url": "https://router.huggingface.co/v1",
-      "display": "Hugging Face",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "gateway_passthrough",
-      "note": "The router resolves each model to a partner (Together, Cerebras, Groq, …) at that partner's rate, with no markup — its feed nests pricing under a per-provider array, which field_map cannot express. Price the partner directly."
-    },
-    "hunyuan": {
-      "dial": "native",
-      "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
-      "display": "Hunyuan",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint. Reach it as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "kimi-cn": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.cn/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `kimi` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "kimi-code": {
-      "dial": "native",
-      "base_url": "https://api.kimi.com/coding/v1",
-      "display": "Kimi Code",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Kimi's coding plan is a subscription; the per-token general endpoint is `kimi`."
-    },
-    "kimi-global": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.ai/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "source_url": "https://platform.kimi.ai/docs/pricing/chat-k3",
-      "models": [
-        { "model_id": "kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4, "note": "The 2.7 generation ships ONLY in coding-specialised form — there is no plain kimi-k2.7." },
-        { "model_id": "kimi-k2.7-code-highspeed", "context_cap_tokens": 262144, "input": 1.9, "cached_input": 0.38, "output": 8, "note": "Latency tier, not a capability tier: exactly 2x standard across all three columns." }
-      ],
-      "note": "International endpoint for Moonshot; rates mirror the `kimi` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
-    },
-    "kimi-intl": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.ai/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "source_url": "https://platform.kimi.ai/docs/pricing/chat-k3",
-      "models": [
-        { "model_id": "kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4, "note": "The 2.7 generation ships ONLY in coding-specialised form — there is no plain kimi-k2.7." },
-        { "model_id": "kimi-k2.7-code-highspeed", "context_cap_tokens": 262144, "input": 1.9, "cached_input": 0.38, "output": 8, "note": "Latency tier, not a capability tier: exactly 2x standard across all three columns." }
-      ],
-      "note": "International endpoint for Moonshot; rates mirror the `kimi` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
-    },
-    "kimi_coding": {
-      "dial": "native",
-      "base_url": "https://api.kimi.com/coding/v1",
-      "display": "Kimi Code",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Kimi's coding plan is a subscription; the per-token general endpoint is `kimi`."
-    },
-    "litellm": {
-      "dial": "native",
-      "base_url": "http://localhost:4000",
-      "display": "LiteLLM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "llama.cpp": {
-      "dial": "native",
-      "base_url": "http://localhost:8080/v1",
-      "display": "llama.cpp",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "llamacpp": {
-      "dial": "native",
-      "base_url": "http://localhost:8080/v1",
-      "display": "llama.cpp",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "lm-studio": {
-      "dial": "native",
-      "base_url": "http://localhost:1234/v1",
-      "display": "LM Studio",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "lmstudio": {
-      "dial": "native",
-      "base_url": "http://localhost:1234/v1",
-      "display": "LM Studio",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "minimax-cn": {
-      "dial": "native",
-      "base_url": "https://api.minimaxi.com/v1",
-      "display": "MiniMax",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `minimax` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "minimax-global": {
-      "dial": "native",
-      "base_url": "https://api.minimax.io/v1",
-      "display": "MiniMax",
-      "source": "manual",
-      "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `minimax` — same host, same rates. Priced once under `minimax`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
-    },
-    "minimax-intl": {
-      "dial": "native",
-      "base_url": "https://api.minimax.io/v1",
-      "display": "MiniMax",
-      "source": "manual",
-      "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `minimax` — same host, same rates. Priced once under `minimax`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
-    },
-    "minimax-io": {
-      "dial": "native",
-      "base_url": "https://api.minimax.io/v1",
-      "display": "MiniMax",
-      "source": "manual",
-      "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `minimax` — same host, same rates. Priced once under `minimax`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
-    },
-    "minimaxi": {
-      "dial": "native",
-      "base_url": "https://api.minimaxi.com/v1",
-      "display": "MiniMax",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `minimax` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "moonshot": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.cn/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `kimi` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "moonshot-cn": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.cn/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `kimi` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "moonshot-global": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.ai/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "source_url": "https://platform.kimi.ai/docs/pricing/chat-k3",
-      "models": [
-        { "model_id": "kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4, "note": "The 2.7 generation ships ONLY in coding-specialised form — there is no plain kimi-k2.7." },
-        { "model_id": "kimi-k2.7-code-highspeed", "context_cap_tokens": 262144, "input": 1.9, "cached_input": 0.38, "output": 8, "note": "Latency tier, not a capability tier: exactly 2x standard across all three columns." }
-      ],
-      "note": "International endpoint for Moonshot; rates mirror the `kimi` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
-    },
-    "moonshot-intl": {
-      "dial": "native",
-      "base_url": "https://api.moonshot.ai/v1",
-      "display": "Moonshot",
-      "source": "manual",
-      "source_url": "https://platform.kimi.ai/docs/pricing/chat-k3",
-      "models": [
-        { "model_id": "kimi-k3", "context_cap_tokens": 1048576, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4, "note": "The 2.7 generation ships ONLY in coding-specialised form — there is no plain kimi-k2.7." },
-        { "model_id": "kimi-k2.7-code-highspeed", "context_cap_tokens": 262144, "input": 1.9, "cached_input": 0.38, "output": 8, "note": "Latency tier, not a capability tier: exactly 2x standard across all three columns." }
-      ],
-      "note": "International endpoint for Moonshot; rates mirror the `kimi` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
-    },
-    "nearai": {
-      "dial": "native",
-      "base_url": "https://cloud-api.near.ai/v1",
-      "display": "NEAR AI Cloud",
-      "source": "api",
-      "endpoint": "https://cloud-api.near.ai/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_read", "output": "pricing.completion" },
-      "models": [
-        "anthropic/claude-haiku-4-5",
-        "anthropic/claude-opus-5-5",
-        "anthropic/claude-sonnet-5-5",
-        "anthropic/claude-fable-5-1"
+    {
+      "provider": "openrouter", "model_name": "google/gemini-4-argon",
+      "display_name": "Gemini 4 Argon", "advanced": false,
+      "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#google/gemini-4-argon","verified_at":"2026-10-18T13:32:07Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.10", "cache_write": "0.1875", "cache_write_5m": null, "cache_write_1h": null, "output": "10",
+        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "OpenRouter's independently verified current rates; no future schedule published in this API. Implicit caching only; no cache-control sent." }
       ]
     },
-    "nvidia": {
-      "dial": "native",
-      "base_url": "https://integrate.api.nvidia.com/v1",
-      "display": "NVIDIA NIM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "no_public_rates",
-      "note": "No per-token pricing exists — credits retired Sep 2025, production needs an AI Enterprise licence."
-    },
-    "nvidia-nim": {
-      "dial": "native",
-      "base_url": "https://integrate.api.nvidia.com/v1",
-      "display": "NVIDIA NIM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "no_public_rates",
-      "note": "No per-token pricing exists — credits retired Sep 2025, production needs an AI Enterprise licence."
-    },
-    "ollama": {
-      "dial": "native",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "opencode": {
-      "dial": "native",
-      "base_url": "https://opencode.ai/zen/v1",
-      "display": "OpenCode Zen",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "OpenCode Zen is a subscription plan; its feed publishes no per-token rates."
-    },
-    "opencode-zen": {
-      "dial": "native",
-      "base_url": "https://opencode.ai/zen/v1",
-      "display": "OpenCode Zen",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "OpenCode Zen is a subscription plan; its feed publishes no per-token rates."
-    },
-    "osaurus": {
-      "dial": "native",
-      "base_url": "http://localhost:1337/v1",
-      "display": "Osaurus",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "ovh": {
-      "dial": "native",
-      "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-      "display": "OVHcloud",
-      "source": "api",
-      "endpoint": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_reads", "output": "pricing.completion" },
-      "models": ["gpt-oss-120b", "gpt-oss-20b", "Qwen3.5-397B-A17B", "Qwen3.6-27B"],
-      "note": "OVHcloud publishes \"0\" for cache reads to mean it offers no cache discount. seed-models.mjs treats a zero cache read as absent and falls back to the input rate — a seeded 0 would zero-rate every cached read."
-    },
-    "ovhcloud": {
-      "dial": "native",
-      "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-      "display": "OVHcloud",
-      "source": "api",
-      "endpoint": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_reads", "output": "pricing.completion" },
-      "models": ["gpt-oss-120b", "gpt-oss-20b", "Qwen3.5-397B-A17B", "Qwen3.6-27B"],
-      "note": "Spelling twin of `ovh`; the runner's registry dials both names at the same endpoint (`ovhcloud`, alias `ovh`), and (provider, model_id) keys the catalogue, so each needs its own rows."
-    },
-    "perplexity": {
-      "dial": "native",
-      "base_url": "https://api.perplexity.ai",
-      "display": "Perplexity",
-      "source": "manual",
-      "source_url": "https://docs.perplexity.ai/getting-started/pricing",
-      "models": [
-        { "model_id": "sonar", "context_cap_tokens": 128000, "input": 1, "cached_input": 1, "output": 1 },
-        { "model_id": "sonar-pro", "context_cap_tokens": 200000, "input": 3, "cached_input": 3, "output": 15 },
-        { "model_id": "sonar-reasoning-pro", "context_cap_tokens": 128000, "input": 2, "cached_input": 2, "output": 8 }
-      ],
-      "note": "Sonar also bills $5-$14 per 1,000 requests for web retrieval, a per-request fee with no per-mtok equivalent, not represented here. cached_input == input throughout: Perplexity publishes no cache-read discount. Sonar Chat Completions support ended 2026-09-27: synchronous and streaming requests are rewritten to the Agent API (/v1/agent), and how rewritten requests bill is unpublished; per-mtok rates are unchanged. Re-verify at the next pass (Indy, 2026-10-09)."
-    },
-    "poe": {
-      "dial": "native",
-      "base_url": "https://api.poe.com/v1",
-      "display": "Poe",
-      "source": "api",
-      "endpoint": "https://api.poe.com/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_read", "output": "pricing.completion" },
-      "models": ["claude-opus-4.8", "kimi-k3", "gemini-3.1-pro", "claude-sonnet-5.5"],
-      "note": "Poe resells at a points-derived rate, so its per-token figures do not match the upstream vendor's list price. 152 of its 341 models carry no pricing at all and are not allowlistable."
-    },
-    "qianfan": {
-      "dial": "native",
-      "base_url": "https://aip.baidubce.com",
-      "display": "Qianfan",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint. Reach it as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "qwen-intl": {
-      "dial": "native",
-      "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-      "display": "Qwen",
-      "source": "manual",
-      "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `qwen` — same host, same rates. Priced once under `qwen`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
-    },
-    "qwen-portal": {
-      "dial": "native",
-      "base_url": "https://portal.qwen.ai/v1",
-      "display": "Qwen Portal",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Portal plan is a subscription; the per-token endpoint is `qwen`."
-    },
-    "sglang": {
-      "dial": "native",
-      "base_url": "http://localhost:30000/v1",
-      "display": "SGLang",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "shengsuanyun": {
-      "dial": "native",
-      "base_url": "https://router.shengsuanyun.com/api/v1",
-      "display": "ShengSuanYun",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China router; its feed publishes rates in a non-USD unit."
-    },
-    "siliconflow": {
-      "dial": "native",
-      "base_url": "https://api.siliconflow.cn/v1",
-      "display": "SiliconFlow",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "CN endpoint (api.siliconflow.cn) and the model feed requires a key. The international arm at siliconflow.com is a separate account; price it there if we ever add the name."
-    },
-    "synthetic": {
-      "dial": "native",
-      "base_url": "https://api.synthetic.new/openai/v1",
-      "display": "Synthetic",
-      "source": "api",
-      "endpoint": "https://api.synthetic.new/openai/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_reads", "output": "pricing.completion" },
-      "models": [
-        "syn:large:text",
-        "hf:moonshotai/Kimi-K3",
-        "hf:openai/gpt-oss-120b"
-      ],
-      "note": "Rates arrive currency-prefixed (\"$0.000001\"); seed-models.mjs normalises the symbol before parsing. Cache reads are keyed `input_cache_reads`, plural."
-    },
-    "telnyx": {
-      "dial": "native",
-      "base_url": "https://api.telnyx.com/v2/ai",
-      "display": "Telnyx",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "credentialed_feed",
-      "note": "Model feed requires a key; no public per-token rate table."
-    },
-    "tencent": {
-      "dial": "native",
-      "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
-      "display": "Hunyuan",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint. Reach it as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "venice": {
-      "dial": "native",
-      "base_url": "https://api.venice.ai",
-      "display": "Venice",
-      "source": "api",
-      "endpoint": "https://api.venice.ai/api/v1/models",
-      "rate_unit": "per_million",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "model_spec.pricing.input.usd", "cached_input": "model_spec.pricing.cache_input.usd", "output": "model_spec.pricing.output.usd" },
-      "models": [
-        "zai-org-glm-5-2",
-        "gemini-3-7-flash",
-        "gemini-3-5-flash-lite",
-        "qwen3-5-397b-a17b"
+    {
+      "provider": "openrouter", "model_name": "qwen/qwen3.8-max-0902",
+      "display_name": "Qwen3.8 Max 0902", "advanced": false,
+      "context": {"tokens":1000000,"source_url":"https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902","verified_at":"2026-10-18T13:32:07Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.25", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "6",
+        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; exact rates from OpenRouter's models API." }
       ]
     },
-    "vercel": {
-      "dial": "native",
-      "base_url": "https://ai-gateway.vercel.sh/v1",
-      "display": "Vercel AI Gateway",
-      "source": "api",
-      "endpoint": "https://ai-gateway.vercel.sh/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_window", "input": "pricing.input", "cached_input": "pricing.input_cache_read", "output": "pricing.output" },
-      "models": [
-        "anthropic/claude-opus-5.5",
-        "anthropic/claude-sonnet-5.5",
-        "anthropic/claude-fable-5.1"
-      ],
-      "note": "Some rows carry `input_tiers` — context-tiered pricing whose base rate is what field_map reads. Models with tiers are deliberately not allowlisted, because seeding the base rate of a tiered model under-bills (see tiering_note)."
+    {
+      "provider": "groq", "model_name": "openai/gpt-oss-120b",
+      "display_name": "GPT OSS 120B", "advanced": false,
+      "context": { "tokens": 131072, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.15", "cached_input": "0.075", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0.60",
+        "source_url": "https://console.groq.com/docs/prompt-caching", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Cached reads receive 50 percent discount; prompt caching adds no separate fee. Exact served context still requires the Groq models API." }
+      ]
     },
-    "vercel-ai": {
-      "dial": "native",
-      "base_url": "https://ai-gateway.vercel.sh/v1",
-      "display": "Vercel AI Gateway",
-      "source": "api",
-      "endpoint": "https://ai-gateway.vercel.sh/v1/models",
-      "rate_unit": "per_token",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_window", "input": "pricing.input", "cached_input": "pricing.input_cache_read", "output": "pricing.output" },
-      "models": [
-        "anthropic/claude-opus-5.5",
-        "anthropic/claude-sonnet-5.5",
-        "anthropic/claude-fable-5.1"
-      ],
-      "note": "Spelling twin of `vercel`; the runner's registry dials both names at the same endpoint (`vercel`, alias `vercel-ai`), and (provider, model_id) keys the catalogue, so each needs its own rows."
+    {
+      "provider": "mistral", "model_name": "mistral-large-4",
+      "display_name": "Mistral Large 4", "advanced": false,
+      "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.68", "cached_input": "0.07", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "2.09",
+        "source_url": "https://docs.mistral.ai/inference/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Public preview promotion; undiscounted rates 1.36/0.14/4.18 USD per million. No promotion end date published." }
+      ]
     },
-    "vertex": {
-      "dial": "native",
-      "aliases": ["google-vertex", "vertex-ai"],
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "deployment_scoped",
-      "note": "Vertex AI rates are per project, region and commitment tier; there is no single endpoint or rate to seed."
+    {
+      "provider": "mistral", "model_name": "mistral-small-2603",
+      "display_name": "Mistral Small 4", "advanced": false,
+      "context": { "tokens": 262144, "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-small-2603/endpoints#mistral", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.15", "cached_input": "0.015", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0.60",
+        "source_url": "https://docs.mistral.ai/inference/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
+      ]
     },
-    "vllm": {
-      "dial": "native",
-      "base_url": "http://localhost:8000/v1",
-      "display": "vLLM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry/mod.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
-    },
-    "volcengine": {
-      "dial": "native",
-      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-      "display": "Doubao",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `byteplus` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "volcengine-plan": {
-      "dial": "native",
-      "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
-      "display": "Doubao",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Coding plan endpoint on the CN arm — subscription, not per-token."
-    },
-    "xiaomi": {
-      "dial": "native",
-      "aliases": ["mimo", "xiaomi-mimo"],
-      "base_url": "https://api.xiaomimimo.com/v1",
-      "display": "Xiaomi MiMo",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "MiMo is served from mainland China and the model feed requires a key."
-    },
-    "z.ai": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/coding/paas/v4",
-      "display": "Z.AI",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Billed per seat or per plan; there is no per-token rate to charge against."
-    },
-    "z.ai-cn": {
-      "dial": "native",
-      "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
-      "display": "Z.AI",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `glm` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "z.ai-global": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/coding/paas/v4",
-      "display": "Z.AI",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Billed per seat or per plan; there is no per-token rate to charge against."
-    },
-    "zai": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/coding/paas/v4",
-      "display": "Z.AI",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Billed per seat or per plan; there is no per-token rate to charge against."
-    },
-    "zai-cn": {
-      "dial": "native",
-      "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
-      "display": "Z.AI",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `glm` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "zai-global": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/coding/paas/v4",
-      "display": "Z.AI",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "subscription_plan",
-      "note": "Billed per seat or per plan; there is no per-token rate to charge against."
-    },
-    "zhipu": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/paas/v4",
-      "display": "GLM",
-      "source": "manual",
-      "source_url": "https://docs.z.ai/guides/overview/pricing",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `glm` — same host, same rates. Priced once under `glm`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
-    },
-    "zhipu-cn": {
-      "dial": "native",
-      "base_url": "https://open.bigmodel.cn/api/paas/v4",
-      "display": "GLM",
-      "source": "manual",
-      "models": [],
-      "unpriced_reason": "cn_endpoint",
-      "note": "Mainland-China endpoint; `glm` is the international arm and carries the rates. Reach this one as an OpenAI-compatible custom endpoint if you need it."
-    },
-    "zhipu-global": {
-      "dial": "native",
-      "base_url": "https://api.z.ai/api/paas/v4",
-      "display": "GLM",
-      "source": "manual",
-      "source_url": "https://docs.z.ai/guides/overview/pricing",
-      "models": [],
-      "unpriced_reason": "duplicate_spelling",
-      "note": "A second spelling of `glm` — same host, same rates. Priced once under `glm`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
+    {
+      "provider": "gemini", "model_name": "gemini-4-argon",
+      "display_name": "Gemini 4 Argon", "advanced": false,
+      "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": "2026-12-01T00:00:00Z", "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.10", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "10",
+        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens." },
+      { "effective_from": "2026-12-01T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "20",
+        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens." }
+      ]
     }
-  },
-  "retired": {
-    "_readme": "Explicitly NOT seeded. Kept so a future curation pass does not re-add them by accident.",
-    "deepseek-chat / deepseek-reasoner": "Deprecated 2026-07-24. Aliases onto deepseek-v4-flash; seed the successor.",
-    "llama-3.3-70b-versatile / llama-3.1-8b-instant": "Groq shutdown 2026-08-16. Replaced by gpt-oss-120b / gpt-oss-20b.",
-    "gemini-2.5-*": "Superseded by the 3.x line.",
-    "kimi-k2.5 / kimi-k2.6": "Superseded by K2.7-code and K3. No catalogue row exists for either — docs/architecture/billing_and_provider_keys.md named K2.6 as the platform default until M168 corrected it.",
-    "glm-5 / glm-5.1": "Superseded by 5.2.",
-    "minimax-m2.x": "Superseded by M3.",
-    "nvidia-nim": "No per-token pricing exists at all; credits retired Sep 2025, production requires an AI Enterprise licence.",
-    "pioneer": "Dropped Oct 2026. api.pioneer.ai/base-models answers 410 host_retired and points at https://api.fastino.ai/v1/base-models, whose catalogue lists encoder and decision models (GLiNER, GLiGuard, GLiDE) and none of the 19 chat models allowlisted here. The runner's registry never carried the name.",
-    "claude-opus-5 / claude-opus-4-8 / claude-sonnet-5 / claude-fable-5 / claude-haiku-4-5": "Superseded by Opus 5.5, Sonnet 5.5, Fable 5.1 and Haiku 5.5; still Active upstream (retirement not before 2026-10-15 to 2027-07-24). Removed 2026-10-09; live rows stay as unmanaged.",
-    "gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna / gpt-5.5-pro": "Superseded by gpt-6.1-sol and gpt-6-luna; Pro is now reasoning.mode 'pro' on GPT-6 at standard rates. Removed 2026-10-09.",
-    "gpt-5.3-codex": "Deprecated 2026-10-01, shuts down 2027-04-01; successor gpt-6-sol, itself superseded by gpt-6.1-sol.",
-    "glm-5.2 / qwen3.7-max / grok-4.5 / devstral-medium-latest": "Superseded by glm-5.3, qwen3.8-max and grok-4.7; devstral-2512 retired 2026-07-31. Removed 2026-10-09.",
-    "fireworks deepseek-v4-pro / deepseek-v4-flash / kimi-k2p7-code / glm-5p2 / qwen3p7-plus": "Removed from Fireworks serverless 2026-09-25 (qwen3p7-plus: date unverified).",
-    "together DeepSeek-V4-Pro / Kimi-K2.7-Code": "Removed from Together serverless 2026-08-27.",
-    "deepseek-ai/DeepSeek-V3.2-Exp (atlas-cloud)": "Superseded by the DeepSeek V4 line. Removed 2026-10-09."
-  }
+  ],
+  "ollama": {"display_name":"Ollama","pricing":"unknown","models_source":"configured server /api/tags","endpoint_kinds":["local","cloud"]}
 }

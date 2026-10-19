@@ -21,8 +21,8 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     failure_detail: null,
     resumes_event_id: null,
     cost_nanos: null,
-    created_at: 1,
-    updated_at: 1,
+    created_at: "1970-01-01T00:00:00.001Z",
+    updated_at: "1970-01-01T00:00:00.001Z",
     ...over,
   };
 }

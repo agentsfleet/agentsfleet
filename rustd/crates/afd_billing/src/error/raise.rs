@@ -51,6 +51,11 @@ pub(crate) fn billing_wallet_missing() -> Error {
     ErrorKind::WalletMissing.into()
 }
 
+/// A priced line or balance past what a signed 64-bit nano count holds.
+pub(crate) fn charge_overflow() -> Error {
+    ErrorKind::ChargeOverflow.into()
+}
+
 /// Refuses a charges cursor this daemon never issued.
 pub(crate) fn charges_cursor_invalid() -> Error {
     ErrorKind::ChargesCursorInvalid.into()
@@ -82,12 +87,13 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("query", query("settle usage")(sqlx::Error::RowNotFound)),
         (
             "row malformed",
-            row_malformed("billing.usage_ledger", "tenant_id")(
+            row_malformed("billing.usage_lines", "tenant_id")(
                 afd_core::id::Uuid7::parse("not-an-id").expect_err("the fixture is malformed"),
             ),
         ),
         ("wallet missing", billing_wallet_missing()),
         ("charges cursor invalid", charges_cursor_invalid()),
+        ("charge overflow", charge_overflow()),
         (
             "datastore",
             ErrorKind::Datastore { source: datastore }.into(),

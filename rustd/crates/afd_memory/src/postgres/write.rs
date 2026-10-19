@@ -1,40 +1,41 @@
-//! The Postgres store's writes: a push's upsert with its sweep and cap, a
-//! flip's newer-row-wins import and its version-bounded prune, and the
-//! operator's forget.
+//! The Postgres store's writes: a push's upsert with its sweep and cap, and
+//! the operator's forget.
 
-use afd_core::clock::UnixMillis;
-use afd_core::id::Uuid7;
 use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
+use jiff::Timestamp;
 
 use super::{Failure, PgStore};
 use crate::error::Result;
 use crate::error::detail::FORGET_FAILED;
-use crate::record::{Housekept, Owner, Record};
+use crate::record::{Housekept, Owner};
 use crate::sql;
-use crate::window::{DAILY_CATEGORY, DAILY_RETENTION_MS};
+use crate::window::{DAILY_CATEGORY, DAILY_RETENTION};
 
 /// Statement names, for the context a query failure carries.
 const CONTEXT_UPSERT: &str = "memory upsert";
 const CONTEXT_EVICT: &str = "memory cap evict";
 const CONTEXT_SWEEP: &str = "memory daily sweep";
-const CONTEXT_IMPORT: &str = "memory import";
-const CONTEXT_PRUNE: &str = "memory prune";
 
-/// Upserts `entries`, then sweeps and caps, in one transaction.
-///
-/// The sweep runs BEFORE the cap deliberately: an already-expired `daily` row
-/// must not occupy a cap slot during victim selection, or eviction deletes a
-/// durable row in the doomed row's place.
-pub(super) async fn upsert(
-    store: &PgStore,
-    owner: Owner<'_>,
-    entries: &[&MemoryDelta<'_>],
-    now: UnixMillis,
-) -> Result<Housekept> {
-    store
-        .as_memory_role(Failure::Runner(CONTEXT_UPSERT), async |connection| {
+impl PgStore {
+    /// Writes each entry under `owner.fleet` at `now`, replacing what its key
+    /// held, then sweeps expired scratch notes and evicts past the cap, in one
+    /// transaction.
+    ///
+    /// The sweep runs BEFORE the cap deliberately: an already-expired `daily` row
+    /// must not occupy a cap slot during victim selection, or eviction deletes a
+    /// durable row in the doomed row's place.
+    ///
+    /// # Errors
+    /// The database cannot take the write; none of it lands.
+    pub async fn upsert(
+        &self,
+        owner: Owner<'_>,
+        entries: &[&MemoryDelta<'_>],
+        now: Timestamp,
+    ) -> Result<Housekept> {
+        self.as_memory_role(Failure::Runner(CONTEXT_UPSERT), async |connection| {
             for delta in entries {
-                let row_id = store.entropy.uuid7(now)?;
+                let row_id = self.entropy.uuid7(now)?;
                 sqlx::query(sql::UPSERT_ENTRY)
                     .bind(row_id.as_str())
                     .bind(delta.key.as_ref())
@@ -43,7 +44,7 @@ pub(super) async fn upsert(
                     .bind(owner.fleet.as_str())
                     .bind(owner.workspace.as_str())
                     .bind(delta.visibility.is_workspace())
-                    .bind(now.as_millis())
+                    .bind(jiff_sqlx::ToSqlx::to_sqlx(now))
                     .execute(&mut *connection)
                     .await
                     .map_err(|source| Failure::Runner(CONTEXT_UPSERT).raise(source))?;
@@ -51,7 +52,10 @@ pub(super) async fn upsert(
             let swept = sqlx::query(sql::DELETE_AGED_IN_CATEGORY)
                 .bind(owner.fleet.as_str())
                 .bind(DAILY_CATEGORY)
-                .bind(now.as_millis().saturating_sub(DAILY_RETENTION_MS))
+                .bind(jiff_sqlx::ToSqlx::to_sqlx(afd_core::clock::before(
+                    now,
+                    DAILY_RETENTION,
+                )))
                 .execute(&mut *connection)
                 .await
                 .map_err(|source| Failure::Runner(CONTEXT_SWEEP).raise(source))?
@@ -67,43 +71,20 @@ pub(super) async fn upsert(
             Ok(Housekept { swept, evicted })
         })
         .await
-}
+    }
 
-/// Writes `record` as it stands, unless a newer row is already here.
-pub(super) async fn import(store: &PgStore, workspace: &Uuid7, record: &Record) -> Result<()> {
-    let failure = Failure::Runner(CONTEXT_IMPORT);
-    let row_id = store
-        .entropy
-        .uuid7(UnixMillis::from_millis(record.created_at_ms))?;
-    store
-        .as_memory_role(failure, async |connection| {
-            sqlx::query(sql::IMPORT_ENTRY)
-                .bind(row_id.as_str())
-                .bind(record.key.as_str())
-                .bind(record.content.as_str())
-                .bind(record.category.as_str())
-                .bind(record.fleet.as_str())
-                .bind(workspace.as_str())
-                .bind(record.visibility.is_workspace())
-                .bind(record.created_at_ms)
-                .bind(record.updated_at_ms)
-                .execute(&mut *connection)
-                .await
-                .map_err(|source| failure.raise(source))?;
-            Ok(())
-        })
-        .await
-}
-
-/// Removes the fleet's own entry under `key`; whether there was one.
-///
-/// The transaction commits BEFORE the verdict is read: answering from inside
-/// it would drop the transaction on the not-found path and roll back nothing,
-/// but on the deleted path it would roll the delete back.
-pub(super) async fn forget(store: &PgStore, owner: Owner<'_>, key: &str) -> Result<bool> {
-    let failure = Failure::Operator(FORGET_FAILED);
-    store
-        .as_memory_role(failure, async |connection| {
+    /// Removes the fleet's own entry under `key`; whether there was one.
+    ///
+    /// The transaction commits BEFORE the verdict is read: answering from inside
+    /// it would drop the transaction on the not-found path and roll back nothing,
+    /// but on the deleted path it would roll the delete back. Another fleet's
+    /// entry under the same key is never touched.
+    ///
+    /// # Errors
+    /// The database cannot answer.
+    pub async fn forget(&self, owner: Owner<'_>, key: &str) -> Result<bool> {
+        let failure = Failure::Operator(FORGET_FAILED);
+        self.as_memory_role(failure, async |connection| {
             let forgotten = sqlx::query(sql::DELETE_ENTRY_BY_KEY)
                 .bind(owner.fleet.as_str())
                 .bind(key)
@@ -113,27 +94,5 @@ pub(super) async fn forget(store: &PgStore, owner: Owner<'_>, key: &str) -> Resu
             Ok(forgotten.is_some())
         })
         .await
-}
-
-/// Removes the fleet's entry under `key` while it is no newer than `seen_ms`;
-/// whether there was one. Commits before answering, as [`forget`] does.
-pub(super) async fn forget_stale(
-    store: &PgStore,
-    owner: Owner<'_>,
-    key: &str,
-    seen_ms: i64,
-) -> Result<bool> {
-    let failure = Failure::Runner(CONTEXT_PRUNE);
-    store
-        .as_memory_role(failure, async |connection| {
-            let removed = sqlx::query(sql::DELETE_STALE_ENTRY)
-                .bind(owner.fleet.as_str())
-                .bind(key)
-                .bind(seen_ms)
-                .fetch_optional(&mut *connection)
-                .await
-                .map_err(|source| failure.raise(source))?;
-            Ok(removed.is_some())
-        })
-        .await
+    }
 }

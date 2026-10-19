@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { Button, cn, NavItem as NavigationItem } from "@agentsfleet/design-system";
-import { useFreshFleetChat } from "./DraftSidebarHistory";
+import { useFreshFleetChat } from "./draft-sidebar-state";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { NAV_SURFACE, navSource, resolveHref, type NavEntry } from "./sidebar-navigation-data";
 

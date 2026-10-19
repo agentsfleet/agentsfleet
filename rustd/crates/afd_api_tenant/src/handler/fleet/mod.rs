@@ -71,7 +71,7 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
     ),
     params(
         afd_http::openapi::path::Workspace,
-        ("starting_after" = Option<String>, Query, description = "Opaque page token from a prior response's `next_cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page."),
+        ("starting_after" = Option<String>, Query, description = "Opaque page token from a prior response's `next_cursor` field. Omit for the first page."),
         ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
     ),
     responses(
@@ -121,16 +121,13 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<After>, Refusal> {
     };
     let cursor =
         Cursor::parse(raw).map_err(|_foreign| Refusal::malformed(DETAIL_INVALID_CURSOR))?;
-    let Cursor::Timestamp { at_ms, id } = cursor else {
+    let Cursor::Timestamp { at, id } = cursor else {
         // Some other list's token: the fleets walk keys on `(created_at, id)`,
         // and a text-boundary cursor names a sort this one does not have.
         return Err(Refusal::malformed(DETAIL_INVALID_CURSOR));
     };
     let id = Uuid7::parse(&id).map_err(|_not_a_fleet| Refusal::malformed(DETAIL_INVALID_CURSOR))?;
-    Ok(Some(After {
-        created_at_ms: at_ms,
-        id,
-    }))
+    Ok(Some(After { created_at: at, id }))
 }
 
 /// One page, and the cursor that continues it.
@@ -142,7 +139,7 @@ fn page_response(page: &FleetPage) -> FleetsResponse<'_> {
     let next_cursor = page.more.then(|| page.rows.last()).flatten().map(|last| {
         Cow::Owned(
             Cursor::Timestamp {
-                at_ms: last.created_at_ms,
+                at: last.created_at,
                 id: last.id.clone(),
             }
             .to_string(),
@@ -161,8 +158,9 @@ fn summary(row: &FleetRow) -> FleetSummary<'_> {
         id: Cow::Borrowed(&row.id),
         name: Cow::Borrowed(&row.name),
         status: Cow::Borrowed(row.status.as_str()),
-        created_at: row.created_at_ms,
-        updated_at: row.updated_at_ms,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        description: row.description.as_deref().map(Cow::Borrowed),
         triggers: triggers(row.triggers.as_ref()),
         events_processed: row.events_processed.to_string(),
         budget_used_nanos: row.budget_used_nanos.to_string(),

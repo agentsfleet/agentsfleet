@@ -70,8 +70,9 @@ pub struct Check {
     pub subject: String,
     /// Observed readiness.
     pub state: CheckState,
-    /// UTC milliseconds, excluded from review content identity.
-    pub observed_at: i64,
+    /// Observation time, excluded from review content identity.
+    #[serde(with = "afd_wire::instant")]
+    pub observed_at: jiff::Timestamp,
     /// Present only when an authorized human action can help.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_action: Option<Action>,

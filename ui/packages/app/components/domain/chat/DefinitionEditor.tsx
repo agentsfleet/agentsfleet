@@ -9,7 +9,7 @@ import { draftTriggerError } from "@/lib/api/draft-triggers";
 import { setupErrorMessage } from "@/lib/api/draft-request";
 import { initialDefinition } from "./chat-defaults";
 
-export function DefinitionEditor({client, view, onReviewed}: {client: DraftClient; view: DraftView; onReviewed: () => void}) {
+export function DefinitionEditor({client, view, onUpdated}: {client: DraftClient; view: DraftView; onUpdated: () => void}) {
   const inputId = useId();
   const initial = view.draft?.candidate?.definition ?? view.preview?.definition ?? initialDefinition();
   const [instructions, setInstructions] = useState(initial.instructions_md);
@@ -25,8 +25,8 @@ export function DefinitionEditor({client, view, onReviewed}: {client: DraftClien
       if (triggerError) { setError(triggerError); return; }
       const definition = {...initial, instructions_md: instructions, config: parsedConfig.data};
       await client.edit({definition, instanceName: name});
-      await client.review();
-      onReviewed();
+      await client.refreshSetup();
+      onUpdated();
     } catch (cause) { setError(cause instanceof SyntaxError ? "Config must be valid JSON." : setupErrorMessage(cause)); }
   };
   return <div className="space-y-md">
@@ -35,6 +35,6 @@ export function DefinitionEditor({client, view, onReviewed}: {client: DraftClien
     <div className="space-y-xs"><Label htmlFor={`${inputId}-instructions`}>Instructions</Label><Textarea id={`${inputId}-instructions`} rows={8} value={instructions} onChange={(event) => setInstructions(event.target.value)} /></div>
     <div className="space-y-xs"><Label htmlFor={`${inputId}-config`}>Runtime config</Label><Textarea id={`${inputId}-config`} rows={10} className="font-mono" value={config} onChange={(event) => setConfig(event.target.value)} /></div>
     {error ? <Alert variant="destructive">{error}</Alert> : null}
-    <Button disabled={view.busy || view.pending || Boolean(view.draft && (!view.draft.candidate || view.draft.state !== DRAFT_STATE.editing))} onClick={() => { void apply(); }}>Update draft and review</Button>
+    <Button disabled={view.busy || view.pending || Boolean(view.draft && (!view.draft.candidate || view.draft.state !== DRAFT_STATE.editing))} onClick={() => { void apply(); }}>Update instructions</Button>
   </div>;
 }

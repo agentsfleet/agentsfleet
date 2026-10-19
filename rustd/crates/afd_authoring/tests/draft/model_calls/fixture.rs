@@ -8,11 +8,7 @@ use sha2::{Digest as _, Sha256};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
 
-use super::super::{
-    attempt::Attempt,
-    fixture::{Fixture, now},
-    mint,
-};
+use super::super::{attempt::Attempt, fixture::Fixture, mint};
 
 pub(super) const CAPABILITY: &str = concat!(
     "0123456789",
@@ -87,9 +83,9 @@ pub(super) async fn calls<T: Transport + 'static>(
     provider: Arc<T>,
 ) -> ModelCalls {
     let mut connection = f.connection().await;
-    sqlx::query("INSERT INTO billing.tenant_wallet(tenant_id,balance_nanos,grant_source,created_at,updated_at) VALUES($1::uuid,$3,'authoring-fixture',$2,$2)")
-        .bind(f.tenant.as_str()).bind(now().as_millis()).bind(crate::draft::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
-    sqlx::query("UPDATE fleet.authoring_attempts SET capability_hash=$2,reserved_nanos=30000000 WHERE id=$1::uuid")
+    sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
+        .bind(f.tenant.as_str()).bind(crate::draft::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
+    sqlx::query("UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE id=$1::uuid")
         .bind(attempt.id.as_str()).bind(hex::encode(Sha256::digest(CAPABILITY.as_bytes())))
         .execute(&mut *connection).await.expect("pin capability and full runtime bound");
     let kek = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
@@ -104,7 +100,6 @@ pub(super) fn request(attempt: &Attempt) -> ModelCallInput {
         capability_token: CAPABILITY.into(),
         attempt_id: attempt.id.to_string(),
         fence: "1".into(),
-        deletion_generation: "0".into(),
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {
@@ -117,6 +112,6 @@ pub(super) fn request(attempt: &Attempt) -> ModelCallInput {
 }
 
 pub(super) async fn receipts(f: &Fixture, attempt: &Attempt) -> (i64, i32, bool) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.authoring_dispatches WHERE attempt_id=a.id),calls,usage_unknown FROM fleet.authoring_attempts a WHERE id=$1::uuid")
+    sqlx::query_as("SELECT (SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id),call_count,usage_unknown FROM authoring.attempts a WHERE id=$1::uuid")
         .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("durable receipt state")
 }

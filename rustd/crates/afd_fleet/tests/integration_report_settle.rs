@@ -20,94 +20,89 @@ use crate::report_seed;
 use afd_fleet::lease::Settled;
 use afd_fleet::lease::sql;
 
-use self::report_seed::{DEEP_POOL, SLICE_MS, SLICE_NANOS, held, run_fee_meter};
+use self::report_seed::{DEEP_POOL, SLICE_NANOS, held, run_fee};
+use crate::rows::{LAPSE, Row};
+
+/// The line number a lease's first runtime line takes: the daemon's base.
+const RUNTIME_LINE: &str = "2147483648";
 
 /// Dimension 3.1 — the report's writes land, and every row says what it should.
 ///
 /// Six writes ride one statement and this asserts all of them, because the
 /// statement is all-or-nothing: any single arm that silently matched no row
 /// would leave the other five looking correct. The lease flip is the one an
-/// eyeball would check; the affinity cursor and the lifetime tally are the two
+/// eyeball would check; the slot cursor and the lifetime tally are the two
 /// that have failed silently in this family before.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_writes_row_parity() {
     let held = held().await;
     let lease = held.issued.lease_id.as_str();
-    // One second of runtime, at one nano per millisecond.
-    let settled_at = held.now.saturating_add_millis(SLICE_MS);
+    // At least one second of runtime, at one nano per millisecond.
+    let from = held.run_a_slice().await;
+    let settled_at = held.now;
 
     let outcome = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            run_fee_meter(),
-            true,
-            settled_at,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, settled_at)
         .await;
-    let Settled::Claimed(charged) = outcome else {
+    let Settled::Claimed(settlement) = outcome else {
         unreachable!("the only holder of this fleet cannot be fenced out")
     };
+    let wall_ms = held.metered_from(from).await;
+    let slice = run_fee(wall_ms);
+    assert!(
+        slice >= SLICE_NANOS,
+        "the aged meter charges at least a slice: {slice}"
+    );
+    let charged: i64 = settlement
+        .iter()
+        .flat_map(|settled| settled.lines.iter())
+        .map(|line| line.charged.as_i64())
+        .sum();
     assert_eq!(
-        charged.as_i64(),
-        SLICE_NANOS,
-        "a second of runtime at one nano per millisecond is a thousand nanos"
+        charged, slice,
+        "the line is the meter's span at the run fee, rounded up to the nano"
     );
 
     assert_eq!(
-        held.fixtures.lease_column(lease, "status").await,
+        held.fixtures.text(Row::Lease(lease), "status").await,
         Some(sql::LEASE_STATUS_REPORTED.to_owned()),
         "the claim flips the lease out of active, which is what stops a second report"
     );
-    assert_eq!(
-        held.fixtures.lease_column(lease, "last_metered_at").await,
-        Some(settled_at.as_millis().to_string()),
-        "the lease cursor advances to the settle instant, so a replay measures zero elapsed"
-    );
-    assert_eq!(
-        held.fixtures
-            .affinity_column(&held.fleet, "last_metered_at")
-            .await,
-        Some(settled_at.as_millis().to_string()),
-        "the SLOT cursor advances too — it is the one a reclaim inherits, and the \
-         one the deltas are actually measured from"
+    assert!(
+        held.fixtures.metered_since(&held.fleet).await <= held.fixtures.database_now().await,
+        "the lease's cursor advances to the settle's own instant, never past it"
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
-        Some(DEEP_POOL - SLICE_NANOS),
-        "the wallet is drawn down by exactly what the settle reported charging"
+        Some(DEEP_POOL),
+        "the claim logs usage and moves no money; the biller charges it after commit"
     );
     assert_eq!(
         held.fixtures
-            .ledger_column(
-                &held.event_id,
-                afd_billing::sql::charge::STAGE,
-                "credit_deducted_nanos"
-            )
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
             .await,
-        Some(SLICE_NANOS.to_string()),
-        "the stage row records the same amount the wallet lost"
+        Some(slice.to_string()),
+        "the usage line records what the slice cost"
     );
     assert_eq!(
         held.fixtures
-            .ledger_column(&held.event_id, afd_billing::sql::charge::STAGE, "wall_ms")
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "runtime_ms")
             .await,
-        Some(SLICE_MS.to_string()),
-        "the stage row carries the span it charged over, which the budget drain apportions on"
+        Some(wall_ms.to_string()),
+        "the usage line carries the span it measured"
     );
     assert_eq!(
         held.fixtures
-            .counter_column(held.runner.as_str(), "succeeded")
+            .text(Row::Counters(held.runner.as_str()), "succeeded_count")
             .await,
         Some("1".to_owned()),
         "a clean run bumps the succeeded column and not the other one"
     );
     assert_eq!(
         held.fixtures
-            .counter_column(held.runner.as_str(), "failed")
+            .text(Row::Counters(held.runner.as_str()), "failed_count")
             .await,
         Some("0".to_owned()),
         "the tally picks ONE column; both moving would mean the CASE arms disagree"
@@ -132,11 +127,11 @@ async fn test_report_stale_fence_rejected() {
 
     // The holder dies and its work is taken back, which bumps the fleet's
     // fencing sequence past the token the first lease carries.
-    let lapsed = held
-        .now
-        .saturating_add_millis(afd_core::timing::LEASE_TTL_MS + 1);
+    held.fixtures
+        .age(Row::Slot(&held.fleet), "lease_expires_at", LAPSE)
+        .await;
     let reclaimed =
-        crate::seed::select_fleet_within_rotations(&held.leases, &held.spare, lapsed, &held.fleet)
+        crate::seed::select_fleet_within_rotations(&held.leases, &held.spare, &held.fleet)
             .await
             .expect("a lapsed claim is winnable");
     assert!(
@@ -147,14 +142,7 @@ async fn test_report_stale_fence_rejected() {
     let before = held.fixtures.balance(&held.tenant).await;
     let outcome = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            run_fee_meter(),
-            true,
-            lapsed,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, held.now)
         .await;
     assert_eq!(
         outcome,
@@ -165,18 +153,14 @@ async fn test_report_stale_fence_rejected() {
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
         before,
-        "a fenced report charges nothing — the wallet arm is gated on the same guard"
+        "a fenced report charges nothing"
     );
     assert_eq!(
         held.fixtures
-            .ledger_column(
-                &held.event_id,
-                afd_billing::sql::charge::STAGE,
-                "credit_deducted_nanos"
-            )
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
             .await,
         None,
-        "a fenced report writes no stage row at all, not a zero-valued one"
+        "a fenced report logs no usage line at all, not a zero-valued one"
     );
     // BOTH arms, and both `Some("0")` rather than `None`. The counter ROW
     // already exists: `sql::lease::INSERT_LEASE_WITH_EVENT` writes it with
@@ -188,14 +172,14 @@ async fn test_report_stale_fence_rejected() {
     // whichever arm the `succeeded` flag steered it to.
     assert_eq!(
         held.fixtures
-            .counter_column(held.runner.as_str(), "succeeded")
+            .text(Row::Counters(held.runner.as_str()), "succeeded_count")
             .await,
         Some("0".to_owned()),
         "the tally is gated FROM claim, so a report that claimed nothing counts nothing"
     );
     assert_eq!(
         held.fixtures
-            .counter_column(held.runner.as_str(), "failed")
+            .text(Row::Counters(held.runner.as_str()), "failed_count")
             .await,
         Some("0".to_owned()),
         "and it counts nothing on the failure arm either, not merely the one this report named"
@@ -223,18 +207,11 @@ async fn test_report_stale_fence_rejected() {
 async fn test_report_dedup_idempotent() {
     let held = held().await;
     let lease = held.issued.lease_id.as_str();
-    let settled_at = held.now.saturating_add_millis(SLICE_MS);
+    let settled_at = held.now;
 
     let first = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            run_fee_meter(),
-            true,
-            settled_at,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, settled_at)
         .await;
     assert!(
         matches!(first, Settled::Claimed(_)),
@@ -243,20 +220,13 @@ async fn test_report_dedup_idempotent() {
     let after_first = held.fixtures.balance(&held.tenant).await;
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,
-        2,
-        "one receive row and one stage row: the two-rows-per-event invariant"
+        1,
+        "one usage line for the final slice"
     );
 
     let replay = held
         .fixtures
-        .settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            run_fee_meter(),
-            true,
-            settled_at,
-        )
+        .settle_alone(&held.leases, lease, &held.runner, &[], true, settled_at)
         .await;
     assert_eq!(
         replay,
@@ -266,8 +236,8 @@ async fn test_report_dedup_idempotent() {
     );
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,
-        2,
-        "a replayed report adds no row — the ledger stays at two however often it is re-sent"
+        1,
+        "a replayed report adds no line however often it is re-sent"
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,

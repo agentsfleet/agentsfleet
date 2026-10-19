@@ -12,21 +12,6 @@ async fn runner_lease_satellite_routes_parse_and_render() {
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
 
-    let renew_path = format!("/v1/runners/me/leases/{LEASE_ID}/renew");
-    for body in [
-        "",
-        "not-json",
-        r#"{"input_tokens":1,"cached_input_tokens":2,"output_tokens":3}"#,
-    ] {
-        let renewed = send(&router, Method::POST, &renew_path, Some(RUNNER_TOKEN), body).await;
-        assert_eq!(renewed.status(), StatusCode::OK);
-        let body = json_body(renewed).await;
-        assert_eq!(
-            body.get("lease_expires_at"),
-            Some(&serde_json::json!(1_760_000_000_000_i64))
-        );
-    }
-
     let mint_path = "/v1/runners/me/credentials/mint";
     let malformed = send(&router, Method::POST, mint_path, Some(RUNNER_TOKEN), "{}").await;
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
@@ -270,10 +255,10 @@ async fn runner_lease_poll_hands_its_holds_to_the_plane() {
 #[tokio::test]
 async fn a_granted_mint_renders_only_the_token_and_its_expiry() {
     const TOKEN: &str = "fixture-minted-token";
-    const EXPIRES_AT_MS: i64 = 1_760_000_600_000;
+    const EXPIRES_AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_600, 0);
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
-        .with_lease_minting(TOKEN, EXPIRES_AT_MS)
+        .with_lease_minting(TOKEN, EXPIRES_AT)
         .router();
     let minted = send(
         &router,
@@ -286,7 +271,7 @@ async fn a_granted_mint_renders_only_the_token_and_its_expiry() {
     assert_eq!(minted.status(), StatusCode::OK);
     assert_eq!(
         json_body(minted).await,
-        serde_json::json!({"token": TOKEN, "expires_at_ms": EXPIRES_AT_MS})
+        serde_json::json!({"token": TOKEN, "expires_at": "2025-10-09T09:03:20Z"})
     );
 }
 

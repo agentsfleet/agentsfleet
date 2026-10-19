@@ -6,6 +6,7 @@ import { glyph, withGlyph } from "./glyph.ts";
 import {
   EMPTY_CELL,
   cell,
+  instantCell,
   ago,
   entityColumns,
   entityTable,
@@ -67,6 +68,7 @@ export {
   glyph,
   EMPTY_CELL,
   cell,
+  instantCell,
   ago,
   withGlyph,
   formatTable,

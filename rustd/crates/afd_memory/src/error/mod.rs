@@ -10,9 +10,7 @@ use afd_core::error_code::{self, ErrorCode};
 pub mod detail;
 mod raise;
 
-pub(crate) use self::raise::{
-    entry_not_found, fleet_not_found, missed_write, moving, query, unavailable,
-};
+pub(crate) use self::raise::{entry_not_found, fleet_not_found, query, unavailable};
 
 /// The result every fallible function in this crate returns.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
@@ -62,22 +60,6 @@ pub(crate) enum ErrorKind {
 
     #[error("the fleet is holding no memory entry under that key")]
     EntryNotFound,
-
-    /// A stand-in store refused the call. Only a suite's store raises it; a
-    /// vendor store gains its own kinds when it lands.
-    #[cfg(feature = "test-util")]
-    #[error("the {store} memory store refused the call")]
-    Refused { store: &'static str },
-
-    /// The workspace's memory is being copied to another store.
-    #[error("the workspace's memory is moving to the {store} store")]
-    Moving { store: &'static str },
-
-    /// A write reached the store being left and failed on the one a flip was
-    /// filling, so the flip did not switch. The write's own error went to its
-    /// caller; the flip holds no source to carry.
-    #[error("a write did not reach the {store} store, so the flip did not switch to it")]
-    MissedWrite { store: &'static str },
 }
 
 impl Error {
@@ -98,10 +80,6 @@ impl Error {
             // One code, four sentences: each names the OPERATION a 503 came
             // from, the only fact a reader of one on this surface can act on.
             ErrorKind::Unavailable { detail, .. } => (error_code::MEM_UNAVAILABLE, detail),
-            #[cfg(feature = "test-util")]
-            ErrorKind::Refused { .. } => (error_code::MEM_UNAVAILABLE, detail::STORE_REFUSED),
-            ErrorKind::Moving { .. } => (error_code::MEM_UNAVAILABLE, detail::MOVING),
-            ErrorKind::MissedWrite { .. } => (error_code::MEM_UNAVAILABLE, detail::MISSED_WRITE),
             ErrorKind::FleetNotFound => (
                 error_code::MEM_AGENTSFLEET_NOT_FOUND,
                 detail::FLEET_NOT_FOUND,
@@ -126,16 +104,5 @@ impl Error {
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         matches!(self.kind(), ErrorKind::Datastore { .. })
-    }
-}
-
-/// The refusal a store that is not the database answers, for a stand-in store
-/// a suite drives a flip against.
-#[cfg(feature = "test-util")]
-impl Error {
-    /// `store` refused the call.
-    #[must_use]
-    pub fn refused(store: &'static str) -> Self {
-        ErrorKind::Refused { store }.into()
     }
 }

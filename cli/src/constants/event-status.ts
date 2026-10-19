@@ -1,4 +1,4 @@
-// Wire-level status values written to core.fleet_events by the server
+// Wire-level status values written to fleet.events by the server
 // writepath. The CLI reads these for renderStatus (color/glyph mapping)
 // and for terminal-status detection in the steer round-trip.
 //

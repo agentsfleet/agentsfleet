@@ -13,7 +13,7 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{ApiKeySeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -204,37 +204,34 @@ impl Fixture {
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Preferences live', 1, 1) \
-             ), workspace AS ( \
-               INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-               VALUES ($2::uuid, $1::uuid, 'preferences', $3, 1) \
-             ), person AS ( \
-               INSERT INTO core.users \
-                 (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-               VALUES ($4::uuid, $1::uuid, $3, 'preferences-live@example.test', 1, 1) \
-             ) \
-             INSERT INTO core.api_keys \
-               (id, tenant_id, key_name, description, key_hash, created_by, active, \
-                revoked_at, created_at, updated_at) \
-             VALUES ($5::uuid, $1::uuid, 'fixture', '', $6, $3, TRUE, NULL, 1, 1)",
+        TenantSeed::new(&self.tenant)
+            .name("Preferences live")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+            .name("preferences")
+            .insert(&mut *connection)
+            .await
+            .expect("its workspace seeds");
+        UserSeed::new(
+            &self.user,
+            &self.tenant,
+            SUBJECT,
+            "preferences-live@example.test",
         )
-        .bind(&self.tenant)
-        .bind(self.workspace.as_str())
-        .bind(SUBJECT)
-        .bind(&self.user)
-        .bind(&self.key)
-        .bind(digest.as_str())
-        .execute(&mut *connection)
+        .insert(&mut *connection)
         .await
-        .expect("the preference principal and workspace seed");
+        .expect("its person seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its API key seeds");
     }
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

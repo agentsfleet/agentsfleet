@@ -3,9 +3,9 @@
 //! # Two of the three take the credential's row lock, and one does not
 //!
 //! Adding is a reference PRODUCER and removing is a reference DESTROYER, so
-//! both participate in the treaty [`crate::provider::activate`] describes:
+//! both participate in the protocol [`crate::provider::activate`] describes:
 //! `secret_ref` is TEXT rather than a foreign key, the database cannot refuse
-//! an orphaning delete on its own, and every participant takes the
+//! an orphaning credential delete on its own, and every participant takes the
 //! `vault.secrets` row lock FIRST. That lock is the serialization point;
 //! whoever reaches it first wins and both outcomes are correct.
 //!
@@ -21,32 +21,33 @@
 //! every early return below rolls back by the language's rules. There is no
 //! flag and no path that can forget.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
+use jiff::Timestamp;
 use sqlx::{Acquire as _, Transaction};
 
-use super::page::read_entry;
 use super::sql;
-use super::{Added, Entry, Removed, Retargeted, is_active};
+use super::{Added, Entry, EntryRow, Removed, Retargeted};
 use crate::error::{Result, query};
-use crate::provider::selection::read_selection;
 use crate::provider::sql as provider_sql;
 use crate::provider::store::Providers;
 
 /// The entry's domain key, `(tenant, model, secret_ref)`: the one unique
-/// constraint a retarget can collide with (`schema/440_tenant_model_entries.sql`).
-const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_model_entries_tenant_id_model_id_secret_ref";
+/// constraint a retarget can collide with (`schema/1330_model_tenant_models.sql`).
+const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_models_tenant_id_model_name_secret_ref";
 
 /// The context a failed registry write reports under.
 const CONTEXT_WRITE: &str = "tenant model registry write";
 
 impl Providers {
-    /// Adds `model_id` on `secret_ref` to `tenant`'s registry.
+    /// Adds `model_name` on `secret_ref` to `tenant`'s registry.
     ///
     /// The credential is locked before it is decided to exist, so the decision
     /// and the insert are one act — a concurrent credential delete cannot land
     /// in the gap and leave this entry pointing at nothing.
+    ///
+    /// `now` is the instant the entry's identifier is minted at; the row's
+    /// stamps are the database's own clock.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a host that cannot draw
@@ -55,9 +56,9 @@ impl Providers {
     pub async fn add_entry(
         &self,
         tenant: &Uuid7,
-        model_id: &str,
+        model_name: &str,
         secret_ref: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Added> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_WRITE))?;
@@ -78,12 +79,11 @@ impl Providers {
             });
         }
 
-        let stored = sqlx::query(sql::INSERT_ENTRY)
+        let stored = sqlx::query_as::<_, EntryRow>(sql::INSERT_ENTRY)
             .bind(self.mint_entry_id(now)?.as_str())
             .bind(tenant.as_str())
-            .bind(model_id)
+            .bind(model_name)
             .bind(secret_ref)
-            .bind(now.as_millis())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;
@@ -93,7 +93,7 @@ impl Providers {
         let Some(row) = stored else {
             return Ok(Added::Duplicate);
         };
-        let entry = read_entry(&row)?;
+        let entry = row.into_entry()?;
         // Committed BEFORE the caller is told. A 201 whose transaction then
         // failed to commit is the worst outcome available: the client records
         // an id that does not exist.
@@ -103,6 +103,9 @@ impl Providers {
 
     /// Points `entry_id` at a different model, keeping its credential.
     ///
+    /// The entry is what a selection points AT, so retargeting the active
+    /// entry changes the model the tenant's next run uses.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer and a stored row this daemon
     /// cannot read. Both refusals are [`Retargeted`] variants.
@@ -110,20 +113,18 @@ impl Providers {
         &self,
         tenant: &Uuid7,
         entry_id: &Uuid7,
-        model_id: &str,
-        now: UnixMillis,
+        model_name: &str,
     ) -> Result<Retargeted> {
         let mut connection = self.pool().acquire().await?;
-        let updated = sqlx::query(sql::UPDATE_ENTRY_MODEL)
+        let updated = sqlx::query_as::<_, EntryRow>(sql::UPDATE_ENTRY_MODEL)
             .bind(entry_id.as_str())
             .bind(tenant.as_str())
-            .bind(model_id)
-            .bind(now.as_millis())
+            .bind(model_name)
             .fetch_optional(&mut *connection)
             .await;
 
         match updated {
-            Ok(Some(row)) => Ok(Retargeted::Stored(read_entry(&row)?)),
+            Ok(Some(row)) => Ok(Retargeted::Stored(row.into_entry()?)),
             Ok(None) => Ok(Retargeted::NotFound),
             // The domain key is `(tenant, model, secret_ref)`, so moving an
             // entry onto a model this credential already carries collides with
@@ -165,12 +166,11 @@ impl Providers {
 
         // The active check is SKIPPED when the credential is already gone, and
         // that is deliberate rather than an omission. What the check protects is
-        // "the active selection always has a matching entry" — and a selection
-        // naming a credential nobody holds has already lost the guarantee the
-        // entry was carrying. Refusing here would stand on a broken invariant to
-        // strand a row the tenant cannot remove and cannot activate: the entry
-        // is an orphan, and removing it is the cleanup. There is no reference
-        // race left to lose either, which is why nothing is held over it.
+        // a tenant silently falling back to the platform default — the
+        // selection's foreign key sets the pointer NULL when its entry goes —
+        // and a selection naming a credential nobody holds cannot run anyway.
+        // Refusing here would strand a row the tenant cannot remove and cannot
+        // activate: the entry is an orphan, and removing it is the cleanup.
         if held.is_some()
             && self
                 .selection_holds(&mut transaction, tenant, &entry)
@@ -196,37 +196,36 @@ impl Providers {
     /// cannot read.
     pub async fn entry(&self, tenant: &Uuid7, entry_id: &Uuid7) -> Result<Option<Entry>> {
         let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::SELECT_ENTRY)
+        sqlx::query_as::<_, EntryRow>(sql::SELECT_ENTRY)
             .bind(entry_id.as_str())
             .bind(tenant.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_WRITE))?
-            .as_ref()
-            .map(read_entry)
+            .map(EntryRow::into_entry)
             .transpose()
     }
 
-    /// Whether the tenant's selection names `entry`, read under the lock.
+    /// Whether the tenant's selection points at `entry`, read under the lock.
     ///
     /// The check and the DELETE must be one act. They were once two
     /// unsynchronized statements, which let an activation commit in the gap:
     /// the check saw an inactive entry, activation made it the selection, and
-    /// the delete removed the row the selection names — leaving an active
-    /// selection with no registry entry.
+    /// the delete removed it. Under the credential lock no activation of this
+    /// entry's credential can be inside the gap.
     async fn selection_holds(
         &self,
         transaction: &mut Transaction<'_, sqlx::Postgres>,
         tenant: &Uuid7,
         entry: &Entry,
     ) -> Result<bool> {
-        let row = sqlx::query(provider_sql::SELECT_TENANT_MODEL_SELECTION)
+        let holds: Option<bool> = sqlx::query_scalar(provider_sql::SELECT_SELECTION_HOLDS)
             .bind(tenant.as_str())
+            .bind(entry.id.as_str())
             .fetch_optional(&mut **transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;
 
-        let chosen = row.as_ref().map(read_selection).transpose()?;
-        Ok(is_active(entry, chosen.as_ref()))
+        Ok(holds.unwrap_or_default())
     }
 }

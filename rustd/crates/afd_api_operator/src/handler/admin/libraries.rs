@@ -62,7 +62,7 @@ pub(crate) async fn patch<D: Services>(
     };
     let result = services
         .authoring_setup()
-        .curate_platform_library(&id, input::expected(&headers)?, request, services.now())
+        .curate_platform_library(&id, input::expected(&headers)?, request)
         .await
         .map_err(authoring_refusal)?;
     Ok(([(header::ETAG, result.card.etag.clone())], Json(result)).into_response())

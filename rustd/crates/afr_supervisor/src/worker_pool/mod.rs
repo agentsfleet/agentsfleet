@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::error_code;
-use afd_core::timing::NO_WORK_RETRY_AFTER_MS;
+use afd_core::timing::NO_WORK_RETRY_AFTER;
 use afd_wire::lease::{LeaseResponse, TaggedLease};
 use backon::ExponentialBackoff;
 use futures_util::FutureExt as _;
@@ -153,8 +153,10 @@ impl Worker {
         };
         self.failures = endless();
         let Some(lease) = reply.lease else {
-            let hinted = reply.retry_after_ms.unwrap_or(NO_WORK_RETRY_AFTER_MS);
-            return Some(Duration::from_millis(u64::from(hinted)).max(MIN_POLL_PAUSE));
+            let hinted = reply.retry_after_ms.map_or(NO_WORK_RETRY_AFTER, |ms| {
+                Duration::from_millis(u64::from(ms))
+            });
+            return Some(hinted.max(MIN_POLL_PAUSE));
         };
         // The egress assigned when the lease arrived is the one it runs under,
         // whatever a beat assigns while it runs.
@@ -188,9 +190,9 @@ impl Worker {
 /// polls are spread evenly over it. A worker numbered past the count takes
 /// the share of its place in the rotation.
 pub(crate) fn first_poll_offset(number: u32, workers: u32) -> Duration {
-    let workers = u64::from(workers.max(1));
-    let place = u64::from(number) % workers;
-    Duration::from_millis(u64::from(NO_WORK_RETRY_AFTER_MS) * place / workers)
+    let workers = workers.max(1);
+    let place = number % workers;
+    NO_WORK_RETRY_AFTER.saturating_mul(place) / workers
 }
 
 #[cfg(test)]

@@ -2,17 +2,20 @@
 
 mod input;
 
-use input::{create_request, rates_request};
+use input::{create_request, patch_request};
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_admin::{CreateModel, DeleteModel, Model, ModelInput};
+use afd_admin::{CreateModel, DeleteModel, Model, ModelInput, ModelUpdate};
 #[cfg(feature = "openapi")]
 use afd_api_wire::admin::{AdminModelCreate, AdminModelPatch};
 use afd_api_wire::admin::{
-    AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse, ModelRates,
+    AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
 };
+use afd_api_wire::catalogue::{CatalogueMetadata, CataloguePrice};
 use afd_core::error_code;
+use afd_http::services::{metadata_store, metadata_wire, price_store, price_wire};
+use afd_wire::inference::ModelInference;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -97,16 +100,16 @@ pub(crate) async fn create<D: Services>(
         Ok(request) => request,
         Err(detail) => return reject(error_code::INVALID_REQUEST, detail),
     };
-    let input = ModelInput::new(
-        request.provider.into_owned(),
-        request.model_id.into_owned(),
-        store_rates(request.rates),
-    )
-    .with_inference(request.inference);
-    match services.models().create(&input, services.now()).await {
+    let request = request.into_inner();
+    let input = ModelInput {
+        provider: request.provider.into_owned(),
+        model_name: request.model_id.into_owned(),
+        details: details(request.metadata, request.prices, request.inference),
+    };
+    match services.models().create(input, services.now()).await {
         Ok(CreateModel::Created(model)) => {
             let actor_id = identity.subject();
-            let model_id = model.id().as_str();
+            let model_id = model.id.as_str();
             tracing::info!(actor_id, model_id, event = "admin_model_created",);
             (
                 StatusCode::CREATED,
@@ -159,16 +162,15 @@ pub(crate) async fn update<D: Services>(
         Ok(id) => id,
         Err(refused) => return refused.into_response(),
     };
-    let request = match rates_request(&body) {
-        Ok(request) => request,
+    let request = match patch_request(&body) {
+        Ok(request) => request.into_inner(),
         Err(detail) => return reject(error_code::INVALID_REQUEST, detail),
     };
     match services
         .models()
         .update(
             &id,
-            store_rates(request.rates),
-            request.inference.as_ref(),
+            details(request.metadata, request.prices, request.inference),
             services.now(),
         )
         .await
@@ -223,7 +225,7 @@ pub(crate) async fn delete<D: Services>(
         Ok(id) => id,
         Err(refused) => return refused.into_response(),
     };
-    match services.models().delete(&id, services.now()).await {
+    match services.models().delete(&id).await {
         Ok(DeleteModel::Deleted) => {
             let actor_id = identity.subject();
             let model_id = id.as_str();
@@ -236,28 +238,28 @@ pub(crate) async fn delete<D: Services>(
     }
 }
 
-fn store_rates(rates: ModelRates) -> afd_admin::ModelRates {
-    afd_admin::ModelRates::new(
-        rates.context_cap_tokens,
-        rates.input_nanos_per_mtok,
-        rates.cached_input_nanos_per_mtok,
-        rates.output_nanos_per_mtok,
-    )
+/// A body [`input`] proved, in the shape the store replaces a model with.
+/// Only the two parsers' `Valid` bodies reach here.
+fn details(
+    metadata: CatalogueMetadata<'_>,
+    prices: Vec<CataloguePrice<'_>>,
+    inference: Option<ModelInference>,
+) -> ModelUpdate {
+    ModelUpdate {
+        metadata: metadata_store(metadata),
+        prices: prices.into_iter().map(price_store).collect(),
+        inference,
+    }
 }
 
 fn item(model: &Model) -> AdminModelItem<'static> {
-    let rates = model.rates();
     AdminModelItem {
-        inference: model.inference().cloned(),
-        id: Cow::Owned(model.id().to_string()),
-        provider: Cow::Owned(model.provider().to_owned()),
-        model_id: Cow::Owned(model.model_id().to_owned()),
-        rates: ModelRates {
-            context_cap_tokens: rates.context_cap_tokens(),
-            input_nanos_per_mtok: rates.input_nanos_per_mtok(),
-            cached_input_nanos_per_mtok: rates.cached_input_nanos_per_mtok(),
-            output_nanos_per_mtok: rates.output_nanos_per_mtok(),
-        },
+        id: Cow::Owned(model.id.to_string()),
+        provider: Cow::Owned(model.provider.clone()),
+        model_id: Cow::Owned(model.model_name.clone()),
+        metadata: metadata_wire(&model.details.metadata),
+        prices: model.details.prices.iter().map(price_wire).collect(),
+        inference: model.details.inference.clone(),
     }
 }
 

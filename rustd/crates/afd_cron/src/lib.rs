@@ -41,6 +41,7 @@
 mod fire;
 mod next;
 mod recipe;
+mod run;
 mod service;
 mod store;
 
@@ -61,7 +62,7 @@ pub use self::qstash::QStash;
 pub use self::recipe::{Inherited, Recipe, RecipeSet};
 pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{
-    Change, EditRequest, FireTarget, NewSchedule, Refused, SYNC_LEASE_MS, Schedules,
+    Change, EditRequest, FireTarget, NewSchedule, Refused, SYNC_LEASE, Schedules,
 };
 pub use self::upstream::{HEADER_SCHEDULE_ID, schedule_of, upstream_id};
 

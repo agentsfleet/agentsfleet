@@ -62,7 +62,7 @@ async fn credential_revocation_denies_completed_result_replay() {
         .call(&f.runner, &attempt.lease, request.clone())
         .await
         .expect("saved result");
-    sqlx::query("DELETE FROM core.tenant_model_entries WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(f.model.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -93,7 +93,7 @@ async fn losing_tool_support_after_admission_prevents_physical_dispatch() {
         dialect: Some("mira".into()),
         max_output_tokens: 8192,
     };
-    sqlx::query("UPDATE core.model_library SET inference=$2 WHERE id=$1::uuid")
+    sqlx::query("UPDATE model.platform_models SET inference=$2 WHERE id=$1::uuid")
         .bind(f.catalogue.first().expect("owned catalogue").as_str())
         .bind(sqlx::types::Json(settings))
         .execute(&mut *f.connection().await)

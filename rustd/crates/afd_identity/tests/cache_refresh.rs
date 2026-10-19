@@ -18,11 +18,12 @@ use afd_auth::capability::CapabilitySource;
 use afd_auth::credential::Presented;
 use afd_auth::principal::Subject;
 use afd_auth::verifier::{TokenVerifier, VerifyError};
-use afd_core::clock::{Clock, FixedClock, SystemClock, UnixMillis};
+use afd_core::clock::{Clock, FixedClock, SystemClock};
 use afd_identity::capability::ClaimSource;
 use afd_identity::error::ClaimUnavailable;
 use afd_identity::jwks::source::KeySetSource;
 use afd_identity::{JwksVerifier, ProviderCapabilities, VerifierConfig};
+use jiff::Timestamp;
 
 const TEST_RSA_N: &str = "7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ";
 const TEST_KID: &str = "test-kid-static";
@@ -41,7 +42,7 @@ fn valid_token() -> Presented {
 }
 
 fn clock() -> Arc<dyn Clock> {
-    Arc::new(FixedClock::at(UnixMillis::from_millis(1_704_067_400_000)))
+    Arc::new(FixedClock::at(Timestamp::constant(1_704_067_400, 0)))
 }
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -89,7 +90,7 @@ impl KeySetSource for NeverAnswers {
 /// exist together to prevent.
 #[test]
 fn test_two_verifications_racing_a_cold_cache_cost_one_fetch() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let source = YieldingKeySet {
             document: format!(
@@ -124,7 +125,7 @@ fn test_two_verifications_racing_a_cold_cache_cost_one_fetch() {
 /// issuer" sends them to the network.
 #[test]
 fn test_a_cold_cache_with_no_reachable_source_is_unavailable() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let verifier =
             JwksVerifier::new(NeverAnswers, VerifierConfig::new(ISSUER, AUDIENCE), clock());
@@ -150,7 +151,7 @@ fn test_a_cold_cache_with_no_reachable_source_is_unavailable() {
 /// is why every test in this file installs one.
 #[test]
 fn test_declined_keys_are_reported_when_a_set_is_installed() {
-    crate::support::install_subscriber();
+    afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let document = format!(
             "{{\"keys\":[{{\"kty\":\"EC\",\"kid\":\"ec\"}},\

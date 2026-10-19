@@ -2,7 +2,8 @@
 # dragonfly-teardown - Dragonfly Cache Teardown Playbook
 #
 # WARNING: DESTRUCTIVE OPERATION
-# This playbook permanently flushes all keys from the Dragonfly cluster.
+# This playbook permanently flushes all keys from every member of the
+# environment's Dragonfly cluster, running inside its Fly app (fly_exec.sh).
 #
 # Required environment variables:
 #   ALLOW_DRAGONFLY_TEARDOWN=1 - Required to confirm destructive operation
@@ -51,8 +52,6 @@ if [ "$env_mode" != "$ENV_DEV" ] && [ "$env_mode" != "$ENV_PROD" ]; then
 fi
 
 export ENV="$env_mode"
-export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
-export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 
 run_step() {
 	local step="$1"

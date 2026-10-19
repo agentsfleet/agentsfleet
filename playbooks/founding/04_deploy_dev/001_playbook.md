@@ -47,7 +47,7 @@ Keep `DEV_DEPLOY_RUN_ID`; step 05 downloads its runner artifact.
 
 - Credential, compile, image, Fly.io, tunnel, API readiness, and dashboard smoke
   jobs pass.
-- `core.model_library` is populated. It ships EMPTY and every fleet needs a
+- `model.platform_models` and `model.platform_model_prices` are populated. They ship empty and every fleet needs a
   model, so a green deployment is not yet a usable environment. Prime it with
   `playbooks/operations/model_catalogue/001_playbook.md`:
 

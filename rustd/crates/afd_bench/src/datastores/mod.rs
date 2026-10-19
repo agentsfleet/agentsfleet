@@ -222,13 +222,10 @@ pub(crate) fn dragonfly_calls_in(info: &str) -> Option<u64> {
 /// `DatabaseUnavailable` when the statistics view will not
 /// answer, `CounterUnreadable` when it answers a negative.
 pub async fn postgres_transactions(database: &Db) -> Result<u64> {
-    use sqlx::Row as _;
-
     let mut connection = database.acquire().await?;
-    let total: i64 = sqlx::query(TRANSACTIONS_QUERY)
+    let total: i64 = sqlx::query_scalar(TRANSACTIONS_QUERY)
         .fetch_one(&mut *connection)
-        .await?
-        .try_get(0)?;
+        .await?;
     postgres_count(total, TRANSACTIONS_FIELD)
 }
 

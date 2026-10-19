@@ -18,6 +18,7 @@ mod request;
 mod retry;
 mod transport;
 mod turn;
+mod usage;
 
 pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};

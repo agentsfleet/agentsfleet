@@ -18,7 +18,7 @@ export default function ExhaustionBanner({ billing }: Props) {
           (continue, warn, or stop).{" "}
           {billing.exhausted_at ? (
             <>
-              Exhausted since <Time value={new Date(billing.exhausted_at)} tooltip={false} />.{" "}
+              Exhausted since <Time value={billing.exhausted_at} tooltip={false} />.{" "}
             </>
           ) : null}
           <a

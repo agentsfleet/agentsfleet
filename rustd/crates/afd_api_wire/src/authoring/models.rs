@@ -18,10 +18,13 @@ pub struct Eligibility {
 #[derive(Debug, Serialize)]
 pub struct Pricing {
     /// Input nanos per million tokens.
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub input_nanos_per_million: String,
     /// Output nanos per million tokens.
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub output_nanos_per_million: String,
     /// Runtime nanos per second.
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub runtime_nanos_per_second: String,
 }
 

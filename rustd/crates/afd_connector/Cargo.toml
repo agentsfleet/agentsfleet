@@ -50,6 +50,9 @@ thiserror.workspace = true
 garde.workspace = true
 # The digits rule garde lacks.
 afd_validate.workspace = true
+# Instants: a connect's stamps and a state's window are `jiff::Timestamp`,
+# written as epoch milliseconds only where a stored shape spells them so.
+jiff.workspace = true
 # One deadline across every page of a Slack thread read, rather than one per
 # request that a many-page thread could multiply.
 tokio.workspace = true

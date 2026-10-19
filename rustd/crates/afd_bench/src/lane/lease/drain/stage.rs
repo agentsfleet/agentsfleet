@@ -10,8 +10,9 @@
 //! the policy. Each of those reads a row, and a missing one ends the event as
 //! a refusal the drain would then count as a lease. So this seeds, in order:
 //!
-//! 1. the three identity rows per fleet, carrying a config the runtime parser
-//!    accepts and a wallet deep enough that no gate clamps against it;
+//! 1. the three identity rows per fleet, whose setup revision carries a config
+//!    the runtime parser accepts, and a wallet deep enough that no gate clamps
+//!    against it;
 //! 2. one catalogue row, one sealed platform credential and the one platform
 //!    default naming both, which is what a platform-posture tenant resolves;
 //! 3. one `chat` event per fleet and its readiness mark, the shape ingress
@@ -32,6 +33,7 @@ use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
+use afd_db::test_util::WalletSeed;
 use afd_fleet::lease::{Leases, Plane};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
@@ -39,7 +41,7 @@ use afd_wire::event::EventType;
 
 use super::platform;
 use crate::datastores::Datastores;
-use crate::error::Result;
+use crate::error::{Result, seed_refused};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::Parameters;
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT, SeededFleet};
@@ -55,23 +57,6 @@ pub(super) const INDEX_BASE: u64 = 0x1000_0000;
 /// A balance no drain can spend, so the credits gate never answers instead of
 /// the path under measurement.
 const DEEP_POOL_NANOS: i64 = 1_000_000_000_000;
-
-/// Where a seeded wallet says its balance came from.
-const GRANT_SOURCE: &str = "bench:drain";
-
-/// A stored config the runtime parser accepts, with a ceiling no single run
-/// reaches.
-fn runtime_config() -> String {
-    serde_json::json!({
-        "name": "bench",
-        "x-agentsfleet": {
-            "triggers": [],
-            "tools": [],
-            "budget": { "daily_nanos": afd_core::money::NANOS_PER_USD.to_string() },
-        },
-    })
-    .to_string()
-}
 
 /// Suffix of the drain's placement tag, apart from the contended window's.
 const TAG_SUFFIX: &str = "drain-tag";
@@ -111,7 +96,7 @@ pub(super) async fn stage(
         ledger.created(ROWS_PER_FLEET);
         fleets.push(fleet);
     }
-    fund_and_configure(stores, &fleets).await?;
+    fund(stores, &fleets).await?;
     let mut staged = Staged {
         fleets,
         runners: Vec::new(),
@@ -119,7 +104,7 @@ pub(super) async fn stage(
     };
     platform::stage(stores, &staged.kek).await?;
     for fleet in &staged.fleets {
-        seed::enqueue(&stores.queue, fleet, EventType::Chat.as_str(), SEEDED_AT).await?;
+        seed::enqueue(&stores.database, &stores.queue, fleet, EventType::Chat).await?;
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
@@ -130,28 +115,16 @@ pub(super) async fn stage(
     Ok(staged)
 }
 
-/// Give every fleet a runtime config and every tenant a deep wallet.
-async fn fund_and_configure(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
-    let fleet_ids: Vec<&str> = fleets.iter().map(|it| it.fleet.as_str()).collect();
-    let tenant_ids: Vec<&str> = fleets.iter().map(|it| it.tenant.as_str()).collect();
+/// Give every tenant a deep wallet.
+async fn fund(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
     let mut connection = stores.database.acquire().await?;
-    sqlx::query("UPDATE core.fleets SET config_json = $1::jsonb WHERE id = ANY($2::uuid[])")
-        .bind(runtime_config())
-        .bind(&fleet_ids)
-        .execute(&mut *connection)
-        .await?;
-    sqlx::query(
-        "INSERT INTO billing.tenant_wallet \
-           (tenant_id, balance_nanos, grant_source, created_at, updated_at) \
-         SELECT tenant, $2, $3, $4, $4 FROM unnest($1::uuid[]) AS tenant \
-         ON CONFLICT (tenant_id) DO NOTHING",
-    )
-    .bind(&tenant_ids)
-    .bind(DEEP_POOL_NANOS)
-    .bind(GRANT_SOURCE)
-    .bind(SEEDED_AT)
-    .execute(&mut *connection)
-    .await?;
+    for fleet in fleets {
+        WalletSeed::new(&fleet.tenant, DEEP_POOL_NANOS)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .map_err(seed_refused)?;
+    }
     Ok(())
 }
 
@@ -170,7 +143,14 @@ impl Staged {
         Plane {
             leases: Leases::new(database.clone(), stores.queue.clone(), Entropy::new()),
             gates: Gates::new(database.clone(), stores.queue.clone(), Entropy::new()),
-            accounts: Accounts::new(database.clone(), Entropy::new()),
+            accounts: Accounts::new(database.clone()),
+            // The daemon wraps this in its outage policy and metrics; a drain
+            // lane reaches neither, so the bare ledger is the same money path.
+            biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
+                database.clone(),
+                Entropy::new(),
+                Arc::new(afd_core::clock::SystemClock),
+            )),
             memories: Memories::new(database.clone(), Entropy::new()),
             providers: Providers::new(database.clone(), Arc::clone(&self.kek), Entropy::new()),
             vault: Vault::new(database.clone(), Arc::clone(&self.kek)),

@@ -1,6 +1,7 @@
 //! Append failures, lost readiness marks and competing receipt writes.
 
 use afd_core::error_code;
+use afd_core::test_util::trace::assert_uncoded;
 
 use super::{
     lane::Lane,
@@ -47,11 +48,9 @@ async fn a_full_queue_defers_the_admission_and_names_the_limit() {
         logged.get("error_code").map(String::as_str),
         Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
     );
-    assert!(
-        logged
-            .get("reason")
-            .is_some_and(|reason| !reason.contains("[UZ-")),
-        "a deferred append's reason does not repeat its code: {logged:?}"
+    assert_uncoded(
+        logged.get("reason").map_or("", String::as_str),
+        "a deferred append",
     );
     assert!(
         !run.seen.iter().any(|command| command.starts_with("HSET")),
@@ -96,11 +95,9 @@ async fn a_refused_ready_mark_still_admits_and_is_logged() {
             .is_some_and(|reason| reason.contains("HSET")),
         "the line names the write the index refused: {logged:?}"
     );
-    assert!(
-        logged
-            .get("reason")
-            .is_some_and(|reason| !reason.contains("[UZ-")),
-        "a lost mark's reason does not repeat its code: {logged:?}"
+    assert_uncoded(
+        logged.get("reason").map_or("", String::as_str),
+        "a lost mark",
     );
     lane.cleanup().await;
 }
@@ -159,11 +156,9 @@ async fn a_failed_replay_reason_carries_no_code_prefix() {
         logged.get("error_code").map(String::as_str),
         Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
     );
-    assert!(
-        logged
-            .get("reason")
-            .is_some_and(|reason| !reason.contains("[UZ-")),
-        "a failed replay's reason does not repeat its code: {logged:?}"
+    assert_uncoded(
+        logged.get("reason").map_or("", String::as_str),
+        "a failed replay",
     );
     assert_eq!(lane.receipt().await, None, "the row is still owed");
     lane.cleanup().await;

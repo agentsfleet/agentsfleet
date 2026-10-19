@@ -1,6 +1,5 @@
 //! The runner plane's HTTP seam: what the lease family of verbs acts through.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::credential::Minted;
 use afd_fleet::lease::Standing;
@@ -15,6 +14,7 @@ use afd_wire::memory::{
 use afd_wire::message_verb::MessageRequest;
 use afd_wire::report::{RenewRequest, ReportRequest};
 use afd_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
+use jiff::Timestamp;
 
 /// Answering one runner's poll.
 ///
@@ -42,7 +42,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         held: &[Uuid7],
         accepted: afd_wire::lease::AcceptedKinds,
         degraded: bool,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
 
     /// Record one terminal execution result.
@@ -59,7 +59,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         &self,
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send;
 
     /// Extend one live lease's deadline, metering the slice since the last.
@@ -78,8 +78,8 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         lease_id: &str,
         request: RenewRequest,
-        now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<UnixMillis>> + Send;
+        now: Timestamp,
+    ) -> impl Future<Output = afd_fleet::Result<Timestamp>> + Send;
 
     /// The memory window that seeds one run.
     ///
@@ -90,7 +90,6 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<MemoryHydrateResponse<'static>>> + Send;
 
     /// Persist what one run learned.
@@ -103,7 +102,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         request: &MemoryPushRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Captured>> + Send;
 
     /// Search a fleet's memory past the window a run was seeded with.
@@ -115,7 +114,6 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
         request: &MemoryRecallRequest<'_>,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<MemoryRecallResponse<'static>>> + Send;
 
     /// Mint one short-lived credential for a running child.
@@ -135,15 +133,13 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         &self,
         runner_id: &Uuid7,
         request: &MintCredentialRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Minted>> + Send;
 
     /// Forward one batch of live-tail frames.
     ///
-    /// No clock parameter, and it is the only verb here without one: nothing
-    /// this publishes is stamped or stored, so there is no row for an instant
-    /// to be consistent with. A `now` threaded in anyway would be an argument
-    /// that exists to look like its neighbours.
+    /// No clock parameter: nothing this publishes is stamped or stored, so
+    /// there is no row for an instant to be consistent with.
     ///
     /// # Errors
     /// Refuses a lease that is not this runner's, and reports a datastore that
@@ -167,7 +163,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         lease_id: &str,
         request: &ToolCallRecordsRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<ToolCallRecordsStored>> + Send;
 
     /// Proves `lease_id` is this runner's live lease and the fleet's current
@@ -184,7 +180,6 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         lease_id: Uuid7,
         fencing_token: u64,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Standing>> + Send;
 
     /// One line for the lease's thread: fenced, counted against the run's
@@ -198,7 +193,6 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         lease_id: Uuid7,
         request: &MessageRequest<'_>,
-        now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send;
 
     /// `text` with the lease's fleet's declared static secrets masked: what a

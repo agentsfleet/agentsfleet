@@ -13,19 +13,28 @@ use afd_db::{
     test_util::{OwnedRows, TestDatabase},
 };
 use afd_observability::{Analytics, Recorded, Telemetry};
+use serde_json::Value;
 use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
-// Maintenance sweeps the shared store regardless of which fixture invokes it.
-// One sink mirrors the daemon; assertions below select their own workspace.
-static REPORTER: LazyLock<(Analytics, Recorded)> = LazyLock::new(Analytics::recording);
+/// One recorder for every fixture in the suite.
+///
+/// A maintenance pass expires and finishes every lane's stale work, so a step
+/// about one fixture can be reported through another fixture's `Drafts`. Every
+/// fixture reports here, and [`Fixture::reported`] keeps the steps about its
+/// own workspace, so a fixture sees its steps whichever pass reported them.
+/// Test binaries run one at a time, so no other process reports about it.
+static RECORDING: LazyLock<(Analytics, Recorded)> = LazyLock::new(Analytics::recording);
+
+/// The property every authoring step names its workspace under.
+const WORKSPACE: &str = "workspace_id";
 
 pub(super) struct Fixture {
     pub(super) db: Db,
     pub(super) drafts: Drafts,
-    /// Every funnel step the drafts, and every service built over them, reported.
-    pub(super) recorded: Recorded,
+    /// The suite's [`RECORDING`], read only through [`Fixture::reported`].
+    recorded: Recorded,
     pub(super) owner: Uuid7,
     pub(super) member: Uuid7,
     pub(super) workspace: Uuid7,
@@ -57,9 +66,10 @@ impl Fixture {
 
     async fn in_lane(lane: TestDatabase) -> Self {
         let db = lane.open(DbRole::Api, &[]).await;
-        let (analytics, recorded) = &*REPORTER;
+        let (analytics, recorded) = RECORDING.clone();
         let mut fixture = Self {
-            drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics.clone()),
+            drafts: Drafts::new(db.clone(), Entropy::new(), ledger(&db))
+                .with_analytics(analytics.clone()),
             recorded: recorded.clone(),
             db,
             cleanup: OwnedRows::new(&lane),
@@ -94,19 +104,17 @@ impl Fixture {
         }
     }
 
-    /// The steps reported so far under the funnel event `name`, in order.
+    /// The steps about this fixture's workspace reported so far under the
+    /// funnel event `name`, in order, by any fixture's pass.
     pub(super) fn reported(&self, name: &str) -> Vec<Telemetry> {
         let events = self.recorded.events().into_iter();
+        let mine = |event: &Telemetry| {
+            let event = event.event();
+            let workspace = event.properties().get(WORKSPACE).and_then(Value::as_str);
+            workspace == Some(self.workspace.as_str())
+        };
         events
-            .filter(|event| {
-                let report = event.event();
-                event.name() == name
-                    && report
-                        .properties()
-                        .get("workspace_id")
-                        .and_then(serde_json::Value::as_str)
-                        == Some(self.workspace.as_str())
-            })
+            .filter(|event| event.name() == name && mine(event))
             .collect()
     }
 
@@ -132,6 +140,31 @@ impl Fixture {
         self.db.acquire().await.expect("fixture database answers")
     }
 
+    /// Appends a copy of `draft`'s head candidate as an older daemon would have
+    /// written it, under policy semantics this daemon no longer enforces, and
+    /// moves the head to it. Answers the new candidate.
+    pub(super) async fn retire_head(&self, draft: &Uuid7) -> Uuid7 {
+        const RETIRED: &str = "INSERT INTO authoring.candidates \
+             (id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at) \
+             SELECT $2::uuid,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now() \
+             FROM authoring.candidates c JOIN authoring.drafts d ON d.head_candidate_id=c.id \
+             WHERE d.id=$1::uuid";
+        const HEAD: &str =
+            "UPDATE authoring.drafts SET head_candidate_id=$2::uuid WHERE id=$1::uuid";
+        let retired = mint();
+        let mut connection = self.connection().await;
+        for statement in [RETIRED, HEAD] {
+            let written = sqlx::query(statement)
+                .bind(draft.as_str())
+                .bind(retired.as_str())
+                .execute(&mut *connection)
+                .await
+                .expect("an older daemon's candidate");
+            assert_eq!(written.rows_affected(), 1);
+        }
+        retired
+    }
+
     /// The lane owner's URL, which a fault fixture installs its trigger as.
     pub(super) fn owner_url(&self) -> String {
         self.lane.url()
@@ -148,14 +181,14 @@ impl Fixture {
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
         let mut connection = self.connection().await;
         let mut tx = connection.begin().await.expect("counts transaction");
-        sqlx::query("SELECT id FROM core.authoring_drafts WHERE workspace_id=$1::uuid FOR UPDATE")
+        sqlx::query("SELECT id FROM authoring.drafts WHERE workspace_id=$1::uuid FOR UPDATE")
             .bind(self.workspace.as_str())
             .fetch_all(&mut *tx)
             .await
             .expect("wait out a concurrent purge");
-        let counts = sqlx::query_as("SELECT (SELECT count(*) FROM core.authoring_drafts WHERE workspace_id=$1::uuid), \
-            (SELECT count(*) FROM core.authoring_candidates c JOIN core.authoring_drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1::uuid), \
-            (SELECT count(*) FROM core.authoring_messages m JOIN core.authoring_drafts d ON d.id=m.draft_id WHERE d.workspace_id=$1::uuid)")
+        let counts = sqlx::query_as("SELECT (SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1::uuid), \
+            (SELECT count(*) FROM authoring.candidates c JOIN authoring.drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1::uuid), \
+            (SELECT count(*) FROM authoring.messages m JOIN authoring.drafts d ON d.id=m.draft_id WHERE d.workspace_id=$1::uuid)")
             .bind(self.workspace.as_str()).fetch_one(&mut *tx)
             .await.expect("scoped durable counts");
         tx.commit().await.expect("counts commit");
@@ -163,36 +196,50 @@ impl Fixture {
     }
 
     fn arm_cleanup(&mut self) {
+        // Drafts go first, before any attempt row. Every lane's maintenance
+        // pass recovers every lane's expired attempts, and it locks the draft
+        // and then the attempt; cleanup taking the attempts first and reaching
+        // the drafts through the tenant cascade is the opposite order, and
+        // Postgres broke that cycle as a deadlock in this cleanup. Messages,
+        // candidates and answer receipts cascade from the draft.
         self.cleanup.record(
-            "SELECT set_config('fleet.allow_gate_purge','on',true) WHERE $1::text IS NOT NULL",
+            "DELETE FROM authoring.drafts WHERE workspace_id=$1::uuid",
             self.workspace.as_str(),
         );
         self.cleanup.record(
-            "DELETE FROM core.authoring_replay_receipts WHERE workspace_id=$1::uuid",
+            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1::uuid",
+            self.workspace.as_str(),
+        );
+        // Attempts carry no foreign key to the workspace (money outlives it),
+        // so no cascade removes them; their dispatches, receipts and
+        // settlements go with them.
+        self.cleanup.record(
+            "DELETE FROM authoring.attempts WHERE workspace_id=$1::uuid",
             self.workspace.as_str(),
         );
         self.cleanup.record(
-            "DELETE FROM core.fleets WHERE tenant_id=$1::uuid",
+            "DELETE FROM fleet.fleets WHERE tenant_id=$1::uuid",
             self.tenant.as_str(),
         );
-        self.cleanup.record("DELETE FROM core.fleet_library_revisions WHERE library_id IN (SELECT id FROM core.fleet_libraries WHERE tenant_id=$1::uuid)", self.tenant.as_str());
+        // A platform default holds its source workspace without a cascade, so
+        // it goes before the tenant whose workspace it names.
         self.cleanup.record(
-            "DELETE FROM core.platform_provider_defaults WHERE source_workspace_id=$1::uuid",
+            "DELETE FROM model.platform_defaults WHERE source_workspace_id=$1::uuid",
             self.workspace.as_str(),
         );
         for tenant in [&self.tenant, &self.member_tenant] {
             self.cleanup.record(
-                "DELETE FROM core.tenants WHERE id=$1::uuid",
+                "DELETE FROM identity.tenants WHERE id=$1::uuid",
                 tenant.as_str(),
             );
         }
         self.cleanup.record(
-            "DELETE FROM fleet.runners WHERE id=$1::uuid",
+            "DELETE FROM runner.runners WHERE id=$1::uuid",
             self.runner.as_str(),
         );
         for id in &self.catalogue {
             self.cleanup.record(
-                "DELETE FROM core.model_library WHERE id=$1::uuid",
+                "DELETE FROM model.platform_models WHERE id=$1::uuid",
                 id.as_str(),
             );
         }
@@ -208,14 +255,31 @@ impl Fixture {
         self.lane.cleanup().await;
     }
 
+    /// Removes the platform entry staged under `slug` at cleanup: platform
+    /// entries belong to no tenant, so no fixture cascade reaches them.
+    pub(super) fn own_platform_library(&mut self, slug: &str) {
+        self.cleanup.record(
+            "DELETE FROM authoring.library_entries WHERE platform_slug=$1",
+            slug,
+        );
+    }
+
     pub(super) fn own_library(&mut self, library: &str) {
         self.cleanup.record(
-            "DELETE FROM core.fleet_library_revisions WHERE library_id=$1::uuid",
+            "DELETE FROM authoring.library_entries WHERE id=$1::uuid",
             library,
         );
     }
 }
 
-pub(super) fn now() -> clock::UnixMillis {
+pub(super) fn now() -> jiff::Timestamp {
     clock::now()
+}
+
+/// The built-in biller over the suite's database: setup chat reserves, logs and
+/// settles through it exactly as the daemon's does.
+pub(crate) fn ledger(db: &Db) -> Arc<dyn afd_billing::biller::Biller> {
+    Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
+        db.clone(),
+    ))
 }

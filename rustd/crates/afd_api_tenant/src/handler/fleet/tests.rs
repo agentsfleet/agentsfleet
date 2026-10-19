@@ -18,20 +18,53 @@ fn fleet_id() -> Uuid7 {
         .unwrap_or_else(|error| panic!("fixture id is canonical: {error}"))
 }
 
+/// When the fixture fleet was made.
+const CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 42_000_000);
+
+/// One listed fleet carrying `description`.
+fn row(description: Option<&str>) -> FleetRow {
+    FleetRow {
+        id: fleet_id().to_string(),
+        name: "reviewer".to_owned(),
+        status: FleetStatus::Active,
+        created_at: CREATED_AT,
+        updated_at: CREATED_AT,
+        description: description.map(str::to_owned),
+        triggers: None,
+        events_processed: 7,
+        budget_used_nanos: 11,
+    }
+}
+
+#[test]
+fn a_summary_carries_the_saved_purpose_and_publishes_its_absence_as_null() {
+    for (description, expected) in [
+        (
+            Some("Reviews pull requests."),
+            serde_json::json!("Reviews pull requests."),
+        ),
+        (None, serde_json::Value::Null),
+    ] {
+        let page = FleetPage {
+            rows: vec![row(description)],
+            more: false,
+        };
+
+        let wire = serde_json::to_value(page_response(&page))
+            .unwrap_or_else(|error| panic!("a page serializes: {error}"));
+
+        assert_eq!(
+            wire["items"][0]["description"], expected,
+            "the purpose is listed, and a fleet with no saved setup lists null rather than omitting it"
+        );
+    }
+}
+
 #[test]
 fn a_page_cursor_names_the_last_returned_row() {
     let id = fleet_id().to_string();
     let page = FleetPage {
-        rows: vec![FleetRow {
-            id: id.clone(),
-            name: "reviewer".to_owned(),
-            status: FleetStatus::Active,
-            created_at_ms: 42,
-            updated_at_ms: 43,
-            triggers: None,
-            events_processed: 7,
-            budget_used_nanos: 11,
-        }],
+        rows: vec![row(None)],
         more: true,
     };
 
@@ -42,6 +75,6 @@ fn a_page_cursor_names_the_last_returned_row() {
     let parsed = parse_cursor(response.next_cursor.as_deref())
         .unwrap_or_else(|error| panic!("emitted cursor parses: {error:?}"))
         .unwrap_or_else(|| panic!("a page with more rows emits a cursor"));
-    assert_eq!(parsed.created_at_ms, 42);
+    assert_eq!(parsed.created_at, CREATED_AT);
     assert_eq!(parsed.id.as_str(), id);
 }

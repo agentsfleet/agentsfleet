@@ -21,6 +21,13 @@ use super::{
 };
 use crate::handler::Refusal;
 
+/// The spelling that asks for advanced models.
+const ADVANCED_TRUE: &str = "true";
+/// The spelling that asks for the ordinary catalogue.
+const ADVANCED_FALSE: &str = "false";
+/// The refusal any other `advanced` earns.
+const DETAIL_ADVANCED: &str = "advanced must be true or false";
+
 /// A `provider` filter once normalized, bounded by the catalogue's own column.
 ///
 /// The bound is on the NORMALIZED value, the one compared against stored rows:
@@ -77,6 +84,7 @@ pub(super) fn normalize_provider(raw: Option<Cow<'_, str>>) -> Result<Option<Str
 pub(super) fn parse_cursor(
     raw: Option<Cow<'_, str>>,
     provider: Option<&str>,
+    advanced: bool,
     limit: u32,
 ) -> Result<Option<Boundary>, Refusal> {
     let Some(raw) = raw else {
@@ -92,7 +100,7 @@ pub(super) fn parse_cursor(
         )
     };
     let token = cursor::parse(&raw).map_err(|_foreign| malformed())?;
-    if token.limit != limit || token.provider.as_deref() != provider {
+    if token.limit != limit || token.provider.as_deref() != provider || token.advanced != advanced {
         return Err(Refusal::coded(
             error_code::LIBRARY_CURSOR_MISMATCH,
             DETAIL_CURSOR_MISMATCH,
@@ -109,6 +117,20 @@ pub(super) fn parse_cursor(
         vendor_key: token.vendor_key,
         id: token.id,
     }))
+}
+
+/// `advanced` as the catalogue reads it: absent is `false`, and only the exact
+/// spellings `true` and `false` are values. Anything else is refused rather
+/// than guessed, so `?advanced=1` cannot quietly list the ordinary catalogue.
+pub(super) fn parse_advanced(raw: Option<&str>) -> Result<bool, Refusal> {
+    match raw {
+        None | Some(ADVANCED_FALSE) => Ok(false),
+        Some(ADVANCED_TRUE) => Ok(true),
+        Some(_other) => Err(Refusal::coded(
+            error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
+            DETAIL_ADVANCED,
+        )),
+    }
 }
 
 /// The shared decode, under this family's unreadable-query sentence: a query

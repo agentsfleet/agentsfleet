@@ -13,13 +13,14 @@ mod member;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use jiff::Timestamp;
 
 use crate::workspace::access::Role;
 
 pub use self::email::Email;
 pub use self::invitation::{
     Acceptance, EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT, EMAIL_STATUS_UNCONFIGURED, EmailAttempt,
-    EmailStatus, INVITE_TTL_MS, INVITE_VALID_DAYS, Invitation,
+    EmailStatus, INVITE_TTL, INVITE_VALID_DAYS, Invitation,
 };
 
 /// Invites, acceptance and members, over one pool.
@@ -60,7 +61,7 @@ pub struct Waiting {
     /// What a person calls that account.
     pub owner_name: String,
     /// When it stops being acceptable.
-    pub expires_at_ms: i64,
+    pub expires_at: Timestamp,
 }
 
 /// The person accepting an invite.
@@ -95,8 +96,8 @@ pub struct Member {
     pub subject: String,
     /// Their role in the account.
     pub role: Role,
-    /// When their membership began, epoch milliseconds.
-    pub joined_at_ms: i64,
+    /// When their membership began.
+    pub joined_at: Timestamp,
 }
 
 /// What a removal did.

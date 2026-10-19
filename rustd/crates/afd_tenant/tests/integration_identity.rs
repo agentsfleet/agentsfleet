@@ -27,7 +27,7 @@ const SUBJECT: &str = "user_identity_named";
 /// The subject of a person who never gave a display name.
 const SUBJECT_ANONYMOUS: &str = "user_identity_unnamed";
 
-/// A subject no `core.users` row carries.
+/// A subject no `identity.users` row carries.
 const SUBJECT_ABSENT: &str = "user_identity_absent";
 
 const EMAIL: &str = "ada@identity.test";
@@ -55,7 +55,7 @@ async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
     assert_eq!(
         named.id.as_str(),
         fixture.user,
-        "the user id is the core.users row, not the provider subject"
+        "the user id is the identity.users row, not the provider subject"
     );
     assert_eq!(
         named.tenant.as_str(),
@@ -134,13 +134,13 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, $2, 1, 1) \
+               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
+               VALUES ($1::uuid, $2, now(), now()) \
              ) \
-             INSERT INTO core.users \
+             INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($3::uuid, $1::uuid, $4, $5, $6, 1, 1), \
-                    ($7::uuid, $1::uuid, $8, $9, NULL, 1, 1)",
+             VALUES ($3::uuid, $1::uuid, $4, $5, $6, now(), now()), \
+                    ($7::uuid, $1::uuid, $8, $9, NULL, now(), now())",
         )
         .bind(&self.tenant)
         .bind(TENANT_NAME)
@@ -164,7 +164,7 @@ impl Fixture {
     async fn users_in_tenant(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let (count,): (i64,) =
-            sqlx::query_as("SELECT count(*) FROM core.users WHERE tenant_id = $1::uuid")
+            sqlx::query_as("SELECT count(*) FROM identity.users WHERE tenant_id = $1::uuid")
                 .bind(&self.tenant)
                 .fetch_one(&mut *connection)
                 .await
@@ -174,7 +174,7 @@ impl Fixture {
 
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

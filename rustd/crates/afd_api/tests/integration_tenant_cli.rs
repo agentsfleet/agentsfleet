@@ -10,7 +10,7 @@ use crate::harness;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{TenantSeed, TestDatabase, UserSeed, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -111,27 +111,21 @@ impl Fixture {
 
     async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'CLI lifecycle', 1, 1) \
-             ) \
-             INSERT INTO core.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($2::uuid, $1::uuid, $3, 'cli-live@example.test', 1, 1)",
-        )
-        .bind(&self.tenant)
-        .bind(&self.user)
-        .bind(SUBJECT)
-        .execute(&mut *connection)
-        .await
-        .expect("the CLI principal seeds");
+        TenantSeed::new(&self.tenant)
+            .name("CLI lifecycle")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        UserSeed::new(&self.user, &self.tenant, SUBJECT, "cli-live@example.test")
+            .insert(&mut *connection)
+            .await
+            .expect("its person seeds");
     }
 
     async fn assert_replaced(&self, first: &str, replacement: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        let rows: Vec<(String, Option<i64>)> = sqlx::query_as(
-            "SELECT id::text, revoked_at FROM core.cli_credentials \
+        let rows: Vec<(String, bool)> = sqlx::query_as(
+            "SELECT id::text, revoked_at IS NOT NULL FROM identity.cli_credentials \
              WHERE user_id = $1::uuid AND machine_name = $2 ORDER BY created_at, id",
         )
         .bind(&self.user)
@@ -142,20 +136,19 @@ impl Fixture {
 
         assert_eq!(rows.len(), 2, "one replacement retains one audit row");
         assert!(
-            rows.iter()
-                .any(|(id, revoked)| id == first && revoked.is_some()),
+            rows.iter().any(|(id, revoked)| id == first && *revoked),
             "the first credential is revoked atomically"
         );
         assert!(
             rows.iter()
-                .any(|(id, revoked)| id == replacement && revoked.is_none()),
+                .any(|(id, revoked)| id == replacement && !*revoked),
             "the replacement is the sole live credential"
         );
     }
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

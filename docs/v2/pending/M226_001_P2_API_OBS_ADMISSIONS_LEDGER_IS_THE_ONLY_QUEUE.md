@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `test_admitted_event_is_leased_from_the_ledger` — an event admitted through any producer is leased on the next poll by a claim that reads `core.fleet_admissions` alone, and a full admit → lease → report cycle leaves no `fleet:{id}:events` stream and no `fleet:ready:` key in Dragonfly.
+**Goal (testable):** `test_admitted_event_is_leased_from_the_ledger` — an event admitted through any producer is leased on the next poll by a claim that reads `fleet.admissions` alone, and a full admit → lease → report cycle leaves no `fleet:{id}:events` stream and no `fleet:ready:` key in Dragonfly.
 **Problem:** One fact, "this fleet has work", lives in four stores: the ledger row, the per-fleet stream entry, a readiness mark in one of sixteen hashes, and (since M225_001) a directory entry. No transaction spans Postgres and Dragonfly, so each gap has its own repairer: replay, reconcile with progress/scan/walk, cursor and group restore, the two-arm `MARK_DELIVERED`, the history view's duplicate merge, the reclaim sweeper's re-mark and token compare-and-delete clears. The user-visible cost: a failed stream append leaves a steer unseen until the replay sweeper takes rows older than 30 s on a 30 s pass (`rustd/crates/afd_runner/src/sweep/replay.rs:36,47`), and every new pickup feature has to keep four copies agreeing.
 **Solution summary:** The ledger becomes the queue. A lease poll's claim locks the oldest unsettled row of an eligible fleet whose affinity slot is free (`FOR UPDATE SKIP LOCKED`), bumps the fence and stamps the row in one transaction; "has work" is a partial index, an expired lease re-qualifies its row by the same predicate, a park and a gate answer stamp and clear the row, and the report settles it inside the transaction it already runs. Dragonfly keeps the jobs where it copies nothing: the live tail and the doorbell over sharded publish, key-value, command-line login sessions, and the outbound queue. The readiness index, the inbound streams, and every repairer listed above are deleted.
 
@@ -47,8 +47,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `docs/architecture/runner_fleet.md` — §Datastore topology and the lease clear rules (drained, parked) this design must preserve.
 2. `docs/architecture/datastore_scaling.md` — why readiness was partitioned and how retention and admission budgets lean on the streams; every claim there is rewritten by §6.
 3. `rustd/crates/afd_fleet/src/lease/sql/lease/mod.rs` — `CLAIM_AFFINITY_SLOT`, `RECLAIM_PRIOR_ACTIVE` and `SELECT_READY_CANDIDATES`: the slot and fence the new claim reuses.
-4. `rustd/crates/afd_runner/src/sql/sweep.rs` — the repository's `FOR UPDATE SKIP LOCKED` shape, used by every replica's sweepers.
-5. `rustd/crates/afd_fleet/src/lease/sql/report.rs` — `CLAIM_AND_SETTLE`, whose fence guard (`fencing_token >= fencing_seq`) already refuses a dead holder's late report; the settle stamp joins it.
+4. `rustd/crates/afd_runner/src/sql/sweep/expire_abandoned_active_leases_batch.sql` — the repository's `FOR UPDATE SKIP LOCKED` shape, used by every replica's sweepers.
+5. `rustd/crates/afd_fleet/src/lease/sql/report.rs` — `CLAIM_AND_SETTLE`, whose fence guard (the lease's `fencing_token` at or above the slot's) already refuses a dead holder's late report; the settle stamp joins it.
 
 ## Files Changed (blast radius)
 
@@ -96,7 +96,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `rustd/crates/afd_runner/src/sql/sweep.rs` — the in-repo `FOR UPDATE SKIP LOCKED` claim every replica runs safely; the lease claim mirrors its lock-then-stamp shape.
+- **Reference:** `rustd/crates/afd_runner/src/sql/sweep/expire_abandoned_active_leases_batch.sql` — the in-repo `FOR UPDATE SKIP LOCKED` claim every replica runs safely; the lease claim mirrors its lock-then-stamp shape.
 - **Reference:** `rustd/crates/afd_fleet/src/lease/sql/report.rs` — fence-guarded settle; the new stamps ride its guard rather than adding a second one.
 
 ## Sections (implementation slices)
@@ -110,14 +110,14 @@ A bench variant of `make bench-lease` runs the §3 claim against a seeded ledger
 
 ### §2 — The ledger carries queue state
 
-A forward migration adds three nullable stamps to `core.fleet_admissions`: the fence of the lease holding the row, when it parked on a gate, and when its report settled it. A partial index on `(fleet_id, created_at, seq)` covers unsettled rows. The same migration backfills `settled_at` for every row whose `core.fleet_events` row is terminal, so a populated ledger upgrades with no stream drain. **Implementation default:** backfill over a quiesce window, because the fence guard already refuses any report the old code issued against a re-claimed row (Q4 can overrule).
+A forward migration adds three nullable stamps to `fleet.admissions`: the fence of the lease holding the row, when it parked on a gate, and when its report settled it. A partial index on `(fleet_id, created_at, seq)` covers unsettled rows. The same migration backfills `settled_at` for every row whose `fleet.events` row is terminal, so a populated ledger upgrades with no stream drain. **Implementation default:** backfill over a quiesce window, because the fence guard already refuses any report the old code issued against a re-claimed row (Q4 can overrule).
 
 - **Dimension 2.1** — fresh bootstrap creates the stamps, index and grants → Test `test_admissions_queue_migration_bootstraps`
 - **Dimension 2.2** — populated upgrade settles exactly the terminal rows → Test `test_admissions_backfill_settles_terminal_rows`
 
 ### §3 — The claim takes the work
 
-Admission commits the ledger row, then rings the doorbell; no append, no mark. A poll's candidate scan reads eligible fleets from the unsettled index (fleet `active`, slot free or expired, oldest unsettled row not parked). The claim then, in one transaction, wins the slot, bumps `fencing_seq`, locks that fleet's oldest unsettled row with `FOR UPDATE SKIP LOCKED` and stamps the fence on it. `Acquired` is built from the row; `redelivered` is `delivered_at IS NOT NULL`. Gates and issue keep today's order after the claim and stay fence-guarded. Both backlog budgets count unsettled rows, the per-fleet one bounded by `LIMIT 10001`.
+Admission commits the ledger row, then rings the doorbell; no append, no mark. A poll's candidate scan reads eligible fleets from the unsettled index (fleet `active`, slot free or expired, oldest unsettled row not parked). The claim then, in one transaction, wins the slot, bumps `fencing_token`, locks that fleet's oldest unsettled row with `FOR UPDATE SKIP LOCKED` and stamps the fence on it. `Acquired` is built from the row; `redelivered` is `delivered_at IS NOT NULL`. Gates and issue keep today's order after the claim and stay fence-guarded. Both backlog budgets count unsettled rows, the per-fleet one bounded by `LIMIT 10001`.
 
 - **Dimension 3.1** — an admitted event is leased on the next poll from the ledger → Test `test_admitted_event_is_leased_from_the_ledger`
 - **Dimension 3.2** — two replicas claiming the same fleet: one lease, one empty answer → Test `test_concurrent_claims_lease_one_row`
@@ -127,7 +127,7 @@ Admission commits the ledger row, then rings the doorbell; no append, no mark. A
 
 ### §4 — Report, park, answer and expiry move the row
 
-`CLAIM_AND_SETTLE` stamps `settled_at` in the transaction it already runs, under its fence guard. A park stamps the row and frees the slot; a gate answer clears the stamp and rings the doorbell. An expired lease needs no sweeper: the expired slot and the unsettled row re-qualify by the §3 predicate. A poll that hears no doorbell for `NO_WORK_RETRY_AFTER_MS` runs the §1-measured probe, so a lost doorbell costs one retry interval and never the event.
+`CLAIM_AND_SETTLE` stamps `settled_at` in the transaction it already runs, under its fence guard. A park stamps the row and frees the slot; a gate answer clears the stamp and rings the doorbell. An expired lease needs no sweeper: the expired slot and the unsettled row re-qualify by the §3 predicate. A poll that hears no doorbell for `NO_WORK_RETRY_AFTER` runs the §1-measured probe, so a lost doorbell costs one retry interval and never the event.
 
 - **Dimension 4.1** — settle stamps the row in the report transaction; a rollback leaves it unsettled → Test `test_report_settles_its_ledger_row`
 - **Dimension 4.2** — an expired lease is re-leased and the dead holder's late report is refused → Test `test_expired_lease_requalifies_and_late_report_is_refused`
@@ -153,7 +153,7 @@ The readiness index, its partitions and the M225_001 directory if it still exist
 
 ```
 HTTP: unchanged. POST /v1/runners/me/leases, the reports route and their wire shapes keep every field.
-core.fleet_admissions  + lease_fence BIGINT NULL   fence of the lease holding the row
+fleet.admissions       + lease_fence BIGINT NULL   fence of the lease holding the row
                        + parked_at   BIGINT NULL   set by a park, cleared by the gate answer
                        + settled_at  BIGINT NULL   set by CLAIM_AND_SETTLE, never cleared
                        - receipt (§5, after Q3)
@@ -175,7 +175,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 
 ## Invariants
 
-1. A ledger row leases only under the fence its claim minted — enforced by the claim transaction stamping `lease_fence` from the `fencing_seq` it bumped, and by `CLAIM_AND_SETTLE`'s guard.
+1. A ledger row leases only under the fence its claim minted — enforced by the claim transaction stamping `lease_fence` from the `fencing_token` it bumped, and by `CLAIM_AND_SETTLE`'s guard.
 2. One unsettled row per fleet is leased at a time — enforced by the affinity slot claim preceding the row lock in the same transaction.
 3. A settled row never leases again — enforced by the claim statement's `settled_at IS NULL` predicate, and by `CLAIM_AND_SETTLE` being the only statement that writes `settled_at` (the Dead Code Sweep grep proves no other writer).
 4. No Dragonfly write sits between the admission commit and the caller's answer except the best-effort doorbell — enforced by `admit` returning after the commit and logging, never propagating, a doorbell failure.
@@ -194,7 +194,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 | 1.1 | integration | `test_ledger_claim_lane_reports_round_trips` | a 200-fleet seeded drain through the ledger claim reports a nonzero leases/s and a round-trip figure, every event processed once |
 | 1.2 | manual | `manual_ledger_claim_figures_recorded` | Indy reads the §1 figures in `scaling.md`; his Q1/Q2 answers are quoted in Discovery |
 | 2.1 | integration | `test_admissions_queue_migration_bootstraps` | empty database → three nullable stamps, the partial index and the runtime role's grants exist |
-| 2.2 | integration | `test_admissions_backfill_settles_terminal_rows` | rows with terminal, running and no `fleet_events` rows → only the terminal ones get `settled_at` |
+| 2.2 | integration | `test_admissions_backfill_settles_terminal_rows` | rows with terminal, running and no `fleet.events` rows → only the terminal ones get `settled_at` |
 | 3.1 | integration | `test_admitted_event_is_leased_from_the_ledger` | steer admitted → next poll leases it; Dragonfly holds no `fleet:{id}:events` key; regression: the held-sandbox, sticky-routing and approval suites pass unchanged |
 | 3.2 | integration | `test_concurrent_claims_lease_one_row` | two claims on one fleet at once → one lease, one empty answer, one fence bump |
 | 3.3 | integration | `test_fleet_rows_lease_in_order_behind_a_park` | rows A, B, C with A parked → no lease; answer A → A, then B, then C |
@@ -203,7 +203,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 | 4.1 | integration | `test_report_settles_its_ledger_row` | report commits → `settled_at` set; injected abort → null and wallet unchanged |
 | 4.2 | integration | `test_expired_lease_requalifies_and_late_report_is_refused` | holder silent past expiry → second runner leases; first runner's report answers fenced |
 | 4.3 | integration | `test_parked_row_leases_after_the_answer` | gate parks A → polls lease nothing; answer → next poll leases A |
-| 4.4 | integration | `test_lost_doorbell_leases_on_the_probe` | doorbell publish dropped → lease arrives within one `NO_WORK_RETRY_AFTER_MS` |
+| 4.4 | integration | `test_lost_doorbell_leases_on_the_probe` | doorbell publish dropped → lease arrives within one `NO_WORK_RETRY_AFTER` |
 | 5.1 | integration | `test_cycle_leaves_no_dragonfly_queue_keys` | admit → lease → report, then `SCAN` for `fleet:ready:` and `:events` → 0 keys |
 | 5.2 | integration | `test_receipt_drop_migration_applies_populated` | populated ledger → drop applies; leases still flow |
 | 5.3 | integration | `test_queued_steer_reads_from_the_ledger` | unleased steer → one QUEUED row in the thread; after lease → one received row, no duplicate |
@@ -255,7 +255,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 ## Out of Scope
 
 - The outbound queue (`connector:outbound`): it stays a Dragonfly stream; its head-of-line row in `scaling.md` is a separate spec.
-- Ledger retention: no sweeper deletes `core.fleet_admissions` rows today (`grep -rn fleet_admissions rustd/crates/afd_runner/src` finds none); the partial index keeps the claim off settled rows, and retention stays as it is.
+- Ledger retention: no sweeper deletes `fleet.admissions` rows today (`grep -rn fleet.admissions rustd/crates/afd_runner/src` finds none); the partial index keeps the claim off settled rows, and retention stays as it is.
 - The report path's five-file split (report, steps, commit, settle, finalize) and the fence rule's eight spellings: review findings, not this queue move.
 - Name collisions (`Admission`, `Delivery`, `Verdict`, `claim`, `session`): a rename spec of their own.
 
@@ -269,7 +269,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 4. **Rebuild-vs-iterate** — rebuild of the queue only; the lease, gate and report code is iterated in place.
 5. **What we build** — two migrations, the ledger claim, the park and settle stamps, the census backlog gauge, the bench variant.
 6. **What we do NOT build** — a new queue service, an outbound move, a report-path refactor, renames.
-7. **Fit with existing features** — compounds with M225_001's doorbell; must not destabilize the held-sandbox routing on `fleet.runner_affinity`.
+7. **Fit with existing features** — compounds with M225_001's doorbell; must not destabilize the held-sandbox routing on `runner.fleet_slots`.
 8. **Surface order** — N/A — no user surface; the HTTP routes are unchanged.
 9. **Dashboard restraint** — the readiness panel goes with its metric; no replacement panel until the census backlog has a week of samples.
 10. **Confused-user next step** — N/A — no user surface; an operator reads `agentsfleet_admission_backlog`.
@@ -285,7 +285,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 - **Consults** — Indy (Oct 13, 2026, AskUserQuestion during M225_001 review round 2) picked "Spec it now (Recommended)" for this refactor as a pending spec, no code. Open human decisions, each blocking the boundary named:
   - **Q1 (blocks §3)** — reverse the recorded design "The streams are the record" (`rustd/crates/afd_dragonfly/src/ready/mod.rs:9-14` on `main`) and "PostgreSQL is the forge and Dragonfly a cache of it" (`rustd/crates/afd_runner/src/sweep/rebuild/mod.rs:5`)? Not decided by this spec.
   - **Q2 (blocks §4.4)** — idle fallback: a Postgres probe per silent poll, or a one-bit Dragonfly flag beside the doorbell; decided from §1's figures.
-  - **Q3 (blocks the §5 drop migration)** — approve dropping `core.fleet_admissions.receipt` and its two indexes on a live datastore (`VERSION` 0.59.0, `.orly/dispatch/write_sql.md` §Repository schema policy).
+  - **Q3 (blocks the §5 drop migration)** — approve dropping `fleet.admissions.receipt` and its two indexes on a live datastore (`VERSION` 0.59.0, `.orly/dispatch/write_sql.md` §Repository schema policy).
   - **Q4 (blocks §2.2)** — cutover by backfill (default) or by a quiesce window that drains live streams first.
 - **Metrics review** — `agentsfleet_fleet_ready_depth` removed with its dashboard panel; the backlog gauge changes producer only; analytics/funnel playbook update not required — no product event changes.
 - **Skill-chain outcomes** — pending.

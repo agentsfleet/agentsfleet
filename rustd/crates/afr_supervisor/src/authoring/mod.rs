@@ -6,7 +6,7 @@ mod renew;
 mod turn;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use self::{meter::Observed, turn::Turn};
 use crate::{Result, lease_loop::Lessee};
@@ -60,7 +60,12 @@ impl Lessee {
         };
         let deadline = renew::deadline(lease.deadline, self.clock.as_ref())
             .min(tokio::time::Instant::now() + std::time::Duration::from_secs(300));
+        // Polled in order: renewal stops at the same attempt end, so the
+        // deadline is checked first and a turn that reaches it reports
+        // `timed_out`, never a lost slot.
         let ending = tokio::select! {
+            biased;
+            () = tokio::time::sleep_until(deadline) => { observed.uncertain()?; Ending::timed_out() },
             result = turn.run() => match result {
                 Ok(ending) => ending,
                 Err(failure) => { self.halt.stops_on(&failure); observed.uncertain()?; Ending::unknown() },
@@ -71,11 +76,9 @@ impl Lessee {
                 Ending::unknown()
             },
             () = self.halt.running().cancelled() => { observed.uncertain()?; Ending::unknown() },
-            () = tokio::time::sleep_until(deadline) => { observed.uncertain()?; Ending::timed_out() },
         };
         let accounting = Accounting {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             report_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
             outcome: ending.outcome,
             failure_reason: ending.reason,

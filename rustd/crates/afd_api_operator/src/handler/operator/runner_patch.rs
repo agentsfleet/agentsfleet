@@ -121,31 +121,33 @@ async fn mutate<'a, D: Services>(
             .runners()
             .transition(runner, action, actor, services.now())
             .await
-            .map(|admin_state| RunnerAdminPatchResponse {
+            .map(|status| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
-                admin_state,
+                status,
                 assigned_policy: None,
                 labels: None,
                 selftest_requested_at: None,
             }),
-        OrdinaryMutation::Selftest => services
-            .runners()
-            .request_selftest(runner, services.now())
-            .await
-            .map(|recorded| RunnerAdminPatchResponse {
-                id: Cow::Borrowed(runner.as_str()),
-                admin_state: recorded.admin_state(),
-                assigned_policy: None,
-                labels: None,
-                selftest_requested_at: Some(recorded.requested_at()),
-            }),
+        OrdinaryMutation::Selftest => {
+            services
+                .runners()
+                .request_selftest(runner)
+                .await
+                .map(|recorded| RunnerAdminPatchResponse {
+                    id: Cow::Borrowed(runner.as_str()),
+                    status: recorded.status(),
+                    assigned_policy: None,
+                    labels: None,
+                    selftest_requested_at: Some(recorded.requested_at()),
+                })
+        }
         OrdinaryMutation::Edit(edit) => services
             .runners()
             .edit(runner, edit, services.now())
             .await
             .map(|stored| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
-                admin_state: stored.admin_state,
+                status: stored.status,
                 assigned_policy: stored.assigned_policy,
                 labels: stored.labels,
                 selftest_requested_at: None,

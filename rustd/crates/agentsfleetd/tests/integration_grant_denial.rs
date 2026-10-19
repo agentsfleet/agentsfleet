@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 const SERVICE: &str = "github";
 const LEASES: &str = "/v1/runners/me/leases";
-const LABEL: &str = "COALESCE(failure_label, '')";
+const LABEL: &str = "COALESCE(failure_reason, '')";
 
 async fn connect_and_declare(run: &Scenario) {
     let vault = Vault::new(
@@ -44,11 +44,12 @@ async fn connect_and_declare(run: &Scenario) {
         .await
         .expect("existing connection");
     // Declared the way a person declares it: an Apply selecting a setup that
-    // names the credential. The lease reads the selected revision, never
-    // `config_json`.
+    // names the credential. The lease reads the selected revision, never a
+    // copy on the fleet row.
     let mut connection = run.booted.database.acquire().await.expect("connection");
     let mut config: serde_json::Value = sqlx::query_scalar::<_, String>(
-        "SELECT config_json::text FROM core.fleets WHERE id = $1::uuid",
+        "SELECT (r.definition -> 'config')::text FROM fleet.fleets f \
+         JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1::uuid",
     )
     .bind(&run.fleet)
     .fetch_one(&mut *connection)
@@ -62,13 +63,7 @@ async fn connect_and_declare(run: &Scenario) {
         .insert("credentials".to_owned(), json!([SERVICE]));
     let definition =
         crate::e2e_native::definition(&config.to_string(), crate::e2e_seed::FIXTURE_INSTRUCTIONS);
-    crate::e2e_native::reselect(
-        &mut connection,
-        &run.fleet,
-        &definition,
-        run.seeded_at.as_millis(),
-    )
-    .await;
+    crate::e2e_native::reselect(&mut connection, &run.fleet, &definition).await;
     drop(connection);
     // Prefer this fixture's fleet over unrelated ready marks left by other suites.
     Leases::new(
@@ -79,8 +74,7 @@ async fn connect_and_declare(run: &Scenario) {
     .claim(
         &Uuid7::parse(&run.fleet).expect("fleet"),
         &run.runner_id,
-        run.seeded_at,
-        0,
+        std::time::Duration::ZERO,
     )
     .await
     .expect("initial affinity claim")
@@ -89,7 +83,7 @@ async fn connect_and_declare(run: &Scenario) {
 
 /// How many approval cards this fixture's fleet has raised.
 async fn gate_cards(run: &Scenario) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM fleet.approval_gates WHERE fleet_id = $1::uuid")
         .bind(&run.fleet)
         .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
         .await
@@ -131,9 +125,11 @@ where
         // deadline into the past so this test reaches redelivery without a
         // wall-clock sleep. Dragonfly remains untouched: a missing acknowledgment
         // must still be visible.
-        sqlx::query("UPDATE fleet.runner_affinity SET leased_until = $2 WHERE fleet_id = $1::uuid")
-            .bind(&run.fleet)
-            .bind(afd_core::clock::now().as_millis() - 1)
+        sqlx::query(
+            "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval '1 millisecond' \
+             WHERE fleet_id = $1::uuid",
+        )
+        .bind(&run.fleet)
             .execute(&mut *run.booted.database.acquire().await.expect("connection"))
             .await
             .expect("expire the previous no-work claim");
@@ -161,13 +157,13 @@ where
 
 /// The fleet's monotonic claim counter.
 ///
-/// `CLAIM_AFFINITY_SLOT` bumps it on every won claim, and this suite expires
+/// `CLAIM_FLEET_SLOT` bumps it on every won claim, and this suite expires
 /// the deadline before each poll, so a poll that reaches this fleet's partition
 /// always wins the claim and always moves this number. That makes it the one
 /// observable meaning "the daemon looked here" — as opposed to the rows the
 /// callers assert on, which say what it decided once it did.
-async fn fencing_seq(run: &Scenario) -> i64 {
-    sqlx::query_scalar("SELECT fencing_seq FROM fleet.runner_affinity WHERE fleet_id = $1::uuid")
+async fn fencing_token(run: &Scenario) -> i64 {
+    sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id = $1::uuid")
         .bind(&run.fleet)
         .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
         .await
@@ -184,21 +180,20 @@ async fn fencing_seq(run: &Scenario) -> i64 {
 /// assertion then reads a row no poll revisited. The claim counter cannot be
 /// true in advance, because the caller reads it first.
 async fn poll_until_reached(http: &reqwest::Client, run: &Scenario, awaited: &str) {
-    let before = fencing_seq(run).await;
+    let before = fencing_token(run).await;
     poll_until(http, run, awaited, || async {
-        fencing_seq(run).await > before
+        fencing_token(run).await > before
     })
     .await;
 }
 
 async fn deny(run: &Scenario) {
-    let actions: Vec<String> = sqlx::query_scalar(
-        "SELECT action_id FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid",
-    )
-    .bind(&run.fleet)
-    .fetch_all(&mut *run.booted.database.acquire().await.expect("connection"))
-    .await
-    .expect("actionable cards");
+    let actions: Vec<String> =
+        sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1::uuid")
+            .bind(&run.fleet)
+            .fetch_all(&mut *run.booted.database.acquire().await.expect("connection"))
+            .await
+            .expect("actionable cards");
     assert_eq!(
         actions.len(),
         1,
@@ -215,7 +210,6 @@ async fn deny(run: &Scenario) {
         "fixture",
         "",
         Some(&run.fleet),
-        afd_core::clock::now(),
     )
     .await
     .expect("denial");
@@ -255,7 +249,6 @@ async fn refusal_drains(preended: bool) {
                 label: afd_core::event::label::GRANT_DENIED,
                 detail: "",
             },
-            afd_core::clock::now(),
         )
         .await
         .expect("terminal write before retry");

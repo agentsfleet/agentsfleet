@@ -23,7 +23,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::{self, UnixMillis};
+use afd_core::clock;
 use afd_core::event::status;
 use afd_core::id::Uuid7;
 use afd_dragonfly::{EventId, FleetStreams};
@@ -35,6 +35,7 @@ use crate::integration_admission_recovery::{
     EVERY_ROW, NO_GRACE, RECOVERY_LANE, deferring, ledger,
 };
 use crate::queue;
+use crate::rows::Row;
 use crate::seed::{seeded_parts, select_fleet_within_rotations};
 use crate::support::Fixtures;
 
@@ -50,9 +51,9 @@ const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0c71";
 /// A page of one, so a repeat of the message would have to cross a cursor.
 const PAGE: i64 = 1;
 
-/// One `core.fleet_events` row per logical event, whatever the stream held.
+/// One `fleet.events` row per logical event, whatever the stream held.
 const COUNT_EVENT_ROWS: &str =
-    "SELECT COUNT(*) FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2";
+    "SELECT COUNT(*) FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2";
 
 /// Where the send stopped.
 #[derive(Clone, Copy, Debug)]
@@ -112,7 +113,7 @@ async fn one_message_across_resend_sweep_and_lease(failure: Failure) {
         append_as_the_dead_inserter(&streams, &fleet, &workspace, &event_id).await;
     }
     assert_eq!(
-        fixtures.admission_receipt(&fleet, &event_id).await,
+        fixtures.text(Row::Admission(&event_id), "receipt").await,
         None,
         "{failure:?}: no receipt was recorded"
     );
@@ -145,15 +146,18 @@ async fn one_message_across_resend_sweep_and_lease(failure: Failure) {
 
     // ── The sweep owes it a receipt and re-appends it once.
     ledger(&fixtures)
-        .replay(clock::now(), NO_GRACE, EVERY_ROW)
+        .replay(NO_GRACE, EVERY_ROW)
         .await
         .expect("the replay pass runs against both live datastores");
     let receipt = fixtures
-        .admission_receipt(&fleet, &event_id)
+        .text(Row::Admission(&event_id), "receipt")
         .await
         .expect("the sweep records a receipt");
     assert_eq!(
-        fixtures.admission_replays(&fleet, &event_id).await,
+        fixtures
+            .value::<i64>(Row::Admission(&event_id), "replay_count")
+            .await
+            .expect("replay_count is NOT NULL"),
         1,
         "re-appended exactly once"
     );
@@ -189,13 +193,12 @@ async fn one_message_across_resend_sweep_and_lease(failure: Failure) {
 /// through the same verb: each is the open event again, never a second one.
 async fn lease_every_copy(fixtures: &Fixtures, fleet: &str, runner: &Uuid7, event_id: &str) {
     let leases = fixtures.leases();
-    let polled_at = UnixMillis::from_millis(fixtures.enrolled_at());
-    let acquired = select_fleet_within_rotations(&leases, runner, polled_at, fleet)
+    let acquired = select_fleet_within_rotations(&leases, runner, fleet)
         .await
         .expect("the fleet holding the message is leasable");
     assert_eq!(acquired.event_id, event_id);
     let opened = leases
-        .record_received(&acquired, polled_at)
+        .record_received(&acquired)
         .await
         .expect("the narrative log opens");
     assert_eq!(opened.delivery, Delivery::First);
@@ -205,7 +208,7 @@ async fn lease_every_copy(fixtures: &Fixtures, fleet: &str, runner: &Uuid7, even
             ..acquired.clone()
         };
         let repeat = leases
-            .record_received(&again, polled_at)
+            .record_received(&again)
             .await
             .expect("a second copy must not fault");
         assert_eq!(
@@ -225,7 +228,7 @@ async fn append_as_the_dead_inserter(
     workspace: &str,
     event_id: &str,
 ) {
-    let created_at = clock::now().as_millis().to_string();
+    let created_at = clock::now().to_string();
     let entry = Entry {
         actor: ACTOR,
         event_type: EventType::Chat.as_str(),

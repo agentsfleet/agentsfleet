@@ -4,9 +4,9 @@
 //! is a separate statement after the host lock: a statement snapshot acquired
 //! before waiting for that lock could miss the preceding claimant's commit.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::{Postgres, Row as _, Transaction};
+use jiff::Timestamp;
+use sqlx::{Postgres, Transaction};
 
 use crate::error::{Result, query};
 
@@ -16,18 +16,18 @@ mod sql;
 /// Capacity observed while holding the host row until transaction completion.
 #[derive(Debug, Clone, Copy)]
 pub struct Capacity {
-    now: UnixMillis,
+    now: Timestamp,
     workers: i32,
     occupied: i64,
     claims_allowed: bool,
     renewals_allowed: bool,
-    claim_revision: i64,
+    lease_version: i64,
 }
 
 impl Capacity {
-    /// Authoritative database time sampled after acquiring the host lock.
+    /// Authoritative database time, read once the host lock was held.
     #[must_use]
-    pub const fn now(self) -> UnixMillis {
+    pub const fn now(self) -> Timestamp {
         self.now
     }
 
@@ -44,6 +44,23 @@ impl Capacity {
     }
 }
 
+/// [`sql::LOCK_HOST`]'s row.
+#[derive(Debug, sqlx::FromRow)]
+struct Host {
+    worker_count: i32,
+    status: String,
+    degraded: bool,
+    lease_version: i64,
+}
+
+/// [`sql::CENSUS`]'s row.
+#[derive(Debug, sqlx::FromRow)]
+struct Census {
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    checked_at: Timestamp,
+    occupied: i64,
+}
+
 /// Lock a host and count both kinds using a fresh database-time snapshot.
 ///
 /// `None` means the authenticated host was removed. Cordoned/draining hosts
@@ -56,28 +73,25 @@ pub async fn lock(
     transaction: &mut Transaction<'_, Postgres>,
     runner_id: &Uuid7,
 ) -> Result<Option<Capacity>> {
-    let host = sqlx::query(sql::LOCK_HOST)
+    let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
         .bind(runner_id.as_str())
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
     let Some(host) = host else { return Ok(None) };
-    let workers: i32 = host.try_get(0).map_err(query(sql::CONTEXT))?;
-    let state: String = host.try_get(1).map_err(query(sql::CONTEXT))?;
-    let degraded: bool = host.try_get(2).map_err(query(sql::CONTEXT))?;
-    let census = sqlx::query(sql::CENSUS)
+    let census = sqlx::query_as::<_, Census>(sql::CENSUS)
         .bind(runner_id.as_str())
         .bind(crate::sql::LEASE_STATUS_ACTIVE)
         .fetch_one(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
     Ok(Some(Capacity {
-        now: UnixMillis::from_millis(census.try_get(0).map_err(query(sql::CONTEXT))?),
-        workers,
-        occupied: census.try_get(1).map_err(query(sql::CONTEXT))?,
-        claims_allowed: !degraded && state == crate::sql::ADMIN_STATE_ACTIVE,
-        renewals_allowed: !degraded && renewable_state(&state),
-        claim_revision: host.try_get(3).map_err(query(sql::CONTEXT))?,
+        now: census.checked_at,
+        workers: host.worker_count,
+        occupied: census.occupied,
+        claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+        renewals_allowed: !host.degraded && renewable_state(&host.status),
+        lease_version: host.lease_version,
     }))
 }
 

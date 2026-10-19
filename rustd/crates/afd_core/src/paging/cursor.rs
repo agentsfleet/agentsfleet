@@ -13,8 +13,10 @@ use std::fmt::{self, Display, Formatter};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
+use jiff::Timestamp;
 
-use super::{CURSOR_SEPARATOR, TEXT_FORM_PREFIX};
+use super::{CURSOR_SEPARATOR, INSTANT_END, TEXT_FORM_PREFIX};
+use crate::clock::whole_millis;
 
 /// Which direction a keyset seek walks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,7 +41,7 @@ impl Comparator {
 /// What a cursor's boundary value is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundaryKind {
-    /// Milliseconds since the epoch — a `created_at` ordering.
+    /// An instant: a `created_at` ordering.
     Timestamp,
     /// A sort key that is text — a `key_name` ordering.
     Text,
@@ -51,7 +53,7 @@ pub enum Cursor {
     /// The boundary is an instant.
     Timestamp {
         /// The boundary row's sort value.
-        at_ms: i64,
+        at: Timestamp,
         /// The boundary row's identifier, which breaks the tie.
         id: String,
     },
@@ -65,14 +67,6 @@ pub enum Cursor {
 }
 
 impl Cursor {
-    /// The boundary row's identifier.
-    #[must_use]
-    pub fn id(&self) -> &str {
-        match self {
-            Self::Timestamp { id, .. } | Self::Text { id, .. } => id,
-        }
-    }
-
     /// Which kind of boundary this carries.
     #[must_use]
     pub const fn kind(&self) -> BoundaryKind {
@@ -97,17 +91,22 @@ impl Cursor {
             let value = String::from_utf8(decoded).map_err(|_utf8| InvalidCursor)?;
             return Self::of_text(value, id);
         }
-        let at_ms = head.parse().map_err(|_digits| InvalidCursor)?;
-        Self::of_timestamp(at_ms, rest)
+        let end = raw.find(INSTANT_END).ok_or(InvalidCursor)?;
+        let (instant, id) = (&raw[..=end], &raw[end + INSTANT_END.len()..]);
+        let at: Timestamp = instant.parse().map_err(|_not_an_instant| InvalidCursor)?;
+        if whole_millis(at) != at {
+            return Err(InvalidCursor);
+        }
+        Self::of_timestamp(at, id)
     }
 
     /// A timestamp-boundary cursor, refusing an empty identifier.
-    fn of_timestamp(at_ms: i64, id: &str) -> Result<Self, InvalidCursor> {
+    fn of_timestamp(at: Timestamp, id: &str) -> Result<Self, InvalidCursor> {
         if id.is_empty() {
             return Err(InvalidCursor);
         }
         Ok(Self::Timestamp {
-            at_ms,
+            at,
             id: id.to_owned(),
         })
     }
@@ -128,7 +127,8 @@ impl Display for Cursor {
     /// Writes the form the other binary reads. See the module note.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Timestamp { at_ms, id } => write!(f, "{at_ms}{CURSOR_SEPARATOR}{id}"),
+            // RFC 3339 in UTC, as the API serializes an instant.
+            Self::Timestamp { at, id } => write!(f, "{at}{CURSOR_SEPARATOR}{id}"),
             Self::Text { value, id } => {
                 let encoded = BASE64.encode(value.as_bytes());
                 write!(

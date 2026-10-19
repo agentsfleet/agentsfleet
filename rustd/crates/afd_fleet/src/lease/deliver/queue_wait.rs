@@ -13,23 +13,24 @@
 
 use std::time::Instant;
 
-use afd_core::clock::UnixMillis;
+use jiff::Timestamp;
 
 use crate::lease::envelope::{Acquired, Kind};
 
 /// The instant the lease was written: the poll's wall-clock `now` plus the
 /// time the poll has taken since `began`.
-pub(super) fn issued_at(now: UnixMillis, began: Instant) -> UnixMillis {
-    let polled = i64::try_from(began.elapsed().as_millis()).unwrap_or(i64::MAX);
-    now.saturating_add_millis(polled)
+pub(super) fn issued_at(now: Timestamp, began: Instant) -> Timestamp {
+    afd_core::clock::after(now, began.elapsed())
 }
 
-/// How long `acquired` waited for a runner, if it was read new.
-pub(super) fn of(acquired: &Acquired, issued_at: UnixMillis) -> Option<i64> {
+/// How many milliseconds `acquired` waited for a runner, if it was read new:
+/// the log field spells the span as a count.
+pub(super) fn of(acquired: &Acquired, issued_at: Timestamp) -> Option<u64> {
     (acquired.kind == Kind::Fresh && !acquired.redelivered).then(|| {
-        issued_at
-            .saturating_millis_since(acquired.event_created_at)
-            .max(0)
+        afd_core::clock::saturating_millis(afd_core::clock::elapsed(
+            acquired.event_created_at,
+            issued_at,
+        ))
     })
 }
 

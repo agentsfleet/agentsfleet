@@ -144,7 +144,8 @@ async fn an_unusable_pin_dials_nothing() {
     )
     .await;
     assert_eq!(answer, Err(Unavailable::Unreachable));
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // `replies` dials inside its own future and spawns nothing, so once it has
+    // answered there is no later request to wait for.
     assert!(fake.requests().is_empty(), "nothing was dialled");
 }
 

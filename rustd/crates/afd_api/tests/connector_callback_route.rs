@@ -31,7 +31,7 @@ use crate::harness;
 
 use self::harness::Fleet;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -58,11 +58,6 @@ fn path(provider: &str) -> String {
     format!("/v1/connectors/{provider}/callback")
 }
 
-/// The registry code, as it is spelled on the wire.
-fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
-}
-
 /// One request at a fresh router, as the dashboard returns — bearing a person.
 async fn dashboard(provider: &str, query: &str) -> axum::response::Response {
     let router = Fleet::new()
@@ -76,44 +71,32 @@ async fn dashboard(provider: &str, query: &str) -> axum::response::Response {
     harness::send(&router, Method::POST, &target, Some(TENANT_KEY), "").await
 }
 
-/// The registry code a response carries, asserting it refused at all.
-async fn refusal(response: axum::response::Response) -> String {
-    let status = response.status();
-    let document = harness::json_body(response).await;
-    assert!(
-        status.is_client_error(),
-        "a refusal is the caller's to fix, so it is a 4xx: {status} {document}"
-    );
-    document
-        .get("error_code")
-        .and_then(serde_json::Value::as_str)
-        .expect("every refusal carries its registry code")
-        .to_owned()
-}
-
 // ── POST: the dashboard leg, up to its first store read ──────────────────────
 
 #[tokio::test]
 async fn a_provider_this_daemon_ships_nothing_for_is_refused_before_anything_else() {
     assert_eq!(
-        refusal(dashboard(UNSHIPPED, &format!("code={CODE}&state={FORGED_STATE}")).await).await,
-        code(error_code::CONNECTOR_UNKNOWN)
+        harness::refusal_code(
+            dashboard(UNSHIPPED, &format!("code={CODE}&state={FORGED_STATE}")).await
+        )
+        .await,
+        error_code::CONNECTOR_UNKNOWN.as_str()
     );
 }
 
 #[tokio::test]
 async fn a_completion_carrying_no_state_is_refused() {
     assert_eq!(
-        refusal(dashboard(SHIPPED, &format!("code={CODE}")).await).await,
-        code(error_code::INVALID_REQUEST)
+        harness::refusal_code(dashboard(SHIPPED, &format!("code={CODE}")).await).await,
+        error_code::INVALID_REQUEST.as_str()
     );
 }
 
 #[tokio::test]
 async fn a_completion_carrying_no_code_is_refused() {
     assert_eq!(
-        refusal(dashboard(SHIPPED, &format!("state={FORGED_STATE}")).await).await,
-        code(error_code::INVALID_REQUEST),
+        harness::refusal_code(dashboard(SHIPPED, &format!("state={FORGED_STATE}")).await).await,
+        error_code::INVALID_REQUEST.as_str(),
         "there is nothing to exchange without one, and the refusal names the \
          missing parameter rather than failing at the vendor"
     );

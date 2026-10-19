@@ -87,7 +87,6 @@ pub(crate) async fn resolve<D: Services>(
             person.subject(),
             reason.as_ref(),
             Some(&gate.fleet_id),
-            services.now(),
         )
         .await
         .map_err(Refusal::at(EVENT_RESOLVE))?;
@@ -97,7 +96,7 @@ pub(crate) async fn resolve<D: Services>(
             gate_id: Cow::Owned(row.gate_id),
             action_id: Cow::Owned(row.action_id),
             outcome: Cow::Owned(row.status),
-            resolved_at: row.updated_at,
+            resolved_at: row.resolved_at,
             resolved_by: Cow::Owned(row.resolved_by),
         })
         .into_response()),
@@ -114,7 +113,7 @@ pub(crate) async fn resolve<D: Services>(
                 gate_id: row.gate_id,
                 action_id: row.action_id,
                 outcome: row.status,
-                resolved_at: row.updated_at,
+                resolved_at: row.resolved_at,
                 resolved_by: row.resolved_by,
             },
         )),

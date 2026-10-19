@@ -1,18 +1,19 @@
 //! The fleet's own spend ceiling, and what it has already drained against it.
 //!
-//! # Spend means money that LEFT the pool
+//! # Spend means what the fleet's usage cost
 //!
-//! Not money metered. On the slice that exhausts a wallet the remainder is
-//! forgiven, and a ceiling must count what a tenant was actually charged —
-//! otherwise a fleet that ran out of credit would keep accruing against a cap
-//! it never spent.
+//! Read from `billing.usage_lines` through [`crate::limits::fleet_spend`], so a
+//! ceiling caps usage whichever biller moves the money. A line the balance
+//! could not fully cover still counts at its price: the ceiling bounds what a
+//! fleet uses, and the shortfall is wallet debt the next grant repays.
 //!
 //! # The ceiling is a floor-check, not a projection
 //!
-//! A run is admitted while `spend < cap`, and refused AT equality. An admitted
-//! run may overshoot by at most one renewal window before its next `/renew`
-//! refuses it — bounded, not unbounded, and that bound is the design rather
-//! than an accident.
+//! A run is admitted while `spend < cap`, and refused AT equality. While the
+//! datastore answers, an admitted run overshoots by at most one renewal window
+//! before its next `/renew` refuses it. During an outage the check fails open
+//! (below), so every renewal in that outage is admitted and the overshoot grows
+//! with its length; settlement still charges each line in full.
 //!
 //! # Two failures that look alike and point opposite ways
 //!
@@ -24,19 +25,12 @@
 //! channels: a fault is `Err`, and a verdict — including "the stored ceiling
 //! will not parse" — is `Ok`.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
-use sqlx::Row as _;
 
 use crate::Nanos;
-use crate::error::{Result, query};
-use crate::sql;
+use crate::error::Result;
 use crate::store::Accounts;
-use crate::window::Windows;
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_DRAIN: &str = "fleet budget drain";
 
 /// What a fleet has drained inside each window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -104,38 +98,18 @@ pub fn covers(budget: Budget, spend: Spend) -> Verdict {
 }
 
 impl Accounts {
-    /// What `fleet_id` has drained inside the windows opening at `now`.
+    /// What `fleet_id` has spent inside the rolling day and the UTC month.
     ///
-    /// A fleet with no ledger rows spends zero — the statement's `COALESCE`
-    /// answers that, so there is no empty-result branch here.
+    /// Both windows open from the database's `now()`; see
+    /// [`crate::limits::fleet_spend`]. A fleet with no usage spends zero.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. The caller applies the
     /// fail-open posture; this does not decide it, which is the whole point of
     /// returning `Result` rather than an `Option` that has already chosen.
-    pub async fn spend(
-        &self,
-        workspace_id: &Uuid7,
-        fleet_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Spend> {
-        let windows = Windows::at(now);
+    pub async fn spend(&self, workspace_id: &Uuid7, fleet_id: &Uuid7) -> Result<Spend> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::SELECT_BUDGET_DRAIN)
-            .bind(workspace_id.as_str())
-            .bind(fleet_id.as_str())
-            .bind(windows.day.as_millis())
-            .bind(windows.month.as_millis())
-            .bind(sql::charge::STAGE)
-            .bind(sql::charge::RECEIVE)
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_DRAIN))?;
-
-        Ok(Spend {
-            day: Nanos::from_i64(row.try_get(0).map_err(query(CONTEXT_DRAIN))?),
-            month: Nanos::from_i64(row.try_get(1).map_err(query(CONTEXT_DRAIN))?),
-        })
+        crate::limits::fleet_spend(&mut *connection, workspace_id, fleet_id).await
     }
 }
 

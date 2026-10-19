@@ -3,7 +3,7 @@
 //!
 //! # Why the race is proven against a live datastore and not a stub
 //!
-//! The whole decision is `WHERE status = 'pending'` inside one UPDATE: two
+//! The whole decision is `WHERE resolved_at IS NULL` inside one UPDATE: two
 //! callers run the same statement and Postgres picks the winner. A stub would
 //! be asserting that the code CALLS a statement, which is the one thing that
 //! was never in doubt — what is under test is that the statement decides, and
@@ -20,12 +20,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
-
 use afd_approval::{Decision, Filter, Resolution};
 use afd_dragonfly::ReadyIndex;
 
-use crate::lane::{Lane, NOW_MS, WINDOW_MS, sweeper_exclusive};
+use crate::lane::{Lane, Window, sweeper_exclusive};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -42,15 +40,14 @@ const SWEEPER: &str = "system:approval_gate_sweeper";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn two_operators_answering_one_gate_resolve_to_one_decision() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let action = lane.seed_gate(Window::Open).await;
 
     // Both run the same statement at the same instant. Postgres decides.
     let (left, right) = tokio::join!(
         lane.inbox
-            .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now),
+            .resolve(&action, Decision::Approved, OPERATOR, NOTE, None),
         lane.inbox
-            .resolve(&action, Decision::Denied, OTHER_OPERATOR, NOTE, None, now),
+            .resolve(&action, Decision::Denied, OTHER_OPERATOR, NOTE, None),
     );
     let left = left.expect("the resolve must not fault");
     let right = right.expect("the resolve must not fault");
@@ -78,19 +75,18 @@ async fn two_operators_answering_one_gate_resolve_to_one_decision() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_settled_gate_keeps_its_first_answer() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
-    let now = UnixMillis::from_millis(NOW_MS);
+    let action = lane.seed_gate(Window::Open).await;
 
     let first = lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     assert!(matches!(first, Resolution::Resolved(_)));
 
     let second = lane
         .inbox
-        .resolve(&action, Decision::Denied, OTHER_OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Denied, OTHER_OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -111,20 +107,12 @@ async fn a_settled_gate_keeps_its_first_answer() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_decision_scoped_to_another_fleet_resolves_nothing() {
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let action = lane.seed_gate(Window::Open).await;
     let stranger = afd_db::test_util::mint_id();
-    let now = UnixMillis::from_millis(NOW_MS);
 
     let outcome = lane
         .inbox
-        .resolve(
-            &action,
-            Decision::Approved,
-            OPERATOR,
-            NOTE,
-            Some(&stranger),
-            now,
-        )
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, Some(&stranger))
         .await
         .expect("the resolve must not fault");
 
@@ -144,8 +132,8 @@ async fn a_decision_scoped_to_another_fleet_resolves_nothing() {
 async fn one_workspaces_queue_never_shows_anothers_gate() {
     let mine = Lane::isolated().await;
     let theirs = Lane::isolated().await;
-    mine.seed_gate(NOW_MS + WINDOW_MS).await;
-    theirs.seed_gate(NOW_MS + WINDOW_MS).await;
+    mine.seed_gate(Window::Open).await;
+    theirs.seed_gate(Window::Open).await;
 
     let page = mine
         .inbox
@@ -173,7 +161,7 @@ async fn one_workspaces_queue_never_shows_anothers_gate() {
 async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
     let mine = Lane::isolated().await;
     let theirs = Lane::isolated().await;
-    theirs.seed_gate(NOW_MS + WINDOW_MS).await;
+    theirs.seed_gate(Window::Open).await;
 
     let their_gate = theirs
         .inbox
@@ -201,16 +189,11 @@ async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
     // the sweep is global; a sibling's lapsed gate is in its statement.
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
 
-    let lapsed = lane.seed_gate(NOW_MS - 1).await;
-    let waiting = lane.seed_gate(NOW_MS + WINDOW_MS).await;
+    let lapsed = lane.seed_gate(Window::Lapsed).await;
+    let waiting = lane.seed_gate(Window::Open).await;
 
-    let swept = lane
-        .inbox
-        .expire(now)
-        .await
-        .expect("the sweep must not fault");
+    let swept = lane.inbox.expire().await.expect("the sweep must not fault");
     assert!(swept >= 1, "the lapsed gate is taken");
 
     assert_eq!(
@@ -243,12 +226,9 @@ async fn an_expired_gate_wakes_its_fleet() {
         .force_clear(lane.fleet.as_str())
         .await
         .expect("the test can clear the ready mark");
-    let lapsed = lane.seed_gate(NOW_MS - 1).await;
+    let lapsed = lane.seed_gate(Window::Lapsed).await;
 
-    lane.inbox
-        .expire(UnixMillis::from_millis(NOW_MS))
-        .await
-        .expect("the sweep must not fault");
+    lane.inbox.expire().await.expect("the sweep must not fault");
 
     assert_eq!(lane.status_of(&lapsed).await, "timed_out");
     assert!(
@@ -268,19 +248,15 @@ async fn a_gate_answered_before_the_deadline_is_not_swept() {
     // the sweep is global; a sibling's lapsed gate is in its statement.
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
-    let now = UnixMillis::from_millis(NOW_MS);
     // Deadline already past, and a person answered anyway — the ordering a
     // sweep must not undo.
-    let action = lane.seed_gate(NOW_MS - 1).await;
+    let action = lane.seed_gate(Window::Lapsed).await;
 
     lane.inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None, now)
+        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
-    lane.inbox
-        .expire(now)
-        .await
-        .expect("the sweep must not fault");
+    lane.inbox.expire().await.expect("the sweep must not fault");
 
     assert_eq!(
         lane.status_of(&action).await,
@@ -296,11 +272,8 @@ async fn a_swept_gate_says_the_system_took_it() {
     // the sweep is global; a sibling's lapsed gate is in its statement.
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
-    let action = lane.seed_gate(NOW_MS - 1).await;
-    lane.inbox
-        .expire(UnixMillis::from_millis(NOW_MS))
-        .await
-        .expect("the sweep must not fault");
+    let action = lane.seed_gate(Window::Lapsed).await;
+    lane.inbox.expire().await.expect("the sweep must not fault");
 
     // Attribution matters: an audit reading this row has to be able to tell a
     // gate a human denied from one that simply ran out of time.

@@ -21,6 +21,7 @@
 //! [`library`]. Grouping by producing crate would scatter each of those across
 //! four files, and nothing reads them that way.
 
+pub mod billing;
 pub mod cost;
 pub mod fleet;
 pub mod http;

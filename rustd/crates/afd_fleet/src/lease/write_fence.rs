@@ -9,20 +9,13 @@
 
 use std::pin::Pin;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Precondition;
-use sqlx::{PgConnection, Row as _};
+use sqlx::PgConnection;
 
 use crate::lease::sql;
 use crate::lease::sql::standing::SELECT_STANDING_SHARED;
-use crate::lease::standing::fence_holds;
-
-/// Where [`SELECT_STANDING_SHARED`] answers the lease's own token.
-const COLUMN_FENCE: usize = 3;
-
-/// Where it answers the fleet's live sequence.
-const COLUMN_LIVE_SEQ: usize = 4;
+use crate::lease::standing::LiveLease;
 
 /// `runner`'s live lease `lease`, still the fleet's holder under `presented`.
 #[derive(Debug, Clone)]
@@ -33,19 +26,16 @@ pub struct WriteFence {
     lease: Uuid7,
     /// The fencing token it presented.
     presented: u64,
-    /// The instant the request is judged at.
-    now: UnixMillis,
 }
 
 impl WriteFence {
     /// The fence a write by `runner` under `lease` and `presented` proves.
     #[must_use]
-    pub const fn new(runner: Uuid7, lease: Uuid7, presented: u64, now: UnixMillis) -> Self {
+    pub const fn new(runner: Uuid7, lease: Uuid7, presented: u64) -> Self {
         Self {
             runner,
             lease,
             presented,
-            now,
         }
     }
 }
@@ -56,21 +46,13 @@ impl Precondition for WriteFence {
         connection: &'c mut PgConnection,
     ) -> Pin<Box<dyn Future<Output = sqlx::Result<bool>> + Send + 'c>> {
         Box::pin(async move {
-            let Some(row) = sqlx::query(SELECT_STANDING_SHARED)
+            let found: Option<LiveLease> = sqlx::query_as(SELECT_STANDING_SHARED)
                 .bind(self.lease.as_str())
                 .bind(self.runner.as_str())
                 .bind(sql::LEASE_STATUS_ACTIVE)
-                .bind(self.now.as_millis())
                 .fetch_optional(connection)
-                .await?
-            else {
-                return Ok(false);
-            };
-            Ok(fence_holds(
-                row.try_get(COLUMN_FENCE)?,
-                row.try_get(COLUMN_LIVE_SEQ)?,
-                self.presented,
-            ))
+                .await?;
+            Ok(found.is_some_and(|lease| lease.holds(self.presented)))
         })
     }
 }

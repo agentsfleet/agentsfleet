@@ -31,8 +31,8 @@ describe("workspaceListEffect", () => {
       value: {
         current_workspace_id: WS_ID,
         items: [
-          { workspace_id: WS_ID, name: "main", created_at: 1 },
-          { workspace_id: WS_ID_2, name: "other", created_at: 2 },
+          { workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00.001Z" },
+          { workspace_id: WS_ID_2, name: "other", created_at: "1970-01-01T00:00:00.002Z" },
         ],
       } as WorkspacesValue,
     };
@@ -72,7 +72,7 @@ describe("workspaceListEffect", () => {
     const workspacesState = {
       value: {
         current_workspace_id: WS_ID,
-        items: [{ workspace_id: WS_ID, name: "main", created_at: 1 }],
+        items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00.001Z" }],
       } as WorkspacesValue,
     };
     const program = workspaceListEffect.pipe(
@@ -96,7 +96,7 @@ describe("workspaceUseEffectFromArgs", () => {
     const workspacesState = {
       value: {
         current_workspace_id: null,
-        items: [{ workspace_id: WS_ID, name: "main", created_at: 0 }],
+        items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00Z" }],
       } as WorkspacesValue,
     };
     const program = workspaceUseEffectFromArgs(WS_ID, undefined).pipe(
@@ -162,7 +162,7 @@ describe("workspaceUseEffectFromArgs", () => {
     const workspacesState = {
       value: {
         current_workspace_id: null,
-        items: [{ workspace_id: WS_ID, name: "main", created_at: 0 }],
+        items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00Z" }],
       } as WorkspacesValue,
     };
     const program = workspaceUseEffectFromArgs(undefined, WS_ID).pipe(
@@ -185,7 +185,7 @@ describe("workspaceShowEffectFromArgs", () => {
     const workspacesState = {
       value: {
         current_workspace_id: WS_ID,
-        items: [{ workspace_id: WS_ID, name: "main", created_at: 12345 }],
+        items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:12.345Z" }],
       } as WorkspacesValue,
     };
     const program = workspaceShowEffectFromArgs(undefined, undefined).pipe(
@@ -221,7 +221,7 @@ describe("workspaceShowEffectFromArgs", () => {
     const workspacesState = {
       value: {
         current_workspace_id: WS_ID,
-        items: [{ workspace_id: WS_ID, name: "main", created_at: 1 }],
+        items: [{ workspace_id: WS_ID, name: "main", created_at: "1970-01-01T00:00:00.001Z" }],
       } as WorkspacesValue,
     };
     const program = workspaceShowEffectFromArgs(undefined, undefined).pipe(

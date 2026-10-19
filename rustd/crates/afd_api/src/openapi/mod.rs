@@ -224,7 +224,7 @@ fn describe_every_refusal_as_a_problem(document: &mut utoipa::openapi::OpenApi) 
                 }
                 response.content.insert(
                     CONTENT_TYPE_PROBLEM_JSON.to_owned(),
-                    Content::new(Some(body.clone())),
+                    RefOr::T(Content::new(Some(body.clone()))),
                 );
             }
         }

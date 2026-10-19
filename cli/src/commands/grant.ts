@@ -4,7 +4,7 @@
 // agentsfleet grant delete --fleet <id> <grant_id>   → revoke a grant immediately
 
 import { Effect } from "effect";
-import { EMPTY_CELL } from "../output/index.ts";
+import { instantCell } from "../output/index.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../services/output.ts";
 import { HTTP_METHOD } from "../constants/http-method.ts";
@@ -21,8 +21,8 @@ const GRANT_ID_FIELD = "id";
 interface GrantRow {
   readonly service?: string | null;
   readonly status?: string | null;
-  readonly created_at?: number | string | null;
-  readonly approved_at?: number | string | null;
+  readonly created_at?: string | null;
+  readonly approved_at?: string | null;
   readonly id?: string | null;
 }
 
@@ -41,12 +41,6 @@ const GRANT_SPEC = {
 
 const NO_GRANTS = "no integration grants found" as const;
 const GRANTS_LISTED = "Integration grants" as const;
-
-/** A stamp as an operator reads it, or the empty cell.
- *  The wire carries either a millisecond number or an ISO string, and `Date`
- *  takes both — the union is the schema's, not a widening for convenience. */
-const stamp = (at: string | number | null | undefined): string =>
-  at ? new Date(at).toISOString() : EMPTY_CELL;
 
 export const grantListEffectFromArgs = Effect.fn("grant.list")(function* (
   fleetIdPositional: string | undefined,
@@ -86,7 +80,7 @@ export const grantListEffectFromArgs = Effect.fn("grant.list")(function* (
       service: g.service ?? "",
       status: g.status ?? "",
       created_at: g.created_at,
-      approved_at: stamp(g.approved_at),
+      approved_at: instantCell(g.approved_at),
       id: g.id ?? "",
     })),
   );

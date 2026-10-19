@@ -27,7 +27,7 @@ pub(crate) mod read;
 mod support;
 pub(crate) mod write;
 
-pub(crate) use self::read::{list, one};
+pub(crate) use self::read::{list, one, views};
 pub(crate) use self::write::{create, patch, purge, sync};
 
 /// The scoped event a failed schedule read is logged under.

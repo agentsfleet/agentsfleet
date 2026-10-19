@@ -56,7 +56,7 @@ describe("workspaceAddEffect — preserves a conflict it cannot reconcile", () =
                   {
                     id: WS_ID,
                     name: "different",
-                    created_at: 81,
+                    created_at: "1970-01-01T00:00:00.081Z",
                   },
                 ],
                 total: null,
@@ -213,7 +213,7 @@ describe("workspaceAddEffect — preserves a conflict it cannot reconcile", () =
       value: {
         tenant_id: TENANT_ID,
         current_workspace_id: null,
-        items: [{ workspace_id: WS_ID, name: "pre", created_at: 7 }],
+        items: [{ workspace_id: WS_ID, name: "pre", created_at: "1970-01-01T00:00:00.007Z" }],
       } as WorkspacesValue,
     };
     const credsState: FakeCredsState = {
@@ -240,7 +240,7 @@ describe("workspaceAddEffect — preserves a conflict it cannot reconcile", () =
     expect(Exit.isSuccess(exit)).toBe(true);
     // No duplicate appended; the original single item is preserved.
     expect(workspacesState.value.items).toHaveLength(1);
-    expect(workspacesState.value.items[0]?.created_at).toBe(7);
+    expect(workspacesState.value.items[0]?.created_at).toBe("1970-01-01T00:00:00.007Z");
     expect(workspacesState.value.current_workspace_id).toBe(WS_ID);
   });
 });

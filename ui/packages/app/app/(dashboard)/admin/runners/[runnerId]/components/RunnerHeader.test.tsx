@@ -54,11 +54,11 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     id: "01J2WQ8F3K7VZ9XB4N6MTYD5AR",
     host_id: "runner-prod-ams-01.internal",
     sandbox_tier: "landlock_full",
-    admin_state: "active",
+    status: "active",
     liveness: "busy",
     labels: ["gpu", "prod"],
-    last_seen_at: Date.now(),
-    created_at: Date.now(),
+    last_seen_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
     assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
@@ -196,7 +196,7 @@ describe("RunnerHeader", () => {
 
   it("should delete a revoked runner and route back to the wall", async () => {
     deleteRunnerActionMock.mockResolvedValueOnce({ ok: true, data: undefined });
-    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
+    render(<RunnerHeader runner={detail({ status: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -212,7 +212,7 @@ describe("RunnerHeader", () => {
       errorCode: "UZ-RUN-016",
       error: "Runner must be revoked before deletion",
     });
-    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
+    render(<RunnerHeader runner={detail({ status: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -245,7 +245,7 @@ describe("RunnerHeader", () => {
     unmount();
 
     // Cancelling the delete confirm deletes nothing and routes nowhere.
-    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
+    render(<RunnerHeader runner={detail({ status: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));

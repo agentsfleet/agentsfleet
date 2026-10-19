@@ -47,7 +47,7 @@ async fn stale_review_allocates_neither_fleet_nor_replay_receipt() {
     assert_eq!(error.code().as_str(), "UZ-AUTHOR-006");
     assert!(error.review_digest().is_some());
     assert_eq!(c.fleet_count().await, 0);
-    let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM core.authoring_replay_receipts WHERE workspace_id=$1::uuid AND scope LIKE '%:fleet:create:%'")
+    let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1::uuid AND scope LIKE '%:fleet:create:%'")
         .bind(c.base.workspace.as_str()).fetch_one(&mut *c.base.connection().await).await.expect("creation receipts");
     assert_eq!(receipts, 0);
     c.cleanup().await;

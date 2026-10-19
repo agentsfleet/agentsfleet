@@ -11,7 +11,7 @@ import {
 import { CHARGE_TYPE, NANOS_PER_USD, PROVIDER_MODE } from "@/lib/types";
 
 // $0.001 — a representative sub-cent stage charge (the platform stage rate).
-const SAMPLE_CHARGE_NANOS = 1_000_000;
+const SAMPLE_CHARGE_NANOS = "1000000";
 
 function charge(over: Partial<ChargeRow> = {}): ChargeRow {
   return {
@@ -19,7 +19,7 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     tenant_id: "t_1",
     workspace_id: "w_1",
     fleet_id: "z_1",
-    fleet_name: null,
+    fleet_name: "z_1",
     event_id: "evt_1",
     authoring_attempt_id: null,
     charge_type: CHARGE_TYPE.stage,
@@ -29,31 +29,31 @@ function charge(over: Partial<ChargeRow> = {}): ChargeRow {
     token_count_input: 820,
     token_count_output: 1040,
     wall_ms: 3000,
-    recorded_at: 1_700_000_000_000,
+    recorded_at: "2023-11-14T22:13:20Z",
     ...over,
   };
 }
 
 describe("formatDollars", () => {
   it("renders cents with sub-cent precision when present", () => {
-    expect(formatDollars(290_000_000)).toBe("$0.29");
+    expect(formatDollars("290000000")).toBe("$0.29");
     expect(formatDollars(SAMPLE_CHARGE_NANOS)).toBe("$0.001");
-    expect(formatDollars(0)).toBe("$0.00");
+    expect(formatDollars("0")).toBe("$0.00");
   });
 });
 
 describe("formatChargeAmount", () => {
   it("keeps zero debits honest and exposes a nonzero amount below display precision", () => {
-    expect(formatChargeAmount(0)).toBe("$0.00");
-    expect(formatChargeAmount(1)).toBe("<$0.0001");
+    expect(formatChargeAmount("0")).toBe("$0.00");
+    expect(formatChargeAmount("1")).toBe("<$0.0001");
     expect(formatChargeAmount(SAMPLE_CHARGE_NANOS)).toBe("−$0.001");
   });
 });
 
 describe("formatChargeTimestamp", () => {
-  it("formats epoch-ms as 'MMM DD, YYYY · HH:MM' (timezone-agnostic structure)", () => {
+  it("formats an RFC 3339 instant as 'MMM DD, YYYY · HH:MM' (timezone-agnostic structure)", () => {
     // Exact date/time shift by the runner's TZ; the structure is fixed.
-    expect(formatChargeTimestamp(1_700_000_000_000)).toMatch(
+    expect(formatChargeTimestamp("2023-11-14T22:13:20Z")).toMatch(
       /^[A-Z][a-z]{2} \d{2}, \d{4} · \d{2}:\d{2}$/,
     );
   });
@@ -86,7 +86,7 @@ describe("describeCharge", () => {
 describe("charge identity", () => {
   it("names setup costs before a fleet exists without marking them deleted", () => {
     const row = charge({ fleet_id: null, event_id: null, charge_type: CHARGE_TYPE.authoring });
-    expect(chargeAgentLabel(row)).toBe("Fleet setup");
+    expect(chargeAgentLabel(row)).toBe("Setup chat");
     expect(describeCharge(row)).toBe("Setup chat · 1,860 tokens · 820 in · 1,040 out");
     expect(describeCharge({ ...row, token_count_input: null })).toBe("Setup chat · No token usage recorded");
   });
@@ -97,26 +97,19 @@ describe("charge identity", () => {
     expect(displayModelName("kimi-k2.6")).toBe("kimi k2.6");
   });
 
-  // The states slot 915 made reachable, less the ones slot 916 closed: a
-  // charge's `fleet_id` is NOT NULL now, so only `fleet_name` still varies.
-  // The point of the set is unchanged — no combination renders blank, because
-  // an empty cell against a real charge reads as a rendering bug.
-  //
-  // `agentDisplayName`'s absent-identifier arm is still live and still proven,
-  // through `AgentLabel`'s own `fleetId: string | null` prop:
-  // `tests/identity-and-controls.test.tsx` asserts it directly.
-  it("shows the callsign and the operator's own name once both survive", () => {
+  it("uses only the callsign even when the charge retains the fleet name", () => {
     expect(chargeAgentLabel(charge({ fleet_name: "deploy-bot" }))).toMatch(
-      /^AGENT [A-Z]+-[0-9A-F]{4} · deploy-bot$/,
+      /^AGENT [A-Z]+-[0-9A-F]{4}$/,
     );
   });
 
-  // A pre-slot-915 charge whose fleet is still alive: no stored name, but the
-  // identifier was never nulled, so it reads exactly as it did before.
-  it("is unchanged for a charge that predates the stored name", () => {
-    expect(chargeAgentLabel(charge({ fleet_name: null }))).toMatch(
-      /^AGENT [A-Z]+-[0-9A-F]{4}$/,
-    );
+  // A fleet purged before its charge landed: the server stores the fleet's own
+  // identifier as the name, and the label shows the callsign alone rather
+  // than that identifier.
+  it("shows the callsign alone when the charge captured no name", () => {
+    const label = chargeAgentLabel(charge({ fleet_id: "z_1", fleet_name: "z_1" }));
+    expect(label).toMatch(/^AGENT [A-Z]+-[0-9A-F]{4}$/);
+    expect(label).not.toContain("z_1");
   });
 });
 
@@ -128,7 +121,7 @@ describe("charge identity", () => {
 // the daemon's run rate would be 300_000_000 nanos, not this. A client that
 // recomputed a run fee from wall_ms would report that instead of what the
 // ledger row actually says was charged.
-const SERVED_COST_NANOS = 7_111_111;
+const SERVED_COST_NANOS = "7111111";
 
 // The largest balance the product's own copy claims to hold without loss.
 const NINE_MILLION_USD = 9_000_000;
@@ -141,7 +134,7 @@ describe("spend is reported from the served figure, never recomputed", () => {
 
 describe("the nanos denominator stays exact across a balance's range", () => {
   it("formats the largest balance the wire format claims to carry", () => {
-    expect(formatDollars(NINE_MILLION_USD * NANOS_PER_USD)).toBe("$9,000,000.00");
+    expect(formatDollars(String(NINE_MILLION_USD * NANOS_PER_USD))).toBe("$9,000,000.00");
   });
 
   it("keeps that balance inside the safe-integer range", () => {

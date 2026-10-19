@@ -104,6 +104,7 @@ pub(crate) async fn owner_of(harness: &DragonflyHarness, slot: u16) -> Node {
 /// cluster client would route it to a node of the driver's choosing and two
 /// calls could answer about two different servers.
 pub(crate) async fn clients_across(nodes: &BTreeSet<Node>) -> BTreeSet<(Node, i64)> {
+    require_alone();
     let mut seen = BTreeSet::new();
     for node in nodes {
         for id in client_ids(node).await {
@@ -111,6 +112,26 @@ pub(crate) async fn clients_across(nodes: &BTreeSet<Node>) -> BTreeSet<(Node, i6
         }
     }
     seen
+}
+
+/// Refuses to snapshot unless this binary runs one test at a time.
+///
+/// A diff of the server's client set names the hub's sockets only while
+/// nothing else connects; under libtest's default parallelism it also names
+/// every sibling's, and the kill below takes them down too -- a gap in another
+/// test that reads as a hub bug. Fail here, naming the cause, instead.
+fn require_alone() {
+    let args: Vec<String> = std::env::args().collect();
+    let alone = args.iter().any(|arg| arg == "--test-threads=1")
+        || args.windows(2).any(
+            |pair| matches!(pair, [flag, threads] if flag == "--test-threads" && threads == "1"),
+        );
+    assert!(
+        alone,
+        "this test kills the sockets a client-set diff names, which is sound only \
+         with --test-threads=1; run it through `make test-integration-rustd`, \
+         whose exclusive pass does exactly that"
+    );
 }
 
 /// `CLIENT LIST` against one node, reduced to its `id=` fields.
@@ -186,13 +207,14 @@ pub(crate) async fn deliver(
             .await
             .expect("the publish reaches the datastore");
         match tokio::time::timeout(POLL_INTERVAL, reader.recv()).await {
-            Ok(Ok(Received::Message(message))) => {
-                assert_eq!(message.payload, payload, "the reader saw a stale frame");
-                return;
-            }
-            // A lag or gap notice, or an empty poll: publish again and keep
-            // waiting.
-            Ok(Ok(Received::Lagged(..) | Received::Gap)) | Err(..) => {}
+            // A frame of another payload is a retry an earlier call left in
+            // this reader's buffer, not a recovery: skip it. Payloads are
+            // distinct per call, so a frame from before the kill can never
+            // satisfy this one.
+            Ok(Ok(Received::Message(message))) if message.payload == payload => return,
+            // A stale frame, a lag or gap notice, or an empty poll: publish
+            // again and keep waiting.
+            Ok(Ok(Received::Message(_) | Received::Lagged(..) | Received::Gap)) | Err(..) => {}
             Ok(Err(closed)) => panic!("the reader's channel closed: {closed}"),
         }
         assert!(

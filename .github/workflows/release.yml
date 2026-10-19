@@ -107,7 +107,7 @@ jobs:
             "$BUILDER" \
             sh -c '
               set -e
-              cargo build --profile dist --bin agentsfleetd
+              cargo build --profile dist -p agentsfleetd --bin agentsfleetd
             '
           # The container writes as root; the cache action and later steps read
           # as the runner user.
@@ -184,7 +184,7 @@ jobs:
             "$BUILDER" \
             sh -c '
               set -e
-              cargo build --profile dist --bin agentsfleet-runner
+              cargo build --profile dist -p agentsfleet_runner --bin agentsfleet-runner
             '
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
 
@@ -320,7 +320,7 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
         run: |
           export GIT_COMMIT="${GIT_COMMIT:0:7}"
-          cargo build --profile dist --bin agentsfleetd
+          cargo build --profile dist -p agentsfleetd --bin agentsfleetd
 
       - name: Package
         run: |

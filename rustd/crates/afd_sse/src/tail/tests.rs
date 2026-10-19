@@ -78,8 +78,7 @@ async fn a_closed_tail_reason_carries_no_code_prefix() {
     assert!(frames.next().await.is_none());
 
     let logged = capture.only("sse_tail_closed");
-    let reason = logged.field("reason").expect("the line says why");
-    assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+    logged.assert_uncoded_reason();
     assert_eq!(logged.field("channel"), Some(CHANNEL));
     assert!(
         logged

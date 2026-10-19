@@ -14,6 +14,7 @@ import {
 } from "@agentsfleet/design-system";
 import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
+import { compareNanos } from "@/lib/money";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { senderLabelFor } from "@/lib/events/event-summary";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
@@ -82,7 +83,7 @@ function createEventColumns(
       key: "time",
       header: TIME_LABEL.created,
       hideOnMobile: true,
-      sortValue: (row) => row.created_at,
+      sortValue: (row) => Date.parse(row.created_at),
       cell: (row) => <EventTimeCell row={row} />,
     },
     {
@@ -116,7 +117,8 @@ function createEventColumns(
       header: "Cost",
       numeric: true,
       hideOnMobile: true,
-      sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
+      sortValue: (row) => row.cost_nanos ?? "",
+      compare: (a, b) => compareNanos(a.cost_nanos, b.cost_nanos),
       cell: (row) => (
         <DimmedWhenAbsent row={row} value={row.cost_nanos}>
           {row.cost_nanos === null
@@ -307,7 +309,7 @@ function DimmedWhenAbsent({
   children,
 }: {
   row: EventRow;
-  value: number | null;
+  value: number | string | null;
   children: React.ReactNode;
 }) {
   if (!isZeroMetricOnFailure(row, value)) return <>{children}</>;

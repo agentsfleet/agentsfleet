@@ -1,6 +1,7 @@
 //! Secret name and body validation before datastore access.
 
 use super::*;
+use crate::harness::code_of;
 
 #[tokio::test]
 async fn a_body_that_is_not_a_non_empty_object_never_reaches_the_store() {

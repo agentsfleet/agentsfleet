@@ -7,7 +7,7 @@ use crate::{
     egress::Egress,
     transport::Transport as _,
 };
-use afd_core::clock::{FixedClock, UnixMillis};
+use afd_core::clock::FixedClock;
 
 // Value: protects=HTTP test evidence records the credentialed request actually prepared;
 // fails_when=the recording transport mutates the request or its fixed response;
@@ -17,7 +17,7 @@ use afd_core::clock::{FixedClock, UnixMillis};
 async fn fixed_replies_record_the_exact_prepared_request() {
     let policy = crate::fixture::policy(true);
     let mint = CountingMint::never();
-    let clock = FixedClock::at(UnixMillis::EPOCH);
+    let clock = FixedClock::at(jiff::Timestamp::UNIX_EPOCH);
     let mut egress = Egress::new("lease-proof", &policy, &mint, &clock);
     let draft = Draft {
         method: "GET".into(),

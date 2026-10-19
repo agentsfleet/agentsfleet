@@ -1,9 +1,8 @@
 //! Atomic runner credential rotation.
 
 use afd_api_wire::admin::AdminState;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use crate::admin::state_wire;
 use crate::error::{Result, query, rejected, runner_not_found};
@@ -21,7 +20,8 @@ impl Runners {
     ///
     /// The credential value exists only in [`Minted`]; the statement receives
     /// its digest. Rotation and the audit row are one statement, so neither can
-    /// become visible without the other.
+    /// become visible without the other. `now` mints the audit row's identifier;
+    /// the database stamps both rows.
     ///
     /// # Errors
     /// Refuses a missing or revoked runner and reports entropy or datastore
@@ -30,15 +30,14 @@ impl Runners {
         &self,
         runner: &Uuid7,
         actor_id: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Minted> {
         let token = Minted::draw(CredentialKind::RunnerToken, self.entropy())?;
         let event_id = self.admin_event_id(now)?;
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner::ROTATE_RUNNER_TOKEN)
+        let changed: bool = sqlx::query_scalar(sql::runner::ROTATE_RUNNER_TOKEN)
             .bind(runner.as_str())
             .bind(token.digest().as_str())
-            .bind(now.as_millis())
             .bind(state_wire(AdminState::Revoked))
             .bind(event_id.as_str())
             .bind(EVENT_TOKEN_ROTATED)
@@ -48,13 +47,14 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_ROTATE))?
             .ok_or_else(runner_not_found)?;
-        let changed: bool = row.try_get("changed").map_err(query(CONTEXT_ROTATE))?;
         if !changed {
             return Err(rejected(DETAIL_REVOKED));
         }
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let runner_id = runner.as_str();
         tracing::debug!(
-            runner_id = runner.as_str(),
-            event = "runner_token_rotated",
+            runner_id,
+            event = EVENT_TOKEN_ROTATED,
             "runner credential rotated"
         );
         Ok(token)

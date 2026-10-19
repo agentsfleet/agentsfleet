@@ -58,6 +58,8 @@ axum.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync"] }
 # The routes the fake daemon answers, spelled once.
 afd_wire.workspace = true
+# Lease and credential expiries are jiff instants on the wire.
+jiff.workspace = true
 # The fake daemon answers as the supervisor's own suites' healthy daemon does,
 # over the same fixture lease.
 afr_supervisor = { workspace = true, features = ["test-util"] }

@@ -13,10 +13,13 @@ use afd_cron::{DesiredStatus, Reconciled, Refused, Schedule, Source, SyncStatus,
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
-use super::{checked, held_or, not_fleet_owned, not_found, refused, rendered};
+use super::{checked, edit_refusal, held_or, not_fleet_owned, not_found, refused, rendered};
 
 /// What a fixture identifier must be.
 const CANONICAL: &str = "a canonical UUIDv7";
+
+/// When the fixture schedule was made and last written.
+const MADE_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
 
 /// A schedule a fleet made, as a reconcile hands it back.
 fn schedule() -> Schedule {
@@ -24,19 +27,19 @@ fn schedule() -> Schedule {
         schedule_id: Uuid7::parse("0199a0b0-0000-7000-8000-000000000001").expect(CANONICAL),
         fleet_id: Uuid7::parse("0199a0b0-0000-7000-8000-000000000002").expect(CANONICAL),
         source: Source::Fleet,
-        source_key: "1700000000000-0-1700000000001".to_owned(),
+        provider_schedule_id: "provider-schedule-1".to_owned(),
         cron: "0 9 * * 1".to_owned(),
         timezone: "Asia/Kolkata".to_owned(),
         message: "weekly check".to_owned(),
         once: true,
         desired_status: DesiredStatus::Active,
         sync_status: SyncStatus::Synced,
-        generation: 1,
+        resource_version: 1,
         sync_token: None,
-        sync_lease_until: None,
+        sync_lease_expires_at: None,
         last_error: None,
-        created_at: 1_700_000_000_000,
-        updated_at: 1_700_000_000_000,
+        created_at: MADE_AT,
+        updated_at: MADE_AT,
         fire_at: None,
         recipe: None,
     }
@@ -61,13 +64,34 @@ async fn code_of(refusal: super::Refusal) -> String {
 
 #[tokio::test]
 async fn a_reconciled_row_answers_its_view_with_source_and_once() {
-    let response = rendered(Reconciled::Synced(schedule()), StatusCode::CREATED)
+    let response = rendered(Reconciled::Synced(schedule()), StatusCode::CREATED, MADE_AT)
         .expect("a synced row renders");
     assert_eq!(response.status(), StatusCode::CREATED);
     let body = body_of(response).await;
     assert_eq!(body["source"], "fleet");
     assert_eq!(body["once"], true);
     assert_eq!(body["sync"], "synced");
+}
+
+/// A registered weekly schedule names its next run in RFC 3339, read in its
+/// own zone: Monday 09:00 in Kolkata is 03:30 UTC.
+#[tokio::test]
+async fn a_registered_recurring_schedule_answers_its_next_run_and_words() {
+    let weekly = Schedule {
+        once: false,
+        ..schedule()
+    };
+    let response = rendered(Reconciled::Synced(weekly), StatusCode::OK, MADE_AT).expect("renders");
+    let body = body_of(response).await;
+    assert_eq!(body["run_state"], "scheduled");
+    assert_eq!(body["next_run_at"], "2023-11-20T03:30:00Z");
+    let words = body["description"]
+        .as_str()
+        .expect("a schedule always carries its description");
+    assert!(
+        words.ends_with(" (Asia/Kolkata)"),
+        "the words name the zone the expression is read in: {words}"
+    );
 }
 
 /// Saved and not registered is still the row, with its sync state showing.
@@ -77,20 +101,26 @@ async fn a_failed_push_still_answers_the_row() {
         sync_status: SyncStatus::Failed,
         ..schedule()
     };
-    let response = rendered(Reconciled::Failed(failed), StatusCode::OK).expect("renders");
+    let response = rendered(Reconciled::Failed(failed), StatusCode::OK, MADE_AT).expect("renders");
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(body_of(response).await["sync"], "failed");
+    let body = body_of(response).await;
+    assert_eq!(body["sync"], "failed");
+    assert_eq!(
+        body["run_state"], "next_run_unavailable",
+        "a schedule registered nowhere never shows a run time"
+    );
+    assert_eq!(body["next_run_at"], serde_json::Value::Null);
 }
 
 #[test]
 fn a_removed_row_is_a_no_content() {
-    let response = rendered(Reconciled::Removed, StatusCode::OK).expect("renders");
+    let response = rendered(Reconciled::Removed, StatusCode::OK, MADE_AT).expect("renders");
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
 async fn a_superseded_reconcile_is_a_conflict_to_retry() {
-    let refusal = rendered(Reconciled::Superseded, StatusCode::OK).expect_err("refused");
+    let refusal = rendered(Reconciled::Superseded, StatusCode::OK, MADE_AT).expect_err("refused");
     assert_eq!(refusal.status(), StatusCode::CONFLICT);
     let body = body_of(refusal.into_response()).await;
     assert_eq!(body["error_code"], error_code::SCHEDULE_SYNCING.as_str());
@@ -99,14 +129,15 @@ async fn a_superseded_reconcile_is_a_conflict_to_retry() {
 
 #[tokio::test]
 async fn no_row_is_not_found() {
-    let refusal = held_or(None, StatusCode::OK).expect_err("refused");
+    let refusal = held_or(None, StatusCode::OK, MADE_AT).expect_err("refused");
     assert_eq!(refusal.status(), StatusCode::NOT_FOUND);
     assert_eq!(
         code_of(refusal).await,
         error_code::SCHEDULE_NOT_FOUND.as_str()
     );
     assert_eq!(not_found().status(), StatusCode::NOT_FOUND);
-    let removed = held_or(Some(Reconciled::Removed), StatusCode::OK).expect("a removed row");
+    let removed =
+        held_or(Some(Reconciled::Removed), StatusCode::OK, MADE_AT).expect("a removed row");
     assert_eq!(removed.status(), StatusCode::NO_CONTENT);
 }
 
@@ -212,5 +243,27 @@ async fn test_schedule_fields_validated() {
     assert!(
         checked(validate::Fields::default()).is_ok(),
         "nothing named, nothing refused"
+    );
+}
+
+/// An edit another syncer still holds is a conflict naming the state that
+/// forbade it, so a client waits for the sync rather than retrying blind; it
+/// carries no entity tag, because nothing about the edit's own version was
+/// wrong.
+#[tokio::test]
+async fn an_edit_a_syncer_still_holds_is_a_conflict_naming_its_state() {
+    let held = afd_cron::error::retire_held();
+    let code = held.code();
+
+    let answered = edit_refusal(held);
+
+    assert_eq!(answered.status(), StatusCode::CONFLICT);
+    let response = answered.into_response();
+    assert!(response.headers().get(http::header::ETAG).is_none());
+    let body = body_of(response).await;
+    assert_eq!(body["error_code"], code.as_str());
+    assert_eq!(
+        body["current_state"].as_str(),
+        Some(afd_cron::error::STATE_SYNCING)
     );
 }

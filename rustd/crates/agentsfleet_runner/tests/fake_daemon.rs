@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use afd_core::clock::{now, saturating_millis_signed};
+use afd_core::clock::{after, now};
 use afd_wire::lease::LeaseKind;
 use afd_wire::paths::{RUNNER_LEASES, RUNNER_REPORTS};
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
@@ -66,7 +66,7 @@ impl FakeDaemon {
                 extra_binds: Vec::new(),
             },
             interval_ms: INTERVAL_MS,
-            granted_until: 0,
+            granted_until: jiff::Timestamp::UNIX_EPOCH,
         });
         let app = axum::Router::new().fallback(move |request: axum::extract::Request| {
             let (sent, granted) = (sent.clone(), Arc::clone(&granted));
@@ -134,17 +134,15 @@ fn lease() -> Value {
     let mut lease: Value = serde_json::from_str(LEASE_JSON).expect("the fixture lease parses");
     lease["kind"] = LeaseKind::Fleet.as_str().into();
     lease["lease_id"] = LEASE_ID.into();
-    lease["lease_expires_at"] = granted_until().into();
+    lease["lease_expires_at"] = granted_until().to_string().into();
     lease["event"]["fleet_id"] = FLEET_ID.into();
     lease["policy"]["provider"] = UNRESOLVABLE_MODEL.into();
     lease
 }
 
-/// [`GRANTED_FOR`] from now, in Unix milliseconds.
-fn granted_until() -> i64 {
-    now()
-        .saturating_add_millis(saturating_millis_signed(GRANTED_FOR))
-        .as_millis()
+/// [`GRANTED_FOR`] from now.
+fn granted_until() -> jiff::Timestamp {
+    after(now(), GRANTED_FOR)
 }
 
 /// An OTLP/HTTP receiver standing in for the runner collector.

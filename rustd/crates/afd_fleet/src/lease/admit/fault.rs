@@ -4,7 +4,7 @@
 //!
 //! `Posture` is already taken, and by the money path: [`afd_billing::Posture`]
 //! is who supplies the provider key, which is the spelling
-//! `billing.usage_ledger.posture` uses and therefore the one that keeps its
+//! `billing.usage_lines.posture` uses and therefore the one that keeps its
 //! name. A module called `posture` beside it meant [`super`] imported
 //! `posture::PAYER` and `Posture` on adjacent lines for two unrelated
 //! questions — who pays, and what a dead datastore means.
@@ -62,13 +62,6 @@ pub(super) const BUDGET: Gate = Gate {
     on_fault: OnFault::Admit,
 };
 
-/// Recording the receive charge. Fails to RETRY: an uncharged run must not
-/// proceed, but nothing here is terminal — the next poll charges it.
-pub(super) const RECEIPT: Gate = Gate {
-    event: "lease_receive_debit_unavailable",
-    on_fault: OnFault::Retry,
-};
-
 /// Resolving who pays. Fails to RETRY.
 pub(super) const PAYER: Gate = Gate {
     event: "lease_tenant_lookup_failed",
@@ -123,7 +116,7 @@ impl Gate {
 
 #[cfg(test)]
 mod tests {
-    use super::{BALANCE, BUDGET, OnFault, PAYER, RECEIPT};
+    use super::{BALANCE, BUDGET, OnFault, PAYER};
     use crate::lease::admit::{Declined, Transient};
     use std::collections::BTreeSet;
 
@@ -138,21 +131,20 @@ mod tests {
     }
 
     #[test]
-    fn the_two_money_gates_fail_open_and_the_two_write_gates_do_not() {
+    fn the_two_money_gates_fail_open_and_the_payer_gate_does_not() {
         // The asymmetry stated as a test rather than left to a reader
         // collecting `catch` sites: a metering outage admits, an unresolvable
-        // payer or an unrecorded charge does not.
+        // payer does not.
         assert_eq!(BALANCE.on_fault, OnFault::Admit);
         assert_eq!(BUDGET.on_fault, OnFault::Admit);
         assert_eq!(PAYER.on_fault, OnFault::Retry);
-        assert_eq!(RECEIPT.on_fault, OnFault::Retry);
     }
 
     #[test]
     fn every_gate_logs_under_a_distinct_event() {
         // Two gates sharing an event name would make a dashboard unable to say
         // WHICH read failed, which is the only thing the line is for.
-        let events = [BALANCE.event, BUDGET.event, PAYER.event, RECEIPT.event];
+        let events = [BALANCE.event, BUDGET.event, PAYER.event];
         let distinct: BTreeSet<_> = events.iter().collect();
         assert_eq!(
             distinct.len(),
@@ -177,24 +169,12 @@ mod tests {
     /// A fail-closed gate answers a retry naming itself.
     ///
     /// The gate NAME rides the answer because it is all a runner is told — the
-    /// cause stays in the line the gate logged. Two gates answering an
-    /// indistinguishable retry would leave an operator unable to say which read
-    /// ended the pass.
+    /// cause stays in the line the gate logged.
     #[test]
-    fn a_write_gate_answers_a_retry_that_names_which_gate_stopped_it() {
+    fn the_payer_gate_answers_a_retry_that_names_itself() {
         assert_eq!(
             PAYER.absorb(&fault()),
             Some(Declined::Retry(Transient { at: PAYER.event }))
-        );
-        assert_eq!(
-            RECEIPT.absorb(&fault()),
-            Some(Declined::Retry(Transient { at: RECEIPT.event }))
-        );
-        assert_ne!(
-            PAYER.absorb(&fault()),
-            RECEIPT.absorb(&fault()),
-            "the two retry gates answer indistinguishably; the gate name is the \
-             only thing carried and it is not carrying"
         );
     }
 }

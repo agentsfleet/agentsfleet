@@ -1,5 +1,7 @@
 //! Two database transactions cannot turn one host slot into two leases.
 
+use std::time::Duration;
+
 use super::{claim, fixture, funded, now, queue};
 
 #[tokio::test]
@@ -11,7 +13,7 @@ async fn concurrent_drafts_share_one_host_slot_and_one_draft_never_overlaps() {
     let (a, b) = tokio::join!(claim(&f, &first), claim(&f, &second));
     assert_eq!(usize::from(a.is_some()) + usize::from(b.is_some()), 1);
     assert_eq!(fixture::attempts(&f).await, 1);
-    sqlx::query("UPDATE fleet.runners SET worker_count=2 WHERE id=$1::uuid")
+    sqlx::query("UPDATE runner.runners SET worker_count=2 WHERE id=$1::uuid")
         .bind(f.runner.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -28,12 +30,11 @@ async fn concurrent_drafts_share_one_host_slot_and_one_draft_never_overlaps() {
 async fn runtime_occupancy_blocks_authoring_until_original_runtime_expiry() {
     let f = funded(1).await;
     let draft = queue(&f, "Wait for shared capacity").await;
-    let fleet = fixture::runtime(&f, now().as_millis() + 60_000).await;
+    let fleet = fixture::runtime(&f, afd_core::clock::after(now(), Duration::from_mins(1))).await;
     assert!(claim(&f, &draft).await.is_none());
     assert_eq!(fixture::attempts(&f).await, 0);
-    sqlx::query("UPDATE fleet.runner_leases SET lease_expires_at=$2 WHERE fleet_id=$1::uuid")
+    sqlx::query("UPDATE runner.leases SET lease_expires_at=now() WHERE fleet_id=$1::uuid")
         .bind(fleet.as_str())
-        .bind(now().as_millis())
         .execute(&mut *f.connection().await)
         .await
         .expect("original runtime expired");

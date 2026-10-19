@@ -3,7 +3,7 @@
 //!
 //! # The race this closes
 //!
-//! `core.tenant_model_entries.secret_ref` names a `vault.secrets` row but
+//! `model.tenant_models.secret_ref` names a `vault.secrets` row but
 //! cannot be a foreign key: `secret_ref` is TEXT and the vault's identity is
 //! `(workspace_id, key_name)`, while an entry is keyed by tenant. Both sides
 //! were once check-then-act with nothing held between the check and the act:
@@ -29,7 +29,7 @@
 //! can forget.
 
 use afd_core::id::Uuid7;
-use sqlx::{Acquire as _, Row as _, Transaction};
+use sqlx::{Acquire as _, Transaction};
 
 use crate::error::{ErrorKind, Result, query, still_referenced};
 use crate::secret::SecretName;
@@ -111,24 +111,22 @@ impl Directory {
             return Err(still_referenced(entry_count(references)));
         }
 
+        // The row lock `secret_is_held` took holds the row until this
+        // transaction ends, so the delete below always finds it: a racing
+        // delete blocks at that lock and answers absence there instead.
         let unreadable = query(CONTEXT_DELETE);
         sqlx::query(sql::LOCK_SELECTION)
             .bind(&tenant)
             .fetch_all(&mut **transaction)
             .await
             .map_err(&unreadable)?;
-
-        let removed = sqlx::query(sql::DELETE_SECRET)
+        sqlx::query(sql::DELETE_SECRET)
             .bind(workspace.as_str())
             .bind(name.as_str())
             .execute(&mut **transaction)
             .await
             .map_err(&unreadable)?;
-        Ok(if removed.rows_affected() > 0 {
-            Deleted::Removed
-        } else {
-            Deleted::AlreadyAbsent
-        })
+        Ok(Deleted::Removed)
     }
 }
 
@@ -150,14 +148,12 @@ async fn owning_tenant(
     transaction: &mut Transaction<'_, sqlx::Postgres>,
     workspace: &Uuid7,
 ) -> Result<String> {
-    sqlx::query(sql::OWNING_TENANT)
+    sqlx::query_scalar(sql::OWNING_TENANT)
         .bind(workspace.as_str())
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(CONTEXT_DELETE))?
-        .ok_or_else(|| crate::Error::from(ErrorKind::WorkspaceUnknown))?
-        .try_get(0)
-        .map_err(query(CONTEXT_DELETE))
+        .ok_or_else(|| crate::Error::from(ErrorKind::WorkspaceUnknown))
 }
 
 async fn reference_count(

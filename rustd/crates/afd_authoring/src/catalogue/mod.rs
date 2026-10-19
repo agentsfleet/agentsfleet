@@ -39,7 +39,7 @@ impl Drafts {
             request.limit,
         ))?;
         let after = boundary(request.starting_after.as_deref(), &binding)?;
-        let rows: Vec<String> = sqlx::query_scalar(sql::PAGE)
+        let rows: Vec<project::Row> = sqlx::query_as(sql::PAGE)
             .bind(person.owner.as_str())
             .bind(PLATFORM_MODEL_REF)
             .bind(after)
@@ -47,7 +47,7 @@ impl Drafts {
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        let page = page(rows, &request, &binding)?;
+        let page = page(rows, &request, &binding);
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(page)
     }
@@ -63,12 +63,11 @@ fn boundary(raw: Option<&str>, binding: &str) -> Result<Option<String>> {
     }
 }
 
-fn page(rows: Vec<String>, request: &ModelsQuery, binding: &str) -> Result<Page<WorkspaceModel>> {
+fn page(rows: Vec<project::Row>, request: &ModelsQuery, binding: &str) -> Page<WorkspaceModel> {
     let more = rows.len() > request.limit as usize;
     let mut items = Vec::new();
     let mut last = None;
-    for raw in rows.into_iter().take(request.limit as usize) {
-        let row = project::decode(&raw)?;
+    for row in rows.into_iter().take(request.limit as usize) {
         last = Some(
             Cursor::Text {
                 value: binding.to_owned(),
@@ -80,9 +79,47 @@ fn page(rows: Vec<String>, request: &ModelsQuery, binding: &str) -> Result<Page<
             items.push(item);
         }
     }
-    Ok(Page {
+    Page {
         items,
         total: None,
         next_cursor: if more { last } else { None },
-    })
+    }
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::boundary;
+    use afd_core::{error_code, paging::Cursor};
+
+    const BINDING: &str = "models:tenant";
+
+    fn text(value: &str, id: &str) -> String {
+        Cursor::Text {
+            value: value.to_owned(),
+            id: id.to_owned(),
+        }
+        .to_string()
+    }
+
+    #[test]
+    fn a_model_page_continues_only_from_its_own_walk_and_key_kind() {
+        let next = text(BINDING, "gpt-5");
+        assert_eq!(
+            boundary(Some(&next), BINDING).ok(),
+            Some(Some("gpt-5".to_owned()))
+        );
+        let instant = Cursor::Timestamp {
+            at: jiff::Timestamp::UNIX_EPOCH,
+            id: "gpt-5".to_owned(),
+        }
+        .to_string();
+        for raw in [text("models:other", "gpt-5"), instant] {
+            let refused = boundary(Some(&raw), BINDING).err();
+            assert_eq!(
+                refused.map(|error| error.code()),
+                Some(error_code::AUTHORING_CURSOR),
+                "{raw}"
+            );
+        }
+    }
 }

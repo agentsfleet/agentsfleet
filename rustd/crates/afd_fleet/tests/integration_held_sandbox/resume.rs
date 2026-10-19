@@ -9,28 +9,25 @@
 )]
 
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL_MS, RUNNER_OFFLINE_AFTER_MS, SANDBOX_HOLD_IDLE_MS};
+use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use afd_fleet::lease::{Billed, Kind, Leases};
+use jiff::Timestamp;
 
-use super::{at, hold, id, live};
+use super::{hold, id, live};
 use crate::queue;
+use crate::rows::{LAPSE, Row};
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 
 /// When a live hold made here lapses.
-fn until(fixtures: &Fixtures) -> i64 {
-    fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS
+fn until(fixtures: &Fixtures) -> Timestamp {
+    fixtures.after(SANDBOX_HOLD_IDLE)
 }
 
-/// When a short hold made here lapses.
-fn short(fixtures: &Fixtures) -> i64 {
-    fixtures.enrolled_at() + 10
-}
-
-/// Whether `runner`'s won claim on `fleet` at `now` resumes its hold.
-async fn resumes(leases: &Leases, fleet: &str, runner: &Uuid7, now: i64) -> bool {
+/// Whether `runner`'s won claim on `fleet` resumes its hold.
+async fn resumes(leases: &Leases, fleet: &str, runner: &Uuid7) -> bool {
     leases
-        .claim(&id(fleet), runner, at(now), LEASE_TTL_MS)
+        .claim(&id(fleet), runner, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("the slot is won")
@@ -46,7 +43,7 @@ async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
 
-    assert!(resumes(&leases, &fleet, &holder, fixtures.enrolled_at() + 1).await);
+    assert!(resumes(&leases, &fleet, &holder).await);
     fixtures.cleanup().await;
 }
 
@@ -58,14 +55,15 @@ async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
     let (never_held, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, short(&fixtures)).await;
+    hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
+    let lapse = SANDBOX_HOLD_IDLE.saturating_mul(2);
+    fixtures
+        .age(Row::Slot(&fleet), "hold_expires_at", lapse)
+        .await;
 
+    assert!(!resumes(&leases, &fleet, &holder).await, "lapsed");
     assert!(
-        !resumes(&leases, &fleet, &holder, short(&fixtures) + 1).await,
-        "lapsed"
-    );
-    assert!(
-        !resumes(&leases, &never_held, &holder, short(&fixtures) + 1).await,
+        !resumes(&leases, &never_held, &holder).await,
         "a slot whose last report recorded no hold"
     );
     fixtures.cleanup().await;
@@ -81,23 +79,26 @@ async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
-    let silent = fixtures.enrolled_at() + RUNNER_OFFLINE_AFTER_MS + 1;
+    let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
+    fixtures
+        .age(Row::Runner(holder.as_str()), "last_seen_at", silence)
+        .await;
 
     let others = leases
-        .claim(&id(&fleet), &other, at(silent), LEASE_TTL_MS)
+        .claim(&id(&fleet), &other, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("a silent holder's fleet is won");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
-        .release_through(&mut connection, &id(&fleet), others.fence, None, at(silent))
+        .release_through(&mut connection, &id(&fleet), others.fence, None)
         .await
         .expect("the other runner's report lands");
     drop(connection);
 
     assert!(!others.resume_hold, "the other runner held nothing");
     assert!(
-        !resumes(&leases, &fleet, &holder, silent + 1).await,
+        !resumes(&leases, &fleet, &holder).await,
         "the holder's sandbox predates the other runner's run"
     );
     fixtures.cleanup().await;
@@ -119,14 +120,14 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
-    let now = at(fixtures.enrolled_at() + 1);
+    let now = fixtures.enrolled_at();
     let tenant_id = Uuid7::parse(&tenant).expect("a seeded tenant");
 
-    let fresh = seed::select_fleet_within_rotations(&leases, &holder, now, &fleet)
+    let fresh = seed::select_fleet_within_rotations(&leases, &holder, &fleet)
         .await
         .expect("the holder leases its held fleet");
     leases
-        .record_received(&fresh, now)
+        .record_received(&fresh)
         .await
         .expect("the event's row opens");
     let billed = Billed {
@@ -140,8 +141,10 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
         .await
         .expect("the lease row is written")
         .expect("the claim is still held");
-    let lapsed = fresh.leased_until.saturating_add_millis(1);
-    let reclaimed = seed::select_fleet_within_rotations(&leases, &holder, lapsed, &fleet)
+    fixtures
+        .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
+        .await;
+    let reclaimed = seed::select_fleet_within_rotations(&leases, &holder, &fleet)
         .await
         .expect("a lapsed lease is reclaimable");
 

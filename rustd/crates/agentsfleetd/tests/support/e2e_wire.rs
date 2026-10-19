@@ -168,7 +168,7 @@ fn never_offered(elsewhere: &[String]) -> String {
              poll correctly found the stream empty. The seed now admits through \
              the ledger (`e2e_event.rs`).\n\n\
              Also worth ruling out: a fleet in the lane database whose \
-             `config_json` will not parse — the pull path resolves one and \
+             head revision `config` will not parse — the pull path resolves one and \
              refuses the runner with UZ-INTERNAL-003."
         );
     }
@@ -262,9 +262,12 @@ pub(crate) fn report_body(lease_id: &str, event_id: &str, fence: u64) -> Value {
         "failure_detail": "",
         "response_text": "the fixture run produced this",
         "tokens": u64::from(INPUT_TOKENS + CACHED_INPUT_TOKENS + OUTPUT_TOKENS),
-        "input_tokens": INPUT_TOKENS,
-        "cached_input_tokens": CACHED_INPUT_TOKENS,
-        "output_tokens": OUTPUT_TOKENS,
+        "requests": [{
+            "seq": 1, "at": afd_core::clock::now().to_string(),
+            "input_tokens": INPUT_TOKENS, "cached_input_tokens": CACHED_INPUT_TOKENS,
+            "cache_write_tokens": 0, "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0,
+            "output_tokens": OUTPUT_TOKENS,
+        }],
         "telemetry": {"time_to_first_token_ms": 42, "wall_ms": 1_500},
         "checkpoint": {"last_event_id": event_id, "last_response": "the fixture run produced this"},
     })

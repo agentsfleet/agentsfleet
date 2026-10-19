@@ -1,121 +1,62 @@
 #!/bin/bash
-# 02_teardown.sh - Execute Dragonfly teardown via a redis-cli container
+# 02_teardown.sh - FLUSHALL every primary of an environment's Dragonfly cluster
+#
+# Runs cluster_ops.sh `flush` inside the Dragonfly app (fly_exec.sh). It reads
+# the members from the cluster's own view and refuses before flushing anything
+# unless all of them are present, online and answering, so it never flushes
+# part of a cluster. Replicas empty by replication; 03_verify.sh proves it.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../../lib/common.sh
-source "${SCRIPT_DIR}/../../../lib/common.sh"
-
-# Reads the vault (op:// refs below), so it carries the same approval + auth
-# gates as every other script under playbooks/operations/ (enforced by
-# `make check-playbooks`). Teardown is destructive, so this is on top of the
-# ALLOW_*_TEARDOWN approval, not instead of it.
-playbooks_require_vault_read_approval
-playbooks_require_op_auth
+# shellcheck source=fly_exec.sh
+source "${SCRIPT_DIR}/fly_exec.sh"
 
 echo ""
-echo "== dragonfly-teardown Section 2: dragonfly teardown execution =="
+echo "== dragonfly-teardown Section 2: cluster-wide flush =="
 echo ""
 
-# Require approval (double-check)
+# Checked again here: this step is separately runnable and destructive.
 if [ "${ALLOW_DRAGONFLY_TEARDOWN:-0}" != "1" ]; then
 	echo "ERROR: ALLOW_DRAGONFLY_TEARDOWN=1 required" >&2
 	exit 1
 fi
 
-vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
-vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 env_mode="${ENV:-}"
-
-# Validate ENV - must be explicitly dev or prod, no "all" allowed
 if [ -z "$env_mode" ]; then
 	echo "ERROR: ENV must be set explicitly" >&2
 	echo "Usage: ENV=dev ./00_gate.sh   or   ENV=prod ./00_gate.sh" >&2
 	exit 1
 fi
-
 if [ "$env_mode" != "dev" ] && [ "$env_mode" != "prod" ]; then
 	echo "ERROR: ENV must be 'dev' or 'prod' (destructive operations require explicit targeting)" >&2
 	exit 1
 fi
 
-# Read connection strings from 1Password
-get_connection_string() {
-	local ref="$1"
-	playbooks_read_ref_or_empty "$ref"
-}
+case "$env_mode" in
+	dev) env_label="DEVELOPMENT" ;;
+	prod) env_label="PRODUCTION" ;;
+esac
+app="$(dragonfly_app_for_env "$env_mode")"
 
-# Confirm + FLUSHALL one cache. The URL is forwarded via env-name-only
-# (`-e DRAGONFLY_URL`, no value) so the password never appears in `ps aux`.
-teardown_dragonfly() {
-	local url="$1"
-	local env_label="$2"
-
-	echo ""
-	echo "================================================"
-	echo "TARGET: $env_label"
-	echo "================================================"
-	echo "⚠️  WARNING: This will PERMANENTLY FLUSH all keys!"
-	echo ""
-
-	echo "To proceed with $env_label teardown, type the environment name: $env_label"
-	read -r confirmation
-
-	if [ "$confirmation" != "$env_label" ]; then
-		echo "❌ Confirmation failed. Expected '$env_label', got '$confirmation'"
-		echo "Skipping $env_label teardown."
-		return 1
-	fi
-
-	echo "Confirmation accepted. Proceeding with teardown..."
-	sleep 2
-	echo "Connecting to cache..."
-
-	if DRAGONFLY_URL="$url" docker run --rm \
-		-e DRAGONFLY_URL \
-		redis:7-alpine \
-		sh -c 'redis-cli -u "$DRAGONFLY_URL" FLUSHALL'; then
-		echo ""
-		echo "✅ $env_label teardown completed successfully"
-	else
-		local docker_exit=$?
-		echo ""
-		echo "❌ $env_label teardown failed with exit code $docker_exit"
-		return 1
-	fi
-}
-
-# Main execution - only one environment at a time (safety: no "all" option)
-exit_code=0
-
-if [ "$env_mode" = "dev" ]; then
-	dev_url=$(get_connection_string "op://$vault_dev/dragonfly-dev/api-url")
-	if [ -n "$dev_url" ]; then
-		teardown_dragonfly "$dev_url" "DEVELOPMENT" || exit_code=1
-	else
-		echo "❌ Failed to read DEV connection string"
-		exit_code=1
-	fi
-fi
-
-if [ "$env_mode" = "prod" ]; then
-	prod_url=$(get_connection_string "op://$vault_prod/dragonfly-prod/api-url")
-	if [ -n "$prod_url" ]; then
-		teardown_dragonfly "$prod_url" "PRODUCTION" || exit_code=1
-	else
-		echo "❌ Failed to read PROD connection string"
-		exit_code=1
-	fi
-fi
-
-echo ""
 echo "================================================"
-
-if [ "$exit_code" -eq 0 ]; then
-	echo "✅ section 2 passed - all teardowns completed"
-else
-	echo "❌ section 2 failed - some teardowns failed"
+echo "TARGET: $env_label ($app)"
+echo "================================================"
+echo "⚠️  WARNING: This will PERMANENTLY FLUSH every key on every cluster member!"
+echo ""
+echo "To proceed with $env_label teardown, type the environment name: $env_label"
+read -r confirmation || confirmation=""
+if [ "$confirmation" != "$env_label" ]; then
+	echo "❌ Confirmation failed. Expected '$env_label', got '$confirmation'"
+	exit 1
 fi
 
-exit "$exit_code"
+echo "Confirmation accepted. Flushing every primary inside $app..."
+if dragonfly_cluster_run "$app" flush; then
+	echo ""
+	echo "✅ section 2 passed - every primary flushed"
+else
+	echo ""
+	echo "❌ section 2 failed - the member named above stopped the flush; run 03_verify.sh to see what remains" >&2
+	exit 1
+fi

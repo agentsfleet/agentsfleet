@@ -24,19 +24,21 @@ afd_observability.workspace = true
 # Identifiers, the clock, the registry codes, and the keyset cursor the list
 # walk resumes from.
 afd_core.workspace = true
-# The Postgres pool every statement here runs on, and its one database clock.
+# The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# Composes that clock into the purge's tombstone statement at compile time.
-const_format.workspace = true
 # The per-fleet event stream and readiness mark a purge forgets after the row.
 afd_dragonfly.workspace = true
 # The counter snapshot the live wall's `hello` carries.
 afd_api_wire.workspace = true
-afd_wire.workspace = true
+# The lease status spelling a purge deletes its fleet's live leases by.
+afd_state.workspace = true
+# Row instants, read through the `TIMESTAMPTZ(3)` bridge.
+jiff.workspace = true
+jiff-sqlx.workspace = true
 # One fleet enumeration per workspace per tick, shared by every live stream
 # watching it — and `get`/`insert` coalesce the misses a cadence produces.
 moka.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
 
@@ -58,6 +60,9 @@ afd_crypto.workspace = true
 # The lane fixture and the fleet seed its rows go in through. A dev-dependency
 # feature only.
 afd_db = { workspace = true, features = ["test-util"] }
+# The lane's live Dragonfly connect and the lazy manager a dead-datastore
+# fixture is built on. A dev-dependency feature only.
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "lifecycle_suite"

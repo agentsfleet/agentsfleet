@@ -26,7 +26,8 @@ pub struct Entry<'a> {
     pub workspace_id: &'a str,
     /// The trigger payload, already serialized.
     pub request_json: &'a str,
-    /// The producer's instant, already rendered as milliseconds.
+    /// The producer's instant, already rendered as RFC 3339, the shape
+    /// [`crate::instant`] reads back.
     pub created_at: &'a str,
 }
 

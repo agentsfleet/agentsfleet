@@ -18,10 +18,12 @@
 //! Reads hide foreign rows with `Ok(None)`. Conditional edits return typed
 //! refusals carrying a current tag or state; neither can disclose a foreign row.
 
-use afd_core::clock::UnixMillis;
+use std::time::Duration;
+
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use jiff::Timestamp;
 
 use crate::error::Result;
 
@@ -30,6 +32,7 @@ mod create;
 mod decode;
 mod edit;
 mod fence;
+mod fire_at;
 mod guarded;
 mod input;
 mod owner;
@@ -51,8 +54,9 @@ const CONTEXT_WRITE: &str = "write a schedule";
 ///
 /// Long enough for an upstream round trip and its retries, short enough that a
 /// syncer killed mid-push does not strand a schedule for a person watching the
-/// list.
-pub const SYNC_LEASE_MS: i64 = 30_000;
+/// list. Bound as an `interval` and added to `clock_timestamp()`, so the
+/// deadline is on the database's clock, the one the fence predicate reads.
+pub const SYNC_LEASE: Duration = Duration::from_secs(30);
 
 /// The schedules table, over an already-connected pool.
 ///
@@ -81,7 +85,7 @@ impl Schedules {
     /// `afd_admin::Models::mint`'s shape: the instant leads so rows sort by
     /// creation without a second column, and the entropy is what makes two
     /// minted in the same millisecond distinct.
-    pub(crate) fn mint(&self, now: UnixMillis) -> Result<Uuid7> {
+    pub(crate) fn mint(&self, now: Timestamp) -> Result<Uuid7> {
         Ok(self.entropy.uuid7(now)?)
     }
 }

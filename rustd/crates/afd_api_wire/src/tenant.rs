@@ -37,7 +37,8 @@ pub struct MintedApiKeyResponse<'a> {
     /// The credential itself. Shown once and never stored in this shape.
     pub key: Cow<'a, str>,
     /// When it was minted.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// `POST /v1/cli-credentials` — mint this machine's credential.
@@ -92,7 +93,8 @@ pub struct RevokedApiKeyResponse<'a> {
     /// straight into whatever it was holding.
     pub active: bool,
     /// When the row records it stopped working.
-    pub revoked_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub revoked_at: jiff::Timestamp,
 }
 
 /// One key as a list shows it: metadata, never a secret.
@@ -106,13 +108,15 @@ pub struct ApiKeySummary<'a> {
     /// Whether it still authenticates.
     pub active: bool,
     /// When it was minted.
-    pub created_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub created_at: jiff::Timestamp,
     /// When it stopped working, if it has.
     ///
     /// Emitted as `null` rather than omitted — here and on every optional in
     /// this module — so a row is always the same set of keys. Omission would
     /// be a shape change a dashboard's `"revoked_at" in row` check can feel.
-    pub revoked_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub revoked_at: Option<jiff::Timestamp>,
 }
 
 /// `GET /v1/tenants/me/billing` — the wallet snapshot.
@@ -124,15 +128,21 @@ pub struct ApiKeySummary<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
-    /// What remains, in nanos — one thousand-millionth of a dollar.
+    /// What remains, in nanos — one thousand-millionth of a dollar. Negative
+    /// while the tenant owes a debt. A settlement takes its whole charge, and
+    /// the next grant repays the debt before any of it is spendable.
+    #[serde(with = "afd_wire::nanos::signed")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::signed::SignedDecimal))]
     pub balance_nanos: i64,
     /// When the balance last moved.
-    pub updated_at: i64,
-    /// Whether the balance has reached zero.
+    #[serde(with = "afd_wire::instant")]
+    pub updated_at: jiff::Timestamp,
+    /// Whether the balance has reached zero or gone below it.
     pub is_exhausted: bool,
     /// When it did, or `null` while money remains — emitted either way, for
     /// the module's null rule.
-    pub exhausted_at: Option<i64>,
+    #[serde(with = "afd_wire::instant::option", default)]
+    pub exhausted_at: Option<jiff::Timestamp>,
 }
 
 /// One runtime charge or settled setup-chat cost.
@@ -146,20 +156,24 @@ pub struct ChargeSummary<'a> {
     pub id: Cow<'a, str>,
     /// Whose charge it is.
     pub tenant_id: Cow<'a, str>,
-    /// The workspace it was incurred in — `null` once that workspace is
-    /// deleted, because a charge outlives what it was incurred on.
-    pub workspace_id: Option<Cow<'a, str>>,
-    /// The runtime fleet identity survives deletion. For setup chats this is
-    /// the saved fleet linked by the retained draft, or `null` if unavailable.
+    /// The workspace it was incurred in. It survives that workspace's
+    /// deletion, because a charge outlives what it was incurred on.
+    pub workspace_id: Cow<'a, str>,
+    /// The fleet it was incurred by. A fleet run's charge always names it,
+    /// through the fleet's deletion; the dashboard derives the callsign from
+    /// it. A setup chat names the fleet its draft was saved as, or `null`
+    /// while the draft has none.
     pub fleet_id: Option<Cow<'a, str>>,
-    /// Runtime charges keep the fleet name captured when charged, including
-    /// after a rename or deletion. Setup chats use the linked public fleet's
-    /// current name. `null` when no public fleet name is available.
+    /// That fleet's name. A fleet run's charge keeps the name captured when it
+    /// was written, so a later rename never reaches it. A fleet purged before
+    /// its charge landed leaves its own identifier here. When this value equals
+    /// `fleet_id`, the charge captured no name. A setup chat shows the saved
+    /// fleet's current name, or `null` without one.
     pub fleet_name: Option<Cow<'a, str>>,
-    /// The runtime event, or `null` for setup chats.
+    /// The event that triggered the work, or `null` for a setup chat.
     pub event_id: Option<Cow<'a, str>>,
-    /// The setup attempt, or `null` for runtime events. Identifies accounting
-    /// without exposing private chat content or depending on its retention.
+    /// The setup attempt, or `null` for a fleet run. Identifies the charge
+    /// without exposing the chat's content or depending on its retention.
     pub authoring_attempt_id: Option<Cow<'a, str>>,
     /// `receive`, `stage`, or `authoring` (a settled setup-chat attempt).
     pub charge_type: Cow<'a, str>,
@@ -168,6 +182,8 @@ pub struct ChargeSummary<'a> {
     /// The model used by the run or setup chat.
     pub model: Cow<'a, str>,
     /// What this row drained, in nanos.
+    #[serde(with = "afd_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
     pub credit_deducted_nanos: i64,
     /// Recorded input tokens for a run or settled setup chat.
     pub token_count_input: Option<i64>,
@@ -177,7 +193,8 @@ pub struct ChargeSummary<'a> {
     pub wall_ms: Option<i64>,
     /// When the row was written — the walk's sort key, and what its cursor
     /// half is rendered from.
-    pub recorded_at: i64,
+    #[serde(with = "afd_wire::instant")]
+    pub recorded_at: jiff::Timestamp,
 }
 
 /// `GET /v1/tenants/me/billing/charges` — one page of the ledger.

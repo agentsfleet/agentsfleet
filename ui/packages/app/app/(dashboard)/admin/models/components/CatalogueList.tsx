@@ -16,10 +16,13 @@ import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library
 import {
   CONTEXT_HEADER,
   RATES_HEADER,
-  compareModelIds,
+  compareModels,
+  compareNanos,
+  currentBasePrice,
   formatContextTokens,
   formatRatesPerMtok,
 } from "@/lib/models/display";
+import { CatalogueEvidence, ModelPriceSchedule } from "@/components/domain/ModelPriceSchedule";
 import { ModelName, ProviderBadge } from "@/components/domain/ModelCells";
 import { providerLabel } from "@/lib/api/model-library-types";
 import { presentErrorString } from "@/lib/errors";
@@ -42,6 +45,7 @@ function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey |
     <ModelName
       trimmed
       modelId={model.model_id}
+      displayName={model.metadata.display_name}
       trailing={isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
     />
   );
@@ -130,7 +134,8 @@ function buildColumns({
       key: "model", primary: true,
       header: "Model",
       sortValue: (m) => m.model_id,
-      compare: (a, b) => compareModelIds(a.model_id, b.model_id),
+      compare: (a, b) => compareModels({ model_id: a.model_id, display_name: a.metadata.display_name },
+        { model_id: b.model_id, display_name: b.metadata.display_name }),
       cell: (m) => <ModelCell model={m} active={active} />,
     },
     {
@@ -138,22 +143,25 @@ function buildColumns({
       header: CONTEXT_HEADER,
       hideOnMobile: true,
       numeric: true,
-      sortValue: (m) => m.context_cap_tokens,
+      sortValue: (m) => m.metadata.context_cap_tokens,
       cell: (m) => (
-        <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
-          {formatContextTokens(m.context_cap_tokens)}
-        </span>
+        <div className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
+          {formatContextTokens(m.metadata.context_cap_tokens)}
+          <CatalogueEvidence source={m.metadata.context_source_url} verifiedAt={m.metadata.context_verified_at} />
+        </div>
       ),
     },
     {
       key: "rates",
       header: RATES_HEADER,
       numeric: true,
-      sortValue: (m) => m.input_nanos_per_mtok,
+      sortValue: (m) => currentBasePrice(m.prices)?.input_nanos_per_mtok ?? "",
+      compare: (a, b) => compareNanos(currentBasePrice(a.prices)?.input_nanos_per_mtok ?? null, currentBasePrice(b.prices)?.input_nanos_per_mtok ?? null),
       cell: (m) => (
-        <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
-          {formatRatesPerMtok(m)}
-        </span>
+        <div className="space-y-sm">
+          <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">{formatRatesPerMtok(currentBasePrice(m.prices))}</span>
+          <ModelPriceSchedule prices={m.prices} />
+        </div>
       ),
     },
     {

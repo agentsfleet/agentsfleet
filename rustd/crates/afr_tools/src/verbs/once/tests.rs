@@ -1,13 +1,14 @@
 //! `schedule`: a moment, written as the UTC minute it fires at, once.
 
 #![expect(
-    clippy::expect_used,
     clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::{self, UnixMillis};
-use afd_core::timing::DAY_MS;
+use std::time::Duration;
+
+use afd_core::clock;
+use afd_core::timing::DAY;
 use jiff::Timestamp;
 use serde_json::json;
 
@@ -17,7 +18,10 @@ use crate::runtime::ToolErrorCode;
 use crate::testing::{Asked, OwnedCall, RecordingVerbs, call, lease_with};
 
 /// The instant every pure case is measured from: 2026-10-05T00:00:00Z.
-const NOW: UnixMillis = UnixMillis::from_millis(1_791_158_400_000);
+const NOW: Timestamp = Timestamp::constant(1_791_158_400, 0);
+
+/// The finest step an instant on the wire takes.
+const ONE_MILLISECOND: Duration = Duration::from_millis(1);
 
 #[test]
 fn an_offset_moment_is_written_as_its_utc_minute() {
@@ -53,12 +57,50 @@ fn a_moment_inside_the_lead_is_refused() {
     );
     // NOW itself, and anything rounding to it, is too close.
     assert_eq!(minute_of("2026-10-05T00:00:00Z", NOW), Err(DETAIL_PAST));
-    let just_after = UnixMillis::from_millis(NOW.as_millis() + 1);
+    let just_after = clock::after(NOW, ONE_MILLISECOND);
     assert_eq!(
         minute_of("2026-10-05T00:01:00Z", just_after),
         Err(DETAIL_PAST),
         "a rounded minute less than a minute out"
     );
+}
+
+/// A millisecond into a minute is inside it, and rounds up like any other.
+#[test]
+fn a_moment_inside_a_minute_rounds_up_to_the_next() {
+    assert_eq!(
+        minute_of("2026-10-06T09:00:00.001Z", NOW),
+        Ok("1 9 6 10 *".to_owned())
+    );
+    assert_eq!(
+        minute_of("2026-10-06T09:00:00Z", NOW),
+        Ok("0 9 6 10 *".to_owned()),
+        "a moment on the minute stays on it"
+    );
+}
+
+/// The lead is inclusive: exactly a minute out is accepted, a millisecond
+/// short of it is not.
+#[test]
+fn exactly_one_lead_ahead_is_accepted_and_one_millisecond_less_refused() {
+    assert_eq!(
+        minute_of("2026-10-05T00:01:00Z", NOW),
+        Ok("1 0 5 10 *".to_owned())
+    );
+    assert_eq!(
+        minute_of("2026-10-05T00:01:00Z", clock::after(NOW, ONE_MILLISECOND)),
+        Err(DETAIL_PAST)
+    );
+}
+
+/// The horizon is 365 of the daemon's days: its last minute is accepted, the
+/// next refused.
+#[test]
+fn the_horizon_is_365_days_of_the_daemon_day() {
+    let last = clock::after(NOW, DAY.saturating_mul(365)).to_string();
+    assert_eq!(minute_of(&last, NOW), Ok("0 0 5 10 *".to_owned()));
+    let past = clock::after(NOW, DAY.saturating_mul(365) + Duration::from_mins(1)).to_string();
+    assert_eq!(minute_of(&past, NOW), Err(DETAIL_TOO_FAR));
 }
 
 /// A cron has no year: past the horizon the expression would fire early.
@@ -74,9 +116,7 @@ fn an_unreadable_moment_is_refused() {
 
 #[tokio::test]
 async fn test_schedule_tool_is_once() {
-    let tomorrow = Timestamp::from_millisecond(clock::now().as_millis() + DAY_MS)
-        .expect("tomorrow is an instant")
-        .to_string();
+    let tomorrow = clock::after(clock::now(), DAY).to_string();
     let verbs = RecordingVerbs::answering(Ok("{}".to_owned()), Ok(true));
     let lease = lease_with(&verbs);
     let output = call(

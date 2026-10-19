@@ -7,9 +7,9 @@
 //! derived from the chat event's own id, so a retried delivery owes it once.
 
 use afd_connector::Provider;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_outbound::obligation::{self, Delivery};
+use jiff::Timestamp;
 
 use super::{Notice, Subscriber};
 use crate::Ingress;
@@ -87,12 +87,13 @@ impl Ingress {
     /// Owes one notice to the mention's thread.
     ///
     /// Answers `true` when this call wrote the obligation, and `false` for a
-    /// retried delivery whose notice is already owed.
+    /// retried delivery whose notice is already owed. `now` mints the row's id;
+    /// the ledger stamps the row on the database clock.
     ///
     /// # Errors
     /// Reports entropy or an instant that would not mint the row's id, and a
     /// ledger that would not record it.
-    pub async fn owe_notice(&self, owed: NoticeOwed<'_>, now: UnixMillis) -> Result<bool> {
+    pub async fn owe_notice(&self, owed: NoticeOwed<'_>, now: Timestamp) -> Result<bool> {
         let row = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
         let written = obligation::owe(
@@ -106,7 +107,6 @@ impl Ingress {
                 event_id: owed.key,
                 answer: owed.text,
             },
-            now,
         )
         .await?;
         Ok(written)

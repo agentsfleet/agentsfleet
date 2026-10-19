@@ -101,7 +101,7 @@ impl Fleet {
             catalogue: Models::new(database),
             providers,
             dashboard_base: clients::dashboard(),
-            now: UnixMillis::from_millis(FROZEN),
+            now: FROZEN,
         }
     }
 }

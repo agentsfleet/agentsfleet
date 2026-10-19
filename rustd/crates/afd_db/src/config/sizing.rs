@@ -4,6 +4,8 @@
 //! Split from [`super`] for length: these are the defaults the knobs there
 //! override, and each carries the measurement that chose it.
 
+use std::time::Duration;
+
 /// The pool's ceiling, sized the way `core_api` sizes its own.
 ///
 /// It used to be the API's in-flight ceiling over a "per-connection
@@ -106,11 +108,11 @@ pub(super) fn min_connections_default(max_connections: u32) -> u32 {
 /// A deployment whose database is in the same region can lower it with
 /// `DATABASE_ACQUIRE_TIMEOUT_MS`. Do not lower it below the p99 establishment
 /// that deployment actually measures.
-pub(super) const ACQUIRE_TIMEOUT_MS_DEFAULT: u64 = 5_000;
+pub(super) const ACQUIRE_TIMEOUT_DEFAULT: Duration = Duration::from_secs(5);
 
 /// The handshake budget for the BOOT PROBE, which is the one place this crate
 /// can bound a handshake on its own.
 ///
-/// Not the pool's: see [`ACQUIRE_TIMEOUT_MS_DEFAULT`] for why the pool cannot
+/// Not the pool's: see [`ACQUIRE_TIMEOUT_DEFAULT`] for why the pool cannot
 /// be given a separate one. Not tunable per role.
-pub(super) const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 10_000;
+pub(super) const CONNECT_TIMEOUT_DEFAULT: Duration = Duration::from_secs(10);

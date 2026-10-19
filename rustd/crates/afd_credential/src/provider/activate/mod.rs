@@ -5,8 +5,8 @@
 //!
 //! # Why the whole ladder is one transaction
 //!
-//! Activation is a reference PRODUCER: it writes a registry entry and a
-//! selection row that both name a stored credential. `afd_vault`'s delete is
+//! Activation is a reference PRODUCER: it writes a registry entry naming a
+//! stored credential, and points the selection row at that entry. `afd_vault`'s delete is
 //! the destroyer. Between a probe and a commit taken separately, a delete would
 //! leave the tenant's ACTIVE model pointing at a credential that no longer
 //! exists — the worst instance of the orphan, because it breaks every later run
@@ -39,9 +39,9 @@
 //! tenant with no selection row locks nothing at all, Postgres having no gap
 //! locks, which is precisely the first-activation path.
 //!
-//! The treaty exists only because `secret_ref` is TEXT rather than a foreign
-//! key. `docs/architecture/tenant_provider_v2.md` §V2-1 is the schema change
-//! that deletes it, this module's lock, and both sides of the contract.
+//! The protocol exists only because `secret_ref` is TEXT naming a
+//! `(workspace_id, key_name)` pair rather than a foreign key. The selection's
+//! pointer at the entry IS one, so that half the database already guards.
 //!
 //! # One decrypt, and none on the refusals a client provokes
 //!
@@ -52,24 +52,43 @@
 //! locked, so the most-walked refusals — a name nobody stored, a credential
 //! that is not a provider key — never open an envelope at all.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::secret::SecretBytes;
 use afd_vault::StoredEnvelope;
-use sqlx::FromRow as _;
-use sqlx::{Acquire as _, Row as _, Transaction};
+use jiff::Timestamp;
+use sqlx::{Acquire as _, Transaction};
 
 use crate::error::{Result, entropy_drained, query, row_malformed, vault_open};
+use crate::provider::cap;
 use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
-use crate::provider::selection::{COLUMN_ID, Selection, TABLE_WORKSPACES};
+use crate::provider::selection::{COLUMN_ID, COLUMN_TENANT_MODEL, OwnModel, TABLE_WORKSPACES};
 use crate::provider::store::Providers;
 use crate::provider::vetted::{Refused, vet};
 use crate::provider::{SecretKind, sql};
-use afd_billing::Posture;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ACTIVATE: &str = "tenant provider activation";
+
+/// The table a malformed pointer is reported against.
+const TABLE_SELECTIONS: &str = "model.tenant_selections";
+
+/// One [`sql::LOCK_CREDENTIAL_FOR_ACTIVATION`] row, by its column names.
+#[derive(Debug, sqlx::FromRow)]
+struct LockedCredential {
+    meta_provider: Option<String>,
+    meta_has_key: Option<bool>,
+    workspace_id: String,
+    #[sqlx(flatten)]
+    envelope: StoredEnvelope,
+}
+
+/// One [`sql::ACTIVATE_TENANT_MODEL`] row: the pointer written and its ceiling.
+#[derive(Debug, sqlx::FromRow)]
+struct Pointed {
+    tenant_model_id: String,
+    context_cap_tokens: i32,
+}
 
 /// What an activation attempt resolved to.
 ///
@@ -82,8 +101,9 @@ const CONTEXT_ACTIVATE: &str = "tenant provider activation";
 /// Genuine faults still travel as `Err`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Activation {
-    /// Stored. Carries the row as written, for the response to echo.
-    Applied(Selection),
+    /// Stored. Carries the entry the selection now points at, for the response
+    /// to echo.
+    Applied(OwnModel),
     /// This tenant has no workspace at all — a violated bootstrap invariant.
     NoWorkspace,
     /// No credential is held under that name.
@@ -108,6 +128,9 @@ impl Providers {
     /// "an activation must name a usable one". Padding is refused rather than
     /// trimmed, so the typo reaches the caller instead of being stored.
     ///
+    /// `now` is the instant a registry entry's identifier is minted at; every
+    /// row this writes is stamped by the database's own clock.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer, and a stored envelope that
     /// will not open. Every refusal a client can provoke is an
@@ -117,17 +140,18 @@ impl Providers {
         tenant_id: &Uuid7,
         secret_ref: &str,
         model: Option<&str>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Activation> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ACTIVATE))?;
 
-        let Some(row) = sqlx::query(sql::LOCK_CREDENTIAL_FOR_ACTIVATION)
-            .bind(tenant_id.as_str())
-            .bind(secret_ref)
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_ACTIVATE))?
+        let Some(locked) =
+            sqlx::query_as::<_, LockedCredential>(sql::LOCK_CREDENTIAL_FOR_ACTIVATION)
+                .bind(tenant_id.as_str())
+                .bind(secret_ref)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(query(CONTEXT_ACTIVATE))?
         else {
             // Zero rows is two different facts. Telling them apart costs a
             // second read, spent only here — on a path nobody is waiting on.
@@ -140,13 +164,9 @@ impl Providers {
             );
         };
 
-        let meta_provider: Option<String> = row
-            .try_get("meta_provider")
-            .map_err(query(CONTEXT_ACTIVATE))?;
-        let meta_has_key: Option<bool> = row
-            .try_get("meta_has_key")
-            .map_err(query(CONTEXT_ACTIVATE))?;
-        if SecretKind::of(meta_provider.as_deref(), meta_has_key) != SecretKind::ProviderKey {
+        if SecretKind::of(locked.meta_provider.as_deref(), locked.meta_has_key)
+            != SecretKind::ProviderKey
+        {
             return Ok(Activation::NotAProviderKey);
         }
 
@@ -154,10 +174,9 @@ impl Providers {
         // holds a connection and the credential's row lock, and acquiring a
         // second connection under both is how a bounded pool starves under
         // concurrent activations. The join already resolved this exact row.
-        let workspace: String = row.try_get("id").map_err(query(CONTEXT_ACTIVATE))?;
-        let workspace =
-            Uuid7::parse(&workspace).map_err(row_malformed(TABLE_WORKSPACES, COLUMN_ID))?;
-        let opened = open_envelope(&row, &workspace, secret_ref, self.vault_key())?;
+        let workspace = Uuid7::parse(&locked.workspace_id)
+            .map_err(row_malformed(TABLE_WORKSPACES, COLUMN_ID))?;
+        let opened = open_envelope(locked.envelope, &workspace, secret_ref, self.vault_key())?;
         let vetted = match vet(opened.expose()) {
             Ok(vetted) => vetted,
             Err(Refused::Malformed) => return Ok(Activation::Malformed),
@@ -193,13 +212,12 @@ fn effective_model<'a>(override_: Option<&'a str>, credential: Option<&'a str>) 
 
 /// Open the named storage projection under the caller's workspace and key name.
 fn open_envelope(
-    row: &sqlx::postgres::PgRow,
+    stored: StoredEnvelope,
     workspace: &Uuid7,
     name: &str,
     kek: &afd_crypto::secret::Kek,
 ) -> Result<SecretBytes> {
-    StoredEnvelope::from_row(row)
-        .map_err(query(CONTEXT_ACTIVATE))?
+    stored
         .into_envelope()
         .map_err(vault_open)?
         .open(kek, &Aad::new(workspace.as_str(), name))
@@ -230,7 +248,7 @@ impl Providers {
         Ok(held.is_some())
     }
 
-    /// The registry entry and the gated selection write, then commit.
+    /// The registry entry and the gated selection pointer, then commit.
     async fn write_activation(
         &self,
         mut transaction: Transaction<'_, sqlx::Postgres>,
@@ -238,25 +256,22 @@ impl Providers {
         secret_ref: &str,
         provider: &str,
         model: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<Activation> {
-        sqlx::query(sql::INSERT_MODEL_ENTRY_IF_ABSENT)
+        sqlx::query(sql::INSERT_TENANT_MODEL_IF_ABSENT)
             .bind(self.mint_entry_id(now)?.as_str())
             .bind(tenant_id.as_str())
             .bind(model)
             .bind(secret_ref)
-            .bind(now.as_millis())
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;
 
-        let stored = sqlx::query(sql::ACTIVATE_SELF_MANAGED)
+        let pointed = sqlx::query_as::<_, Pointed>(sql::ACTIVATE_TENANT_MODEL)
             .bind(tenant_id.as_str())
-            .bind(Posture::SelfManaged.as_str())
             .bind(provider)
             .bind(model)
             .bind(secret_ref)
-            .bind(now.as_millis())
             .bind(provider == OPENAI_COMPATIBLE)
             .fetch_optional(&mut *transaction)
             .await
@@ -265,20 +280,27 @@ impl Providers {
         // No row means the gate refused: the catalogue does not carry this
         // (provider, model). The transaction is dropped without a commit, so
         // the registry entry above is rolled back with it.
-        let Some(written) = stored else {
+        let Some(pointed) = pointed else {
             return Ok(Activation::ModelUnknown);
         };
-        let selection = crate::provider::selection::read_selection(&written)?;
+        let own = OwnModel {
+            tenant_model_id: Uuid7::parse(&pointed.tenant_model_id)
+                .map_err(row_malformed(TABLE_SELECTIONS, COLUMN_TENANT_MODEL))?,
+            model: model.into(),
+            secret_ref: secret_ref.into(),
+            provider: Some(provider.into()),
+            context_cap_tokens: cap::stored(pointed.context_cap_tokens),
+        };
         transaction
             .commit()
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;
 
-        Ok(Activation::Applied(selection))
+        Ok(Activation::Applied(own))
     }
 
-    /// A fresh identifier for a registry entry.
-    pub(crate) fn mint_entry_id(&self, now: UnixMillis) -> Result<Uuid7> {
+    /// A fresh identifier for a registry entry, minted at `now`.
+    pub(crate) fn mint_entry_id(&self, now: Timestamp) -> Result<Uuid7> {
         self.entropy().uuid7(now).map_err(entropy_drained)
     }
 }

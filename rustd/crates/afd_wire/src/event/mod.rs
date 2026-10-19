@@ -108,8 +108,9 @@ pub struct EventEnvelope<'a> {
     /// Opaque request payload, carried verbatim.
     #[serde(borrow)]
     pub request_json: Cow<'a, str>,
-    /// Epoch milliseconds at which the event was created.
-    pub created_at: i64,
+    /// When the event was created.
+    #[serde(with = "crate::instant")]
+    pub created_at: jiff::Timestamp,
 }
 
 /// One event as the operator surface renders it.
@@ -158,16 +159,20 @@ pub struct EventSummary<'a> {
     /// The event this one continues, set on a continuation.
     #[serde(borrow)]
     pub resumes_event_id: Option<Cow<'a, str>>,
-    /// Epoch milliseconds the row was created.
-    pub created_at: i64,
-    /// Epoch milliseconds the row last changed.
-    pub updated_at: i64,
+    /// When the row was created.
+    #[serde(with = "crate::instant")]
+    pub created_at: jiff::Timestamp,
+    /// When the row last changed.
+    #[serde(with = "crate::instant")]
+    pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
     //
     // `null` when the event recorded no telemetry, which the console renders
     // as UNKNOWN and never as a zero charge — an unbilled run and a free run
     // are different facts. Cost is server truth: a client must not derive it
     // from `tokens`.
+    #[serde(with = "crate::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<crate::nanos::Decimal>))]
     pub cost_nanos: Option<i64>,
 }
 
@@ -250,14 +255,18 @@ pub struct EventDetail<'a> {
     /// The event this one continues, set on a continuation.
     #[serde(borrow)]
     pub resumes_event_id: Option<Cow<'a, str>>,
-    /// Epoch milliseconds the row was created.
-    pub created_at: i64,
-    /// Epoch milliseconds the row last changed.
-    pub updated_at: i64,
+    /// When the row was created.
+    #[serde(with = "crate::instant")]
+    pub created_at: jiff::Timestamp,
+    /// When the row last changed.
+    #[serde(with = "crate::instant")]
+    pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
     //
     // `null` when the event recorded no telemetry — see [`EventSummary`] on
     // why that is never rendered as a zero charge.
+    #[serde(with = "crate::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<crate::nanos::Decimal>))]
     pub cost_nanos: Option<i64>,
 }
 

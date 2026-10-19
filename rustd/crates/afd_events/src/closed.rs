@@ -1,31 +1,34 @@
 //! What ending an event hands back: the row, and the fleet facts beside it.
 //!
 //! Both closing statements — the runner's verdict and a gate's refusal — end
-//! with the same select, so one decoder reads both. The fifteen leading
-//! columns are [`EventRow`]'s own and are read by its own decoder; the four
-//! after them are the fleet's lifecycle status, its pending gate count, and
+//! with the same select, so one decoder reads both. The leading columns are
+//! [`EventRow`]'s own and are read by its own typed row; the four after them
+//! are the fleet's lifecycle status, its pending gate count, and
 //! its two activity counters, which the live tail's completion frame carries
 //! so a watcher folds the ending in without a read.
 
-use sqlx::Row as _;
+use sqlx::FromRow as _;
 use sqlx::postgres::PgRow;
 
 use afd_api_wire::tail::FleetCounters;
 
 use crate::error::{Error, row_malformed};
-use crate::history::EventRow;
+use crate::history::{EventRow, Stored};
 
-/// The column the fleet's status sits in, after the row's own.
-const COLUMN_FLEET_STATUS: usize = EventRow::COLUMNS;
+/// What a refused decode is reported as.
+const ROW: &str = "closed event row";
 
-/// The column the pending gate count sits in.
-const COLUMN_PENDING_APPROVALS: usize = EventRow::COLUMNS + 1;
-
-/// The column the fleet's lifetime event count sits in.
-const COLUMN_EVENTS_PROCESSED: usize = EventRow::COLUMNS + 2;
-
-/// The column the fleet's lifetime spend sits in.
-const COLUMN_BUDGET_USED_NANOS: usize = EventRow::COLUMNS + 3;
+/// The closing as the statement selects it: the row by its own names, then
+/// the four fleet facts by theirs.
+#[derive(sqlx::FromRow)]
+struct StoredClosing {
+    #[sqlx(flatten)]
+    row: Stored,
+    fleet_status: String,
+    pending_approvals: i64,
+    event_count: i64,
+    budget_used_nanos: i64,
+}
 
 /// One ended event, with the fleet as it stood at the ending.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,21 +50,14 @@ impl Closed {
     /// # Errors
     /// [`Error::RowMalformed`] when a column is not the type this build reads.
     pub fn read(row: &PgRow) -> Result<Self, Error> {
+        let stored = StoredClosing::from_row(row).map_err(row_malformed(ROW))?;
         Ok(Self {
-            row: EventRow::read(row)?,
-            fleet_status: row
-                .try_get(COLUMN_FLEET_STATUS)
-                .map_err(row_malformed("fleet_status"))?,
-            pending_approvals: row
-                .try_get(COLUMN_PENDING_APPROVALS)
-                .map_err(row_malformed("pending_approvals"))?,
+            row: EventRow::from(stored.row),
+            fleet_status: stored.fleet_status,
+            pending_approvals: stored.pending_approvals,
             counters: FleetCounters {
-                events_processed: row
-                    .try_get(COLUMN_EVENTS_PROCESSED)
-                    .map_err(row_malformed("events_processed"))?,
-                budget_used_nanos: row
-                    .try_get(COLUMN_BUDGET_USED_NANOS)
-                    .map_err(row_malformed("budget_used_nanos"))?,
+                events_processed: stored.event_count,
+                budget_used_nanos: stored.budget_used_nanos,
             },
         })
     }

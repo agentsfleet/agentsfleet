@@ -92,7 +92,7 @@ pub struct Oauth2Flow {
     /// does not carry it — `code.rs:149` joins with a space building the URL and
     /// `helpers.rs:95` splits on a space reading the answer, both hard-coded. On
     /// the answer side that yields ONE scope carrying commas, which lands in
-    /// `core.connector_installs.scopes` as a single bogus array element with
+    /// `connector.installs.scopes` as a single bogus array element with
     /// nothing failing. Recorded in the spec's Discovery log.
     pub scope_delimiter: char,
     /// The provider-specific authorize parameters beyond the shared five.

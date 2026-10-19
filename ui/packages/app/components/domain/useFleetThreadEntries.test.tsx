@@ -113,7 +113,7 @@ describe("useFleetThreadEntries", () => {
     ];
     const unrendered: Partial<FleetEvent>[] = [
       { reply: ANSWER }, { reasoning: REASONING }, { thinking: true }, { reasoningStartedAtMs: 5 },
-      { reasoningEndedAtMs: 6 }, { tools: [] }, { tokens: 3 }, { wallMs: 4 }, { costNanos: 5 },
+      { reasoningEndedAtMs: 6 }, { tools: [] }, { tokens: 3 }, { wallMs: 4 }, { costNanos: "5" },
       // Equal values in fresh objects render the same.
       { createdAt: new Date(base.createdAt.getTime()) }, { custom: { requestJson: REQUEST_GO } },
     ];

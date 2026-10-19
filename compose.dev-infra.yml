@@ -1,7 +1,7 @@
 # One infrastructure project per repository. local-dev.sh owns its snapshot.
 services:
   postgres:
-    image: mirror.gcr.io/library/postgres:18-alpine
+    image: mirror.gcr.io/library/postgres:19rc1-alpine
     environment:
       POSTGRES_USER: agentsfleet
       POSTGRES_PASSWORD: agentsfleet
@@ -18,7 +18,7 @@ services:
       retries: 20
 
   dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
     entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
     command: ["serve"]
     environment:

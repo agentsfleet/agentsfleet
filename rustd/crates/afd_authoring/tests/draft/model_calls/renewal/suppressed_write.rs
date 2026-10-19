@@ -16,7 +16,7 @@ async fn an_ignored_expiry_write_cannot_acknowledge_or_meter_a_renewal() {
     let before = snapshot(&f, &a).await;
     let fault = Refusal::install(
         &f.owner_url(),
-        "fleet.authoring_attempts",
+        "authoring.attempts",
         "ignore_renewal",
         a.id.as_str(),
         &format!(

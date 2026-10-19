@@ -2,8 +2,10 @@
 
 // Type-only — erased at compile time, so this does not create a runtime
 // cycle with secrets.ts's own `import { SECRET_FIELD } from "@/lib/types"`.
-import type { SecretKind } from "./api/secrets-types";
+import type { z } from "zod";
+import type { tenantModelEntrySchema, tenantPlatformDefaultSchema } from "./api/tenant-model-schemas";
 import type { NativeFleetDetail, NativeFleetSummary } from "./api/fleet-detail";
+import type { FleetTriggerSchema } from "./api/fleet-trigger";
 
 export type CommandClass = "safe" | "sensitive" | "critical";
 
@@ -22,10 +24,7 @@ export type ApiError = {
 // carries the chat provider and the one channel it answers in.
 export const AGENT_TRIGGER_TYPE = {webhook: "webhook", cron: "cron", mention: "mention"} as const;
 
-export type FleetTrigger =
-  | { type: "webhook"; source: string; events?: string[] }
-  | { type: "cron"; schedule: string }
-  | { type: "mention"; source: string; channels: string[] };
+export type FleetTrigger = z.infer<typeof FleetTriggerSchema>;
 
 export type Fleet = NativeFleetSummary;
 
@@ -47,8 +46,8 @@ export type MemoryEntry = {
   key: string;
   content: string;
   category: string;
-  /** epoch milliseconds */
-  updated_at: number;
+  /** RFC 3339 instant */
+  updated_at: string;
   visibility: MemoryVisibility;
   /** The fleet that wrote it; another fleet's id marks an entry this fleet
    * reads and cannot forget. */
@@ -63,21 +62,15 @@ export type FleetListResponse = {
 
 // ── Tenant billing ──
 
-// Canonical billing unit: 1 USD = 1_000_000_000 nanos. A JavaScript Number
-// holds the full range (≤ 2^53 ≈ 9e15 nanos / ~$9M tenant balance) without
-// precision loss. This is the wire format's denominator, not a price: no
-// balance or ledger row can be read without it. Rates are the server's — the
-// dashboard renders the charge it was served and computes none of its own.
+// Canonical billing unit. Wire amounts are decimal strings; use integer
+// arithmetic when formatting or comparing them to preserve every nano.
 export const NANOS_PER_USD = 1_000_000_000;
 
-// Unix-epoch timestamps on this type are **milliseconds**, matching the
-// server's `*_at_ms` fields (rustd/crates/afd_billing/src/nanos.rs). Pass them
-// straight to `new Date(n)`; never multiply by 1000.
 export type TenantBilling = {
-  balance_nanos: number;
-  updated_at: number;
+  balance_nanos: string;
+  updated_at: string;
   is_exhausted: boolean;
-  exhausted_at: number | null;
+  exhausted_at: string | null;
 };
 
 // ── Tenant LLM provider ──
@@ -138,32 +131,8 @@ export type TenantProvider = {
 // shape. `provider`/`base_url`/`context_cap_tokens`/rates ride the
 // `emit_null_optional_fields=false` shape (omitted, never null) — same
 // convention as `Secret` in lib/api/secrets.ts.
-export type TenantModelEntry = {
-  id: string;
-  model_id: string;
-  secret_ref: string;
-  provider?: string;
-  kind: SecretKind;
-  base_url?: string;
-  has_key: boolean;
-  context_cap_tokens?: number;
-  input_nanos_per_mtok?: number;
-  cached_input_nanos_per_mtok?: number;
-  output_nanos_per_mtok?: number;
-  active: boolean;
-  created_at: number;
-};
-
-/** The active platform default's identity — rides the registry list so the
- * Models page renders the Default row without a second request. */
-export type TenantPlatformDefault = {
-  provider: string;
-  model: string;
-  context_cap_tokens: number;
-  input_nanos_per_mtok?: number;
-  cached_input_nanos_per_mtok?: number;
-  output_nanos_per_mtok?: number;
-};
+export type TenantModelEntry = z.infer<typeof tenantModelEntrySchema>;
+export type TenantPlatformDefault = z.infer<typeof tenantPlatformDefaultSchema>;
 
 export type TenantModelEntryList = {
   models: TenantModelEntry[];
@@ -176,30 +145,32 @@ export type TenantModelEntryWriteResult = {
   id: string;
   model_id: string;
   secret_ref: string;
-  created_at: number;
+  created_at: string;
 };
 
 export type TenantBillingChargesResponse = {
   items: Array<{
     id: string;
     tenant_id: string;
-    workspace_id: string | null;
-    /** Runtime identity survives deletion. Setup uses its retained draft's
-     * public fleet link, or null when no saved fleet is available. */
+    /** Survives the workspace's deletion: the charge keeps the identifier. */
+    workspace_id: string;
+    /** A fleet run's identity survives the fleet's deletion, so its charges
+     * still name themselves; the callsign derives from it. A setup chat uses
+     * its draft's saved fleet, or null while the draft has none. */
     fleet_id: string | null;
-    /** The fleet's name when the charge was written — a snapshot, so a later
-     * rename never reaches it. Setup uses the linked fleet's current name. */
+    /** The saved fleet name for historical context. Display identity derives
+     * from fleet_id; an unsaved setup chat has no fleet name. */
     fleet_name: string | null;
     event_id: string | null;
     authoring_attempt_id: string | null;
     charge_type: ChargeType;
     posture: ProviderMode;
     model: string;
-    credit_deducted_nanos: number;
+    credit_deducted_nanos: string;
     token_count_input: number | null;
     token_count_output: number | null;
     wall_ms: number | null;
-    recorded_at: number;
+    recorded_at: string;
   }>;
   next_cursor: string | null;
 };

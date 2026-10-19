@@ -8,8 +8,8 @@ afterEach(cleanup);
 
 const ROWS: RegistryRow[] = [
   {kind: "default"},
-  {kind: "entry", entry: {id: "model-a", model_id: "claude-sonnet-5", provider: "anthropic",
-    secret_ref: "anthropic-key", kind: "provider_key", has_key: true, active: false, created_at: 0}},
+  {kind: "entry", entry: {id: "model-a", model_id: "claude-sonnet-5", display_name: null, provider: "anthropic",
+    secret_ref: "anthropic-key", kind: "provider_key", has_key: true, active: false, created_at: "1970-01-01T00:00:00Z"}},
 ];
 const COLUMNS: DataTableColumn<RegistryRow>[] = [
   {key: "model", header: "Model", cell: (row) => row.kind === "default" ? "Platform default" : row.entry.model_id},
@@ -33,8 +33,8 @@ it("filters loaded model names and providers while preserving the default when c
 it.each([false, true])("pages cached models without a request and resets page size (more available: %s)", async (more) => {
   const load = vi.fn();
   const rows: RegistryRow[] = Array.from({length: 30}, (_, index) => ({kind: "entry", entry: {
-    id: `model-${index}`, model_id: `choice-${index}`, provider: "anthropic", secret_ref: "key",
-    kind: "provider_key", has_key: true, active: false, created_at: 0,
+    id: `model-${index}`, model_id: `choice-${index}`, display_name: null, provider: "anthropic", secret_ref: "key",
+    kind: "provider_key", has_key: true, active: false, created_at: "1970-01-01T00:00:00Z",
   }}));
   render(<ModelsRegistryView rows={rows} onLoadMore={more ? load : undefined} columns={COLUMNS} platformDefault={null} sort={null} onSortChange={() => {}} pending={false} />);
   fireEvent.click(screen.getByRole("button", {name: "Next page"}));

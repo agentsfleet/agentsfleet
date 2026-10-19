@@ -94,13 +94,16 @@ pub(crate) enum ErrorKind {
         source: Box<redis::RedisError>,
     },
 
-    #[error("the {role} Dragonfly did not connect within {waited_ms}ms")]
-    ConnectTimeout { role: &'static str, waited_ms: u128 },
+    #[error("the {role} Dragonfly did not connect within {waited:?}")]
+    ConnectTimeout {
+        role: &'static str,
+        waited: std::time::Duration,
+    },
 
-    #[error("{command} did not answer within {waited_ms}ms")]
+    #[error("{command} did not answer within {waited:?}")]
     Timeout {
         command: &'static str,
-        waited_ms: u128,
+        waited: std::time::Duration,
     },
 
     #[error("{command} failed")]

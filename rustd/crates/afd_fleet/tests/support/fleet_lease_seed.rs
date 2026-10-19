@@ -17,7 +17,6 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_fleet::lease::{Acquired, Leases};
@@ -78,7 +77,7 @@ pub(crate) struct Seeded<const N: usize> {
     ///
     /// Not the entry id: the two are different things now that the admission
     /// ledger owns identity, and it is this
-    /// one that `Acquired::event_id`, `core.fleet_events` and the usage ledger
+    /// one that `Acquired::event_id`, `fleet.events` and `billing.usage_lines`
     /// all address. A test comparing against the receipt would be comparing
     /// against the wrong half.
     pub(crate) event_id: String,
@@ -125,12 +124,7 @@ async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
     let held = prove(request.holds.clone());
     fixtures
         .runners()
-        .heartbeat(
-            runner,
-            &request,
-            held.as_ref(),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        )
+        .heartbeat(runner, &request, held.as_ref(), fixtures.enrolled_at())
         .await
         .expect("the first beat lands");
 }
@@ -147,9 +141,7 @@ pub(crate) async fn seeded_parts<const N: usize>(
     // One tag per seeded fleet, carried by its own runners and nobody else's:
     // see `Fixtures::seed_fleet` on why the assignment pass needs it.
     let tag = placement_tag(&fleet);
-    fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, &tag, fixtures.enrolled_at())
-        .await;
+    fixtures.seed_fleet(&fleet, &workspace, &tenant, &tag).await;
     let mut runners = Vec::with_capacity(N);
     for _ in 0..N {
         let request = enrolment_tagged(
@@ -160,7 +152,7 @@ pub(crate) async fn seeded_parts<const N: usize>(
         );
         let enrolled = fixtures
             .runners()
-            .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+            .register(&request, fixtures.enrolled_at())
             .await
             .expect("enrolment must succeed");
         reports_capable(fixtures, &enrolled.runner_id).await;
@@ -192,34 +184,27 @@ pub(crate) async fn seeded_parts<const N: usize>(
 ///
 /// `None` therefore means what the old single call was trying to mean: no
 /// partition holds leasable work for this runner.
-/// [`select_within_one_rotation`], narrowed to ONE fleet's work.
+/// `runner`'s poll for ONE fleet's work: the poll names the fleet among its
+/// holds, which reads that fleet's readiness mark directly.
 ///
-/// The readiness index is global and the lane resets once per RUN rather than
-/// per test, so a rotation started here can acquire a fleet an earlier test
-/// left marked. Handing that back to a caller asserting on its own admission
-/// is how `test_cluster_restart_and_stale_snapshot_preserve_obligations` came
-/// to compare two unrelated event ids -- green alone, red in a full run, with
-/// no change in between.
-///
-/// Polls until this fleet's slot is the one acquired. A slot belonging to
-/// someone else is passed over, which does lease it; those are fleets from
-/// tests that already finished, and the next run's reset clears them. The
-/// budget is several rotations rather than one because residue can hold many
-/// partitions at once, and `None` still means the fleet was genuinely never
-/// offered rather than that the walk was too short.
+/// The partitions' marks are sampled (`HRANDFIELD`), and the readiness index
+/// is shared with every other test and run on the lane. A sampled poll can
+/// meet a sibling's leftover marks and miss this fleet at random, so a suite
+/// asserting on its own admission names it. Several polls rather than one,
+/// because a mark written a moment ago can race the first.
 pub(crate) async fn select_fleet_within_rotations(
     leases: &Leases,
     runner: &Uuid7,
-    now: UnixMillis,
     fleet: &str,
 ) -> Option<Acquired> {
-    const ROTATIONS: u16 = 8;
-    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
+    const POLLS: u16 = 8;
+    let named = [Uuid7::parse(fleet).expect("a seeded fleet id")];
+    for _poll in 0..POLLS {
         if let Some(acquired) = leases
-            .select(runner, &[], now)
+            .select(runner, &named)
             .await
             .expect("the assignment pass must not fault")
-            && acquired.fleet_id.to_string() == fleet
+            && acquired.fleet_id.as_str() == fleet
         {
             return Some(acquired);
         }
@@ -230,11 +215,10 @@ pub(crate) async fn select_fleet_within_rotations(
 pub(crate) async fn select_within_one_rotation(
     leases: &Leases,
     runner: &Uuid7,
-    now: UnixMillis,
 ) -> Option<Acquired> {
     for _poll in 0..READY_PARTITIONS {
         if let Some(acquired) = leases
-            .select(runner, &[], now)
+            .select(runner, &[])
             .await
             .expect("the assignment pass must not fault")
         {

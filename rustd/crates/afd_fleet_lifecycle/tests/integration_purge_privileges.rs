@@ -2,7 +2,7 @@
 //!
 //! # Why this file exists
 //!
-//! The purge once shipped a `DELETE FROM memory.memory_entries` that
+//! The purge once shipped a `DELETE FROM memory.entries` that
 //! `api_runtime` has never been entitled to run, and no suite caught it. A test
 //! that connects as the database owner bypasses grants entirely, so it stays
 //! green whether or not the runtime role can reach the table at all.
@@ -13,11 +13,11 @@
 //!
 //! # Statements, then the purge itself
 //!
-//! The purge runs no statement on memory: `fk_memory_entries_fleet_id` cascades
-//! from the fleet row (schema/820). The first two tests drive what it does run
-//! under `SET ROLE api_runtime`: one that its `core` deletes all run, one that
-//! memory refuses `api_runtime` outright, which is why the purge leaves memory
-//! to the cascade. Neither proves `Fleets::purge_tagged` works, because each runs the
+//! The purge runs two statements — the row lock and the conditional delete of
+//! `fleet.fleets` — and every child, memory included, cascades from that row
+//! (schema/2100 for memory). The first two tests drive them under
+//! `SET ROLE api_runtime`: one that both run, one that memory refuses
+//! `api_runtime` outright, which is why the purge leaves memory to the cascade. Neither proves `Fleets::purge_tagged` works, because each runs the
 //! statements itself.
 //!
 //! So the last test calls the real `purge` through a pool authenticating as a
@@ -36,8 +36,8 @@
 
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_fleet_lifecycle::Fleets;
 use afd_fleet_lifecycle::purge_statements as statements;
+use afd_fleet_lifecycle::{FleetStatus, Fleets};
 
 use crate::integration_purge_ledger_identity::{
     SEEDED, rows_for, seed_everything_the_purge_destroys,
@@ -53,7 +53,7 @@ use crate::support::{Lane, mint};
 const PROBE: &str = "purge_probe";
 
 /// A delete on memory, which `api_runtime` must be refused outright.
-const MEMORY_DELETE: &str = "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid";
+const MEMORY_DELETE: &str = "DELETE FROM memory.entries WHERE fleet_id = $1::uuid";
 
 /// Takes the runtime role, so what follows meets the grants a request meets.
 async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
@@ -65,8 +65,8 @@ async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
 
 /// The regression: the purge's own statements, in order, under the real role.
 ///
-/// Fails on the tree as it stood before schema/900, at both `core` deletes for
-/// want of the grant.
+/// `FOR UPDATE` needs the UPDATE grant and the delete needs DELETE on
+/// `fleet.fleets` (schema/1500); withholding either fails here.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and Dragonfly"]
 async fn the_purge_statements_all_run_as_api_runtime() {
@@ -82,22 +82,27 @@ async fn the_purge_statements_all_run_as_api_runtime() {
         .expect("the probe transaction must open");
     as_api_runtime(&mut connection).await;
 
-    sqlx::query(statements::ALLOW_GATE_PURGE)
+    let locked = sqlx::query(statements::LOCK_FLEET)
+        .bind(fleet.as_str())
+        .bind(lane.workspace.as_str())
         .execute(&mut *connection)
-        .await
-        .expect("api_runtime must be able to open the append-only guard");
-
-    for &statement in statements::PURGE_CHILDREN {
-        let outcome = sqlx::query(statement)
-            .bind(fleet.as_str())
-            .execute(&mut *connection)
-            .await;
-        assert!(
-            outcome.is_ok(),
-            "api_runtime must hold DELETE for `{statement}`: {:?}",
-            outcome.err()
-        );
-    }
+        .await;
+    assert!(
+        locked.is_ok(),
+        "api_runtime must hold UPDATE on fleet.fleets to lock it: {:?}",
+        locked.err()
+    );
+    let deleted = sqlx::query(statements::DELETE_FLEET_IN_STATUS)
+        .bind(fleet.as_str())
+        .bind(lane.workspace.as_str())
+        .bind(FleetStatus::Killed.as_str())
+        .execute(&mut *connection)
+        .await;
+    assert!(
+        deleted.is_ok(),
+        "api_runtime must hold DELETE on fleet.fleets: {:?}",
+        deleted.err()
+    );
 
     sqlx::query("ROLLBACK")
         .execute(&mut *connection)
@@ -131,7 +136,7 @@ async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
 
     let failure = refused.expect_err(
         "api_runtime reached memory without assuming memory_runtime — the fence \
-         in schema/110 is gone, or the login role holds pg_write_all_data",
+         in schema/1010 is gone, or the login role holds pg_write_all_data",
     );
     let text = failure.to_string();
     assert!(
@@ -222,7 +227,7 @@ async fn the_purge_itself_runs_as_api_runtime() {
         .expect(
             "a pool holding only api_runtime must be able to purge: the memory \
              rows go by the fleet row's cascade, and the gate and session rows \
-             need the DELETE grants schema/900 makes",
+             need the DELETE grant on fleet.fleets",
         );
 
     assert_eq!(lane.fleet_count(&lane.workspace).await, 0);

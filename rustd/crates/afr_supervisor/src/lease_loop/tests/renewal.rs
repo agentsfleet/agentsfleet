@@ -64,9 +64,10 @@ async fn a_run_cut_by_its_renewal_still_reports_its_tokens_and_pushes_its_memory
     let calls = rig.calls();
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(report[TOKENS], 8, "the run's tokens are billed");
-    assert_eq!(report[INPUT_TOKENS], 3);
-    assert_eq!(report[OUTPUT_TOKENS], 4);
+    assert_eq!(report[TOKENS], 8, "the run's total, for the history");
+    let line = &report[REQUESTS][0];
+    assert_eq!(line[INPUT_TOKENS], 3, "the run's tokens are billed");
+    assert_eq!(line[OUTPUT_TOKENS], 4);
     assert!(
         position(&calls, Verb::Capture).is_some(),
         "the run's memory is pushed"
@@ -86,15 +87,20 @@ async fn a_run_cut_before_it_answered_bills_the_meter_at_renewal_and_in_its_repo
     let renewal = position(&calls, Verb::Renew).unwrap();
     let renewed: serde_json::Value =
         serde_json::from_slice(calls[renewal].body.as_ref().unwrap()).unwrap();
-    assert_eq!(renewed[INPUT_TOKENS], 3, "the renewal carried the meter");
-    assert_eq!(renewed[CACHED_INPUT_TOKENS], 1);
-    assert_eq!(renewed[OUTPUT_TOKENS], 4);
+    let sent = &renewed[REQUESTS][0];
+    assert_eq!(
+        sent[INPUT_TOKENS], 3,
+        "the renewal carried the meter's line"
+    );
+    assert_eq!(sent[CACHED_INPUT_TOKENS], 1);
+    assert_eq!(sent[OUTPUT_TOKENS], 4);
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(report[TOKENS], 8, "the failed report bills the meter");
-    assert_eq!(report[INPUT_TOKENS], 3);
-    assert_eq!(report[CACHED_INPUT_TOKENS], 1);
-    assert_eq!(report[OUTPUT_TOKENS], 4);
+    assert_eq!(report[TOKENS], 8);
+    assert_eq!(
+        &report[REQUESTS][0], sent,
+        "the refused renewal recorded nothing, so the report sends the same line again"
+    );
 }
 
 #[tokio::test(start_paused = true)]

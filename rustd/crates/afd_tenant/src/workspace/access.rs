@@ -33,7 +33,7 @@ pub enum Role {
 }
 
 impl Role {
-    /// The spelling `core.memberships.role` stores and the API renders.
+    /// The spelling `identity.memberships.role` stores and the API renders.
     #[must_use]
     pub const fn wire(self) -> &'static str {
         match self {

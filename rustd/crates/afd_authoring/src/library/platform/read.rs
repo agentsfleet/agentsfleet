@@ -2,17 +2,13 @@
 
 use super::{PLATFORM, PLATFORM_DRAFT, project};
 use crate::{
-    Result, Setup, draft,
+    Result, Setup,
     error::{ErrorKind, raise::query},
-    library::{CONTEXT, Entry, read},
+    library::{CONTEXT, Entry, EntryRow, read, sql},
     types::PlatformLibrary,
 };
 use afd_core::id::Uuid7;
 use sqlx::PgConnection;
-
-const LIST: &str = "SELECT to_jsonb(l)::text FROM core.fleet_libraries l WHERE platform_slug IS NOT NULL AND visibility IN ($1,$2) ORDER BY created_at DESC,id DESC";
-const LOCK: &str = "SELECT to_jsonb(l)::text FROM core.fleet_libraries l WHERE platform_slug=$1 AND visibility IN ($2,$3) FOR UPDATE";
-const RECEIPT: &str = "SELECT l.platform_slug FROM core.fleet_libraries l JOIN core.fleet_library_revisions r ON r.library_id=l.id WHERE r.id=$1::uuid AND l.platform_slug IS NOT NULL";
 
 impl Setup {
     /// Lists staged and published native platform metadata.
@@ -21,7 +17,7 @@ impl Setup {
     /// Preserves database failures. The operator route requires platform scope.
     pub async fn platform_libraries(&self) -> Result<Vec<PlatformLibrary>> {
         let mut connection = self.drafts.database.acquire().await?;
-        let rows: Vec<String> = sqlx::query_scalar(LIST)
+        let rows: Vec<EntryRow> = sqlx::query_as(sql::PLATFORM_LIST)
             .bind(PLATFORM)
             .bind(PLATFORM_DRAFT)
             .fetch_all(&mut *connection)
@@ -29,7 +25,7 @@ impl Setup {
             .map_err(query(CONTEXT))?;
         let mut items = Vec::with_capacity(rows.len());
         for row in rows {
-            let entry: Entry = draft::value(&row)?;
+            let entry = row.decode()?;
             let head = read::revision(&mut connection, &entry.id, &entry.head_revision_id).await?;
             items.push(project(&entry, &head));
         }
@@ -39,21 +35,21 @@ impl Setup {
 
 pub(in crate::library) async fn lock(connection: &mut PgConnection, slug: &str) -> Result<Entry> {
     read::valid_id(slug)?;
-    let row: Option<String> = sqlx::query_scalar(LOCK)
+    let row: Option<EntryRow> = sqlx::query_as(sql::PLATFORM_LOCK)
         .bind(slug)
         .bind(PLATFORM)
         .bind(PLATFORM_DRAFT)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    draft::value(&row.ok_or(ErrorKind::Hidden)?)
+    row.ok_or(ErrorKind::Hidden)?.decode()
 }
 
 pub(in crate::library) async fn receipt(
     connection: &mut PgConnection,
     revision: &Uuid7,
 ) -> Result<crate::types::Published> {
-    let slug: Option<String> = sqlx::query_scalar(RECEIPT)
+    let slug: Option<String> = sqlx::query_scalar(sql::PLATFORM_RECEIPT)
         .bind(revision.as_str())
         .fetch_optional(&mut *connection)
         .await

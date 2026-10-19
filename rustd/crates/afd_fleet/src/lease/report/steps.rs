@@ -16,7 +16,7 @@
 //!
 //! It is the one write here that loses work if it runs EARLY. Acknowledged
 //! before the commit and then rolled back, the entry is gone from the stream
-//! while `core.fleet_events` still says `received` — an event nothing will
+//! while `fleet.events` still says `received` — an event nothing will
 //! ever deliver again. Acknowledged after, the worst case is an entry left
 //! pending: it is redelivered, and the durable terminal state is what the
 //! redelivery is measured against. So the ordering is not a preference, and
@@ -24,13 +24,13 @@
 //! cannot be anything else — no transaction spans Postgres and Dragonfly.
 
 use afd_billing::Nanos;
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_events::Closed;
 use afd_observability::producers;
 use afd_wire::report::ReportRequest;
+use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::lease::obligation::Owing;
@@ -59,7 +59,7 @@ impl Plane {
         lease: &Reported,
         closed: Option<Box<Closed>>,
         charged: Nanos,
-        now: UnixMillis,
+        now: Timestamp,
     ) {
         let lease_id = request.lease_id.as_ref();
         // Hoisted for the `log` bridge's duplicated field expressions.
@@ -102,19 +102,13 @@ impl Plane {
     /// obligation is already committed, so a failure here leaves a row the
     /// producer sweep will re-append. Failing the report instead would tell a
     /// runner its finished, charged run did not land — and it did.
-    pub(super) async fn queue_owed_answer(
-        &self,
-        owing: &Owing,
-        lease: &Reported,
-        answer: &str,
-        now: UnixMillis,
-    ) {
+    pub(super) async fn queue_owed_answer(&self, owing: &Owing, lease: &Reported, answer: &str) {
         step(
             "queue_delivery",
             lease,
             owing.obligation.as_str(),
             self.leases
-                .queue_delivery(&owing.obligation, owing.reply.delivery(lease, answer), now)
+                .queue_delivery(&owing.obligation, owing.reply.delivery(lease, answer))
                 .await,
         );
     }

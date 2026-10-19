@@ -32,7 +32,6 @@ impl Schedules {
                 .bind(effective.status.as_str())
                 .bind(SyncStatus::Syncing.as_str())
                 .bind(encoded)
-                .bind(set.now.as_millis())
                 .execute(connection)
                 .await
                 .map_err(error::query(CONTEXT))?;
@@ -49,7 +48,6 @@ impl Schedules {
                 .bind(effective.status.as_str())
                 .bind(SyncStatus::Syncing.as_str())
                 .bind(encoded)
-                .bind(set.now.as_millis())
                 .execute(connection)
                 .await
                 .map_err(error::query(CONTEXT))?;

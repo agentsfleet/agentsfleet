@@ -57,7 +57,10 @@ use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 
+mod last_seen;
 mod readings;
+
+use self::last_seen::LastSeen;
 
 /// The `runner_id` value every runner past the slot table is attributed under.
 ///
@@ -82,9 +85,6 @@ pub const SDK_OVERFLOW_MARKER: &str = "otel.metric.overflow";
 /// real deployment's host count and far below anything that threatens memory.
 pub const MAX_SERIES: usize = 4096;
 
-/// The stamp a runner nothing has heard from carries.
-const NEVER_HEARD_FROM: i64 = 0;
-
 /// The readings one series holds.
 ///
 /// Atomics rather than a lock, so publishing never blocks another publisher —
@@ -102,8 +102,8 @@ const NEVER_HEARD_FROM: i64 = 0;
 /// heard from, and what it is believed to hold.
 #[derive(Debug, Default)]
 struct Counters {
-    /// When this runner was last heard from, in Unix milliseconds.
-    last_seen_ms: AtomicI64,
+    /// When this runner was last heard from.
+    last_seen: LastSeen,
     /// How many leases it is believed to hold.
     ///
     /// Best effort, and knowingly: a lease abandoned by a dead runner expires
@@ -191,9 +191,9 @@ impl RunnerMetrics {
     /// describe whichever overflowed runner spoke most recently, which is worse
     /// than not answering — the counters merge meaningfully and a gauge does
     /// not.
-    pub fn seen(&self, runner_id: &str, at_ms: i64) {
+    pub fn seen(&self, runner_id: &str, at: jiff::Timestamp) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.last_seen_ms.store(at_ms, Ordering::Relaxed);
+            counters.last_seen.record(at);
         }
     }
 

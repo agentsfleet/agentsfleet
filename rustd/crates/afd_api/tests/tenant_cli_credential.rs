@@ -23,17 +23,12 @@
 //! rather than re-spelling the literal here where the two could drift apart
 //! (RULE UFS).
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::ScopeSet;
-use axum::response::Response;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -63,29 +58,8 @@ const TERMINAL: &str = "afc_fedcba9876543210fedcba9876543210fedcba9876543210fedc
 /// credential CLASS and can be nothing else.
 const SUBJECT: &str = "user_2fixture";
 
-/// No capabilities at all, which is what these routes ask for.
-///
-/// `Scopes::Always(NONE)` in the route table, so an EMPTY set is the honest
-/// fixture: it proves the scope gate is not what refuses below, and therefore
-/// that every refusal in this file is about credential class. A fixture holding
-/// capabilities would leave the two indistinguishable.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
 /// A body the machine-name check would accept, so a refusal is never the body's.
 const GOOD_BODY: &str = r#"{"machine_name":"indy-macbook.local"}"#;
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: Response) -> String {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("a refusal body is small and complete");
-    let document: Value = serde_json::from_slice(&bytes).expect("every refusal is problem+json");
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
 
 /// A tenant api-key cannot mint a credential in a person's name.
 ///
@@ -104,7 +78,7 @@ async fn detail_of(response: Response) -> String {
 #[tokio::test]
 async fn a_tenant_key_cannot_mint_a_command_line_credential() {
     let router = Fleet::new()
-        .with_person(TENANT_KEY, SUBJECT, NO_SCOPES)
+        .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
         .router();
 
     let response = harness::send(
@@ -136,7 +110,7 @@ async fn a_tenant_key_cannot_mint_a_command_line_credential() {
 #[tokio::test]
 async fn a_tenant_key_cannot_revoke_a_command_line_credential() {
     let router = Fleet::new()
-        .with_person(TENANT_KEY, SUBJECT, NO_SCOPES)
+        .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
         .router();
 
     let response = harness::send(
@@ -175,7 +149,7 @@ async fn a_tenant_key_cannot_revoke_a_command_line_credential() {
 #[tokio::test]
 async fn a_command_line_credential_cannot_mint_another() {
     let router = Fleet::new()
-        .with_terminal(TERMINAL, SUBJECT, NO_SCOPES)
+        .with_terminal(TERMINAL, SUBJECT, ScopeSet::EMPTY)
         .router();
 
     let response = harness::send(
@@ -209,7 +183,7 @@ async fn a_command_line_credential_cannot_mint_another() {
 #[tokio::test]
 async fn a_command_line_credential_may_revoke_its_own() {
     let router = Fleet::new()
-        .with_terminal(TERMINAL, SUBJECT, NO_SCOPES)
+        .with_terminal(TERMINAL, SUBJECT, ScopeSet::EMPTY)
         .router();
 
     let response = harness::send(&router, Method::DELETE, ONE_CREDENTIAL, Some(TERMINAL), "").await;
@@ -230,7 +204,7 @@ async fn a_command_line_credential_may_revoke_its_own() {
 #[tokio::test]
 async fn a_malformed_mint_body_is_refused() {
     let router = Fleet::new()
-        .with_person(TENANT_KEY, SUBJECT, NO_SCOPES)
+        .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
         .router();
 
     // Sent with the tenant key, which the class check refuses FIRST. That

@@ -51,11 +51,9 @@ use std::time::Duration;
 use afd_api_wire::tail::FleetCounters;
 use afd_core::id::Uuid7;
 use moka::future::Cache;
-use sqlx::Row as _;
 
-use crate::Fleets;
 use crate::error::{self, Result};
-use crate::sql::live_set as sql;
+use crate::{Fleets, sql};
 
 /// What a failure in this read is reported as having been doing.
 const CONTEXT_LIVE_SET: &str = "enumerate a workspace's fleets";
@@ -121,17 +119,12 @@ impl Fleets {
     /// The statement behind [`Self::live_set`], run on a miss.
     async fn enumerate(&self, workspace: &Uuid7) -> Result<BTreeSet<String>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_FLEET_IDS)
+        sqlx::query_scalar::<_, String>(sql::SELECT_FLEET_IDS)
             .bind(workspace.as_str())
             .fetch_all(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_LIVE_SET))?;
-        rows.iter()
-            .map(|row| {
-                row.try_get::<String, _>(0)
-                    .map_err(error::query(CONTEXT_LIVE_SET))
-            })
-            .collect()
+            .map(|ids| ids.into_iter().collect())
+            .map_err(error::query(CONTEXT_LIVE_SET))
     }
 
     /// Where every fleet of `workspace` in `fleets` stands, by identifier.
@@ -150,21 +143,32 @@ impl Fleets {
         fleets: &[String],
     ) -> Result<BTreeMap<String, FleetCounters>> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::SELECT_FLEET_COUNTERS_FOR_SET)
+        sqlx::query_as::<_, CounterRow>(sql::SELECT_FLEET_COUNTERS_FOR_SET)
             .bind(workspace.as_str())
             .bind(fleets)
             .fetch_all(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_COUNTERS))?;
-        rows.iter()
-            .map(|row| {
-                let fleet_id: String = row.try_get(0).map_err(error::query(CONTEXT_COUNTERS))?;
-                let counters = FleetCounters {
-                    events_processed: row.try_get(1).map_err(error::query(CONTEXT_COUNTERS))?,
-                    budget_used_nanos: row.try_get(2).map_err(error::query(CONTEXT_COUNTERS))?,
-                };
-                Ok((fleet_id, counters))
-            })
-            .collect()
+            .map(|rows| rows.into_iter().map(CounterRow::into_entry).collect())
+            .map_err(error::query(CONTEXT_COUNTERS))
+    }
+}
+
+/// One row of [`sql::SELECT_FLEET_COUNTERS_FOR_SET`], named as the statement
+/// names its columns.
+#[derive(Debug, sqlx::FromRow)]
+struct CounterRow {
+    id: String,
+    event_count: i64,
+    budget_used_nanos: i64,
+}
+
+impl CounterRow {
+    /// The map entry a wall assigns its tile from.
+    fn into_entry(self) -> (String, FleetCounters) {
+        let counters = FleetCounters {
+            events_processed: self.event_count,
+            budget_used_nanos: self.budget_used_nanos,
+        };
+        (self.id, counters)
     }
 }

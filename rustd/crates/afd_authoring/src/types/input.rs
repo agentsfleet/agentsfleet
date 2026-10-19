@@ -144,6 +144,14 @@ pub struct ListQuery {
     #[serde(default, deserialize_with = "super::present")]
     #[garde(skip)]
     pub linked_fleet_id: Option<Uuid7>,
+    /// Search over the creator's chat titles and message text, matched as a
+    /// case-insensitive substring. Bound into the continuation like a filter.
+    #[serde(default, deserialize_with = "super::present")]
+    #[garde(inner(
+        length(chars, min = 1, max = super::MAX_QUERY_CHARS),
+        custom(afd_validate::rules::nul_free)
+    ))]
+    pub q: Option<String>,
     /// Opaque continuation, bound to these filters and the authenticated creator.
     #[serde(default, deserialize_with = "super::present")]
     #[garde(inner(length(bytes, min = 1, max = super::MAX_CURSOR_BYTES)))]

@@ -2,8 +2,9 @@
 
 use super::Creations;
 use crate::Result;
-use afd_core::{clock::UnixMillis, id::Uuid7};
+use afd_core::id::Uuid7;
 use afd_fleet_runtime::{Definition, config::Trigger};
+use jiff::Timestamp;
 use sqlx::PgConnection;
 
 impl Creations {
@@ -14,7 +15,7 @@ impl Creations {
         fleet: &Uuid7,
         version: i64,
         definition: &Definition,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<()> {
         let recipes: Vec<_> = definition
             .runtime()

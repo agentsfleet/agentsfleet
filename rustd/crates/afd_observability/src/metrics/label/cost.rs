@@ -25,16 +25,12 @@ closed_set! {
 closed_set! {
     /// Which class of debit a charge was.
     ///
-    /// The telemetry classification, deliberately distinct from the durable
-    /// ledger's `charge_type`: the ledger records renewal slices and the final
-    /// settle alike as `stage` rows, and an operator needs to see renewal drain
-    /// apart from terminal settlement.
+    /// One class since every charge became a settlement of usage lines
+    /// through the biller (billing §11): a renewal's slice and a report's final
+    /// slice settle the same way, and the biller that records the spend cannot
+    /// tell them apart. Kept as a set so a second class has one place to land.
     ChargeClass {
-        /// Charged when the work was received.
-        Receive => "receive",
-        /// Charged as a running lease renewed.
-        Renewal => "renewal",
-        /// Charged when the run settled.
+        /// Charged when usage lines settled.
         Settle => "settle",
     }
 }

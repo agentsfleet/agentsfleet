@@ -42,15 +42,15 @@ function gateFixture(over: Partial<ApprovalGate> = {}): ApprovalGate {
     action_id: "act_001",
     tool_name: "write_repo",
     action_name: "create_pr",
-    gate_kind: "destructive_action",
+    gate_type: "destructive_action",
     proposed_action: "Open PR titled wire approval inbox",
     evidence: { files: ["a", "b"], loc: 42 },
     blast_radius: "single repo branch",
     status: "pending",
     detail: "",
-    created_at: 1_700_000_000_000,
-    timeout_at: 1_700_086_400_000,
-    updated_at: null,
+    created_at: "2023-11-14T22:13:20Z",
+    expires_at: "2023-11-15T22:13:20Z",
+    resolved_at: null,
     resolved_by: "",
     resolved_by_name: "",
     ...over,
@@ -76,18 +76,18 @@ describe("listApprovals", () => {
     expect(result.next_cursor).toBeNull();
   });
 
-  it("threads fleetId, gateKind, status, cursor, limit into the query string", async () => {
+  it("threads fleetId, gateType, status, cursor, limit into the query string", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], next_cursor: null }));
     await listApprovals(WORKSPACE_ID, TOKEN, {
       status: "pending",
       fleetId: FLEET_ID,
-      gateKind: "cost_overrun",
+      gateType: "cost_overrun",
       cursor: "cur_abc",
       limit: 25,
     });
     const url = fetchMock.mock.calls[0]![0] as string;
     expect(url).toContain(`fleet_id=${encodeURIComponent(FLEET_ID)}`);
-    expect(url).toContain("gate_kind=cost_overrun");
+    expect(url).toContain("gate_type=cost_overrun");
     expect(url).toContain("status=pending");
     expect(url).toContain("cursor=cur_abc");
     expect(url).toContain("limit=25");
@@ -129,7 +129,7 @@ describe("resolve base URL — server-side (window undefined)", () => {
       gate_id: GATE_ID,
       action_id: "a",
       outcome: "approved",
-      resolved_at: 1,
+      resolved_at: "1970-01-01T00:00:00.001Z",
       resolved_by: "user:x",
     });
   }

@@ -29,17 +29,17 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_ingress::{Delivery, Fanout, Surface};
+use afd_webhook::Scheme;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
-use octocrab::models::webhook_events::WebhookEvent;
 
 use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WebhookIngress as _};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
-use super::github::{Ingest, Policy, classify};
+use super::github::{self, Ingest, Policy};
 /// The two bodies this route answers with. Public wire, so `afd_wire` owns
 /// the shape and this route names it.
 use afd_api_wire::ingress::{AppIngressAnswer, FannedOut, Pong};
@@ -50,10 +50,8 @@ const EVENT_APPEND: &str = "app_ingress_append_failed";
 /// The scoped event a dropped delivery is logged under.
 const EVENT_DROPPED: &str = "app_ingress_dropped";
 
-/// The one provider this daemon serves an App ingress for.
-///
-/// [`afd_webhook::Scheme::for_source`] resolves the signature scheme from this
-/// word.
+/// The one provider this daemon serves an App ingress for; its signature
+/// scheme is [`SCHEME_GITHUB`].
 const PROVIDER_GITHUB: &str = "github";
 
 /// The vault key the GitHub App's own webhook secret is stored under.
@@ -61,6 +59,10 @@ const PROVIDER_GITHUB: &str = "github";
 /// An operator stores the secret once under this exact name and every request
 /// reads it back by the same name, so renaming it strands the stored secret.
 const APP_IDENTITY_GITHUB: &str = "github-app";
+
+/// The scheme a GitHub App signs its deliveries under: the hex HMAC over the
+/// body in `x-hub-signature-256`, the one [`Scheme::source`] names `github`.
+const SCHEME_GITHUB: Scheme = Scheme::BodyHex;
 
 /// The delivery kind an App sends to prove the endpoint answers.
 ///
@@ -150,7 +152,7 @@ pub(crate) async fn receive<D: Services>(
     // Nothing above this line has read the body as anything but bytes.
     let proven = webhook::verified_app(
         &services,
-        PROVIDER_GITHUB,
+        SCHEME_GITHUB,
         APP_IDENTITY_GITHUB,
         &headers,
         body,
@@ -182,21 +184,16 @@ async fn route<D: Services>(
     event: &str,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    // ONE parse, read twice: `octocrab` owns both the routing fields and the
-    // classification, so this file walks no JSON of its own.
-    let delivery = WebhookEvent::try_from_header_and_body(event, &body).map_err(|_unreadable| {
+    // ONE parse, read twice: the routing fields and the classification both
+    // come off this read, so this file walks no JSON of its own.
+    let delivery = github::Delivery::read(event, &body).map_err(|_unreadable| {
         Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER)
     })?;
 
     // Both are the installation's, not a fleet's, and a delivery missing either
     // is one this surface cannot route rather than one it should refuse.
-    let (Some(installation), Some(repository)) = (
-        delivery.installation.as_ref().map(|install| install.id().0),
-        delivery
-            .repository
-            .as_ref()
-            .and_then(|repository| repository.full_name.as_deref()),
-    ) else {
+    let (Some(installation), Some(repository)) = (delivery.installation(), delivery.repository())
+    else {
         return Ok(dropped(event, webhook::REASON_UNSUPPORTED_EVENT));
     };
 
@@ -212,9 +209,7 @@ async fn route<D: Services>(
         ));
     };
 
-    let digest = match classify(Policy::AppIngress, event, &body, services.now())
-        .map_err(|_unreadable| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?
-    {
+    let digest = match delivery.classify(Policy::AppIngress, services.now()) {
         Ingest::Accept(digest) => digest,
         Ingest::Ignore(reason) => return Ok(dropped(event, reason)),
         Ingest::Unsupported => return Ok(dropped(event, webhook::REASON_UNSUPPORTED_EVENT)),

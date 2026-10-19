@@ -104,14 +104,14 @@ impl Members {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("members")
-        .at(1)
+        .at(afd_db::test_util::SEEDED_AT)
         .native_setup()
         .insert(&mut *connection)
         .await
         .expect("John's fleet seeds");
         sqlx::query(
-            "INSERT INTO core.memberships (id, tenant_id, user_id, role, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 2)",
+            "INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, '1970-01-01T00:00:00.002Z')",
         )
         .bind(mint_id())
         .bind(&self.john.tenant)
@@ -151,7 +151,7 @@ impl Members {
     /// The actor of every message admitted to John's fleet.
     pub(crate) async fn admitted_actors(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT actor FROM core.fleet_admissions WHERE fleet_id = $1::uuid")
+        sqlx::query_scalar("SELECT actor FROM fleet.admissions WHERE fleet_id = $1::uuid")
             .bind(self.fleet.as_str())
             .fetch_all(&mut *connection)
             .await
@@ -161,7 +161,7 @@ impl Members {
     /// How many sends `invite` has counted, read from its row.
     pub(crate) async fn email_attempts(&self, invite: &str) -> i32 {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT email_attempts FROM core.invites WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT email_attempt_count FROM identity.invites WHERE id = $1::uuid")
             .bind(invite)
             .fetch_one(&mut *connection)
             .await

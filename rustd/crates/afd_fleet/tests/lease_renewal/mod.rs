@@ -10,6 +10,7 @@ mod fixture;
 mod holders;
 mod lock_wait;
 mod mixed;
+mod offered;
 mod replica;
 mod replicas;
 mod seat;

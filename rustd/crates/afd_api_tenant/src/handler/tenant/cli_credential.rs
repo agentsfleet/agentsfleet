@@ -157,7 +157,7 @@ pub(crate) async fn revoke<D: Services>(
 
     services
         .cli_credentials()
-        .revoke(&user.id, &credential, services.now())
+        .revoke(&user.id, &credential)
         .await
         .map_err(Refusal::at(EVENT_REVOKE))?;
     Ok(StatusCode::NO_CONTENT.into_response())

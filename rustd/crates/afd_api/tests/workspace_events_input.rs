@@ -29,12 +29,9 @@
 //! rows a `LIKE` pattern or a cursor boundary selects is a live-Postgres fact,
 //! and lives in the `#[ignore]`d lane `make test-integration-rustd` runs.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
@@ -79,7 +76,7 @@ const DETAIL_CURSOR: &str = "invalid cursor";
 const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 
 /// The instant the harness freezes its clock at, so a window is arithmetic.
-const FROZEN_MS: i64 = 1_760_000_000_000;
+const FROZEN: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 
 /// The whole workspace's history, with `suffix` appended verbatim.
 fn workspace_history(suffix: &str) -> String {
@@ -95,13 +92,6 @@ fn fleet_history(suffix: &str) -> String {
 async fn authorised(path: &str) -> Response {
     let fleet = Fleet::new().with_person(TENANT_KEY, SUBJECT, FLEET_READ);
     harness::send(&fleet.router(), Method::GET, path, Some(TENANT_KEY), "").await
-}
-
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: Response) -> String {
-    let document = harness::json_body(response).await;
-    let detail = document.get("detail").and_then(Value::as_str);
-    detail.expect("every refusal carries a detail").to_owned()
 }
 
 /// Asserts `suffix` is refused on the workspace listing with `expected`.
@@ -181,7 +171,7 @@ async fn the_page_size_is_refused_before_the_exclusions_are_looked_at() {
 /// client sends back, and the parser has to take it.
 #[tokio::test]
 async fn a_cursor_this_daemon_minted_resumes_the_walk() {
-    let minted = Cursor::after(FROZEN_MS, "1785699668169-0").encode();
+    let minted = Cursor::after(FROZEN, "0199a0b0-0000-7000-8000-000000000001").encode();
     assert_accepted(&format!("?cursor={minted}")).await;
 }
 
@@ -284,7 +274,7 @@ async fn naming_both_actor_spellings_is_refused_before_the_store() {
 /// so a request carrying both ambiguities gets one stable sentence.
 #[tokio::test]
 async fn a_cursor_and_a_window_together_are_refused_before_the_store_is_asked() {
-    let minted = Cursor::after(FROZEN_MS, "1785699668169-0").encode();
+    let minted = Cursor::after(FROZEN, "0199a0b0-0000-7000-8000-000000000001").encode();
     let both = format!("?cursor={minted}&since=2h");
     assert_refused(&both, DETAIL_WINDOW_AMBIGUOUS).await;
     let every_ambiguity = "?actor=a&actor_prefix=b&cursor=x&since=1h";

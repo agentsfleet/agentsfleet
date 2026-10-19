@@ -20,10 +20,10 @@ async fn a_policy_marker_change_refuses_new_admissions_but_preserves_accepted_re
     let status = first.status();
     let first = json_body(first).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{first}");
-    sqlx::query("WITH incompatible AS (INSERT INTO core.fleet_definition_revisions(id,fleet_id,revision,definition,canonical_digest,policy_semantics,created_at,runtime_model_ref)
+    sqlx::query("WITH incompatible AS (INSERT INTO fleet.revisions(id,fleet_id,revision,definition,canonical_digest,policy_semantics,created_at,runtime_model_ref)
 SELECT $2::uuid,fleet_id,revision+1,definition,canonical_digest,'policy-unavailable-fixture',created_at,runtime_model_ref
-FROM core.fleet_definition_revisions WHERE fleet_id=$1::uuid RETURNING id)
-UPDATE core.fleets SET current_definition_revision_id=(SELECT id FROM incompatible) WHERE id=$1::uuid")
+FROM fleet.revisions WHERE fleet_id=$1::uuid RETURNING id)
+UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM incompatible) WHERE id=$1::uuid")
         .bind(fleet.saved["id"].as_str().expect("fleet ID")).bind(mint().as_str())
         .execute(&mut *fleet.case.base.db.acquire().await.expect("policy connection")).await.expect("change marker");
     let repeated = send(

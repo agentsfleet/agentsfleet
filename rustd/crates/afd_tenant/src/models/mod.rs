@@ -1,6 +1,6 @@
 //! The priced model catalogue, as the tenant plane reads it.
 //!
-//! `core.model_library` prices the platform's billing spine; every
+//! `model.platform_models` identifies models and its price table quotes them; every
 //! authenticated tenant may read it and nobody on this plane may write it —
 //! the admin CRUD is M179's surface. What lives here is one bounded page walk
 //! in the catalogue's normalized order.
@@ -16,8 +16,11 @@
 
 pub mod cursor;
 
+use afd_admin::catalogue::{MetadataColumns, prices_for};
+use afd_core::catalogue::{Metadata, Price};
 use afd_db::Db;
-use sqlx::Row as _;
+use jiff::Timestamp;
+use sqlx::FromRow as _;
 
 use crate::sql::models as sql;
 use crate::{Result, error};
@@ -51,48 +54,72 @@ impl Models {
     pub async fn page(
         &self,
         filter: Option<&str>,
+        advanced: bool,
         after: Option<&Boundary>,
         limit: u32,
     ) -> Result<LibraryPage> {
         let fetch = i64::from(limit).saturating_add(OVER_FETCH);
+        let fetched = self.fetch(filter, advanced, after, fetch).await?;
+
+        // Decoded after the fetch rather than by `query_as`, so a row this
+        // daemon cannot read reports as that, not as the catalogue being
+        // unavailable.
+        let served = fetched
+            .iter()
+            .take(limit as usize)
+            .map(|row| CatalogueRow::from_row(row).map_err(unreadable_row))
+            .collect::<Result<Vec<_>>>()?;
+        let ids: Vec<String> = served.iter().map(|row| row.id.clone()).collect();
+        let mut connection = self.database.acquire().await?;
+        let mut prices = prices_for(connection.as_mut(), &ids)
+            .await
+            .map_err(error::library_page_unavailable)?;
+        let max_updated = served.iter().map(|row| row.updated_at).max();
+        let boundary = served.last().map(|row| Boundary {
+            display_key: row.display_key.clone(),
+            vendor_key: row.vendor_key.clone(),
+            id: row.id.clone(),
+        });
+        let models = served
+            .into_iter()
+            .map(|row| {
+                let schedule = prices.take(&row.id);
+                row.served(schedule)
+            })
+            .collect();
+        Ok(LibraryPage {
+            models,
+            max_updated,
+            boundary,
+            has_more: fetched.len() > limit as usize,
+        })
+    }
+
+    async fn fetch(
+        &self,
+        filter: Option<&str>,
+        advanced: bool,
+        after: Option<&Boundary>,
+        fetch: i64,
+    ) -> Result<Vec<sqlx::postgres::PgRow>> {
         let mut connection = self.database.acquire().await?;
         let query = match after {
             None => sqlx::query(sql::SELECT_LIBRARY_PAGE_FIRST)
                 .bind(filter)
-                .bind(fetch),
+                .bind(fetch)
+                .bind(advanced),
             Some(boundary) => sqlx::query(sql::SELECT_LIBRARY_PAGE_AFTER)
                 .bind(filter)
-                .bind(boundary.display_key.as_str())
-                .bind(boundary.vendor_key.as_str())
-                .bind(boundary.id.as_str())
-                .bind(fetch),
+                .bind(&boundary.display_key)
+                .bind(&boundary.vendor_key)
+                .bind(&boundary.id)
+                .bind(fetch)
+                .bind(advanced),
         };
-        let fetched = query
+        query
             .fetch_all(connection.as_mut())
             .await
-            .map_err(error::library_page_unavailable)?;
-
-        let mut models = Vec::with_capacity(fetched.len().min(limit as usize));
-        let mut max_updated_ms = 0i64;
-        let mut boundary = None;
-        for row in fetched.iter().take(limit as usize) {
-            let projected = read_row(row)?;
-            if projected.updated_at_ms > max_updated_ms {
-                max_updated_ms = projected.updated_at_ms;
-            }
-            boundary = Some(Boundary {
-                display_key: row.try_get("display_key").map_err(unreadable_row)?,
-                vendor_key: row.try_get("vendor_key").map_err(unreadable_row)?,
-                id: row.try_get("id").map_err(unreadable_row)?,
-            });
-            models.push(projected);
-        }
-        Ok(LibraryPage {
-            models,
-            max_updated_ms,
-            boundary,
-            has_more: fetched.len() > limit as usize,
-        })
+            .map_err(error::library_page_unavailable)
     }
 }
 
@@ -100,10 +127,14 @@ impl Models {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryRow {
     /// The model's identifier — the wire calls it `id`, and it is the
-    /// `model_id` column: the row's own id never leaves the admin plane.
+    /// `model_name` column: the row's own id never leaves the admin plane.
     pub model_id: String,
     /// The provider hosting it.
     pub provider: String,
+    /// Display name, verified context and advanced-selection flag.
+    pub metadata: Metadata,
+    /// All published tiers and date ranges, with their evidence.
+    pub prices: Vec<Price>,
     /// The context window the price is quoted for.
     pub context_cap_tokens: i32,
     /// The input rate, in nanos per million tokens.
@@ -113,7 +144,7 @@ pub struct LibraryRow {
     /// The output rate, likewise.
     pub output_nanos_per_mtok: i64,
     /// When the row last changed — the max across a page stamps the version.
-    pub updated_at_ms: i64,
+    pub updated_at: Timestamp,
 }
 
 /// One page, and what the next cursor is built from.
@@ -121,8 +152,9 @@ pub struct LibraryRow {
 pub struct LibraryPage {
     /// The rows on this page, in the catalogue's normalized order.
     pub models: Vec<LibraryRow>,
-    /// The greatest `updated_at` among the served rows; 0 for an empty page.
-    pub max_updated_ms: i64,
+    /// The greatest `updated_at` among the served rows; `None` for an empty
+    /// page.
+    pub max_updated: Option<Timestamp>,
     /// The last served row's position, or `None` for an empty page.
     pub boundary: Option<Boundary>,
     /// Whether a further page exists, proven by the over-fetched row.
@@ -135,7 +167,7 @@ pub struct LibraryPage {
 /// cursor opaquely because the folded key pair is not unique once normalized.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Boundary {
-    /// `lower(normalize(model_id, NFKC))`, as the statement computed it.
+    /// `lower(normalize(model_name, NFKC))`, as the statement computed it.
     pub display_key: String,
     /// `lower(normalize(provider, NFKC))`, likewise.
     pub vendor_key: String,
@@ -146,35 +178,53 @@ pub struct Boundary {
 /// The context a column this daemon cannot read reports under.
 const CONTEXT_ROW: &str = "read catalogue row";
 
-/// One `try_get` failure, with this walk's context.
+/// One row that will not decode, with this walk's context.
 fn unreadable_row(source: sqlx::Error) -> crate::Error {
     error::query(CONTEXT_ROW)(source)
 }
 
-/// Reads the six wire columns and the version input by name.
-fn read_row(row: &sqlx::postgres::PgRow) -> Result<LibraryRow> {
-    Ok(LibraryRow {
-        model_id: row.try_get("model_id").map_err(unreadable_row)?,
-        provider: row.try_get("provider").map_err(unreadable_row)?,
-        context_cap_tokens: row.try_get("context_cap_tokens").map_err(unreadable_row)?,
-        input_nanos_per_mtok: row
-            .try_get("input_nanos_per_mtok")
-            .map_err(unreadable_row)?,
-        cached_input_nanos_per_mtok: row
-            .try_get("cached_input_nanos_per_mtok")
-            .map_err(unreadable_row)?,
-        output_nanos_per_mtok: row
-            .try_get("output_nanos_per_mtok")
-            .map_err(unreadable_row)?,
-        updated_at_ms: row.try_get("updated_at").map_err(unreadable_row)?,
-    })
+/// One catalogue row, by column name: the wire columns, the version input,
+/// and the walk position the next cursor is built from. Prices arrive by a
+/// second read ([`prices_for`]), keyed by `id`.
+#[derive(Debug, sqlx::FromRow)]
+struct CatalogueRow {
+    model_name: String,
+    provider: String,
+    #[sqlx(flatten)]
+    metadata: MetadataColumns,
+    context_cap_tokens: i32,
+    input_nanos_per_mtok: i64,
+    cached_input_nanos_per_mtok: i64,
+    output_nanos_per_mtok: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: Timestamp,
+    id: String,
+    display_key: String,
+    vendor_key: String,
+}
+
+impl CatalogueRow {
+    /// The row as the library read serves it, with its price schedule.
+    fn served(self, prices: Vec<Price>) -> LibraryRow {
+        LibraryRow {
+            model_id: self.model_name,
+            provider: self.provider,
+            metadata: Metadata::from(self.metadata),
+            prices,
+            context_cap_tokens: self.context_cap_tokens,
+            input_nanos_per_mtok: self.input_nanos_per_mtok,
+            cached_input_nanos_per_mtok: self.cached_input_nanos_per_mtok,
+            output_nanos_per_mtok: self.output_nanos_per_mtok,
+            updated_at: self.updated_at,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     /// A catalogue row that will not read keeps this walk's context.
     ///
-    /// `unreadable_row` exists so every `try_get` in the walk reports under one
+    /// `unreadable_row` exists so every row in the walk reports under one
     /// context rather than each site inventing its own — so what is worth
     /// holding is that it lifts a real `sqlx::Error` without dropping the cause
     /// the operator needs.

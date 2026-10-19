@@ -76,8 +76,8 @@ describe("useFleetEventStream", () => {
     const t0 = Date.UTC(2026, 4, 15, 18, 0, 0);
     const t1 = Date.UTC(2026, 4, 15, 18, 30, 0);
     const { result } = mount([
-      row({ event_id: "evt_newer", created_at: t1, response_text: "second" }),
-      row({ event_id: "evt_older", created_at: t0, response_text: "first" }),
+      row({ event_id: "evt_newer", created_at: new Date(t1).toISOString(), response_text: "second" }),
+      row({ event_id: "evt_older", created_at: new Date(t0).toISOString(), response_text: "first" }),
     ]);
     await waitFor(() => expect(result.current.events).toHaveLength(2));
     expect(result.current.events.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
@@ -230,7 +230,7 @@ describe("useFleetEventStream", () => {
       kind: FRAME_KIND.EVENT_RECEIVED,
       event_id: "evt_real",
       actor: "steer:alice@example.com",
-      created_at: Date.now(),
+      created_at: new Date().toISOString(),
     }));
     expect(result.current.convertEvent(result.current.events[0]!).metadata?.custom?.["queued"]).toBe(false);
   });
@@ -247,7 +247,7 @@ describe("useFleetEventStream", () => {
     });
     const source = FakeEventSource.instances[0]!;
     act(() => {
-      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_first", actor: "steer:alice@example.com", created_at: 1 });
+      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_first", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.001Z" });
       source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_first", text: "Saved.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
     });
     await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", ""]));
@@ -255,7 +255,7 @@ describe("useFleetEventStream", () => {
 
     act(() => {
       source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_first", status: "processed", final_reply: "Saved." });
-      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_second", actor: "steer:alice@example.com", created_at: 2 });
+      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_second", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.002Z" });
       source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_second", text: "You said remember me.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
     });
     await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", "You said remember me."]));

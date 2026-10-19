@@ -33,9 +33,11 @@
 //! # The cursor's wire form is a DATA FORMAT
 //!
 //! A dashboard holds one of these strings across a deploy, so its spelling is
-//! fixed: `{millis}:{id}` for a timestamp boundary, and `s:{base64url}:{id}`
-//! for a text one, the encoding being what stops a name containing a colon
-//! from corrupting the boundary.
+//! fixed: `{instant}:{id}` for a timestamp boundary, the instant in RFC 3339
+//! exactly as the API serializes one and never as epoch digits, and
+//! `s:{base64url}:{id}` for a text one, the encoding being what stops a name
+//! containing a colon from corrupting the boundary. An instant always ends in
+//! `Z`, so the first `Z:` ends it whatever the identifier holds.
 
 pub mod struct_cursor;
 
@@ -68,6 +70,10 @@ const TEXT_FORM_PREFIX: &str = "s";
 
 /// The separator between a cursor's parts.
 const CURSOR_SEPARATOR: char = ':';
+
+/// Where a timestamp boundary's instant ends: its UTC designator, then the
+/// separator.
+const INSTANT_END: &str = "Z:";
 
 /// How a page's rows are ordered, as a closed vocabulary per resource.
 ///

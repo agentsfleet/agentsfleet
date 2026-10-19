@@ -14,6 +14,8 @@ use afd_core::test_util::trace::Capture;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
+use jiff::Timestamp;
+
 use super::{CURSOR_START_ID, Cursor, Reclaim};
 
 /// A queue address nothing listens on.
@@ -28,17 +30,18 @@ fn a_fresh_cursor_starts_below_every_real_row() {
     // below every real `updated_at`, so the first page of a cycle is the head
     // of the population rather than a page somewhere in its middle.
     let fresh = Cursor::default();
-    assert_eq!(fresh.after_updated_at(), 0);
+    assert_eq!(fresh.after_updated_at(), Timestamp::UNIX_EPOCH);
     assert_eq!(fresh.after_id(), CURSOR_START_ID);
 }
 
 #[test]
 fn a_cursor_resumes_after_the_row_it_recorded() {
+    let recorded = Timestamp::constant(1_760_000_000, 0);
     let advanced = Cursor(Some((
-        1_760_000_000_000,
+        recorded,
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01".to_owned(),
     )));
-    assert_eq!(advanced.after_updated_at(), 1_760_000_000_000);
+    assert_eq!(advanced.after_updated_at(), recorded);
     assert_eq!(advanced.after_id(), "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01");
 }
 
@@ -90,16 +93,7 @@ async fn every_failed_stream_step_reason_carries_no_code_prefix() {
                 .is_some_and(|code| !code.is_empty()),
             "{event} names no error_code"
         );
-        let reason = logged.field("reason").expect("a failure line says why");
-        assert!(!reason.is_empty(), "{event} says nothing");
-        assert!(
-            !reason.contains("[UZ-"),
-            "{event} repeats its code: {reason}"
-        );
-        assert!(
-            !reason.contains('\n'),
-            "{event} carries a backtrace: {reason}"
-        );
+        logged.assert_uncoded_reason();
         assert_eq!(logged.field("error"), None, "{event} kept the old field");
         assert_eq!(logged.field("fleet_id"), Some(FLEET));
     }

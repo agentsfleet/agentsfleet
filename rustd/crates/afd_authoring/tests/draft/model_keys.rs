@@ -1,6 +1,6 @@
 //! Key opening rechecks the owner and admitted snapshot under one transaction.
 
-use super::fixture::{Fixture, now};
+use super::fixture::Fixture;
 use afd_core::error_code;
 use afd_credential::provider::{Providers, registered_model};
 use afd_crypto::{entropy::Entropy, secret::Kek};
@@ -93,7 +93,6 @@ async fn key_opening_refuses_an_empty_sealed_key_even_if_its_projection_claims_p
             &f.workspace,
             &SecretName::parse("authoring-model").expect("fixture name"),
             &SecretBody::parse(&raw).expect("credential shape"),
-            now(),
         )
         .await
         .expect("seal empty key");

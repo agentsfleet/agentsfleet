@@ -27,9 +27,9 @@ import {
 
 // A fixed, far-past instant keeps the relative label stable ("… ago", never
 // flipping to "in …") and the absolute tooltip deterministic per runtime tz.
-const CREATED_MS = Date.UTC(2020, 0, 15, 10, 30, 0);
+const CREATED_AT = "2020-01-15T10:30:00Z";
 
-function providerSecret(created_at: number): Secret {
+function providerSecret(created_at: string): Secret {
   return { kind: SECRET_KIND.provider_key, name: "openai", provider: "openai", created_at };
 }
 
@@ -52,8 +52,8 @@ const SECOND_SECRET = "anthropic";
 
 function twoSecrets(): Secret[] {
   return [
-    providerSecret(CREATED_MS),
-    { kind: SECRET_KIND.provider_key, name: SECOND_SECRET, provider: "anthropic", created_at: CREATED_MS },
+    providerSecret(CREATED_AT),
+    { kind: SECRET_KIND.provider_key, name: SECOND_SECRET, provider: "anthropic", created_at: CREATED_AT },
   ];
 }
 
@@ -154,7 +154,7 @@ describe("SecretsList — optimistic delete", () => {
         settle = resolve;
       }),
     );
-    renderList([providerSecret(CREATED_MS)]);
+    renderList([providerSecret(CREATED_AT)]);
 
     await confirmDelete("openai");
 
@@ -173,17 +173,17 @@ describe("SecretsList — optimistic delete", () => {
 
 describe("SecretsList Created cell", () => {
   it("test_secrets_created_relative", async () => {
-    const { container } = renderList([providerSecret(CREATED_MS)]);
+    const { container } = renderList([providerSecret(CREATED_AT)]);
 
     // The Created cell renders a <time> whose datetime is the ISO instant and
     // whose visible text is the relative "… ago" label.
     const timeEl = container.querySelector("time");
     expect(timeEl).not.toBeNull();
-    expect(timeEl!.getAttribute("datetime")).toBe(new Date(CREATED_MS).toISOString());
+    expect(timeEl!.getAttribute("datetime")).toBe(new Date(CREATED_AT).toISOString());
     expect(timeEl!.textContent).toMatch(/ago$/);
 
     // Focus opens the Radix tooltip, which carries the absolute timestamp.
-    const absolute = formatTimeAbsolute(new Date(CREATED_MS));
+    const absolute = formatTimeAbsolute(CREATED_AT);
     fireEvent.focus(timeEl!);
     const tips = await screen.findAllByText(absolute);
     expect(tips.length).toBeGreaterThan(0);
@@ -193,7 +193,7 @@ describe("SecretsList Created cell", () => {
 describe("SecretsList name cell", () => {
   it("a long secret name ellipsizes and keeps its icons in line", () => {
     const longName = "billing-warehouse-replica-read-only-credentials-for-the-nightly-export";
-    renderList([{ ...providerSecret(CREATED_MS), name: longName }]);
+    renderList([{ ...providerSecret(CREATED_AT), name: longName }]);
     // From sm up the name sits in one fixed slot, as wide on every row, that
     // truncates; the full name is its hover. On a phone the slot gives way.
     const slot = screen.getByTitle(longName);
@@ -215,7 +215,7 @@ describe("SecretsList — deleting a connection's secret", () => {
   const CONNECTION = "GitHub";
 
   function grantSecret(name: string): Secret {
-    return { kind: SECRET_KIND.custom_secret, name, created_at: CREATED_MS };
+    return { kind: SECRET_KIND.custom_secret, name, created_at: CREATED_AT };
   }
 
   async function openDelete(name: string) {

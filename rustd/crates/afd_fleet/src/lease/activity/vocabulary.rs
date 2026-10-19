@@ -17,7 +17,7 @@ use serde_json::Value;
 use super::Target;
 use super::published::Published;
 
-/// How many variants [`ActivityFrame`] has: one per slot [`slot`] hands out.
+/// How many variants [`ActivityFrame`] has: one per slot `slot` hands out.
 pub const ACTIVITY_VARIANTS: usize = 4;
 
 /// The tool every sample frame names.

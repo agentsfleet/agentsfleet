@@ -74,25 +74,31 @@ pub enum FailureClass {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenewResponse {
-    /// Epoch milliseconds of the new deadline.
-    pub lease_expires_at: i64,
+    /// The new deadline.
+    #[serde(with = "crate::instant")]
+    pub lease_expires_at: jiff::Timestamp,
+    /// The highest request line this renewal recorded, when it recorded any.
+    ///
+    /// The runner forgets only the lines at or below it and sends the rest
+    /// again, with its next renewal or its report. A body the daemon could not
+    /// read records none, so its lines are never lost to a renewal that still
+    /// extended the lease.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_through: Option<u32>,
 }
 
 /// `POST /v1/runners/me/leases/{lease_id}/renew` request.
 ///
-/// Cumulative token counts for the run so far, never deltas. Only the
-/// difference since the last renewal is charged, so a retry that re-sends the
-/// same totals charges nothing new.
+/// The provider requests the run made since its last acknowledged renewal,
+/// one line each. Lines are stored once per number, so a retry that re-sends
+/// them charges nothing new; the daemon measures the run's time itself.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct RenewRequest {
-    /// Cumulative prompt tokens.
-    pub input_tokens: u32,
-    /// Cumulative cache-read tokens.
-    pub cached_input_tokens: u32,
-    /// Cumulative completion tokens.
-    pub output_tokens: u32,
+    /// One line per provider request, possibly none.
+    #[garde(dive)]
+    pub requests: crate::usage::RequestLines,
 }
 
 /// Latency the runner observed for one run.
@@ -150,15 +156,11 @@ pub struct ReportRequest<'a> {
     /// The run's output.
     #[serde(borrow)]
     pub response_text: Cow<'a, str>,
-    /// The run's total tokens, for reporting. Billing charges the three
-    /// cumulative fields below, which settle against the usage ledger.
+    /// The run's total tokens, for the event history. Billing charges
+    /// `requests`, never this sum.
     pub tokens: u64,
-    /// Cumulative prompt tokens for the whole run.
-    pub input_tokens: u32,
-    /// Cumulative cache-read tokens for the whole run.
-    pub cached_input_tokens: u32,
-    /// Cumulative completion tokens for the whole run.
-    pub output_tokens: u32,
+    /// The provider requests no renewal acknowledged yet, one line each.
+    pub requests: crate::usage::RequestLines,
     /// Latency the runner observed.
     pub telemetry: ReportTelemetry,
     /// Where to resume this session.
@@ -170,10 +172,14 @@ pub struct ReportRequest<'a> {
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
     pub tool_calls: Option<RawToolTrace<'a>>,
-    /// Epoch milliseconds until which this runner holds the run's sandbox,
-    /// frozen, for the fleet's next event. Absent when it holds none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub held_until_ms: Option<i64>,
+    /// Until when this runner holds the run's sandbox, frozen, for the
+    /// fleet's next event. Absent when it holds none.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::instant::option"
+    )]
+    pub held_until: Option<jiff::Timestamp>,
 }
 
 /// `POST /v1/runners/me/reports` reply.

@@ -7,15 +7,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_core::clock::saturating_millis;
 use afd_core::test_util::trace::Capture;
 use afr_executor::{Ending, ProcessId, Spawn};
 use bytes::Bytes;
 use serde_json::{Value, json};
 use tokio::time::Instant;
 
-use super::{
-    EMPTY_WRITE_YIELD_MS_MIN, ExecCommand, WriteStdin, YIELD_MS_DEFAULT, YIELD_MS_MAX, YIELD_MS_MIN,
-};
+use super::{EMPTY_WRITE_YIELD_MIN, ExecCommand, WriteStdin, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN};
 use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
@@ -92,7 +91,13 @@ fn only_spawn(executor: &ScriptedExecutor) -> Spawn {
 
 /// Opens one session on `executor` that yields as briefly as it may.
 pub(super) async fn open(executor: &ScriptedExecutor, lease: &Lease<'_>, cmd: &str) {
-    call_in(&*exec(), executor, lease, opening(cmd, Some(YIELD_MS_MIN))).await;
+    call_in(
+        &*exec(),
+        executor,
+        lease,
+        opening(cmd, Some(saturating_millis(YIELD_MIN))),
+    )
+    .await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -107,7 +112,7 @@ async fn test_exec_command_keeps_a_running_process_as_a_session() {
     assert_eq!((output.exit_code, output.error_code), (None, None));
     assert_eq!(
         started.elapsed(),
-        Duration::from_millis(YIELD_MS_DEFAULT),
+        YIELD_DEFAULT,
         "a running process is read for the whole yield"
     );
     assert!(lease.sessions.get(FIRST).is_some(), "it stays open");
@@ -176,8 +181,8 @@ async fn should_hold_a_yield_between_the_shortest_and_the_longest() {
     call_in(&*exec(), &executor, &lease, opening("b", Some(3_600_000))).await;
     let longest = started.elapsed();
 
-    assert_eq!(shortest, Duration::from_millis(YIELD_MS_MIN));
-    assert_eq!(longest, Duration::from_millis(YIELD_MS_MAX));
+    assert_eq!(shortest, YIELD_MIN);
+    assert_eq!(longest, YIELD_MAX);
 }
 
 /// Past the cap a new session opens, and the least recently used one is
@@ -230,14 +235,11 @@ async fn should_poll_with_an_empty_write_for_at_least_five_seconds() {
         &*write(),
         &executor,
         &lease,
-        writing(1, "", Some(YIELD_MS_MIN)),
+        writing(1, "", Some(saturating_millis(YIELD_MIN))),
     )
     .await;
 
-    assert_eq!(
-        started.elapsed(),
-        Duration::from_millis(EMPTY_WRITE_YIELD_MS_MIN)
-    );
+    assert_eq!(started.elapsed(), EMPTY_WRITE_YIELD_MIN);
     assert_eq!(polled.text, FIRST_RUNNING);
     assert!(
         executor.written().is_empty(),
@@ -273,7 +275,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     let exiting = Arc::clone(&executor);
     // The process exits a moment after it reads what was written.
     let exit = tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(YIELD_MS_MIN)).await;
+        tokio::time::sleep(YIELD_MIN).await;
         exiting.end(FIRST, Ending::Exited(0))
     });
     let started = Instant::now();
@@ -285,7 +287,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     assert_eq!(output.exit_code, Some(0));
     assert_eq!(
         started.elapsed(),
-        Duration::from_millis(YIELD_MS_MIN),
+        YIELD_MIN,
         "answered as the process ended, not at the yield"
     );
     assert!(

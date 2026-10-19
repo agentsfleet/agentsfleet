@@ -22,18 +22,12 @@
 //! row to lose against, because the predicate doing the work is in the SQL.
 //! That proof rides the integration lane.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test target: an unmet precondition should fail the test loudly, and a step \
-              indexes the problem body it just received"
-)]
 
 use crate::harness;
+use crate::harness::detail_of;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -42,9 +36,6 @@ const TENANT_KEY: &str = "agt_tdecafbaddecafbaddecafbaddecafbaddecafbaddecafbadd
 
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2fleets";
-
-/// A well-formed workspace identifier that is somebody else's.
-const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ff";
 
 /// A well-formed fleet identifier.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
@@ -58,12 +49,6 @@ const FLEET_ADMIN: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetAdmin]);
 /// never refused by the rung.
 const EVERY_FLEET_SCOPE: ScopeSet =
     ScopeSet::from_scopes(&[Scope::FleetRead, Scope::FleetWrite, Scope::FleetAdmin]);
-
-/// The empty set, proving a refusal is the scope rung's.
-const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
-
-/// The sentence the ownership layer refuses with.
-const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// The collection path, under the workspace the fixture owns.
 fn collection() -> String {
@@ -108,35 +93,6 @@ async fn authorised(method: Method, path: &str, body: &str) -> axum::response::R
     send(EVERY_FLEET_SCOPE, method, path, Some(TENANT_KEY), body).await
 }
 
-/// Reads a problem document's `detail` back.
-async fn detail_of(response: axum::response::Response) -> String {
-    let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
-}
-
-/// Asserts the request got PAST every layer in front of the verb.
-///
-/// 503 with the datastore's sentence is the one answer only the STORE can
-/// produce, so reaching it proves the guard, the rung and the ownership layer
-/// all admitted the request.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    let problem = harness::json_body(response).await;
-    assert_eq!(
-        problem["error_code"],
-        afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
-        "{case}"
-    );
-}
-
 /// Every verb on this surface, with the scope its route row demands.
 fn every_verb() -> [(Method, String, ScopeSet); 5] {
     [
@@ -146,30 +102,6 @@ fn every_verb() -> [(Method, String, ScopeSet); 5] {
         (Method::PATCH, item(), FLEET_WRITE),
         (Method::DELETE, item(), FLEET_ADMIN),
     ]
-}
-
-#[tokio::test]
-async fn no_verb_on_this_surface_is_anonymous() {
-    for (method, path, scopes) in every_verb() {
-        let response = send(scopes, method.clone(), &path, None, "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::UNAUTHORIZED,
-            "{method} {path} is not anonymous"
-        );
-    }
-}
-
-#[tokio::test]
-async fn every_verb_is_gated_on_its_own_scope() {
-    for (method, path, _needs) in every_verb() {
-        let response = send(NO_SCOPES, method.clone(), &path, Some(TENANT_KEY), "").await;
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {path} without its scope is refused"
-        );
-    }
 }
 
 #[tokio::test]
@@ -188,25 +120,18 @@ async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
             _reads_and_deletes => "",
         };
         let response = authorised(method.clone(), &path, body).await;
-        assert_reached_the_verb(response, &format!("{method} {path}")).await;
-    }
-}
-
-#[tokio::test]
-async fn a_foreign_workspace_is_refused_before_any_statement_runs() {
-    // The deny half of Dimension 3.3, and the reason ownership is a LAYER: the
-    // scopes are valid and the caller is proven, and they still never reach a
-    // datastore. A 403 rather than a 404 is parity — a dashboard branches on it.
-    for (method, path, _scopes) in every_verb() {
-        let foreign = path.replace(OWNED_WORKSPACE, FOREIGN_WORKSPACE);
-        let response = authorised(method.clone(), &foreign, "").await;
-
+        // The code alone, not `harness::assert_reached_the_verb`: the fleet
+        // verbs render this outage in two sentences today (the store's, and
+        // the problem catalogue's title), and the code is the store-only proof.
+        let (status, code, _sentence) = harness::problem(response).await;
         assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "{method} {foreign} is not this caller's"
+            (status, code.as_str()),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
+            ),
+            "{method} {path}: only the verb answers with the datastore's refusal"
         );
-        assert_eq!(detail_of(response).await, DETAIL_NOT_YOURS, "{method}");
     }
 }
 

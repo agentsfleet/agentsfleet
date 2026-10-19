@@ -1,19 +1,22 @@
+import { z } from "zod";
+import { CATALOGUE_LIMITS, metadataSchema, nanosSchema, priceSchema } from "./catalogue-types";
+
 // The model library's row shape and the catalogue helpers the model pickers share. Dependency-free on purpose: client components read these
 // without pulling the transport, whose retry policy is server-only.
 
-export interface LibraryModel {
-  id: string;
-  provider: string;
-  context_cap_tokens: number;
-  input_nanos_per_mtok: number;
-  cached_input_nanos_per_mtok: number;
-  output_nanos_per_mtok: number;
-}
+export const OLLAMA_PROVIDER = "ollama";
+export const OPENAI_PROVIDER = "openai";
 
-export interface ModelLibrary {
-  version: string;
-  models: LibraryModel[];
-}
+export const libraryModelSchema = metadataSchema.extend({
+  id: z.string(), provider: z.string(), input_nanos_per_mtok: nanosSchema,
+  cached_input_nanos_per_mtok: nanosSchema, output_nanos_per_mtok: nanosSchema,
+  prices: z.array(priceSchema).max(CATALOGUE_LIMITS.prices),
+});
+export const modelLibrarySchema = z.object({
+  version: z.string(), models: z.array(libraryModelSchema), total: z.number().int().nonnegative().nullable(), next_cursor: z.string().nullable(),
+});
+export type LibraryModel = z.infer<typeof libraryModelSchema>;
+export type ModelLibrary = z.infer<typeof modelLibrarySchema>;
 
 // The catalogue is keyed by (provider, model_id), so a model_id legitimately
 // recurs across providers. These two helpers keep that keying rule in one place
@@ -48,6 +51,7 @@ const PROVIDER_LABELS: ReadonlyMap<string, string> = new Map([
   ["byteplus-plan", "BytePlus Plan"],
   ["deepseek", "DeepSeek"],
   ["evolink", "EvoLink"],
+  ["gemini", "Google"],
   ["glm", "GLM"],
   ["huggingface", "Hugging Face"],
   ["hunyuan", "Tencent Hunyuan"],
@@ -57,7 +61,7 @@ const PROVIDER_LABELS: ReadonlyMap<string, string> = new Map([
   ["nearai", "NEAR AI"],
   ["novita", "Novita AI"],
   ["nvidia", "NVIDIA"],
-  ["openai", "OpenAI"],
+  [OPENAI_PROVIDER, "OpenAI"],
   ["openai-compatible", "Custom — OpenAI-compatible"],
   ["opencode", "OpenCode"],
   ["openrouter", "OpenRouter"],

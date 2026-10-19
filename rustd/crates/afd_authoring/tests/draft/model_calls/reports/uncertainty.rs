@@ -131,7 +131,7 @@ async fn without_text(f: &Fixture, a: &Attempt) {
 /// The admission predicate: an unsettled or unknown attempt blocks the draft.
 async fn outstanding(f: &Fixture, a: &Attempt) -> bool {
     sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM fleet.authoring_attempts WHERE draft_id=$1::uuid \
+        "SELECT EXISTS(SELECT 1 FROM authoring.attempts WHERE draft_id=$1::uuid \
         AND (status<>'settled' OR usage_unknown))",
     )
     .bind(a.draft.id.as_str())

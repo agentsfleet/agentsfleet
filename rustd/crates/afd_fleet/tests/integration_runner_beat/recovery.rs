@@ -7,7 +7,6 @@
 
 use std::borrow::Cow;
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::INTERNAL_DB_QUERY;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
@@ -18,20 +17,22 @@ use afd_runner::{Beat, NO_REPORT};
 use afd_wire::runner::{
     CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier,
 };
+use jiff::Timestamp;
 
 use super::Verdict;
-use super::requests::{ONE_BEAT_MS, capable, enrolment};
+use super::requests::{ONE_BEAT, capable, enrolment};
 use super::support::Fixtures;
+use crate::rows::Row;
 
 /// What a hold reconcile that did not land is logged under.
 const HOLDS_RECONCILE_FAILED: &str = "runner_holds_reconcile_failed";
 
 /// Moves the table the release read joins out of its way, in a database of
 /// the test's own; the beat's other statements never read it.
-const MOVE_FLEETS: &str = "ALTER TABLE core.fleets RENAME TO fleets_moved";
+const MOVE_FLEETS: &str = "ALTER TABLE fleet.fleets RENAME TO fleets_moved";
 
 /// `runner` beats once at `now`, listing `fleet` as held.
-async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: i64) -> Beat {
+async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: Timestamp) -> Beat {
     let request = HeartbeatRequest {
         holds: HeldFleets(vec![Cow::Borrowed(fleet)]),
         ..NO_REPORT
@@ -39,12 +40,7 @@ async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: i6
     let held = prove(request.holds.clone());
     fixtures
         .runners()
-        .heartbeat(
-            runner,
-            &request,
-            held.as_ref(),
-            UnixMillis::from_millis(now),
-        )
+        .heartbeat(runner, &request, held.as_ref(), now)
         .await
         .expect("a release read that fails does not fail the beat")
 }
@@ -57,15 +53,15 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, UnixMillis::from_millis(fixtures.enrolled_at()))
+        .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.as_str().to_owned();
 
     for (offset, report) in [
-        (ONE_BEAT_MS, capable()),
+        (ONE_BEAT, capable()),
         (
-            2 * ONE_BEAT_MS,
+            ONE_BEAT * 2,
             CapabilityReport {
                 build_id: None,
                 landlock: false,
@@ -84,14 +80,14 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     closing: false,
                 },
                 None,
-                UnixMillis::from_millis(fixtures.enrolled_at() + offset),
+                fixtures.after(offset),
             )
             .await
             .expect("the capability transition must land");
     }
 
     assert_eq!(
-        fixtures.runner_column(&runner, "degraded_reason").await,
+        fixtures.text(Row::Runner(&runner), "degraded_reason").await,
         Some(REASON_LANDLOCK_UNAVAILABLE.to_owned()),
         "the reason is on the row an operator inspects"
     );
@@ -107,7 +103,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
         .runners()
         .register(
             &enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("enrolment must succeed");
@@ -118,7 +114,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "UPDATE fleet.runners SET capability_report = $2::jsonb, degraded = TRUE, \
+        "UPDATE runner.runners SET capability_report = $2::jsonb, \
          degraded_reason = 'stale fixture' WHERE id = $1::uuid",
     )
     .bind(enrolled.runner_id.as_str())
@@ -134,7 +130,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
             &enrolled.runner_id,
             &NO_REPORT,
             None,
-            UnixMillis::from_millis(fixtures.enrolled_at() + ONE_BEAT_MS),
+            fixtures.after(ONE_BEAT),
         )
         .await
         .expect("the stored report remains usable");
@@ -142,9 +138,10 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
     assert_eq!(answered.verdict, Verdict::Healthy);
     assert_eq!(
         fixtures
-            .runner_column(enrolled.runner_id.as_str(), "degraded")
+            .text(Row::Runner(enrolled.runner_id.as_str()), "degraded_reason")
             .await,
-        Some("false".to_owned())
+        None,
+        "a healthy verdict clears the reason"
     );
     fixtures.cleanup().await;
 }
@@ -158,7 +155,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("enrolment must succeed");
@@ -168,12 +165,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
     let read = fixtures.runners().self_record(&phantom).await;
     let beat = fixtures
         .runners()
-        .heartbeat(
-            &phantom,
-            &NO_REPORT,
-            None,
-            UnixMillis::from_millis(fixtures.enrolled_at()),
-        )
+        .heartbeat(&phantom, &NO_REPORT, None, fixtures.enrolled_at())
         .await;
 
     for outcome in [read.err(), beat.err()] {
@@ -202,19 +194,13 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
-            UnixMillis::from_millis(fixtures.enrolled_at()),
+            fixtures.enrolled_at(),
         )
         .await
         .expect("enrolment must succeed");
     let runner = &enrolled.runner_id;
     let fleet = mint_id();
-    let working = beats_holding(
-        &fixtures,
-        runner,
-        &fleet,
-        fixtures.enrolled_at() + ONE_BEAT_MS,
-    )
-    .await;
+    let working = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT)).await;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     sqlx::query(MOVE_FLEETS)
         .execute(&mut *connection)
@@ -223,13 +209,7 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
     drop(connection);
 
     let log = Capture::install();
-    let failed = beats_holding(
-        &fixtures,
-        runner,
-        &fleet,
-        fixtures.enrolled_at() + 2 * ONE_BEAT_MS,
-    )
-    .await;
+    let failed = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT * 2)).await;
     let warned = log.only(HOLDS_RECONCILE_FAILED).fields;
     drop(log);
 

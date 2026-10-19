@@ -1,6 +1,6 @@
 //! Two tenants, one table: every registry verb answers only for its own rows.
 //!
-//! `core.tenant_model_entries` holds every tenant's entries, and each statement
+//! `model.tenant_models` holds every tenant's entries, and each statement
 //! over it carries the tenant in its predicate. An entry id is not a secret —
 //! it travels in item routes — so a statement that lost the predicate would
 //! hand one tenant's row to another the moment its id was guessed or leaked.
@@ -10,7 +10,6 @@ use afd_core::id::Uuid7;
 use afd_credential::provider::{Removed, Retargeted};
 
 use super::Fixture;
-use super::registry::NOW;
 use super::registry_page::{BODY, CREDENTIAL, add, providers, unique_model, unique_provider};
 
 /// How many rows a page asks for when it wants the whole registry.
@@ -45,7 +44,7 @@ async fn the_registry_never_answers_for_another_tenants_entry() {
     );
     assert_eq!(
         store
-            .set_entry_model(&other.tenant, &held.id, &unique_model(), NOW)
+            .set_entry_model(&other.tenant, &held.id, &unique_model())
             .await
             .expect("a foreign id is an outcome"),
         Retargeted::NotFound
@@ -60,7 +59,7 @@ async fn the_registry_never_answers_for_another_tenants_entry() {
 
     let kept = still_held(&store, &owner.tenant, &held.id).await;
     assert_eq!(
-        (&*kept.model_id, &*kept.secret_ref),
+        (&*kept.model_name, &*kept.secret_ref),
         (model.as_str(), CREDENTIAL),
         "the owner's entry is untouched by every foreign verb"
     );

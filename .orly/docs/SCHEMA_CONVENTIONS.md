@@ -12,101 +12,119 @@ Qualify table names, grant only the operations each runtime role needs, and test
 with the real schema through shared fixture helpers.
 Keep migration registration and position assertions synchronized with each edit.
 
-Canonical reference for `agentsfleet` database schema patterns. All new tables **must** follow these conventions. Existing tables are brought into compliance when rebuilt.
+Canonical reference for `agentsfleet` database schema patterns. All new tables **must** follow these conventions. The table-by-table layout lives in the product repository's `docs/architecture/postgres_schemas.md`; this section carries the rules that layout follows.
 
 ## Migration Model
 
-**Teardown-rebuild is in force for the M154 rebuild (owner decision, Indy, Jul 31, 2026).** The development database is being dropped and re-created from empty while production is undeployed, so slots `001`–`046` are **retired wholesale** and the schema is re-authored by dependency layer. During this rebuild the frozen-slot rule below does not apply, and `ALTER`/`DROP` statements are forbidden rather than required — a change belongs in the base statement it would have patched. This is the posture RULE SCH already specifies for `VERSION < 0.30.0`; the Jul 22 additive model was the deviation.
+**Additive at `VERSION >= 0.30.0`.** Every schema change is a new numbered slot; shipped slots are frozen history. Destructive changes (`DROP TABLE`, `DROP COLUMN`, type rewrites) need an explicit owner decision per change. A from-empty rebuild past `0.30.0` happens only under an owner-recorded `SCHEMA GUARD: SKIPPED per user override (reason: …)` with the database dropped first — the M229 rebuild (Oct 17, 2026) is the precedent.
 
-**Additive migrations resume at `VERSION >= 0.30.0`, as RULE SCH specifies.**
-Completing the rebuild alone does not change the version boundary.
-Every subsequent schema change is a new numbered migration file; shipped slots
-are frozen history. Migrations are tracked incrementally through
-`agentsfleetd doctor --schema-gate`; use `IF NOT EXISTS` where appropriate for
-fresh bootstrap and an already provisioned database.
+## Migrator
 
-Destructive changes (`DROP TABLE`, `DROP COLUMN`, type rewrites) require an explicit owner decision per change — additive is the default an agent may author alone.
-
-> Historical note: slots `001`–`031` predate the additive model (teardown-rebuild with inline DDL edits, enforced by a since-removed `check-schema-gate` lint target). M154 retires them along with everything up to `046`.
+SQLx's `Migrator` applies the slots from the explicit list in `rustd/crates/afd_db/src/migration.rs` (`Migrator::with_migrations`; the `migrate` feature only, `macros` stays off). It keeps checksums, so an edited applied slot is refused, and records the ledger in the `audit` schema. Locking is ours: SQLx's lock is off (`set_locking(false)`) and a bounded `pg_try_advisory_lock` poll wraps the run, so a held lock fails loudly instead of hanging a deploy.
 
 ## Schema File Organization
 
-- Each SQL file must be **≤100 lines** and **single-concern** (one table, one logical group, or one additive change).
-- Files are numbered sequentially: `001_core_foundation.sql`, `002_core_workflow.sql`, etc. New migrations append the next number; shipped numbers are never reused or slid.
-- Every SQL file must be registered in `schema/embed.zig` (compile-time embed) and `rustd/crates/afd_db/src/migration.rs` (migration version array).
-- Below `0.30.0`, remove obsolete slots and their registrations completely;
-  no-op markers are forbidden. At and above `0.30.0`, preserve shipped slots and
-  apply changes through new migrations.
+- One slot per table: the table, its local constraints, indexes and grants together; each file **≤100 lines**.
+- Slots are ordered by foreign key — a table follows every table it references, across schemas. A foreign key that closes a cycle (a head pointer, for example) gets its own registered slot after both tables exist, `DEFERRABLE INITIALLY DEFERRED`.
+- Every slot is registered in `rustd/crates/afd_db/src/migration.rs`; the `rust-migration-list` lint compares the list to the tracked files.
+- Shipped numbers are never reused or slid.
+
+## Placement and naming
+
+1. **Placement.** A table lives in the schema of the product area that owns it (`identity`, `authoring`, `fleet`, `runner`, `connector`, `model`, `billing`, `vault`, `memory`). Its name is a plural noun that never repeats the schema name: `authoring.drafts`, not `authoring.authoring_drafts`. A singleton is named for its one row and says so in its slot.
+2. **Foreign keys** end `_id` and name the table they point at (`user_id`, `draft_id`). A prefix names the role when the column alone would not say it (`invited_by_user_id`, `active_grant_id`, `last_runner_id`). A deliberately missing foreign key is explained in the slot comment.
+3. **Status** columns are named `status`; categories are `<thing>_type`. RULE STS applies in full and without override: no literal that names a value or identifier the application also names — a `DEFAULT`, a `CHECK (col IN (…))` list, a trigger comparison against a column, a `current_setting()` parameter name, or `RAISE EXCEPTION` text a caller matches on. A predicate that needs a state reads a NULL marker column; a privileged path (a purge, for example) is a grant, not a session setting. The only literals left are structural ones nothing in the application names: the UUID version nibble `'7'`, `TG_OP` values, and exception text no caller matches on.
+4. **Timestamps.** Every table has `created_at`; every table whose rows change has `updated_at`. Any other time column is one of: (a) a deadline named `*expires_at`; (b) a NULL marker an index or trigger reads; (c) a domain instant the API returns that `updated_at` cannot carry; (d) an accounting cursor billing reads.
+5. **One fact, one home.** No JSON blob copies a column; no counter restates another table's number. Named exceptions, each with its consistency rule in the slot: an aggregate maintained under the same lock or trigger as its source; a delivery snapshot that must outlive its source; a non-secret projection of encrypted content; a scope copy a restricted role needs to filter alone.
+6. **Retry keys** (`operation_id` plus a request digest) live only in receipt tables.
+7. **Every column names its reader** before it is created. Accounting and audit records are exempt when the slot names the export or verification that reads them.
+8. **A new table** carries a written answer to "why not a column, or an existing table".
+9. **Immutable tables** carry no `updated_at`, no UPDATE grant, and a trigger that refuses UPDATE. DELETE stays governed by grants and the deletion matrix, so cascades keep working.
+
+### Counter and pointer names
+
+| Kind | Name |
+|---|---|
+| Position within a parent (1, 2, 3…) | `sequence` |
+| Pointer to another table's position | `<thing>_sequence` |
+| Highest position so far | `last_<thing>_sequence` |
+| "Everything up to N" watermark | `<verb>_through_sequence` |
+| Global insertion order | `sequence` (identity column) |
+| Frozen content version | `revision`; pointer `<x>_revision_id`; the live one `head_revision_id` |
+| Compare-and-swap edit counter | `resource_version`, or `<scope>_version` when it covers one action |
+| Lease epoch | `fencing_token` |
+| Tally | `<thing>_count` |
+| Deadline | `*expires_at` |
+
+Wire field names (API and runner protocol) are not renamed by these rules.
+
+## Deletion matrix
+
+Every root a user or operator can delete — draft, user, Library card, fleet, workspace, tenant — has a stated row in the product's deletion matrix: what goes with it, what stays, and what is scrubbed at once. Money records (charges, settlements, the attempts they hang off) never cascade from an erasable owner; they keep opaque identifiers. Private text is scrubbed on every erasure path, not only the one that purges drafts.
 
 ## SQL Qualification
 
-- Use schema-qualified table names in SQL (`core.platform_llm_keys`, `core.workspaces`, etc.) for new queries and handlers.
+- Use schema-qualified table names in SQL (`identity.workspaces`, `fleet.fleets`).
 - Do not rely on session `search_path` defaults for correctness.
-- Legacy unqualified queries may remain temporarily, but touched paths should be migrated to schema-qualified names.
+
+## Runtime SQL
+
+- Every static statement lives in a `.sql` file beside the use case that runs it (for example `library/sql/list.sql`), loaded with `include_str!` and bound by a typed Rust function that states its parameters, authorization and locks.
+- Rows decode into named `FromRow` types selected by explicit column lists; `Json<T>` is for real JSON columns only; storage rows stay separate from wire types. No `to_jsonb(<row>)` whole-row reads.
+- One integration test `PREPARE`s every `.sql` file against the rebuilt schema, so a stale table or column fails before merge. A statement that must be assembled at run time is named in its module and covered by its own test.
+- Domain stores take the caller's connection or transaction; there is no generic repository trait.
+- Every pooled runtime connection carries `lock_timeout` and `statement_timeout` named constants; the migrate connection carries neither.
 
 ## Schema-Backed Runtime Defaults
 
-- If a numeric schema default is also used in runtime fallback or provisioning logic, define it once in Zig as a named constant and import that constant in runtime code.
-- Keep the database DDL value unchanged unless the product default is intentionally changing; the Zig constant mirrors the schema default for drift detection.
-- Add an adjacent `Canonical constant:` SQL comment next to each shared numeric default so reviewers can verify the linkage quickly.
+- A numeric schema default also used in runtime fallback or provisioning logic is defined once as a Rust named constant in the owning crate and referenced by the slot comment (`Canonical constant: crate::path::NAME`).
+- Keep the DDL value unchanged unless the product default is intentionally changing.
 
 ## Identity Column
 
-**One identity column per table, named `id` (owner decision, Indy, Jul 31, 2026 — M154).** The earlier `uid` rule paired a generated `uid` primary key with a duplicate twin column (`id`, `tenant_id`, `workspace_id`, …) holding the same value under its own `UNIQUE` constraint. That shape is retired.
+**One identity column per table, named `id` (owner decision, Indy, Jul 31, 2026 — M154).**
 
-- **Column:** `id`
-- **Type:** Universally Unique Identifier (UUID) `PRIMARY KEY`
-- **Generation:** Application-side UUID version 7 (UUIDv7) via `rustd/crates/afd_core/src/id.rs`, never `gen_random_uuid()`.
-- **No second unique key on the same value.** This is a correctness rule, not only a storage one: `ON CONFLICT` can arbitrate exactly one constraint, so a table carrying two unique keys over the same value makes two sessions inserting a brand-new row race to a duplicate-key error on the *other* index instead of taking the update arm. `schema/043_runner_lifetime_counters.sql` recorded this before the rule was generalised.
+- **Type:** Universally Unique Identifier (UUID) `PRIMARY KEY`, application-minted UUID version 7 (UUIDv7) through `afd_core::id`, never `gen_random_uuid()`.
+- **No second unique key on the same value.** `ON CONFLICT` arbitrates exactly one constraint, so two unique keys over one value make concurrent inserts race to a duplicate-key error on the other index.
 - **Foreign keys reference the primary key**, never a secondary unique constraint.
-- **Constraint:** every table carries a UUIDv7 CHECK:
-  ```sql
-  CONSTRAINT ck_{table}_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
-  ```
-- **Adding a new table:** add a `generate{TableName}Id()` function to `rustd/crates/afd_core/src/id.rs`.
-- **API shape:** unchanged — public fields keep exposing `id`, `tenant_id`, `workspace_id` and the other documented names. The column now *is* the public name in most tables, so the aliasing the old rule required mostly disappears; where a public field differs from `id`, alias at the boundary rather than renaming client-facing payloads.
-- **Exceptions,** each stated in the slot that creates the table: a curated catalogue keyed by a stable slug (`core.fleet_library`) and a singleton keyed by a pinned integer (`core.model_catalogue_revision`) carry no UUID.
+- **Constraint:** every UUID-keyed table carries `CONSTRAINT ck_{table}_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')`.
+- **Exceptions,** each stated in its slot: a row that exists at most once per parent is keyed by the parent (`fleet.sessions`, `fleet.activity_counters`, `runner.fleet_slots`, `runner.lifetime_counters`, `billing.wallets`, `model.tenant_selections`); a singleton keyed by a pinned integer (`model.catalogue_version`); a natural key addressed by every statement (`model.platform_defaults` by `provider`).
 
 ## Timestamps
 
-- **Type:** `BIGINT NOT NULL` — milliseconds since Unix epoch.
-- **Generation:** `std.time.milliTimestamp()` in Zig application code.
-- **Never** use `TIMESTAMPTZ`, `TIMESTAMP`, or `DEFAULT now()`.
+- **Type:** `TIMESTAMPTZ(3) NOT NULL` (nullable for a NULL marker), so the database, the Rust `jiff::Timestamp` and the API agree on millisecond precision. Never `BIGINT` epoch integers or `TIMESTAMP` without a time zone.
+- **Server lifecycle stamps** (`created_at`, `updated_at`) are written by the statement as `now()`: one database clock, one instant per transaction. No column `DEFAULT`; every write names its stamp in its `.sql` file.
+- **Deadlines** are computed in SQL as `clock_timestamp() + $ttl::interval`, with the TTL bound as an exact interval.
+- **A locking validity check** ("is this lease still live?") locks the target rows first, then reads `clock_timestamp()` once in a `MATERIALIZED` step that depends on the locked rows. A clock read in the `WHERE` or select list of a locking statement can run before the lock wait and accept an expired row.
+- **A non-locking read or `SKIP LOCKED` sweep** compares against `statement_timestamp()`, which an index can use; `clock_timestamp()` cannot be an index bound.
+- **`now()` and `CURRENT_TIMESTAMP` never decide an expiry**, because both are fixed at transaction start.
+- A time supplied by another system is stored as given in its own column, apart from the received or processed stamp.
 
 ## Standard Columns
 
-Every table must have:
-
 | Column | Type | Required | Notes |
 |--------|------|----------|-------|
-| `id` | `UUID PRIMARY KEY` | Yes | UUIDv7, app-generated; the table's only identity column |
-| `created_at` | `BIGINT NOT NULL` | Yes | Set once at INSERT |
-| `updated_at` | `BIGINT NOT NULL` | If mutable | Set at INSERT and every UPDATE |
-
-**Naming is uniform.** `created_at` and `updated_at` are the only names for row lifecycle time — not `recorded_at`, `created_at_ms`, or `updated_at_ms`. A column carrying *domain* time distinct from row birth (for example the originating event's creation instant on a money row) is named for that domain meaning and documented in its slot.
-
-**Mutable tables** (any table where UPDATE is a valid operation) must have `updated_at`.
-
-**Append-only/event tables** (where UPDATE is blocked by trigger or by design) are exempt from `updated_at`.
+| `id` | `UUID PRIMARY KEY` | Yes | UUIDv7, application-minted |
+| `created_at` | `TIMESTAMPTZ(3) NOT NULL` | Yes | `now()` at INSERT |
+| `updated_at` | `TIMESTAMPTZ(3) NOT NULL` | If the row ever changes | `now()` at INSERT and every UPDATE |
 
 ## Audit Pattern
 
-- **Actor tracking:** Use `actor TEXT` in event/transition tables (e.g., `policy_events`, `usage_ledger`).
-- **No `updated_by` column.** Changes to mutable tables are tracked via separate event-sourced audit tables (e.g., `workspace_billing_audit`, `harness_change_log`), not inline `updated_by`.
-- **Append-only enforcement:** Tables that must never be updated should have a trigger:
+- **Actor tracking:** `actor TEXT` in event and transition tables.
+- **No `updated_by` column.** Changes to mutable tables are tracked in event tables, not inline.
+- **Append-only enforcement:** an immutable table refuses UPDATE by trigger; DELETE follows grants and the deletion matrix.
   ```sql
-  CREATE OR REPLACE FUNCTION core.{table}_append_only() RETURNS trigger AS $$
+  CREATE OR REPLACE FUNCTION {schema}.{table}_refuse_update() RETURNS trigger AS $$
   BEGIN
-      RAISE EXCEPTION '{table} is append-only — UPDATE and DELETE are not permitted';
+      RAISE EXCEPTION '{table} is append-only';
   END;
   $$ LANGUAGE plpgsql;
 
-  CREATE TRIGGER trg_{table}_append_only
-      BEFORE UPDATE OR DELETE ON core.{table}
-      FOR EACH ROW EXECUTE FUNCTION core.{table}_append_only();
+  CREATE TRIGGER trg_{table}_refuse_update
+      BEFORE UPDATE ON {schema}.{table}
+      FOR EACH ROW EXECUTE FUNCTION {schema}.{table}_refuse_update();
   ```
 
-## RNG
+## Randomness
 
-- **Always** use `std.crypto.random` (via `allocUuidV7` in `id_format.zig`).
-- **Never** use custom RNG implementations or `std.rand`.
+- Identifiers and secrets come from `afd_core::id` and the operating system's cryptographic source; never a custom random number generator.

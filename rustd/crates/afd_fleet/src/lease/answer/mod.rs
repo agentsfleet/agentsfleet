@@ -6,7 +6,7 @@
 //! as a sequence of decisions interleaved with serialization.
 
 use afd_core::id::Uuid7;
-use afd_core::timing::NO_WORK_RETRY_AFTER_MS;
+use afd_core::timing::NO_WORK_RETRY_AFTER;
 use afd_wire::event::{EventEnvelope, EventType};
 use afd_wire::lease::{LeasePayload, LeaseResponse, SecretDelivery, TaggedLease, Turn};
 use afd_wire::policy::ExecutionPolicy;
@@ -35,9 +35,10 @@ pub(super) const EVENT_REFUSED: &str = "runner_lease_refused";
 /// Only a serialization failure of a fixed, field-free shape, which is
 /// unreachable; it is still a `Result` so no caller has to learn that.
 pub(super) fn no_work(runner_id: &Uuid7, reason: &str) -> Result<String> {
+    let runner_id = runner_id.as_str();
     tracing::info!(
         event = EVENT_NO_WORK,
-        runner_id = runner_id.as_str(),
+        runner_id,
         reason,
         "the poll issued no lease"
     );
@@ -52,7 +53,10 @@ pub(super) fn no_work(runner_id: &Uuid7, reason: &str) -> Result<String> {
 /// # Errors
 /// Reports a payload that would not serialize.
 pub(super) fn answer(lease: Option<LeasePayload<'_>>) -> Result<String> {
-    let retry_after_ms = lease.is_none().then_some(NO_WORK_RETRY_AFTER_MS);
+    // A wire span spelled as a count of milliseconds, which `afd_wire` defines.
+    let retry_after_ms = lease.is_none().then(|| {
+        u32::try_from(afd_core::clock::saturating_millis(NO_WORK_RETRY_AFTER)).unwrap_or(u32::MAX)
+    });
     serde_json::to_string(&LeaseResponse {
         lease: lease.map(|payload| TaggedLease::<serde_json::Value>::Fleet(Box::new(payload))),
         retry_after_ms,
@@ -75,7 +79,7 @@ pub(super) fn render<'a>(
     answer(Some(LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
-        lease_expires_at: acquired.leased_until.as_millis(),
+        lease_expires_at: acquired.leased_until,
         // The one delivery this port serves. `scoped` and `proxy` are wire
         // values with no implementation on either side.
         secret_delivery: SecretDelivery::Inline,
@@ -86,7 +90,7 @@ pub(super) fn render<'a>(
             actor: acquired.actor.as_str().into(),
             event_type,
             request_json: acquired.request_json.as_str().into(),
-            created_at: acquired.event_created_at.as_millis(),
+            created_at: acquired.event_created_at,
         },
         policy,
         instructions: installed.instructions.as_str().into(),

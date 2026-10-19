@@ -8,7 +8,6 @@
 //! moves the ending — and the file cap forced the cut at a seam the two
 //! already had.
 
-use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::event::label;
 use afd_core::id::Uuid7;
@@ -39,7 +38,6 @@ impl Plane {
         &self,
         acquired: &Acquired,
         runner_id: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Step<Installed>> {
         match self.leases.installed(&acquired.fleet_id).await {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
@@ -51,7 +49,7 @@ impl Plane {
             // One fleet's unreadable document is that fleet's fault and not
             // this runner's, which is the whole of `refuse_unreadable_config`.
             Err(unreadable) if unreadable.is_config_permanent() => self
-                .refuse_unreadable_config(acquired, runner_id, &unreadable, now)
+                .refuse_unreadable_config(acquired, runner_id, &unreadable)
                 .await
                 .map(Step::Stop),
             Err(outage) => Err(outage),
@@ -67,12 +65,11 @@ impl Plane {
         acquired: &Acquired,
         declined: Declined,
         runner_id: &Uuid7,
-        now: UnixMillis,
     ) -> Result<Step<Admission2>> {
         match declined {
             Declined::Await(waiting) => waited(runner_id, waiting),
             Declined::Refuse(refusal) => self
-                .refused(acquired, refusal.label, runner_id, refusal.detail, now)
+                .refused(acquired, refusal.label, runner_id, refusal.detail)
                 .await
                 .map(Step::Stop),
             Declined::Retry(transient) => no_work(runner_id, transient.at).map(Step::Stop),
@@ -91,7 +88,6 @@ impl Plane {
         label: &'static str,
         runner_id: &Uuid7,
         reason: &str,
-        now: UnixMillis,
     ) -> Result<String> {
         let ended = self
             .leases
@@ -99,7 +95,6 @@ impl Plane {
                 &acquired.fleet_id,
                 &acquired.event_id,
                 Refusal { label, detail: "" },
-                now,
             )
             .await?;
         if let crate::lease::event::Ended::Now(closed) = ended {
@@ -158,13 +153,12 @@ impl Plane {
         acquired: &Acquired,
         runner_id: &Uuid7,
         fault: &Error,
-        now: UnixMillis,
     ) -> Result<String> {
         let Logged {
             error_code: config_error_code,
             reason,
         } = fault.logged();
-        match self.end_unreadable(acquired, runner_id, &reason, now).await {
+        match self.end_unreadable(acquired, runner_id, &reason).await {
             Ok(answer) => Ok(answer),
             // Logged, never propagated, and the reasoning is this module's
             // already: the terminal-redelivery acknowledgement a few lines
@@ -217,15 +211,14 @@ impl Plane {
         acquired: &Acquired,
         runner_id: &Uuid7,
         reason: &str,
-        now: UnixMillis,
     ) -> Result<String> {
-        let received = self.leases.record_received(acquired, now).await?;
+        let received = self.leases.record_received(acquired).await?;
         if received.delivery == Delivery::First {
             self.leases
                 .publish_received(acquired, received.opened_at, received.counters)
                 .await;
         }
-        self.refused(acquired, label::CONFIG_UNREADABLE, runner_id, reason, now)
+        self.refused(acquired, label::CONFIG_UNREADABLE, runner_id, reason)
             .await
     }
 }

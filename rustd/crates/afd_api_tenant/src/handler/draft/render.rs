@@ -52,6 +52,9 @@ pub(super) fn card(value: types::DraftCard) -> wire::DraftCard {
         linked_fleet_id: value.linked_fleet_id.map(|id| id.to_string()),
         updated_at: value.updated_at,
         expires_at: value.expires_at,
+        candidate_revision: value.candidate_revision,
+        setup_revision: value.setup_revision,
+        publication_revision: value.publication_revision,
     }
 }
 
@@ -93,5 +96,97 @@ pub(super) fn cancellation(value: Cancellation) -> wire::Cancellation {
                 state: value.state.into(),
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "fixed test fixtures fail loudly when their contract changes"
+)]
+mod tests {
+    use afd_core::id::Uuid7;
+
+    use afd_wire::authoring::FailureReason;
+
+    use super::{card, message, types};
+
+    /// A card at `revisions`: candidate, saved setup and publication.
+    fn listed(revisions: (Option<i64>, Option<i64>, Option<i64>)) -> types::DraftCard {
+        types::DraftCard {
+            id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")
+                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
+            title: "Triage the inbox".to_owned(),
+            state: types::DraftState::Editing,
+            etag: "\"v1\"".to_owned(),
+            linked_fleet_id: None,
+            updated_at: jiff::Timestamp::constant(1_760_000_000, 0),
+            expires_at: None,
+            candidate_revision: revisions.0,
+            setup_revision: revisions.1,
+            publication_revision: revisions.2,
+        }
+    }
+
+    #[test]
+    fn a_card_lists_every_revision_summary_and_null_for_one_it_has_not_reached() {
+        for (revisions, expected) in [
+            ((Some(3), Some(2), Some(1)), [3.into(), 2.into(), 1.into()]),
+            (
+                (Some(1), None, None),
+                [1.into(), serde_json::Value::Null, serde_json::Value::Null],
+            ),
+            (
+                (None, None, None),
+                [
+                    serde_json::Value::Null,
+                    serde_json::Value::Null,
+                    serde_json::Value::Null,
+                ],
+            ),
+        ] {
+            let wire = serde_json::to_value(card(listed(revisions)))
+                .unwrap_or_else(|error| panic!("a card serializes: {error}"));
+            assert_eq!(
+                [
+                    wire["candidate_revision"].clone(),
+                    wire["setup_revision"].clone(),
+                    wire["publication_revision"].clone(),
+                ],
+                expected,
+                "each summary is present on every card, null until the chat reaches it"
+            );
+        }
+    }
+
+    /// A failed message's recovery reaches the wire as the domain derived it:
+    /// the reason, its registry code and the action a client renders.
+    #[test]
+    fn a_failed_message_carries_its_reason_code_and_recovery_onto_the_wire() {
+        let failure = types::Failure::from(FailureReason::InsufficientBalance);
+        let (code, action) = (failure.error_code, failure.recovery_action);
+        let accepted = jiff::Timestamp::constant(1_760_000_000, 0);
+
+        let rendered = message(types::Message {
+            sequence: "7".to_owned(),
+            operation_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011")
+                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
+            role: "assistant",
+            state: types::MessageState::Failed,
+            text: None,
+            candidate_id: None,
+            usage: None,
+            failure: Some(failure),
+            created_at: accepted,
+            finished_at: Some(accepted),
+        });
+
+        let wire = rendered
+            .failure
+            .unwrap_or_else(|| panic!("a failed message keeps its failure"));
+        assert_eq!(wire.reason, FailureReason::InsufficientBalance);
+        assert_eq!(wire.error_code, code.as_str());
+        assert_eq!(wire.recovery_action, action);
     }
 }

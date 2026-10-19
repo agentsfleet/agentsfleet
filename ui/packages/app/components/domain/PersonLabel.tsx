@@ -5,7 +5,7 @@ import { fallbackPersonLabel, systemLabel } from "@/lib/identity/person";
  *
  * The name arrives on the same row that carried the subject: `resolved_by` is
  * the identifier of record, `resolved_by_name` is what this deployment's own
- * `core.users` row calls them. So this component renders and never fetches.
+ * `identity.users` row calls them. So this component renders and never fetches.
  * There is no loading state because there is no lookup, and no placeholder to
  * flash, because the answer arrived with the row.
  *

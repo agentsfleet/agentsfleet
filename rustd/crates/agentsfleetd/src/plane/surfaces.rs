@@ -16,7 +16,6 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
-use afd_observability::Analytics;
 use afd_tenant::session::Sessions as Logins;
 
 use super::config::{LoginConfig, ScheduleConfig};
@@ -32,23 +31,22 @@ pub(super) struct Authoring {
     pub(super) models: afd_authoring::ModelCalls,
 }
 
-/// Builds the authoring surfaces, each over the one before it, all reporting
-/// their funnel steps to `analytics`.
+/// Builds the authoring surfaces over `drafts`, each over the one before it.
 ///
-/// The setup wraps the drafts, the model calls wrap the drafts and the shared
-/// provider store, and the creations wrap the setup and the shared admissions
-/// ledger — so the order below is the dependency order, not a preference.
+/// `drafts` already carries the pool, the biller and the analytics reporter,
+/// so every surface below reports its funnel steps and moves money the same
+/// way. The setup wraps the drafts, the model calls wrap the drafts and the
+/// shared provider store, and the creations wrap the setup and the shared
+/// admissions ledger — so the order below is the dependency order, not a
+/// preference.
 pub(super) fn authoring(
-    database: &Db,
+    drafts: afd_authoring::Drafts,
     queue: &Dragonfly,
     kek: &Arc<Kek>,
     providers: &Providers,
     admissions: &Admissions,
     transport: afd_authoring::Network,
-    analytics: &Analytics,
 ) -> Authoring {
-    let drafts = afd_authoring::Drafts::new(database.clone(), Entropy::new())
-        .with_analytics(analytics.clone());
     let setup = afd_authoring::Setup::new(drafts.clone(), Arc::clone(kek));
     let models =
         afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport));

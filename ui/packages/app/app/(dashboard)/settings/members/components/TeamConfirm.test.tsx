@@ -17,7 +17,7 @@ import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { CONFIRM_KIND, TeamConfirm, type ConfirmTarget } from "./TeamConfirm";
 
-const BOB: MemberSummary = { user_id: "user_bob", display_name: "Bob", email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: 1 };
+const BOB: MemberSummary = { user_id: "user_bob", display_name: "Bob", email: "bob@example.com", role: ACCOUNT_ROLE.member, joined_at: "1970-01-01T00:00:00.001Z" };
 const REMOVE_BOB: ConfirmTarget = { kind: CONFIRM_KIND.remove, member: BOB };
 
 function view(target: ConfirmTarget) {

@@ -83,7 +83,7 @@ describe("CreateApiKeyDialog component", () => {
   it("happy path: reveals the raw key exactly once, then discards it on close", async () => {
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
-      data: { id: "k", key_name: "ci-runner", key: "agt_tdeadbeef", created_at: 1 },
+      data: { id: "k", key_name: "ci-runner", key: "agt_tdeadbeef", created_at: "1970-01-01T00:00:00.001Z" },
     });
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
@@ -123,7 +123,7 @@ describe("CreateApiKeyDialog component", () => {
   async function reachReveal(user: ReturnType<typeof userEvent.setup>) {
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
-      data: { id: "k", key_name: "ci-runner", key: "agt_tdeadbeef", created_at: 1 },
+      data: { id: "k", key_name: "ci-runner", key: "agt_tdeadbeef", created_at: "1970-01-01T00:00:00.001Z" },
     });
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
     await user.click(submitButton());

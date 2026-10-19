@@ -10,7 +10,6 @@
 //! meter, never off a return value, and a production caller that wanted them
 //! here would be measuring the wrong seam.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
 use crate::error::Result;
@@ -41,9 +40,8 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         held: &[Uuid7],
-        now: UnixMillis,
     ) -> (Result<Option<Acquired>>, PollMeasurement) {
-        let (selected, cost) = self.select_recording(runner_id, held, now).await;
+        let (selected, cost) = self.select_recording(runner_id, held).await;
         let measured = PollMeasurement {
             candidates_scanned: cost.candidates_scanned,
             database_roundtrips: cost.database_roundtrips,

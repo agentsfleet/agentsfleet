@@ -1,9 +1,11 @@
+import { nanosSchema } from "./nanos";
 // Native setup is validated by the daemon; browser reads are parsed independently.
 
 import { z } from "zod";
+import { Instant } from "./decode";
 
-export const DRAFT_STATE = {editing: "editing", saving: "saving", closed: "closed"} as const;
-export const MESSAGE_ROLE = {user: "user", assistant: "assistant"} as const;
+import { DRAFT_STATE, MESSAGE_ROLE } from "./draft-vocabulary";
+export { DRAFT_STATE, MESSAGE_ROLE } from "./draft-vocabulary";
 export const MESSAGE_STATE = {
   queued: "queued", running: "running", completed: "completed", cancelled: "cancelled",
   failed: "failed", timedOut: "timed_out",
@@ -20,6 +22,7 @@ export const PAGE_LIMIT = 25;
 export const LIST_PAGE_MAX = 100;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
 const decimal = z.string().regex(DECIMAL);
+const summaryRevision = z.number().int().positive().safe().nullable();
 const encoder = new TextEncoder();
 export const MessageInputSchema = z.string().min(1).refine((text) => encoder.encode(text).byteLength <= MESSAGE_MAX_BYTES);
 const record = z.record(z.string(), z.unknown());
@@ -41,7 +44,7 @@ export const ReviewSchema = z.object({
     source_revision: z.string().optional(), target_setup_revision: decimal.optional(),
   }),
   requirements: record, readiness: z.array(CheckSchema), review_digest: z.string(),
-  policy_semantics: z.string(), observed_at: z.number().int(),
+  policy_semantics: z.string(), observed_at: Instant,
 });
 export const AcceptedSchema = z.object({status: z.literal("accepted"), sequence: decimal, replayed: z.boolean()});
 export const CancellationSchema = z.object({cancelled_through: decimal,
@@ -55,7 +58,7 @@ export const DraftSchema = z.object({
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
 export const MessageSchema = z.object({
   sequence: decimal, operation_id: z.uuidv7(), role: z.enum(MESSAGE_ROLE), state: z.enum(MESSAGE_STATE),
-  text: z.string().optional(), created_at: z.number().int(), candidate_id: z.uuidv7().optional(),
+  text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
   failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string()}).optional(),
 });
 export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_LIMIT), next_cursor: z.string().nullable()});
@@ -82,11 +85,12 @@ export const ModelsSchema = z.object({items: z.array(z.object({
   ref: z.string(), label: z.string(), provider: z.string(), model: z.string(),
   context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive().optional(),
   eligibility: z.object({authoring: z.boolean(), runtime: z.boolean()}),
-  pricing: z.object({input_nanos_per_million: decimal, output_nanos_per_million: decimal, runtime_nanos_per_second: decimal}),
+  pricing: z.object({input_nanos_per_million: nanosSchema, output_nanos_per_million: nanosSchema, runtime_nanos_per_second: nanosSchema}),
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),
-  linked_fleet_id: z.uuidv7().nullable().default(null), updated_at: z.number().int(), expires_at: z.number().int().nullable().default(null),
+  linked_fleet_id: z.uuidv7().nullable().default(null), updated_at: Instant, expires_at: Instant.nullable().default(null),
+  candidate_revision: summaryRevision, setup_revision: summaryRevision, publication_revision: summaryRevision,
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 
 export type Definition = z.infer<typeof DefinitionSchema>;

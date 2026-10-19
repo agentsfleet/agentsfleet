@@ -50,8 +50,8 @@ impl SortOrder for ApiKeySort {
         match self {
             Self::CreatedAscending => "created_at ASC, id ASC",
             Self::CreatedDescending => "created_at DESC, id DESC",
-            Self::NameAscending => "key_name ASC, id ASC",
-            Self::NameDescending => "key_name DESC, id DESC",
+            Self::NameAscending => "name ASC, id ASC",
+            Self::NameDescending => "name DESC, id DESC",
         }
     }
 
@@ -115,7 +115,7 @@ mod tests {
         }
         for sort in [ApiKeySort::NameAscending, ApiKeySort::NameDescending] {
             assert_eq!(sort.boundary(), BoundaryKind::Text);
-            assert!(sort.order_by().starts_with("key_name"));
+            assert!(sort.order_by().starts_with("name "));
         }
     }
 

@@ -53,8 +53,6 @@ impl Harness<'_, '_> {
                 content: content.into(),
                 token_count: usage.total(),
                 wall_seconds: shared.started.elapsed().as_secs(),
-                memory_peak_bytes: 0,
-                cpu_throttled_ms: 0,
                 input_tokens: usage.input,
                 cached_input_tokens: usage.cached_input,
                 output_tokens: usage.output,

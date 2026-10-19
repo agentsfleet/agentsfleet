@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # 02_apply.sh - The guarded write.
 #
-# Catalogue rows are billing rates, so this mirrors the Redis teardown's
-# approval shape rather than the local Makefile target's: the ALLOW_* variable
-# is checked again here (the gate already checked it — a second check means the
-# step cannot be run directly without it either), and the operator must type the
-# environment name before anything is written.
+# The approval variable is checked here as well as at the gate so invoking
+# this step directly cannot bypass it. The operator types the environment.
 
 set -euo pipefail
 
@@ -17,8 +14,7 @@ source "${SCRIPT_DIR}/lib.sh"
 
 playbooks_require_vault_read_approval
 playbooks_require_op_auth
-playbooks_require_tool node
-playbooks_require_tool psql
+playbooks_require_tool bun
 
 echo ""
 echo "== model-catalogue Section 2: apply =="
@@ -40,7 +36,7 @@ fi
 echo "================================================"
 echo "TARGET: $env_label"
 echo "================================================"
-echo "⚠️  This writes BILLING RATES to core.model_library in $env_label."
+echo "⚠️  This replaces identities and billing prices in model.platform_models and model.platform_model_prices in $env_label."
 echo ""
 echo "To proceed, type the environment name: $env_label"
 read -r confirmation
@@ -58,7 +54,7 @@ catalogue_export_database_url
 root="$(catalogue_repo_root)"
 cd "$root"
 
-node "$CATALOGUE_SEED_SCRIPT" --apply
+bun "$CATALOGUE_SEED_SCRIPT" --apply
 
 echo ""
 echo "✅ catalogue applied to env: $env_label"

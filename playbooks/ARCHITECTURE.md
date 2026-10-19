@@ -23,7 +23,7 @@ version 6 network (6PN). The API apps define neither `[http_service]` nor
 ## Health behavior
 
 - `/healthz` proves the process can answer HTTP.
-- `/readyz` proves PostgreSQL and Redis are reachable.
+- `/readyz` proves PostgreSQL and the Dragonfly cluster are reachable.
 - Fly checks `/readyz` over the private network.
 - Continuous Integration (CI) checks both endpoints through the public
   Cloudflare route.
@@ -37,7 +37,7 @@ All API and connector configs use an always-restart rule.
 - Cloudflare Tunnel is the only supported public path to `agentsfleetd`.
 - `agentsfleet-runner` runs on a separate host and calls the public API over
   HTTPS with a runner token.
-- A runner has no PostgreSQL or Redis credential and does not join datastore
+- A runner has no PostgreSQL or Dragonfly credential and does not join datastore
   allowlists.
 - A hostname in a playbook is target state. Only the verification steps prove
   that its DNS and route are live.

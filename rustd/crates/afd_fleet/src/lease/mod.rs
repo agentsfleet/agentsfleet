@@ -1,8 +1,8 @@
 //! Lease issue: the claim, the gates, the money, and the row.
 //!
 //! The `lease` verb performs the pre-execution control-plane work and hands a
-//! self-contained `ExecutionPolicy` to the runner. Split by concern the way
-//! [`crate::runner`] is: [`affinity`] is the atomic claim and the fence it
+//! self-contained `ExecutionPolicy` to the runner. Split by concern:
+//! [`affinity`] is the atomic claim and the fence it
 //! mints — the only place a [`affinity::Fence`] comes from — and the modules
 //! beside it add the gates and the row.
 //!
@@ -16,6 +16,7 @@ pub mod admit;
 pub mod affinity;
 mod answer;
 pub mod assign;
+pub mod billing_sweep;
 pub mod bracket;
 mod claim;
 pub mod commit;
@@ -32,6 +33,7 @@ mod mark;
 pub mod memory;
 pub mod message;
 pub mod mint;
+mod money;
 pub mod obligation;
 pub mod pull;
 pub mod reclaim;
@@ -47,6 +49,7 @@ pub mod store;
 mod test_dead;
 mod tool_detail;
 mod tool_trace;
+pub mod usage;
 pub mod verdict;
 pub mod write_fence;
 

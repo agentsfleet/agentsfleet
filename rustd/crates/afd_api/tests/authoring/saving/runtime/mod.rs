@@ -120,10 +120,11 @@ impl Saved {
     async fn seed_event_and_grant(&self, grant: &Uuid7) {
         let mut connection = self.case.base.db.acquire().await.expect("a connection");
         sqlx::query(
-            "INSERT INTO core.fleet_events (fleet_id, workspace_id, event_id, actor, event_type, \
-             status, request_json, response_text, tokens, wall_ms, created_at, updated_at) \
+            "INSERT INTO fleet.events (fleet_id, workspace_id, event_id, actor, event_type, \
+             status, request_json, response_text, token_count, wall_ms, created_at, updated_at) \
              VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', 'completed', \
-             '{\"prompt\":\"ship\"}', 'done', 7, 12, 10, 11)",
+             '{\"prompt\":\"ship\"}', 'done', 7, 12, \
+             '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.011Z')",
         )
         .bind(self.fleet.as_str())
         .bind(self.case.base.workspace.as_str())
@@ -132,9 +133,12 @@ impl Saved {
         .await
         .expect("the completed event seeds");
         sqlx::query(
-            "INSERT INTO core.integration_grants \
-             (id, fleet_id, service, status, requested_reason, approved_at, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'github', 'approved', 'fixture', 10, 9)",
+            "INSERT INTO connector.integration_grants \
+             (id, fleet_id, service, status, requested_reason, approved_at, created_at, \
+              updated_at) \
+             VALUES ($1::uuid, $2::uuid, 'github', 'approved', 'fixture', \
+             '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.009Z', \
+             '1970-01-01T00:00:00.010Z')",
         )
         .bind(grant.as_str())
         .bind(self.fleet.as_str())

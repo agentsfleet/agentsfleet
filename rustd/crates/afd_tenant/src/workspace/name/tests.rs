@@ -9,7 +9,10 @@
 )]
 use afd_crypto::entropy::Entropy;
 
-use super::{Chosen, MAX_NAME_CODEPOINTS, SEPARATOR, SUFFIX_ALPHABET, SUFFIX_LEN, generate};
+use super::{
+    Chosen, FALLBACK_WORD, MAX_NAME_CODEPOINTS, SEPARATOR, SUFFIX_ALPHABET, SUFFIX_LEN, generate,
+    pick,
+};
 use crate::error;
 
 #[test]
@@ -162,4 +165,14 @@ fn two_names_in_a_row_differ() {
         first, second,
         "a generator that repeats turns every create after the first into a retry"
     );
+}
+
+/// A word list that comes up empty — a future petname bump — still names the
+/// workspace rather than dividing by zero on the signup path; a populated list
+/// wraps the draw onto it.
+#[test]
+fn an_empty_word_list_falls_back_and_a_full_one_wraps_the_draw() {
+    assert_eq!(pick(&[], 7), FALLBACK_WORD);
+    assert_eq!(pick(&["amber", "brisk"], 3), "brisk");
+    assert_eq!(pick(&["amber", "brisk"], u32::MAX - 1), "amber");
 }

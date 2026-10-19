@@ -8,6 +8,7 @@
 pub mod activity;
 pub mod fleet;
 pub mod lease;
+pub mod meter;
 pub mod renew;
 pub mod report;
 pub mod session;
@@ -15,6 +16,6 @@ pub mod standing;
 pub mod tool_detail;
 
 pub use afd_state::sql::{
-    ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING, FLEET_STATUS_ACTIVE,
-    LAST_SEEN_NEVER, LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
+    FLEET_STATUS_ACTIVE, LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
+    RUNNER_STATUS_ACTIVE, RUNNER_STATUS_DRAINED, RUNNER_STATUS_DRAINING,
 };

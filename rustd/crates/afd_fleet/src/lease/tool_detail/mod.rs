@@ -14,12 +14,12 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::tool_detail::{
     DETAIL_EVENT_MAX_BYTES, DetailRejection, RawToolCallRecord, ToolCallRecord,
     ToolCallRecordsRequest, ToolCallRecordsStored,
 };
+use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::pull::Plane;
@@ -141,7 +141,7 @@ impl Plane {
         runner_id: &Uuid7,
         lease_id: &str,
         request: &ToolCallRecordsRequest<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<ToolCallRecordsStored> {
         let (candidates, mut skipped) = narrow_all(&request.calls);
         let presented = request.fencing_token;

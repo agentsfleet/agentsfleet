@@ -39,10 +39,6 @@ fn database_context_keeps_the_driver_cause() {
         false,
     );
     assert!(query.source().is_some());
-
-    let row = super::row("event_id")(sqlx::Error::Protocol("fixture projection row".into()));
-    assert_error(&row, error_code::INTERNAL_DB_QUERY, "Database error", false);
-    assert!(row.source().is_some());
 }
 
 fn assert_error(

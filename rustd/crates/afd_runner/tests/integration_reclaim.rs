@@ -6,13 +6,19 @@
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 
+use jiff::Timestamp;
+
 use crate::support::{RING_QUIET_FOR, connect_redis, heard_ring, listen_for_rings};
+
+/// The fixture fleets' stamp: just after the cursor's starting instant, so a
+/// pass's first page reaches them ahead of the lane's other fleets.
+const EARLIEST: Timestamp = Timestamp::constant(0, 1_000_000);
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
@@ -85,24 +91,20 @@ impl Fixture {
 
     async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(
-            "WITH tenant AS ( \
-               INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'Reclaim sweep', 1, 1) \
-               RETURNING id \
-             ) \
-             INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-             SELECT $2::uuid, id, 'reclaim', 'test', 1 FROM tenant",
-        )
-        .bind(&self.tenant)
-        .bind(&self.workspace)
-        .execute(&mut *connection)
-        .await
-        .expect("the active fleet rows seed");
+        TenantSeed::new(&self.tenant)
+            .name("Reclaim sweep")
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
+            .name("reclaim")
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seeds");
         for (fleet, name) in [(&self.deliverable, "deliverable"), (&self.empty, "empty")] {
             FleetSeed::new(fleet, &self.workspace, &self.tenant, FLEET_STATUS_ACTIVE)
                 .name(name)
-                .at(1)
+                .at(EARLIEST)
                 .insert(&mut *connection)
                 .await
                 .expect("the active fleet rows seed");
@@ -144,7 +146,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

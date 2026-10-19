@@ -4,7 +4,6 @@
 
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::{Doorbell, FleetStreams, Partition, ReadyIndex, ReadyPrefix, SubscriptionHub};
 use afd_fleet::lease::assign::measured::PollMeasurement;
@@ -58,7 +57,7 @@ pub(super) async fn scene(name: &str) -> Scene {
     let fixtures = Fixtures::create_with_queue().await;
     // Unique per test and per run, so a lane that kept its state cannot hand
     // one run another's marks or rings.
-    let run = afd_core::clock::now().as_millis();
+    let run = afd_core::clock::now().as_millisecond();
     let prefix = ReadyPrefix::private(&format!("wake-{name}-{}-{run}", std::process::id()));
     let hub = SubscriptionHub::start(queue::config())
         .await
@@ -201,14 +200,7 @@ impl Scene {
 
     /// One poll by `runner`, and what it cost.
     pub(super) async fn poll(&self, runner: &Uuid7) -> (Option<Acquired>, PollMeasurement) {
-        let (polled, cost) = self
-            .leases
-            .select_measured(
-                runner,
-                &[],
-                UnixMillis::from_millis(self.fixtures.enrolled_at()),
-            )
-            .await;
+        let (polled, cost) = self.leases.select_measured(runner, &[]).await;
         (polled.expect("the poll must not fault"), cost)
     }
 

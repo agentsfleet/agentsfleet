@@ -4,8 +4,13 @@ use super::fixture::{Fixture, now};
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;
 use afd_crypto::{entropy::Entropy, secret::Kek};
+use afd_db::test_util::{ModelSeed, TenantSeed, UserSeed, WorkspaceSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
+
+/// The isolated model routes through the Responses API, as an `openai` model does.
+const RESPONSES_INFERENCE: &str =
+    r#"{"api":"responses","base_url":"https://models.example.com/v1","max_output_tokens":8192}"#;
 
 /// The fixture model's prices: a dollar per million input tokens, a tenth of
 /// that cached, two dollars per million output tokens.
@@ -15,32 +20,43 @@ const CACHED_INPUT_NANOS_PER_MTOK: i64 = NANOS_PER_USD / 10;
 /// See [`INPUT_NANOS_PER_MTOK`].
 const OUTPUT_NANOS_PER_MTOK: i64 = 2 * NANOS_PER_USD;
 
-const PEOPLE: &str = "\
-WITH tenants AS (
- INSERT INTO core.tenants(id,name,created_at,updated_at)
- VALUES ($1::uuid,'authoring-owner',$6,$6),($2::uuid,'authoring-member',$6,$6)
-), users AS (
- INSERT INTO core.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
- VALUES ($3::uuid,$1::uuid,$3,$3,$6,$6),($4::uuid,$2::uuid,$4,$4,$6,$6)
- RETURNING id
-), workspace AS (
- INSERT INTO core.workspaces(id,tenant_id,created_at) VALUES ($5::uuid,$1::uuid,$6)
-)
-INSERT INTO core.memberships(id,tenant_id,user_id,role,created_at)
-SELECT $7::uuid,$1::uuid,id,'member',$6 FROM users WHERE id=$4::uuid";
+/// The member joining the owner's account.
+const MEMBERSHIP: &str = "\
+INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
+VALUES ($1::uuid,$2::uuid,$3::uuid,'member',now())";
 
 pub(super) async fn people(f: &Fixture) {
-    sqlx::query(PEOPLE)
-        .bind(f.tenant.as_str())
-        .bind(f.member_tenant.as_str())
-        .bind(f.owner.as_str())
-        .bind(f.member.as_str())
-        .bind(f.workspace.as_str())
-        .bind(now().as_millis())
-        .bind(super::mint().as_str())
-        .execute(&mut *f.connection().await)
+    let mut connection = f.connection().await;
+    for (tenant, name, person) in [
+        (&f.tenant, "authoring-owner", &f.owner),
+        (&f.member_tenant, "authoring-member", &f.member),
+    ] {
+        TenantSeed::new(tenant.as_str())
+            .name(name)
+            .insert(&mut *connection)
+            .await
+            .expect("seed an isolated account");
+        UserSeed::new(
+            person.as_str(),
+            tenant.as_str(),
+            person.as_str(),
+            person.as_str(),
+        )
+        .insert(&mut *connection)
         .await
-        .expect("seed isolated people and membership");
+        .expect("seed its person");
+    }
+    WorkspaceSeed::new(f.workspace.as_str(), f.tenant.as_str())
+        .insert(&mut *connection)
+        .await
+        .expect("seed the owner's workspace");
+    sqlx::query(MEMBERSHIP)
+        .bind(super::mint().as_str())
+        .bind(f.tenant.as_str())
+        .bind(f.member.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("seed the membership");
 }
 
 pub(super) async fn credential(f: &Fixture) {
@@ -64,18 +80,25 @@ pub(super) async fn credential(f: &Fixture) {
 
 pub(super) async fn model(f: &Fixture, catalogue: &Uuid7, entry: &Uuid7) {
     let model = format!("workspace-model-{catalogue}");
-    sqlx::query("INSERT INTO core.model_library(id,model_id,provider,context_cap_tokens, \
-        input_nanos_per_mtok,cached_input_nanos_per_mtok,output_nanos_per_mtok,created_at,updated_at,inference) \
-        VALUES($1::uuid,$2,'openai',128000,$4,$5,$6,$3,$3,$7)")
-        .bind(catalogue.as_str()).bind(&model).bind(now().as_millis())
-        .bind(INPUT_NANOS_PER_MTOK).bind(CACHED_INPUT_NANOS_PER_MTOK).bind(OUTPUT_NANOS_PER_MTOK)
-        .bind(sqlx::types::Json(afd_wire::inference::ModelInference {
-            api: afd_wire::inference::InferenceApi::Responses,
-            base_url: "https://models.example.com/v1".into(), dialect: None, max_output_tokens: 8192,
-        }))
-        .execute(&mut *f.connection().await).await.expect("seed isolated priced model");
-    sqlx::query("INSERT INTO core.tenant_model_entries(id,tenant_id,model_id,secret_ref,created_at,updated_at) \
-        VALUES($1::uuid,$2::uuid,$3,'authoring-model',$4,$4)")
-        .bind(entry.as_str()).bind(f.tenant.as_str()).bind(&model).bind(now().as_millis())
-        .execute(&mut *f.connection().await).await.expect("register workspace owner's model");
+    ModelSeed::new(catalogue.as_str(), "openai", &model, 128_000)
+        .rates(
+            INPUT_NANOS_PER_MTOK,
+            CACHED_INPUT_NANOS_PER_MTOK,
+            OUTPUT_NANOS_PER_MTOK,
+        )
+        .verified_at(now())
+        .inference(RESPONSES_INFERENCE)
+        .insert(&mut *f.connection().await)
+        .await
+        .expect("seed isolated priced model");
+    sqlx::query(
+        "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) \
+        VALUES($1::uuid,$2::uuid,$3,'authoring-model',now(),now())",
+    )
+    .bind(entry.as_str())
+    .bind(f.tenant.as_str())
+    .bind(&model)
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("register workspace owner's model");
 }

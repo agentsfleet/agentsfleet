@@ -128,7 +128,7 @@ closed_set! {
 closed_set! {
     /// Where a fleet stands in its life, as the census counts it.
     ///
-    /// The spellings are `core.fleets.status`'s, byte for byte, and the set
+    /// The spellings are `fleet.fleets.status`'s, byte for byte, and the set
     /// mirrors the lifecycle crate's own status enum — that crate depends on
     /// this one, so the two cannot share a type, and a test over there holds
     /// them equal member for member instead.

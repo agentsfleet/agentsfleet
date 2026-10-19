@@ -153,9 +153,7 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed(RESPONSE),
         tokens: 0,
-        input_tokens: 0,
-        cached_input_tokens: 0,
-        output_tokens: 0,
+        requests: afd_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: 0,
@@ -165,6 +163,6 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
             last_response: Cow::Borrowed(RESPONSE),
         },
         tool_calls: None,
-        held_until_ms: None,
+        held_until: None,
     }
 }

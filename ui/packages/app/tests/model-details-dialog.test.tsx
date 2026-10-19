@@ -26,14 +26,14 @@ const TWO_HOURS_MS = 2 * 60 * 60 * 1_000;
 function makeEntry(overrides: Partial<TenantModelEntry> = {}): TenantModelEntry {
   return {
     id: "mdl_1",
-    model_id: "gpt-4o",
+    model_id: "gpt-4o", display_name: null,
     secret_ref: "pioneer",
     provider: "openai",
     kind: "provider_key",
     base_url: "https://api.example.com/v1",
     has_key: true,
     active: true,
-    created_at: Date.now() - TWO_HOURS_MS,
+    created_at: new Date(Date.now() - TWO_HOURS_MS).toISOString(),
     ...overrides,
   };
 }
@@ -106,7 +106,7 @@ describe("ModelDetailsDialog", () => {
   it("test_time_invalid_timestamp_dash", () => {
     // A NaN created_at must degrade to "—" via Time's own guard — no thrown
     // RangeError tearing down the dialog subtree.
-    expect(() => renderDialog(makeEntry({ created_at: Number.NaN }))).not.toThrow();
+    expect(() => renderDialog(makeEntry({ created_at: "not-an-instant" }))).not.toThrow();
     expect(screen.getByText("—")).toBeTruthy();
   });
 });

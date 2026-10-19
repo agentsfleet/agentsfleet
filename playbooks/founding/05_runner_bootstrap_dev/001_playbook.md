@@ -23,14 +23,13 @@ non-root deploy user, install Tailscale, and join with:
 
 ```bash
 sudo tailscale up \
-  --auth-key "<one-time-key>" \
   --advertise-tags=tag:worker \
   --hostname "agentsfleet-dev-runner-ant" \
   --ssh
 ```
 
 Store these fields under
-`op://ZMB_CD_DEV/agentsfleet-dev-runner-ant`:
+`op://<VAULT_DEV>/agentsfleet-dev-runner-ant`:
 
 - `tailscale-hostname`
 - `deploy-user`
@@ -60,14 +59,9 @@ service.
 Follow `playbooks/operations/admin_bootstrap/001_playbook.md` with `ENV=dev`.
 The Human completes dashboard signup and provider-console actions.
 
-Register and sync every supported development provider in this order:
-
-1. `playbooks/operations/github_app_registration/001_playbook.md`
-2. `playbooks/operations/slack_app_registration/001_playbook.md`
-3. `playbooks/operations/zoho_app_registration/001_playbook.md`
-4. `playbooks/operations/jira_app_registration/001_playbook.md`
-5. `playbooks/operations/linear_app_registration/001_playbook.md`
-6. `playbooks/operations/qstash_registration/001_playbook.md`
+Follow the [clean-database priming index](../../README.md#prime-a-clean-database).
+It includes catalogue prices and inference settings, the platform model default, approval signing, all five provider applications, QStash, and SMTP.
+Set vault names from the target deployment environment before running its commands.
 
 Complete each registration and sync section now. Leave runner-dependent live
 acceptance open for step 06.
@@ -96,17 +90,9 @@ gh run watch "$DEV_DEPLOY_RUN_ID" \
 
 ## 3. Human: create the real runner token
 
-Open `https://app-dev.agentsfleet.net`, select **Add runner**, use the Tailscale
-hostname as the host identifier, and give the runner the `landlock_full`
-sandbox tier. Only now add the once-revealed token to the existing 1Password
-item:
-
-```bash
-op item edit \
-  "agentsfleet-dev-runner-ant" \
-  --vault ZMB_CD_DEV \
-  "runner-token[concealed]=<agt_r token>"
-```
+Open `https://app-dev.agentsfleet.net` and select **Avatar → Platform → Runners → Add runner**.
+Use the Tailscale hostname as **Host identifier**, and select **Landlock** under **Isolation**.
+Save the once-revealed `agt_r` token directly in the 1Password application, under that host's concealed `runner-token` field.
 
 No placeholder token is stored. If the one-time value is lost, revoke the
 runner and create it again.

@@ -28,14 +28,14 @@ const TEST_RECORDED_AT_MS = 1_000_000 as const;
 
 const WS_A: WorkspacesValue = {
   current_workspace_id: "ws-1",
-  items: [{ workspace_id: "ws-1", name: "Alpha", created_at: TEST_RECORDED_AT_MS }],
+  items: [{ workspace_id: "ws-1", name: "Alpha", created_at: new Date(TEST_RECORDED_AT_MS).toISOString() }],
 };
 
 const WS_B: WorkspacesValue = {
   current_workspace_id: "ws-2",
   items: [
-    { workspace_id: "ws-1", name: "Alpha", created_at: TEST_RECORDED_AT_MS },
-    { workspace_id: "ws-2", name: "Beta", created_at: 2_000_000 },
+    { workspace_id: "ws-1", name: "Alpha", created_at: new Date(TEST_RECORDED_AT_MS).toISOString() },
+    { workspace_id: "ws-2", name: "Beta", created_at: "1970-01-01T00:33:20Z" },
   ],
 };
 

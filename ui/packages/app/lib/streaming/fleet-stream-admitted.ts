@@ -1,7 +1,8 @@
+import { instantMs } from "@/lib/api/decode";
 import type { LiveFrame } from "@/lib/api/events";
 import type { FRAME_KIND } from "@/lib/api/events-types";
 import { outcomeForStatus, roleFor } from "@/lib/events/event-summary";
-import { AGENTSFLEET_EVENT_STATUS, figure, text, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_EVENT_STATUS, text, type FleetEvent } from "./fleet-stream-row";
 
 // How a message waiting for a runner reaches the timeline, beside
 // `fleet-stream-frames.ts`: `event_admitted` opens a waiting row the moment the
@@ -60,7 +61,7 @@ export function startWaiting(event: FleetEvent): FleetEvent {
 // ── internals ────────────────────────────────────────────────────────────
 
 function waitingRow(frame: AdmittedFrame, message: string): FleetEvent {
-  const createdAt = figure(frame.created_at);
+  const createdAt = instantMs(frame.created_at);
   return {
     id: frame.event_id,
     role: roleFor(frame.actor),

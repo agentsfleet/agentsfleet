@@ -11,11 +11,12 @@
 use std::sync::Arc;
 
 use afd_auth::verifier::VerifyError;
-use afd_core::clock::{Clock, FixedClock, UnixMillis};
+use afd_core::clock::{Clock, FixedClock};
 use afd_identity::jwks::key_set::{MAX_MODULUS_BYTES, MIN_MODULUS_BYTES};
 use afd_identity::{JwkKeySet, JwksVerifier, StaticKeySet, VerifierConfig};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use jiff::Timestamp;
 
 const TEST_RSA_N: &str = "7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ";
 const TEST_KID: &str = "test-kid-static";
@@ -33,7 +34,7 @@ fn document(keys: &[String]) -> String {
 }
 
 fn clock() -> Arc<dyn Clock> {
-    Arc::new(FixedClock::at(UnixMillis::from_millis(1_704_067_400_000)))
+    Arc::new(FixedClock::at(Timestamp::constant(1_704_067_400, 0)))
 }
 
 fn block_on<F: Future>(future: F) -> F::Output {

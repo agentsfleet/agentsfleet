@@ -155,11 +155,11 @@ if (!isLive) {
       });
 
       it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
-        // End-to-end: the real server aggregates these from core.fleet_events
-        // and fleet_execution_telemetry, and the CLI surfaces them in the list
-        // row that backs `agentsfleet status`. A freshly-installed fleet may
-        // have zero of each; decimal strings preserve counters beyond the
-        // safe integer limit. The fixture refuses missing or malformed values.
+        // End-to-end: the real server reads these from fleet.activity_counters,
+        // and the CLI surfaces them in the list row that backs
+        // `agentsfleet status`. A freshly-installed fleet may have zero of
+        // each; decimal strings preserve counters beyond the safe integer
+        // limit. The fixture refuses missing or malformed values.
         const payload = await expectStatus(env, fleetId, ["active", "starting", "running"]);
         assert.equal(
           typeof payload.events_processed,

@@ -6,13 +6,13 @@
 //! The lease-guarded writes are the exception, because the lease already
 //! binds the fleet to its workspace; they live in `guarded`.
 
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{
     Change, DesiredStatus, EditRequest, FireTarget, Fired, NewSchedule, Reconciled, Refused,
     Result as CronResult, Schedule,
 };
 use afd_db::Precondition;
+use jiff::Timestamp;
 
 use super::{FleetSchedules, SchedulePlane};
 
@@ -23,10 +23,10 @@ const EVENT_RETIRED: &str = "schedule_once_retired";
 const EVENT_RETIRE_HELD: &str = "schedule_once_retire_held";
 
 impl FleetSchedules for SchedulePlane {
-    async fn edit(&self, request: EditRequest<'_>) -> CronResult<Reconciled> {
-        let token = self.token(request.now)?;
+    async fn edit(&self, request: EditRequest<'_>, now: Timestamp) -> CronResult<Reconciled> {
+        let token = self.token(now)?;
         let held = self.store().edit(request, &token).await?;
-        self.service.reconcile(&held, &token, request.now).await
+        self.service.reconcile(&held, &token).await
     }
 
     async fn list(&self, workspace: &Uuid7, fleet: &Uuid7) -> CronResult<Vec<Schedule>> {
@@ -52,12 +52,12 @@ impl FleetSchedules for SchedulePlane {
         &self,
         workspace: &Uuid7,
         new: NewSchedule<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> CronResult<Result<Reconciled, Refused>> {
         let token = self.token(now)?;
         match self.store().create(workspace, new, &token, now).await? {
             Err(refused) => Ok(Err(refused)),
-            Ok(created) => Ok(Ok(self.service.reconcile(&created, &token, now).await?)),
+            Ok(created) => Ok(Ok(self.service.reconcile(&created, &token).await?)),
         }
     }
 
@@ -67,7 +67,7 @@ impl FleetSchedules for SchedulePlane {
         fleet: &Uuid7,
         schedule: &Uuid7,
         change: Change<'_>,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> CronResult<Option<Reconciled>> {
         if !self.store().holds_fleet(workspace, fleet).await? {
             return Ok(None);
@@ -75,19 +75,19 @@ impl FleetSchedules for SchedulePlane {
         let token = self.token(now)?;
         let Some(held) = self
             .store()
-            .claim_change(fleet, schedule, change, &token, now)
+            .claim_change(fleet, schedule, change, &token)
             .await?
         else {
             return Ok(None);
         };
-        Ok(Some(self.service.reconcile(&held, &token, now).await?))
+        Ok(Some(self.service.reconcile(&held, &token).await?))
     }
 
     fn create_guarded(
         &self,
         workspace: &Uuid7,
         new: NewSchedule<'_>,
-        now: UnixMillis,
+        now: Timestamp,
         guard: &dyn Precondition,
     ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send {
         self.create_under(workspace, new, now, guard)
@@ -98,7 +98,7 @@ impl FleetSchedules for SchedulePlane {
         fleet: &Uuid7,
         schedule: &Uuid7,
         change: Change<'_>,
-        now: UnixMillis,
+        now: Timestamp,
         guard: &dyn Precondition,
     ) -> impl Future<Output = CronResult<Result<Option<Reconciled>, Refused>>> + Send {
         self.change_under(fleet, schedule, change, now, guard)
@@ -109,20 +109,16 @@ impl FleetSchedules for SchedulePlane {
         workspace: &Uuid7,
         fleet: &Uuid7,
         schedule: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> CronResult<Option<Reconciled>> {
         if !self.store().holds_fleet(workspace, fleet).await? {
             return Ok(None);
         }
         let token = self.token(now)?;
-        let Some(held) = self
-            .store()
-            .claim_current(fleet, schedule, &token, now)
-            .await?
-        else {
+        let Some(held) = self.store().claim_current(fleet, schedule, &token).await? else {
             return Ok(None);
         };
-        Ok(Some(self.service.reconcile(&held, &token, now).await?))
+        Ok(Some(self.service.reconcile(&held, &token).await?))
     }
 
     fn fire_target(
@@ -137,7 +133,7 @@ impl FleetSchedules for SchedulePlane {
         schedule: &Uuid7,
         target: &FireTarget,
         message_id: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> CronResult<Fired> {
         let fired = self.fire.deliver(schedule, target, message_id).await?;
         if target.once {
@@ -152,7 +148,7 @@ impl FleetSchedules for SchedulePlane {
         workspace: &Uuid7,
         fleet: &Uuid7,
         schedule: &Uuid7,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> CronResult<()> {
         let retiring = Change {
             desired_status: Some(DesiredStatus::Deleting),

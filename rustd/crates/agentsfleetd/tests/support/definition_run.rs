@@ -32,7 +32,7 @@ const SETTLE_POLL: Duration = Duration::from_millis(250);
 const SETTLED: [&str; 3] = ["processed", "fleet_error", "gate_blocked"];
 
 /// A settled event's answer, NULL when no run produced one.
-const ANSWER: &str = "SELECT response_text FROM core.fleet_events \
+const ANSWER: &str = "SELECT response_text FROM fleet.events \
                       WHERE fleet_id = $1::uuid AND event_id = $2";
 
 /// How one run's event ended.

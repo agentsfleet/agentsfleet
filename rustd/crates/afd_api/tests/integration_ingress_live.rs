@@ -6,7 +6,7 @@
 //! `impl WebhookIngress for Ingress` and `afd_ingress`'s own resolution read no
 //! covered lines: the delegating adapter and the SQL behind it never run.
 //!
-//! These do run them. The row comes out of `core.fleets`, the secret out of
+//! These do run them. The row comes out of `fleet.revisions`, the secret out of
 //! `vault.secrets`, and the claim lands in a live Dragonfly — so a delivery here
 //! crosses the same three stores in the same order the daemon crosses them.
 //!
@@ -85,7 +85,7 @@ async fn deliver(
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores() {
     // The whole order in one pass, and the only test that proves the stores
-    // answer at all: the binding is read from `core.fleets`' stored document,
+    // answer at all: the binding is read from the head `fleet.revisions` document,
     // the secret is opened out of `vault.secrets`, the tag verifies against it,
     // and the claim reaches Dragonfly. A stub can answer each of those; none of
     // them can be WRONG under a stub, which is what this is here to catch.
@@ -231,6 +231,52 @@ async fn a_workspace_holding_no_credential_refuses_before_it_verifies() {
         Some(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str()),
         "a fleet whose credential is absent is unconfigured, never a bad \
          signature — the two send an operator to different places: {document}"
+    );
+
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_svix_delivery_resolves_the_first_trigger_out_of_the_live_row() {
+    // The Svix route names no provider, so the live read takes the document's
+    // first webhook trigger. It resolves here — the refusal is the credential's
+    // (an HMAC bag is not a `whsec_` secret), not the fleet's — and a fleet with
+    // no row is the not-found the route answers before any secret is read.
+    let fixture = Fixture::create().await;
+    fixture.seed(Runnable::Active, Secret::Stored).await;
+    let router = fixture.router();
+    let svix = |fleet: &afd_core::id::Uuid7| format!("/v1/webhooks/svix/{fleet}");
+    let headers = signed::svix_headers(signed::SVIX_DELIVERY, "1700000000", "v1,AAAA");
+
+    let resolved = send_with_headers(
+        &router,
+        Method::POST,
+        &svix(&fixture.fleet),
+        None,
+        "{}",
+        &headers,
+    )
+    .await;
+    let status = resolved.status();
+    let document = json_body(resolved).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str()),
+        "{document}"
+    );
+
+    let unknown = afd_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("a minted id");
+    let missing =
+        send_with_headers(&router, Method::POST, &svix(&unknown), None, "{}", &headers).await;
+    let status = missing.status();
+    let document = json_body(missing).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{document}");
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::WEBHOOK_FLEET_NOT_FOUND.as_str()),
+        "{document}"
     );
 
     fixture.cleanup().await;

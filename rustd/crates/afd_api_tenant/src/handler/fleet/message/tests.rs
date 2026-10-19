@@ -18,21 +18,24 @@ use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT}
 use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, requested_limit};
 use crate::handler::paging::store_ceiling;
 
-/// The millisecond the fixture thread's oldest row was stamped.
-const FIRST_MS: i64 = 1_700_000_000_000;
+/// When the fixture thread's oldest row was stamped.
+const FIRST_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
 
-/// A stream entry id, spelled the way Dragonfly mints one.
+/// The instant `ordinal` milliseconds after the oldest row.
+fn at(ordinal: i64) -> jiff::Timestamp {
+    FIRST_AT
+        .checked_add(jiff::SignedDuration::from_millis(ordinal))
+        .expect("a fixture instant is in range")
+}
+
+/// An event id, spelled the way the admission ledger mints one.
 fn entry_id(ordinal: i64) -> String {
-    format!("{}-0", FIRST_MS + ordinal)
+    format!("0199a0b0-0000-7000-8000-{ordinal:012x}")
 }
 
 /// One row whose answer costs `response_bytes` before escaping.
 fn row(ordinal: i64, response_bytes: usize) -> EventDetailRow {
-    EventDetailRow::fixture(
-        &entry_id(ordinal),
-        FIRST_MS + ordinal,
-        "a".repeat(response_bytes),
-    )
+    EventDetailRow::fixture(&entry_id(ordinal), at(ordinal), "a".repeat(response_bytes))
 }
 
 /// A thread of `count` rows, each cheap enough that only the row cap can cut.
@@ -99,7 +102,7 @@ fn should_refuse_a_store_constant_wider_than_the_band_can_carry() {
 fn should_carry_a_cursor_this_walk_minted_back_whole() {
     assert_eq!(parse_cursor(None).unwrap(), None);
 
-    let issued = Cursor::after(FIRST_MS, &entry_id(7));
+    let issued = Cursor::after(FIRST_AT, &entry_id(7));
     let read = parse_cursor(Some(&issued.encode()))
         .unwrap()
         .expect("a cursor this walk minted decodes");
@@ -193,7 +196,7 @@ fn should_continue_from_the_last_row_served() {
         .next_cursor
         .expect("a page holding a row back hands back a continuation");
     let resume = Cursor::decode(&handed).expect("the page mints a cursor this walk reads");
-    assert_eq!(resume, Cursor::after(FIRST_MS + 1, &entry_id(1)));
+    assert_eq!(resume, Cursor::after(at(1), &entry_id(1)));
 }
 
 /// A page the BUDGET cut continues from the cut, not from the row cap.
@@ -209,7 +212,7 @@ fn should_continue_from_the_budget_cut() {
         .next_cursor
         .expect("a page the budget cut has more to serve");
     let resume = Cursor::decode(&handed).expect("the page mints a cursor this walk reads");
-    assert_eq!(resume, Cursor::after(FIRST_MS, &entry_id(0)));
+    assert_eq!(resume, Cursor::after(FIRST_AT, &entry_id(0)));
 }
 
 /// A stored trace of `calls` calls, each with both output edges at their cap.

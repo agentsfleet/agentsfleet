@@ -86,7 +86,7 @@ impl Dragonfly {
             match tokio::time::timeout(config.connect_timeout(), Self::connect_inner(config)).await
             {
                 Ok(result) => result,
-                Err(_elapsed) => Err(error::connect_timed_out(role, timeout_ms)),
+                Err(_elapsed) => Err(error::connect_timed_out(role, config.connect_timeout())),
             };
         let duration_ms = started.elapsed().as_millis();
         match result {
@@ -259,10 +259,10 @@ impl Dragonfly {
         context: &str,
         query: impl Future<Output = redis::RedisResult<Value>>,
     ) -> Result<T> {
-        let waited_ms = self.request_timeout.as_millis();
+        let waited = self.request_timeout;
         let value = tokio::time::timeout(self.request_timeout, query)
             .await
-            .map_err(|_elapsed| error::timed_out(name, waited_ms))?
+            .map_err(|_elapsed| error::timed_out(name, waited))?
             .and_then(Value::extract_error)
             // Two deadlines race on every command and either may win: this
             // one, and the driver's own `response_timeout`, which
@@ -275,7 +275,7 @@ impl Dragonfly {
             // for.
             .map_err(|source| {
                 if source.is_timeout() {
-                    error::timed_out(name, waited_ms)
+                    error::timed_out(name, waited)
                 } else {
                     error::classify(name, context, source)
                 }

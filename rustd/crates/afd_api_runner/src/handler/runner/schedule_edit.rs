@@ -66,14 +66,7 @@ pub(crate) async fn update<D: Services>(
         read_strict_body(&body).map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED))?;
     let schedule = schedule_id(&schedule_id_raw)?;
     let now = services.now();
-    let lease = standing(
-        &*services,
-        runner.id(),
-        &lease_id,
-        request.fencing_token,
-        now,
-    )
-    .await?;
+    let lease = standing(&*services, runner.id(), &lease_id, request.fencing_token).await?;
     checked_for(
         &lease,
         validate::Fields {
@@ -87,7 +80,7 @@ pub(crate) async fn update<D: Services>(
         Some(text) => Some(masked(&*services, &lease, text).await?),
         None => None,
     };
-    let guard = write_fence(runner.id(), &lease_id, request.fencing_token, now)?;
+    let guard = write_fence(runner.id(), &lease_id, request.fencing_token)?;
     let changed = services
         .schedules()
         .change_guarded(
@@ -105,7 +98,7 @@ pub(crate) async fn update<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
         .map_err(refused_for(&lease))?;
-    held_or(changed, StatusCode::OK)
+    held_or(changed, StatusCode::OK, services.now())
 }
 
 /// Retires a schedule the fleet made.
@@ -143,9 +136,9 @@ pub(crate) async fn remove<D: Services>(
     let schedule = schedule_id(&schedule_id_raw)?;
     let token = fence(query.as_deref())?;
     let now = services.now();
-    let lease = standing(&*services, runner.id(), &lease_id, token, now).await?;
+    let lease = standing(&*services, runner.id(), &lease_id, token).await?;
     fleet_owned(&*services, &lease, &schedule).await?;
-    let guard = write_fence(runner.id(), &lease_id, token, now)?;
+    let guard = write_fence(runner.id(), &lease_id, token)?;
     let removed = services
         .schedules()
         .change_guarded(
@@ -166,5 +159,5 @@ pub(crate) async fn remove<D: Services>(
     if matches!(removed, Some(Reconciled::Removed)) {
         log_written(&lease, &schedule, EVENT_DELETED);
     }
-    held_or(removed, StatusCode::OK)
+    held_or(removed, StatusCode::OK, services.now())
 }

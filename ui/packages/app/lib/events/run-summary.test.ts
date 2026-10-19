@@ -25,9 +25,9 @@ function row(over: Partial<EventRow> = {}): EventRow {
     failure_label: null,
     failure_detail: null,
     resumes_event_id: null,
-    cost_nanos: 40_000_000,
-    created_at: 1_700_000_000_000,
-    updated_at: 1_700_000_000_000,
+    cost_nanos: "40000000",
+    created_at: "2023-11-14T22:13:20Z",
+    updated_at: "2023-11-14T22:13:20Z",
     ...over,
   };
 }
@@ -51,7 +51,7 @@ function event(over: Partial<FleetEvent> = {}): FleetEvent {
     status: "processed",
     tokens: 1500,
     wallMs: 12_000,
-    costNanos: 40_000_000,
+    costNanos: "40000000",
     ...over,
   };
 }
@@ -103,9 +103,14 @@ describe("latestFigures", () => {
   it("skips the row the browser made: an optimistic steer", () => {
     const server = event({ id: "srv", createdAt: new Date(OLDER_AT) });
     const optimistic = event({ id: "optim-1", status: "optimistic", createdAt: new Date(OPTIMISTIC_AT) });
-    expect(latestFigures([server, optimistic])?.created_at).toBe(OLDER_AT);
+    expect(latestFigures([server, optimistic])?.created_at).toBe(new Date(OLDER_AT).toISOString());
     expect(latestFigures([optimistic])).toBeNull();
     expect(latestFigures([])).toBeNull();
+  });
+
+  it("spells an unreadable instant as no time on both paths, never throwing", () => {
+    expect(latestFigures([event({ createdAt: new Date(Number.NaN) })])?.created_at).toBe("");
+    expect(figuresOfRow(row({ created_at: "not-an-instant" })).created_at).toBe("");
   });
 
   it("a row with no figures yet reads as unknown, never as zero", () => {

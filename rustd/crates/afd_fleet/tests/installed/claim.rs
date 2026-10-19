@@ -1,4 +1,4 @@
-//! The selected Definition wins over divergent old projection columns.
+//! The selected Definition is the whole of what a claim installs.
 
 use super::{definition, id};
 use crate::{seed::seeded, support::Fixtures};
@@ -11,17 +11,6 @@ async fn native_instructions_and_model_survive_the_claim_without_markdown_parsin
     let held = seeded::<0>(&fixtures).await;
     let definition = definition();
     fixtures.native_definition(&held.fleet, &definition).await;
-    sqlx::query("UPDATE core.fleets SET config_json='{}'::jsonb WHERE id=$1::uuid")
-        .bind(&held.fleet)
-        .execute(
-            &mut *fixtures
-                .database
-                .acquire()
-                .await
-                .expect("projection connection"),
-        )
-        .await
-        .expect("diverge non-authoritative projection");
     let installed = fixtures
         .leases()
         .installed(&id(&held.fleet))
@@ -43,7 +32,7 @@ async fn stopped_and_missing_fleets_do_not_issue_work() {
     let fixtures = Fixtures::create_with_queue().await;
     let held = seeded::<0>(&fixtures).await;
     fixtures.native_definition(&held.fleet, &definition()).await;
-    sqlx::query("UPDATE core.fleets SET status='stopped' WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET status='stopped' WHERE id=$1::uuid")
         .bind(&held.fleet)
         .execute(&mut *fixtures.database.acquire().await.expect("connection"))
         .await

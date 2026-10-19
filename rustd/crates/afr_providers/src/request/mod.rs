@@ -57,14 +57,17 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         .filter_map(|tool| hosted(wire, tool));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
     built.chat_history = history;
-    // Responses only: Messages caches by its markers, and the Chat wire's
-    // gateways refuse a field they do not know.
-    if wire == Wire::Responses {
-        built.additional_params =
-            Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
-    }
-    if wire == Wire::Messages {
-        built = built.cache(CacheRetention::Short);
+    match wire {
+        // Messages keeps the top-level breakpoint the provider moves along the
+        // conversation, beside the markers on its static prefix.
+        Wire::Messages => built = built.cache(CacheRetention::Short),
+        Wire::Responses => {
+            built.additional_params =
+                Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
+        }
+        // Chat gateways refuse a field they do not know; the native Gemini and
+        // Ollama wires take no explicit cache control.
+        Wire::Chat | Wire::Gemini | Wire::Ollama => {}
     }
     Ok(built
         .model(request.model)
@@ -82,7 +85,7 @@ fn hosted(wire: Wire, tool: Hosted) -> Option<ProviderToolDefinition> {
                 .with_config(FIELD_NAME, serde_json::Value::from(tool.name())),
         ),
         (Hosted::WebSearch, Wire::Responses) => Some(ProviderToolDefinition::new(tool.name())),
-        (Hosted::WebSearch, Wire::Chat) => None,
+        (Hosted::WebSearch, Wire::Chat | Wire::Gemini | Wire::Ollama) => None,
     }
 }
 

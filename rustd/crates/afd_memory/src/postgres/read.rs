@@ -1,7 +1,6 @@
-//! The Postgres store's reads: the hydration input, recall, the operator page,
-//! and a flip's export.
+//! The Postgres store's reads: the hydration input, recall, and the operator
+//! page.
 
-use afd_core::id::Uuid7;
 use afd_db::statement::Bound;
 use afd_wire::memory::MAX_ENTRIES_PER_FLEET;
 use sqlx::PgConnection;
@@ -15,7 +14,6 @@ use crate::sql;
 /// Statement names, for the context a query failure carries.
 const CONTEXT_LIST: &str = "memory list";
 const CONTEXT_RECALL: &str = "memory recall";
-const CONTEXT_EXPORT: &str = "memory export";
 
 /// The most shared rows one hydrate reads before the window spends its budget:
 /// one fleet's cap, so a workspace of many publishers costs one fleet's read.
@@ -38,12 +36,16 @@ async fn fetch(
         .collect()
 }
 
-/// The fleet's own entries, then — for a granted reader — other fleets'
-/// shared ones, each newest first.
-pub(super) async fn window(store: &PgStore, owner: Owner<'_>, reads: bool) -> Result<Vec<Record>> {
-    let failure = Failure::Runner(CONTEXT_LIST);
-    store
-        .as_memory_role(failure, async |connection| {
+impl PgStore {
+    /// Every entry `owner.fleet` holds, newest first; then, when `reads`, the
+    /// workspace-visible entries other fleets in `owner.workspace` hold, newest
+    /// first and bounded by one fleet's cap.
+    ///
+    /// # Errors
+    /// The database cannot answer.
+    pub async fn window(&self, owner: Owner<'_>, reads: bool) -> Result<Vec<Record>> {
+        let failure = Failure::Runner(CONTEXT_LIST);
+        self.as_memory_role(failure, async |connection| {
             let own = sqlx::query(sql::SELECT_ALL_FOR_FLEET).bind(owner.fleet.as_str());
             let mut rows = fetch(connection, own, failure).await?;
             if reads {
@@ -56,22 +58,25 @@ pub(super) async fn window(store: &PgStore, owner: Owner<'_>, reads: bool) -> Re
             Ok(rows)
         })
         .await
-}
+    }
 
-/// Entries holding `query`, key matches first: the fleet's own, then other
-/// fleets' shared ones for a granted reader.
-pub(super) async fn search(
-    store: &PgStore,
-    owner: Owner<'_>,
-    reads: bool,
-    query: &str,
-    limit: usize,
-) -> Result<Vec<Record>> {
-    let failure = Failure::Runner(CONTEXT_RECALL);
-    let pattern = page::pattern(query);
-    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-    store
-        .as_memory_role(failure, async |connection| {
+    /// Entries whose key or content holds `query`, ignoring case: the fleet's
+    /// own and, when `reads`, other fleets' shared ones; key matches first, then
+    /// newest first, at most `limit` of each.
+    ///
+    /// # Errors
+    /// The database cannot answer.
+    pub async fn search(
+        &self,
+        owner: Owner<'_>,
+        reads: bool,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Record>> {
+        let failure = Failure::Runner(CONTEXT_RECALL);
+        let pattern = page::pattern(query);
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        self.as_memory_role(failure, async |connection| {
             let own = sqlx::query(sql::SEARCH_OWN)
                 .bind(owner.fleet.as_str())
                 .bind(pattern.as_str())
@@ -88,24 +93,27 @@ pub(super) async fn search(
             Ok(rows)
         })
         .await
-}
+    }
 
-/// One operator page under `view`.
-pub(super) async fn page(
-    store: &PgStore,
-    owner: Owner<'_>,
-    reads: bool,
-    view: View<'_>,
-    after: Option<After<'_>>,
-    limit: i64,
-) -> Result<Vec<Record>> {
-    let failure = Failure::Operator(view.detail());
-    // Built before the pipeline so the pattern outlives every borrow the
-    // statement holds.
-    let filter = page::filter(view);
-    let shared = reads.then_some(owner.workspace.as_str());
-    store
-        .as_memory_role(failure, async |connection| {
+    /// One operator page under `view`, newest-created first, holding other
+    /// fleets' shared entries too when `reads`.
+    ///
+    /// # Errors
+    /// The database cannot answer.
+    pub async fn page(
+        &self,
+        owner: Owner<'_>,
+        reads: bool,
+        view: View<'_>,
+        after: Option<After<'_>>,
+        limit: i64,
+    ) -> Result<Vec<Record>> {
+        let failure = Failure::Operator(view.detail());
+        // Built before the pipeline so the pattern outlives every borrow the
+        // statement holds.
+        let filter = page::filter(view);
+        let shared = reads.then_some(owner.workspace.as_str());
+        self.as_memory_role(failure, async |connection| {
             let mut statement = sqlx::query(page::statement(view, after.is_some()))
                 .bind(owner.fleet.as_str())
                 .bind(shared);
@@ -114,22 +122,12 @@ pub(super) async fn page(
             }
             if let Some(boundary) = after {
                 statement = statement
-                    .bind(boundary.created_at_ms)
+                    .bind(jiff_sqlx::ToSqlx::to_sqlx(boundary.created_at))
                     .bind(boundary.key)
                     .bind(boundary.fleet.as_str());
             }
             fetch(connection, statement.bind(limit), failure).await
         })
         .await
-}
-
-/// Every entry in `workspace`.
-pub(super) async fn export(store: &PgStore, workspace: &Uuid7) -> Result<Vec<Record>> {
-    let failure = Failure::Runner(CONTEXT_EXPORT);
-    store
-        .as_memory_role(failure, async |connection| {
-            let all = sqlx::query(sql::SELECT_WORKSPACE_ENTRIES).bind(workspace.as_str());
-            fetch(connection, all, failure).await
-        })
-        .await
+    }
 }

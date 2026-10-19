@@ -17,7 +17,7 @@ categories.workspace = true
 # M-TEST-UTIL. Unlocks the direct `GatePolicy` constructor the sibling crate's
 # gate evaluator drives its rule-matching cases through; the production door
 # stays the validating `TryFrom`.
-test-util = []
+test-util = ["afd_core/test-util"]
 # Publishes the Definition's shape to the OpenAPI document, derived from the
 # same raw types the parser reads so a new key cannot be published apart from
 # being accepted. The wire crates enable it under their own `openapi`.

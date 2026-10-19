@@ -74,8 +74,8 @@ test("workspace use <id> writes current_workspace_id to state", async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [
-        { workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 },
-        { workspace_id: "01900000-0000-7000-8000-000000000002", name: null, created_at: 2 },
+        { workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: "1970-01-01T00:00:00.001Z" },
+        { workspace_id: "01900000-0000-7000-8000-000000000002", name: null, created_at: "1970-01-01T00:00:00.002Z" },
       ],
     });
     const out = bufferStream();
@@ -96,7 +96,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -116,7 +116,7 @@ test("workspace use --json emits {active: <id>}", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: null,
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -136,7 +136,7 @@ test("workspace show prints current workspace details", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: "jolly-harbor-482", created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: "jolly-harbor-482", created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -156,7 +156,7 @@ test("workspace show --json returns the full detail object", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: "jolly-harbor-482", created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: "jolly-harbor-482", created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -226,7 +226,7 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -241,8 +241,8 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
         headers: makeHeaders([["content-type", "application/json"]]),
         text: async () => JSON.stringify({
           items: [
-            { fleet_id: "zom_1", name: "alpha", status: "active" },
-            { fleet_id: "zom_2", name: "beta", status: "paused" },
+            { id: "zom_1", name: "alpha", status: "active", created_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" },
+            { id: "zom_2", name: "beta", status: "paused", created_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" },
           ],
           total: 2,
           next_cursor: "1713700000000:zom_2",
@@ -271,7 +271,7 @@ test("fleet list --json returns the raw envelope incl. next_cursor", async () =>
   await withFreshStateDir(async () => {
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: "1970-01-01T00:00:00.001Z" }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -298,8 +298,8 @@ test("fleet list honors --workspace override over current_workspace_id", async (
     await saveWorkspaces(process.env, {
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [
-        { workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 },
-        { workspace_id: "01900000-0000-7000-8000-000000000002", name: null, created_at: 2 },
+        { workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: "1970-01-01T00:00:00.001Z" },
+        { workspace_id: "01900000-0000-7000-8000-000000000002", name: null, created_at: "1970-01-01T00:00:00.002Z" },
       ],
     });
     const out = bufferStream();

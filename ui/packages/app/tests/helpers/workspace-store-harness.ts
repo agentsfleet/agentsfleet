@@ -74,7 +74,7 @@ export function received(fleetId: string, eventId: string, counters: object = {}
     event_id: eventId,
     actor: TRIGGER_ACTOR,
     event_type: TRIGGER_TYPE,
-    created_at: CREATED_AT_MS,
+    created_at: new Date(CREATED_AT_MS).toISOString(),
     ...counters,
   };
 }
@@ -85,8 +85,8 @@ export function completed(fleetId: string, eventId: string, counters: object = {
     fleet_id: fleetId,
     event_id: eventId,
     status: SETTLED,
-    created_at: CREATED_AT_MS,
-    updated_at: CREATED_AT_MS,
+    created_at: new Date(CREATED_AT_MS).toISOString(),
+    updated_at: new Date(CREATED_AT_MS).toISOString(),
     ...counters,
   };
 }
@@ -114,8 +114,8 @@ export function listRow(fleetId: string, eventId: string, createdAtMs = CREATED_
     failure_detail: null,
     resumes_event_id: null,
     cost_nanos: null,
-    created_at: createdAtMs,
-    updated_at: createdAtMs,
+    created_at: new Date(createdAtMs).toISOString(),
+    updated_at: new Date(createdAtMs).toISOString(),
   };
 }
 

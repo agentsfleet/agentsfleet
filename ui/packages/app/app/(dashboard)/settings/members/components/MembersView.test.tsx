@@ -83,7 +83,7 @@ describe("the table", () => {
   it("should say when each person joined and when each invite went out and lapses", () => {
     renderView();
     const stamps = (row: HTMLElement) => [...row.querySelectorAll("time")].map((time) => time.dateTime);
-    const iso = (epochMs: number) => new Date(epochMs).toISOString();
+    const iso = (at: string) => new Date(at).toISOString();
     expect(stamps(timeCellOf(BOB_NAME))).toEqual([iso(BOB.joined_at)]);
     expect(stamps(timeCellOf(INVITE.email))).toEqual([iso(INVITE.created_at), iso(INVITE.expires_at)]);
     expect(timeCellOf(INVITE.email).textContent).toContain("expires");
@@ -261,7 +261,7 @@ describe("focus after a removal", () => {
 });
 
 describe("a member with no display name", () => {
-  const DANA: MemberSummary = { user_id: "user_dana", display_name: null, email: "dana@example.com", role: ACCOUNT_ROLE.member, joined_at: Date.UTC(2026, 8, 25) };
+  const DANA: MemberSummary = { user_id: "user_dana", display_name: null, email: "dana@example.com", role: ACCOUNT_ROLE.member, joined_at: new Date(Date.UTC(2026, 8, 25)).toISOString() };
 
   it("should name them by their address and leave them in place when the removal is cancelled", async () => {
     renderView([JOHN, DANA], []);

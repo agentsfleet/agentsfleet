@@ -31,8 +31,8 @@ const EVENT: &str = "runner_events_failed";
         afd_http::openapi::path::Runner,
         afd_http::openapi::query::OperatorPage,
         ("event_type" = Option<String>, Query, description = "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request."),
-        ("since" = Option<String>, Query, description = "Lower bound on occurred_at, epoch milliseconds (inclusive)."),
-        ("until" = Option<String>, Query, description = "Upper bound on occurred_at, epoch milliseconds (inclusive). Must be >= since."),
+        ("since" = Option<String>, Query, description = "Lower bound on occurred_at, an RFC 3339 instant (inclusive)."),
+        ("until" = Option<String>, Query, description = "Upper bound on occurred_at, an RFC 3339 instant (inclusive). Must be >= since."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnerEventsResponse),

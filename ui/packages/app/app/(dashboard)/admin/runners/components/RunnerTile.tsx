@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ServerIcon } from "lucide-react";
 import { Badge, Card, cn, Time } from "@agentsfleet/design-system";
 import { type RunnerListItem } from "@/lib/api/runners";
-import { LEASE_OUTCOME } from "@/lib/api/runners-types";
+import { hasBeenSeen, LEASE_OUTCOME } from "@/lib/api/runners-types";
 import { runnerPath } from "@/lib/runner-routes";
 import {
   IDLE_SENTENCE,
@@ -77,16 +77,16 @@ function idleLineFor(runner: RunnerListItem): string {
 
 export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
   "use memo";
-  const awake = runnerIsAwake(runner.admin_state, runner.liveness);
+  const awake = runnerIsAwake(runner.status, runner.liveness);
   const workLine = useWorkLine(runner);
   return (
     <Card asChild interactive className="group min-h-52 p-xl">
       <Link href={runnerPath(runner.id)}
         className="flex flex-col gap-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${OPEN_RUNNER_LABEL}: ${runner.host_id} — ${runner.admin_state} ${runner.liveness}`}>
+        aria-label={`${OPEN_RUNNER_LABEL}: ${runner.host_id} — ${runner.status} ${runner.liveness}`}>
         <div className="flex flex-wrap items-center justify-between gap-md">
           <ServerGlyph awake={awake} />
-          <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
+          <RunnerStatus adminState={runner.status} liveness={runner.liveness} />
         </div>
         <div className="min-w-0">
           <h3 className="truncate font-sans text-body-lg font-semibold">{runner.host_id}</h3>
@@ -97,8 +97,8 @@ export default function RunnerTile({ runner }: { runner: RunnerListItem }) {
         </div>
         <div className="mt-auto flex flex-wrap items-center justify-between gap-md border-t border-border pt-lg text-label text-muted-foreground tabular-nums">
           <span>
-            {runner.last_seen_at > 0 ? (
-              <>Last seen <Time value={new Date(runner.last_seen_at)} format="relative" tooltip={false} /></>
+            {hasBeenSeen(runner.last_seen_at) ? (
+              <>Last seen <Time value={runner.last_seen_at} format="relative" tooltip={false} /></>
             ) : NEVER_CONNECTED_SENTENCE}
           </span>
           <span className="shrink-0 font-sans text-label font-medium text-pulse" data-card-open>

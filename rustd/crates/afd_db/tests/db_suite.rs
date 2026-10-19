@@ -29,18 +29,14 @@ mod config_tls;
 mod config_tls_cert_files;
 #[path = "error_surface.rs"]
 mod error_surface;
-#[path = "integration_fleet_events_tool_calls.rs"]
-mod integration_fleet_events_tool_calls;
-#[path = "integration_ledger_identity.rs"]
-mod integration_ledger_identity;
-#[path = "integration_ledger_key.rs"]
-mod integration_ledger_key;
+mod integration_catalogue_seeder;
 mod integration_migrate;
 #[path = "integration_migrate_batch.rs"]
 mod integration_migrate_batch;
 mod integration_migrate_faults;
 #[path = "integration_platform_default.rs"]
 mod integration_platform_default;
+mod integration_platform_model;
 #[path = "integration_pool.rs"]
 mod integration_pool;
 #[path = "integration_pool_faults.rs"]
@@ -49,6 +45,8 @@ mod integration_pool_faults;
 mod integration_pool_retry;
 #[path = "integration_pool_tls.rs"]
 mod integration_pool_tls;
+#[path = "integration_seeds.rs"]
+mod integration_seeds;
 #[path = "lock_policy.rs"]
 mod lock_policy;
 #[path = "migrations.rs"]

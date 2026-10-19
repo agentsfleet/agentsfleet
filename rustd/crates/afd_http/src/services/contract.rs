@@ -12,12 +12,12 @@
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_connector::Dashboard;
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
+use jiff::Timestamp;
 
 use crate::auth::Authenticator;
 
@@ -324,5 +324,5 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// writes carries the same instant. Reading the clock again for each write
     /// would leave, say, a heartbeat's liveness stamp a millisecond or two
     /// after its own transition event.
-    fn now(&self) -> UnixMillis;
+    fn now(&self) -> Timestamp;
 }

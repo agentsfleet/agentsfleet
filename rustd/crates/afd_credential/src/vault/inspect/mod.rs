@@ -1,7 +1,8 @@
 //! Setup inspection extracts only connector identity; unrelated secret fields are skipped.
 
 use afd_core::id::Uuid7;
-use sqlx::{PgConnection, Row as _, postgres::PgRow};
+use afd_vault::StoredEnvelope;
+use sqlx::PgConnection;
 
 use super::{KeyRef, Vault};
 use crate::{
@@ -14,11 +15,21 @@ mod handle;
 use handle::Handle;
 
 const CONTEXT: &str = "inspect declared credential access";
-const INSPECT: &str = "\
-SELECT key_name, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version,
-encode(sha256(convert_to(jsonb_build_array(id, kek_version, encode(sha256(ciphertext),'hex'))::text,'UTF8')),'hex') AS resolution_version
-FROM vault.secrets WHERE workspace_id=$1::uuid AND key_name=ANY($2::text[])
-ORDER BY key_name FOR SHARE";
+
+/// The declared set's envelopes under a share lock, each with a generation
+/// digest bound to its ciphertext.
+///
+/// `$1` workspace · `$2` the declared names.
+const INSPECT: &str = include_str!("inspect.sql");
+
+/// One declared credential, as [`INSPECT`] names its columns.
+#[derive(Debug, sqlx::FromRow)]
+struct InspectedRow {
+    key_name: String,
+    #[sqlx(flatten)]
+    envelope: StoredEnvelope,
+    resolution_version: String,
+}
 
 /// Non-secret facts extracted from one declared credential under its row lock.
 #[derive(Debug, Clone)]
@@ -56,26 +67,30 @@ impl Vault {
         names: &[String],
         connectors: &dyn Connectors,
     ) -> Result<Vec<CredentialInspection>> {
-        let rows = sqlx::query(INSPECT)
+        let rows = sqlx::query_as::<_, InspectedRow>(INSPECT)
             .bind(workspace.as_str())
             .bind(names)
             .fetch_all(connection)
             .await
             .map_err(query(CONTEXT))?;
-        rows.iter()
+        rows.into_iter()
             .map(|row| self.inspect_row(row, workspace, connectors))
             .collect()
     }
 
     fn inspect_row(
         &self,
-        row: &PgRow,
+        row: InspectedRow,
         workspace: &Uuid7,
         connectors: &dyn Connectors,
     ) -> Result<CredentialInspection> {
-        let name: String = row.try_get("key_name").map_err(query(CONTEXT))?;
+        let InspectedRow {
+            key_name: name,
+            envelope,
+            resolution_version,
+        } = row;
         let plaintext = self.decrypt(
-            row,
+            envelope,
             KeyRef {
                 workspace_id: workspace,
                 name: &name,
@@ -106,7 +121,7 @@ impl Vault {
                 .or_else(|| {
                     integration.filter(|name| name == crate::secrets::connector::SLACK_INTEGRATION)
                 }),
-            resolution_version: row.try_get("resolution_version").map_err(query(CONTEXT))?,
+            resolution_version,
         })
     }
 }

@@ -14,7 +14,7 @@ async fn setup_costs_page_with_runs_without_exposing_other_tenants_or_private_te
     owner.seed().await;
     other.seed().await;
     let setup = Setup::seed(&owner).await;
-    let foreign = Setup::seed(&other).await;
+    let _foreign = Setup::seed(&other).await;
     let router = Fleet::live(
         owner.database.clone(),
         SUBJECT,
@@ -25,19 +25,9 @@ async fn setup_costs_page_with_runs_without_exposing_other_tenants_or_private_te
     let rows = walk(&router, &owner).await;
     assert_scoped_history(&rows, &owner);
     assert_setup_row(&rows, &setup);
-    let connection = owner.database.clone();
-    let owned_runner = setup.runner;
-    let foreign_runner = foreign.runner;
     assert_wallet_reads_its_balance(&router, &owner).await;
     owner.cleanup().await;
     other.cleanup().await;
-    for runner in [owned_runner, foreign_runner] {
-        sqlx::query("DELETE FROM fleet.runners WHERE id=$1::uuid")
-            .bind(runner)
-            .execute(&mut *connection.acquire().await.expect("cleanup connection"))
-            .await
-            .expect("scoped runner cleanup");
-    }
 }
 
 fn assert_scoped_history(rows: &[Value], owner: &Fixture) {
@@ -48,7 +38,12 @@ fn assert_scoped_history(rows: &[Value], owner: &Fixture) {
     );
     assert_eq!(
         rows.iter()
-            .map(|r| r["credit_deducted_nanos"].as_i64().expect("amount"))
+            .map(|r| {
+                r["credit_deducted_nanos"]
+                    .as_str()
+                    .and_then(|amount| amount.parse::<i64>().ok())
+                    .expect("an amount is a decimal string")
+            })
             .sum::<i64>(),
         50
     );
@@ -112,13 +107,7 @@ async fn setup_costs_use_public_fleet_names_and_survive_private_chat_deletion() 
     let after = walk(&router, &owner).await;
     assert_eq!(after.len(), before.len());
     assert_setup_row(&after, &setup);
-    let database = owner.database.clone();
     owner.cleanup().await;
-    sqlx::query("DELETE FROM fleet.runners WHERE id=$1::uuid")
-        .bind(setup.runner)
-        .execute(&mut *database.acquire().await.expect("cleanup connection"))
-        .await
-        .expect("runner cleanup");
 }
 
 fn assert_setup_row(rows: &[Value], setup: &Setup) {
@@ -139,7 +128,7 @@ fn assert_setup_row(rows: &[Value], setup: &Setup) {
     assert_eq!(row["token_count_output"], 29);
     assert_eq!(row["wall_ms"], 31);
     assert_eq!(
-        row["credit_deducted_nanos"], 17,
+        row["credit_deducted_nanos"], "17",
         "serve the actual debit, not a recalculated price"
     );
     let mut expected = setup.settlements.clone().to_vec();

@@ -166,10 +166,18 @@ async fn john_manages_the_account(routers: &Routers, members: &Members, invite: 
     assert_eq!(role_of(&john.user), Some(ROLE_OWNER));
     assert_eq!(role_of(&stranger.user), Some(ROLE_MEMBER));
     let joined_of = |user: &str| {
-        find(&roster, "user_id", user).and_then(|m| m.get("joined_at").and_then(Value::as_i64))
+        find(&roster, "user_id", user).and_then(|m| m.get("joined_at").and_then(Value::as_str))
     };
-    assert_eq!(joined_of(&john.user), Some(1), "signup's owner membership");
-    assert_eq!(joined_of(&bob.user), Some(2), "Bob's seeded membership");
+    assert_eq!(
+        joined_of(&john.user),
+        Some("1970-01-01T00:00:00.001Z"),
+        "signup's owner membership"
+    );
+    assert_eq!(
+        joined_of(&bob.user),
+        Some("1970-01-01T00:00:00.002Z"),
+        "Bob's seeded membership"
+    );
 
     let names_path = format!("/v1/workspaces/{}/members", john.workspace.as_str());
     let (status, names) = call(&routers.bob, Method::GET, &names_path, bob, "").await;

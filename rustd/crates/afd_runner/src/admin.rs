@@ -1,9 +1,8 @@
 //! Operator-driven administrative state changes for runners.
 
 use afd_api_wire::admin::{AdminState, RunnerAdminAction};
-use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Row as _;
+use jiff::Timestamp;
 
 use crate::error::{
     Result, admin_state_malformed, query, rejected, runner_not_found, runner_not_revoked,
@@ -12,37 +11,56 @@ use crate::error::{
 use crate::sql;
 use crate::store::Runners;
 
-const CONTEXT_TRANSITION: &str = "runner admin transition";
+const CONTEXT_TRANSITION: &str = "runner status transition";
 const CONTEXT_SELFTEST: &str = "runner self-test request";
 const CONTEXT_DELETE: &str = "runner record retirement";
-pub(crate) const COLUMN_ADMIN_STATE: &str = "admin_state";
-const COLUMN_CHANGED: &str = "changed";
-const COLUMN_LEASED: &str = "leased";
-const DETAIL_ACTION_REQUIRED: &str = "runner action does not change administrative state";
+const DETAIL_ACTION_REQUIRED: &str = "runner action does not change status";
 const DETAIL_REVOKED_TERMINAL: &str =
     "revoked runners cannot transition back to cordoned or draining";
 
 /// What a recorded self-test ask needs to echo over HTTP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelftestRequested {
-    /// The state retained by the runner.
-    admin_state: AdminState,
+    /// The status retained by the runner.
+    status: AdminState,
     /// The request instant stored on the row.
-    requested_at: i64,
+    requested_at: Timestamp,
 }
 
 impl SelftestRequested {
-    /// The runner state retained by the request.
+    /// The runner status retained by the request.
     #[must_use]
-    pub const fn admin_state(self) -> AdminState {
-        self.admin_state
+    pub const fn status(self) -> AdminState {
+        self.status
     }
 
     /// The request instant stored on the row.
     #[must_use]
-    pub const fn requested_at(self) -> i64 {
+    pub const fn requested_at(self) -> Timestamp {
         self.requested_at
     }
+}
+
+/// [`sql::runner_admin::TRANSITION_RUNNER_STATUS`]'s row.
+#[derive(Debug, sqlx::FromRow)]
+struct Transitioned {
+    from_status: String,
+    changed: bool,
+}
+
+/// [`sql::runner_admin::DELETE_RUNNER_IF_IN_STATE`]'s row.
+#[derive(Debug, sqlx::FromRow)]
+struct Retired {
+    changed: bool,
+    leased: bool,
+}
+
+/// [`sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST`]'s row: the status the
+/// lock read, and the stamp the update wrote when the guard let it.
+#[derive(Debug, sqlx::FromRow)]
+struct Requested {
+    status: String,
+    requested_at: Option<jiff_sqlx::Timestamp>,
 }
 
 impl Runners {
@@ -51,41 +69,37 @@ impl Runners {
     /// Repeating the current target is successful and writes nothing. A
     /// revoked runner may only be revoked again; the terminal guard is inside
     /// the same locked statement as the write, so concurrent requests cannot
-    /// reopen it.
+    /// reopen it. `now` mints the event's identifier; the database stamps it.
+    ///
     /// # Errors
-    /// Returns a typed refusal for a missing runner, a malformed stored state,
+    /// Returns a typed refusal for a missing runner, a malformed stored status,
     /// an illegal transition, or an unavailable datastore.
     pub async fn transition(
         &self,
         runner: &Uuid7,
         action: RunnerAdminAction,
         actor_id: &str,
-        now: UnixMillis,
+        now: Timestamp,
     ) -> Result<AdminState> {
-        let target = target(action).ok_or_else(|| rejected(DETAIL_ACTION_REQUIRED))?;
+        let (target, event) = transition(action).ok_or_else(|| rejected(DETAIL_ACTION_REQUIRED))?;
         let event_id = self.admin_event_id(now)?;
-        let target_wire = state_wire(target);
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner_admin::TRANSITION_RUNNER_ADMIN_STATE)
+        let row = sqlx::query_as::<_, Transitioned>(sql::runner_admin::TRANSITION_RUNNER_STATUS)
             .bind(runner.as_str())
-            .bind(target_wire)
-            .bind(now.as_millis())
+            .bind(state_wire(target))
             .bind(target == AdminState::Revoked)
+            .bind(state_wire(AdminState::Revoked))
             .bind(event_id.as_str())
-            .bind(event_wire(target))
-            .bind(sql::meta::FROM_ADMIN_STATE)
-            .bind(sql::meta::TO_ADMIN_STATE)
+            .bind(event)
+            .bind(sql::meta::FROM_STATUS)
+            .bind(sql::meta::TO_STATUS)
             .bind(sql::meta::ACTOR_ID)
             .bind(actor_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_TRANSITION))?
             .ok_or_else(runner_not_found)?;
-        transition_result(
-            row.try_get("from_admin_state"),
-            row.try_get(COLUMN_CHANGED),
-            target,
-        )
+        transition_result(&row, target)
     }
 
     /// Retires a revoked runner's record.
@@ -100,7 +114,7 @@ impl Runners {
     /// a runner still holding an active lease, or an unavailable datastore.
     pub async fn delete_revoked(&self, runner: &Uuid7) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
+        let row = sqlx::query_as::<_, Retired>(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
             .bind(runner.as_str())
             .bind(state_wire(AdminState::Revoked))
             .bind(sql::LEASE_STATUS_ACTIVE)
@@ -108,9 +122,7 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_DELETE))?
             .ok_or_else(runner_not_found)?;
-        let changed: bool = row.try_get(COLUMN_CHANGED).map_err(query(CONTEXT_DELETE))?;
-        let leased: bool = row.try_get(COLUMN_LEASED).map_err(query(CONTEXT_DELETE))?;
-        match (changed, leased) {
+        match (row.changed, row.leased) {
             (true, _) => Ok(()),
             (false, true) => Err(runner_still_leased()),
             (false, false) => Err(runner_not_revoked()),
@@ -119,70 +131,66 @@ impl Runners {
 
     /// Records a self-test request for collection on the next heartbeat.
     ///
+    /// The database stamps the request, and the stamp it wrote is the one the
+    /// reply echoes.
+    ///
     /// # Errors
     /// Returns the dedicated conflict for a revoked runner, not-found for a
     /// missing runner, or the canonical datastore failures.
-    pub async fn request_selftest(
-        &self,
-        runner: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<SelftestRequested> {
+    pub async fn request_selftest(&self, runner: &Uuid7) -> Result<SelftestRequested> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST)
+        let row = sqlx::query_as::<_, Requested>(sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST)
             .bind(runner.as_str())
-            .bind(now.as_millis())
+            .bind(state_wire(AdminState::Revoked))
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SELFTEST))?
             .ok_or_else(runner_not_found)?;
-        let state = stored_state(row.try_get(COLUMN_ADMIN_STATE), CONTEXT_SELFTEST)?;
-        let changed: bool = row
-            .try_get(COLUMN_CHANGED)
-            .map_err(query(CONTEXT_SELFTEST))?;
-        if !changed {
-            return Err(selftest_refused());
-        }
+        let status = stored_state(&row.status)?;
+        let requested_at = row.requested_at.ok_or_else(selftest_refused)?;
         Ok(SelftestRequested {
-            admin_state: state,
-            requested_at: now.as_millis(),
+            status,
+            requested_at: requested_at.to_jiff(),
         })
     }
 
-    pub(super) fn admin_event_id(&self, now: UnixMillis) -> Result<Uuid7> {
+    pub(super) fn admin_event_id(&self, now: Timestamp) -> Result<Uuid7> {
         Ok(self.entropy().uuid7(now)?)
     }
 }
 
-fn transition_result(
-    current: Result<String, sqlx::Error>,
-    changed: Result<bool, sqlx::Error>,
-    target: AdminState,
-) -> Result<AdminState> {
-    let current = current.map_err(query(CONTEXT_TRANSITION))?;
-    let changed = changed.map_err(query(CONTEXT_TRANSITION))?;
-    let state: AdminState =
-        afd_core::spelling::from_spelling(&current).ok_or_else(admin_state_malformed)?;
-    if !changed && state == AdminState::Revoked && target != AdminState::Revoked {
+fn transition_result(row: &Transitioned, target: AdminState) -> Result<AdminState> {
+    let state = stored_state(&row.from_status)?;
+    if !row.changed && state == AdminState::Revoked && target != AdminState::Revoked {
         return Err(rejected(DETAIL_REVOKED_TERMINAL));
     }
     Ok(target)
 }
 
-pub(crate) fn stored_state(
-    raw: Result<String, sqlx::Error>,
-    context: &'static str,
-) -> Result<AdminState> {
-    let raw = raw.map_err(query(context))?;
-    afd_core::spelling::from_spelling(&raw).ok_or_else(admin_state_malformed)
+/// A stored status as the variant it spells, or the malformed-status refusal.
+pub(crate) fn stored_state(raw: &str) -> Result<AdminState> {
+    afd_core::spelling::from_spelling(raw).ok_or_else(admin_state_malformed)
 }
 
 /// The target state for a mutation action; self-test is not a transition.
 #[must_use]
 pub const fn target(action: RunnerAdminAction) -> Option<AdminState> {
+    match transition(action) {
+        Some((state, _event)) => Some(state),
+        None => None,
+    }
+}
+
+/// The state an operator action moves a runner to, and the event it appends.
+///
+/// One table for both, keyed on the action: an event is only ever written for
+/// a state an action can reach, so `active` and `drained` — reached by the
+/// heartbeat and the drain sweep, under their own events — have no row here.
+const fn transition(action: RunnerAdminAction) -> Option<(AdminState, &'static str)> {
     match action {
-        RunnerAdminAction::Cordon => Some(AdminState::Cordoned),
-        RunnerAdminAction::Drain => Some(AdminState::Draining),
-        RunnerAdminAction::Revoke => Some(AdminState::Revoked),
+        RunnerAdminAction::Cordon => Some((AdminState::Cordoned, "runner_cordoned")),
+        RunnerAdminAction::Drain => Some((AdminState::Draining, "runner_draining")),
+        RunnerAdminAction::Revoke => Some((AdminState::Revoked, "runner_revoked")),
         RunnerAdminAction::Rotate | RunnerAdminAction::SelfTest => None,
     }
 }
@@ -198,19 +206,10 @@ pub(crate) const fn state_wire(state: AdminState) -> &'static str {
     }
 }
 
-const fn event_wire(state: AdminState) -> &'static str {
-    match state {
-        AdminState::Active => "runner_online",
-        AdminState::Cordoned => "runner_cordoned",
-        AdminState::Draining => "runner_draining",
-        AdminState::Drained => "runner_drained",
-        AdminState::Revoked => "runner_revoked",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use afd_api_wire::admin::RunnerEventType;
 
     #[test]
     fn actions_name_only_real_state_transitions() {
@@ -222,6 +221,22 @@ mod tests {
         assert_eq!(target(RunnerAdminAction::Revoke), Some(AdminState::Revoked));
         assert_eq!(target(RunnerAdminAction::Rotate), None);
         assert_eq!(target(RunnerAdminAction::SelfTest), None);
+    }
+
+    /// Each transition's event is the history tag the operator plane filters
+    /// on, so a spelling drift writes rows no filter can find.
+    #[test]
+    fn each_transition_appends_the_event_its_history_filter_names() {
+        for (action, tag) in [
+            (RunnerAdminAction::Cordon, RunnerEventType::RunnerCordoned),
+            (RunnerAdminAction::Drain, RunnerEventType::RunnerDraining),
+            (RunnerAdminAction::Revoke, RunnerEventType::RunnerRevoked),
+        ] {
+            let parsed = transition(action).and_then(|(_state, event)| {
+                serde_json::from_value::<RunnerEventType>(serde_json::Value::from(event)).ok()
+            });
+            assert_eq!(parsed, Some(tag), "{action:?}");
+        }
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! A runtime renewal's metered slice and an authoring settlement debit one wallet.
+//! A runtime renewal's settled slice and an authoring settlement debit one wallet.
 //!
 //! Both kinds run on one two-worker host for one tenant. The wallet row is held
 //! while both requests queue behind it, in each order; on release both commit,
@@ -9,11 +9,19 @@ use super::{
     replicas::waiting,
     seat::{FUNDED, Seat},
 };
+use crate::rows::Row;
 use afd_authoring::Claimed;
-use afd_billing::{Cumulative, Meter, SliceRates};
+use std::sync::Arc;
+
+use afd_billing::Posture;
+use afd_billing::biller::{Biller as _, Receipt};
+use afd_billing::ledger::LedgerBiller;
 use afd_core::{clock, id::Uuid7};
+use afd_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
 use afd_fleet::lease::Renewed;
+use afd_fleet::lease::sql::meter::Metering;
+use afd_fleet::lease::usage::Pricing;
 use afd_wire::authoring::{Accounting, Knowledge, Outcome, Report, Reported};
 use sqlx::Connection as _;
 use std::time::Duration;
@@ -21,13 +29,12 @@ use std::time::Duration;
 const DEADLOCK_BOUND: Duration = Duration::from_secs(30);
 /// One million input tokens at a thousand nanos per million: a fixed slice,
 /// independent of how long the renewal waited.
-const FLEET_SLICE: i64 = 1_000;
 const INPUT_TOKENS: i64 = 1_000_000;
 /// One reported millisecond at the runtime rate.
 const AUTHORING_DEBIT: i64 = 100;
 const HOLD_WALLET: &str =
-    "SELECT pg_backend_pid() FROM billing.tenant_wallet WHERE tenant_id = $1::uuid FOR UPDATE";
-const BALANCE: &str = "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid";
+    "SELECT pg_backend_pid() FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE";
+const BALANCE: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid";
 
 #[derive(Debug, Clone, Copy)]
 enum First {
@@ -36,7 +43,7 @@ enum First {
 }
 
 /// How far the authoring turn is backdated so its attempt reads as already started.
-const AGE_MS: i64 = 1_000;
+const AGE: Duration = Duration::from_secs(1);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -50,7 +57,7 @@ async fn test_runtime_debit_and_authoring_settlement_interleave_on_one_wallet() 
 async fn scenario(first: First) {
     let running = Running::create().await;
     let database = &running.fixtures.database;
-    sqlx::query("UPDATE fleet.runners SET worker_count = 2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE runner.runners SET worker_count = 2 WHERE id = $1::uuid")
         .bind(running.runner.as_str())
         .execute(&mut *database.acquire().await.expect("widen"))
         .await
@@ -61,23 +68,61 @@ async fn scenario(first: First) {
     let lease = Seat::admit(&drafts, &running.runner, &draft)
         .await
         .expect("the second worker admits the turn beside the runtime lease");
-    sqlx::query(
-        "UPDATE fleet.authoring_attempts SET created_at = created_at - $2 WHERE id = $1::uuid",
-    )
-    .bind(lease.attempt_id.as_str())
-    .bind(AGE_MS)
-    .execute(&mut *database.acquire().await.expect("age"))
-    .await
-    .expect("a second of elapsed runtime covers the reported millisecond");
+    running
+        .fixtures
+        .age(Row::Attempt(lease.attempt_id.as_str()), "created_at", AGE)
+        .await;
     assert_eq!(balance(&running, &seat.tenant).await, FUNDED);
 
     let leases = running.fixtures.leases();
-    let renew = leases.extend(
+    let pricing = Pricing::load(
+        database,
+        Posture::SelfManaged,
+        crate::seed::PROVIDER,
+        crate::seed::MODEL,
         running.lease.as_str(),
-        &running.runner,
-        metered(),
-        clock::now(),
+    )
+    .await;
+    let biller = LedgerBiller::new(
+        database.clone(),
+        Entropy::new(),
+        Arc::new(afd_core::clock::SystemClock),
     );
+    // A renewal, then its slice settled through the biller: the step that
+    // takes the tenant's wallet lock on the fleet path.
+    let requests = [afd_wire::usage::RequestUsage {
+        seq: 0,
+        at: clock::now(),
+        input_tokens: u32::try_from(INPUT_TOKENS).expect("the fixture count fits a line"),
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: 0,
+    }];
+    let renew = async {
+        let renewed = leases
+            .extend(
+                Metering {
+                    lease_id: running.lease.as_str(),
+                    runner_id: &running.runner,
+                    requests: &requests,
+                },
+                &running.lease,
+                &pricing,
+                clock::now(),
+            )
+            .await
+            .expect("the renewal is a verdict");
+        let receipt = match &renewed {
+            Renewed::Extended {
+                settlement: Some(settled),
+                ..
+            } => biller.settle(settled).await.expect("the slice settles"),
+            _ => Receipt::default(),
+        };
+        (renewed, receipt)
+    };
     let authoring = lease_id(&lease);
     let settle = drafts.report(&running.runner, &authoring, accounting(&lease));
     let (renewed, reported) = match first {
@@ -87,16 +132,24 @@ async fn scenario(first: First) {
             (renewed, reported)
         }
     };
-    let renewed = renewed.expect("the renewal is a verdict");
+    let (renewed, receipt) = renewed;
     assert!(
-        matches!(renewed, Renewed::Extended { charged, .. } if charged.as_i64() == FLEET_SLICE),
-        "{first:?}: the live lease renews and is charged the token slice, got {renewed:?}"
+        matches!(
+            renewed,
+            Renewed::Extended {
+                settlement: Some(_),
+                ..
+            }
+        ),
+        "{first:?}: the live lease renews and logs its slice, got {renewed:?}"
     );
+    let fleet_slice = receipt.taken.as_i64();
+    assert!(fleet_slice > 0, "{first:?}: the slice's runtime is charged");
     let reported: Reported = reported.expect("the settlement commits");
     assert!(reported.settled && !reported.replayed, "{first:?}");
     assert_eq!(
         balance(&running, &seat.tenant).await,
-        FUNDED - FLEET_SLICE - AUTHORING_DEBIT,
+        FUNDED - fleet_slice - AUTHORING_DEBIT,
         "{first:?}: both debits land; neither overwrote the other"
     );
     seat.remove(database).await;
@@ -130,27 +183,10 @@ async fn queued<A, B>(
     (first, second)
 }
 
-fn metered() -> Meter {
-    Meter {
-        cumulative: Cumulative {
-            input: INPUT_TOKENS,
-            cached: 0,
-            output: 0,
-        },
-        rates: SliceRates {
-            run_nanos_per_sec: 0,
-            input_nanos_per_mtok: FLEET_SLICE,
-            cached_input_nanos_per_mtok: 0,
-            output_nanos_per_mtok: 0,
-        },
-    }
-}
-
 fn accounting(lease: &Claimed) -> Report {
     Report::Accounting {
         accounting: Accounting {
             fence: lease.fence.clone(),
-            deletion_generation: lease.deletion_generation.clone(),
             report_id: mint_id(),
             outcome: Outcome::Completed,
             failure_reason: None,

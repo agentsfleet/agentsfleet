@@ -40,9 +40,9 @@ fn ceiling() -> NonZeroUsize {
 async fn test_admission_sheds_over_ceiling() {
     let mut fixture = Fixture::filled_to_capacity(ceiling()).await;
 
-    let before = clock::now().as_seconds();
+    let before = clock::now().as_second();
     let shed = fixture.request().await;
-    let after = clock::now().as_seconds();
+    let after = clock::now().as_second();
 
     assert_eq!(
         shed.status(),

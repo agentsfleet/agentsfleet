@@ -10,12 +10,13 @@
 
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
+use afd_core::clock::saturating_millis;
 use afd_core::error_code::ErrorCode;
 use afd_observability::semconv::ATTR_SANDBOX_REUSED;
 use afr_sandbox::{Limits, Sandbox};
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
+use jiff::Timestamp;
 
 use super::LeaseRun;
 use crate::egress::Bound;
@@ -86,10 +87,8 @@ impl LeaseRun<'_> {
             holds.release(key.fleet.clone(), Release::Superseded);
             return None;
         }
-        let Taken {
-            mut sandbox,
-            held_ms,
-        } = holds.take(key).await?;
+        let Taken { mut sandbox, held } = holds.take(key).await?;
+        let held_ms = saturating_millis(held);
         let lease_id = self.ids.lease.as_str();
         let given_up = resume(sandbox.as_mut(), bound, lease_id).await.err();
         let Some(GivenUp {
@@ -123,7 +122,7 @@ impl LeaseRun<'_> {
     /// lease ended processed and ran to its own end, the runner still takes
     /// leases and the sandbox still runs; destroys it otherwise. Answers when
     /// the hold lapses, for the report to carry.
-    pub(super) async fn keep(&self, kept: Option<Kept>, ending: &Ending) -> Option<UnixMillis> {
+    pub(super) async fn keep(&self, kept: Option<Kept>, ending: &Ending) -> Option<Timestamp> {
         let Kept { mut sandbox, key } = kept?;
         // Leasing is a child of serving, so a runner shutting down or stopped
         // counts too: it takes no lease that could take the hold.

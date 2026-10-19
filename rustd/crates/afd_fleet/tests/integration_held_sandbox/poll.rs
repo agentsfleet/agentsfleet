@@ -13,13 +13,13 @@
 )]
 
 use afd_core::id::Uuid7;
-use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
+use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afd_db::test_util::mint_id;
 use afd_dragonfly::ready::{Partition, READY_PARTITIONS};
 use afd_dragonfly::{ReadyIndex, ReadyPrefix};
 use afd_fleet::lease::Leases;
 
-use super::{at, hold, id, live};
+use super::{hold, id, live};
 use crate::queue;
 use crate::seed::{Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -50,18 +50,17 @@ async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
         &fixtures,
         &fleet,
         &holder,
-        fixtures.enrolled_at() + SANDBOX_HOLD_IDLE_MS,
+        fixtures.after(SANDBOX_HOLD_IDLE),
     )
     .await;
-    let now = at(fixtures.enrolled_at() + 1);
     let named = [id(&fleet)];
 
     let claimed = leases
-        .select(&other, &named, now)
+        .select(&other, &named)
         .await
         .expect("the poll answers");
     let held = leases
-        .select(&holder, &named, now)
+        .select(&holder, &named)
         .await
         .expect("the poll answers");
 
@@ -89,26 +88,18 @@ async fn test_an_idle_poll_naming_an_unmarked_held_fleet_costs_no_postgres() {
     let named = [id(&fleet)];
 
     for _poll in 0..READY_PARTITIONS {
-        let (polled, cost) = leases
-            .select_measured(&holder, &named, at(fixtures.enrolled_at()))
-            .await;
+        let (polled, cost) = leases.select_measured(&holder, &named).await;
         assert!(polled.expect("the poll answers").is_none());
         assert_eq!(cost.database_roundtrips, 0, "{cost:?}");
     }
     fixtures.cleanup().await;
 }
 
-/// The fleet the first of one rotation of polls at `polled_at` naming `held`
-/// leases. A poll that faults is passed over, as a runner backs off and polls
+/// The fleet the first of one rotation of polls naming `held` leases. A poll that faults is passed over, as a runner backs off and polls
 /// again.
-async fn first_leased(
-    store: &Leases,
-    runner: &Uuid7,
-    held: &[Uuid7],
-    polled_at: i64,
-) -> Option<Uuid7> {
+async fn first_leased(store: &Leases, runner: &Uuid7, held: &[Uuid7]) -> Option<Uuid7> {
     for _poll in 0..READY_PARTITIONS {
-        if let Ok(Some(acquired)) = store.select(runner, held, at(polled_at)).await {
+        if let Ok(Some(acquired)) = store.select(runner, held).await {
             return Some(acquired.fleet_id);
         }
     }
@@ -148,7 +139,7 @@ async fn test_a_held_fleet_whose_read_fails_leaves_the_poll_its_partition() {
         .expect("the lane's Dragonfly takes a plain write");
     let store = fixtures.leases().with_ready_prefix(prefix);
 
-    let found = first_leased(&store, &runner, &[id(&unreadable)], fixtures.enrolled_at()).await;
+    let found = first_leased(&store, &runner, &[id(&unreadable)]).await;
 
     assert_eq!(found, Some(id(&fleet)), "the ready fleet is leased");
     let mut clear = redis::cmd("DEL");

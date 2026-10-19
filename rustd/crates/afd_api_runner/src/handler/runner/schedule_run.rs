@@ -113,14 +113,7 @@ pub(crate) async fn run<D: Services>(
         read_strict_body(&body).map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED))?;
     let schedule = schedule_id(&schedule_id_raw)?;
     let now = services.now();
-    let lease = standing(
-        &*services,
-        runner.id(),
-        &lease_id,
-        request.fencing_token,
-        now,
-    )
-    .await?;
+    let lease = standing(&*services, runner.id(), &lease_id, request.fencing_token).await?;
     // Read by the schedule alone, so the fleet is checked here: a schedule of
     // another fleet answers exactly as one that never existed.
     let target = services
@@ -191,8 +184,7 @@ pub(crate) async fn runs<D: Services>(
         .map(Cursor::decode)
         .transpose()
         .map_err(|_unminted| Refusal::malformed(DETAIL_CURSOR))?;
-    let now = services.now();
-    let lease = standing(&*services, runner.id(), &lease_id, token, now).await?;
+    let lease = standing(&*services, runner.id(), &lease_id, token).await?;
     let rows = i64::from(limit);
     let page = services
         .events()

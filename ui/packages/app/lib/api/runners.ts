@@ -1,10 +1,10 @@
 import { request } from "./client";
+import { RunnerLeasesSchema, type RunnerLeaseResponse } from "./runner-leases";
+export type { RunnerLease, RunnerLeaseResponse } from "./runner-leases";
 
 import { RUNNER_ADMIN_ACTION, RUNNER_ADMIN_STATE } from "./runners-types";
 import type {
   AssignedPolicy,
-  LeaseKind,
-  LeaseOutcome,
   RunnerAdminAction,
   RunnerAdminState,
   RunnerEventType,
@@ -57,11 +57,11 @@ export interface RunnerListItem {
   id: string;
   host_id: string;
   sandbox_tier: SandboxTier;
-  admin_state: RunnerAdminState;
+  status: RunnerAdminState;
   liveness: RunnerLiveness;
   labels: string[];
-  last_seen_at: number;
-  created_at: number;
+  last_seen_at: string;
+  created_at: string;
   /** The assignment this host must satisfy. */
   assigned_policy: AssignedPolicy;
   /** The host's last capability report; null until its first report arrives. */
@@ -108,47 +108,17 @@ export interface RunnerDetail extends RunnerListItem {
   leases_succeeded: number;
   leases_failed: number;
   leases_expired: number;
-  /** An operator's outstanding ask, epoch ms; null when none is pending. The
+  /** An operator's outstanding ask, an RFC 3339 instant; null when none is pending. The
    * daemon clears it on the beat that reports the matching verdict, so a
    * non-null value means "asked, not yet answered". */
-  selftest_requested_at: number | null;
-  /** When the verdict landed, epoch ms; null until a first report. A runner may
+  selftest_requested_at: string | null;
+  /** When the verdict landed, an RFC 3339 instant; null until a first report. A runner may
    * hold a request with no result, or a result with no request (the startup
    * probe, which no operator asked for). */
-  selftest_completed_at: number | null;
+  selftest_completed_at: string | null;
   /** The latest verdict; null means never self-tested, which the page renders
    * differently from "tested and reported no checks". */
   selftest: SelftestReport | null;
-}
-
-export interface RunnerLease {
-  id: string;
-  fleet_id: string;
-  fleet_name: string | null;
-  workspace_id: string;
-  event_id: string;
-  event_type: string;
-  actor: string;
-  outcome: LeaseOutcome;
-  failure_label: string | null;
-  failure_detail: string | null;
-  kind: LeaseKind;
-  fencing_token: number;
-  provider: string;
-  model: string;
-  posture: string;
-  metered_input_tokens: number;
-  metered_cached_tokens: number;
-  metered_output_tokens: number;
-  wall_ms: number | null;
-  lease_expires_at: number;
-  created_at: number;
-}
-
-export interface RunnerLeaseResponse {
-  items: RunnerLease[];
-  total: number | null;
-  next_cursor: string | null;
 }
 
 /** The mint response — `runner_token` is the raw `agt_r`, returned exactly once. */
@@ -160,7 +130,7 @@ export interface CreatedRunner {
 
 export interface RunnerAdminStateUpdate {
   id: string;
-  admin_state: RunnerAdminState;
+  status: RunnerAdminState;
 }
 
 /** The self-test PATCH reply: the recorded REQUEST, never a verdict. The daemon
@@ -168,8 +138,8 @@ export interface RunnerAdminStateUpdate {
  * shows pending and ages it from `selftest_requested_at`. */
 export interface RunnerSelftestRequest {
   id: string;
-  admin_state: RunnerAdminState;
-  selftest_requested_at: number;
+  status: RunnerAdminState;
+  selftest_requested_at: string;
 }
 
 /** At least one edit field; both are applied atomically by the daemon. */
@@ -181,17 +151,17 @@ export type RunnerEdit = (
 /** Fields not requested by this edit are returned as null. */
 export interface RunnerEditResponse {
   id: string;
-  admin_state: RunnerAdminState;
+  status: RunnerAdminState;
   assigned_policy: AssignedPolicy | null;
   labels: string[] | null;
-  selftest_requested_at: number | null;
+  selftest_requested_at: string | null;
 }
 
 export interface RunnerEventItem {
   id: string;
   runner_id: string;
   event_type: RunnerEventType;
-  occurred_at: number;
+  occurred_at: string;
   metadata: unknown;
 }
 
@@ -253,11 +223,11 @@ export async function listRunnerLeases(
   if (params.workspace_id) qs.set(QUERY_WORKSPACE_ID, params.workspace_id);
   if (params.fleet) qs.set(QUERY_FLEET, params.fleet);
   const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
-  return request<RunnerLeaseResponse>(
+  return RunnerLeasesSchema.parse(await request<unknown>(
     `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}/leases${suffix}`,
     { method: "GET" },
     token,
-  );
+  ));
 }
 
 export async function createRunner(

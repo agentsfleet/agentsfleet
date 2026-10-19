@@ -69,7 +69,6 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_vault::Vault;
-use sqlx::Row as _;
 
 pub use self::app::{Fanout, MAX_FANOUT, replay_id};
 pub use self::binding::Binding;
@@ -140,7 +139,7 @@ impl Ingress {
     /// parses.
     pub async fn binding(&self, fleet: &Uuid7, source: Option<&str>) -> Result<Option<Binding>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::SELECT_FLEET_INGRESS)
+        let row: Option<IngressRow> = sqlx::query_as(sql::SELECT_FLEET_INGRESS)
             .bind(fleet.as_str())
             .fetch_optional(connection.as_mut())
             .await
@@ -150,23 +149,33 @@ impl Ingress {
             return Ok(None);
         };
 
-        let unreadable = error::query(CONTEXT_BINDING);
-        let workspace: String = row.try_get(0).map_err(&unreadable)?;
-        let status: String = row.try_get(1).map_err(&unreadable)?;
-        let document: String = row.try_get(2).map_err(&unreadable)?;
-
-        // The column is a NOT NULL foreign key onto `core.workspaces`, so a
+        // The column is a NOT NULL foreign key onto `identity.workspaces`, so a
         // value that will not parse is a broken invariant rather than a race —
         // and it is reported as this daemon's fault, not answered as "no such
         // fleet", which would send an operator looking at the wrong thing.
-        let workspace = Uuid7::parse(&workspace)
+        let workspace = Uuid7::parse(&row.workspace_id)
             .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))?;
 
         match source {
-            Some(source) => {
-                Binding::read_for_source(fleet.clone(), workspace, &status, &document, source)
-            }
-            None => Binding::read(fleet.clone(), workspace, &status, &document),
+            Some(source) => Binding::read_for_source(
+                fleet.clone(),
+                workspace,
+                &row.status,
+                &row.document,
+                source,
+            ),
+            None => Binding::read(fleet.clone(), workspace, &row.status, &row.document),
         }
     }
+}
+
+/// [`sql::SELECT_FLEET_INGRESS`]'s row: what one fleet says about a delivery.
+#[derive(Debug, sqlx::FromRow)]
+struct IngressRow {
+    /// The owning workspace, as text.
+    workspace_id: String,
+    /// The stored status word.
+    status: String,
+    /// The head revision's configuration, as JSON text.
+    document: String,
 }

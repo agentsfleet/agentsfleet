@@ -50,6 +50,8 @@ mod apikey_lane;
 mod dragonfly_harness;
 // Carries its own `#![expect]`, carved with the code from the suite that
 // declared it, so it needs no allowance here.
+#[path = "support/device_flow_lane.rs"]
+mod device_flow_lane;
 #[path = "support/preference_lane.rs"]
 #[allow(
     clippy::expect_used,
@@ -66,8 +68,16 @@ mod integration_api_key_paging;
 mod integration_cli_credential_race;
 #[path = "integration_device_flow.rs"]
 mod integration_device_flow;
+#[path = "integration_device_flow_lifecycle.rs"]
+mod integration_device_flow_lifecycle;
+#[path = "integration_device_flow_races.rs"]
+mod integration_device_flow_races;
 #[path = "integration_identity.rs"]
 mod integration_identity;
+#[path = "integration_invite_resolved_once.rs"]
+mod integration_invite_resolved_once;
+#[path = "integration_model_catalogue.rs"]
+mod integration_model_catalogue;
 #[path = "integration_preferences.rs"]
 mod integration_preferences;
 #[path = "integration_signup.rs"]

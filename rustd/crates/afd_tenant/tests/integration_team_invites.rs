@@ -1,5 +1,5 @@
 //! An owner's invites against live Postgres, past the spec's Dimensions: a
-//! revoke scoped to its account, an invite closed at its expiry instant, the
+//! revoke scoped to its account, an invite closed once past its expiry, the
 //! lists that drop a closed invite, a revoke that lost to a join, and an
 //! accept that fails whole.
 #![cfg(feature = "test-util")]
@@ -8,15 +8,20 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
+use std::time::Duration;
+
 use afd_core::error_code;
 use afd_tenant::error::InviteConflict;
-use afd_tenant::team::INVITE_TTL_MS;
+use jiff::Timestamp;
 
 use crate::access_lane::{Fixture, id};
 
-/// Now, for every call a case makes.
-const NOW: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
+/// The instant each identifier a case mints is minted at. Every stamp and
+/// deadline is the database clock's.
+const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
+
+/// How far past its deadline a backdated invite sits.
+const LAPSED: Duration = Duration::from_millis(1);
 
 /// Another account naming John's invite revokes nothing: the revoke is scoped
 /// to the account that issued it, so John's invite stays listed and Carol can
@@ -32,13 +37,13 @@ async fn should_leave_invite_pending_when_another_account_revokes_it() {
     let stranger = id(&fixture.bob.tenant);
     fixture
         .team
-        .revoke_invitation(&stranger, &invite, NOW)
+        .revoke_invitation(&stranger, &invite)
         .await
         .expect("a revoke of nothing of yours is quiet");
 
     let listed = fixture
         .team
-        .invitations(&id(&fixture.john.tenant), NOW)
+        .invitations(&id(&fixture.john.tenant))
         .await
         .expect("the list reads");
     assert!(listed.iter().any(|row| row.id == invite), "still pending");
@@ -51,38 +56,30 @@ async fn should_leave_invite_pending_when_another_account_revokes_it() {
     fixture.cleanup().await;
 }
 
-/// The instant an invite expires it is closed everywhere at once: the list,
-/// the invitee's waiting list, a send, an accept, and a fresh invite to the
-/// same address supersedes it. One millisecond earlier it is still open.
+/// Once the database clock passes an invite's deadline it is closed
+/// everywhere at once: the list, the invitee's waiting list, a send, an
+/// accept, and a fresh invite to the same address retires it as expired.
+/// Before that it is open. The exact instant is the unit suite's
+/// (`expired_revoked_and_someone_elses_are_one_answer`): a live clock cannot
+/// be stopped on it.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_treat_invite_as_closed_everywhere_when_now_equals_expiry() {
+async fn should_treat_invite_as_closed_everywhere_once_past_expiry() {
     let fixture = Fixture::create().await;
-    let issued = UnixMillis::from_millis(NOW.as_millis() - INVITE_TTL_MS);
-    let just_before = UnixMillis::from_millis(NOW.as_millis() - 1);
     let invite = fixture
-        .invite(&fixture.carol.email, issued)
+        .invite(&fixture.carol.email, NOW)
         .await
-        .expect("an invite that expires at NOW");
+        .expect("John invites Carol");
+    assert!(fixture.johns_lists(&invite).await, "open inside its window");
 
-    assert!(
-        fixture.johns_lists(&invite, just_before).await,
-        "open a millisecond early"
-    );
-    assert!(
-        !fixture.johns_lists(&invite, NOW).await,
-        "closed in the list"
-    );
-    let waiting = fixture.waiting_for(&fixture.carol.email, NOW).await;
+    fixture.backdate_expiry(&invite, LAPSED).await;
+    assert!(!fixture.johns_lists(&invite).await, "closed in the list");
+    let waiting = fixture.waiting_for(&fixture.carol.email).await;
     assert!(
         !waiting.iter().any(|row| row.id == invite),
         "closed for Carol"
     );
-    assert_eq!(
-        fixture.begin_email(&invite, NOW).await,
-        None,
-        "nothing to send"
-    );
+    assert_eq!(fixture.begin_email(&invite).await, None, "nothing to send");
     let refused = fixture
         .team
         .accept(&invite, &fixture.carol.invitee(), NOW)
@@ -93,6 +90,11 @@ async fn should_treat_invite_as_closed_everywhere_when_now_equals_expiry() {
         .invite(&fixture.carol.email, NOW)
         .await
         .expect("a fresh invite supersedes the closed one");
+    assert_eq!(
+        fixture.stamps(&invite).await,
+        ("expired".to_owned(), true),
+        "the fresh invite retired the lapsed one as expired"
+    );
     fixture.cleanup().await;
 }
 
@@ -108,7 +110,7 @@ async fn should_list_only_open_invites_when_revoked_or_accepted() {
         .await
         .expect("John invites Carol");
     let shouted = fixture.carol.email.to_uppercase();
-    let waiting = fixture.waiting_for(&shouted, NOW).await;
+    let waiting = fixture.waiting_for(&shouted).await;
     let found = waiting
         .iter()
         .find(|row| row.id == invite)
@@ -117,10 +119,11 @@ async fn should_list_only_open_invites_when_revoked_or_accepted() {
 
     fixture
         .team
-        .revoke_invitation(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite)
         .await
         .expect("the revoke lands");
-    let waiting = fixture.waiting_for(&fixture.carol.email, NOW).await;
+    assert_eq!(fixture.stamps(&invite).await, ("revoked".to_owned(), true));
+    let waiting = fixture.waiting_for(&fixture.carol.email).await;
     assert!(
         !waiting.iter().any(|row| row.id == invite),
         "revoked is gone"
@@ -135,7 +138,7 @@ async fn should_list_only_open_invites_when_revoked_or_accepted() {
         .accept(&second, &fixture.carol.invitee(), NOW)
         .await
         .expect("the accept lands");
-    assert!(!fixture.johns_lists(&second, NOW).await, "accepted is gone");
+    assert!(!fixture.johns_lists(&second).await, "accepted is gone");
     fixture.cleanup().await;
 }
 
@@ -159,15 +162,14 @@ async fn should_refuse_revoking_an_invite_its_invitee_joined_through() {
 
     let refused = fixture
         .team
-        .revoke_invitation(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite)
         .await
         .expect_err("Carol already joined");
     assert_eq!(refused.code(), error_code::INVITE_CONFLICT);
     assert_eq!(refused.invite_conflict(), Some(InviteConflict::Member));
-    let (accepted_at, revoked_at) = fixture.stamps(&invite).await;
     assert_eq!(
-        (accepted_at.is_some(), revoked_at),
-        (true, None),
+        fixture.stamps(&invite).await,
+        ("accepted".to_owned(), true),
         "the refused revoke changed nothing"
     );
     assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
@@ -179,7 +181,7 @@ async fn should_refuse_revoking_an_invite_its_invitee_joined_through() {
         .expect("John removes Carol");
     fixture
         .team
-        .revoke_invitation(&tenant, &invite, NOW)
+        .revoke_invitation(&tenant, &invite)
         .await
         .expect("a spent invite whose invitee left revokes quietly");
     fixture.cleanup().await;
@@ -205,11 +207,10 @@ async fn should_answer_quietly_when_another_account_revokes_an_accepted_invite()
     let stranger = id(&fixture.bob.tenant);
     fixture
         .team
-        .revoke_invitation(&stranger, &invite, NOW)
+        .revoke_invitation(&stranger, &invite)
         .await
         .expect("a revoke of nothing of yours is quiet, accepted or not");
-    let (accepted_at, revoked_at) = fixture.stamps(&invite).await;
-    assert_eq!((accepted_at.is_some(), revoked_at), (true, None));
+    assert_eq!(fixture.stamps(&invite).await, ("accepted".to_owned(), true));
     assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
     fixture.cleanup().await;
 }
@@ -234,7 +235,11 @@ async fn should_roll_back_the_join_when_a_workspace_row_cannot_be_read() {
         .expect_err("an unreadable workspace fails the accept");
     assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 0);
-    assert_eq!(fixture.stamps(&invite).await, (None, None), "still open");
+    assert_eq!(
+        fixture.stamps(&invite).await,
+        ("pending".to_owned(), false),
+        "still open"
+    );
 
     fixture.remove_workspace(&unreadable).await;
     let accepted = fixture

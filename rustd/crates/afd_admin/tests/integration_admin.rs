@@ -2,252 +2,266 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "integration preconditions should fail the test loudly"
 )]
 
 use afd_admin::{
-    CreateModel, DeleteModel, ModelInput, ModelRates, Models, PlatformKey, PlatformKeyInput,
+    CreateModel, DeleteModel, Model, ModelInput, ModelUpdate, Models, PlatformKeyInput,
     PlatformKeys, SetPlatformKey,
 };
-use afd_core::clock::UnixMillis;
+use afd_core::catalogue::{Metadata, Price};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
+use afd_db::{Db, Migrator};
+use jiff::Timestamp;
 
-const NOW: UnixMillis = UnixMillis::from_millis(1_725_000_000_000);
+/// The instant model identifiers are minted at; rows are stamped by `now()`.
+const NOW: Timestamp = Timestamp::constant(1_725_000_000, 0);
 
-const SEED: &str = r"
-WITH tenant AS (
-    INSERT INTO core.tenants (id, name, created_at, updated_at)
-    VALUES ($1::uuid, 'Admin test', 1, 1)
-)
-INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-VALUES ($2::uuid, $1::uuid, 'primary', 'test', 2)
-";
+#[path = "admin_model/proofs.rs"]
+mod model_proofs;
+
+/// Synthetic prices and API evidence for the administrator's fixture model.
+fn details(raised: bool) -> ModelUpdate {
+    ModelUpdate {
+        metadata: Metadata {
+            display_name: "Administrator fixture".to_owned(),
+            context_cap_tokens: if raised { 400_000 } else { 200_000 },
+            context_source_url: "https://example.test/models/fixture".to_owned(),
+            context_verified_at: NOW,
+            advanced: raised,
+        },
+        prices: vec![Price {
+            effective_from: NOW,
+            effective_until: None,
+            prompt_tokens_above: 0,
+            input_nanos_per_mtok: if raised { 6 } else { 5 },
+            cached_input_nanos_per_mtok: if raised { 2 } else { 1 },
+            cache_write_nanos_per_mtok: Some(187_500_000),
+            cache_write_5m_nanos_per_mtok: Some(125_000_000),
+            cache_write_1h_nanos_per_mtok: Some(200_000_000),
+            output_nanos_per_mtok: if raised { 30 } else { 25 },
+            source_url: "https://example.test/pricing".to_owned(),
+            verified_at: NOW,
+            conditions: "Synthetic administrator fixture; no provider request.".to_owned(),
+        }],
+        inference: None,
+    }
+}
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn model_and_platform_key_mutations_are_atomic() {
-    let fixtures = Fixtures::create().await;
-    fixtures.seed().await;
-    let (entropy, _control) = Entropy::new_mocked();
-    let models = Models::new(fixtures.database.clone(), entropy);
-    let keys = PlatformKeys::new(fixtures.database.clone());
-    let provider = fixtures.provider();
-    let model_id = fixtures.model_id();
+async fn should_file_list_update_and_refuse_a_duplicate_model() {
+    let lane = Lane::create().await;
+    let model = lane.file_model().await;
 
-    let anthropic = create(&models, &provider, &model_id).await;
-    assert_model_created_and_duplicate(&models, &provider, &model_id, &anthropic).await;
-    assert_missing_key_dependencies(&keys, &fixtures, &provider, &model_id).await;
-    assert_active_key_guards_model(&models, &keys, &fixtures, &provider, &model_id, &anthropic)
-        .await;
-    fixtures.cleanup().await;
-}
-
-async fn assert_model_created_and_duplicate(
-    models: &Models,
-    provider: &str,
-    model_id: &str,
-    anthropic: &afd_admin::Model,
-) {
+    let listed = lane.models.list().await.expect("models list");
     assert!(
-        models
-            .list()
-            .await
-            .expect("models list")
-            .iter()
-            .any(|model| model.id() == anthropic.id())
+        listed.contains(&model),
+        "the list reads back what create wrote"
     );
     assert_eq!(
-        models
-            .create(
-                &input(provider, model_id),
-                UnixMillis::from_millis(NOW.as_millis() + 1),
-            )
+        lane.models
+            .create(lane.input(), NOW)
             .await
-            .expect("duplicate is a typed outcome"),
+            .expect("a typed outcome"),
         CreateModel::Duplicate
     );
-}
 
-async fn assert_missing_key_dependencies(
-    keys: &PlatformKeys,
-    fixtures: &Fixtures,
-    provider: &str,
-    model_id: &str,
-) {
-    let missing_workspace = PlatformKeyInput::new(
-        provider.to_owned(),
-        id(fixtures.missing_workspace.as_str()),
-        model_id.to_owned(),
-        None,
+    assert!(
+        lane.models
+            .update(&model.id, details(true), NOW)
+            .await
+            .expect("updates")
+    );
+    let updated = lane.models.list().await.expect("models list");
+    let row = updated
+        .iter()
+        .find(|listed| listed.id == model.id)
+        .expect("the model is still filed");
+    assert_eq!(row.details, details(true));
+    assert!(
+        !lane
+            .models
+            .update(&mint_uuid7(), details(true), NOW)
+            .await
+            .expect("a typed outcome"),
+        "an unknown id updates nothing"
     );
     assert_eq!(
-        keys.set(&missing_workspace, NOW)
+        lane.models
+            .delete(&mint_uuid7())
             .await
-            .expect("missing workspace is a typed outcome"),
+            .expect("a typed outcome"),
+        DeleteModel::NotFound
+    );
+    lane.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_refuse_a_default_whose_workspace_or_model_has_no_row() {
+    let lane = Lane::create().await;
+    lane.file_model().await;
+
+    let missing_workspace = PlatformKeyInput {
+        source_workspace_id: mint_uuid7(),
+        ..lane.key_input()
+    };
+    assert_eq!(
+        lane.keys
+            .set(missing_workspace)
+            .await
+            .expect("a typed outcome"),
         SetPlatformKey::WorkspaceNotFound
     );
-    assert!(
-        keys.list()
-            .await
-            .expect("keys list")
-            .iter()
-            .all(|key| key.provider() != provider)
-    );
-
-    let missing_model = PlatformKeyInput::new(
-        provider.to_owned(),
-        id(fixtures.workspace.as_str()),
-        "missing".to_owned(),
-        None,
-    );
+    let missing_model = PlatformKeyInput {
+        model: "missing".to_owned(),
+        ..lane.key_input()
+    };
     assert_eq!(
-        keys.set(&missing_model, NOW)
-            .await
-            .expect("missing model is a typed outcome"),
+        lane.keys.set(missing_model).await.expect("a typed outcome"),
         SetPlatformKey::ModelNotFound
     );
+    let listed = lane.keys.list().await.expect("keys list");
     assert!(
-        keys.list()
-            .await
-            .expect("keys list")
-            .iter()
-            .all(|key| key.provider() != provider)
+        listed.iter().all(|key| key.provider != lane.provider),
+        "a refused set leaves no default behind"
     );
+    lane.cleanup().await;
 }
 
-async fn assert_active_key_guards_model(
-    models: &Models,
-    keys: &PlatformKeys,
-    fixtures: &Fixtures,
-    provider: &str,
-    model_id: &str,
-    anthropic: &afd_admin::Model,
-) {
-    let active = PlatformKeyInput::new(
-        provider.to_owned(),
-        id(fixtures.workspace.as_str()),
-        model_id.to_owned(),
-        None,
-    );
-    let SetPlatformKey::Set(key) = keys.set(&active, NOW).await.expect("default activates") else {
-        panic!("a valid default must activate");
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_guard_a_model_while_an_active_default_points_at_it() {
+    let lane = Lane::create().await;
+    let model = lane.file_model().await;
+
+    let SetPlatformKey::Set(key) = lane.keys.set(lane.key_input()).await.expect("activates") else {
+        unreachable!("a catalogued model and a live workspace activate");
     };
-    assert!(key.is_active());
-    assert_eq!(key.model(), Some(model_id));
-    assert_listed_as_set(keys, &key, fixtures).await;
-    assert_eq!(
-        models
-            .delete(anthropic.id(), NOW)
-            .await
-            .expect("reference check reads"),
-        DeleteModel::InUse
-    );
-
-    assert!(
-        keys.deactivate(provider, NOW)
-            .await
-            .expect("default deactivates")
-    );
-    assert_eq!(
-        models
-            .delete(anthropic.id(), NOW)
-            .await
-            .expect("unreferenced model deletes"),
-        DeleteModel::Deleted
-    );
-}
-
-/// The list answers the metadata the upsert wrote, field for field.
-///
-/// The row names the vault key by its owning workspace and provider; the list
-/// carries nothing else, and what it carries is what the set returned.
-async fn assert_listed_as_set(keys: &PlatformKeys, set: &PlatformKey, fixtures: &Fixtures) {
-    let listed = keys
+    assert!(key.active);
+    assert_eq!(key.model.as_deref(), Some(lane.model_name.as_str()));
+    let listed = lane
+        .keys
         .list()
         .await
         .expect("keys list")
         .into_iter()
-        .find(|key| key.provider() == set.provider())
+        .find(|listed| listed.provider == lane.provider)
         .expect("the activated default lists");
-    assert_eq!(&listed, set, "the list reads back what the upsert returned");
-    assert_eq!(listed.source_workspace_id(), &fixtures.workspace);
-    assert_eq!(listed.updated_at(), NOW);
+    assert_eq!(listed, key, "the list reads back what the upsert returned");
+    assert_eq!(listed.source_workspace_id, lane.workspace);
+
+    assert_eq!(
+        lane.models
+            .delete(&model.id)
+            .await
+            .expect("a typed outcome"),
+        DeleteModel::InUse
+    );
+    assert!(
+        lane.keys
+            .deactivate(&lane.provider)
+            .await
+            .expect("deactivates")
+    );
+    assert!(
+        !lane
+            .keys
+            .deactivate(&mint_id())
+            .await
+            .expect("a typed outcome"),
+        "an unknown provider deactivates nothing"
+    );
+    assert_eq!(
+        lane.models
+            .delete(&model.id)
+            .await
+            .expect("a typed outcome"),
+        DeleteModel::Deleted
+    );
+    lane.cleanup().await;
 }
 
-async fn create(models: &Models, provider: &str, model_id: &str) -> afd_admin::Model {
-    let CreateModel::Created(model) = models
-        .create(&input(provider, model_id), NOW)
-        .await
-        .expect("model creates")
-    else {
-        panic!("the fixture model must be new");
-    };
-    model
-}
-
-fn input(provider: &str, model_id: &str) -> ModelInput {
-    ModelInput::new(
-        provider.to_owned(),
-        model_id.to_owned(),
-        ModelRates::new(200_000, 5, 1, 25),
-    )
-}
-
-fn id(raw: &str) -> Uuid7 {
-    Uuid7::parse(raw).expect("the fixture id is UUIDv7")
-}
-
-struct Fixtures {
-    lane: TestDatabase,
+/// The lane's database, the two stores, and one seeded workspace.
+struct Lane {
+    owner: TestDatabase,
     database: Db,
-    tenant: Uuid7,
+    models: Models,
+    keys: PlatformKeys,
     workspace: Uuid7,
-    missing_workspace: Uuid7,
-    suffix: String,
+    provider: String,
+    model_name: String,
 }
 
-impl Fixtures {
+impl Lane {
     async fn create() -> Self {
-        let lane = TestDatabase::shared();
-        let tenant = id(&afd_db::test_util::mint_id());
-        let workspace = id(&afd_db::test_util::mint_id());
-        let missing_workspace = id(&afd_db::test_util::mint_id());
+        let owner = TestDatabase::create().await;
+        let migrator = owner.open(DbRole::Migrator, &[]).await;
+        Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("the schema migrates");
+        migrator.close().await;
+        let database: Db = owner.open(DbRole::Api, &[]).await;
+        let tenant = mint_uuid7();
+        let workspace = mint_uuid7();
+        let mut connection = database.acquire().await.expect("an API connection");
+        TenantSeed::new(tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seeding the tenant");
+        WorkspaceSeed::new(workspace.as_str(), tenant.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seeding the workspace");
         let suffix = tenant.as_str().replace('-', "");
         Self {
-            database: lane.open(DbRole::Api, &[]).await,
-            lane,
-            tenant,
+            models: Models::new(database.clone(), Entropy::new()),
+            keys: PlatformKeys::new(database.clone()),
+            database,
+            owner,
             workspace,
-            missing_workspace,
-            suffix,
+            provider: format!("anthropic-{suffix}"),
+            model_name: format!("claude-opus-5-{suffix}"),
         }
     }
 
-    async fn seed(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(SEED)
-            .bind(self.tenant.as_str())
-            .bind(self.workspace.as_str())
-            .execute(&mut *connection)
-            .await
-            .expect("the admin fixture seeds");
-    }
-
-    fn provider(&self) -> String {
-        format!("anthropic-{}", self.suffix)
-    }
-
-    fn model_id(&self) -> String {
-        format!("claude-opus-5-{}", self.suffix)
-    }
-
     async fn cleanup(self) {
-        drop(self.database);
-        self.lane.cleanup().await;
+        self.database.close().await;
+        self.owner.cleanup().await;
+    }
+
+    fn input(&self) -> ModelInput {
+        ModelInput {
+            provider: self.provider.clone(),
+            model_name: self.model_name.clone(),
+            details: details(false),
+        }
+    }
+
+    fn key_input(&self) -> PlatformKeyInput {
+        PlatformKeyInput {
+            provider: self.provider.clone(),
+            source_workspace_id: self.workspace.clone(),
+            model: self.model_name.clone(),
+            base_url: None,
+        }
+    }
+
+    async fn file_model(&self) -> Model {
+        let CreateModel::Created(model) = self
+            .models
+            .create(self.input(), NOW)
+            .await
+            .expect("creates")
+        else {
+            unreachable!("the fixture model is new: its name carries a minted suffix");
+        };
+        assert_eq!(model.details, details(false));
+        *model
     }
 }

@@ -1,3 +1,4 @@
+import { ADMIN_MODEL, METADATA, PRICE } from "./helpers/catalogue-fixtures";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
@@ -11,13 +12,9 @@ import { type AdminModel } from "@/lib/api/admin_model_library";
 
 /** A catalogue row whose provider id is a slug with a vendor spelling. */
 const MODEL: AdminModel = {
-  id: "m1",
-  provider: "atlas-cloud",
-  model_id: "deepseek-v4p1-flash",
-  context_cap_tokens: 1_048_576,
-  input_nanos_per_mtok: 300_000_000,
-  cached_input_nanos_per_mtok: 30_000_000,
-  output_nanos_per_mtok: 1_200_000_000,
+  ...ADMIN_MODEL, id: "m1", provider: "atlas-cloud", model_id: "deepseek-v4p1-flash",
+  metadata: { ...METADATA, display_name: "DeepSeek V4.1 Flash", context_cap_tokens: 1_048_576 },
+  prices: [{ ...PRICE, input_nanos_per_mtok: "300000000", cached_input_nanos_per_mtok: "30000000", output_nanos_per_mtok: "1200000000" }],
 };
 
 /** How the dialog names `MODEL.provider`. */

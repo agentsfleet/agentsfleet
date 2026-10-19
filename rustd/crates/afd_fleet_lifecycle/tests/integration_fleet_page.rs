@@ -13,9 +13,10 @@
 
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::{After, FleetRow};
+use jiff::SignedDuration;
 
 use crate::integration_wall_counters::{RAN, seed_counters};
-use crate::support::Lane;
+use crate::support::{Lane, NOW};
 
 /// A page larger than the lane seeds, so one read holds the whole workspace.
 const WHOLE_PAGE: u32 = 50;
@@ -41,7 +42,11 @@ async fn the_fleet_page_walks_one_workspace_and_both_statements_read_rows_alike(
     seed_counters(&lane, ran, RAN).await;
     let neighbour = lane.another_workspace().await;
     let theirs = lane
-        .fleet_at(&neighbour, Lane::now().saturating_add_millis(-1))
+        .fleet_at(
+            &neighbour,
+            NOW.checked_sub(SignedDuration::from_millis(1))
+                .expect("the lane's instant has a millisecond before it"),
+        )
         .await;
     seed_counters(&lane, &theirs, RAN).await;
 
@@ -80,7 +85,7 @@ async fn walk(lane: &Lane) -> Vec<FleetRow> {
             break;
         };
         after = Some(After {
-            created_at_ms: row.created_at_ms,
+            created_at: row.created_at,
             id: Uuid7::parse(&row.id).expect("a listed id is a v7 spelling"),
         });
         walked.push(row);

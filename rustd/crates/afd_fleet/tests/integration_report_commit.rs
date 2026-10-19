@@ -19,15 +19,19 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::clock::UnixMillis;
 use afd_fleet::lease::{Committed, Leases, Reported, sql};
+use jiff::Timestamp;
 
 use crate::queue;
 use crate::report_commit::{
     LEDGER_ROWS_AFTER_SETTLE, RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID,
     assert_nothing_landed, report,
 };
-use crate::report_seed::{DEEP_POOL, Held, SLICE_MS, SLICE_NANOS, held};
+use crate::report_seed::{DEEP_POOL, Held, SLICE_NANOS, held, run_fee};
+use crate::rows::Row;
+
+/// The line number a lease's first runtime line takes: the daemon's base.
+const RUNTIME_LINE: &str = "2147483648";
 
 /// Dimension 7.3 — the result commits with the money, or neither does.
 ///
@@ -43,7 +47,8 @@ use crate::report_seed::{DEEP_POOL, Held, SLICE_MS, SLICE_NANOS, held};
 async fn test_report_persists_result_with_settlement_atomically() {
     let held = held().await;
     let lease_id = held.issued.lease_id.as_str();
-    let settled_at = held.now.saturating_add_millis(SLICE_MS);
+    let settled_at = held.now;
+    let from = held.run_a_slice().await;
     let leases = held.fixtures.leases_with_dead_queue();
     let lease = leases
         .load_for_report(lease_id, &held.runner)
@@ -52,8 +57,8 @@ async fn test_report_persists_result_with_settlement_atomically() {
         .expect("the seeded lease belongs to the seeded runner");
 
     assert_a_refused_result_charges_nothing(&held, &leases, &lease, settled_at).await;
-    assert_the_retry_commits_all_four(&held, &leases, &lease, settled_at).await;
-    assert_the_repeat_changes_nothing(&held, &leases, &lease, settled_at).await;
+    let slice = assert_the_retry_commits_all_four(&held, &leases, &lease, settled_at, from).await;
+    assert_the_repeat_changes_nothing(&held, &leases, &lease, settled_at, slice).await;
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
@@ -69,7 +74,7 @@ async fn assert_a_refused_result_charges_nothing(
     held: &Held,
     leases: &Leases,
     lease: &Reported,
-    settled_at: UnixMillis,
+    settled_at: Timestamp,
 ) {
     let lease_id = held.issued.lease_id.as_str();
     let refused = leases
@@ -77,6 +82,7 @@ async fn assert_a_refused_result_charges_nothing(
             lease_id,
             &held.runner,
             lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_POSTGRES_REFUSES,
             settled_at,
         ))
@@ -91,42 +97,50 @@ async fn assert_a_refused_result_charges_nothing(
     )
     .await;
     assert_eq!(
-        held.fixtures.lease_column(lease_id, "status").await,
+        held.fixtures.text(Row::Lease(lease_id), "status").await,
         Some(sql::LEASE_STATUS_ACTIVE.to_owned()),
         "the lease stays active, which is what makes the runner's retry possible at all"
     );
 }
 
 /// The runner retries with an answer that stores, and all four land together.
+/// Answers the slice it charged, metered from `from`.
 async fn assert_the_retry_commits_all_four(
     held: &Held,
     leases: &Leases,
     lease: &Reported,
-    settled_at: UnixMillis,
-) {
+    settled_at: Timestamp,
+    from: Timestamp,
+) -> i64 {
     let lease_id = held.issued.lease_id.as_str();
     let committed = leases
         .commit_report(report(
             lease_id,
             &held.runner,
             lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             settled_at,
         ))
         .await
         .expect("the retry must reach the datastore");
     let Committed::Settled {
-        charged,
+        settlement,
         closed,
         owed,
     } = committed
     else {
         unreachable!("the only holder of this fleet cannot be fenced out of its own retry")
     };
+    let slice = run_fee(held.metered_from(from).await);
+    assert!(
+        slice >= SLICE_NANOS,
+        "the aged meter charges at least a slice: {slice}"
+    );
     assert_eq!(
-        charged.as_i64(),
-        SLICE_NANOS,
-        "the retry charges the slice ONCE — the refused attempt charged nothing"
+        line_charge(settlement.as_deref()),
+        slice,
+        "the retry logs the slice ONCE — the refused attempt logged nothing"
     );
     assert!(
         owed.is_none(),
@@ -139,7 +153,8 @@ async fn assert_the_retry_commits_all_four(
          than a second read taken after the commit",
     );
     assert_closing_carries_the_counters(held, &closed).await;
-    assert_all_four_landed(held, settled_at.as_millis()).await;
+    assert_all_four_landed(held, slice).await;
+    slice
 }
 
 /// The closing hands back the fleet's counters in their own slots.
@@ -166,13 +181,15 @@ async fn assert_the_repeat_changes_nothing(
     held: &Held,
     leases: &Leases,
     lease: &Reported,
-    settled_at: UnixMillis,
+    settled_at: Timestamp,
+    slice: i64,
 ) {
     let repeated = leases
         .commit_report(report(
             held.issued.lease_id.as_str(),
             &held.runner,
             lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             settled_at,
         ))
@@ -183,7 +200,7 @@ async fn assert_the_repeat_changes_nothing(
         "this runner settled this lease, so the repeat is told so — a superseded holder is \
          the other empty claim, and collapsing the two refuses a finished run forever"
     );
-    assert_all_four_landed(held, settled_at.as_millis()).await;
+    assert_all_four_landed(held, slice).await;
 }
 
 /// Dimension 7.3 — a run whose event is already terminal still settles.
@@ -202,7 +219,8 @@ async fn assert_the_repeat_changes_nothing(
 async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     let held = held().await;
     let lease_id = held.issued.lease_id.as_str();
-    let settled_at = held.now.saturating_add_millis(SLICE_MS);
+    let settled_at = held.now;
+    let from = held.run_a_slice().await;
     let leases = held.fixtures.leases_with_dead_queue();
     let lease = leases
         .load_for_report(lease_id, &held.runner)
@@ -223,13 +241,14 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
             lease_id,
             &held.runner,
             &lease,
+            (&held.lease_key, &held.pricing),
             RESPONSE_ACCEPTED,
             settled_at,
         ))
         .await
         .expect("the report must reach the datastore");
     let Committed::Settled {
-        charged,
+        settlement,
         closed,
         owed,
     } = committed
@@ -237,9 +256,9 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         unreachable!("the lease is this runner's and still active, so the claim wins")
     };
     assert_eq!(
-        charged.as_i64(),
-        SLICE_NANOS,
-        "the run happened and is charged for, whatever the event row already said"
+        line_charge(settlement.as_deref()),
+        run_fee(held.metered_from(from).await),
+        "the run happened and its usage is logged, whatever the event row already said"
     );
     assert!(
         closed.is_none(),
@@ -252,14 +271,14 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     );
     assert_eq!(
         held.fixtures
-            .event_column(&held.fleet, &held.event_id, "response_text")
+            .text(Row::Event(&held.fleet, &held.event_id), "response_text")
             .await,
         None,
         "and the earlier delivery's row is left exactly as it was — a terminal row is \
          never reopened by a later report"
     );
     assert_eq!(
-        held.fixtures.lease_column(lease_id, "status").await,
+        held.fixtures.text(Row::Lease(lease_id), "status").await,
         Some(sql::LEASE_STATUS_REPORTED.to_owned()),
         "the lease is terminal, because the settle committed with the rest"
     );
@@ -268,32 +287,47 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     held.fixtures.cleanup().await;
 }
 
+/// What a committed report's usage line cost; zero when it logged none.
+fn line_charge(settlement: Option<&afd_billing::biller::Settlement>) -> i64 {
+    settlement.map_or(0, |settled| {
+        settled.lines.iter().map(|line| line.charged.as_i64()).sum()
+    })
+}
+
 /// Every row the committed transaction wrote, asserted as a set.
 ///
 /// Called after the settle and again after the repeat. The repeat charges
 /// nothing and writes nothing, so "unchanged" and "correct" are the same
 /// assertion — which is why this is one helper rather than two lists that
 /// could drift apart.
-async fn assert_all_four_landed(held: &Held, settled_at: i64) {
+async fn assert_all_four_landed(held: &Held, slice: i64) {
     let lease_id = held.issued.lease_id.as_str();
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
-        Some(DEEP_POOL - SLICE_NANOS),
-        "the wallet is drawn down by one slice, however many times the report is sent"
+        Some(DEEP_POOL),
+        "the report's transaction logs usage and moves no money: the biller charges \
+         after commit"
     );
     assert_eq!(
         held.fixtures.ledger_rows(&held.event_id).await,
         LEDGER_ROWS_AFTER_SETTLE,
-        "one receive row and one stage row: the two-rows-per-event invariant"
+        "one usage line for the final slice, however many times the report is sent"
     );
     assert_eq!(
-        held.fixtures.lease_column(lease_id, "status").await,
+        held.fixtures
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
+            .await,
+        Some(slice.to_string()),
+        "the line is priced at the slice it measured"
+    );
+    assert_eq!(
+        held.fixtures.text(Row::Lease(lease_id), "status").await,
         Some(sql::LEASE_STATUS_REPORTED.to_owned()),
         "the lease is terminal"
     );
     assert_eq!(
         held.fixtures
-            .event_column(&held.fleet, &held.event_id, "status")
+            .text(Row::Event(&held.fleet, &held.event_id), "status")
             .await,
         Some(afd_core::event::status::PROCESSED.to_owned()),
         "the run's RESULT is durable beside the charge for it — the pairing this dimension \
@@ -301,25 +335,22 @@ async fn assert_all_four_landed(held: &Held, settled_at: i64) {
     );
     assert_eq!(
         held.fixtures
-            .event_column(&held.fleet, &held.event_id, "response_text")
+            .text(Row::Event(&held.fleet, &held.event_id), "response_text")
             .await,
         Some(RESPONSE_ACCEPTED.to_owned()),
         "and it is the answer the accepted report carried"
     );
     let cursor = held
         .fixtures
-        .session_column(&held.fleet, "context_json")
+        .text(Row::Session(&held.fleet), "context_json")
         .await
         .expect("the checkpoint rides the same commit");
     assert!(
         cursor.contains(RESUME_EVENT_ID),
         "the session resumes after the event this run executed, not before it: {cursor}"
     );
-    assert_eq!(
-        held.fixtures
-            .affinity_column(&held.fleet, "leased_until")
-            .await,
-        Some(settled_at.to_string()),
+    assert!(
+        held.fixtures.slot_is_free(&held.fleet).await,
         "the slot is free, and freed in the same commit — a fresh lease can no longer race a \
          half-written finalize because there is no half-written state to race"
     );
