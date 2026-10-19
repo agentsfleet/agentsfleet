@@ -21,7 +21,7 @@ use sqlx::{Connection as _, FromRow as _};
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::sql;
-use crate::lease::usage::{Pricing, SliceColumns};
+use crate::lease::usage::{self, Pricing, SliceColumns};
 
 /// Leases that ended unreported with run time their cursor never billed.
 const SELECT_UNBILLED_EXPIRED_LEASES: &str = include_str!("sql/select_unbilled_expired_leases.sql");
@@ -193,13 +193,12 @@ async fn log_last_slice(
         billed.provider,
         billed.model,
     );
-    let settlement = match slice.into_slice() {
-        Some(slice) => pricing.settlement(lease, slice, &[])?,
-        None => None,
-    };
-    if let Some(settled) = settlement.as_ref() {
-        afd_billing::ledger::log_lines(&mut *transaction, entropy, now, settled).await?;
-    }
+    // A matched row is the probe row, and the slice is read off it, so it is
+    // always present here.
+    let settlement = slice
+        .into_slice()
+        .map_or(Ok(None), |slice| pricing.settlement(lease, slice, &[]))?;
+    usage::log_measured(&mut transaction, entropy, now, settlement.as_ref()).await?;
     transaction.commit().await.map_err(query(CONTEXT_EXPIRED))?;
     Ok(settlement)
 }

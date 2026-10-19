@@ -225,6 +225,24 @@ impl SliceColumns {
     }
 }
 
+/// Logs a measured window's lines inside the pass's own transaction; a window
+/// that measured nothing logs nothing. The renewal, the report's settle and
+/// the expiry sweep each log this way.
+///
+/// # Errors
+/// As [`afd_billing::ledger::log_lines`].
+pub(crate) async fn log_measured(
+    connection: &mut sqlx::PgConnection,
+    entropy: &afd_crypto::entropy::Entropy,
+    now: Timestamp,
+    settlement: Option<&Settlement>,
+) -> Result<()> {
+    if let Some(settled) = settlement {
+        afd_billing::ledger::log_lines(connection, entropy, now, settled).await?;
+    }
+    Ok(())
+}
+
 /// A non-negative count as the line type holds it, saturating rather than
 /// wrapping: an elapsed span the lease's hard cap bounds, or a line count, so
 /// the saturation never fires.

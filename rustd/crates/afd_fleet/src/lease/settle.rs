@@ -26,7 +26,7 @@ use crate::lease::affinity::Fence;
 use crate::lease::sql;
 use crate::lease::sql::meter::{Ending, Metering};
 use crate::lease::store::Leases;
-use crate::lease::usage::{Pricing, SliceColumns};
+use crate::lease::usage::{self, Pricing, SliceColumns};
 use afd_billing::biller::Settlement;
 
 /// Statement name, for the context a query failure carries.
@@ -172,13 +172,12 @@ impl Leases {
             return disposition(connection, lease.lease_id, lease.runner_id).await;
         }
         let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_SETTLE))?;
-        let settlement = match slice.into_slice() {
-            Some(slice) => pricing.settlement(lease_key, slice, lease.requests)?,
-            None => None,
-        };
-        if let Some(settled) = settlement.as_ref() {
-            afd_billing::ledger::log_lines(&mut *connection, self.entropy(), now, settled).await?;
-        }
+        // A won claim is the guard row matching, and the slice is read off that
+        // same row, so it is always present here.
+        let settlement = slice.into_slice().map_or(Ok(None), |slice| {
+            pricing.settlement(lease_key, slice, lease.requests)
+        })?;
+        usage::log_measured(connection, self.entropy(), now, settlement.as_ref()).await?;
         Ok(Settled::Claimed(settlement))
     }
 }
