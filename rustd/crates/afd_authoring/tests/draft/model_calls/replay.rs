@@ -83,3 +83,49 @@ async fn fractional_nanos_round_per_token_class_and_physical_dispatch() {
     assert_eq!(provider.count(), 2);
     f.cleanup().await;
 }
+
+/// An `unknown` receipt never authorizes another physical send, even when the
+/// attempt's own flags disagree with it.
+///
+/// Every writer that marks a dispatch `unknown` marks its attempt
+/// usage-unknown in the same transaction, and the dispatch gate refuses
+/// that attempt before any receipt is read. This test breaks that pairing by
+/// hand, so the receipt read is the only thing left between the retry and a
+/// second provider call.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn an_unknown_receipt_refuses_a_retry_the_attempt_flags_would_allow() {
+    let f = Fixture::create().await;
+    let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
+    let provider = Arc::new(Provider::known());
+    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let request = fixture::request(&attempt);
+    calls
+        .call(&f.runner, &attempt.lease, request.clone())
+        .await
+        .expect("first physical result");
+    sqlx::query("UPDATE authoring.dispatches SET status='unknown' WHERE attempt_id=$1::uuid")
+        .bind(attempt.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("an unknown receipt beside a clean attempt");
+
+    assert_eq!(
+        calls
+            .call(&f.runner, &attempt.lease, request)
+            .await
+            .expect_err("an unknown receipt is not a result")
+            .code(),
+        error_code::AUTHORING_UNKNOWN
+    );
+    assert_eq!(provider.count(), 1);
+    assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM authoring.dispatches WHERE attempt_id=$1::uuid")
+            .bind(attempt.id.as_str())
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("the receipt survives the refusal");
+    assert_eq!(status, "unknown");
+    f.cleanup().await;
+}
