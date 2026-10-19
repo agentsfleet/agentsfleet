@@ -13,6 +13,7 @@ executable: false
 Review and apply the curated catalogue to one environment.
 The seeder reads `scripts/model-library-allowlist.json` through Bun's native Postgres client.
 It writes identities and inference connections to `model.platform_models` and dated prices to `model.platform_model_prices`.
+
 Connections include the API, base URL, optional SDK dialect and output token limit.
 Re-priming fills missing connections and preserves saved administrator overrides.
 
