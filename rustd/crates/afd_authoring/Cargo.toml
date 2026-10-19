@@ -62,6 +62,9 @@ afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_observability = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
+# The fleet purge, so the deletion-matrix test (Dimension 4.1) drives both
+# erasure roots from one fixture. Already in the tree through afd_approval.
+afd_fleet_lifecycle.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util"] }
 
 [features]

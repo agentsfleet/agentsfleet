@@ -8,6 +8,7 @@
 mod activation;
 mod cancellation;
 mod contention;
+mod deletion_matrix;
 mod fixture;
 mod funnel;
 mod grants;
