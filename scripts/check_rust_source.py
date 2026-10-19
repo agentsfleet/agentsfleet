@@ -62,6 +62,7 @@ MILLIS_CONST = re.compile(
 MILLIS_HELPER = re.compile(r"\b(?:UnixMillis|add_millis|millis_between)\b|\bclock::from_millis\b")
 EDGE_CONVERSION = ".as_millis()"
 LINE_COMMENT = re.compile(r"//.*$", re.MULTILINE)
+TRY_GET = re.compile(r"\.try_get(?:_unchecked)?\s*(?:::<[^>]*>)?\s*\(")
 # Files and directories that only tests compile: unit-test files and the
 # `cfg(test)` or `test-util` seams beside them.
 RUST_TEST_FILE = re.compile(r"(?:^|_)tests?\.rs$|^(?:test_util|test_support|testing|fixture)\.rs$")
@@ -202,7 +203,20 @@ def check_integer_millis(root: Path) -> list[lib.Finding]:
     return findings
 
 
-RULES = (check_schema_names, check_migration_list, check_stream_ceiling, check_integer_millis)
+def check_untyped_rows(root: Path) -> list[lib.Finding]:
+    findings = []
+    for path in rust_sources(root):
+        source = path.read_text(encoding="utf-8")
+        tests = cfg_test_regions(source)
+        code = LINE_COMMENT.sub(lambda comment: " " * len(comment.group()), source)
+        for match in TRY_GET.finditer(code):
+            if any(begin <= match.start() < end for begin, end in tests):
+                continue
+            findings.append(lib.Finding(lib.relative(root, path), lib.line_of(code, match.start()), "rust-untyped-row", "a column read by position or name; decode the row into a `#[derive(sqlx::FromRow)]` struct through `query_as`, or one column through `query_scalar`"))
+    return findings
+
+
+RULES = (check_schema_names, check_migration_list, check_stream_ceiling, check_integer_millis, check_untyped_rows)
 
 
 def lint(root: Path) -> list[lib.Finding]:
