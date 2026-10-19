@@ -38,8 +38,7 @@ async fn a_failed_redial_reason_carries_no_code_prefix() {
         .collect();
     assert!(!failed.is_empty(), "a failed redial is logged");
     for record in failed {
-        let reason = record.fields.get("reason").map_or("", String::as_str);
-        assert!(!reason.is_empty() && !reason.contains("[UZ-"), "{reason}");
+        record.assert_uncoded_reason();
         assert_eq!(
             record.fields.get("cause_error_code").map(String::as_str),
             Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),

@@ -111,8 +111,7 @@ async fn an_unreadable_platform_credential_reason_carries_no_code_prefix() {
     );
 
     let logged = capture.only("platform_credential_unreadable");
-    let reason = logged.field("reason").expect("the line says why");
-    assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+    logged.assert_uncoded_reason();
     assert!(
         logged
             .field("error_code")

@@ -44,9 +44,6 @@ async fn a_failed_probe_reason_carries_no_code_prefix() {
     );
 
     let logged = capture.only(EVENT_PROBE_FAILED);
-    let reason = logged.field("reason").expect("a failed probe says why");
-    assert!(!reason.is_empty(), "the failure line says nothing");
-    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
-    assert!(!reason.contains('\n'), "a backtrace rode along: {reason}");
+    logged.assert_uncoded_reason();
     assert!(logged.field("error_code").is_some(), "{logged:?}");
 }

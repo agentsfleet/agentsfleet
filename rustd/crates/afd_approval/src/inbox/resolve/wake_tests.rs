@@ -55,8 +55,5 @@ async fn a_failed_wake_mark_reason_carries_no_code_prefix() {
         "the unavailable datastore's own code rides `cause_error_code`"
     );
     assert_eq!(logged.field("fleet_id"), Some(FLEET));
-    let reason = logged.field("reason").expect("a lost mark says why");
-    assert!(!reason.is_empty(), "the failure line says nothing");
-    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
-    assert!(!reason.contains('\n'), "a backtrace rode along: {reason}");
+    logged.assert_uncoded_reason();
 }

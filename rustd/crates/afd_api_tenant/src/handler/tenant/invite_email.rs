@@ -258,8 +258,7 @@ mod tests {
         unrecorded(&invite, &failure);
 
         let logged = capture.only(EVENT_UNRECORDED);
-        let reason = logged.field("reason").expect("the line says why");
-        assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+        logged.assert_uncoded_reason();
         assert_eq!(logged.field("error_code"), Some(failure.code().as_str()));
     }
 }

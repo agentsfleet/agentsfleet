@@ -316,11 +316,7 @@ mod tests {
         );
         for (kind, failure) in crate::error::one_of_each_kind() {
             let logged = failure.logged();
-            assert!(
-                !logged.reason.is_empty() && !logged.reason.contains("[UZ-"),
-                "{kind}: {}",
-                logged.reason
-            );
+            afd_core::test_util::trace::assert_uncoded(&logged.reason, kind);
             assert_eq!(
                 unremoved(Ok(Err(failure))),
                 Some(Unremoved::Failed(logged)),
