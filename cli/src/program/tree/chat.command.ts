@@ -6,6 +6,7 @@ import { chatEffect } from "../../commands/chat/commands.ts";
 import { withManagedExitCode } from "../../runtime/exit-code.service.ts";
 import { METAVAR } from "./flags.ts";
 import { guardedHandler } from "./guarded-handler.ts";
+import { chatHistoryCommands } from "./chat-history.command.ts";
 
 const opt = Option.getOrUndefined;
 const textFlag = (name: string, description: string, metavar: string) =>
@@ -45,4 +46,5 @@ export const chatCommand = Command.make("chat", {
     noInput: flags.noInput, review: flags.review, save: flags.save, apply: flags.apply, stop: flags.stop,
     name: opt(flags.name), reviewDigest: opt(flags.reviewDigest), runNow: opt(flags.runNow), publish: opt(flags.publish),
   }))),
+  Command.withSubcommands(chatHistoryCommands),
 );
