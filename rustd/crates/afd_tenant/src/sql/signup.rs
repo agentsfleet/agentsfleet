@@ -29,4 +29,3 @@ pub const INSERT_MEMBERSHIP: &str = include_str!("signup/insert_membership.sql")
 /// `DO NOTHING` is what makes this safe to re-run: a replay heals a wallet that
 /// went missing without resetting a balance somebody has already spent down.
 pub const INSERT_WALLET: &str = include_str!("signup/insert_wallet.sql");
-
