@@ -2,6 +2,10 @@
 
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use afd_core::clock::{Clock, SystemClock};
+use afd_wire::usage::{LINES_MAX, RUNNER_SEQ_MAX, RequestLines, RequestUsage};
 
 use crate::ExecutionResult;
 use afd_wire::activity::ActivityFrame;
@@ -90,26 +94,73 @@ impl fmt::Debug for AgentRun<'_> {
     }
 }
 
-/// The tokens a run has spent so far, readable while it runs.
+/// The tokens a run has spent so far, readable while it runs, and one line per
+/// provider request the daemon has not yet recorded.
 ///
-/// The engine adds each turn's usage, and the supervisor reports the running
-/// total with every lease renewal, so the daemon meters a run before it ends.
-/// Each count is its own atomic: a read between two adds may see one turn's
-/// input without its output, and the next renewal carries both.
-#[derive(Debug, Default)]
+/// The engine adds each turn's usage. The supervisor sends the unrecorded lines
+/// with every lease renewal and forgets the ones the daemon says it recorded;
+/// the report carries whatever is left, so the daemon prices every request on
+/// its own and a lost response never loses a line. Each total is its own
+/// atomic: a read between two adds may see one turn's input without its output.
+#[derive(Debug)]
 pub struct Meter {
     input: AtomicU64,
     cached_input: AtomicU64,
     output: AtomicU64,
+    lines: Mutex<Lines>,
+    clock: Arc<dyn Clock>,
+}
+
+/// The request lines not yet recorded, and the number the next one takes.
+#[derive(Debug, Default)]
+struct Lines {
+    next: u32,
+    unrecorded: Vec<RequestUsage>,
+}
+
+impl Default for Meter {
+    fn default() -> Self {
+        Self::new(Arc::new(SystemClock))
+    }
 }
 
 impl Meter {
-    /// Adds one turn's tokens.
+    /// A meter stamping each request line with `clock`'s instant.
+    #[must_use]
+    pub fn new(clock: Arc<dyn Clock>) -> Self {
+        Self {
+            input: AtomicU64::new(0),
+            cached_input: AtomicU64::new(0),
+            output: AtomicU64::new(0),
+            lines: Mutex::new(Lines::default()),
+            clock,
+        }
+    }
+
+    /// Adds one turn's tokens, and its request line.
+    ///
+    /// A prompt token the provider wrote to its cache is already inside
+    /// `input`, so the line carries it there; the daemon prices it at the input
+    /// rate.
     pub fn add(&self, usage: Usage) {
         self.input.fetch_add(usage.input, Ordering::Relaxed);
         self.cached_input
             .fetch_add(usage.cached_input, Ordering::Relaxed);
         self.output.fetch_add(usage.output, Ordering::Relaxed);
+        let at = self.clock.now();
+        let mut lines = self.lines();
+        let seq = lines.next;
+        lines.next = seq.saturating_add(1).min(RUNNER_SEQ_MAX);
+        lines.unrecorded.push(RequestUsage {
+            seq,
+            at,
+            input_tokens: narrow(usage.input),
+            cached_input_tokens: narrow(usage.cached_input),
+            cache_write_tokens: 0,
+            cache_write_5m_tokens: 0,
+            cache_write_1h_tokens: 0,
+            output_tokens: narrow(usage.output),
+        });
     }
 
     /// Everything the run has spent so far.
@@ -123,6 +174,28 @@ impl Meter {
             output: self.output.load(Ordering::Relaxed),
         }
     }
+
+    /// The oldest request lines the daemon has not recorded, at most one
+    /// request body's worth.
+    #[must_use]
+    pub fn unrecorded(&self) -> RequestLines {
+        let lines = self.lines();
+        RequestLines(lines.unrecorded.iter().take(LINES_MAX).copied().collect())
+    }
+
+    /// Forgets every line the daemon recorded, through `seq`.
+    pub fn recorded_through(&self, seq: u32) {
+        self.lines().unrecorded.retain(|line| line.seq > seq);
+    }
+
+    fn lines(&self) -> MutexGuard<'_, Lines> {
+        self.lines.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// A count the wire carries in 32 bits, saturated rather than wrapped.
+fn narrow(count: u64) -> u32 {
+    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 /// What a finished run hands back to the supervisor.

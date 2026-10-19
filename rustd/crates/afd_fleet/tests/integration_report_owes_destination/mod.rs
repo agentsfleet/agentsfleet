@@ -287,9 +287,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
         tokens: 0,
-        input_tokens: 0,
-        cached_input_tokens: 0,
-        output_tokens: 0,
+        requests: afd_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: u64::try_from(SLICE_MS).expect("a slice is positive"),

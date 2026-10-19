@@ -19,6 +19,7 @@ async fn every_verb_goes_to_its_own_path() {
     let (plane, mut calls) = plane(|call| match call.verb {
         Verb::Renew => json(&RenewResponse {
             lease_expires_at: RENEWED_UNTIL,
+            recorded_through: None,
         }),
         _other => json(&serde_json::json!({})),
     });
@@ -77,7 +78,11 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
     plane.heartbeat(&heartbeat).await.unwrap();
     plane.lease(&[]).await.unwrap();
     assert_eq!(
-        plane.renew(&lease, &RenewRequest::default()).await.unwrap(),
+        plane
+            .renew(&lease, &RenewRequest::default())
+            .await
+            .unwrap()
+            .lease_expires_at,
         RENEWED_UNTIL,
         "renewal returns its new expiry"
     );
@@ -105,6 +110,7 @@ async fn a_reply_decodes_borrowing_or_refuses_as_malformed() {
     let (plane, _calls) = plane(|call| match call.verb {
         Verb::Lease => json(&RenewResponse {
             lease_expires_at: RENEWED_UNTIL,
+            recorded_through: None,
         }),
         _other => Answer::Reply(Bytes::from_static(b"[")),
     });

@@ -31,22 +31,19 @@ pub(crate) const EVENT: EventKind<'static> = EventKind {
 const INSERT_LEASE: &str = "\
 INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
-   receipt, posture, provider, model, metered_input_token_count,
-   metered_cached_token_count, metered_output_token_count, fencing_token,
+   receipt, posture, provider, model, last_metered_at, fencing_token,
    lease_expires_at, status, posted_message_count, created_at, updated_at)
 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
-        coalesce($9::timestamptz, now()), $1::text, 'platform', 'test', 'test', 0, 0, 0, 1,
+        coalesce($9::timestamptz, now()), $1::text, 'platform', 'test', 'test', coalesce($9::timestamptz, now()), 1,
         $7::timestamptz, $8, 0, coalesce($9::timestamptz, now()),
         coalesce($9::timestamptz, now()))";
 
 const INSERT_SLOT: &str = "\
 INSERT INTO runner.fleet_slots
   (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
-   metered_input_token_count, metered_cached_token_count, metered_output_token_count,
-   last_metered_at, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, 1, $3::timestamptz, $4::timestamptz, 0, 0, 0,
-        coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()),
-        coalesce($5::timestamptz, now()))";
+   created_at, updated_at)
+VALUES ($1::uuid, $2::uuid, 1, $3::timestamptz, $4::timestamptz,
+        coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))";
 
 const INSERT_ATTEMPT: &str = "\
 INSERT INTO authoring.attempts

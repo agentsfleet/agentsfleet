@@ -7,10 +7,8 @@ WITH instant AS MATERIALIZED (
 )
 INSERT INTO runner.fleet_slots AS s
   (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
-   metered_input_token_count, metered_cached_token_count, metered_output_token_count,
-   last_metered_at, created_at, updated_at)
-SELECT $1::uuid, $2::uuid, 1, instant.checked_at + $3::interval, NULL,
-       0, 0, 0, instant.checked_at, now(), now()
+   created_at, updated_at)
+SELECT $1::uuid, $2::uuid, 1, instant.checked_at + $3::interval, NULL, now(), now()
 FROM instant
 ON CONFLICT (fleet_id) DO UPDATE
   SET last_runner_id   = EXCLUDED.last_runner_id,

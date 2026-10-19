@@ -18,6 +18,8 @@ test-util = ["afd_core/test-util", "afd_db/test-util"]
 afd_core.workspace = true
 afd_db.workspace = true
 afd_api_wire.workspace = true
+# The usage lines' work-type spelling, which a lease's token sum filters on.
+afd_billing.workspace = true
 # The lease statuses a row is stored in, spelled once beside the statements
 # that write them.
 afd_state.workspace = true

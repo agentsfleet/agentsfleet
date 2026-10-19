@@ -35,7 +35,7 @@ use crate::lease::store::Leases;
 use crate::lease::usage::{self, Pricing, SliceColumns};
 use afd_billing::biller::Settlement;
 use afd_billing::rates::Posture;
-use afd_billing::{Cumulative, Nanos};
+use afd_billing::Nanos;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "renew lease load";
@@ -146,7 +146,7 @@ impl Leases {
             return Ok(answer.verdict(capacity.now()));
         };
         let settlement = match slice.into_slice() {
-            Some(slice) => pricing.settlement(lease_key, slice)?,
+            Some(slice) => pricing.settlement(lease_key, slice, lease.requests)?,
             None => None,
         };
         if let Some(settled) = settlement.as_ref() {
@@ -269,11 +269,7 @@ impl Plane {
         let metering = Metering {
             lease_id,
             runner_id,
-            cumulative: pricing.counts(Cumulative::reported(
-                request.input_tokens,
-                request.cached_input_tokens,
-                request.output_tokens,
-            )),
+            requests: &request.requests.0,
         };
         match self
             .leases

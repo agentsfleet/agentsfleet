@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::nanos::MS_PER_SEC;
-use afd_billing::{Accounts, Cumulative, Posture, RUN_NANOS_PER_SEC};
+use afd_billing::{Accounts, Posture, RUN_NANOS_PER_SEC};
 use afd_core::id::Uuid7;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
@@ -158,7 +158,7 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
 }
 
 impl Held {
-    /// Ages the fleet's meter by one [`SLICE`], as a second of runtime would,
+    /// Ages the lease's meter by one [`SLICE`], as a second of runtime would,
     /// and answers the stamp the next settle or renewal measures from.
     ///
     /// Settles and renewals meter up to the database's clock, so a test runs a
@@ -166,7 +166,7 @@ impl Held {
     pub(crate) async fn run_a_slice(&self) -> Timestamp {
         self.fixtures
             .age(
-                Row::Slot(&self.fleet),
+                Row::Lease(self.issued.lease_id.as_str()),
                 crate::lease_reads::COLUMN_LAST_METERED,
                 SLICE,
             )
@@ -218,7 +218,7 @@ impl Fixtures {
         leases: &Leases,
         lease_id: &str,
         runner: &Uuid7,
-        cumulative: Cumulative,
+        requests: &[afd_wire::usage::RequestUsage],
         succeeded: bool,
         at: Timestamp,
     ) -> Settled {
@@ -231,7 +231,7 @@ impl Fixtures {
                 Metering {
                     lease_id,
                     runner_id: runner,
-                    cumulative,
+                    requests,
                 },
                 &lease_key,
                 &pricing,

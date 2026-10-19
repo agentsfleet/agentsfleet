@@ -44,9 +44,19 @@ use crate::lease::settle::Reported;
 use crate::lease::tool_trace::{self, TraceOwner};
 use crate::lease::usage::{self, Pricing};
 use crate::lease::verdict::{Terminal, Verdict};
+use afd_billing::Nanos;
 use afd_billing::biller::Release;
 use afd_billing::rates::Posture;
-use afd_billing::{Cumulative, Nanos};
+use afd_core::error_code::{Coded as _, Logged};
+
+use crate::lease::store::Leases;
+
+/// The run-token sum's statement.
+const SELECT_RUN_TOKENS: &str = include_str!("../sql/select_run_tokens.sql");
+
+/// Logged when a settled run's token sum could not be read; its metrics
+/// record zero tokens.
+const EVENT_RUN_TOKENS_UNREAD: &str = "report_run_tokens_unread";
 
 /// What one settled report leaves its caller with.
 ///
@@ -99,6 +109,20 @@ pub struct Reconciled {
     /// as many. The report still answers success: a runner told to retry
     /// forever is how a finished answer gets thrown away.
     pub repeated: bool,
+    /// The tokens the run's usage lines record, every renewal's and the
+    /// report's: what its cost metrics and delivery span describe.
+    pub tokens: RunTokens,
+}
+
+/// A run's tokens, summed from the usage lines billing logged for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, sqlx::FromRow)]
+pub struct RunTokens {
+    /// Uncached prompt tokens.
+    pub input_tokens: i64,
+    /// Prompt tokens read from the provider's cache.
+    pub cached_input_tokens: i64,
+    /// Completion tokens.
+    pub output_tokens: i64,
 }
 
 impl Plane {
@@ -140,14 +164,6 @@ impl Plane {
             lease_id,
         )
         .await;
-        // The final slice passes the run's real counts even when the catalogue
-        // could not be read: no later slice can charge held tokens, so they
-        // land on the line as unpriced, visibly, rather than vanishing.
-        let cumulative = Cumulative::reported(
-            request.input_tokens,
-            request.cached_input_tokens,
-            request.output_tokens,
-        );
         let report = terminal(
             Subject {
                 id: lease_id,
@@ -155,7 +171,6 @@ impl Plane {
                 runner: runner_id,
                 row: &lease,
             },
-            cumulative,
             &pricing,
             request,
             tool_calls.as_deref(),
@@ -166,7 +181,7 @@ impl Plane {
             Committed::Fenced => Err(stale_fence()),
             Committed::AlreadySettled => {
                 self.acknowledge_again(&lease, lease_id).await;
-                Ok(reconciled(lease, Nanos::ZERO, true))
+                Ok(reconciled(lease, Nanos::ZERO, true, RunTokens::default()))
             }
             Committed::Settled {
                 settlement,
@@ -184,7 +199,8 @@ impl Plane {
                     self.queue_owed_answer(&owing, &lease, request.response_text.as_ref())
                         .await;
                 }
-                Ok(reconciled(lease, charged, false))
+                let tokens = self.leases.run_tokens(&lease_key).await;
+                Ok(reconciled(lease, charged, false, tokens))
             }
         }
     }
@@ -223,7 +239,6 @@ struct Subject<'a> {
 /// here would lose the answer over a telemetry field.
 fn terminal<'a>(
     lease: Subject<'a>,
-    cumulative: Cumulative,
     pricing: &'a Pricing,
     request: &'a ReportRequest<'a>,
     tool_calls: Option<&'a str>,
@@ -234,7 +249,7 @@ fn terminal<'a>(
         runner_id: lease.runner,
         lease: lease.row,
         lease_key: lease.key,
-        cumulative,
+        requests: &request.requests.0,
         pricing,
         outcome: Terminal {
             verdict: Verdict::of(
@@ -269,8 +284,40 @@ fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String>
 /// Takes the lease BY VALUE: every string field moves into the answer rather
 /// than being cloned, which is why the two call sites read the lease's columns
 /// through this and not before it.
-fn reconciled(lease: Reported, charged: Nanos, repeated: bool) -> Reconciled {
+impl Leases {
+    /// The tokens `lease`'s usage lines record.
+    ///
+    /// Read after the report committed, so every renewal's lines and the
+    /// report's are in. Metrics only: a read that fails is logged and answers
+    /// zero rather than failing a report that already settled.
+    async fn run_tokens(&self, lease: &Uuid7) -> RunTokens {
+        let read = async {
+            let mut connection = self.pool().acquire().await?;
+            sqlx::query_as::<_, RunTokens>(SELECT_RUN_TOKENS)
+                .bind(afd_billing::sql::work::FLEET_LEASE)
+                .bind(lease.as_str())
+                .fetch_one(&mut *connection)
+                .await
+                .map_err(crate::error::query(EVENT_RUN_TOKENS_UNREAD))
+        }
+        .await;
+        read.unwrap_or_else(|fault: crate::Error| {
+            let Logged { error_code, reason } = fault.logged();
+            tracing::warn!(
+                error_code,
+                lease_id = lease.as_str(),
+                reason,
+                event = EVENT_RUN_TOKENS_UNREAD,
+                "a settled run's tokens could not be read; its metrics record none"
+            );
+            RunTokens::default()
+        })
+    }
+}
+
+fn reconciled(lease: Reported, charged: Nanos, repeated: bool, tokens: RunTokens) -> Reconciled {
     Reconciled {
+        tokens,
         charged,
         fleet_id: lease.fleet_id,
         workspace_id: lease.workspace_id,

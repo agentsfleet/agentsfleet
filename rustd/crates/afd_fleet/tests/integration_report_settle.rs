@@ -20,10 +20,11 @@ use crate::report_seed;
 use afd_fleet::lease::Settled;
 use afd_fleet::lease::sql;
 
-use afd_billing::Cumulative;
-
 use self::report_seed::{DEEP_POOL, SLICE_NANOS, held, run_fee};
 use crate::rows::{LAPSE, Row};
+
+/// The line number a lease's first runtime line takes: the daemon's base.
+const RUNTIME_LINE: &str = "2147483648";
 
 /// Dimension 3.1 — the report's writes land, and every row says what it should.
 ///
@@ -47,7 +48,7 @@ async fn test_report_writes_row_parity() {
             &held.leases,
             lease,
             &held.runner,
-            Cumulative::default(),
+            &[],
             true,
             settled_at,
         )
@@ -78,8 +79,7 @@ async fn test_report_writes_row_parity() {
     );
     assert!(
         held.fixtures.metered_since(&held.fleet).await <= held.fixtures.database_now().await,
-        "the SLOT cursor advances to the settle's own instant — it is the one a \
-         reclaim inherits, and the one the deltas are measured from"
+        "the lease's cursor advances to the settle's own instant, never past it"
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
@@ -88,14 +88,14 @@ async fn test_report_writes_row_parity() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, "0"), "charged_nanos")
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
             .await,
         Some(slice.to_string()),
         "the usage line records what the slice cost"
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, "0"), "runtime_ms")
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "runtime_ms")
             .await,
         Some(wall_ms.to_string()),
         "the usage line carries the span it measured"
@@ -153,7 +153,7 @@ async fn test_report_stale_fence_rejected() {
             &held.leases,
             lease,
             &held.runner,
-            Cumulative::default(),
+            &[],
             true,
             held.now,
         )
@@ -171,7 +171,7 @@ async fn test_report_stale_fence_rejected() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, "0"), "charged_nanos")
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
             .await,
         None,
         "a fenced report logs no usage line at all, not a zero-valued one"
@@ -229,7 +229,7 @@ async fn test_report_dedup_idempotent() {
             &held.leases,
             lease,
             &held.runner,
-            Cumulative::default(),
+            &[],
             true,
             settled_at,
         )
@@ -251,7 +251,7 @@ async fn test_report_dedup_idempotent() {
             &held.leases,
             lease,
             &held.runner,
-            Cumulative::default(),
+            &[],
             true,
             settled_at,
         )

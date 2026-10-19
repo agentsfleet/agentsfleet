@@ -173,7 +173,7 @@ impl Leases {
         }
         let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_SETTLE))?;
         let settlement = match slice.into_slice() {
-            Some(slice) => pricing.settlement(lease_key, slice)?,
+            Some(slice) => pricing.settlement(lease_key, slice, lease.requests)?,
             None => None,
         };
         if let Some(settled) = settlement.as_ref() {

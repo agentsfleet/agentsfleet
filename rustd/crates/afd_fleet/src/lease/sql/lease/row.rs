@@ -1,5 +1,5 @@
-//! The lease row's one write: the lease, its audit event, the runner's tally
-//! and a fresh lease's meter reset, fenced on the claim that earned it.
+//! The lease row's one write: the lease, its audit event and the runner's
+//! tally, fenced on the claim that earned it.
 //!
 //! Split from [`super`] when fencing the insert pushed that file past the
 //! length cap; the statement and the struct that binds it stay together,
@@ -11,9 +11,8 @@ use jiff_sqlx::ToSqlx as _;
 
 use afd_db::statement::Bound;
 
-/// Open a lease, record the event that opened it, bump the runner's lifetime
-/// acquired tally, and — on a fresh lease — reset the slot's metering cursor,
-/// atomically.
+/// Open a lease, record the event that opened it and bump the runner's lifetime
+/// acquired tally, atomically.
 ///
 /// Writing the lease and its audit trail in one statement means an observer can
 /// never see a lease with no corresponding event, or the reverse; the tally
@@ -23,23 +22,20 @@ use afd_db::statement::Bound;
 /// # Fenced on the claim that earned it
 ///
 /// The `held` arm writes nothing unless the slot still carries this claim's
-/// token (`$13`) and has not lapsed (`$16`), and every other arm reads from it.
+/// token (`$11`) and has not lapsed (`$12`), and every other arm reads from it.
 /// A pass that outlived its claim lost the slot to a runner that took the same
 /// entry over, and an unfenced insert would have two runners executing one
-/// event, the first also zeroing the second's meter. A lost fence writes no
-/// row at all, which the caller reads as no-work.
+/// event. A lost fence writes no row at all, which the caller reads as no-work.
 ///
 /// `held` is an UPDATE rather than a guarded SELECT so the row lock and the
 /// predicate are one step: a claim racing it either commits first and fails
 /// the recheck, or waits for this insert and then reclaims the lease it wrote.
 ///
-/// # The meter reset rides the insert
+/// # Every lease meters its own run
 ///
-/// A FRESH lease zeroes the slot's cursor; a RECLAIM meters forward from the
-/// dead holder's, and a stale cursor over-charges the first renewal. Here the
-/// reset cannot fail apart from the lease: the fresh flag, `$25`, picks each
-/// cursor column's new value inside `held`, and a reclaim writes them back
-/// unchanged.
+/// The lease's runtime cursor opens at the claim's instant, fresh or reclaim:
+/// a reclaimed run bills from when it started, and the dead holder's last slice
+/// was billed to the dead lease when it expired.
 ///
 /// The lease stores no copy of the event body: the reclaim path reads it by
 /// joining `fleet.events` on the `(fleet_id, event_id)` unique key, so the
@@ -48,7 +44,7 @@ pub const INSERT_LEASE_WITH_EVENT: &str = include_str!("insert_lease_with_event.
 
 /// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
 ///
-/// Twenty-two positional parameters, several of them same-typed text that a
+/// Twenty-one positional parameters, several of them same-typed text that a
 /// transposition would compile straight through, and this workspace disables
 /// sqlx's `macros` feature deliberately, so there is no compile-time query
 /// checking to catch it. Naming the fields is what replaces
@@ -93,9 +89,6 @@ pub struct LeaseRow<'a> {
     /// Whether this lease is a fresh pull or a reclaim, as its wire spelling.
     /// It reaches the audit row's metadata, where an operator reads it.
     pub kind: &'a str,
-    /// Whether this lease starts a new billing slice, which resets the slot's
-    /// metering cursor in the same statement. True for a fresh lease only.
-    pub reset_meters: bool,
 }
 
 impl<'a> LeaseRow<'a> {
@@ -116,7 +109,6 @@ impl<'a> LeaseRow<'a> {
             .bind(self.checked_at.to_sqlx())
             .bind(self.status)
             .bind(self.event_row_id.as_str())
-            .bind(self.reset_meters)
             .bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
             .bind(afd_runner::sql::meta::LEASE_ID)
             .bind(afd_runner::sql::meta::FLEET_ID)

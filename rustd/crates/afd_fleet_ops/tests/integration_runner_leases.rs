@@ -47,12 +47,11 @@ WITH inserted_runners AS (
 )
 INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
-   receipt, posture, provider, model, metered_input_token_count, metered_cached_token_count,
-   metered_output_token_count, fencing_token, lease_expires_at, status, posted_message_count,
+   receipt, posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count,
    created_at, updated_at)
 SELECT v.id, v.runner_id, v.fleet_id, v.workspace_id, $1::uuid, v.fleet_event_id,
-       v.event_created_at, v.receipt, v.posture, v.provider, v.model, v.input, v.cached,
-       v.output, v.fencing_token, v.expires_at, v.status, 0, v.created_at, v.created_at
+       v.event_created_at, v.receipt, v.posture, v.provider, v.model, v.created_at,
+       v.fencing_token, v.expires_at, v.status, 0, v.created_at, v.created_at
 FROM (VALUES
   ($8::uuid, $6::uuid, $4::uuid, $2::uuid, $20::uuid, '2025-10-09 08:00:00.050+00'::timestamptz, $13, 'platform', 'anthropic', 'model-a', 10, 2, 3, 1, '2025-10-09 08:00:00.130+00'::timestamptz, 'expired', '2025-10-09 08:00:00.100+00'::timestamptz),
   ($9::uuid, $6::uuid, $4::uuid, $2::uuid, $20::uuid, '2025-10-09 08:00:00.050+00', $13, 'platform', 'anthropic', 'model-a', 20, 4, 6, 2, '2025-10-09 08:00:00.230+00', 'reported', '2025-10-09 08:00:00.200+00'),

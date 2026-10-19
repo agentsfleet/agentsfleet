@@ -5,8 +5,8 @@
 --
 -- `fencing_token` is the last issued lease epoch. `lease_expires_at` and
 -- `hold_expires_at` are deadlines; the hold index reads `hold_expires_at`.
--- `metered_*` and `last_metered_at` are the accounting cursor billing reads (rule
--- 4d). Losing the sticky runner clears only the pointer.
+-- Billing reads nothing here: each lease keeps its own runtime cursor. Losing the
+-- sticky runner clears only the pointer.
 
 CREATE TABLE runner.fleet_slots (
     fleet_id                    UUID PRIMARY KEY REFERENCES fleet.fleets(id) ON DELETE CASCADE,
@@ -14,10 +14,6 @@ CREATE TABLE runner.fleet_slots (
     fencing_token               BIGINT NOT NULL,
     lease_expires_at            TIMESTAMPTZ(3) NOT NULL,
     hold_expires_at             TIMESTAMPTZ(3),
-    metered_input_token_count   BIGINT NOT NULL,
-    metered_cached_token_count  BIGINT NOT NULL,
-    metered_output_token_count  BIGINT NOT NULL,
-    last_metered_at             TIMESTAMPTZ(3) NOT NULL,
     created_at                  TIMESTAMPTZ(3) NOT NULL,
     updated_at                  TIMESTAMPTZ(3) NOT NULL
 );

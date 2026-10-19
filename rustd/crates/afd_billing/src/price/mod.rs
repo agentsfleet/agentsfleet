@@ -102,23 +102,6 @@ impl PriceBook {
             .filter(|tier| tier.covers(at) && tier.admits(whole_prompt))
             .max_by_key(|tier| tier.price.prompt_tokens_above)
     }
-
-    /// This book without its context tiers: every request prices at the base.
-    ///
-    /// For a line that sums several requests, as a fleet lease's renewal slice
-    /// does until runners report each request: the sum's prompt size says
-    /// nothing about any one request's, so choosing a context tier from it
-    /// would overcharge.
-    #[must_use]
-    pub fn into_base_tiers(self) -> Self {
-        Self {
-            tiers: self
-                .tiers
-                .into_iter()
-                .filter(|tier| tier.price.prompt_tokens_above == 0)
-                .collect(),
-        }
-    }
 }
 
 /// `model.platform_model_prices` read by column name.

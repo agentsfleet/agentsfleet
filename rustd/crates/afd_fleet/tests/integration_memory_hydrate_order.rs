@@ -30,11 +30,10 @@ const CLOCK_SKEW: std::time::Duration = std::time::Duration::from_secs(1);
 const INSERT_EARLIER_SUCCESSOR: &str = "\
 INSERT INTO runner.leases \
   (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, \
-   receipt, posture, provider, model, metered_input_token_count, \
-   metered_cached_token_count, metered_output_token_count, fencing_token, \
+   receipt, posture, provider, model, last_metered_at, fencing_token, \
    lease_expires_at, status, posted_message_count, created_at, updated_at) \
 SELECT $2::uuid, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, \
-   event_created_at, receipt, posture, provider, model, 0, 0, 0, \
+   event_created_at, receipt, posture, provider, model, last_metered_at, \
    fencing_token + 1, lease_expires_at, status, 0, created_at - $3::interval, updated_at \
 FROM runner.leases WHERE id = $1::uuid \
 RETURNING fencing_token";

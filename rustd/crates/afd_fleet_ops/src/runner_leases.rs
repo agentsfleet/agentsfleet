@@ -82,6 +82,7 @@ impl RunnerLeaseHistory {
             .bind(i64::from(limit))
             .bind(boundary.map(|(created_at, _)| created_at))
             .bind(boundary.map(|(_, id)| id))
+            .bind(afd_billing::sql::work::FLEET_LEASE)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_PAGE))?

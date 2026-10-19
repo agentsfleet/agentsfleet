@@ -190,6 +190,16 @@ pub(crate) async fn ledger_rows(run: &Scenario) -> i64 {
     .await
 }
 
+/// The completion tokens the scenario's event's usage lines record.
+pub(crate) async fn line_output_tokens(run: &Scenario) -> i64 {
+    count_lines(
+        run,
+        "SELECT COALESCE(sum(output_token_count), 0)::bigint FROM billing.usage_lines \
+         WHERE event_id = $1",
+    )
+    .await
+}
+
 /// How many of those lines the biller has not yet settled.
 ///
 /// Zero once a report has answered: the lease path settles its lines after

@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use afd_billing::biller::{Biller as _, Receipt};
 use afd_billing::ledger::LedgerBiller;
-use afd_billing::{Cumulative, Posture};
+use afd_billing::Posture;
 use afd_core::{clock, id::Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
@@ -90,17 +90,23 @@ async fn scenario(first: First) {
     );
     // A renewal, then its slice settled through the biller: the step that
     // takes the tenant's wallet lock on the fleet path.
+    let requests = [afd_wire::usage::RequestUsage {
+        seq: 0,
+        at: clock::now(),
+        input_tokens: u32::try_from(INPUT_TOKENS).expect("the fixture count fits a line"),
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: 0,
+    }];
     let renew = async {
         let renewed = leases
             .extend(
                 Metering {
                     lease_id: running.lease.as_str(),
                     runner_id: &running.runner,
-                    cumulative: Cumulative {
-                        input: INPUT_TOKENS,
-                        cached: 0,
-                        output: 0,
-                    },
+                    requests: &requests,
                 },
                 &running.lease,
                 &pricing,

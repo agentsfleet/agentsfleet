@@ -5,7 +5,7 @@ use crate::{
     seed::{self, Seeded},
     support::Fixtures,
 };
-use afd_billing::{Cumulative, Posture};
+use afd_billing::Posture;
 use afd_core::{clock, id::Uuid7};
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::usage::Pricing;
@@ -94,7 +94,7 @@ impl Running {
                 Metering {
                     lease_id: self.lease.as_str(),
                     runner_id: &self.runner,
-                    cumulative: Cumulative::default(),
+                    requests: &[],
                 },
                 &self.lease,
                 &pricing,

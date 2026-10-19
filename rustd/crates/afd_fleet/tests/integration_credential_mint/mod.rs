@@ -155,12 +155,10 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
     sqlx::query(
         "INSERT INTO runner.leases
            (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
-            receipt, posture, provider, model,
-            metered_input_token_count, metered_cached_token_count, metered_output_token_count,
+            receipt, posture, provider, model, last_metered_at,
             fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at)
          SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5::uuid, now(),
-                $6, 'platform', 'anthropic', 'claude-fixture',
-                0, 0, 0,
+                $6, 'platform', 'anthropic', 'claude-fixture', now(),
                 $7, now() + $8::interval, $9, 0, now(), now()
          FROM fleet.fleets f WHERE f.id = $3::uuid",
     )
@@ -189,9 +187,8 @@ async fn supersede(fixtures: &Fixtures, fleet: &str) {
     sqlx::query(
         "INSERT INTO runner.fleet_slots
            (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
-            metered_input_token_count, metered_cached_token_count, metered_output_token_count,
-            last_metered_at, created_at, updated_at)
-         VALUES ($1::uuid, NULL, $2, now() + $3::interval, NULL, 0, 0, 0, now(), now(), now())
+            created_at, updated_at)
+         VALUES ($1::uuid, NULL, $2, now() + $3::interval, NULL, now(), now())
          ON CONFLICT (fleet_id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
     )
     .bind(fleet)

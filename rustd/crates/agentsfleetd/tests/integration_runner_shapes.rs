@@ -26,7 +26,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{MODEL, POSTURE, scenario};
-use crate::reads::{assert_shape, lease_column};
+use crate::reads::{assert_shape, lease_column, line_output_tokens};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat,
     poll_for_seeded_lease, post, report_body,
@@ -50,9 +50,7 @@ const LEASE_SHAPE: &[&str] = &[
     "posture",
     "provider",
     "model",
-    "metered_input_token_count",
-    "metered_cached_token_count",
-    "metered_output_token_count",
+    "last_metered_at",
     "fencing_token",
     "lease_expires_at",
     "status",
@@ -219,11 +217,9 @@ async fn test_seeded_row_shapes() {
         "and the model it was priced at"
     );
     assert_eq!(
-        lease_column(&run, &lease_id, "metered_output_tokens")
-            .await
-            .as_deref(),
-        Some(OUTPUT_TOKENS.to_string().as_str()),
-        "the report advanced the lease's own cursor, not only the affinity's"
+        line_output_tokens(&run).await,
+        i64::from(OUTPUT_TOKENS),
+        "the runner's request lines carried the run's tokens onto the usage lines"
     );
 
     supervisor.shutdown().await;

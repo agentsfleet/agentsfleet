@@ -62,11 +62,11 @@ WITH tenant AS (
     RETURNING id, fleet_id, workspace_id
 )
 INSERT INTO runner.leases (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id,
-  event_created_at, receipt, posture, provider, model, metered_input_token_count,
-  metered_cached_token_count, metered_output_token_count, fencing_token, lease_expires_at,
+  event_created_at, receipt, posture, provider, model, last_metered_at, fencing_token,
+  lease_expires_at,
   status, posted_message_count, created_at, updated_at)
 SELECT uuidv7(), r.id, e.fleet_id, e.workspace_id, $1::uuid, e.id, $3, e.id::text,
-  'platform', 'test', 'test', 0, 0, 0, 1, $3, 'active', 0, $3, $3
+  'platform', 'test', 'test', $3, 1, $3, 'active', 0, $3, $3
   FROM events e JOIN runners r ON r.id = e.fleet_id
 RETURNING fleet_id::text";
 

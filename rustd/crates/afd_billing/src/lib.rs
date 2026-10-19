@@ -35,7 +35,6 @@ pub mod biller;
 pub mod budget;
 pub mod ledger;
 pub mod limits;
-pub mod meter;
 pub mod nanos;
 pub mod price;
 pub mod rates;
@@ -50,7 +49,6 @@ pub mod wallet;
 
 pub use self::budget::{Spend, Verdict};
 pub use self::error::{Error, Result};
-pub use self::meter::Cumulative;
 pub use self::nanos::{
     ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos,
     RUN_NANOS_PER_SEC,

@@ -129,11 +129,10 @@ impl ControlPlane {
         &self,
         lease_id: &Uuid7,
         spent: &RenewRequest,
-    ) -> Result<jiff::Timestamp> {
+    ) -> Result<RenewResponse> {
         let path = lease_path(lease_id, paths::LEASE_RENEW_SUFFIX);
         let body = self.send_json(Verb::Renew, path, spent).await?;
         body.decode::<RenewResponse>()
-            .map(|renewed| renewed.lease_expires_at)
     }
 
     /// Posts one batch of live-tail frames.

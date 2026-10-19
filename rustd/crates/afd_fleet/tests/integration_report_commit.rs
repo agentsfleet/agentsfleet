@@ -30,6 +30,9 @@ use crate::report_commit::{
 use crate::report_seed::{DEEP_POOL, Held, SLICE_NANOS, held, run_fee};
 use crate::rows::Row;
 
+/// The line number a lease's first runtime line takes: the daemon's base.
+const RUNTIME_LINE: &str = "2147483648";
+
 /// Dimension 7.3 — the result commits with the money, or neither does.
 ///
 /// Three phases on one lease, in the order a runner actually meets them.
@@ -312,7 +315,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, "0"), "charged_nanos")
+            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
             .await,
         Some(slice.to_string()),
         "the line is priced at the slice it measured"

@@ -30,6 +30,7 @@ const TOKENS: &str = "tokens";
 const INPUT_TOKENS: &str = "input_tokens";
 const CACHED_INPUT_TOKENS: &str = "cached_input_tokens";
 const OUTPUT_TOKENS: &str = "output_tokens";
+const REQUESTS: &str = "requests";
 
 /// One answer the test daemon gives before its defaults.
 type Special = fn(&Call) -> Option<Answer>;

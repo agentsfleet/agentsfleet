@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use afd_api::services::Leasing;
 use afd_core::id::Uuid7;
-use afd_fleet::lease::report::Reconciled;
+use afd_fleet::lease::report::{Reconciled, RunTokens};
 use jiff::Timestamp;
 
 /// A lease plane that by default answers no-work.
@@ -108,6 +108,7 @@ impl Leasing for NoWork {
             // `true` would route every suite here down the quiet arm and
             // prove the loud one is reachable never.
             repeated: false,
+            tokens: RunTokens::default(),
         }))
     }
 

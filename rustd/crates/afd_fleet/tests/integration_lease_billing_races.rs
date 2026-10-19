@@ -13,7 +13,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_billing::Cumulative;
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::{Renewed, Settled};
 
@@ -38,9 +37,27 @@ async fn line_numbers(fixtures: &crate::support::Fixtures, lease: &str) -> Vec<i
         .expect("the lines read")
 }
 
-/// A runner re-sends its report while the first is still in flight: exactly
-/// one claims the lease and logs the final line, the other is told the lease
-/// is already settled, and the lease has one final line, not two.
+/// The first line number the daemon's runtime lines take.
+const BASE: i64 = afd_wire::usage::DAEMON_SEQ_BASE as i64;
+
+/// One provider request, numbered `seq`, as a runner reports it.
+fn request(held: &crate::report_seed::Held, seq: u32) -> afd_wire::usage::RequestUsage {
+    afd_wire::usage::RequestUsage {
+        seq,
+        at: held.now,
+        input_tokens: 1_000,
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: 100,
+    }
+}
+
+/// A runner re-sends its report, carrying the same request, while the first
+/// is still in flight: exactly one claims the lease and logs its lines, the
+/// other is told the lease is already settled, and the lease holds the request
+/// once and one runtime line, not two of either.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn two_reports_of_one_lease_log_one_final_line() {
@@ -48,12 +65,13 @@ async fn two_reports_of_one_lease_log_one_final_line() {
         let held = held().await;
         held.run_a_slice().await;
         let lease = held.issued.lease_id.as_str();
+        let requests = [request(&held, 0)];
         let report = || {
             held.fixtures.settle_alone(
                 &held.leases,
                 lease,
                 &held.runner,
-                Cumulative::default(),
+                &requests,
                 true,
                 held.now,
             )
@@ -69,17 +87,19 @@ async fn two_reports_of_one_lease_log_one_final_line() {
             [&first, &second].contains(&&Settled::AlreadySettled),
             "the other is told this runner already settled it"
         );
-        assert_eq!(line_numbers(&held.fixtures, lease).await, [0]);
+        assert_eq!(line_numbers(&held.fixtures, lease).await, [0, BASE]);
 
         queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
         held.fixtures.cleanup().await;
     }
 }
 
-/// A renewal and the report race on one lease: whichever runs second numbers
-/// its line after the first's, so the lease never holds two lines under one
-/// number and never loses one to the `(work, seq)` guard. The second pass may
-/// measure nothing, and log no line, when the two land within a millisecond.
+/// A renewal and the report race on one lease, both carrying the same request:
+/// the request is stored once, and whichever pass runs second numbers its
+/// runtime line after the first's, so the lease never holds two lines under
+/// one number and never loses one to the `(work, seq)` guard. The second pass
+/// may measure no runtime, and log no runtime line, when the two land within a
+/// millisecond.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_renewal_racing_the_report_numbers_its_line_apart() {
@@ -87,11 +107,12 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
         let held = held().await;
         held.run_a_slice().await;
         let lease = held.issued.lease_id.as_str();
+        let requests = [request(&held, 0)];
         let renew = held.leases.extend(
             Metering {
                 lease_id: lease,
                 runner_id: &held.runner,
-                cumulative: Cumulative::default(),
+                requests: &requests,
             },
             &held.lease_key,
             &held.pricing,
@@ -101,7 +122,7 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
             &held.leases,
             lease,
             &held.runner,
-            Cumulative::default(),
+            &requests,
             true,
             held.now,
         );
@@ -113,13 +134,16 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
             "the report wins its own lease whatever order: {settled:?}"
         );
         let lines = line_numbers(&held.fixtures, lease).await;
-        let dense = lines
+        let (requested, runtime): (Vec<i64>, Vec<i64>) =
+            lines.iter().partition(|seq| **seq < BASE);
+        assert_eq!(requested, [0], "the shared request is stored once: {lines:?}");
+        let dense = runtime
             .iter()
-            .zip(0_i64..)
+            .zip(BASE..)
             .all(|(seq, expected)| *seq == expected);
         assert!(
-            dense && !lines.is_empty(),
-            "line numbers stay distinct and dense from zero: {lines:?}, renewed {renewed:?}"
+            dense && !runtime.is_empty(),
+            "runtime lines stay distinct and dense from the daemon's base: {lines:?}, renewed {renewed:?}"
         );
         if matches!(
             renewed,
@@ -129,8 +153,8 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
             }
         ) {
             assert!(
-                lines.len() <= 2,
-                "a renewal and a report log at most one line each: {lines:?}"
+                runtime.len() <= 2,
+                "a renewal and a report log at most one runtime line each: {lines:?}"
             );
         }
 

@@ -94,6 +94,11 @@ pub(crate) async fn handle<D: Services>(
     let Ok(request) = afd_http::handler::read_body::<ReportRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);
     };
+    // The request lines are money: one past the batch cap, or numbered in the
+    // daemon's own range, is refused rather than partly priced.
+    if garde::Validate::validate(&request.requests).is_err() {
+        return malformed(DETAIL_MALFORMED);
+    }
 
     match services
         .leases()
@@ -164,9 +169,9 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str) {
     cost::invocation(&Spend {
         model: &settled.model,
         posture: &settled.posture,
-        input_tokens: u64::from(request.input_tokens),
-        cached_input_tokens: u64::from(request.cached_input_tokens),
-        output_tokens: u64::from(request.output_tokens),
+        input_tokens: count(settled.tokens.input_tokens),
+        cached_input_tokens: count(settled.tokens.cached_input_tokens),
+        output_tokens: count(settled.tokens.output_tokens),
         wall: reported_wall(request),
         error: (request.outcome == Outcome::FleetError).then_some(ErrorType::FleetError),
     });
@@ -178,9 +183,8 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str) {
 
 /// The finished run, as the span that describes it.
 ///
-/// Borrowed from both halves the settle produced: the lease row's identity,
-/// which only the plane could resolve, and the runner's own counts, which only
-/// the request carries.
+/// Borrowed from what the settle produced: the lease row's identity, which
+/// only the plane could resolve, and the tokens its usage lines record.
 ///
 /// Input tokens are SUMMED with the cached ones because the standard's
 /// `gen_ai.usage.input_tokens` already includes the cached portion — cache
@@ -194,10 +198,16 @@ fn delivery_of<'a>(settled: &'a Reconciled, request: &'a ReportRequest<'a>) -> D
         posture: &settled.posture,
         provider: &settled.provider,
         model: &settled.model,
-        input_tokens: u64::from(request.input_tokens) + u64::from(request.cached_input_tokens),
-        output_tokens: u64::from(request.output_tokens),
+        input_tokens: count(settled.tokens.input_tokens)
+            + count(settled.tokens.cached_input_tokens),
+        output_tokens: count(settled.tokens.output_tokens),
         wall: reported_wall(request),
     }
+}
+
+/// A token sum as the metrics take it; a sum is never negative.
+fn count(sum: i64) -> u64 {
+    u64::try_from(sum).unwrap_or(0)
 }
 
 /// How long the runner says the run took, bounded.

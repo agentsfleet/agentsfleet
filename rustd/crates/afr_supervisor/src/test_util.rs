@@ -76,6 +76,7 @@ impl Healthy {
             }),
             Some(Verb::Renew) => value(&RenewResponse {
                 lease_expires_at: self.granted_until,
+                recorded_through: None,
             }),
             Some(Verb::Hydrate) => value(&MemoryHydrateResponse {
                 memory: Vec::new(),

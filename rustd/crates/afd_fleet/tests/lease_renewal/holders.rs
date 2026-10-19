@@ -74,7 +74,7 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
             afd_fleet::lease::sql::meter::Metering {
                 lease_id: outcome.readmitted.as_str(),
                 runner_id: &running.runner,
-                cumulative: afd_billing::Cumulative::default(),
+                requests: &[],
             },
             outcome.readmitted,
             &pricing,

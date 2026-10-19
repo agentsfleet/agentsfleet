@@ -17,9 +17,9 @@ SELECT l.id::text AS id,
        l.provider,
        l.model,
        l.posture,
-       l.metered_input_token_count,
-       l.metered_cached_token_count,
-       l.metered_output_token_count,
+       COALESCE(u.input_tokens, 0)::bigint        AS metered_input_token_count,
+       COALESCE(u.cached_input_tokens, 0)::bigint AS metered_cached_token_count,
+       COALESCE(u.output_tokens, 0)::bigint       AS metered_output_token_count,
        e.status AS event_status,
        e.failure_reason,
        e.failure_detail,
@@ -32,6 +32,14 @@ SELECT l.id::text AS id,
 FROM runner.leases l
 LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
 LEFT JOIN fleet.events e ON e.id = l.fleet_event_id
+-- The tokens the lease's usage lines record: one index range per lease row.
+LEFT JOIN LATERAL (
+    SELECT sum(input_token_count) AS input_tokens,
+           sum(cached_input_token_count) AS cached_input_tokens,
+           sum(output_token_count) AS output_tokens
+    FROM billing.usage_lines
+    WHERE work_type = $7 AND work_id = l.id
+) u ON true
 WHERE l.runner_id = $1::uuid
   AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid)
   AND ($3::text IS NULL OR l.fleet_id::text = $3::text OR lower(f.name) = lower($3::text))

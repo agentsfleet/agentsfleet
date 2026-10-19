@@ -34,7 +34,6 @@
 //! "every failure branch must ROLLBACK" is satisfied here without a `match`
 //! per statement.
 
-use afd_billing::Cumulative;
 use afd_billing::biller::Settlement;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
@@ -70,9 +69,8 @@ pub struct TerminalReport<'a> {
     pub lease: &'a Reported,
     /// The lease's identifier as the work its usage lines name.
     pub lease_key: &'a Uuid7,
-    /// The runner's cumulative counts, already held at zero when the
-    /// catalogue could not be read.
-    pub cumulative: Cumulative,
+    /// One line per provider request no renewal acknowledged.
+    pub requests: &'a [afd_wire::usage::RequestUsage],
     /// What the final slice is priced against.
     pub pricing: &'a Pricing,
     /// The run's ending, as the event row will carry it.
@@ -154,7 +152,7 @@ impl Leases {
         let metering = Metering {
             lease_id: report.lease_id,
             runner_id: report.runner_id,
-            cumulative: report.cumulative,
+            requests: report.requests,
         };
         let settlement = match self
             .claim_and_settle(
