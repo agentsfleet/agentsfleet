@@ -170,10 +170,23 @@ async fn a_tenant_without_a_wallet_settles_with_nothing_taken() {
     let biller = ledger(&lane);
     let work = WorkKey::FleetLease(mint_uuid7());
 
+    let capture = afd_core::test_util::trace::Capture::install();
     let receipt = biller
         .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
         .await
         .expect("a missing wallet still settles");
+    let warned = capture.only("billing_settled_without_wallet");
+    assert_eq!(warned.field("tenant_id"), Some(payer.tenant.as_str()));
+    assert_eq!(
+        warned.field("work_type"),
+        Some(afd_billing::sql::work::FLEET_LEASE)
+    );
+    assert_eq!(warned.field("work_id"), Some(work.id().as_str()));
+    assert_eq!(
+        warned.field("charged_nanos"),
+        Some(LINE.as_i64().to_string().as_str())
+    );
+    drop(capture);
     assert_eq!(receipt.settled_lines, 1);
     assert_eq!(receipt.charged, LINE, "the line's cost is still recorded");
     assert_eq!(receipt.taken, Nanos::ZERO, "no wallet, nothing debited");

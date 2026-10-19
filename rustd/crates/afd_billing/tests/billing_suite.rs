@@ -17,5 +17,9 @@ mod biller;
 mod biller_debt;
 #[path = "billing/reads.rs"]
 mod reads;
+#[path = "billing/recorded.rs"]
+mod recorded;
 #[path = "billing/spend.rs"]
 mod spend;
+#[path = "billing/sweep_rows.rs"]
+mod sweep_rows;
