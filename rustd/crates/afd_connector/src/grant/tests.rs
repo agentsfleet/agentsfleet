@@ -50,3 +50,42 @@ fn a_later_instant_is_taken_rather_than_the_previous_stamp_plus_one() {
     assert!(late.as_millisecond() > early.as_millisecond());
     assert_eq!(late.as_millisecond(), far_later);
 }
+
+/// Connects racing on every core never share a stamp.
+///
+/// Sixteen threads released together by a barrier, each taking a thousand
+/// stamps for one instant: the exchange loses to a sibling constantly, and a
+/// loop that kept its stale read instead of the winner's value would hand
+/// two connects the same stamp. Every stamp distinct is the whole property.
+#[test]
+fn connects_racing_on_every_core_never_share_a_stamp() {
+    const THREADS: usize = 16;
+    const EACH: usize = 1_000;
+    let instant = at(1_700_000_000_000);
+    let start = std::sync::Arc::new(std::sync::Barrier::new(THREADS));
+
+    let handles: Vec<_> = (0..THREADS)
+        .map(|_| {
+            let start = std::sync::Arc::clone(&start);
+            std::thread::spawn(move || {
+                start.wait();
+                (0..EACH)
+                    .map(|_| connected_at(instant).as_millisecond())
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    let mut stamps: Vec<i64> = handles
+        .into_iter()
+        .flat_map(|handle| handle.join().expect("a stamping thread finishes"))
+        .collect();
+
+    let taken = stamps.len();
+    stamps.sort_unstable();
+    stamps.dedup();
+    assert_eq!(
+        stamps.len(),
+        taken,
+        "every racing connect got its own stamp"
+    );
+}

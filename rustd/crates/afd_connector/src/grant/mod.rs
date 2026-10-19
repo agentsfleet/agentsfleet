@@ -208,11 +208,11 @@ impl Grants {
 
         transaction.commit().await.map_err(query(CONTEXT_INSTALL))?;
 
-        tracing::info!(
-            workspace_id = workspace.as_str(),
-            provider = provider.id(),
-            event = "connector_connected",
-        );
+        // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
+        // scores the dead copy.
+        let workspace_id = workspace.as_str();
+        let provider = provider.id();
+        tracing::info!(workspace_id, provider, event = "connector_connected");
         Ok(())
     }
 

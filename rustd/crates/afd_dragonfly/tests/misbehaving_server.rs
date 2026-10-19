@@ -361,7 +361,10 @@ async fn test_a_probe_silent_after_the_dial_is_bounded_by_the_connect_budget() {
         .expect("the connect budget, not the request deadline, ends this")
         .expect_err("a silent liveness probe must time out");
 
-    assert!(error.is_unavailable(), "a connect timeout is an outage: {error}");
+    assert!(
+        error.is_unavailable(),
+        "a connect timeout is an outage: {error}"
+    );
     assert!(
         error.to_string().contains("1.5s"),
         "the failure must carry its configured budget: {error}"
