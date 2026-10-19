@@ -80,17 +80,15 @@ pub(crate) async fn handle<D: Services>(
     // it twice on the path every host takes every ten seconds is the kind of
     // cost that only shows up at fleet scale.
     let (beat, held) = read(&body);
-    match services
+    // One refusal for both failures. The reply's decode repeats the one the
+    // beat already passed on the same columns, so only the beat's own failure
+    // reaches it in practice; the reply's stays a `Result` rather than a panic.
+    services
         .runners()
         .heartbeat(runner.id(), &beat, held.as_ref(), services.now())
         .await
-    {
-        Ok(beat) => match payload(&beat) {
-            Ok(reply) => Json(reply).into_response(),
-            Err(error) => refuse(&error, EVENT),
-        },
-        Err(error) => refuse(&error, EVENT),
-    }
+        .and_then(|beat| payload(&beat).map(|reply| Json(reply).into_response()))
+        .unwrap_or_else(|error| refuse(&error, EVENT))
 }
 
 /// What the body carried, or nothing at all, beside its holds list proved
