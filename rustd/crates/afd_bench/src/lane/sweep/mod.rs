@@ -16,7 +16,6 @@
 
 use afd_db::Db;
 use afd_dragonfly::{Dragonfly, FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex};
-use sqlx::Row as _;
 
 use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};
 use crate::error::Result;
@@ -59,13 +58,10 @@ pub async fn everything(database: &Db, queue: &Dragonfly, prefix: &RunPrefix) ->
 /// The fleet ids this run created, read before the rows go.
 async fn fleet_ids(database: &Db, pattern: &str) -> Result<Vec<String>> {
     let mut connection = database.acquire().await?;
-    Ok(sqlx::query(SELECT_FLEET_IDS)
+    Ok(sqlx::query_scalar(SELECT_FLEET_IDS)
         .bind(pattern)
         .fetch_all(&mut *connection)
-        .await?
-        .iter()
-        .filter_map(|row| row.try_get::<String, _>(0).ok())
-        .collect())
+        .await?)
 }
 
 /// Drop each fleet's stream and its readiness mark.

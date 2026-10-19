@@ -10,7 +10,6 @@ use std::time::Instant;
 use afd_dragonfly::{Dragonfly, Partition, ReadyCursor, ReadyIndex, fleet_stream_key};
 use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
 use afd_fleet::lease::sql::lease::SELECT_READY_CANDIDATES;
-use sqlx::Row as _;
 
 use crate::datastores::command::{COUNT, RANGE_END, RANGE_START, XRANGE};
 use crate::datastores::{Datastores, postgres_count};
@@ -141,7 +140,7 @@ pub(super) async fn postgres_at_population(
     let ready = ready_across_partitions(&stores.queue).await?;
     // `AssertSqlSafe` because the statement is assembled from two constants
     // this crate and `afd_fleet` own; nothing a caller typed reaches it.
-    let lines: Vec<String> = sqlx::query(sqlx::AssertSqlSafe(format!(
+    let lines: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "{EXPLAIN}{SELECT_READY_CANDIDATES}"
     )))
     .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
@@ -157,10 +156,7 @@ pub(super) async fn postgres_at_population(
     // id here, as a held-first poll binds them, so the plan carries the key.
     .bind(&ready)
     .fetch_all(&mut *connection)
-    .await?
-    .iter()
-    .filter_map(|row| row.try_get::<String, _>(0).ok())
-    .collect();
+    .await?;
     if let Some(execution) = plan_time(&lines, EXECUTION_TIME) {
         report.measurement(CANDIDATE_QUERY_MS, execution);
     }
@@ -197,10 +193,9 @@ pub(super) async fn fleet_population(database: &afd_db::Db) -> Result<u64> {
 /// One bigint out of a constant statement.
 async fn scalar(database: &afd_db::Db, statement: &'static str) -> Result<i64> {
     let mut connection = database.acquire().await?;
-    Ok(sqlx::query(statement)
+    Ok(sqlx::query_scalar(statement)
         .fetch_one(&mut *connection)
-        .await?
-        .try_get(0)?)
+        .await?)
 }
 
 /// The middle sample in milliseconds, or nothing for no samples.
