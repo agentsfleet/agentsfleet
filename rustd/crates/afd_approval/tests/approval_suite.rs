@@ -53,6 +53,8 @@ mod integration_inbox_decider_name;
 mod integration_inbox_paging;
 #[path = "integration_inbox_resolved_once.rs"]
 mod integration_inbox_resolved_once;
+#[path = "integration_inbox_resolved_once_race.rs"]
+mod integration_inbox_resolved_once_race;
 #[path = "integration_inbox_sweep_decode.rs"]
 mod integration_inbox_sweep_decode;
 #[path = "integration_inbox_tail.rs"]

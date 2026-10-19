@@ -80,6 +80,8 @@ mod integration_model_catalogue;
 mod integration_preferences;
 #[path = "integration_signup.rs"]
 mod integration_signup;
+#[path = "integration_invite_resolved_once.rs"]
+mod integration_invite_resolved_once;
 #[path = "integration_team.rs"]
 mod integration_team;
 #[path = "integration_team_email.rs"]
