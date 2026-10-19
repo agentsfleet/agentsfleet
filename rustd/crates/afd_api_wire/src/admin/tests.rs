@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use afd_wire::runner::{LABEL_MAX_BYTES, LABELS_MAX};
 use garde::Validate as _;
 
-use super::{RunnerAdminPatchRequest, RunnerEventType};
+use super::{PlatformKeyPut, RunnerAdminPatchRequest, RunnerEventType};
 
 #[test]
 fn every_runner_history_value_serializes_as_the_spelling_postgres_stores() {
@@ -91,4 +91,29 @@ fn a_runner_patch_proves_the_enrolment_label_bounds() {
 #[test]
 fn the_published_label_bounds_match_the_constants() {
     assert_eq!((LABELS_MAX, LABEL_MAX_BYTES), (32, 64));
+}
+
+/// Postgres refuses NUL inside `text`, so a NUL in the provider or the model
+/// is the caller's 400 rather than the store's 500.
+#[test]
+fn a_platform_key_put_refuses_a_nul_in_provider_or_model() {
+    let put = |provider: &'static str, model: &'static str| PlatformKeyPut {
+        provider: Cow::Borrowed(provider),
+        source_workspace_id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d02"),
+        model: Cow::Borrowed(model),
+        base_url: None,
+    };
+    put("anthropic", "claude-opus-5")
+        .validate()
+        .expect("a clean body passes");
+    for broken in [
+        put("anth\0ropic", "claude-opus-5"),
+        put("anthropic", "claude\0-opus-5"),
+    ] {
+        let report = broken.validate().expect_err("a NUL is refused");
+        assert!(
+            report.to_string().contains(afd_validate::rules::HAS_NUL),
+            "{report}"
+        );
+    }
 }

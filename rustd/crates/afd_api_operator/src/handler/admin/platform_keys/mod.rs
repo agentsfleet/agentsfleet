@@ -215,7 +215,10 @@ const FIELD_PROVIDER: &str = "provider";
 /// name either way, so the path cannot address a row the body could not set.
 #[derive(Debug, garde::Validate)]
 struct ProviderSegment {
-    #[garde(length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES))]
+    #[garde(
+        length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES),
+        custom(afd_validate::rules::nul_free)
+    )]
     provider: String,
 }
 /// The path `garde` reports a model-length break under.
