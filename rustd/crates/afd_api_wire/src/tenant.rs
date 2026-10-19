@@ -129,7 +129,7 @@ pub struct ApiKeySummary<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
     /// What remains, in nanos — one thousand-millionth of a dollar. Negative
-    /// while the tenant owes a debt: a settlement takes its whole charge, and
+    /// while the tenant owes a debt. A settlement takes its whole charge, and
     /// the next grant repays the debt before any of it is spendable.
     #[serde(with = "afd_wire::nanos::signed")]
     #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::signed::SignedDecimal))]

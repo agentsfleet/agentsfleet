@@ -17995,7 +17995,7 @@
         "properties": {
           "balance_nanos": {
             "$ref": "#/components/schemas/SignedNanos",
-            "description": "What remains, in nanos — one thousand-millionth of a dollar. Negative\nwhile the tenant owes a debt: a settlement takes its whole charge, and\nthe next grant repays the debt before any of it is spendable."
+            "description": "What remains, in nanos — one thousand-millionth of a dollar. Negative\nwhile the tenant owes a debt. A settlement takes its whole charge, and\nthe next grant repays the debt before any of it is spendable."
           },
           "exhausted_at": {
             "type": [
