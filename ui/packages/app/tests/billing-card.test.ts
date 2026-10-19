@@ -49,8 +49,10 @@ describe("BillingBalanceCard", () => {
     expect(link.getAttribute("aria-disabled")).toBeNull();
   });
 
-  it("surfaces an alert banner when the balance is exhausted", () => {
-    renderCard({ ...HEALTHY, balance_nanos: "0", is_exhausted: true });
+  it.each([["0", "$0.00"], ["-50000000", "-$0.05"], ["-50", ">-$0.0001"]])(
+    "shows exhausted balance %s and a top-up alert", (balance_nanos, expected) => {
+    renderCard({ ...HEALTHY, balance_nanos, is_exhausted: true });
+    expect(screen.getByTestId("balance-headline").textContent).toBe(expected);
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/Balance exhausted/);
     expect(alert.textContent).toMatch(/top up/i);

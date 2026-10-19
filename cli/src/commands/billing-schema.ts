@@ -1,10 +1,10 @@
 import { Effect, Schema } from "effect";
-import { nanosSchema } from "../lib/nanos.ts";
+import { nanosSchema, signedNanosSchema } from "../lib/nanos.ts";
 import { instant } from "../lib/instant.ts";
 import { ServerError } from "../errors/index.ts";
 
 // Validate the fields this command consumes; unrelated response metadata is ignored.
-const billing = Schema.Struct({ balance_nanos: nanosSchema, is_exhausted: Schema.Boolean });
+const billing = Schema.Struct({ balance_nanos: signedNanosSchema, is_exhausted: Schema.Boolean });
 const optionalText = Schema.optionalKey(Schema.NullOr(Schema.String));
 const count = Schema.optionalKey(Schema.NullOr(
   Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),

@@ -12,6 +12,13 @@ test("should round half a display unit up and anything less down", () => {
   expect(formatDollars("0")).toBe("$0.00");
 });
 
+test.each([
+  ["-50000000", "-$0.05"], ["-50000", "-$0.0001"],
+  ["-50", ">-$0.0001"], ["-9223372036854775808", "-$9,223,372,036.8548"],
+])("shows debt %s without rounding it to zero", (amount, expected) => {
+  expect(formatDollars(amount)).toBe(expected);
+});
+
 test("should keep two decimal places and trim only the zeros beyond them", () => {
   expect(formatDollars(String(NANOS_PER_USD))).toBe("$1.00");
   expect(formatDollars("1230000000")).toBe("$1.23");

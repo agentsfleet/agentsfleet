@@ -1,6 +1,6 @@
 import { CHARGE_TYPE, type TenantBillingChargesResponse } from "@/lib/types";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
-import { formatDollars } from "@/lib/money";
+import { formatDollars, MIN_VISIBLE_NANOS, SUBVISIBLE_AMOUNT_LABEL } from "@/lib/money";
 export { formatDollars } from "@/lib/money";
 
 export type ChargeRow = TenantBillingChargesResponse["items"][number];
@@ -13,14 +13,6 @@ const TOKENS_LABEL = "tokens";
 const TOKENS_IN = "in";
 const TOKENS_OUT = "out";
 const TOKEN_SPLIT_SEPARATOR = " · ";
-/**
- * Below this the formatter above returns "$0.00" — the one figure that reads
- * as nothing. Exported because the header's balance has the same floor for
- * the same reason, and two copies of it would drift.
- */
-export const MIN_VISIBLE_NANOS = 50_000n;
-export const SUBVISIBLE_AMOUNT_LABEL = "<$0.0001";
-
 /** Human-readable debit: never render a misleading negative zero. */
 export function formatChargeAmount(nanos: string): string {
   const amount = BigInt(nanos);

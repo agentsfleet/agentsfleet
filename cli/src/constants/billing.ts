@@ -22,13 +22,17 @@ const FRACTION_DIGITS = 4;
 const CENT_DIGITS = 2;
 const DISPLAY_LOCALE = "en-US";
 const INTEGER_FORMATTER = new Intl.NumberFormat(DISPLAY_LOCALE, {maximumFractionDigits: 0});
+const SUBVISIBLE_DEBT_LABEL = ">-$0.0001";
 
 // Two-to-four decimal places: cents, with the per-second run fee still visible.
 export function formatDollars(nanos: string): string {
-  const units = (BigInt(nanos) + HALF_DISPLAY_UNIT) / NANOS_PER_DISPLAY_UNIT;
+  const amount = BigInt(nanos);
+  const magnitude = amount < 0n ? -amount : amount;
+  const units = (magnitude + HALF_DISPLAY_UNIT) / NANOS_PER_DISPLAY_UNIT;
+  if (amount < 0n && units === 0n) return SUBVISIBLE_DEBT_LABEL;
   const fraction = (units % DISPLAY_UNITS_PER_USD).toString().padStart(FRACTION_DIGITS, "0");
   const trimmed = fraction.replace(/0+$/u, "").padEnd(CENT_DIGITS, "0");
-  return `$${INTEGER_FORMATTER.format(units / DISPLAY_UNITS_PER_USD)}.${trimmed}`;
+  return `${amount < 0n ? "-" : ""}$${INTEGER_FORMATTER.format(units / DISPLAY_UNITS_PER_USD)}.${trimmed}`;
 }
 
 /** Catalogue prices retain every served fractional digit, including a one-nano rate. */
