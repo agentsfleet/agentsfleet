@@ -120,12 +120,13 @@ pub struct ModelEntryFilter {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct CatalogueFilter {
-    /// Exact match on the normalized provider. At most 128 bytes once
+    /// Exact match on the normalized provider. At most 64 bytes once
     /// normalized; empty after normalization is treated as absent.
     pub provider: Option<String>,
-    /// `true` lists only the advanced models a picker offers on request;
-    /// `false` or absent lists the ordinary catalogue. No other spelling is
-    /// accepted.
+    /// `true` adds the advanced models a picker offers on request. The page
+    /// then lists the ordinary catalogue and the advanced models together.
+    /// `false` or absent lists the ordinary catalogue alone. No other spelling
+    /// is accepted.
     pub advanced: Option<bool>,
     /// Opaque cursor from a previous page's `next_cursor`, bound to the filters
     /// and page size that produced it.
