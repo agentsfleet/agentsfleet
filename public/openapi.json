@@ -3867,7 +3867,7 @@
           {
             "name": "provider",
             "in": "query",
-            "description": "Exact match on the normalized provider. At most 128 bytes once\nnormalized; empty after normalization is treated as absent.",
+            "description": "Exact match on the normalized provider. At most 64 bytes once\nnormalized; empty after normalization is treated as absent.",
             "required": false,
             "schema": {
               "type": "string"
@@ -3876,7 +3876,7 @@
           {
             "name": "advanced",
             "in": "query",
-            "description": "`true` lists only the advanced models a picker offers on request;\n`false` or absent lists the ordinary catalogue. No other spelling is\naccepted.",
+            "description": "`true` adds the advanced models a picker offers on request. The page\nthen lists the ordinary catalogue and the advanced models together.\n`false` or absent lists the ordinary catalogue alone. No other spelling\nis accepted.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -5384,7 +5384,7 @@
           "Runners"
         ],
         "summary": "Extend a live lease",
-        "description": "A run buying more time before its lease expires. The body is optional and carries one line per provider request since the last recorded renewal. The answer's `recorded_through` names the highest line recorded, and the runner sends the rest again. A body that will not parse records no lines and is logged as `renew_body_parse_failed`. The lease is still extended, so a counting mistake never ends a run. ",
+        "description": "A run buying more time before its lease expires. The body is optional and carries one line per provider request since the last recorded renewal, at most 512. The answer's `recorded_through` names the highest line recorded, and the runner sends the rest again. A body that will not parse, or breaks a bound, records no lines and is logged as `renew_body_parse_failed`. The lease is still extended, so a counting mistake never ends a run. One body is refused instead. A body carrying the retired cumulative totals (`input_tokens`, `cached_input_tokens`, `output_tokens`) answers 400 `UZ-RUN-013`. Its `detail` names the field, and the lease is not extended. ",
         "operationId": "runner_renew_lease",
         "parameters": [
           {
@@ -6890,7 +6890,7 @@
           "Runners"
         ],
         "summary": "Report the result of one run",
-        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing. A stale writer therefore cannot land a partial finalize on the current holder's run. The lease id is this endpoint's idempotency key, so it takes no `Idempotency-Key` header. Send the same report again after a lost response and the stored outcome is returned. The repeat charges nothing and counts the run once. ",
+        "description": "The terminal result of one lease. A report from a holder the fleet has already superseded is refused by the fence and writes nothing. A stale writer therefore cannot land a partial finalize on the current holder's run. The lease id is this endpoint's idempotency key, so it takes no `Idempotency-Key` header. Send the same report again after a lost response and the stored outcome is returned. The repeat charges nothing and counts the run once. A body that will not read is refused with `UZ-REQ-001`. Its `detail` names a retired cumulative total (`input_tokens`, `cached_input_tokens` or `output_tokens`) when the body carries one. It also names the bound a body breaks: more than 512 `requests` lines, or a line `seq` above 2147483647. ",
         "operationId": "runner_report",
         "requestBody": {
           "content": {
@@ -6909,6 +6909,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
                 }
               }
             }
@@ -24762,38 +24772,44 @@
           },
           "cache_write_1h_tokens": {
             "type": "integer",
-            "format": "int32",
+            "format": "int64",
             "description": "Cache writes with a one-hour lifetime.",
+            "maximum": 4294967295,
             "minimum": 0
           },
           "cache_write_5m_tokens": {
             "type": "integer",
-            "format": "int32",
+            "format": "int64",
             "description": "Cache writes with a five-minute lifetime.",
+            "maximum": 4294967295,
             "minimum": 0
           },
           "cache_write_tokens": {
             "type": "integer",
-            "format": "int32",
+            "format": "int64",
             "description": "Cache writes the provider reported no lifetime for.",
+            "maximum": 4294967295,
             "minimum": 0
           },
           "cached_input_tokens": {
             "type": "integer",
-            "format": "int32",
+            "format": "int64",
             "description": "Prompt tokens read from the provider's cache.",
+            "maximum": 4294967295,
             "minimum": 0
           },
           "input_tokens": {
             "type": "integer",
-            "format": "int32",
+            "format": "int64",
             "description": "Uncached prompt tokens.",
+            "maximum": 4294967295,
             "minimum": 0
           },
           "output_tokens": {
             "type": "integer",
-            "format": "int32",
+            "format": "int64",
             "description": "Completion tokens, reasoning included once.",
+            "maximum": 4294967295,
             "minimum": 0
           },
           "seq": {
