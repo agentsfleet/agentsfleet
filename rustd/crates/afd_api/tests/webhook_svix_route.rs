@@ -290,3 +290,56 @@ async fn a_fleet_whose_workspace_holds_no_svix_secret_verifies_nothing() {
         ingress.deliveries()
     );
 }
+
+#[tokio::test]
+async fn a_delivery_to_a_fleet_this_daemon_does_not_serve_is_not_found() {
+    // Before any secret is read: a fleet that resolves to nothing is the same
+    // `UZ-WH-001` on this surface as on the HMAC ones, so a probe cannot use
+    // the Svix route to learn which fleets exist.
+    let ingress = Arc::new(Scripted::new().svix_signing(signed::SVIX_SECRET));
+    let refused = deliver(&ingress, signed::SVIX_DELIVERY, PAYLOAD).await;
+
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{document}");
+    assert_eq!(
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_FLEET_NOT_FOUND.as_str())
+    );
+    assert_eq!(
+        ingress.sources_asked(),
+        vec![None],
+        "the Svix route names no provider, so it asks for the first trigger"
+    );
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
+}
+
+#[tokio::test]
+async fn a_stored_svix_secret_that_will_not_parse_verifies_nothing() {
+    // An unreadable secret is unconfigured, never a failed signature: the
+    // sender did nothing wrong, and a 401 for a bad tag would tell it to
+    // rotate a key that is not the problem.
+    let ingress = Arc::new(
+        Scripted::new()
+            .resolving(signed::binding(signed::TRIGGER_GITHUB))
+            .svix_signing("not-a-whsec-secret"),
+    );
+    let refused = deliver(&ingress, signed::SVIX_DELIVERY, PAYLOAD).await;
+
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
+    assert_eq!(
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str())
+    );
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
+}

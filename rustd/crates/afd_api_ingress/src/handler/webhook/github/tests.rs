@@ -12,7 +12,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use super::{Ingest, Policy, classify};
+use super::{Ingest, Policy, REASON_MISSING_REPOSITORY, classify};
 
 /// The header GitHub names a workflow run in.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";
@@ -308,4 +308,22 @@ fn an_actor_missing_a_field_no_reader_declares_still_reads() {
 #[test]
 fn an_unstated_run_attempt_defaults_to_the_first() {
     assert_eq!(super::payload::one(), 1);
+}
+
+#[test]
+fn a_delivery_naming_no_repository_is_ignored_under_either_policy() {
+    // A subscription is keyed on the repository and a digest names it, so a
+    // run that names none has nothing to route or to reason over.
+    let mut body: serde_json::Value =
+        serde_json::from_str(RUN_FAILURE).expect("the fixture is JSON");
+    body.as_object_mut()
+        .expect("a delivery is an object")
+        .remove("repository");
+    let bytes = serde_json::to_vec(&body).expect("the edited delivery encodes");
+
+    for policy in [Policy::Manual, Policy::AppIngress] {
+        let ingest = classify(policy, EVENT_WORKFLOW_RUN, &bytes, RECEIVED_AT)
+            .expect("a delivery that still reads");
+        assert_eq!(ignored(ingest), REASON_MISSING_REPOSITORY, "{policy:?}");
+    }
 }
