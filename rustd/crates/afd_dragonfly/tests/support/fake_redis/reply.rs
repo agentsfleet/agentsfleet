@@ -22,6 +22,16 @@ pub(crate) enum Reply {
     Hangup,
     /// Keep the socket open and never answer this command.
     Silent,
+    /// Write `raw` for the first `answered` of this command, counted across
+    /// every connection, then fall [`Reply::Silent`]. The cluster dial pings
+    /// before `connect`'s own liveness probe does, and only a count tells the
+    /// two apart.
+    RawThenSilent {
+        /// What the answered ones get.
+        raw: &'static str,
+        /// How many are answered before the silence.
+        answered: usize,
+    },
     /// The confirmation a server sends for `SSUBSCRIBE`: a RESP3 push echoing
     /// the channel the client asked for. Built here rather than written
     /// literally because the channel name is the test's, not this file's, and
