@@ -141,7 +141,9 @@ impl Leases {
     /// ([`Leases::commit_report`](crate::lease::commit)). Acquiring a second
     /// connection here would put the line outside that boundary and hold two
     /// connections of a five-connection pool for one report (RULE CNX). Money
-    /// moves after commit, through the caller's biller.
+    /// moves after commit, through the caller's biller. The caller also holds
+    /// the host's capacity lock first, which is what numbers this line after a
+    /// racing renewal's (see [`sql::meter::METER_LEASE`]).
     ///
     /// # Errors
     /// Reports an entropy source that could not produce the line's
