@@ -334,3 +334,43 @@ async fn test_a_group_create_that_fails_for_another_reason_is_not_swallowed() {
         "a refused create is a command failure, not an outage: {error}"
     );
 }
+
+/// The cluster dial can finish inside the budget and `connect` still time out:
+/// the budget bounds the dial AND the liveness probe after it, so a node that
+/// answers the dial's two pings and then falls silent is refused at the
+/// connection deadline rather than waiting out the longer request deadline.
+#[tokio::test]
+async fn test_a_probe_silent_after_the_dial_is_bounded_by_the_connect_budget() {
+    let recorder = Capture::install();
+    // The dial pings the seed and then the node; the third is `connect`'s own.
+    let server = FakeRedis::spawn(&[(
+        "PING",
+        Reply::RawThenSilent {
+            raw: "+PONG\r\n",
+            answered: 2,
+        },
+    )])
+    .await;
+    let config = DragonflyConfig::from_url(DragonflyRole::Api, server.url())
+        .with_request_timeout(Duration::from_secs(30))
+        .with_connect_timeout(Duration::from_millis(1500));
+
+    let started = std::time::Instant::now();
+    let error = tokio::time::timeout(BUDGET, Dragonfly::connect(&config))
+        .await
+        .expect("the connect budget, not the request deadline, ends this")
+        .expect_err("a silent liveness probe must time out");
+
+    assert!(error.is_unavailable(), "a connect timeout is an outage: {error}");
+    assert!(
+        error.to_string().contains("1.5s"),
+        "the failure must carry its configured budget: {error}"
+    );
+    assert!(started.elapsed() < BUDGET);
+    assert_eq!(
+        server.seen().iter().filter(|name| *name == "PING").count(),
+        3,
+        "the dial's two pings were answered and the probe was sent"
+    );
+    assert_connection_pair(&recorder);
+}
