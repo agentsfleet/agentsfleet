@@ -249,10 +249,10 @@ fn an_opened_pull_request_carries_the_twelve_field_digest() {
 
 /// A pull-request delivery shaped exactly as github.com sends one.
 ///
-/// The actor carries all eighteen fields `octocrab`'s [`Author`] requires, and
-/// that is the point of the fixture rather than an accident of copying: the
-/// digest is only reachable if a REAL delivery deserializes, so an abridged
-/// actor here would prove the reader works on input GitHub never sends.
+/// Every field GitHub populates is present, including the ones no reader
+/// declares: the digest is only reachable if a REAL delivery deserializes, so
+/// an abridged fixture would prove the reader works on input GitHub never
+/// sends.
 const PULL_REQUEST_DELIVERY: &str =
     include_str!("../../../../../../../tests/fixtures/webhooks/github_pull_request.json");
 
@@ -263,10 +263,8 @@ fn pull_request_body(action: &str) -> String {
 
 #[test]
 fn a_delivery_shaped_as_github_sends_it_deserializes() {
-    // The claim this fixture exists to settle: `octocrab`'s eighteen required
-    // actor fields are fields github.com actually populates, so the strictness
-    // is satisfied by real traffic. An actor missing one of them is the next
-    // test, and it is the risk this reader carries.
+    // The claim this fixture exists to settle: the full eighty-field payload
+    // reads through types declaring only the fields a decision uses.
     let ingest = classify(
         Policy::Manual,
         EVENT_PULL_REQUEST,
@@ -278,28 +276,28 @@ fn a_delivery_shaped_as_github_sends_it_deserializes() {
 }
 
 #[test]
-fn an_actor_missing_one_url_field_fails_the_whole_delivery() {
-    // Documented, not hypothetical. `octocrab`'s `Author` requires nine
-    // `*_url` fields; a delivery whose actor omits ONE is refused entirely
-    // rather than degrading to an absent sender. github.com sends all nine, so
-    // this is a tail risk — but it is the tail where a correctly-signed
-    // delivery earns a 4xx, and a sender then retries it forever.
+fn an_actor_missing_a_field_no_reader_declares_still_reads() {
+    // The retired risk. The SDK this replaced typed the actor with nine
+    // required `*_url` fields, so a correctly-signed delivery omitting ONE
+    // earned a 4xx. The actor's type now declares `login` alone, and the
+    // delivery reads with its author intact.
     let body = pull_request_body("opened").replace(
         "\"gists_url\": \"https://api.github.com/users/octocat/gists{/gist_id}\",\n      ",
         "",
     );
+    assert!(!body.contains("gists_url"), "the fixture lost the field");
 
-    let refused = classify(
+    let ingest = classify(
         Policy::Manual,
         EVENT_PULL_REQUEST,
         body.as_bytes(),
         RECEIVED_AT,
-    );
+    )
+    .expect("an unread field cannot refuse a delivery");
+    let digest: serde_json::Value =
+        serde_json::from_str(&accepted(ingest)).expect("the digest is JSON");
 
-    assert!(
-        refused.is_err(),
-        "if this ever passes, octocrab loosened Author and the risk note can go"
-    );
+    assert_eq!(digest["author"], "octocat");
 }
 
 /// A run with no stated attempt is its first.
@@ -309,5 +307,5 @@ fn an_actor_missing_one_url_field_fails_the_whole_delivery() {
 /// workflow run look like a retry of something that never ran.
 #[test]
 fn an_unstated_run_attempt_defaults_to_the_first() {
-    assert_eq!(super::one(), 1);
+    assert_eq!(super::payload::one(), 1);
 }

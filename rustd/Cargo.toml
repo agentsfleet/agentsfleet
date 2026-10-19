@@ -652,41 +652,11 @@ arc-swap = { version = "1.9.2", default-features = false }
 # Writing this by hand on top of `aws-lc-rs` would be possible and is exactly
 # the plumbing not to hand-roll.
 #
-# PINNED TO 10.x BY `octocrab`, AND IT MUST STAY THAT WAY (M177 §4). This is not
-# a preference for an older release: `octocrab` requires `jsonwebtoken ^10` and
-# its `Octocrab::builder().app()` takes an `EncodingKey` BY TYPE. A crate
-# building that key against 11.x would not merely duplicate RS256 — the two
-# `EncodingKey` types are unrelated and the call would not compile. An earlier
-# 11.0.0 pin here was unreachable for exactly that reason.
-#
-# `use_pem` reads the App's PEM private key; `aws_lc_rs` is the backend, which
-# is also what `octocrab`'s own `jwt-aws-lc-rs` feature selects — the two agree
-# deliberately, so the binary carries one implementation of RS256 rather than
-# two. Raising this to 11 means raising `octocrab` first.
-jsonwebtoken = { version = "10.4.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
-
-# The GitHub client behind the App-installation half of the mint broker.
-#
-# `default-features = false` is load-bearing twice over. Its defaults enable
-# `rustls-ring`, which would put a SECOND rustls provider beside the aws-lc-rs
-# this workspace resolves to, and `jwt-rust-crypto`, which would point
-# `jsonwebtoken` at a different backend than the line above pins. `jwt-aws-lc-rs`
-# swaps the second back; omitting `rustls-ring` settles the first.
-#
-# Taken for App JWT minting, the transport and the typed `InstallationToken`,
-# NOT for its `installation_and_token()`: that method posts a hardcoded `{}`
-# body and so always mints the installation's FULL scope. The repository and
-# permission narrowing this milestone's write gate rests on is sent through the
-# generic `post`, with a body of ours.
-octocrab = { version = "0.54.1", default-features = false, features = [
-    "rustls",
-    "rustls-aws-lc-rs",
-    "jwt-aws-lc-rs",
-    "default-client",
-    "timeout",
-    "retry",
-    "tracing",
-] }
+# `use_pem` reads the App's PEM private key. The GitHub App calls themselves —
+# the installation read and the scoped token mint — are two `reqwest` requests
+# in `afd_credential`, and the webhook payloads are read by `afd_api_ingress`'s
+# own `serde` types, so no GitHub SDK sits between this crate and its caller.
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 
 # OpenTelemetry, for the push-only export `afd_otlp` builds. The SDK alone:
 # it re-exports the API types the
