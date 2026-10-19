@@ -8,6 +8,7 @@ export type NavEntry = {
   icon: LucideIcon;
   workspaceScoped?: boolean;
   external?: boolean;
+  analyticsSource?: string;
 };
 
 export type PlatformNavEntry = NavEntry & { scope?: string };
@@ -41,6 +42,7 @@ export function resolveActiveHref(hrefs: string[], pathname: string): string {
 }
 
 export function navSource(entry: NavEntry): string {
+  if (entry.analyticsSource) return entry.analyticsSource;
   if (entry.external) return `${NAV_SURFACE}_${entry.label.toLowerCase()}`;
   const canonical = entry.workspaceScoped ? `/${entry.path}` : entry.path;
   return `${NAV_SURFACE}_${canonical.replaceAll("/", "_").replace(/^_+/, "")}`;

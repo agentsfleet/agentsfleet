@@ -15,6 +15,10 @@ function setup(edit: boolean) {
   render(<TooltipProvider>{edit
     ? <EditModelDialog model={ADMIN_MODEL} onOpenChange={close} onUpdated={saved} />
     : <AddModelDialog defaultOpen onCreated={saved} />}</TooltipProvider>);
+  if (edit) {
+    fireEvent.click(screen.getByRole("button", { name: "Catalogue details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pricing" }));
+  }
   if (!edit) for (const [label, value] of [
     ["Provider", ADMIN_MODEL.provider], ["Model", ADMIN_MODEL.model_id],
     ["Catalogue display name", ADMIN_MODEL.metadata.display_name], ["Context window (tokens)", String(ADMIN_MODEL.metadata.context_cap_tokens)],
@@ -53,15 +57,25 @@ it.each([false, true])("retains exact inputs on a rejected action round trip, th
   const body = action.mock.calls[1]?.[edit ? 1 : 0];
   expect(body.prices[0].input_nanos_per_mtok).toBe("9223372036854775807");
 });
-it("preserves inference when omitted and updates the returned row with the exact new schedule", async () => {
+it("saves the displayed connection and updates the returned row with the exact new schedule", async () => {
   update.mockResolvedValueOnce({ ok: true, data: { id: ADMIN_MODEL.id, updated: true } });
   const { saved, close, submit } = setup(true);
-  fireEvent.click(screen.getByRole("switch", { name: "Write inference settings" }));
   change("Cache write ($/1M)", "0");
   change("Cache write, 1-hour ($/1M)", "9223372036.854775807");
   submit();
   const prices = [{ ...PRICE, cache_write_nanos_per_mtok: "0", cache_write_1h_nanos_per_mtok: "9223372036854775807" }];
   await waitFor(() => expect(saved).toHaveBeenCalledWith({ ...ADMIN_MODEL, prices }));
-  expect(update).toHaveBeenCalledWith(ADMIN_MODEL.id, { metadata: ADMIN_MODEL.metadata, prices });
+  expect(update).toHaveBeenCalledWith(ADMIN_MODEL.id, { metadata: ADMIN_MODEL.metadata, prices, inference: ADMIN_MODEL.inference });
   expect(close).toHaveBeenCalledWith(false);
+});
+
+it("saves catalogue details without inventing a connection for an unconfigured model", async () => {
+  update.mockResolvedValueOnce({ ok: true, data: { id: ADMIN_MODEL.id, updated: true } });
+  const model = { ...ADMIN_MODEL, inference: undefined };
+  const saved = vi.fn();
+  render(<TooltipProvider><EditModelDialog model={model} onOpenChange={vi.fn()} onUpdated={saved} /></TooltipProvider>);
+  expect(screen.queryByLabelText("Inference base URL")).toBeNull();
+  fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+  await waitFor(() => expect(saved).toHaveBeenCalledWith(model));
+  expect(update).toHaveBeenCalledWith(model.id, { metadata: model.metadata, prices: model.prices });
 });

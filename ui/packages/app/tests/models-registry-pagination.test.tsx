@@ -64,7 +64,7 @@ describe("model registry pagination concurrency", () => {
   it("keeps a newer search on its first page when an older Next completes", async () => {
     const finish = pendingPage(); show();
     fireEvent.click(screen.getByRole("button", {name: "Next page"}));
-    fireEvent.change(screen.getByRole("searchbox", {name: "Search loaded models"}), {target: {value: "fresh"}});
+    fireEvent.change(screen.getByRole("searchbox", {name: "Search models"}), {target: {value: "fresh"}});
     await act(async () => { finish(Array.from({length: 30}, (_, i) => entry(`fresh-${i}`))); });
     expect(await screen.findByTitle("fresh-0")).toBeTruthy();
     expect(screen.queryByTitle("fresh-29")).toBeNull();
@@ -105,7 +105,7 @@ it.each([0, 3])("fills an incomplete search page before advancing (%i existing m
   list.mockResolvedValueOnce({ok: true, data: page(Array.from({length: 30}, (_, index) => entry(`match-new-${index}`)), null)});
   const rows = Array.from({length: 25}, (_, index) => entry(index < matches ? `match-old-${index}` : `initial-${index}`, index === 0));
   render(<TooltipProvider><ModelsRegistryTable workspaceId="ws-test" initialPage={page(rows, "next")} initialError={null} /></TooltipProvider>);
-  fireEvent.change(screen.getByRole("searchbox", {name: "Search loaded models"}), {target: {value: "match"}});
+  fireEvent.change(screen.getByRole("searchbox", {name: "Search models"}), {target: {value: "match"}});
   fireEvent.click(screen.getByRole("button", {name: "Next page"}));
   expect(await screen.findByTitle("match-new-0")).toBeTruthy();
   expect(screen.queryByTitle("match-new-29")).toBeNull();

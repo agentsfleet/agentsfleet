@@ -72,3 +72,13 @@ describe("seeder rows", () => {
     expect(() => modelRowsSchema.parse([{ ...desiredRows(catalogueFixture())[0], prices: [{}] }])).toThrow("effective_from");
   });
 });
+
+test.each(["https://gateway.example.com/@team/v1", "HTTPS://gateway.example.com/v1", " https://gateway.example.com/v1 "])("priming preserves a saved administrator endpoint: %s", (base_url) => {
+  const rows = desiredRows(catalogueFixture());
+  expect(rows[0]?.inference).toEqual({ api: "chat", base_url: "https://api.fireworks.ai/inference/v1", max_output_tokens: 943718 });
+  const missing = rows.map((row) => ({ ...row, inference: null }));
+  expect(catalogueDiff(rows, missing).changed).toEqual([KEY]);
+  const customized = modelRowsSchema.parse(rows.map((row) => ({ ...row, inference: { ...row.inference!, base_url } })));
+  expect(catalogueDiff(rows, customized).changed).toEqual([]);
+  expect(catalogueDiff(rows.map((row) => ({ ...row, display_name: "Renamed" })), customized).changed).toEqual([KEY]);
+});

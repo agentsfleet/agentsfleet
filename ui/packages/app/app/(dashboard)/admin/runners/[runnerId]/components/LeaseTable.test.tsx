@@ -171,7 +171,7 @@ it("LeaseTable > renders the workspace cell as a shortened link carrying the ful
     />, { wrapper: TooltipProvider });
   expect(screen.getByRole("columnheader", {name: WORKSPACE_LABEL})).toBeTruthy();
   const link = screen.getByRole("link", { name: "ws-01234…" });
-  expect(link.getAttribute("href")).toBe("/w/ws-0123456789/fleets");
+  expect(link.getAttribute("href")).toBe("/w/ws-0123456789/fleets/new");
   expect(link.getAttribute("title")).toBe("ws-0123456789");
   // No filter in the URL — no chip to clear.
   expect(screen.queryByRole("button", { name: "Clear workspace filter" })).toBeNull();

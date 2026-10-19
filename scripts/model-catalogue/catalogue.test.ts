@@ -22,6 +22,7 @@ function price(overrides: Partial<Price> = {}): Price {
 
 function model(overrides: Partial<Model> = {}): Model {
   return { provider: "openai", model_name: MODEL, display_name: "GPT 6.1 Sol", advanced: false,
+    inference: { api: "responses", base_url: "https://api.openai.com/v1", dialect: "openai", max_output_tokens: 128000 },
     context: null, context_unverified_reason: "Models API requires authentication.",
     prices: [price()], ...overrides };
 }
@@ -202,4 +203,19 @@ describe("bounded catalogue reads", () => {
     await expect(readCatalogue(await fixture(" ".repeat(MAX_CATALOGUE_BYTES + 1)))).rejects.toThrow("byte limit");
     await expect(readCatalogue(await fixture("{"))).rejects.toThrow();
   });
+});
+
+
+test("inference settings require a safe endpoint and a completion limit inside the proved context", () => {
+  const entry = model({ context: { tokens: 128000, source_url: `https://api.openai.com/v1/models/${MODEL}`, verified_at: VERIFIED }, context_unverified_reason: null });
+  expect(parseCatalogue(document([entry])).models[0]?.inference.max_output_tokens).toBe(128000);
+  for (const inference of [undefined, { ...entry.inference, base_url: "http://provider.example.com" },
+    { ...entry.inference, base_url: "https://user:secret@provider.example.com" },
+    { ...entry.inference, base_url: "https://:secret@provider.example.com" },
+    { ...entry.inference, base_url: "https://provider.example.com?key=secret" },
+    { ...entry.inference, base_url: "https://provider.example.com#fragment" },
+    { ...entry.inference, api: "unknown" }, { ...entry.inference, max_output_tokens: 0 },
+    { ...entry.inference, max_output_tokens: 128001 }]) {
+    expect(() => parseCatalogue(document([{ ...entry, inference } as Model]))).toThrow();
+  }
 });

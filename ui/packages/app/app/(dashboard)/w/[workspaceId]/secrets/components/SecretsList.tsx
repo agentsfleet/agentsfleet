@@ -153,17 +153,17 @@ function SecretTable({
   const matches = useMemo(() => secrets.filter((secret) => secret.name.toLowerCase().includes(query)), [secrets, query]);
   const columns = buildColumns({ pending, protectedSecretName, onEdit, onRename, onDelete });
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-xl">
+    <div className="flex min-h-0 flex-col gap-xl">
       <CollectionToolbar label="Search secrets" value={search} onChange={setSearch} summary={`${matches.length} of ${secrets.length} secrets`} />
       <DataTable
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-col"
         columns={columns}
         rows={matches}
         isLoading={pending}
         empty={<EmptyState title="No matching secrets" description="Try another name or clear your search." />}
         rowKey={(c) => c.name}
         caption="Stored secrets"
-        viewportClassName="min-h-0 flex-1 max-h-none"
+        viewportClassName="min-h-0"
       />
     </div>
   );

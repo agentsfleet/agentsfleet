@@ -147,7 +147,6 @@ function buildColumns({
       cell: (m) => (
         <div className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
           {formatContextTokens(m.metadata.context_cap_tokens)}
-          <CatalogueEvidence source={m.metadata.context_source_url} verifiedAt={m.metadata.context_verified_at} />
         </div>
       ),
     },
@@ -160,9 +159,16 @@ function buildColumns({
       cell: (m) => (
         <div className="space-y-sm">
           <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">{formatRatesPerMtok(currentBasePrice(m.prices))}</span>
-          <ModelPriceSchedule prices={m.prices} />
         </div>
       ),
+    },
+    {
+      key: "context-evidence", header: "Context source", hideOnMobile: true,
+      cell: (m) => <CatalogueEvidence source={m.metadata.context_source_url} verifiedAt={m.metadata.context_verified_at} />,
+    },
+    {
+      key: "price-schedule", header: "Pricing details", hideOnMobile: true,
+      cell: (m) => <ModelPriceSchedule prices={m.prices} />,
     },
     {
       key: "actions",
