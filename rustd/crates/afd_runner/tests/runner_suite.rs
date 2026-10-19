@@ -12,6 +12,8 @@ mod integration_reclaim;
 mod integration_reclaim_faults;
 #[path = "integration_reclaim_paging.rs"]
 mod integration_reclaim_paging;
+#[path = "integration_replay_pacing.rs"]
+mod integration_replay_pacing;
 mod integration_runner_plane;
 mod integration_sweeps;
 mod rows;

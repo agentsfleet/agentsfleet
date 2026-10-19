@@ -81,7 +81,7 @@ impl Runners {
         actor_id: &str,
         now: Timestamp,
     ) -> Result<AdminState> {
-        let target = target(action).ok_or_else(|| rejected(DETAIL_ACTION_REQUIRED))?;
+        let (target, event) = transition(action).ok_or_else(|| rejected(DETAIL_ACTION_REQUIRED))?;
         let event_id = self.admin_event_id(now)?;
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query_as::<_, Transitioned>(sql::runner_admin::TRANSITION_RUNNER_STATUS)
@@ -90,7 +90,7 @@ impl Runners {
             .bind(target == AdminState::Revoked)
             .bind(state_wire(AdminState::Revoked))
             .bind(event_id.as_str())
-            .bind(event_wire(target))
+            .bind(event)
             .bind(sql::meta::FROM_STATUS)
             .bind(sql::meta::TO_STATUS)
             .bind(sql::meta::ACTOR_ID)
@@ -175,10 +175,22 @@ pub(crate) fn stored_state(raw: &str) -> Result<AdminState> {
 /// The target state for a mutation action; self-test is not a transition.
 #[must_use]
 pub const fn target(action: RunnerAdminAction) -> Option<AdminState> {
+    match transition(action) {
+        Some((state, _event)) => Some(state),
+        None => None,
+    }
+}
+
+/// The state an operator action moves a runner to, and the event it appends.
+///
+/// One table for both, keyed on the action: an event is only ever written for
+/// a state an action can reach, so `active` and `drained` — reached by the
+/// heartbeat and the drain sweep, under their own events — have no row here.
+const fn transition(action: RunnerAdminAction) -> Option<(AdminState, &'static str)> {
     match action {
-        RunnerAdminAction::Cordon => Some(AdminState::Cordoned),
-        RunnerAdminAction::Drain => Some(AdminState::Draining),
-        RunnerAdminAction::Revoke => Some(AdminState::Revoked),
+        RunnerAdminAction::Cordon => Some((AdminState::Cordoned, "runner_cordoned")),
+        RunnerAdminAction::Drain => Some((AdminState::Draining, "runner_draining")),
+        RunnerAdminAction::Revoke => Some((AdminState::Revoked, "runner_revoked")),
         RunnerAdminAction::Rotate | RunnerAdminAction::SelfTest => None,
     }
 }
@@ -194,19 +206,10 @@ pub(crate) const fn state_wire(state: AdminState) -> &'static str {
     }
 }
 
-const fn event_wire(state: AdminState) -> &'static str {
-    match state {
-        AdminState::Active => "runner_online",
-        AdminState::Cordoned => "runner_cordoned",
-        AdminState::Draining => "runner_draining",
-        AdminState::Drained => "runner_drained",
-        AdminState::Revoked => "runner_revoked",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use afd_api_wire::admin::RunnerEventType;
 
     #[test]
     fn actions_name_only_real_state_transitions() {
@@ -218,6 +221,22 @@ mod tests {
         assert_eq!(target(RunnerAdminAction::Revoke), Some(AdminState::Revoked));
         assert_eq!(target(RunnerAdminAction::Rotate), None);
         assert_eq!(target(RunnerAdminAction::SelfTest), None);
+    }
+
+    /// Each transition's event is the history tag the operator plane filters
+    /// on, so a spelling drift writes rows no filter can find.
+    #[test]
+    fn each_transition_appends_the_event_its_history_filter_names() {
+        for (action, tag) in [
+            (RunnerAdminAction::Cordon, RunnerEventType::RunnerCordoned),
+            (RunnerAdminAction::Drain, RunnerEventType::RunnerDraining),
+            (RunnerAdminAction::Revoke, RunnerEventType::RunnerRevoked),
+        ] {
+            let parsed = transition(action).and_then(|(_state, event)| {
+                serde_json::from_value::<RunnerEventType>(serde_json::Value::from(event)).ok()
+            });
+            assert_eq!(parsed, Some(tag), "{action:?}");
+        }
     }
 
     #[test]

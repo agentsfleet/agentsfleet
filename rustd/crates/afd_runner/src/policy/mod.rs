@@ -113,18 +113,14 @@ pub struct SandboxConfig<'a> {
 }
 
 impl SandboxConfig<'_> {
-    /// The object a `jsonb` column takes, as text.
-    ///
-    /// Infallible in practice for the reason `spelling::render_list` gives; an
-    /// empty object is the honest degradation, since it reads back as no binds.
+    /// The object a `jsonb` column takes, as text: see
+    /// [`render_object`](crate::spelling::render_object), whose empty-object
+    /// fallback reads back as no binds.
     #[must_use]
     pub fn render(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|_unreachable| EMPTY_OBJECT.to_owned())
+        crate::spelling::render_object(self)
     }
 }
-
-/// What [`SandboxConfig::render`] falls back to.
-const EMPTY_OBJECT: &str = "{}";
 
 /// The stored capability report, or `None` when the host has not reported.
 ///

@@ -9,6 +9,7 @@ use sqlx::PgConnection;
 use super::best_effort;
 use crate::policy::StoredVerdict;
 use crate::reconcile::Verdict;
+use crate::spelling::render_object;
 use crate::sql;
 
 /// The scoped event a verdict write that did not land is logged under.
@@ -28,12 +29,7 @@ pub(super) async fn persist(
     verdict: Verdict,
 ) {
     if let Some(report) = incoming {
-        let report_json = serde_json::to_string(report).unwrap_or_else(|_unreachable| {
-            // Unreachable for this shape — booleans and a string list — and an
-            // empty object is the honest degradation: it stores "reported
-            // nothing" rather than a half-written report.
-            "{}".to_owned()
-        });
+        let report_json = render_object(report);
         let write = sqlx::query(sql::runner::UPDATE_RUNNER_CAPABILITY_AND_VERDICT)
             .bind(runner.as_str())
             .bind(report_json)

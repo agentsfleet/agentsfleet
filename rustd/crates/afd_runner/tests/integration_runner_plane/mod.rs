@@ -10,8 +10,11 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+mod faults;
 mod lifecycle;
 mod operator;
+#[path = "../../../afd_authoring/tests/support/refusal.rs"]
+mod refusal;
 
 use std::borrow::Cow;
 

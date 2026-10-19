@@ -50,9 +50,11 @@ impl Runners {
         if !changed {
             return Err(rejected(DETAIL_REVOKED));
         }
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let runner_id = runner.as_str();
         tracing::debug!(
-            runner_id = runner.as_str(),
-            event = "runner_token_rotated",
+            runner_id,
+            event = EVENT_TOKEN_ROTATED,
             "runner credential rotated"
         );
         Ok(token)

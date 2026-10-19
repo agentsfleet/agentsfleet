@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use afd_api_wire::admin::{AdminState, RunnerAdminAction, RunnerEventType};
 use afd_core::clock;
+use afd_core::test_util::trace::Capture;
 use afd_runner::sql::NEVER_SEEN;
 use afd_runner::{DETAIL_SELFTEST_REFUSED, KeysetCursor, RunnerEdit};
 use afd_wire::runner::{BindMode, ExtraBind, RunnerLiveness};
@@ -243,5 +244,81 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
         .await
         .expect("the seeded attempt cleans up");
     drop(connection);
+    fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_an_edit_carrying_nothing_is_refused_before_any_write() {
+    let mut fixture = Fixture::create().await;
+    let runner = fixture.enrol().await;
+    let before = fixture.history(&runner).await.len();
+
+    let refused = fixture
+        .runners
+        .edit(
+            &runner,
+            RunnerEdit {
+                assigned_policy: None,
+                labels: None,
+            },
+            clock::now(),
+        )
+        .await
+        .expect_err("an edit with no policy and no labels changes nothing");
+
+    assert!(refused.is_rejected(), "{refused}");
+    assert_eq!(
+        fixture.history(&runner).await.len(),
+        before,
+        "a refused edit appends no event"
+    );
+    fixture.cleanup().await;
+}
+
+/// A rotation answers the new credential once and records it; a revoked
+/// runner's is refused inside the same statement, so it records nothing.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
+    let mut fixture = Fixture::create().await;
+    let runner = fixture.enrol().await;
+    let capture = Capture::install();
+
+    fixture
+        .runners
+        .rotate_token(&runner, ACTOR, clock::now())
+        .await
+        .expect("a live runner rotates");
+    let rotated = capture.only("runner_token_rotated");
+    assert_eq!(rotated.field("runner_id"), Some(runner.as_str()));
+    let history = fixture.history(&runner).await;
+    assert_eq!(
+        history.first().map(|event| event.event_type),
+        Some(RunnerEventType::RunnerTokenRotated)
+    );
+
+    fixture
+        .runners
+        .transition(&runner, RunnerAdminAction::Revoke, ACTOR, clock::now())
+        .await
+        .expect("a revoke applies");
+    let refused = fixture
+        .runners
+        .rotate_token(&runner, ACTOR, clock::now())
+        .await
+        .expect_err("a revoked runner holds no credential to rotate");
+
+    assert!(refused.is_rejected(), "{refused}");
+    assert_eq!(
+        fixture
+            .history(&runner)
+            .await
+            .first()
+            .map(|event| event.event_type),
+        Some(RunnerEventType::RunnerRevoked),
+        "the refused rotation appended nothing after the revoke"
+    );
+    drop(capture);
     fixture.cleanup().await;
 }
