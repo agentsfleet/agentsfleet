@@ -29,10 +29,6 @@ fn label_products() -> Vec<(&'static str, usize)> {
             billing_labels::WorkType::ALL.len() * billing_labels::SettleOutcome::ALL.len(),
         ),
         (
-            billing::BILLING_WRITTEN_OFF_NANOS_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::Posture::ALL.len(),
-        ),
-        (
             billing::BILLING_SWEEPER_RESETTLED_TOTAL.wire_name(),
             billing_labels::WorkType::ALL.len(),
         ),

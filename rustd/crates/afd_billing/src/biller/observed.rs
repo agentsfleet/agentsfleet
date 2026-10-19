@@ -1,18 +1,15 @@
 //! Any biller, counted: the one choke point every reservation and settlement
 //! passes through, whichever product path or sweeper made it.
 
-use afd_observability::metrics::label::billing::{
-    Posture as PostureLabel, ReserveOutcome, SettleOutcome, WorkType,
-};
+use afd_observability::metrics::label::billing::{ReserveOutcome, SettleOutcome, WorkType};
 use afd_observability::metrics::label::cost::ChargeClass;
 use afd_observability::producers::{billing as metrics, cost};
 
 use super::{Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey};
 use crate::Result;
-use crate::rates::Posture;
 
 /// `inner`, with every reservation's answer and every settlement's outcome,
-/// spend, write-off and unpriced tokens recorded.
+/// spend and unpriced tokens recorded.
 ///
 /// Wraps outside [`super::WithOutagePolicy`] so a reservation the policy
 /// admitted is counted as `unconfirmed` rather than vanishing as an error.
@@ -70,10 +67,10 @@ impl<B: Biller> Biller for Observed<B> {
     }
 }
 
-/// What one landed settlement spent, wrote off and left unpriced.
+/// What one landed settlement spent and left unpriced.
 ///
-/// Spend is what the balance gave (`taken`), not what the lines cost: the
-/// counter answers what was consumed. Unpriced tokens count only when this
+/// Spend is what left the balance (`taken`): the whole charge, or nothing for a
+/// payer with no wallet to debit. Unpriced tokens count only when this
 /// call charged lines, so a sweeper's retry of lines already settled adds
 /// nothing.
 fn record_spend(settlement: &Settlement, receipt: &Receipt) {
@@ -83,13 +80,6 @@ fn record_spend(settlement: &Settlement, receipt: &Receipt) {
     let posture = settlement.posture.as_str();
     if let Ok(taken) = u64::try_from(receipt.taken.as_i64()) {
         cost::credits_consumed(&settlement.model, posture, ChargeClass::Settle, taken);
-    }
-    if let Ok(written_off) = u64::try_from(receipt.written_off.as_i64()) {
-        metrics::written_off(
-            work_type(&settlement.work),
-            posture_label(settlement.posture),
-            written_off,
-        );
     }
     let unpriced = settlement
         .lines
@@ -106,19 +96,10 @@ pub(crate) const fn work_type(work: &WorkKey) -> WorkType {
     }
 }
 
-/// The label a posture is counted under.
-const fn posture_label(posture: Posture) -> PostureLabel {
-    match posture {
-        Posture::Platform => PostureLabel::Platform,
-        Posture::SelfManaged => PostureLabel::SelfManaged,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{posture_label, work_type};
+    use super::work_type;
     use crate::biller::WorkKey;
-    use crate::rates::Posture;
     use crate::sql;
     use afd_core::id::{ENTROPY_LEN, Uuid7};
 
@@ -138,8 +119,5 @@ mod tests {
             work_type(&WorkKey::AuthoringAttempt(id)).as_str(),
             sql::work::AUTHORING_ATTEMPT
         );
-        for posture in [Posture::Platform, Posture::SelfManaged] {
-            assert_eq!(posture_label(posture).as_str(), posture.as_str());
-        }
     }
 }

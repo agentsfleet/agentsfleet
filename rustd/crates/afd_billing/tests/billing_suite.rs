@@ -13,6 +13,8 @@ mod lane;
 mod accounts;
 #[path = "billing/biller.rs"]
 mod biller;
+#[path = "billing/biller_debt.rs"]
+mod biller_debt;
 #[path = "billing/reads.rs"]
 mod reads;
 #[path = "billing/spend.rs"]

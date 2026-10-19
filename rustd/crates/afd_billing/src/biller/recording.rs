@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use afd_core::id::Uuid7;
+use jiff::Timestamp;
 
 use super::{Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey};
 use crate::error::{billing_wallet_missing, charge_overflow};
@@ -24,6 +25,7 @@ struct Held {
 struct State {
     tenants: Vec<Uuid7>,
     balances: Vec<i64>,
+    exhausted_at: Vec<Option<Timestamp>>,
     holds: HashMap<WorkKey, Held>,
     settled: HashSet<(WorkKey, u32)>,
     settlements: Vec<Settlement>,
@@ -70,6 +72,7 @@ impl RecordingBiller {
         } else {
             state.tenants.push(tenant.clone());
             state.balances.push(balance.as_i64());
+            state.exhausted_at.push(None);
         }
     }
 
@@ -153,17 +156,23 @@ impl Biller for RecordingBiller {
                 receipt.settled_lines += 1;
             }
         }
-        let taken = state.balances.get_mut(index).map_or(0, |slot| {
-            let taken = total.min(*slot);
-            *slot -= taken;
-            taken
-        });
+        if total == 0 {
+            return Ok(receipt);
+        }
+        // The whole charge, past zero if it must: as the built-in biller's
+        // debit, which also stamps when the balance ran out.
+        if let Some(balance) = state.balances.get_mut(index) {
+            *balance = balance.checked_sub(total).ok_or_else(charge_overflow)?;
+            let left = *balance;
+            if let Some(since) = state.exhausted_at.get_mut(index) {
+                *since = (left <= 0).then(|| since.unwrap_or_else(afd_core::clock::now));
+            }
+        }
         if let Some(held) = state.holds.get_mut(&settlement.work) {
-            held.captured += taken;
+            held.captured += total;
         }
         receipt.charged = Nanos::from_i64(total);
-        receipt.taken = Nanos::from_i64(taken);
-        receipt.written_off = Nanos::from_i64(total - taken);
+        receipt.taken = receipt.charged;
         Ok(receipt)
     }
 
@@ -190,7 +199,7 @@ impl Biller for RecordingBiller {
         Ok(Balance {
             balance: Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default()),
             held: Nanos::from_i64(held),
-            exhausted_at: None,
+            exhausted_at: state.exhausted_at.get(index).copied().flatten(),
         })
     }
 }

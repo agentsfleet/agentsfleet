@@ -1,5 +1,5 @@
-//! What the billing lifecycle did: holds asked for, lines settled, money
-//! written off, and what is still owed.
+//! What the billing lifecycle did: holds asked for, lines settled, tokens
+//! left unpriced, and what is still owed.
 //!
 //! Recorded at one choke point, the biller every money path holds (billing
 //! §11), so a reservation or a settlement is counted once whichever product
@@ -19,12 +19,6 @@ pub const BILLING_RESERVE_TOTAL: Declared<CounterKind> =
 /// Labels: `work_type,outcome`.
 pub const BILLING_SETTLE_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_billing_settle_total");
-
-/// Nanos a settlement charged that the balance could not cover.
-///
-/// Labels: `work_type,posture`.
-pub const BILLING_WRITTEN_OFF_NANOS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_billing_written_off_nanos_total");
 
 /// Tokens a settlement carried with no published price.
 ///

@@ -97,6 +97,8 @@ mod integration_memory_capture;
 mod integration_memory_hydrate_order;
 #[path = "integration_money_gates.rs"]
 mod integration_money_gates;
+#[path = "integration_money_gates_debt.rs"]
+mod integration_money_gates_debt;
 #[path = "integration_recovery_budget.rs"]
 mod integration_recovery_budget;
 #[path = "integration_recovery_outage.rs"]
