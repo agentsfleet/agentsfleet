@@ -554,6 +554,7 @@ name = "afd_db"
 version = "0.62.1"
 dependencies = [
  "afd_core",
+ "afd_fleet",
  "backon",
  "jiff",
  "jiff-sqlx",

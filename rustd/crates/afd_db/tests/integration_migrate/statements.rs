@@ -4,13 +4,56 @@
 //!
 //! The files are found on disk rather than listed: a `.sql` file under any
 //! crate's `src/` is a statement some use case loads with `include_str!`, and a
-//! list would let a new one go unchecked.
+//! list would let a new one go unchecked. The few statements still joined with
+//! `const_format::concatcp!` have no file of their own, so [`JOINED`] names
+//! them.
 
 use std::path::{Path, PathBuf};
 
 use sqlx::{AssertSqlSafe, Executor as _, SqlSafeStr as _};
 
 use super::*;
+
+/// The statements joined from parts with `const_format::concatcp!`, by path.
+///
+/// `afd_fleet`'s lease read puts each locking clause between a shared head and
+/// tail so the three variants cannot drift; the head alone is no statement, so
+/// only the joined whole can be prepared. Enumerate with
+/// `git grep -n 'concatcp!' -- rustd/crates/*/src` and keep the SQL ones here.
+const JOINED: [(&str, &str); 3] = [
+    (
+        "afd_fleet::lease::sql::standing::SELECT_STANDING",
+        afd_fleet::lease::sql::standing::SELECT_STANDING,
+    ),
+    (
+        "afd_fleet::lease::sql::standing::SELECT_STANDING_SHARED",
+        afd_fleet::lease::sql::standing::SELECT_STANDING_SHARED,
+    ),
+    (
+        "afd_fleet::lease::sql::tool_detail::SELECT_LIVE_LEASE",
+        afd_fleet::lease::sql::tool_detail::SELECT_LIVE_LEASE,
+    ),
+];
+
+/// A statement naming a column the rebuilt schema dropped.
+const DROPPED_COLUMN: (&str, &str) = (
+    "seeded/dropped_column.sql",
+    "SELECT deletion_generation FROM authoring.drafts WHERE id = $1::uuid",
+);
+
+/// `name: error` for every statement in `statements` that does not prepare.
+async fn refusals(
+    connection: &mut sqlx::PgConnection,
+    statements: impl IntoIterator<Item = (String, String)>,
+) -> Vec<String> {
+    let mut refused = Vec::new();
+    for (name, sql) in statements {
+        if let Err(error) = connection.prepare(AssertSqlSafe(sql).into_sql_str()).await {
+            refused.push(format!("{name}: {error}"));
+        }
+    }
+    refused
+}
 
 /// Every crate in the workspace sits beside this one.
 fn crates_root() -> PathBuf {
@@ -62,20 +105,39 @@ async fn test_every_sql_file_prepares() {
 
     let (database, db) = migrated().await;
     let mut connection = db.acquire().await.unwrap();
-    let mut refused = Vec::new();
-    for file in &files {
-        let sql = std::fs::read_to_string(file).unwrap();
-        if let Err(error) = connection.prepare(AssertSqlSafe(sql).into_sql_str()).await {
-            let name = file.strip_prefix(crates_root()).unwrap_or(file);
-            refused.push(format!("{}: {error}", name.display()));
-        }
-    }
+    let on_disk = files.iter().map(|file| {
+        let name = file.strip_prefix(crates_root()).unwrap_or(file);
+        (
+            name.display().to_string(),
+            std::fs::read_to_string(file).unwrap(),
+        )
+    });
+    let joined = JOINED
+        .iter()
+        .map(|(name, sql)| ((*name).to_owned(), (*sql).to_owned()));
+    let total = files.len() + JOINED.len();
+    let refused = refusals(&mut connection, on_disk.chain(joined)).await;
     assert!(
         refused.is_empty(),
-        "{} of {} statements do not prepare:\n{}",
+        "{} of {total} statements do not prepare:\n{}",
         refused.len(),
-        files.len(),
         refused.join("\n")
+    );
+
+    // The walk is only worth its green if it can go red: a statement naming a
+    // dropped column is refused, and the refusal names it.
+    let (name, sql) = DROPPED_COLUMN;
+    let seeded = refusals(&mut connection, [(name.to_owned(), sql.to_owned())]).await;
+    let named: Vec<&str> = seeded
+        .iter()
+        .filter_map(|line| line.split_once(": ").map(|(named, _)| named))
+        .collect();
+    assert_eq!(named, [name], "the refusal names the statement");
+    assert!(
+        seeded
+            .iter()
+            .all(|line| line.contains(r#"column "deletion_generation" does not exist"#)),
+        "{seeded:?}"
     );
 
     drop(connection);
