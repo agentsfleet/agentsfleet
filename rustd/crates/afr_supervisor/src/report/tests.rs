@@ -31,7 +31,9 @@ fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
     meter.add(Usage {
         input,
         cached_input,
-        cache_written: 0,
+        cache_write: 0,
+        cache_write_5m: 0,
+        cache_write_1h: 0,
         output,
     });
     meter

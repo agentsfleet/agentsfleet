@@ -105,11 +105,46 @@ impl fmt::Debug for AgentRun<'_> {
 /// atomic: a read between two adds may see one turn's input without its output.
 #[derive(Debug)]
 pub struct Meter {
-    input: AtomicU64,
-    cached_input: AtomicU64,
-    output: AtomicU64,
+    totals: Totals,
     lines: Mutex<Lines>,
     clock: Arc<dyn Clock>,
+}
+
+/// A run's running totals, one atomic per count.
+#[derive(Debug, Default)]
+struct Totals {
+    input: AtomicU64,
+    cached_input: AtomicU64,
+    cache_write: AtomicU64,
+    cache_write_5m: AtomicU64,
+    cache_write_1h: AtomicU64,
+    output: AtomicU64,
+}
+
+impl Totals {
+    fn add(&self, usage: Usage) {
+        self.input.fetch_add(usage.input, Ordering::Relaxed);
+        self.cached_input
+            .fetch_add(usage.cached_input, Ordering::Relaxed);
+        self.cache_write
+            .fetch_add(usage.cache_write, Ordering::Relaxed);
+        self.cache_write_5m
+            .fetch_add(usage.cache_write_5m, Ordering::Relaxed);
+        self.cache_write_1h
+            .fetch_add(usage.cache_write_1h, Ordering::Relaxed);
+        self.output.fetch_add(usage.output, Ordering::Relaxed);
+    }
+
+    fn read(&self) -> Usage {
+        Usage {
+            input: self.input.load(Ordering::Relaxed),
+            cached_input: self.cached_input.load(Ordering::Relaxed),
+            cache_write: self.cache_write.load(Ordering::Relaxed),
+            cache_write_5m: self.cache_write_5m.load(Ordering::Relaxed),
+            cache_write_1h: self.cache_write_1h.load(Ordering::Relaxed),
+            output: self.output.load(Ordering::Relaxed),
+        }
+    }
 }
 
 /// The request lines not yet recorded, and the number the next one takes.
@@ -130,9 +165,7 @@ impl Meter {
     #[must_use]
     pub fn new(clock: Arc<dyn Clock>) -> Self {
         Self {
-            input: AtomicU64::new(0),
-            cached_input: AtomicU64::new(0),
-            output: AtomicU64::new(0),
+            totals: Totals::default(),
             lines: Mutex::new(Lines::default()),
             clock,
         }
@@ -140,14 +173,10 @@ impl Meter {
 
     /// Adds one turn's tokens, and its request line.
     ///
-    /// A prompt token the provider wrote to its cache is already inside
-    /// `input`, so the line carries it there; the daemon prices it at the input
-    /// rate.
+    /// The line carries each count apart, cache writes by the lifetime the
+    /// provider reported, so the daemon prices each at its own rate.
     pub fn add(&self, usage: Usage) {
-        self.input.fetch_add(usage.input, Ordering::Relaxed);
-        self.cached_input
-            .fetch_add(usage.cached_input, Ordering::Relaxed);
-        self.output.fetch_add(usage.output, Ordering::Relaxed);
+        self.totals.add(usage);
         let at = self.clock.now();
         let mut lines = self.lines();
         let seq = lines.next;
@@ -157,9 +186,9 @@ impl Meter {
             at,
             input_tokens: narrow(usage.input),
             cached_input_tokens: narrow(usage.cached_input),
-            cache_write_tokens: 0,
-            cache_write_5m_tokens: 0,
-            cache_write_1h_tokens: 0,
+            cache_write_tokens: narrow(usage.cache_write),
+            cache_write_5m_tokens: narrow(usage.cache_write_5m),
+            cache_write_1h_tokens: narrow(usage.cache_write_1h),
             output_tokens: narrow(usage.output),
         });
     }
@@ -167,13 +196,7 @@ impl Meter {
     /// Everything the run has spent so far.
     #[must_use]
     pub fn read(&self) -> Usage {
-        Usage {
-            input: self.input.load(Ordering::Relaxed),
-            cached_input: self.cached_input.load(Ordering::Relaxed),
-            // The meter bills; a write is already inside `input`.
-            cache_written: 0,
-            output: self.output.load(Ordering::Relaxed),
-        }
+        self.totals.read()
     }
 
     /// The oldest request lines the daemon has not recorded, at most one

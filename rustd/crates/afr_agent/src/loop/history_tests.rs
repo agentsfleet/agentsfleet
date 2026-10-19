@@ -166,8 +166,8 @@ async fn test_cache_tokens_recorded_on_the_chat_span() {
         .unwrap();
     assert_eq!(
         chat.field(ATTR_USAGE_INPUT_TOKENS),
-        Some("50"),
-        "fresh and cached together"
+        Some("56"),
+        "fresh, read and written together"
     );
     assert_eq!(chat.field(ATTR_USAGE_OUTPUT_TOKENS), Some("2"));
     assert_eq!(chat.field(ATTR_USAGE_CACHE_READ_TOKENS), Some("40"));

@@ -132,17 +132,26 @@ pub struct Request<'a> {
 }
 
 /// Tokens one turn spent, or a run summed over its turns.
+///
+/// Each prompt token is counted once, in exactly one of five places: read
+/// fresh, read from the provider's cache, or written to it under one of three
+/// lifetimes. The daemon bills each at its own rate (billing §11). Reasoning is
+/// inside `output`, once.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
-    /// Prompt tokens the provider read fresh; with `cached_input` they make
-    /// the whole prompt, and the daemon bills the two at their own rates.
+    /// Prompt tokens the provider read fresh, neither from its cache nor
+    /// written to it.
     pub input: u64,
     /// Prompt tokens read from the provider's cache.
     pub cached_input: u64,
-    /// Prompt tokens written to the provider's cache, already inside
-    /// `input`: recorded on the turn's span, never billed apart.
-    pub cache_written: u64,
-    /// Completion tokens.
+    /// Prompt tokens written to the provider's cache with no lifetime
+    /// reported, never folded into either lifetime.
+    pub cache_write: u64,
+    /// Prompt tokens written to the provider's cache for five minutes.
+    pub cache_write_5m: u64,
+    /// Prompt tokens written to the provider's cache for one hour.
+    pub cache_write_1h: u64,
+    /// Completion tokens, reasoning included.
     pub output: u64,
 }
 
@@ -153,10 +162,21 @@ impl Usage {
         self.prompt().saturating_add(self.output)
     }
 
-    /// The whole prompt, fresh and cached: what fills the context window.
+    /// The whole prompt, fresh, read and written: what fills the context
+    /// window.
     #[must_use]
     pub const fn prompt(self) -> u64 {
-        self.input.saturating_add(self.cached_input)
+        self.input
+            .saturating_add(self.cached_input)
+            .saturating_add(self.cache_written())
+    }
+
+    /// Prompt tokens written to the provider's cache, whatever their lifetime.
+    #[must_use]
+    pub const fn cache_written(self) -> u64 {
+        self.cache_write
+            .saturating_add(self.cache_write_5m)
+            .saturating_add(self.cache_write_1h)
     }
 }
 
@@ -164,7 +184,9 @@ impl AddAssign for Usage {
     fn add_assign(&mut self, rhs: Self) {
         self.input = self.input.saturating_add(rhs.input);
         self.cached_input = self.cached_input.saturating_add(rhs.cached_input);
-        self.cache_written = self.cache_written.saturating_add(rhs.cache_written);
+        self.cache_write = self.cache_write.saturating_add(rhs.cache_write);
+        self.cache_write_5m = self.cache_write_5m.saturating_add(rhs.cache_write_5m);
+        self.cache_write_1h = self.cache_write_1h.saturating_add(rhs.cache_write_1h);
         self.output = self.output.saturating_add(rhs.output);
     }
 }

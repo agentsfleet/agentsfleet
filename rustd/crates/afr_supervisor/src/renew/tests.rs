@@ -176,7 +176,9 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     meter.add(Usage {
         input: 300,
         cached_input: 100,
-        cache_written: 0,
+        cache_write: 7,
+        cache_write_5m: 20,
+        cache_write_1h: 30,
         output: 40,
     });
 
@@ -191,5 +193,8 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     assert_eq!(line["seq"], 0, "the run's first request");
     assert_eq!(line["input_tokens"], 300);
     assert_eq!(line["cached_input_tokens"], 100);
+    assert_eq!(line["cache_write_tokens"], 7, "a write of no lifetime");
+    assert_eq!(line["cache_write_5m_tokens"], 20);
+    assert_eq!(line["cache_write_1h_tokens"], 30);
     assert_eq!(line["output_tokens"], 40);
 }
