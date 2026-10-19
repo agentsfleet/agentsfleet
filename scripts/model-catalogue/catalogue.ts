@@ -19,13 +19,22 @@ const CUSTOM_ISSUE = "custom";
 const OPENAI_PROVIDER = "openai";
 const OPENROUTER_PROVIDER = "openrouter";
 const MIN_CURATED_INPUT_PRICE = "0.0001";
-const PROVIDERS = ["anthropic", OPENAI_PROVIDER, "fireworks", OPENROUTER_PROVIDER, "groq", "mistral", "gemini"] as const;
+const FIREWORKS_PROVIDER = "fireworks";
+const GEMINI_PROVIDER = "gemini";
+const PROVIDERS = ["anthropic", OPENAI_PROVIDER, FIREWORKS_PROVIDER, OPENROUTER_PROVIDER, "groq", "mistral", GEMINI_PROVIDER] as const;
+type Provider = (typeof PROVIDERS)[number];
 const CONTEXT_APIS = {
   anthropic: "https://api.anthropic.com/v1/models/", openai: "https://api.openai.com/v1/models/",
   fireworks: "https://api.fireworks.ai/v1/", openrouter: "https://openrouter.ai/api/v1/models#",
   groq: "https://api.groq.com/openai/v1/models/", mistral: "https://api.mistral.ai/v1/models/",
   gemini: "https://generativelanguage.googleapis.com/v1beta/models/",
 } as const;
+// Providers whose own models API answers only to a key (or, for OpenAI, omits the limit):
+// OpenRouter's keyless endpoints list carries each upstream's served limit; the fragment is the
+// standard endpoint's exact tag, so a regional or fast-tier variant (`mistral/eu`) cannot stand in.
+const OPENROUTER_ENDPOINTS = /^\/api\/v1\/models\/[^/]+\/[^/]+\/endpoints$/;
+const KEYLESS_CONTEXT_PROVIDERS: ReadonlySet<Provider> = new Set([FIREWORKS_PROVIDER, OPENROUTER_PROVIDER]);
+const GEMINI_ENDPOINT_TAG = "google-ai-studio";
 
 export const priceSchema = z.strictObject({
   effective_from: INSTANT, effective_until: INSTANT.nullable(),
@@ -93,8 +102,15 @@ export type Catalogue = z.infer<typeof documentSchema>;
 
 function providerContextSource(model: Pick<Model, "provider" | "model_name">, sourceUrl: string): boolean {
   const source = new URL(sourceUrl);
+  if (servedEndpointSource(model.provider, source)) return true;
   if (model.provider !== OPENROUTER_PROVIDER) source.hash = "";
   return source.href === `${CONTEXT_APIS[model.provider]}${model.model_name}`;
+}
+
+function servedEndpointSource(provider: Provider, source: URL): boolean {
+  const tag = provider === GEMINI_PROVIDER ? GEMINI_ENDPOINT_TAG : provider;
+  return !KEYLESS_CONTEXT_PROVIDERS.has(provider) && source.origin === "https://openrouter.ai" && source.search === ""
+    && OPENROUTER_ENDPOINTS.test(source.pathname) && source.hash === `#${tag}`;
 }
 
 export function parseCatalogue(raw: unknown): Catalogue {

@@ -5,8 +5,8 @@
     {
       "provider": "anthropic", "model_name": "claude-fable-5-1",
       "display_name": "Fable 5.1", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.1/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "10", "cached_input": "0.25", "cache_write": null, "cache_write_5m": "12.5", "cache_write_1h": "20", "output": "50",
@@ -17,8 +17,8 @@
     {
       "provider": "anthropic", "model_name": "claude-opus-5-5",
       "display_name": "Opus 5.5", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-opus-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": "5", "cache_write_1h": "8", "output": "20",
@@ -29,8 +29,8 @@
     {
       "provider": "anthropic", "model_name": "claude-sonnet-5-5",
       "display_name": "Sonnet 5.5", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.10", "cache_write": null, "cache_write_5m": "2.5", "cache_write_1h": "4", "output": "10",
@@ -41,8 +41,8 @@
     {
       "provider": "anthropic", "model_name": "claude-haiku-5-5",
       "display_name": "Haiku 5.5", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.10", "cached_input": "0.01", "cache_write": null, "cache_write_5m": "0.125", "cache_write_1h": "0.20", "output": "0.50",
@@ -57,8 +57,8 @@
     {
       "provider": "openai", "model_name": "gpt-6.1-sol",
       "display_name": "GPT-6.1 Sol", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6.1-sol/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.10", "cache_write": "2.5", "cache_write_5m": null, "cache_write_1h": null, "output": "10",
@@ -73,8 +73,8 @@
     {
       "provider": "openai", "model_name": "gpt-6-astra",
       "display_name": "GPT-6 Astra", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-astra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "10", "cached_input": "1", "cache_write": "12.5", "cache_write_5m": null, "cache_write_1h": null, "output": "50",
@@ -89,8 +89,8 @@
     {
       "provider": "openai", "model_name": "gpt-6-luna",
       "display_name": "GPT-6 Luna", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.10", "cached_input": "0.01", "cache_write": "0.125", "cache_write_5m": null, "cache_write_1h": null, "output": "0.50",
@@ -105,8 +105,8 @@
     {
       "provider": "openai", "model_name": "gpt-5.6-terra",
       "display_name": "GPT-5.6 Terra", "advanced": true,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.20", "cache_write": "2.5", "cache_write_5m": null, "cache_write_1h": null, "output": "12",
@@ -193,8 +193,8 @@
     {
       "provider": "groq", "model_name": "openai/gpt-oss-120b",
       "display_name": "GPT OSS 120B", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 131072, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.15", "cached_input": "0.075", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0.60",
@@ -205,8 +205,8 @@
     {
       "provider": "mistral", "model_name": "mistral-large-4",
       "display_name": "Mistral Large 4", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.68", "cached_input": "0.07", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "2.09",
@@ -217,8 +217,8 @@
     {
       "provider": "mistral", "model_name": "mistral-small-2603",
       "display_name": "Mistral Small 4", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 262144, "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-small-2603/endpoints#mistral", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.15", "cached_input": "0.015", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0.60",
@@ -229,8 +229,8 @@
     {
       "provider": "gemini", "model_name": "gemini-4-argon",
       "display_name": "Gemini 4 Argon", "advanced": false,
-      "context": null,
-      "context_unverified_reason": "Provider models API could not supply an authenticated exact served context limit in this verification.",
+      "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio", "verified_at": "2026-10-19T03:15:54Z" },
+      "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": "2026-12-01T00:00:00Z", "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.10", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "10",

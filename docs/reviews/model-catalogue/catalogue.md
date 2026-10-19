@@ -17,30 +17,30 @@ The section remains in progress; this document records verified inputs, not a co
 ## Why it exists
 
 Provider identifiers route requests. Display names label choices. A native Google route and an OpenRouter Gemini route use separate identities.
-A provider's own models API supplies each context integer. Marketing abbreviations cannot supply an integer.
+A provider's own models API supplies each context integer when it answers without a key. Otherwise OpenRouter's public endpoints list supplies the limit of that provider's standard endpoint, named by its exact tag. Marketing abbreviations cannot supply an integer.
 
 ## How it behaves
 
 | Provider | Exact API identifier | Display name | Picker group | Context tokens, source and verification time |
 |---|---|---|---|---|
-| anthropic | `claude-fable-5-1` | Fable 5.1 | Default | NOT SEEDED: exact provider API limit unreadable |
-| anthropic | `claude-opus-5-5` | Opus 5.5 | Default | NOT SEEDED: exact provider API limit unreadable |
-| anthropic | `claude-sonnet-5-5` | Sonnet 5.5 | Default | NOT SEEDED: exact provider API limit unreadable |
-| anthropic | `claude-haiku-5-5` | Haiku 5.5 | Default | NOT SEEDED: exact provider API limit unreadable |
-| openai | `gpt-6.1-sol` | GPT-6.1 Sol | Default | NOT SEEDED: exact provider API limit unreadable |
-| openai | `gpt-6-astra` | GPT-6 Astra | Default | NOT SEEDED: exact provider API limit unreadable |
-| openai | `gpt-6-luna` | GPT-6 Luna | Default | NOT SEEDED: exact provider API limit unreadable |
-| openai | `gpt-5.6-terra` | GPT-5.6 Terra | Advanced | NOT SEEDED: exact provider API limit unreadable |
+| anthropic | `claude-fable-5-1` | Fable 5.1 | Default | 1,000,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.1/endpoints#anthropic) · 2026-10-19T03:15:54Z |
+| anthropic | `claude-opus-5-5` | Opus 5.5 | Default | 1,000,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/anthropic/claude-opus-5.5/endpoints#anthropic) · 2026-10-19T03:15:54Z |
+| anthropic | `claude-sonnet-5-5` | Sonnet 5.5 | Default | 1,000,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints#anthropic) · 2026-10-19T03:15:54Z |
+| anthropic | `claude-haiku-5-5` | Haiku 5.5 | Default | 1,000,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints#anthropic) · 2026-10-19T03:15:54Z |
+| openai | `gpt-6.1-sol` | GPT-6.1 Sol | Default | 1,050,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-6.1-sol/endpoints#openai) · 2026-10-19T03:15:54Z |
+| openai | `gpt-6-astra` | GPT-6 Astra | Default | 1,050,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-6-astra/endpoints#openai) · 2026-10-19T03:15:54Z |
+| openai | `gpt-6-luna` | GPT-6 Luna | Default | 1,050,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai) · 2026-10-19T03:15:54Z |
+| openai | `gpt-5.6-terra` | GPT-5.6 Terra | Advanced | 1,050,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai) · 2026-10-19T03:15:54Z |
 | fireworks | `accounts/fireworks/models/glm-5p3-flash` | GLM 5.3 Flash | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/glm-5p3-flash#contextLength) · 2026-10-18T13:32:07Z |
 | fireworks | `accounts/fireworks/models/kimi-k3` | Kimi K3 | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3#contextLength) · 2026-10-18T13:32:07Z |
 | fireworks | `accounts/fireworks/models/deepseek-v4p1-flash` | DeepSeek V4.1 Flash | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/deepseek-v4p1-flash#contextLength) · 2026-10-18T13:32:07Z |
 | openrouter | `meta/muse-wonder` | Muse Wonder | Default | 1,048,576 · [models API](https://openrouter.ai/api/v1/models#meta/muse-wonder) · 2026-10-18T13:32:07Z |
 | openrouter | `google/gemini-4-argon` | Gemini 4 Argon | Default | 1,048,576 · [models API](https://openrouter.ai/api/v1/models#google/gemini-4-argon) · 2026-10-18T13:32:07Z |
 | openrouter | `qwen/qwen3.8-max-0902` | Qwen3.8 Max 0902 | Default | 1,000,000 · [models API](https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902) · 2026-10-18T13:32:07Z |
-| groq | `openai/gpt-oss-120b` | GPT OSS 120B | Default | NOT SEEDED: exact provider API limit unreadable |
-| mistral | `mistral-large-4` | Mistral Large 4 | Default | NOT SEEDED: exact provider API limit unreadable |
-| mistral | `mistral-small-2603` | Mistral Small 4 | Default | NOT SEEDED: exact provider API limit unreadable |
-| gemini | `gemini-4-argon` | Gemini 4 Argon | Default | NOT SEEDED: exact provider API limit unreadable |
+| groq | `openai/gpt-oss-120b` | GPT OSS 120B | Default | 131,072 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq) · 2026-10-19T03:15:54Z |
+| mistral | `mistral-large-4` | Mistral Large 4 | Default | 1,048,576 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral) · 2026-10-19T03:15:54Z |
+| mistral | `mistral-small-2603` | Mistral Small 4 | Default | 262,144 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/mistralai/mistral-small-2603/endpoints#mistral) · 2026-10-19T03:15:54Z |
+| gemini | `gemini-4-argon` | Gemini 4 Argon | Default | 1,048,576 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio) · 2026-10-19T03:15:54Z |
 
 All prices below use United States dollars (USD) per 1,000,000 tokens.
 The input threshold is exclusive: the higher tier applies above that integer and prices the whole request.
