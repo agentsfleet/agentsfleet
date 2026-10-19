@@ -20,7 +20,7 @@ use afd_billing::{Nanos, Posture};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::{BillingSwept, GRACE, sweep};
-use afd_wire::usage::UsageLine;
+use afd_wire::usage::{DAEMON_SEQ_BASE, UsageLine};
 
 use crate::queue;
 use crate::report_seed::{DEEP_POOL, Held, held_in};
@@ -53,14 +53,15 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
     );
     orphan(&held, &biller).await;
 
-    let swept = sweep(database, &biller).await.expect("the pass reads");
+    let swept = sweep(database, &biller, &Entropy::new(), held.now)
+        .await
+        .expect("the pass reads");
     assert_eq!(
         swept,
         BillingSwept {
             resettled: 1,
-            settle_failures: 0,
             released: 1,
-            release_failures: 0,
+            ..BillingSwept::default()
         }
     );
     assert_eq!(
@@ -80,7 +81,9 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
         "the finished lease's hold no longer counts against the balance"
     );
 
-    let again = sweep(database, &biller).await.expect("the pass reads");
+    let again = sweep(database, &biller, &Entropy::new(), held.now)
+        .await
+        .expect("the pass reads");
     assert_eq!(
         again,
         BillingSwept::default(),
@@ -89,6 +92,117 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
+}
+
+/// A lease that ended unreported owes the run time between its last renewal
+/// and the deadline it was granted (spec Dimension 9.5). The sweeper logs it as
+/// one runtime line in the daemon's range, settles it, and a second pass finds
+/// nothing more to bill.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_fleet_expiry_bills_its_last_slice() {
+    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let database = &held.fixtures.database;
+    let biller = LedgerBiller::new(
+        database.clone(),
+        Entropy::new(),
+        Arc::new(afd_core::clock::SystemClock),
+    );
+    let tail_ms = abandon(&held).await;
+
+    let swept = sweep(database, &biller, &Entropy::new(), held.now)
+        .await
+        .expect("the pass reads");
+    assert_eq!(swept.expired_billed, 1, "{swept:?}");
+    assert_eq!(
+        runtime_lines(&held).await,
+        [(i64::from(DAEMON_SEQ_BASE), tail_ms)],
+        "one runtime line, in the daemon's range, for the run time since the last renewal"
+    );
+    assert_eq!(
+        held.fixtures.balance(&held.tenant).await,
+        Some(DEEP_POOL - crate::report_seed::run_fee(tail_ms)),
+        "the last slice is charged once"
+    );
+
+    let again = sweep(database, &biller, &Entropy::new(), held.now)
+        .await
+        .expect("the pass reads");
+    assert_eq!(again.expired_billed, 0, "the cursor reached the deadline");
+
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// The expiry sweep and a late report race on one abandoned lease: whichever
+/// runs second finds the cursor at the deadline, so the tail is billed once,
+/// never twice and never not at all.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
+    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let database = &held.fixtures.database;
+    let biller = LedgerBiller::new(
+        database.clone(),
+        Entropy::new(),
+        Arc::new(afd_core::clock::SystemClock),
+    );
+    let tail_ms = abandon(&held).await;
+
+    let entropy = Entropy::new();
+    let swept = sweep(database, &biller, &entropy, held.now);
+    let reported = held.fixtures.settle_alone(
+        &held.leases,
+        held.issued.lease_id.as_str(),
+        &held.runner,
+        &[],
+        true,
+        held.now,
+    );
+    let (swept, _reported) = tokio::join!(swept, reported);
+    swept.expect("the pass reads");
+
+    let charged_ms: i64 = runtime_lines(&held).await.iter().map(|(_, ms)| ms).sum();
+    assert_eq!(charged_ms, tail_ms, "the tail is billed exactly once between the two");
+
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// Leaves `held`'s lease active but abandoned: its deadline and its cursor
+/// both pushed back past the sweeper's grace, with three seconds of run time
+/// between them that no renewal billed. Answers that tail in milliseconds.
+async fn abandon(held: &Held) -> i64 {
+    held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
+    let lease = held.issued.lease_id.as_str();
+    let mut connection = held.fixtures.database.acquire().await.expect("a pooled connection");
+    sqlx::query(
+        "UPDATE runner.leases SET lease_expires_at = now() - $2::interval, \
+         last_metered_at = now() - $2::interval - $3::interval WHERE id = $1::uuid",
+    )
+    .bind(lease)
+    .bind(GRACE.saturating_mul(2))
+    .bind(TAIL)
+    .execute(&mut *connection)
+    .await
+    .expect("the lease is abandoned");
+    i64::try_from(TAIL.as_millis()).expect("three seconds fit")
+}
+
+/// The run time an abandoned lease's last renewal left unbilled.
+const TAIL: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// `held`'s lease's runtime lines, as `(seq, runtime_ms)`.
+async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
+    sqlx::query_as(
+        "SELECT seq, runtime_ms FROM billing.usage_lines \
+         WHERE work_id = $1::uuid AND seq >= $2 ORDER BY seq",
+    )
+    .bind(held.lease_key.as_str())
+    .bind(i64::from(DAEMON_SEQ_BASE))
+    .fetch_all(&mut *held.fixtures.database.acquire().await.expect("a pooled connection"))
+    .await
+    .expect("the runtime lines read")
 }
 
 /// The state a crash leaves: the lease's hold placed and one line logged, then
