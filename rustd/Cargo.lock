@@ -1090,6 +1090,7 @@ dependencies = [
  "garde",
  "insta",
  "jiff",
+ "regex",
  "serde",
  "serde_json",
  "utoipa",

@@ -31,6 +31,8 @@ mod openapi_problem;
 #[path = "openapi_stream_frames.rs"]
 mod openapi_stream_frames;
 
+#[path = "openapi_balance.rs"]
+mod openapi_balance;
 #[path = "openapi_contract.rs"]
 mod openapi_contract;
 #[path = "openapi_contract_schemas.rs"]

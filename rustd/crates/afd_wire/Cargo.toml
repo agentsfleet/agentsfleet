@@ -51,6 +51,8 @@ openapi = ["dep:utoipa", "dep:afd_fleet_runtime", "afd_fleet_runtime/openapi"]
 [dev-dependencies]
 # Pins every route template in one reviewed snapshot.
 insta.workspace = true
+# Checks the published nanos patterns against the strings serde writes.
+regex.workspace = true
 serde_json.workspace = true
 
 [lints]
