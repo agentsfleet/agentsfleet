@@ -118,3 +118,41 @@ pub(crate) fn reason(value: FailureReason) -> &'static str {
         FailureReason::PolicyChanged => "policy_changed",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{outcome, reason};
+    use afd_wire::authoring::{FailureReason, Outcome};
+
+    /// Attempts and messages store these words, and readers parse them back
+    /// through serde: every arm must spell its wire form.
+    #[test]
+    fn every_stored_verdict_word_is_its_wire_spelling() {
+        let wire = |value: serde_json::Value| value.as_str().map(str::to_owned);
+        for value in [
+            Outcome::Completed,
+            Outcome::Failed,
+            Outcome::TimedOut,
+            Outcome::Cancelled,
+        ] {
+            assert_eq!(
+                Some(outcome(value).to_owned()),
+                serde_json::to_value(value).ok().and_then(wire)
+            );
+        }
+        for value in [
+            FailureReason::InsufficientBalance,
+            FailureReason::ModelUnavailable,
+            FailureReason::ContextTooLarge,
+            FailureReason::ProviderFailed,
+            FailureReason::ProviderUsageUnknown,
+            FailureReason::AttemptTimedOut,
+            FailureReason::PolicyChanged,
+        ] {
+            assert_eq!(
+                Some(reason(value).to_owned()),
+                serde_json::to_value(value).ok().and_then(wire)
+            );
+        }
+    }
+}
