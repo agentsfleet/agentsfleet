@@ -3,7 +3,8 @@
 //! The supervisor's lanes need a turn whose every tool call, frame and memory
 //! item is known in advance, so a sandbox or wire fault cannot hide behind a
 //! model's choices. Each [`Step`] is one thing a real turn does: run a process
-//! as a tool call, stream text, or remember an item.
+//! as a tool call, stream text, remember an item, or spend one provider
+//! request's tokens.
 
 use std::borrow::Cow;
 use std::time::Instant;
@@ -17,6 +18,7 @@ use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_executor::{Ending, Executor, Spawn};
+use afr_providers::Usage;
 
 use crate::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
 use crate::error::Result;
@@ -40,6 +42,8 @@ pub enum Step {
     Say(String),
     /// Records a memory item for the fenced push.
     Remember(MemoryDelta<'static>),
+    /// Spends one provider request's tokens: one line on the run's meter.
+    Spend(Usage),
 }
 
 /// A turn that runs its steps in order and reports what they did.
@@ -90,6 +94,7 @@ impl AgentEngine for ScriptedEngine {
                 }
                 Step::Say(text) => say(run.events, &mut turn, text),
                 Step::Remember(delta) => turn.memory.push(delta.clone()),
+                Step::Spend(usage) => run.meter.add(*usage),
             }
         }
         Ok(finish(turn, started))

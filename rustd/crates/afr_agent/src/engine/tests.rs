@@ -70,7 +70,7 @@ fn a_meter_numbers_its_requests_and_forgets_only_what_was_recorded() {
 }
 
 /// A request body never carries more than the wire allows; the rest waits
-/// for the next renewal.
+/// for the next renewal, and the backlog still counts it.
 #[test]
 fn a_meter_sends_at_most_one_bodys_worth() {
     let meter = Meter::default();
@@ -78,10 +78,16 @@ fn a_meter_sends_at_most_one_bodys_worth() {
         meter.add(TURN);
     }
     assert_eq!(meter.unrecorded().0.len(), afd_wire::usage::LINES_MAX);
+    assert_eq!(
+        meter.backlog(),
+        afd_wire::usage::LINES_MAX + 1,
+        "the backlog counts past one body"
+    );
     meter.recorded_through(u32::try_from(afd_wire::usage::LINES_MAX).unwrap_or(u32::MAX) - 1);
     assert_eq!(
         meter.unrecorded().0.len(),
         1,
         "the one past the cap goes next"
     );
+    assert_eq!(meter.backlog(), 1);
 }

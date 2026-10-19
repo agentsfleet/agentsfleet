@@ -4,15 +4,16 @@
 use std::time::Duration;
 
 use afd_core::clock::Clock;
-use afd_core::error_code::{self, RUN_BUDGET_EXCEEDED};
+use afd_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_RENEW_BODY_MALFORMED};
 use afd_core::id::Uuid7;
 use afd_core::timing::{MAX_RUNTIME, RENEWAL_TICK};
 use afd_wire::report::{FailureClass, RenewRequest};
+use afd_wire::usage::LINES_MAX;
 use afr_agent::Meter;
 use jiff::Timestamp;
 use tokio::time::{Instant, MissedTickBehavior};
 
-use crate::client::ControlPlane;
+use crate::client::{ControlPlane, retrying};
 use crate::error::Error;
 
 /// How long before the daemon's deadline the runner gives the lease up. The
@@ -26,6 +27,7 @@ const EVENT_RENEWED: &str = "lease_renewed";
 const EVENT_RETRY: &str = "renew_failed_retry";
 const EVENT_TERMINATED: &str = "lease_terminated_by_renewal";
 const EVENT_EXPIRED: &str = "lease_timed_out";
+const EVENT_UNFLUSHED: &str = "usage_lines_unflushed";
 
 /// Renews one lease.
 #[derive(Debug, Clone, Copy)]
@@ -147,6 +149,56 @@ impl<'a> Renewal<'a> {
             "the lease ran out before a renewal landed"
         );
         FailureClass::RenewalTerminate
+    }
+}
+
+/// Renews until the meter's unrecorded lines fit one report body.
+///
+/// The daemon refuses a report past [`LINES_MAX`] lines, so a run that ends
+/// with more sends its oldest through renewals first. Each answer's
+/// `recorded_through` forgets what that renewal recorded.
+///
+/// A renewal that fails after its retries, or records nothing, stops the
+/// flush. The report then carries the oldest lines left, and the lines past
+/// them are logged unbilled. A line sent twice is still billed once, since the
+/// daemon keys lines on `(work, seq)`.
+pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter) {
+    loop {
+        let backlog = meter.backlog();
+        if backlog <= LINES_MAX {
+            return;
+        }
+        let spent = RenewRequest {
+            requests: meter.unrecorded(),
+        };
+        let renewed = retrying(|| plane.renew(lease_id, &spent)).await;
+        if let Some(seq) = renewed
+            .as_ref()
+            .ok()
+            .and_then(|renewed| renewed.recorded_through)
+        {
+            meter.recorded_through(seq);
+        }
+        if meter.backlog() < backlog {
+            continue;
+        }
+        // A renewal that answered yet recorded nothing read a body it could
+        // not use, which the daemon logs under the same code.
+        let code = renewed
+            .err()
+            .map_or(RUN_RENEW_BODY_MALFORMED, |failure| failure.code());
+        let error_code = code.as_str();
+        let lease_id = lease_id.as_str();
+        let unbilled = meter.backlog().saturating_sub(LINES_MAX);
+        let event = EVENT_UNFLUSHED;
+        tracing::error!(
+            error_code,
+            lease_id,
+            unbilled,
+            event,
+            "a renewal did not take the run's usage lines; the report carries the oldest"
+        );
+        return;
     }
 }
 

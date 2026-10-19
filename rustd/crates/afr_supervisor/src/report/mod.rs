@@ -63,8 +63,9 @@ impl Ending {
 
 /// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
 /// trace encoded, when it called a tool, and `held_until`: when the sandbox it
-/// left held for the fleet's next lease lapses, if it left one. It carries every
-/// request line no renewal recorded, so a run that never finished still bills
+/// left held for the fleet's next lease lapses, if it left one. It carries the
+/// request lines no renewal recorded, at most one body's worth, since the
+/// settle renews the rest away first. A run that never finished still bills
 /// what it spent; its token total is the result's when the run handed one back,
 /// for the event history.
 pub(crate) fn report<'a>(
