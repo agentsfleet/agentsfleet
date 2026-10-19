@@ -4,7 +4,7 @@
 //!
 //! `Posture` is already taken, and by the money path: [`afd_billing::Posture`]
 //! is who supplies the provider key, which is the spelling
-//! `billing.fleet_charges.posture` uses and therefore the one that keeps its
+//! `billing.usage_lines.posture` uses and therefore the one that keeps its
 //! name. A module called `posture` beside it meant [`super`] imported
 //! `posture::PAYER` and `Posture` on adjacent lines for two unrelated
 //! questions — who pays, and what a dead datastore means.

@@ -105,8 +105,8 @@ async fn test_migrate_from_empty_builds_nine_owned_schemas() {
     let design = designed();
     assert_eq!(
         design.len(),
-        49,
-        "the design doc lists 49 tables: {:?}",
+        48,
+        "the design doc lists 48 tables: {:?}",
         design.keys()
     );
 

@@ -1,6 +1,6 @@
 //! What a hard purge erases, and the one thing it must now leave behind.
 //!
-//! `billing.fleet_charges` outlives the fleet it charges — the wallet was
+//! `billing.usage_lines` outlives the fleet it charges — the wallet was
 //! already debited and the reconciliation between the two must still add up.
 //! It must also still say WHICH fleet: `fleet_id` carries no foreign key, so a
 //! purge cannot null it, and `fleet_name` is captured at charge time, so the
@@ -33,12 +33,12 @@ use crate::support::{Lane, mint};
 /// value read back cannot have come from either by accident.
 const CHARGED_AS: &str = "deploy-bot";
 
-/// A charge type and a posture the ledger accepts.
+/// A work type and a posture the ledger accepts.
 ///
 /// Spelled here rather than borrowed from `afd_billing`: this crate does not
 /// depend on it, and a literal in a fixture that only has to be well formed is
 /// cheaper than a crate edge drawn to share two words.
-const CHARGE_TYPE: &str = "receive";
+const WORK_TYPE: &str = "fleet_lease";
 /// The posture column's platform spelling.
 const POSTURE: &str = "platform";
 /// Any model name; nothing here prices it.
@@ -53,28 +53,32 @@ pub(crate) const SEEDED: [(&str, i64); 4] = [
     ("fleet.sessions", 1),
 ];
 
-/// Writes one charge against a fleet, capturing the name the way the daemon does.
+/// Writes one usage line against a fleet, capturing the name the way the
+/// daemon does.
 ///
-/// `fleet_name` is read from the fleet row by subselect rather than bound, which
-/// is how all three production insert sites write it — a fixture that bound a
+/// `fleet_name` is read from the fleet row by subselect rather than bound, as
+/// the lease path's metering statement reads it — a fixture that bound a
 /// literal would prove the column holds text, not that the capture works.
 async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
     let row = mint();
     sqlx::query(
-        "INSERT INTO billing.fleet_charges
-           (id, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
-            charge_type, posture, model, charged_nanos,
-            event_created_at, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid,
+        "INSERT INTO billing.usage_lines
+           (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name,
+            event_id, authoring_attempt_id, provider, model, posture, requested_at,
+            input_token_count, cached_input_token_count, cache_write_token_count,
+            cache_write_5m_token_count, cache_write_1h_token_count, output_token_count,
+            runtime_ms, platform_model_price_id, unpriced_token_count, charged_nanos,
+            created_at, updated_at)
+         VALUES ($1::uuid, $5, $1::uuid, 0, $2::uuid, $3::uuid, $4::uuid,
                  (SELECT f.name FROM fleet.fleets f WHERE f.id = $4::uuid),
-                 $5, $6, $7, $8, 0, now(), now(), now())",
+                 $1, NULL, 'anthropic', $7, $6, now(), 0, 0, 0, 0, 0, 0, 0, NULL, 0, 0,
+                 now(), now())",
     )
     .bind(row.as_str())
     .bind(lane.tenant.as_str())
     .bind(lane.workspace.as_str())
     .bind(fleet.as_str())
-    .bind(row.as_str())
-    .bind(CHARGE_TYPE)
+    .bind(WORK_TYPE)
     .bind(POSTURE)
     .bind(MODEL)
     .execute(&mut *lane.connection().await)
@@ -103,7 +107,7 @@ struct ChargedAs {
 /// The identity a ledger row still carries, if the row is there.
 async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<ChargedAs> {
     sqlx::query_as(
-        "SELECT fleet_id::text, fleet_name FROM billing.fleet_charges WHERE id = $1::uuid",
+        "SELECT fleet_id::text, fleet_name FROM billing.usage_lines WHERE id = $1::uuid",
     )
     .bind(row.as_str())
     .fetch_optional(&mut *lane.connection().await)
@@ -225,7 +229,7 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
         charged.fleet_id,
         fleet.as_str(),
         "the purge nulled fleet_id — a referential action on \
-         billing.fleet_charges.fleet_id is armed, which schema/2010 must not grow"
+         billing.usage_lines.fleet_id is armed, which schema/2040 must not grow"
     );
     assert_eq!(
         charged.fleet_name, CHARGED_AS,

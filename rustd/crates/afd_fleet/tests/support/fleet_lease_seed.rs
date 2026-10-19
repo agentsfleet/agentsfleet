@@ -77,7 +77,7 @@ pub(crate) struct Seeded<const N: usize> {
     ///
     /// Not the entry id: the two are different things now that the admission
     /// ledger owns identity, and it is this
-    /// one that `Acquired::event_id`, `fleet.events` and `billing.fleet_charges`
+    /// one that `Acquired::event_id`, `fleet.events` and `billing.usage_lines`
     /// all address. A test comparing against the receipt would be comparing
     /// against the wrong half.
     pub(crate) event_id: String,

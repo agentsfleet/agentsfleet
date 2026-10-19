@@ -25,7 +25,7 @@
 //! lease would name a fleet that no longer exists, so the purge deletes those
 //! in the same transaction, before the row, as the cascade used to.
 //!
-//! `billing.fleet_charges` survives deliberately, WITH its attribution:
+//! `billing.usage_lines` survives deliberately, WITH its attribution:
 //! `fleet_id` is no foreign key, so a charge the wallet was already debited for
 //! outlives the fleet still naming which fleet it paid for, beside the
 //! `fleet_name` captured when the money moved. Erasing one would falsify the

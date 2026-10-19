@@ -1,7 +1,7 @@
 -- Dashboard totals per fleet, maintained by triggers (rule 5 exception: an
 -- aggregate kept under the same trigger as its source). Keyed by fleet (an identity
 -- exception). `event_count` follows `fleet.events` inserts here; `budget_used_nanos`
--- follows `billing.fleet_charges` in slot 1910. The runtime only reads it.
+-- follows `billing.usage_lines` in slot 2040. The runtime only reads it.
 
 CREATE TABLE fleet.activity_counters (
     fleet_id           UUID PRIMARY KEY REFERENCES fleet.fleets(id) ON DELETE CASCADE,
