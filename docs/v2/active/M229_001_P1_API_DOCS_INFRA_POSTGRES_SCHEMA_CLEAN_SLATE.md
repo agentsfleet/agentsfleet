@@ -232,7 +232,7 @@ Baseline `4e0bafb45502bad3b3b88b631a3690bb80ec2496`: 364917 and 366692 bytes; sa
 
 Scoped native reviews are clean for money, schedule/lease and CLI history readers. Claude's 09:20 sidebar acceptance required the refresh repair now in `a1dd087d2` (failing-before, four files / 28 tests passing). Signed-debt regressions first failed, then 36 CLI / 56 app tests passed; ten production files have a clean native review. Receipts: `.tmp/reviews/`.
 `make dry-app-smoke`: four desktop/mobile checks pass (`/tmp/m229-completion-browser-smoke.txt`). Duplicate audit removes two net cases while retaining assertions and 100% app coverage.
-Daemon health/readiness return HTTP 200. Authenticated screen and scheduled-execution proof still need the dedicated testing identity decision; no shared identity changed (`.tmp/audits/local-priming-deviations.md`).
+Daemon health/readiness return HTTP 200. Authenticated screens and scheduled execution are eyeballed by Indy on app-dev after deploy, not locally (Discovery, Deferrals).
 Public documentation: [docs PR 222](https://github.com/agentsfleet/docs/pull/222) merged as `b17f90500b3cae8ef291b3113d6b89f98c91906a` after green Continuous Integration, zero new Greptile findings and two quiet polls. Both threads resolved; local docs main pulled and merged worktree/branch removed. Checklist: `.tmp/audits/m229-docs-review-checklist.md`.
 Claude owns the remaining shared checks and final move to `done/`, with inbound links updated together.
 
@@ -479,7 +479,7 @@ git grep -nE "(^|[^A-Za-z0-9_.])(${pat})([^A-Za-z0-9_[]|$)" -- rustd ui cli scri
 - **Runner protocol stays unpublished** — Oct 19, 2026: Dimension 6.2 asked for a public runner-protocol page, but the docs repository's rules forbid one (`~/Projects/docs/AGENTS.md:54`: "Do not document internal agent pipeline internals (NullClaw config details, runner RPC protocol)"). A spec that contradicts a rule is amended, so 6.2 drops that page and keeps closed-draft retention, the retry window and Library deletion; the runner wire stays described in `docs/architecture/` and the generated `public/openapi.json`.
 - **Metrics review** — no analytics/funnel playbook update required: no event, funnel or signal changes.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
-- **Deferrals** — user, workspace and tenant erasure (Dimension 4.1): Indy (2026-10-19), via AskUserQuestion: "Narrow 4.1 (recommended)", whose option read "Draft and fleet purge only; user, workspace and tenant erasure becomes its own milestone."
+- **Deferrals** — user, workspace and tenant erasure (Dimension 4.1): Indy (2026-10-19), via AskUserQuestion: "Narrow 4.1 (recommended)", whose option read "Draft and fleet purge only; user, workspace and tenant erasure becomes its own milestone." Local signed-in browser verification: Indy (2026-10-19): "I wanna fix the local test later, for now override the local signin and say indy will eyeball when deployed in app-dev" — context: a fresh local database gets an account only from Clerk's signed `user.created` delivery, which targets the dev API, and replaying it for a shared Clerk identity rewrites that identity's tenant metadata.
 
 ## Review prompt (Codex — Aiwa CTO with Astra)
 
