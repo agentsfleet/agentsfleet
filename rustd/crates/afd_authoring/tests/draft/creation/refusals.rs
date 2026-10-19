@@ -81,3 +81,24 @@ async fn a_draft_already_saving_refuses_a_second_key() {
     assert_eq!(c.fleet_count().await, 1);
     c.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_save_that_loses_its_key_to_a_lapsed_claim_saves_no_fleet() {
+    let c = Case::create().await;
+    let (_, request) = c.request("lost-key", Start::None).await;
+    let key = mint();
+    let scope = format!("{}:fleet:create:{}", c.base.workspace, c.base.owner);
+    let (holder, pid) = c.base.foreign_receipt(&scope, &key).await;
+    let (refused, ()) = tokio::join!(
+        c.creations.save(c.base.access(), &key, request, now()),
+        async {
+            c.base.waits_on(pid, 1).await;
+            crate::draft::locks::commit_receipt(holder).await;
+        }
+    );
+    let refused = refused.expect_err("the key went to a claim whose receipt has lapsed");
+    assert_eq!(refused.code(), error_code::AUTHORING_GONE);
+    assert_eq!(c.fleet_count().await, 0, "the reservation rolled back");
+    c.cleanup().await;
+}

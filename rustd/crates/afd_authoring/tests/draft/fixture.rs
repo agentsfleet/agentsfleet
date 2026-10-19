@@ -140,25 +140,6 @@ impl Fixture {
         self.db.acquire().await.expect("fixture database answers")
     }
 
-    /// Waits until `waiting` backends are blocked behind the session `holder`,
-    /// so a proof releases its lock only once the work it races is queued on it.
-    pub(super) async fn waits_on(&self, holder: i32, waiting: i64) {
-        const BLOCKED: &str =
-            "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
-        for _ in 0..1_000 {
-            let blocked: i64 = sqlx::query_scalar(BLOCKED)
-                .bind(holder)
-                .fetch_one(&mut *self.connection().await)
-                .await
-                .expect("read lock waits");
-            if blocked >= waiting {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        unreachable_wait(holder, waiting);
-    }
-
     /// Appends a copy of `draft`'s head candidate as an older daemon would have
     /// written it, under policy semantics this daemon no longer enforces, and
     /// moves the head to it. Answers the new candidate.
@@ -274,6 +255,15 @@ impl Fixture {
         self.lane.cleanup().await;
     }
 
+    /// Removes the platform entry staged under `slug` at cleanup: platform
+    /// entries belong to no tenant, so no fixture cascade reaches them.
+    pub(super) fn own_platform_library(&mut self, slug: &str) {
+        self.cleanup.record(
+            "DELETE FROM authoring.library_entries WHERE platform_slug=$1",
+            slug,
+        );
+    }
+
     pub(super) fn own_library(&mut self, library: &str) {
         self.cleanup.record(
             "DELETE FROM authoring.library_entries WHERE id=$1::uuid",
@@ -292,12 +282,4 @@ pub(crate) fn ledger(db: &Db) -> Arc<dyn afd_billing::biller::Biller> {
     Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
         db.clone(),
     ))
-}
-
-#[expect(
-    clippy::panic,
-    reason = "work that never queues on the lock fails the proof"
-)]
-fn unreachable_wait(holder: i32, waiting: i64) -> ! {
-    panic!("{waiting} backends never queued behind session {holder}")
 }

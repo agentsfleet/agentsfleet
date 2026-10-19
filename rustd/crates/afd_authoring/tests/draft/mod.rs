@@ -16,6 +16,7 @@ mod fixture;
 mod funnel;
 mod library;
 mod listing;
+mod locks;
 mod maintenance;
 mod messages;
 mod model_calls;
@@ -25,6 +26,7 @@ mod model_tools;
 mod observe;
 mod privacy;
 mod proposals;
+mod races;
 #[path = "../support/refusal.rs"]
 mod refusal;
 mod replay;
