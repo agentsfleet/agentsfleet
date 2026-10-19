@@ -280,20 +280,61 @@ or account therefore never deletes a charge. The slots name the export that read
 
 ## Settled while implementing
 
-Each is decided from source during M229 and reported back; a column whose reader cannot be found
-is dropped.
+Each item is decided from the rebuilt slots and the statements that read them. A kept column
+cites its slot line and a reader; a dropped one cites the slot that declares its table without it.
+A column kept with no reader still owes a drop under rule 7.
 
-- `identity.api_keys.description`, `identity.cli_credentials.credential_prefix`, `deployment`,
-  `created_from_address`: no stored-value reader found in review; kept only if an API response or
-  display reads them.
-- `identity.cli_credentials.tenant_id`: CLI authentication reads the user's tenant; dropped unless a
-  reader needs the credential's own copy.
-- `authoring.attempts.settled_nanos`: dropped unless a reader distinct from
-  `billing.usage_lines.charged_nanos` is found.
+- **`identity.api_keys.description` — kept, no reader.** Declared at
+  `schema/1150_identity_api_keys.sql:11` and written by
+  `rustd/crates/afd_tenant/src/sql/apikey/insert_tenant_key.sql:1`. The key list selects
+  `id, name, created_at, revoked_at` (`rustd/crates/afd_tenant/src/sql/apikey.rs:59`), and
+  `ApiKeySummary` has no description field.
+- **`identity.cli_credentials.credential_prefix`, `deployment`, `created_from_address` — kept,
+  no reader.** Declared at `schema/1160_identity_cli_credentials.sql:13`–15 and written only by
+  `rustd/crates/afd_tenant/src/sql/cli_credential/insert_cli_credential.sql:1`. The table's one
+  read, `rustd/crates/afd_state/src/sql/select_cli_credential.sql:1`, selects none of them, and
+  the mint response echoes the request's deployment (`rustd/crates/afd_tenant/src/cli_credential/mod.rs:211`),
+  not the stored one.
+- **`identity.cli_credentials.tenant_id` — kept.** Declared at
+  `schema/1160_identity_cli_credentials.sql:10`; authentication reads it at
+  `rustd/crates/afd_state/src/sql/select_cli_credential.sql:1`. The mint copies the user's tenant
+  (`rustd/crates/afd_api_tenant/src/handler/tenant/cli_credential.rs:99`), and the reading
+  statement already joins `identity.users`, so the column restates `identity.users.tenant_id`
+  (rule 5) with no consistency rule in its slot.
+- **`authoring.attempts.settled_nanos` — dropped.** `schema/1940_authoring_attempts.sql:24`
+  declares the table without it. The settled charge is `billing.usage_lines.charged_nanos`
+  (`schema/2040_billing_usage_lines.sql:42`), summed per work type by
+  `rustd/crates/afd_billing/src/ledger/sql/select_owed.sql:1`.
 
-Settled by review on Oct 17, 2026: `runtime_model_ref` and `base_url` kept; `degraded`,
-`selftest_all_ok`, `capability_reported_at`, `leases.last_metered_at`, `attempts.input_token_count`,
-`dispatches.output_allowance` dropped; `setup_context` replaced by `revisions.review_context`.
+Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
+
+- **`fleet.revisions.runtime_model_ref` — kept.** `schema/1510_fleet_revisions.sql:20`; the
+  lease reads it at `rustd/crates/afd_fleet/src/lease/sql/select_fleet_with_session.sql:2`.
+- **`model.platform_defaults.base_url` — kept.** `schema/1320_model_platform_defaults.sql:14`;
+  read at `rustd/crates/afd_credential/src/provider/sql/select_active_platform_default.sql:4`.
+- **`runner.leases.last_metered_at` — kept.** `schema/1810_runner_leases.sql:33`, the lease's
+  runtime cursor (rule 4 (d)). Renewal and report meter from it and advance it
+  (`rustd/crates/afd_fleet/src/lease/sql/meter_lease.sql:16` and `:35`); the expiry sweep bills
+  the last slice from it (`rustd/crates/afd_fleet/src/lease/sql/select_unbilled_expired_leases.sql:5`,
+  `rustd/crates/afd_fleet/src/lease/sql/bill_expired_slice.sql:9`). The review listed it as
+  dropped; per-request billing (`e4dd5e37a`) kept it as the one runtime cursor and dropped the
+  lease's token cursors and the slot's cursors instead.
+- **`runner.runners.degraded` — dropped.** Derived on read as `degraded_reason IS NOT NULL`
+  (`schema/1800_runner_runners.sql:28`; `rustd/crates/afd_runner/src/capacity/sql/lock_host.sql:1`).
+- **`runner.runners.selftest_all_ok` — dropped.** Derived from `selftest_checks`
+  (`schema/1800_runner_runners.sql:32`), read at
+  `rustd/crates/afd_runner/src/sql/runner_view/runner_detail.sql:14`.
+- **`runner.runners.capability_reported_at` — dropped.** `schema/1800_runner_runners.sql:15`
+  declares the table with `capability_report` (line 27) and no instant beside it.
+- **`authoring.attempts.input_token_count` — dropped.** `schema/1940_authoring_attempts.sql:42`–43
+  keep `call_count` and `output_token_count` only; input tokens are counted per request on
+  `billing.usage_lines` (`schema/2040_billing_usage_lines.sql:33`).
+- **`authoring.dispatches.output_allowance` — dropped.** `schema/1950_authoring_dispatches.sql:14`
+  declares the table without it.
+- **`setup_context` — replaced** by `fleet.revisions.review_context`
+  (`schema/1510_fleet_revisions.sql:22`), written by
+  `rustd/crates/afd_authoring/src/creation/sql/revision.sql:3` and read by
+  `rustd/crates/afd_authoring/src/creation/sql/locked.sql:14`.
 
 ## Public interface changes
 
