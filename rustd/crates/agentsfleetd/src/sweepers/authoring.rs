@@ -25,24 +25,60 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Anal
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
-            match drafts.maintain().await {
-                Ok(counts) if counts != afd_authoring::Maintenance::default() => {
-                    tracing::info!(
-                        event = COMPLETED,
-                        interrupted = counts.interrupted,
-                        purged_drafts = counts.purged_drafts,
-                        expired_results = counts.expired_results,
-                        expired_receipts = counts.expired_receipts,
-                        "authoring recovery advanced"
-                    );
-                }
-                Ok(_) => {}
-                Err(error) => tracing::warn!(
-                    event = FAILED,
-                    error_code = error.code().as_str(),
-                    "authoring recovery waits for its durable store"
-                ),
-            }
+            maintain(&drafts).await;
         }
     });
+}
+
+/// One maintenance pass, logged: what it advanced, or that its store is gone
+/// and the next tick retries.
+async fn maintain(drafts: &afd_authoring::Drafts) {
+    match drafts.maintain().await {
+        Ok(counts) if counts != afd_authoring::Maintenance::default() => {
+            tracing::info!(
+                event = COMPLETED,
+                interrupted = counts.interrupted,
+                purged_drafts = counts.purged_drafts,
+                expired_results = counts.expired_results,
+                expired_receipts = counts.expired_receipts,
+                "authoring recovery advanced"
+            );
+        }
+        Ok(_) => {}
+        Err(error) => tracing::warn!(
+            event = FAILED,
+            error_code = error.code().as_str(),
+            "authoring recovery waits for its durable store"
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_core::error_code;
+    use afd_core::test_util::trace::Capture;
+    use afd_crypto::entropy::Entropy;
+    use afd_db::test_util::unreachable_db;
+
+    use super::{FAILED, maintain};
+
+    /// A pass whose store is gone says it is waiting, under the outage's code,
+    /// and returns for the next tick rather than ending the task.
+    #[tokio::test]
+    async fn a_pass_with_no_store_waits_for_it() {
+        let database = unreachable_db();
+        let drafts = afd_authoring::Drafts::new(
+            database.clone(),
+            Entropy::new(),
+            crate::billing::biller(database),
+        );
+        let capture = Capture::install();
+
+        maintain(&drafts).await;
+
+        assert_eq!(
+            capture.only(FAILED).field("error_code"),
+            Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+        );
+    }
 }
