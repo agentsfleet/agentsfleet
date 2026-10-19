@@ -40,7 +40,7 @@ export function matchSetupRoute(workspace: string, parts: readonly string[], met
 function draft(parts: readonly string[], method: string): MatchedRoute | undefined {
   const [, id, child, tail] = parts;
   if (parts.length === 1) {
-    if (method === SETUP_METHOD.get) return {stream: false, query: [...PAGE, "state", "linked_fleet_id"]};
+    if (method === SETUP_METHOD.get) return {stream: false, query: [...PAGE, "state", "linked_fleet_id", "q"]};
     return method === SETUP_METHOD.post ? ORDINARY : undefined;
   }
   if (!uuid.safeParse(id).success) return undefined;

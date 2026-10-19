@@ -13,7 +13,7 @@ const MODELS = "/models";
 const DRAFTS = "/drafts";
 const CURSOR = "cursor-one";
 const CARD = (id: string): DraftCard => ({id, title: `Chat ${id.slice(-1)}`, state: DRAFT_STATE.editing, etag: '"card"',
-  linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null});
+  linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null});
 const FIRST_CARD = CARD(DRAFT_ID);
 const SECOND_CARD = CARD("0199a801-1000-7000-8000-00000000000a");
 const urls: URL[] = [];
@@ -250,9 +250,9 @@ it("updates one renamed chat without changing its neighbours, and clears an abse
   await lists.open(new AbortController().signal);
   const renamed = {...DRAFT, title: "Build repairs", etag: '\"renamed\"', linked_fleet_id: FLEET_ID};
   expect(lists.updateDraft(renamed).cards).toEqual([
-    {...FIRST_CARD, title: renamed.title, state: renamed.state, etag: renamed.etag, linked_fleet_id: FLEET_ID}, SECOND_CARD,
+    {...FIRST_CARD, title: renamed.title, state: renamed.state, etag: renamed.etag, linked_fleet_id: FLEET_ID, candidate_revision: 1}, SECOND_CARD,
   ]);
   expect(lists.updateDraft({...renamed, linked_fleet_id: undefined}).cards).toEqual([
-    {...FIRST_CARD, title: renamed.title, state: renamed.state, etag: renamed.etag, linked_fleet_id: null}, SECOND_CARD,
+    {...FIRST_CARD, title: renamed.title, state: renamed.state, etag: renamed.etag, linked_fleet_id: null, candidate_revision: 1}, SECOND_CARD,
   ]);
 });

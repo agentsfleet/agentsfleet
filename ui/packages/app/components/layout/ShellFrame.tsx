@@ -9,7 +9,7 @@ import {
 } from "./SidebarNavigation";
 import { ShellControls } from "./ShellControls";
 import { WorkspaceCreationProvider } from "./WorkspaceCreationProvider";
-import { DraftSidebarProvider } from "./DraftSidebarHistory";
+import { DraftSidebarProvider } from "./draft-sidebar-state";
 import { RecentFleetsProvider } from "./RecentFleets";
 
 const SIDEBAR_NAV_ID = "app-sidebar-nav";

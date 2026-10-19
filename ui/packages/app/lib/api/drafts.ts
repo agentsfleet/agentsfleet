@@ -2,7 +2,7 @@
 
 import type { z } from "zod";
 import type { StagePlatform } from "./platform-library-types";
-import type { Draft, Review, Source, Start } from "./draft-types";
+import type { Draft, Fleet, Review, Source, Start } from "./draft-types";
 import { z as schema } from "zod";
 import { DraftOperation } from "./draft-operation";
 import { DraftHistory } from "./draft-history";
@@ -37,7 +37,7 @@ export class DraftClient {
   #source: Source = {kind: SOURCE_KIND.blank};
   #watching: string | undefined;
   #continueSave: (() => Promise<void>) | undefined;
-  #setupTag: string | undefined;
+  #setupTarget: Fleet | undefined;
   constructor(identity: DraftIdentity, platformPublisher?: PlatformPublisher) {
     this.#base = `/live/v1/workspaces/${encodeURIComponent(identity.workspace)}`;
     this.#workspace = identity.workspace; this.#platformPublisher = platformPublisher; this.#lists = new DraftLists(this.#base);
@@ -45,9 +45,10 @@ export class DraftClient {
   get canStagePlatform(): boolean { return this.#platformPublisher !== undefined; }
   readonly getSnapshot = (): DraftView => this.#snapshot;
   readonly subscribe = (listener: () => void): (() => void) => { this.#listeners.add(listener); return () => this.#listeners.delete(listener); };
+  invalidateAccess(): void { this.#failed(new SetupUnavailable("This workspace is no longer available.", 403), true); }
   dispose(): void {
     this.#view.abort(); this.#owner.abort(); this.#operation.clear(); this.#history.clear(); this.#lists.clear();
-    this.#continueSave = undefined; this.#setupTag = undefined; this.#source = {kind: SOURCE_KIND.blank};
+    this.#continueSave = undefined; this.#setupTarget = undefined; this.#source = {kind: SOURCE_KIND.blank};
     this.#snapshot = EMPTY; this.#listeners.clear();
   }
   async initialize(): Promise<void> {
@@ -85,12 +86,12 @@ export class DraftClient {
       this.#update({...this.#lists.updateDraft(draft), draft, model: draft.authoring_model_ref});
       if (draft.state !== DRAFT_STATE.editing && draft.linked_fleet_id) {
         const path = `${this.#base}/fleets/${draft.linked_fleet_id}`;
-        this.#update({fleet: await this.#request({path}, FleetSchema)});
+        this.#savedSetup(draft.id, await this.#request({path}, FleetSchema));
         this.#continueSave = async () => {
           const current = await this.#request({path}, FleetSchema);
           const fleet = await this.#request({path, method: REQUEST_METHOD.patch, body: {status: "active"},
             headers: {[SETUP_HEADERS.match]: current.etag}}, FleetSchema);
-          this.#update({fleet}); await this.#read(draft.id);
+          this.#savedSetup(draft.id, fleet); await this.#read(draft.id);
         };
       }
       await this.#read(draft.id); this.#startWatching();
@@ -114,6 +115,7 @@ export class DraftClient {
           const draft = await this.#request({path: `${this.#base}/drafts`, method: REQUEST_METHOD.post,
             body: {source, authoring_model_ref: model, message, operation_id}}, CreatedMessageSchema);
           this.#update({...this.#lists.updateDraft(draft), draft});
+          this.#update(await this.#lists.refreshDraft(draft.id, AbortSignal.any([this.#owner.signal, this.#view.signal])));
         }
         await this.#read(this.#draft().id);
       });
@@ -146,6 +148,7 @@ export class DraftClient {
           const created = await this.#request({path: `${this.#base}/drafts`, method: REQUEST_METHOD.post,
             body: {source, authoring_model_ref: model, operation_id}}, DraftSchema);
           this.#update({draft: created});
+          this.#update(await this.#lists.refreshDraft(created.id, AbortSignal.any([this.#owner.signal, this.#view.signal])));
           selectionTag ??= created.etag;
           if (!created.candidate) throw new SetupUnavailable("The selected source has no editable setup.", 409);
           if (JSON.stringify(created.candidate.definition) !== JSON.stringify(input.definition)) {
@@ -168,7 +171,7 @@ export class DraftClient {
         const request = {path: `${this.#base}/fleets`, method: REQUEST_METHOD.post, body, headers: {[SETUP_HEADERS.key]: key}};
         this.#continueSave = async () => {
           const fleet = await this.#request(request, FleetSchema);
-          this.#update({fleet});
+          this.#savedSetup(draft.id, fleet);
           await this.#read(draft.id);
         };
         await this.#continueSave();
@@ -179,13 +182,15 @@ export class DraftClient {
     return this.#act(async () => {
       this.#idle();
       const {draft, review} = await this.#readySetup();
-      if (!draft.linked_fleet_id || !this.#setupTag) throw new SetupUnavailable("The current fleet setup could not be validated. Try saving again.", 409);
+      const fleet = this.#setupTarget;
+      if (!draft.linked_fleet_id || !fleet) throw new SetupUnavailable("The current fleet setup could not be validated. Try saving again.", 409);
       const body = {draft_candidate_id: draft.candidate.id, review_digest: review.review_digest};
-      const headers = {[SETUP_HEADERS.match]: this.#setupTag};
+      const headers = {[SETUP_HEADERS.match]: fleet.setup_etag};
       await this.#operation.run({apply: body, headers}, async (key) => {
         const applied = await this.#request({path: `${this.#base}/fleets/${draft.linked_fleet_id}/revisions`, method: REQUEST_METHOD.post,
           body, headers: {...headers, [SETUP_HEADERS.key]: key}}, AppliedSchema);
-        this.#update({schedules: applied.schedules, notice: appliedNotice(applied.schedules)});
+        this.#update({...this.#lists.updateSetup(draft.id, {id: applied.fleet_id, setup_revision: applied.setup_revision}),
+          schedules: applied.schedules, notice: appliedNotice(applied.schedules)});
       });
     });
   }
@@ -203,6 +208,7 @@ export class DraftClient {
           headers: {[SETUP_HEADERS.key]: key, ...(current ? {[SETUP_HEADERS.match]: current.etag} : {})}}, PublishedSchema);
         this.#update({notice: `Published Library revision ${receipt.revision_id}. Running fleets keep their pinned setup.`});
         await this.#read(draft.id);
+        this.#update(await this.#lists.refreshDraft(draft.id, AbortSignal.any([this.#owner.signal, this.#view.signal])));
       });
     });
   }
@@ -259,6 +265,9 @@ export class DraftClient {
   #request<T>(request: SetupRequest, parser: z.ZodType<T>): Promise<T> {
     return setupRequest(request, parser, AbortSignal.any([this.#owner.signal, this.#view.signal]));
   }
+  #savedSetup(id: string, fleet: Fleet): void {
+    this.#update({...this.#lists.updateSetup(id, fleet), fleet});
+  }
   #draft() {
     const draft = this.#snapshot.draft;
     if (!draft) throw new SetupUnavailable("Begin a private conversation first.", 409);
@@ -277,11 +286,12 @@ export class DraftClient {
     return {draft: {...draft, candidate: draft.candidate}, review: draft.review};
   }
   async #targetSetup(draft: Draft, review: Review): Promise<void> {
-    this.#setupTag = undefined;
+    this.#setupTarget = undefined;
     if (!draft.linked_fleet_id || review.effective.target_setup_revision === undefined) return;
     const fleet = await this.#request({path: `${this.#base}/fleets/${draft.linked_fleet_id}`}, FleetSchema);
     if (fleet.setup_revision !== review.effective.target_setup_revision) throw new SetupUnavailable("This fleet changed. Open Edit from its current setup and try again.", 409);
-    this.#setupTag = fleet.setup_etag;
+    this.#update(this.#lists.updateSetup(draft.id, fleet));
+    this.#setupTarget = fleet;
   }
   #idle(): void {
     if (this.#operation.pending || this.#snapshot.messages.some(isRunning)) throw new SetupUnavailable("Stop or finish the current operation before editing setup.", 409);
@@ -330,7 +340,7 @@ export class DraftClient {
   }
   #reset(): void {
     this.#view.abort(); this.#view = new AbortController(); this.#history.clear(); this.#operation.clear();
-    this.#continueSave = undefined; this.#setupTag = undefined; this.#watching = undefined;
+    this.#continueSave = undefined; this.#setupTarget = undefined; this.#watching = undefined;
     this.#update({draft: null, messages: [], preview: null, fleet: null, schedules: [], error: null, notice: null, truncated: false});
   }
   #update(patch: Partial<DraftView>): void {

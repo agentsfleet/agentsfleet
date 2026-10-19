@@ -12,16 +12,28 @@ export function chatTitle(title: string, id: string, description = ""): string {
   return purpose ? Array.from(purpose).slice(0, CHAT_TITLE_LIMIT).join("") : `Setup chat ${id.slice(-6).toUpperCase()}`;
 }
 
-export function sidebarDrafts(cards: readonly DraftCard[], draft: Draft | null, firstRequest = ""): readonly SidebarDraft[] {
+export function sidebarDrafts(cards: readonly DraftCard[], draft: Draft | null, firstRequest = "", setupRevision: string | null = null): readonly SidebarDraft[] {
+  const recorded = cards.find(card => card.id === draft?.id);
   const current = draft ? {
     id: draft.id, title: chatTitle(draft.title, draft.id, firstRequest || draft.candidate?.definition.description),
-    detail: [chatState(draft.state, !!draft.candidate, !!draft.linked_fleet_id), draft.candidate ? `Setup v${draft.candidate.revision}` : "",
-      draft.publication ? "Published" : ""].filter(Boolean).join(" · "),
+    detail: chatDetail({state: draft.state, linked: !!draft.linked_fleet_id, candidate: draft.candidate?.revision ?? null,
+      setup: setupRevision ?? recorded?.setup_revision ?? null, publication: recorded?.publication_revision ?? null, published: !!draft.publication}),
   } : null;
   const rows = cards.map((card) => current?.id === card.id ? current : {
-    id: card.id, title: chatTitle(card.title, card.id), detail: chatState(card.state, false, !!card.linked_fleet_id),
+    id: card.id, title: chatTitle(card.title, card.id), detail: chatDetail({state: card.state, linked: !!card.linked_fleet_id,
+      candidate: card.candidate_revision, setup: card.setup_revision, publication: card.publication_revision, published: false}),
   });
   return current && !cards.some((card) => card.id === current.id) ? [current, ...rows] : rows;
+}
+
+type ChatFacts = {state: DraftCard["state"]; linked: boolean; candidate: string | number | null;
+  setup: string | number | null; publication: number | null; published: boolean};
+
+function chatDetail(facts: ChatFacts): string {
+  return [chatState(facts.state, facts.candidate !== null, facts.linked),
+    facts.state !== DRAFT_STATE.closed && facts.candidate !== null ? `Proposed v${facts.candidate}` : "",
+    facts.setup !== null ? `Saved v${facts.setup}` : "",
+    facts.publication !== null ? `Published v${facts.publication}` : facts.published ? "Published" : ""].filter(Boolean).join(" · ");
 }
 
 function chatState(state: DraftCard["state"], candidate: boolean, linked: boolean): string {

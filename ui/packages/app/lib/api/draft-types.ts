@@ -22,6 +22,7 @@ export const PAGE_LIMIT = 25;
 export const LIST_PAGE_MAX = 100;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
 const decimal = z.string().regex(DECIMAL);
+const summaryRevision = z.number().int().positive().safe().nullable();
 const encoder = new TextEncoder();
 export const MessageInputSchema = z.string().min(1).refine((text) => encoder.encode(text).byteLength <= MESSAGE_MAX_BYTES);
 const record = z.record(z.string(), z.unknown());
@@ -89,6 +90,7 @@ export const ModelsSchema = z.object({items: z.array(z.object({
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),
   linked_fleet_id: z.uuidv7().nullable().default(null), updated_at: Instant, expires_at: Instant.nullable().default(null),
+  candidate_revision: summaryRevision, setup_revision: summaryRevision, publication_revision: summaryRevision,
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 
 export type Definition = z.infer<typeof DefinitionSchema>;
