@@ -26,7 +26,7 @@ Every price records its source, verification time, effective interval and condit
 
 1. Obtain Indy's approval for the named environment and vault reads.
    Development approval does not authorize production.
-2. Install the repository-pinned Bun version and a Postgres command-line client, `psql`.
+2. Install the repository-pinned Bun version.
 3. Authenticate the 1Password command-line interface.
 4. Confirm the selected vault item has `migrator-connection-string`.
    Development uses `planetscale-dev`; production uses `planetscale-prod`.

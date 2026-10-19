@@ -16,7 +16,7 @@ source "${SCRIPT_DIR}/lib.sh"
 
 playbooks_require_vault_read_approval
 playbooks_require_op_auth
-playbooks_require_tool psql
+playbooks_require_tool bun
 
 readonly COUNT_SQL="SELECT count(*) FROM model.platform_models m
 WHERE EXISTS (SELECT 1 FROM model.platform_model_prices p
@@ -28,10 +28,24 @@ echo ""
 echo "== model-catalogue Section 3: verify =="
 echo ""
 
+# Counts through Bun's Postgres client, the one the seeder writes with, which
+# reads the connection URL from the environment. psql cannot: libpq takes a URL
+# only as its dbname ARGUMENT, and a URL in PGDATABASE is read as a database
+# name on the default socket. A failure prints nothing, so no connection detail
+# reaches the log; the empty answer below names the failure instead.
+readonly COUNT_SCRIPT='const sql = new Bun.SQL(Bun.env.DATABASE_URL, { max: 1 });
+try {
+  const [row] = await sql.unsafe(Bun.env.CATALOGUE_COUNT_SQL);
+  console.log(String(row.count));
+} catch {
+  process.exitCode = 1;
+} finally {
+  await sql.close();
+}'
+
 catalogue_export_database_url
 
-# -A -t: unaligned, tuples only, so the result is the bare number.
-rows="$(PGDATABASE="$DATABASE_URL" psql -X -A -t -v ON_ERROR_STOP=1 -c "$COUNT_SQL" 2>/dev/null | tr -d '[:space:]')"
+rows="$(CATALOGUE_COUNT_SQL="$COUNT_SQL" bun -e "$COUNT_SCRIPT" 2>/dev/null | tr -d '[:space:]')" || rows=""
 
 # A here-string, not a pipe: `grep -q` exits on the match and, under
 # `set -o pipefail`, the writer's SIGPIPE would fail the pipeline precisely when
