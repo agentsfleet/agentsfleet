@@ -12,11 +12,29 @@
 use std::time::Duration;
 
 use afd_billing::biller::{Biller, Release, WorkKey};
+use afd_billing::rates::Posture;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use jiff::Timestamp;
+use sqlx::{Connection as _, FromRow as _};
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::sql;
+use crate::lease::usage::{Pricing, SliceColumns};
+
+/// Leases that ended unreported with run time their cursor never billed.
+const SELECT_UNBILLED_EXPIRED_LEASES: &str = include_str!("sql/select_unbilled_expired_leases.sql");
+
+/// One such lease's last slice: its cursor advanced to its deadline, and the
+/// run time between, under the lease's row lock.
+const BILL_EXPIRED_SLICE: &str = include_str!("sql/bill_expired_slice.sql");
+
+/// What the expiry pass was doing, for [`query`].
+const CONTEXT_EXPIRED: &str = "billing sweep expired leases";
+
+/// The table a malformed expired-lease identifier is reported against.
+const TABLE_LEASES: &str = "runner.leases";
 
 /// What the finished-holds statement was doing, for [`query`].
 const CONTEXT_HOLDS: &str = "billing sweep finished holds";
@@ -48,21 +66,39 @@ pub struct BillingSwept {
     pub released: u64,
     /// Holds it could not release; they wait for the next pass.
     pub release_failures: u64,
+    /// Expired leases whose last slice this pass logged and settled.
+    pub expired_billed: u64,
+    /// Expired leases whose logged last slice did not settle; the line sweep
+    /// settles it on a later pass.
+    pub expired_settle_failures: u64,
 }
 
-/// One pass: settle every unsettled line older than [`GRACE`] through
-/// [`afd_billing::ledger::resettle`], then release every finished lease's open
-/// hold.
+/// One pass: bill every expired lease's last slice, settle every unsettled
+/// line older than [`GRACE`] through [`afd_billing::ledger::resettle`], then
+/// release every finished lease's open hold.
+///
+/// The last slice comes first, so the release that follows closes a hold
+/// whose run time is already logged (spec Dimension 9.5). `entropy` mints the
+/// lines' identifiers and `now` stamps them.
 ///
 /// # Errors
 /// Reports a datastore that would not answer a read. A biller that refuses one
 /// settlement or release is counted, not raised: the rest of the batch still
 /// runs, and the next pass retries what failed.
-pub async fn sweep(database: &Db, biller: &dyn Biller) -> Result<BillingSwept> {
+pub async fn sweep(
+    database: &Db,
+    biller: &dyn Biller,
+    entropy: &Entropy,
+    now: Timestamp,
+) -> Result<BillingSwept> {
+    let (expired_billed, expired_settle_failures) =
+        bill_expired(database, biller, entropy, now).await?;
     let lines = afd_billing::ledger::resettle(database, biller).await?;
     let mut swept = BillingSwept {
         resettled: lines.settled,
         settle_failures: lines.failed,
+        expired_billed,
+        expired_settle_failures,
         ..BillingSwept::default()
     };
 
@@ -88,6 +124,92 @@ pub async fn sweep(database: &Db, biller: &dyn Biller) -> Result<BillingSwept> {
         }
     }
     Ok(swept)
+}
+
+/// Logs and settles the last slice of every lease that ended unreported.
+///
+/// A lease that expired, or was reclaimed, still owes the run time between
+/// its last renewal and the deadline it was granted. Each lease is billed in
+/// its own transaction, which advances its cursor to that deadline and logs
+/// the runtime line together, so a second pass, or a late report racing it,
+/// measures nothing more. A reported lease is never a candidate: its report
+/// billed it. Answers how many settled and how many did not.
+async fn bill_expired(
+    database: &Db,
+    biller: &dyn Biller,
+    entropy: &Entropy,
+    now: Timestamp,
+) -> Result<(u64, u64)> {
+    let candidates: Vec<String> = {
+        let mut connection = database.acquire().await?;
+        sqlx::query_scalar(SELECT_UNBILLED_EXPIRED_LEASES)
+            .bind(sql::LEASE_STATUS_REPORTED)
+            .bind(GRACE)
+            .bind(BATCH_LIMIT)
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_EXPIRED))?
+    };
+    let (mut settled, mut unsettled) = (0, 0);
+    for lease_id in candidates {
+        let lease = Uuid7::parse(&lease_id).map_err(row_malformed(TABLE_LEASES, "id"))?;
+        let Some(settlement) = log_last_slice(database, entropy, &lease, now).await? else {
+            continue;
+        };
+        match biller.settle(&settlement).await {
+            Ok(_receipt) => settled += 1,
+            Err(_fault) => unsettled += 1,
+        }
+    }
+    Ok((settled, unsettled))
+}
+
+/// Advances `lease`'s cursor to its deadline and logs the run time between,
+/// in one transaction; `None` when another pass or a report got there first.
+async fn log_last_slice(
+    database: &Db,
+    entropy: &Entropy,
+    lease: &Uuid7,
+    now: Timestamp,
+) -> Result<Option<afd_billing::biller::Settlement>> {
+    let mut connection = database.acquire().await?;
+    let mut transaction = connection.begin().await.map_err(query(CONTEXT_EXPIRED))?;
+    let Some(row) = sqlx::query(BILL_EXPIRED_SLICE)
+        .bind(lease.as_str())
+        .bind(sql::LEASE_STATUS_REPORTED)
+        .bind(afd_billing::nanos::MS_PER_SEC)
+        .bind(afd_billing::sql::work::FLEET_LEASE)
+        .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(query(CONTEXT_EXPIRED))?
+    else {
+        return Ok(None);
+    };
+    let billed = ExpiredLease::from_row(&row).map_err(query(CONTEXT_EXPIRED))?;
+    let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_EXPIRED))?;
+    let pricing = Pricing::runtime_only(
+        Posture::parse(&billed.posture).unwrap_or(Posture::Platform),
+        billed.provider,
+        billed.model,
+    );
+    let settlement = match slice.into_slice() {
+        Some(slice) => pricing.settlement(lease, slice, &[])?,
+        None => None,
+    };
+    if let Some(settled) = settlement.as_ref() {
+        afd_billing::ledger::log_lines(&mut *transaction, entropy, now, settled).await?;
+    }
+    transaction.commit().await.map_err(query(CONTEXT_EXPIRED))?;
+    Ok(settlement)
+}
+
+/// What an expired lease's last slice is priced under, by column name.
+#[derive(Debug, sqlx::FromRow)]
+struct ExpiredLease {
+    posture: String,
+    provider: String,
+    model: String,
 }
 
 /// A finished lease's open hold, by column name.

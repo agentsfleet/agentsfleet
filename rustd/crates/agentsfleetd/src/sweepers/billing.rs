@@ -23,6 +23,7 @@ const COMPLETED: &str = "billing_sweep_completed";
 pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
     let database = database.clone();
     let biller: Arc<dyn Biller> = crate::billing::biller(database.clone());
+    let entropy = afd_crypto::entropy::Entropy::new();
     supervisor.spawn(super::BILLING, move |stop| async move {
         let mut interval = tokio::time::interval(INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -31,7 +32,14 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
-            match afd_fleet::lease::billing_sweep::sweep(&database, biller.as_ref()).await {
+            let swept = afd_fleet::lease::billing_sweep::sweep(
+                &database,
+                biller.as_ref(),
+                &entropy,
+                afd_core::clock::now(),
+            )
+            .await;
+            match swept {
                 Ok(swept) if swept != afd_fleet::lease::billing_sweep::BillingSwept::default() => {
                     tracing::info!(
                         event = COMPLETED,
@@ -39,6 +47,8 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
                         settle_failures = swept.settle_failures,
                         released = swept.released,
                         release_failures = swept.release_failures,
+                        expired_billed = swept.expired_billed,
+                        expired_settle_failures = swept.expired_settle_failures,
                         "billing sweep repaired usage the request path left unsettled"
                     );
                 }
