@@ -118,6 +118,8 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
 
 **Usage rides renewals and the report, at most 512 lines a body.** Each renewal and the report carry the provider requests the daemon has not yet recorded, one line each, oldest first, capped at 512 (`afd_wire::usage::LINES_MAX`, taken in `afr_agent/src/engine/mod.rs`). The cap binds both bodies; what differs is the answer to a body past it. A renewal past the cap still extends the lease and records no lines, so the runner sends them again; a report past it is refused 400 `UZ-REQ-001` naming the bound. [Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
 
+**A backlog past one body is renewed away before the report.** A run can end with more than 512 unrecorded lines, after failed renewals or a burst of requests. Before its report, the settle renews with the oldest 512 until one body holds the rest (`flush` in `afr_supervisor/src/renew/mod.rs`). Each answer's `recorded_through` forgets the lines that renewal recorded. A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, seq)`.
+
 ## Crates
 
 ```
