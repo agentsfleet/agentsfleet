@@ -52,7 +52,7 @@ pub(crate) fn spent(span: &Span, usage: Usage) {
     span.record(ATTR_USAGE_INPUT_TOKENS, usage.prompt());
     span.record(ATTR_USAGE_OUTPUT_TOKENS, usage.output);
     span.record(ATTR_USAGE_CACHE_READ_TOKENS, usage.cached_input);
-    span.record(ATTR_USAGE_CACHE_CREATION_TOKENS, usage.cache_written);
+    span.record(ATTR_USAGE_CACHE_CREATION_TOKENS, usage.cache_written());
 }
 
 /// The span one tool call is traced in, naming the tool by the catalog's

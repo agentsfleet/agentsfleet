@@ -199,6 +199,31 @@ fn test_cache_writes_bill_at_their_rate() {
         (usd_per_mtok(31_250) + usd_per_mtok(50_000)) / 10
     );
     assert_eq!(priced.unpriced_tokens, 0);
+
+    // OpenAI names no lifetime and publishes one write rate per prompt tier,
+    // 1.25 × that tier's input: 2.50 USD under 272K, 5.00 USD over it.
+    let lifetimeless = |above: i32, input: i64| {
+        let mut price = price(YEAR_START, None, above, input, input / 10, input * 6);
+        price.cache_write_nanos_per_mtok = Some(input * 5 / 4);
+        price.cache_write_5m_nanos_per_mtok = None;
+        price.cache_write_1h_nanos_per_mtok = None;
+        price
+    };
+    let openai = PriceBook::from_tiers(vec![
+        tier(BASE_ID, lifetimeless(0, usd_per_mtok(20_000))),
+        tier(UPPER_ID, lifetimeless(THRESHOLD, usd_per_mtok(40_000))),
+    ]);
+    let rater = Rater::new(&openai, Posture::Platform, wide());
+    let mut under = line(MIDYEAR, 0, 0);
+    under.cache_write_tokens = MILLION / 10;
+    let mut over = line(MIDYEAR, 0, 0);
+    over.cache_write_tokens = 3 * MILLION / 10;
+    let under = rater.rate(&under).expect("prices");
+    let over = rater.rate(&over).expect("prices");
+    assert_eq!(under.charged.as_i64(), usd_per_mtok(25_000) / 10);
+    assert_eq!(over.charged.as_i64(), 3 * usd_per_mtok(50_000) / 10);
+    assert_eq!(over.price, Some(Uuid7::parse(UPPER_ID).expect("id")));
+    assert_eq!(over.unpriced_tokens, 0, "never as uncached input");
 }
 
 #[test]

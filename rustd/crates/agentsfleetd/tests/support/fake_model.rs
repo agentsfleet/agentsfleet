@@ -23,7 +23,9 @@ use futures_util::stream::BoxStream;
 const TURN_USAGE: Usage = Usage {
     input: 100,
     cached_input: 0,
-    cache_written: 0,
+    cache_write: 0,
+    cache_write_5m: 0,
+    cache_write_1h: 0,
     output: 10,
 };
 

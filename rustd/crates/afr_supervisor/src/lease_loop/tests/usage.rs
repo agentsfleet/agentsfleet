@@ -19,7 +19,9 @@ const PAST_TWO_BODIES: usize = 2 * LINES_MAX + 76;
 const REQUEST: Usage = Usage {
     input: 5,
     cached_input: 0,
-    cache_written: 0,
+    cache_write: 0,
+    cache_write_5m: 0,
+    cache_write_1h: 0,
     output: 2,
 };
 

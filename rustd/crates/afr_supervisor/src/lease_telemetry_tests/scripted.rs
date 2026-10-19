@@ -21,7 +21,9 @@ impl Scripted {
         let spent = Chunk::Usage(Usage {
             input: 2,
             cached_input: 0,
-            cache_written: 0,
+            cache_write: 0,
+            cache_write_5m: 0,
+            cache_write_1h: 0,
             output: 1,
         });
         let said = if index == 0 {
