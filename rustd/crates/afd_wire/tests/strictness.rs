@@ -67,10 +67,10 @@ fn test_wire_rejects_malformed() {
 /// A field carrying the wrong JSON type is rejected rather than coerced.
 #[test]
 fn should_reject_a_field_of_the_wrong_type() {
-    let ok = r#"{"input_tokens":1,"cached_input_tokens":0,"output_tokens":0}"#;
-    let string = r#"{"input_tokens":"1","cached_input_tokens":0,"output_tokens":0}"#;
-    let null = r#"{"input_tokens":null,"cached_input_tokens":0,"output_tokens":0}"#;
-    let fractional = r#"{"input_tokens":1.5,"cached_input_tokens":0,"output_tokens":0}"#;
+    let ok = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":1,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let string = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":"1","cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let null = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":null,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let fractional = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":1.5,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
     let _ = serde_json::from_str::<RenewRequest>(string).unwrap_err();
     let _ = serde_json::from_str::<RenewRequest>(null).unwrap_err();
     let _ = serde_json::from_str::<RenewRequest>(fractional).unwrap_err();
@@ -99,9 +99,9 @@ fn should_reject_an_unknown_enum_value() {
 /// be refused, which fails the moment a field is widened.
 #[test]
 fn should_refuse_values_past_each_declared_integer_width() {
-    // u32 — the cumulative token counters on renewal.
-    let at_max = r#"{"input_tokens":4294967295,"cached_input_tokens":0,"output_tokens":0}"#;
-    let past = r#"{"input_tokens":4294967296,"cached_input_tokens":0,"output_tokens":0}"#;
+    // u32 — a renewal's per-request token counts.
+    let at_max = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":4294967295,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
+    let past = r#"{"requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":4294967296,"cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":0}]}"#;
     let _ = serde_json::from_str::<RenewRequest>(at_max).unwrap();
     let _ = serde_json::from_str::<RenewRequest>(past).unwrap_err();
 

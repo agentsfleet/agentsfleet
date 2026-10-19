@@ -187,7 +187,9 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     let sent = drain(&mut calls);
     let body: serde_json::Value =
         serde_json::from_slice(sent.first().unwrap().body.as_ref().unwrap()).unwrap();
-    assert_eq!(body["input_tokens"], 300);
-    assert_eq!(body["cached_input_tokens"], 100);
-    assert_eq!(body["output_tokens"], 40);
+    let line = &body["requests"][0];
+    assert_eq!(line["seq"], 0, "the run's first request");
+    assert_eq!(line["input_tokens"], 300);
+    assert_eq!(line["cached_input_tokens"], 100);
+    assert_eq!(line["output_tokens"], 40);
 }

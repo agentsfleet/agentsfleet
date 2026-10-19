@@ -107,7 +107,7 @@ pub(super) async fn runtime(f: &Fixture, until: Timestamp) -> Uuid7 {
         .insert(&mut *f.connection().await)
         .await
         .expect("owned runtime event");
-    sqlx::query("INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,fleet_event_id,event_created_at,receipt,posture,provider,model,metered_input_token_count,metered_cached_token_count,metered_output_token_count,fencing_token,lease_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,now(),'1-0','tenant','test','test',0,0,0,1,$7,'active',0,now(),now())")
+    sqlx::query("INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,fleet_event_id,event_created_at,receipt,posture,provider,model,last_metered_at,fencing_token,lease_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,now(),'1-0','tenant','test','test',now(),1,$7,'active',0,now(),now())")
         .bind(mint().as_str()).bind(f.runner.as_str()).bind(fleet.as_str())
         .bind(f.workspace.as_str()).bind(f.tenant.as_str()).bind(&event).bind(until.to_sqlx())
         .execute(&mut *f.connection().await).await.expect("owned active runtime slot");

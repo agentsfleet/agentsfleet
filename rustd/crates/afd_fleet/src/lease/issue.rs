@@ -24,7 +24,7 @@ use jiff::Timestamp;
 use sqlx::Connection as _;
 
 use crate::error::{Result, query};
-use crate::lease::envelope::{Acquired, Kind};
+use crate::lease::envelope::Acquired;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -114,7 +114,6 @@ impl Leases {
             checked_at: capacity.now(),
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
-            reset_meters: acquired.kind == Kind::Fresh,
         }
         .bind()
         .execute(&mut *transaction)

@@ -128,17 +128,14 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     fixtures.cleanup().await;
 }
 
-/// Tokens a slot's cursor already holds when a lease is written over it.
-const METERED: i64 = 1_234;
-
-/// A fresh lease's row resets the slot's metering cursor; a reclaim's keeps it.
+/// Every lease meters its own run, from the instant it was issued.
 ///
-/// The reset rides the lease insert, armed only for a fresh lease: a
-/// re-leased run meters forward from where the dead holder stopped, and
-/// billing it from zero would charge again for tokens already metered.
+/// A fresh lease and a reclaim each open their own runtime cursor at issue:
+/// the reclaimed run bills from its own start, and the time between the dead
+/// holder's deadline and the reclaim is billed to nobody, because nothing ran.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
+async fn test_every_lease_meters_from_its_own_issue() {
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded {
         runners: [first, second],
@@ -147,7 +144,6 @@ async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let now = fixtures.enrolled_at();
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let billed = Billed {
         tenant_id: &tenant_id,
@@ -159,27 +155,17 @@ async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
     let held = crate::seed::select_fleet_within_rotations(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
-    // An earlier run's cursor, which the fresh lease must not meter from.
-    fixtures.set_metered_input(&fleet, METERED).await;
     leases
         .record_received(&held)
         .await
         .expect("the narrative log must open");
     leases
-        .issue(&first, &held, billed, now)
+        .issue(&first, &held, billed, fixtures.enrolled_at())
         .await
         .expect("the fresh lease row must be written")
         .expect("the claim is still held");
-    assert_eq!(
-        fixtures
-            .text(Row::Slot(&fleet), crate::lease_reads::COLUMN_METERED_INPUT)
-            .await,
-        Some("0".to_owned()),
-        "a fresh lease meters from zero"
-    );
+    let dead_holders_cursor = fixtures.metered_since(&fleet).await;
 
-    // The holder metered some tokens, then died.
-    fixtures.set_metered_input(&fleet, METERED).await;
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
@@ -192,12 +178,9 @@ async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
         .await
         .expect("the reclaimed lease row must be written")
         .expect("the claim is still held");
-    assert_eq!(
-        fixtures
-            .text(Row::Slot(&fleet), crate::lease_reads::COLUMN_METERED_INPUT)
-            .await,
-        Some(METERED.to_string()),
-        "a reclaim meters FORWARD from the dead holder's cursor"
+    assert!(
+        fixtures.metered_since(&fleet).await > dead_holders_cursor,
+        "a reclaim meters from its own issue, never the dead holder's cursor"
     );
 
     queue::clear_ready(fixtures.queue(), &fleet).await;
@@ -208,11 +191,11 @@ async fn test_the_lease_row_resets_the_meter_only_when_fresh() {
 ///
 /// The pass that outlived its claim lost the slot to a runner that took the
 /// same entry over. Its insert must write no lease, or two runners execute one
-/// event, and must leave the new holder's meter alone. Both arms of the fence
-/// are driven: a claim that merely lapsed, then one a second runner won.
+/// event. Both arms of the fence are driven: a claim that merely lapsed, then
+/// one a second runner won.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_stale_claim_writes_no_lease_and_resets_no_meter() {
+async fn test_a_stale_claim_writes_no_lease() {
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded {
         runners: [first, second],
@@ -252,9 +235,6 @@ async fn test_a_stale_claim_writes_no_lease_and_resets_no_meter() {
         won.is_some(),
         "the lapsed slot is winnable by another runner"
     );
-    // The new holder's run has metered this much.
-    fixtures.set_metered_input(&fleet, METERED).await;
-
     let superseded = leases
         .issue(&first, &held, billed, now)
         .await
@@ -267,13 +247,6 @@ async fn test_a_stale_claim_writes_no_lease_and_resets_no_meter() {
             .expect("the reclaim statement answers")
             .is_none(),
         "no active lease row exists for the fleet"
-    );
-    assert_eq!(
-        fixtures
-            .text(Row::Slot(&fleet), crate::lease_reads::COLUMN_METERED_INPUT)
-            .await,
-        Some(METERED.to_string()),
-        "the stale insert's reset must not zero the new holder's meter"
     );
 
     queue::clear_ready(fixtures.queue(), &fleet).await;

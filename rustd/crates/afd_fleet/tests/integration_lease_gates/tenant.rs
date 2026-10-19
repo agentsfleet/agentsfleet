@@ -14,16 +14,12 @@ use tracing_subscriber::registry::Registry;
 
 use super::seed::seed_provider_resolution;
 use super::*;
-use crate::rows::Row;
 
 /// The target sqlx logs each executed statement under.
 const STATEMENT_TARGET: &str = "sqlx::query";
 
 /// The field that carries the statement's text.
 const STATEMENT_FIELD: &str = "db.statement";
-
-/// Tokens an earlier run left on the slot's cursor.
-const METERED: i64 = 1_234;
 
 /// Counts executions of the tenant lookup.
 struct TenantReads(Arc<AtomicUsize>);
@@ -66,7 +62,6 @@ async fn test_issue_reads_the_tenant_once() {
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let claimed = claim(&fixtures, &seeded).await;
-    fixtures.set_metered_input(&seeded.fleet, METERED).await;
 
     let reads = Arc::new(AtomicUsize::new(0));
     let answer = {
@@ -83,16 +78,6 @@ async fn test_issue_reads_the_tenant_once() {
         reads.load(Ordering::Relaxed),
         1,
         "one lease reads its tenant once"
-    );
-    assert_eq!(
-        fixtures
-            .text(
-                Row::Slot(&seeded.fleet),
-                crate::lease_reads::COLUMN_METERED_INPUT
-            )
-            .await,
-        Some("0".to_owned()),
-        "the fresh lease's own insert reset the cursor an earlier run left"
     );
 
     fixtures.cleanup().await;

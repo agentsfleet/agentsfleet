@@ -14,7 +14,6 @@ use tokio::time::{Instant, MissedTickBehavior};
 
 use crate::client::ControlPlane;
 use crate::error::Error;
-use crate::report::narrow;
 
 /// How long before the daemon's deadline the runner gives the lease up. The
 /// daemon may hand an expired lease to another runner, so a run must end
@@ -79,8 +78,11 @@ impl<'a> Renewal<'a> {
                 } => renewed,
             };
             match renewed {
-                Ok(expires_at) => {
-                    deadline = self.deadline(expires_at);
+                Ok(renewed) => {
+                    deadline = self.deadline(renewed.lease_expires_at);
+                    if let Some(seq) = renewed.recorded_through {
+                        self.meter.recorded_through(seq);
+                    }
                     let lease_id = self.lease_id.as_str();
                     let event = EVENT_RENEWED;
                     tracing::debug!(lease_id, event);
@@ -94,11 +96,8 @@ impl<'a> Renewal<'a> {
     /// The run's tokens so far, as the renewal reports them: cumulative, so
     /// the daemon meters the difference since the last one.
     fn spent(&self) -> RenewRequest {
-        let usage = self.meter.read();
         RenewRequest {
-            input_tokens: narrow(usage.input),
-            cached_input_tokens: narrow(usage.cached_input),
-            output_tokens: narrow(usage.output),
+            requests: self.meter.unrecorded(),
         }
     }
 

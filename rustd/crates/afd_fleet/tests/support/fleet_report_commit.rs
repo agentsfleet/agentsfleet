@@ -10,7 +10,6 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use afd_billing::Cumulative;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Reported, Terminal, TerminalReport, Verdict};
@@ -65,7 +64,7 @@ pub(crate) fn report<'a>(
         runner_id,
         lease,
         lease_key,
-        cumulative: Cumulative::default(),
+        requests: &[],
         pricing,
         outcome: Terminal {
             verdict: Verdict::Succeeded,

@@ -2,12 +2,14 @@
 //!
 //! # The body is optional and its failure is not
 //!
-//! `RenewRequest` carries cumulative token counts, and a runner that has not
-//! wired token accounting yet sends nothing at all. An absent or unreadable
-//! body therefore meters at zero tokens — run fee only — rather than refusing:
-//! the alternative kills a healthy child over a serialization disagreement,
-//! and the runtime is genuinely owed either way. `UZ-RUN-013` exists in the
-//! registry for this and is deliberately never ANSWERED, only logged.
+//! `RenewRequest` carries one line per provider request since the last
+//! recorded renewal, and a renewal that saw none may send no body at all. A
+//! body that will not read, or breaks a bound, still extends the lease and
+//! bills the run time the daemon measured, rather than refusing: refusing
+//! kills a healthy child over a serialization disagreement. Its lines are
+//! simply not recorded, and the answer's `recorded_through` says so, so the
+//! runner sends them again. `UZ-RUN-013` exists in the registry for this and
+//! is deliberately never ANSWERED, only logged.
 //!
 //! # Why the lease id comes off the path
 //!
@@ -43,8 +45,10 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
     summary = "Extend a live lease",
     description = concat!(
         "A run buying more time before its lease expires. The body is ",
-        "optional and carries the run's cumulative token counts. A body ",
-        "that will not parse is read as asserting no tokens and logged as ",
+        "optional and carries one line per provider request since the last ",
+        "recorded renewal. The answer's `recorded_through` names the highest ",
+        "line recorded, and the runner sends the rest again. A body that ",
+        "will not parse records no lines and is logged as ",
         "`renew_body_parse_failed`. The lease is still extended, so a ",
         "counting mistake never ends a run. ",
     ),
@@ -74,34 +78,45 @@ pub(crate) async fn handle<D: Services>(
     if let Err(refusal) = super::schedule::lease(&lease_id) {
         return refusal.into_response();
     }
+    let request = requests(&body);
+    let recorded_through = request
+        .requests
+        .0
+        .iter()
+        .map(|line| line.seq)
+        .max();
     match services
         .leases()
-        .renew(runner.id(), &lease_id, counts(&body), services.now())
+        .renew(runner.id(), &lease_id, request, services.now())
         .await
     {
         Ok(expires_at) => Json(RenewResponse {
             lease_expires_at: expires_at,
+            recorded_through,
         })
         .into_response(),
         Err(error) => refuse(&error, EVENT),
     }
 }
 
-/// The cumulative counts the body carried, or none.
+/// The request lines the body carried, or none.
 ///
-/// Default-safe by design — see this module's note. The empty case is silent
-/// because it is the steady state for today's runner; a body that arrived and
-/// would not parse is logged, because that one means two builds disagree about
-/// a shape and somebody should know.
-fn counts(body: &[u8]) -> RenewRequest {
+/// Default-safe by design; see this module's note. The empty case is silent
+/// because a renewal that saw no provider request sends nothing; a body that
+/// arrived and would not read, or broke a bound, is logged, because that one
+/// means two builds disagree about a shape and somebody should know.
+fn requests(body: &[u8]) -> RenewRequest {
     if body.is_empty() {
         return RenewRequest::default();
     }
-    afd_http::handler::read_body(body).unwrap_or_else(|_unreadable| {
-        tracing::warn!(
-            event = EVENT_BODY_INVALID,
-            "the renew body could not be read; this slice meters runtime only"
-        );
-        RenewRequest::default()
-    })
+    afd_http::handler::read_body::<RenewRequest>(body)
+        .ok()
+        .filter(|request| garde::Validate::validate(request).is_ok())
+        .unwrap_or_else(|| {
+            tracing::warn!(
+                event = EVENT_BODY_INVALID,
+                "the renew body could not be read; its lines are not recorded and the runner sends them again"
+            );
+            RenewRequest::default()
+        })
 }

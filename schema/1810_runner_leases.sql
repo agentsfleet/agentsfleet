@@ -10,8 +10,11 @@
 -- window (deletion matrix: Fleet). `fleet_id`, `workspace_id`, `tenant_id` and
 -- `fleet_event_id` are opaque values once their rows go. The insert proves them
 -- against the fleet and its event in the same statement, and a purge deletes the
--- fleet's ACTIVE leases itself, so no live lease ever names a missing fleet. `posture`, `provider`, `model` and the `metered_*` counts are
--- what renewal charges against. `receipt` is the producer's receipt the runner
+-- fleet's ACTIVE leases itself, so no live lease ever names a missing fleet.
+-- `posture`, `provider` and `model` are what the lease's usage lines are priced
+-- against. `last_metered_at` is the lease's runtime cursor: each renewal, the
+-- report and the expiry sweep log the run time since it, on the database's
+-- clock, and advance it, never past `lease_expires_at`. `receipt` is the producer's receipt the runner
 -- echoes back; `posted_message_count` bounds the messages a lease may post.
 
 CREATE TABLE runner.leases (
@@ -27,9 +30,7 @@ CREATE TABLE runner.leases (
     posture                     TEXT    NOT NULL,
     provider                    TEXT    NOT NULL,
     model                       TEXT    NOT NULL,
-    metered_input_token_count   BIGINT  NOT NULL,
-    metered_cached_token_count  BIGINT  NOT NULL,
-    metered_output_token_count  BIGINT  NOT NULL,
+    last_metered_at             TIMESTAMPTZ(3)  NOT NULL,
     fencing_token               BIGINT  NOT NULL,
     lease_expires_at            TIMESTAMPTZ(3)  NOT NULL,
     status                      TEXT    NOT NULL,

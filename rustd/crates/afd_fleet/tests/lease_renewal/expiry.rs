@@ -40,7 +40,7 @@ async fn expire(running: &Running, half: Half) {
     running.fixtures.age(row, "lease_expires_at", LAPSE).await;
 }
 
-/// The lease's deadline, the slot's meter stamp and the slot's deadline.
+/// The lease's deadline, the lease's meter stamp and the slot's deadline.
 pub(super) async fn snapshot(running: &Running) -> (Timestamp, Timestamp, Timestamp) {
     let fixtures = &running.fixtures;
     let stamp = |row, column| async move {
@@ -51,7 +51,7 @@ pub(super) async fn snapshot(running: &Running) -> (Timestamp, Timestamp, Timest
     };
     (
         stamp(Row::Lease(running.lease.as_str()), "lease_expires_at").await,
-        stamp(Row::Slot(&running.fleet), "last_metered_at").await,
+        stamp(Row::Lease(running.lease.as_str()), "last_metered_at").await,
         stamp(Row::Slot(&running.fleet), "lease_expires_at").await,
     )
 }

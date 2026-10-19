@@ -130,7 +130,7 @@ pub(super) async fn run_one_to_settlement(
         .expect("the claim is still held");
     // At least one slice of runtime, metered on the database clock.
     fixtures
-        .age(Row::Slot(fleet), COLUMN_LAST_METERED, SLICE)
+        .age(Row::Lease(issued.lease_id.as_str()), COLUMN_LAST_METERED, SLICE)
         .await;
     let from = fixtures.metered_since(fleet).await;
     let settled_at = fixtures.enrolled_at();
@@ -139,7 +139,7 @@ pub(super) async fn run_one_to_settlement(
             leases,
             issued.lease_id.as_str(),
             runner,
-            afd_billing::Cumulative::default(),
+            &[],
             true,
             settled_at,
         )

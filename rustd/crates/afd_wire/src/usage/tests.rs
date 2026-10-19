@@ -5,7 +5,9 @@
 
 use garde::Validate as _;
 
-use super::{LINES_MAX, RUNTIME_MS_MAX, UsageLine, UsageLines};
+use super::{
+    DAEMON_SEQ_BASE, LINES_MAX, RUNNER_SEQ_MAX, RUNTIME_MS_MAX, RequestLines, RequestUsage, UsageLine,
+};
 
 const AT: &str = "2026-10-19T10:00:00.123Z";
 const PROMPT: u32 = 1_000;
@@ -60,33 +62,55 @@ fn runtime_past_an_hour_is_refused() {
     long.validate().expect("exactly an hour is allowed");
 }
 
-#[test]
-fn a_report_carries_one_to_the_most_lines() {
-    UsageLines(Vec::new())
-        .validate()
-        .expect_err("an empty report is refused");
-    UsageLines(vec![line(0)])
-        .validate()
-        .expect("one line is allowed");
-    let most = (0..LINES_MAX)
-        .map(|seq| line(u32::try_from(seq).expect("fits")))
-        .collect();
-    UsageLines(most)
-        .validate()
-        .expect("the most lines are allowed");
-    let over = (0..=LINES_MAX)
-        .map(|seq| line(u32::try_from(seq).expect("fits")))
-        .collect();
-    UsageLines(over)
-        .validate()
-        .expect_err("one past the most is refused");
+fn request(seq: u32) -> RequestUsage {
+    let full = line(seq);
+    RequestUsage {
+        seq,
+        at: full.at,
+        input_tokens: full.input_tokens,
+        cached_input_tokens: full.cached_input_tokens,
+        cache_write_tokens: full.cache_write_tokens,
+        cache_write_5m_tokens: full.cache_write_5m_tokens,
+        cache_write_1h_tokens: full.cache_write_1h_tokens,
+        output_tokens: full.output_tokens,
+    }
 }
 
 #[test]
-fn a_bad_line_inside_a_report_is_refused() {
-    let mut bad = line(1);
-    bad.runtime_ms = RUNTIME_MS_MAX + 1;
-    UsageLines(vec![line(0), bad])
+fn a_batch_carries_none_to_the_most_requests() {
+    for (count, valid) in [(0, true), (1, true), (LINES_MAX, true), (LINES_MAX + 1, false)] {
+        let batch = RequestLines(
+            (0..count)
+                .map(|seq| request(u32::try_from(seq).expect("fits")))
+                .collect(),
+        );
+        assert_eq!(batch.validate().is_ok(), valid, "{count} requests");
+    }
+}
+
+#[test]
+fn a_runner_numbers_below_the_daemons_range() {
+    request(RUNNER_SEQ_MAX).validate().expect("the top of the runner range");
+    RequestLines(vec![request(0), request(DAEMON_SEQ_BASE)])
         .validate()
-        .expect_err("a bad line inside a report is refused");
+        .expect_err("a request in the daemon's range is refused");
+}
+
+#[test]
+fn a_request_claims_no_runtime_and_a_runtime_line_no_tokens() {
+    let request_line = request(4).line();
+    assert_eq!(request_line.runtime_ms, 0);
+    assert_eq!(request_line.whole_prompt(), line(4).whole_prompt());
+    let runtime = UsageLine::runtime(DAEMON_SEQ_BASE, line(0).at, 2_000);
+    assert_eq!((runtime.whole_prompt(), runtime.output_tokens), (0, 0));
+    assert_eq!(runtime.runtime_ms, 2_000);
+}
+
+#[test]
+fn a_request_carrying_runtime_is_refused() {
+    let mut json = serde_json::to_value(request(0)).expect("a request serialises");
+    json.as_object_mut()
+        .expect("a request is an object")
+        .insert("runtime_ms".to_owned(), serde_json::json!(5));
+    serde_json::from_value::<RequestUsage>(json).expect_err("the daemon measures runtime");
 }

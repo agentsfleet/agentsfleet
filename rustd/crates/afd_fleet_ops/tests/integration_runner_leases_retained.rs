@@ -17,9 +17,11 @@ use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 
-/// One runner, one processed event on the fleet, and one reported lease of it.
+/// One runner, one processed event on the fleet, one reported lease of it and
+/// one usage line the lease logged.
 /// `$1` tenant · `$2` workspace · `$3` fleet · `$4` runner · `$5` event row ·
-/// `$6` lease · `$7` event id · `$8` host · `$9` token hash.
+/// `$6` lease · `$7` event id · `$8` host · `$9` token hash · `$10` the lines'
+/// work type · `$11` the line.
 const SEED: &str = r"
 WITH runner AS (
     INSERT INTO runner.runners
@@ -33,14 +35,23 @@ WITH runner AS (
        failure_reason, failure_detail, created_at, updated_at)
     VALUES ($5::uuid, $3::uuid, $2::uuid, $7, 'user:a', 'chat', 'processed', '{}'::jsonb, 900,
             NULL, NULL, now(), now())
+), line AS (
+    INSERT INTO billing.usage_lines
+      (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+       authoring_attempt_id, provider, model, posture, requested_at, input_token_count,
+       cached_input_token_count, cache_write_token_count, cache_write_5m_token_count,
+       cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id,
+       unpriced_token_count, charged_nanos, created_at, updated_at)
+    VALUES ($11::uuid, $10, $6::uuid, 0, $1::uuid, $2::uuid, $3::uuid, 'Doomed', $7, NULL,
+            'anthropic', 'model-a', 'platform', now(), 10, 2, 0, 0, 0, 3, 0, NULL, 15, 0,
+            now(), now())
 )
 INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
-   receipt, posture, provider, model, metered_input_token_count, metered_cached_token_count,
-   metered_output_token_count, fencing_token, lease_expires_at, status, posted_message_count,
+   receipt, posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count,
    created_at, updated_at)
 VALUES ($6::uuid, $4::uuid, $3::uuid, $2::uuid, $1::uuid, $5::uuid, now(), $7, 'platform',
-        'anthropic', 'model-a', 10, 2, 3, 1, now(), 'reported', 0, now(), now())
+        'anthropic', 'model-a', now(), 1, now(), 'reported', 0, now(), now())
 ";
 
 /// Deletes the fleet row the way a purge's final statement does.
@@ -89,6 +100,8 @@ async fn a_settled_lease_outlives_its_fleet_and_names_its_destination() {
         .bind(format!("event-{lease}"))
         .bind(format!("host-{lease}"))
         .bind(format!("hash-{lease}"))
+        .bind(afd_billing::sql::work::FLEET_LEASE)
+        .bind(mint_uuid7().as_str())
         .execute(&mut *connection)
         .await
         .expect("the runner, event and lease seed");
@@ -125,6 +138,15 @@ async fn a_settled_lease_outlives_its_fleet_and_names_its_destination() {
             .expect("a purged fleet's lease still reads, filtered by its fleet id"),
     );
     assert_eq!(retained.id, lease.as_str());
+    assert_eq!(
+        (
+            retained.metered_input_tokens,
+            retained.metered_cached_tokens,
+            retained.metered_output_tokens
+        ),
+        (10, 2, 3),
+        "the lease's tokens are what its usage lines record, past its fleet's purge"
+    );
     assert_eq!(retained.destination, LeaseDestination::FleetDeleted);
     assert_eq!(retained.fleet_name, None);
     assert_eq!(retained.event_type, None, "the event went with its fleet");

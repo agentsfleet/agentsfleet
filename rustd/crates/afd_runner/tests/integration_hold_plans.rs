@@ -79,11 +79,10 @@ WITH workspace AS (
 )
 INSERT INTO runner.fleet_slots
   (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
-   metered_input_token_count, metered_cached_token_count, metered_output_token_count,
-   last_metered_at, created_at, updated_at)
+   created_at, updated_at)
 SELECT slots.id, ranked.id, 1, $2,
        CASE WHEN slots.n % $5 = 0 THEN $2 + interval '1 millisecond' END,
-       0, 0, 0, $2, $2, $2
+       $2, $2
   FROM slots JOIN ranked ON ranked.rank = slots.n % $3";
 
 /// Refreshes the statistics the plan is costed from.

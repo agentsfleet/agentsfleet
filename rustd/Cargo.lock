@@ -686,6 +686,7 @@ name = "afd_fleet_ops"
 version = "0.62.1"
 dependencies = [
  "afd_api_wire",
+ "afd_billing",
  "afd_core",
  "afd_db",
  "afd_state",

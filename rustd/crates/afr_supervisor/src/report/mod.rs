@@ -63,10 +63,10 @@ impl Ending {
 
 /// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
 /// trace encoded, when it called a tool, and `held_until`: when the sandbox it
-/// left held for the fleet's next lease lapses, if it left one. Its tokens are
-/// the result's when the run handed one back, and otherwise what `meter`
-/// counted turn by turn, so a run that never finished still bills what it
-/// spent.
+/// left held for the fleet's next lease lapses, if it left one. It carries every
+/// request line no renewal recorded, so a run that never finished still bills
+/// what it spent; its token total is the result's when the run handed one back,
+/// for the event history.
 pub(crate) fn report<'a>(
     lease: &'a LeasePayload<'a>,
     ending: &'a Ending,
@@ -86,18 +86,7 @@ pub(crate) fn report<'a>(
     let response_text = result.map_or(Cow::Borrowed(""), |result| {
         Cow::Borrowed(result.content.as_ref())
     });
-    let spent = meter.read();
-    let (tokens, input, cached_input, output) = result.map_or(
-        (spent.total(), spent.input, spent.cached_input, spent.output),
-        |result| {
-            (
-                result.token_count,
-                result.input_tokens,
-                result.cached_input_tokens,
-                result.output_tokens,
-            )
-        },
-    );
+    let tokens = result.map_or_else(|| meter.read().total(), |result| result.token_count);
     ReportRequest {
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),
@@ -107,9 +96,7 @@ pub(crate) fn report<'a>(
         failure_detail,
         response_text: response_text.clone(),
         tokens,
-        input_tokens: narrow(input),
-        cached_input_tokens: narrow(cached_input),
-        output_tokens: narrow(output),
+        requests: meter.unrecorded(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: narrow(first_chunk.map_or(0, saturating_millis)),
             wall_ms: saturating_millis(wall),

@@ -29,11 +29,12 @@ pub(crate) const COLUMN_LEASED_UNTIL: &str = "lease_expires_at";
 /// The `runner.fleet_slots` sticky hint: which runner last leased the fleet.
 pub(crate) const COLUMN_LAST_RUNNER: &str = "last_runner_id";
 
-/// The `runner.fleet_slots` metering column a fresh lease resets.
-pub(crate) const COLUMN_METERED_INPUT: &str = "metered_input_token_count";
-
-/// The `runner.fleet_slots` column the runtime meter's last advance lives in.
+/// The `runner.leases` column a lease's runtime meter last advanced to.
 pub(crate) const COLUMN_LAST_METERED: &str = "last_metered_at";
+
+/// The runtime cursor of `fleet`'s newest lease.
+const NEWEST_LEASE_METERED: &str = "SELECT last_metered_at FROM runner.leases \
+     WHERE fleet_id = $1::uuid ORDER BY fencing_token DESC LIMIT 1";
 
 /// Whether the workspace a seed would write already exists.
 const WORKSPACE_EXISTS: &str =
@@ -47,9 +48,8 @@ const DATABASE_NOW: &str = "SELECT clock_timestamp()::timestamptz(3)";
 const MAKE_STICKY: &str = "\
 INSERT INTO runner.fleet_slots
   (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
-   metered_input_token_count, metered_cached_token_count, metered_output_token_count,
-   last_metered_at, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, 1, now() - interval '1 day', NULL, 0, 0, 0, now(), now(), now())";
+   created_at, updated_at)
+VALUES ($1::uuid, $2::uuid, 1, now() - interval '1 day', NULL, now(), now())";
 
 impl Fixtures {
     /// Expires one lease in place, as the liveness sweep would once its holder
@@ -77,20 +77,6 @@ impl Fixtures {
             .execute(&mut *connection)
             .await
             .expect("the lease delete must run");
-    }
-
-    /// Stands a metering cursor up mid-slice, as a dying holder would leave it.
-    pub(crate) async fn set_metered_input(&self, fleet: &str, tokens: i64) {
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query(
-            "UPDATE runner.fleet_slots SET metered_input_token_count = $2 \
-             WHERE fleet_id = $1::uuid",
-        )
-        .bind(fleet)
-        .bind(tokens)
-        .execute(&mut *connection)
-        .await
-        .expect("the meter update must run");
     }
 
     /// Seeds a fleet placeable only by a runner carrying `tag`, with the
@@ -208,12 +194,16 @@ impl Fixtures {
         (output, before..=after)
     }
 
-    /// The instant `fleet`'s runtime meter last advanced to, which issue and
-    /// renewal stamp from the database clock. A slice a test reports is
-    /// measured from here, as the report's own charge is.
+    /// The instant `fleet`'s newest lease's runtime meter last advanced to,
+    /// which issue and renewal stamp from the database clock. A slice a test
+    /// reports is measured from here, as the report's own charge is.
     pub(crate) async fn metered_since(&self, fleet: &str) -> Timestamp {
-        self.instant(Row::Slot(fleet), COLUMN_LAST_METERED)
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(NEWEST_LEASE_METERED)
+            .bind(fleet)
+            .fetch_one(&mut *connection)
             .await
-            .expect("the slot carries a meter stamp")
+            .expect("the fleet has a lease with a meter stamp")
+            .to_jiff()
     }
 }

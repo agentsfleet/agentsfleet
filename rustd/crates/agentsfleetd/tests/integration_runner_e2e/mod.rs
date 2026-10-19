@@ -171,12 +171,22 @@ async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &
         http,
         run,
         &format!("/v1/runners/me/leases/{lease_id}/renew"),
-        &json!({"input_tokens": 10, "cached_input_tokens": 2, "output_tokens": 3}),
+        &json!({"requests": [{
+            "seq": 0, "at": afd_core::clock::now().to_string(),
+            "input_tokens": 10, "cached_input_tokens": 2, "cache_write_tokens": 0,
+            "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0, "output_tokens": 3,
+        }]}),
     )
     .await;
     assert_eq!(renewed.status().as_u16(), 200);
+    let renewed = json(renewed).await;
+    assert_eq!(
+        field(&renewed, "recorded_through"),
+        &json!(0),
+        "the renewal recorded the one request line it carried"
+    );
     assert!(
-        field(&json(renewed).await, "lease_expires_at")
+        field(&renewed, "lease_expires_at")
             .as_str()
             .and_then(|expires| expires.parse::<jiff::Timestamp>().ok())
             .is_some_and(|expires| expires > run.seeded_at),

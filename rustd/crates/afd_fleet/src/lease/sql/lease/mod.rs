@@ -22,12 +22,6 @@ pub use self::row::{INSERT_LEASE_WITH_EVENT, LeaseRow};
 /// take the update arm rather than colliding on an index this statement does
 /// not name.
 ///
-/// The durable metering cursor is seeded `0`/now on a brand-new slot and is
-/// deliberately ABSENT from the `ON CONFLICT` SET, so it survives a reclaim:
-/// the re-leased run meters forward from the dead holder's progress rather than
-/// from zero. [`INSERT_LEASE_WITH_EVENT`]'s `held` arm is what clears it, and
-/// only a FRESH lease sets the flag that arms it.
-///
 /// Answers no row when a live runner still holds the slot — that absence is the
 /// `.taken` verdict, not an error.
 ///

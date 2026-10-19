@@ -16,7 +16,6 @@
 )]
 
 use crate::queue;
-use afd_billing::Cumulative;
 use afd_core::id::Uuid7;
 use afd_core::timing::{LEASE_TTL, MAX_RUNTIME};
 use afd_fleet::lease::sql::meter::Metering;
@@ -42,7 +41,7 @@ async fn extend(
             Metering {
                 lease_id: lease,
                 runner_id: runner,
-                cumulative: Cumulative::default(),
+                requests: &[],
             },
             lease_key,
             pricing,

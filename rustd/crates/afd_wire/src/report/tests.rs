@@ -25,7 +25,9 @@ fn report_with(tool_calls: &str) -> String {
     format!(
         r#"{{"lease_id":"lease","event_id":"1-0","fencing_token":7,"outcome":"processed",
             "failure_reason":null,"failure_detail":"","response_text":"done","tokens":3,
-            "input_tokens":1,"cached_input_tokens":0,"output_tokens":2,
+            "requests":[{{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":1,
+                "cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,
+                "cache_write_1h_tokens":0,"output_tokens":2}}],
             "telemetry":{{"time_to_first_token_ms":4,"wall_ms":5}},
             "checkpoint":{{"last_event_id":"1-0","last_response":""}}{tool_calls}}}"#
     )
@@ -64,4 +66,28 @@ fn test_report_tool_calls_never_refuse_report() {
         Some(Ok(1)),
         "only a valid trace survives"
     );
+}
+
+/// A runner still sending the cumulative totals the daemon used to diff is
+/// refused, naming the field: per-request lines replaced them, and no alias
+/// keeps the old body alive.
+#[test]
+fn a_cumulative_report_body_is_refused() {
+    let old = report_with("").replace(
+        r#""requests":[{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":1,
+                "cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,
+                "cache_write_1h_tokens":0,"output_tokens":2}],"#,
+        r#""requests":[],"input_tokens":1,"cached_input_tokens":0,"output_tokens":2,"#,
+    );
+    let refused = serde_json::from_str::<super::ReportRequest<'_>>(&old)
+        .err()
+        .map(|error| error.to_string());
+    assert!(
+        refused.as_deref().is_some_and(|reason| reason.contains("input_tokens")),
+        "{refused:?}"
+    );
+    let renew = serde_json::from_str::<super::RenewRequest>(
+        r#"{"input_tokens":1,"cached_input_tokens":0,"output_tokens":2}"#,
+    );
+    assert!(renew.is_err(), "a cumulative renewal is refused");
 }
