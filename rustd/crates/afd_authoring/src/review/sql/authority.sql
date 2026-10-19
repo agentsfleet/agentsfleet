@@ -3,12 +3,11 @@ WITH person AS MATERIALIZED (
       FROM identity.users u
       JOIN identity.workspaces w ON w.id = $2::uuid
      WHERE u.id = $1::uuid
-       FOR SHARE OF u, w
+       FOR SHARE OF u
 ), membership AS MATERIALIZED (
     SELECT m.id, m.role, m.created_at
       FROM identity.memberships m
       JOIN person p ON m.tenant_id = p.owner AND m.user_id = p.id
-       FOR SHARE OF m
 )
 SELECT encode(sha256(convert_to(jsonb_build_array(
            p.id, p.tenant_id, p.workspace_id, p.owner, m.id, m.role, m.created_at
