@@ -205,3 +205,26 @@ fn patch_requires_a_bounded_body() {
     );
     assert_eq!(patch(&valid()), Ok(()));
 }
+
+/// Postgres refuses NUL inside `text`: every string an operator types is
+/// refused here, before the store would answer it as a 500.
+#[test]
+fn a_nul_in_any_text_field_is_refused_before_the_store() {
+    for pointer in [
+        "/provider",
+        "/model_id",
+        "/metadata/display_name",
+        "/metadata/context_source_url",
+        "/prices/0/source_url",
+        "/prices/0/conditions",
+    ] {
+        let body = with(valid(), pointer, serde_json::json!("a\u{0}b"));
+        assert!(create(&body).is_err(), "{pointer} reached the store");
+        if pointer.starts_with("/metadata") || pointer.starts_with("/prices") {
+            assert!(
+                patch(&body).is_err(),
+                "{pointer} reached the store on patch"
+            );
+        }
+    }
+}

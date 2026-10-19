@@ -36,14 +36,14 @@ pub const NO_BASE_TIER: &str = "prices must include a tier with prompt_tokens_ab
 pub struct CatalogueMetadata<'a> {
     /// Human-readable label; never used to route a request.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = DISPLAY_NAME_MAX_BYTES))]
+    #[garde(length(bytes, min = 1, max = DISPLAY_NAME_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub display_name: Cow<'a, str>,
     /// The exact served context limit, from the provider's own models API.
     #[garde(range(min = CONTEXT_CAP_MIN))]
     pub context_cap_tokens: i32,
     /// The provider models API response that supplied the limit.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES))]
+    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub context_source_url: Cow<'a, str>,
     /// When that response was verified.
     #[serde(with = "afd_wire::instant")]
@@ -103,7 +103,7 @@ pub struct CataloguePrice<'a> {
     pub output_nanos_per_mtok: i64,
     /// The provider's pricing page or response the quote came from.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES))]
+    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub source_url: Cow<'a, str>,
     /// When the quote was verified.
     #[serde(with = "afd_wire::instant")]
@@ -111,7 +111,7 @@ pub struct CataloguePrice<'a> {
     pub verified_at: jiff::Timestamp,
     /// Scope, exclusions and provider-specific conditions; may be empty.
     #[serde(borrow)]
-    #[garde(length(bytes, max = CONDITIONS_MAX_BYTES))]
+    #[garde(length(bytes, max = CONDITIONS_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub conditions: Cow<'a, str>,
 }
 
