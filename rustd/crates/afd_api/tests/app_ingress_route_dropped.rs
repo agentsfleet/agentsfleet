@@ -32,8 +32,9 @@ const APP_RUN_SUCCESS: &str =
 
 /// A terminal production deployment, as an App sends it.
 ///
-/// Minimal on purpose: `octocrab` types `deployment` and `deployment_status` as
-/// free-form JSON, so what this fixture has to get right is the ENVELOPE — the
+/// Minimal on purpose: the reader declares no `deployment_status` body and
+/// reads such a delivery no further than its envelope, so what this fixture has
+/// to get right is the ENVELOPE — the
 /// installation this deployment's scripted lookup answers for, and a repository
 /// a subscriber could match. The payload is here to be classified, and the
 /// point of the test is that classification has nowhere to send it.

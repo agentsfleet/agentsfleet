@@ -8,6 +8,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
+use super::super::api::sign;
 use super::super::exchange::{Exchange, mint_at};
 use super::fake_github::{
     CREATED, FakeGithub, HOLDS_EVERYTHING, INSTALLATION_ID, NOW, OK, binding, loopback_client,
@@ -120,4 +121,45 @@ async fn an_api_root_that_is_not_a_uri_signs_nothing() {
         signed_mint(&app(&app_key()), "not a uri").await,
         Outcome::MintFailed(Retry::Permanent)
     ));
+}
+
+/// The ceiling GitHub puts on an App JWT's `exp`, counted from its `iat`.
+const GITHUB_JWT_CEILING_SECONDS: i64 = 600;
+
+#[test]
+fn test_github_app_without_octocrab() {
+    // The App JWT as `jsonwebtoken` 11 mints it, with no GitHub SDK between:
+    // an RS256 header GitHub accepts, the App as issuer, and a window that
+    // opens a minute back and closes inside GitHub's ten-minute ceiling.
+    let key = app_key();
+    let signing = jsonwebtoken::EncodingKey::from_rsa_pem(key.serialize_pem().as_bytes())
+        .expect("the App key is an RSA PEM");
+
+    let jwt = sign(APP_ID, &signing, NOW).expect("a usable key signs");
+
+    let header = jsonwebtoken::decode_header(jwt.as_str()).expect("a JWT header");
+    assert_eq!(header.alg, jsonwebtoken::Algorithm::RS256);
+    assert_eq!(header.typ.as_deref(), Some("JWT"));
+    let public = jsonwebtoken::DecodingKey::from_rsa_pem(key.public_key_pem().as_bytes())
+        .expect("the App key's public half is a PEM");
+    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256);
+    validation.validate_exp = false;
+    let claims = jsonwebtoken::decode::<Claims>(jwt.as_str(), &public, &validation)
+        .expect("the JWT verifies under the App's public key")
+        .claims;
+    assert_eq!(claims.iss, APP_ID);
+    assert_eq!(claims.iat, NOW.as_second() - JWT_BACKDATE_SECONDS);
+    assert_eq!(claims.exp - claims.iat, JWT_LIFETIME_SECONDS);
+    assert!(
+        claims.exp - claims.iat <= GITHUB_JWT_CEILING_SECONDS,
+        "GitHub refuses an App JWT whose exp lies more than ten minutes past its iat"
+    );
+}
+
+#[test]
+fn a_key_that_is_not_rsa_cannot_sign_an_app_jwt() {
+    // An HMAC key handed to an RS256 header is refused at signing, never sent.
+    let hmac = jsonwebtoken::EncodingKey::from_secret(b"not an rsa key");
+
+    assert!(sign(APP_ID, &hmac, NOW).is_none());
 }

@@ -26,7 +26,6 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi"]
 afd_authoring.workspace = true
 afd_db.workspace = true
 afd_fleet_lifecycle.workspace = true
-octocrab.workspace = true
 jiff.workspace = true
 afd_gate.workspace = true
 afd_approval.workspace = true

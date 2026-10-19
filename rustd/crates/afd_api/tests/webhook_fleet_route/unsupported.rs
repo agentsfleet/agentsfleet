@@ -31,3 +31,24 @@ async fn a_signed_event_with_no_rule_is_dropped_with_its_reason() {
         "an event this daemon serves no rule for must not reach the stream"
     );
 }
+
+#[tokio::test]
+async fn an_allow_list_is_measured_against_the_header_not_the_payload() {
+    let ingress = serving(TRIGGER_PUSH_ONLY, FleetStatus::Active.as_str());
+
+    // The header says `push`, which the allow-list admits, while the body is a
+    // `workflow_run`. The delivery gets past the allow-list on the header's
+    // word and is then read AS a push — an event this daemon has no rule for,
+    // so it wakes nothing. The order is what matters: an author's allow-list is
+    // written in GitHub's event vocabulary, and inferring the kind from the
+    // payload would let a holder of the secret present a body that classifies
+    // as one event while the header says another.
+    let response = deliver(&ingress, EVENT_PUSH, signed::DELIVERY_ID, RUN_FAILURE).await;
+
+    assert_eq!(ignored_reason(response).await, REASON_UNSUPPORTED);
+    assert!(
+        ingress.deliveries().is_empty(),
+        "a workflow_run body under a push header must not reach the stream: {:?}",
+        ingress.deliveries()
+    );
+}
