@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_ingress::{Delivery, Fanout, Surface};
+use afd_webhook::Scheme;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
@@ -49,10 +50,8 @@ const EVENT_APPEND: &str = "app_ingress_append_failed";
 /// The scoped event a dropped delivery is logged under.
 const EVENT_DROPPED: &str = "app_ingress_dropped";
 
-/// The one provider this daemon serves an App ingress for.
-///
-/// [`afd_webhook::Scheme::for_source`] resolves the signature scheme from this
-/// word.
+/// The one provider this daemon serves an App ingress for; its signature
+/// scheme is [`SCHEME_GITHUB`].
 const PROVIDER_GITHUB: &str = "github";
 
 /// The vault key the GitHub App's own webhook secret is stored under.
@@ -60,6 +59,10 @@ const PROVIDER_GITHUB: &str = "github";
 /// An operator stores the secret once under this exact name and every request
 /// reads it back by the same name, so renaming it strands the stored secret.
 const APP_IDENTITY_GITHUB: &str = "github-app";
+
+/// The scheme a GitHub App signs its deliveries under: the hex HMAC over the
+/// body in `x-hub-signature-256`, the one [`Scheme::source`] names `github`.
+const SCHEME_GITHUB: Scheme = Scheme::BodyHex;
 
 /// The delivery kind an App sends to prove the endpoint answers.
 ///
@@ -149,7 +152,7 @@ pub(crate) async fn receive<D: Services>(
     // Nothing above this line has read the body as anything but bytes.
     let proven = webhook::verified_app(
         &services,
-        PROVIDER_GITHUB,
+        SCHEME_GITHUB,
         APP_IDENTITY_GITHUB,
         &headers,
         body,
