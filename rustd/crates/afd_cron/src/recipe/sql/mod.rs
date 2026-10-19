@@ -6,6 +6,11 @@
 
 /// The fleet's recipe-owned schedules, locked, each with whether a live syncer
 /// holds it — judged on `clock_timestamp()`, after the lock wait.
+///
+/// The clock is read outside the locking `MATERIALIZED` step. Inside it, the
+/// select list is computed before the lock is granted, and a holder that only
+/// locked the row triggers no re-check, so a lease that lapsed during the wait
+/// would still read as held.
 pub(super) const ROWS: &str = include_str!("rows.sql");
 
 /// A recipe slot's first schedule, unclaimed and waiting for its first sync.
