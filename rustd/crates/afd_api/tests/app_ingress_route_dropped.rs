@@ -14,7 +14,7 @@
 )]
 
 use crate::app_ingress_route::{
-    APP_RUN_FAILURE, APP_SECRET, EVENT_WORKFLOW_RUN, SHIPPED, code, deliver, deployment, subscriber,
+    APP_RUN_FAILURE, APP_SECRET, EVENT_WORKFLOW_RUN, SHIPPED, deliver, deployment, subscriber,
 };
 use crate::harness;
 
@@ -77,7 +77,7 @@ async fn a_delivery_for_an_installation_no_workspace_claims_is_dropped_not_refus
 
     assert_eq!(
         dropped_for(answered).await,
-        code(error_code::WEBHOOK_INSTALL_NOT_MAPPED)
+        error_code::WEBHOOK_INSTALL_NOT_MAPPED.as_str()
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -100,7 +100,7 @@ async fn a_delivery_no_fleet_subscribes_to_is_dropped() {
 
     assert_eq!(
         dropped_for(answered).await,
-        code(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND)
+        error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str()
     );
     assert!(
         ingress.deliveries().is_empty(),

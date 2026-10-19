@@ -10,17 +10,12 @@
 //! real token for a different query. The cursors are minted through the same
 //! codec production uses, so the suite cannot drift from the wire format.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
 use afd_auth::scope::ScopeSet;
 use afd_tenant::models::cursor::{CURSOR_VERSION, Cursor, render};
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::Fleet;
 
@@ -42,19 +37,6 @@ async fn read(path: &str, credential: Option<&str>) -> axum::response::Response 
         .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
         .router();
     harness::send(&router, Method::GET, path, credential, "").await
-}
-
-/// Reads a problem document's `detail` and `error_code` back.
-async fn refusal_of(response: axum::response::Response) -> (String, String) {
-    let document = harness::json_body(response).await;
-    let field = |name: &str| {
-        document
-            .get(name)
-            .and_then(Value::as_str)
-            .expect("every refusal carries the envelope's fields")
-            .to_owned()
-    };
-    (field("detail"), field("error_code"))
 }
 
 /// A cursor the production codec issued for the default query.
@@ -91,7 +73,7 @@ async fn every_wrong_limit_earns_the_bounds_refusal() {
         let path = format!("{MODELS}?limit={wrong}");
         let response = read(&path, Some(TENANT_KEY)).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
-        let (detail, code) = refusal_of(response).await;
+        let (_, code, detail) = harness::problem(response).await;
         assert_eq!(
             detail,
             afd_api::handler::tenant::DETAIL_CATALOGUE_LIMIT,
@@ -127,7 +109,7 @@ async fn a_token_nobody_issued_is_refused_as_malformed() {
         let path = format!("{MODELS}?starting_after={foreign}");
         let response = read(&path, Some(TENANT_KEY)).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
-        let (detail, code) = refusal_of(response).await;
+        let (_, code, detail) = harness::problem(response).await;
         assert_eq!(
             detail,
             afd_api::handler::tenant::DETAIL_CURSOR_MALFORMED,
@@ -145,14 +127,14 @@ async fn a_real_cursor_for_a_different_query_is_refused_distinctly() {
     let path = format!("{MODELS}?limit=25&starting_after={}", minted(50, None));
     let response = read(&path, Some(TENANT_KEY)).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let (detail, code) = refusal_of(response).await;
+    let (_, code, detail) = harness::problem(response).await;
     assert_eq!(detail, afd_api::handler::tenant::DETAIL_CURSOR_MISMATCH);
     assert_eq!(code, "UZ-LIBRARY-002");
 
     // A provider mismatch is the same second refusal.
     let path = format!("{MODELS}?starting_after={}", minted(50, Some("openai")));
     let response = read(&path, Some(TENANT_KEY)).await;
-    let (detail, code) = refusal_of(response).await;
+    let (_, code, detail) = harness::problem(response).await;
     assert_eq!(detail, afd_api::handler::tenant::DETAIL_CURSOR_MISMATCH);
     assert_eq!(code, "UZ-LIBRARY-002");
 }
@@ -183,7 +165,7 @@ async fn a_cursor_whose_id_is_no_identifier_is_malformed() {
     });
     let path = format!("{MODELS}?starting_after={token}");
     let response = read(&path, Some(TENANT_KEY)).await;
-    let (detail, code) = refusal_of(response).await;
+    let (_, code, detail) = harness::problem(response).await;
     assert_eq!(detail, afd_api::handler::tenant::DETAIL_CURSOR_MALFORMED);
     assert_eq!(code, "UZ-LIBRARY-001");
 }

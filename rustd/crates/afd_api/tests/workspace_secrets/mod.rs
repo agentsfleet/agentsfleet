@@ -23,7 +23,7 @@
 #![cfg(feature = "test-util")]
 
 use crate::harness;
-use crate::harness::detail_of;
+use crate::harness::{assert_reached_the_verb, detail_of};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_vault::MAX_DATA_BYTES;
@@ -83,24 +83,6 @@ async fn send(
 /// One authorised request, for the tests isolating an axis other than scope.
 async fn authorised(method: Method, path: &str, body: &str) -> axum::response::Response {
     send(EVERY_SECRET_SCOPE, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Asserts the request got PAST every layer in front of the verb.
-///
-/// 503 with the datastore's sentence is the one answer only the STORE can
-/// produce, so reaching it proves the guard, the rung, the ownership layer and
-/// both constructors all admitted the request.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    assert_eq!(
-        detail_of(response).await,
-        afd_vault::error::detail::DATABASE_UNAVAILABLE,
-        "{case}: the refusal is the store's, not a layer's"
-    );
 }
 
 /// Every verb on this surface, with the scope its route row demands and a body

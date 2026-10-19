@@ -14,7 +14,7 @@
 )]
 
 use crate::harness;
-use crate::harness::detail_of;
+use crate::harness::{assert_reached_the_verb, detail_of};
 
 use http::{Method, StatusCode};
 
@@ -53,20 +53,6 @@ async fn authorised(method: Method, path: &str, body: &str) -> axum::response::R
         .with_person(TENANT_KEY, SUBJECT, EVERY_FLEET_SCOPE)
         .router();
     harness::send(&router, method, path, Some(TENANT_KEY), body).await
-}
-
-/// Asserts the request got PAST the edge and reached the store.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    assert_eq!(
-        detail_of(response).await,
-        afd_fleet_lifecycle::error::detail::DATABASE_UNAVAILABLE,
-        "{case}: the refusal is the store's, not a layer's"
-    );
 }
 
 #[tokio::test]

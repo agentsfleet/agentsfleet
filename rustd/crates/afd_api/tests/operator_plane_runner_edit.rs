@@ -11,9 +11,9 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_runner::validate::DETAIL_LABELS;
 use afd_wire::runner::{LABEL_MAX_BYTES, LABELS_MAX};
 use http::{Method, StatusCode};
-use serde_json::{Value, json};
+use serde_json::json;
 
-use self::harness::{Fleet, json_body, send};
+use self::harness::{Fleet, send};
 
 const TENANT_KEY: &str = "agt_t0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const OPERATOR: &str = "user_operator_runner_edit";
@@ -47,12 +47,6 @@ fn too_long() -> String {
 
 fn both(labels: &str) -> String {
     format!(r#"{{"assigned_policy":{POLICY},"labels":{labels}}}"#)
-}
-
-async fn refusal(response: axum::response::Response) -> (Option<String>, Option<String>) {
-    let body = json_body(response).await;
-    let field = |name: &str| body.get(name).and_then(Value::as_str).map(str::to_owned);
-    (field("error_code"), field("detail"))
 }
 
 /// No credential is a 401 whatever the body: the guard answers before the
@@ -93,13 +87,11 @@ async fn invalid_labels_are_refused_with_the_enrolment_sentence_before_io() {
     let past_cap = json!(past_cap).to_string();
     for body in [too_many(), too_long(), both(&past_cap)] {
         let refused = patch(&router, Some(TENANT_KEY), &body).await;
-        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "body={body}");
+        let (status, code, detail) = harness::problem(refused).await;
         assert_eq!(
-            refusal(refused).await,
-            (
-                Some("UZ-REQ-001".to_owned()),
-                Some(DETAIL_LABELS.to_owned())
-            )
+            (status, code.as_str(), detail.as_str()),
+            (StatusCode::BAD_REQUEST, "UZ-REQ-001", DETAIL_LABELS),
+            "body={body}"
         );
     }
 }
@@ -119,13 +111,10 @@ async fn an_action_beside_labels_and_a_misshapen_label_body_are_malformed() {
         r#"{"labels":null}"#.to_owned(),
     ] {
         let refused = patch(&router, Some(TENANT_KEY), &body).await;
-        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "body={body}");
+        let (status, code, detail) = harness::problem(refused).await;
         assert_eq!(
-            refusal(refused).await,
-            (
-                Some("UZ-REQ-001".to_owned()),
-                Some(DETAIL_PATCH_BODY.to_owned())
-            ),
+            (status, code.as_str(), detail.as_str()),
+            (StatusCode::BAD_REQUEST, "UZ-REQ-001", DETAIL_PATCH_BODY),
             "body={body}"
         );
     }

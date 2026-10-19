@@ -40,7 +40,6 @@ use axum::extract::Path;
 use axum::response::Response;
 use axum::routing::get;
 use http::{Method, StatusCode};
-use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -125,20 +124,9 @@ async fn authorised(path: &str) -> Response {
     send(FLEET_READ, Method::GET, path, Some(TENANT_KEY)).await
 }
 
-/// A response reduced to the three facts a [`Refusal`] names.
-async fn refusal_of(response: Response) -> (StatusCode, String, String) {
-    let status = response.status();
-    let body = harness::json_body(response).await;
-    let read = |key: &str| {
-        let field = body.get(key).and_then(Value::as_str);
-        field.expect("every refusal carries it").to_owned()
-    };
-    (status, read("detail"), read("error_code"))
-}
-
 /// Asserts a response is exactly the refusal named.
 async fn assert_refusal(response: Response, expected: Refusal, case: &str) {
-    let (status, detail, code) = refusal_of(response).await;
+    let (status, code, detail) = harness::problem(response).await;
     let seen = (status, detail.as_str(), code.as_str());
     assert_eq!(
         seen,

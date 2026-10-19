@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, json_body, send_with_headers};
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code;
 use afd_ingress::Surface;
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -69,11 +69,6 @@ fn now() -> i64 {
 /// Where a Svix-fronted delivery for one fleet arrives.
 fn path(fleet: &str) -> String {
     format!("/v1/webhooks/svix/{fleet}")
-}
-
-/// The registry code, as it is spelled on the wire.
-fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
 }
 
 /// A fleet resolving to `status`, whose workspace holds the Svix secret.
@@ -198,11 +193,8 @@ async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
     let document = json_body(refused).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_SIGNATURE_INVALID))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_SIGNATURE_INVALID.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -244,11 +236,8 @@ async fn a_verified_body_that_is_not_a_document_is_refused() {
     let document = json_body(refused).await;
     assert!(status.is_client_error(), "{status} {document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_MALFORMED))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_MALFORMED.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -270,11 +259,8 @@ async fn a_signature_bound_to_another_delivery_is_refused() {
     let document = json_body(refused).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_SIGNATURE_INVALID))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_SIGNATURE_INVALID.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -295,11 +281,8 @@ async fn a_fleet_whose_workspace_holds_no_svix_secret_verifies_nothing() {
     let document = json_body(refused).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        Some(code(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED))
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str())
     );
     assert!(
         ingress.deliveries().is_empty(),

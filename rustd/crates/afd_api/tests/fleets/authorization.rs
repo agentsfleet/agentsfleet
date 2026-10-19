@@ -22,10 +22,6 @@
 //! row to lose against, because the predicate doing the work is in the SQL.
 //! That proof rides the integration lane.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test target: a step indexes the problem body it just received"
-)]
 
 use crate::harness;
 use crate::harness::detail_of;
@@ -97,25 +93,6 @@ async fn authorised(method: Method, path: &str, body: &str) -> axum::response::R
     send(EVERY_FLEET_SCOPE, method, path, Some(TENANT_KEY), body).await
 }
 
-/// Asserts the request got PAST every layer in front of the verb.
-///
-/// 503 with the datastore's sentence is the one answer only the STORE can
-/// produce, so reaching it proves the guard, the rung and the ownership layer
-/// all admitted the request.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    let problem = harness::json_body(response).await;
-    assert_eq!(
-        problem["error_code"],
-        afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
-        "{case}"
-    );
-}
-
 /// Every verb on this surface, with the scope its route row demands.
 fn every_verb() -> [(Method, String, ScopeSet); 5] {
     [
@@ -143,7 +120,18 @@ async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
             _reads_and_deletes => "",
         };
         let response = authorised(method.clone(), &path, body).await;
-        assert_reached_the_verb(response, &format!("{method} {path}")).await;
+        // The code alone, not `harness::assert_reached_the_verb`: the fleet
+        // verbs render this outage in two sentences today (the store's, and
+        // the problem catalogue's title), and the code is the store-only proof.
+        let (status, code, _sentence) = harness::problem(response).await;
+        assert_eq!(
+            (status, code.as_str()),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
+            ),
+            "{method} {path}: only the verb answers with the datastore's refusal"
+        );
     }
 }
 

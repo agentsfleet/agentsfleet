@@ -22,18 +22,14 @@
 //! hours later carries a signature that is still arithmetically valid.
 
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
-)]
 
 use crate::harness;
 
 use std::sync::Arc;
 
 use self::harness::webhook as signed;
-use self::harness::{Fleet, Scripted, json_body, send_with_headers};
-use afd_core::error_code::{self, ErrorCode};
+use self::harness::{Fleet, Scripted, refusal_code, send_with_headers};
+use afd_core::error_code;
 use afd_webhook::{MAX_DRIFT_SECONDS, Scheme};
 use http::{Method, StatusCode};
 
@@ -80,23 +76,7 @@ async fn refused(ingress: &Arc<Scripted>, signature: &str, timestamp: &str) -> S
         .router();
     let headers = signed::approval_headers(signature, timestamp);
     let response = send_with_headers(&router, Method::POST, &path(), None, PAYLOAD, &headers).await;
-
-    let status = response.status();
-    let document = json_body(response).await;
-    assert!(
-        status.is_client_error(),
-        "a refusal is the sender's to fix, so it is a 4xx: {status} {document}"
-    );
-    document
-        .get("error_code")
-        .and_then(serde_json::Value::as_str)
-        .expect("every refusal carries its registry code")
-        .to_owned()
-}
-
-/// The registry code, as it is spelled on the wire.
-fn code(code: ErrorCode) -> String {
-    code.as_str().to_owned()
+    refusal_code(response).await
 }
 
 /// A signature over `body` at `timestamp`, under `secret`.
@@ -111,7 +91,7 @@ async fn a_deployment_holding_no_signing_secret_refuses_before_it_verifies() {
 
     assert_eq!(
         refused(&deployment(None), &presented, &at).await,
-        code(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED),
+        error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str(),
         "without a secret there is nothing to check against, and accepting an \
          unverified callback on a public endpoint is worse than serving none"
     );
@@ -137,52 +117,42 @@ async fn a_deployment_with_no_admin_workspace_refuses_before_it_reads_a_secret()
     let headers = signed::approval_headers(&presented, &at);
     let response = send_with_headers(&router, Method::POST, &path(), None, PAYLOAD, &headers).await;
 
-    let document = json_body(response).await;
     assert_eq!(
-        document
-            .get("error_code")
-            .and_then(serde_json::Value::as_str)
-            .expect("every refusal carries its registry code"),
-        code(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED),
+        refusal_code(response).await,
+        error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str(),
         "a secret it cannot address is a secret it does not have"
     );
 }
 
+/// Every callback that does not prove itself earns one answer.
+///
+/// A wrong key, a payload flipped after signing, a proof bound to another
+/// instant, an absent signature and a malformed one all answer `UZ-WH-010`.
 #[tokio::test]
-async fn a_callback_signed_with_the_wrong_key_is_refused() {
-    let at = now().to_string();
-    let presented = proof(signed::WRONG_SECRET, &at, PAYLOAD);
-
-    assert_eq!(
-        refused(&deployment(Some(PLATFORM_SECRET)), &presented, &at).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID)
-    );
-}
-
-#[tokio::test]
-async fn a_payload_changed_after_signing_is_refused() {
-    let at = now().to_string();
-    let presented = proof(PLATFORM_SECRET, &at, r#"{"decision":"deny"}"#);
-
-    assert_eq!(
-        refused(&deployment(Some(PLATFORM_SECRET)), &presented, &at).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID),
-        "the signature covers the body, so flipping approve to deny invalidates it"
-    );
-}
-
-#[tokio::test]
-async fn a_signature_bound_to_another_instant_is_refused() {
+async fn a_callback_that_does_not_prove_itself_is_refused() {
     let at = now().to_string();
     let other = (now() + 1).to_string();
-    let presented = proof(PLATFORM_SECRET, &other, PAYLOAD);
+    let wrong_key = proof(signed::WRONG_SECRET, &at, PAYLOAD);
+    // The signature covers the body, so flipping approve to deny invalidates it.
+    let flipped = proof(PLATFORM_SECRET, &at, r#"{"decision":"deny"}"#);
+    // SlackV0 signs the timestamp too, so a proof made for a different instant
+    // does not verify against the one presented.
+    let elsewhen = proof(PLATFORM_SECRET, &other, PAYLOAD);
+    let cases = [
+        ("a callback signed with the wrong key", wrong_key.as_str()),
+        ("a payload changed after signing", flipped.as_str()),
+        ("a signature bound to another instant", elsewhen.as_str()),
+        ("no signature at all", ""),
+        ("a malformed signature header", "not-a-signature"),
+    ];
 
-    assert_eq!(
-        refused(&deployment(Some(PLATFORM_SECRET)), &presented, &at).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID),
-        "SlackV0 signs the timestamp too, so a proof made for a different \
-         instant does not verify against the one presented"
-    );
+    for (case, presented) in cases {
+        assert_eq!(
+            refused(&deployment(Some(PLATFORM_SECRET)), presented, &at).await,
+            error_code::WEBHOOK_SIGNATURE_INVALID.as_str(),
+            "{case}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -192,7 +162,7 @@ async fn a_callback_replayed_outside_its_window_is_refused_as_stale() {
 
     assert_eq!(
         refused(&deployment(Some(PLATFORM_SECRET)), &presented, &stale).await,
-        code(error_code::WEBHOOK_TIMESTAMP_STALE),
+        error_code::WEBHOOK_TIMESTAMP_STALE.as_str(),
         "the signature is arithmetically valid; freshness is the only thing \
          that refuses a callback captured and replayed hours later"
     );
@@ -205,29 +175,9 @@ async fn a_callback_at_the_edge_of_the_window_is_still_fresh() {
 
     assert_ne!(
         refused(&deployment(Some(PLATFORM_SECRET)), &presented, &edge).await,
-        code(error_code::WEBHOOK_TIMESTAMP_STALE),
+        error_code::WEBHOOK_TIMESTAMP_STALE.as_str(),
         "one second inside the window is inside it — a boundary written as `>=` \
          where `>` was meant would refuse this and nothing else would notice"
-    );
-}
-
-#[tokio::test]
-async fn a_callback_carrying_no_signature_is_refused() {
-    let at = now().to_string();
-
-    assert_eq!(
-        refused(&deployment(Some(PLATFORM_SECRET)), "", &at).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID)
-    );
-}
-
-#[tokio::test]
-async fn a_malformed_signature_header_is_refused_rather_than_compared() {
-    let at = now().to_string();
-
-    assert_eq!(
-        refused(&deployment(Some(PLATFORM_SECRET)), "not-a-signature", &at).await,
-        code(error_code::WEBHOOK_SIGNATURE_INVALID)
     );
 }
 

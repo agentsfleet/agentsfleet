@@ -19,7 +19,7 @@
 #![cfg(feature = "test-util")]
 
 use crate::harness;
-use crate::harness::detail_of;
+use crate::harness::{assert_reached_the_verb, detail_of};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
@@ -52,25 +52,6 @@ async fn read(scopes: ScopeSet, path: &str, credential: Option<&str>) -> axum::r
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();
     harness::send(&router, Method::GET, path, credential, "").await
-}
-
-/// Asserts the request got PAST every layer in front of the verb.
-///
-/// 503 with the datastore sentence is the one answer only the SERVICE can
-/// produce: the guard, the scope rung and the query-string parsing all refuse
-/// with 4xx codes of their own, so this is what "reached the handler" looks
-/// like over a pool that answers nothing.
-async fn assert_reached_the_verb(response: axum::response::Response, case: &str) {
-    assert_eq!(
-        response.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{case}: only the verb answers with the datastore's refusal"
-    );
-    assert_eq!(
-        detail_of(response).await,
-        afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
-        "{case}: the refusal is the plane's, not a layer's"
-    );
 }
 
 #[tokio::test]
