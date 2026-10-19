@@ -175,7 +175,10 @@ pub struct StoredModelEntry<'a> {
 #[serde(deny_unknown_fields)]
 pub struct CreateModelEntryRequest {
     /// The model to register.
-    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
+    #[garde(
+        length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
+        custom(afd_validate::rules::nul_free)
+    )]
     pub model_id: String,
     /// The credential to back it with. Immutable once the entry exists.
     // Bounded below only: the ceiling belongs to the vault's key name, which
@@ -195,7 +198,10 @@ pub struct CreateModelEntryRequest {
 #[serde(deny_unknown_fields)]
 pub struct UpdateModelEntryRequest {
     /// The model to point at.
-    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES))]
+    #[garde(
+        length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
+        custom(afd_validate::rules::nul_free)
+    )]
     pub model_id: String,
 }
 
@@ -206,7 +212,42 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow};
+    use garde::Validate as _;
+
+    use super::{
+        CreateModelEntryRequest, ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow,
+        UpdateModelEntryRequest,
+    };
+
+    /// Postgres refuses NUL inside `text`; a model id carrying one must be the
+    /// caller's 400, not the store's 500.
+    #[test]
+    fn a_model_id_with_a_nul_is_refused_at_the_boundary() {
+        let update = UpdateModelEntryRequest {
+            model_id: "gpt\0-6".to_owned(),
+        };
+        let report = update.validate().expect_err("a NUL must be refused");
+        assert!(
+            report.to_string().contains(afd_validate::rules::HAS_NUL),
+            "{report}"
+        );
+        assert!(
+            UpdateModelEntryRequest {
+                model_id: "gpt-6".to_owned()
+            }
+            .validate()
+            .is_ok()
+        );
+        let create: CreateModelEntryRequest =
+            serde_json::from_str(r#"{"model_id":"a\u0000b","secret_ref":"k"}"#).expect("decodes");
+        assert!(
+            create
+                .validate()
+                .expect_err("refused")
+                .to_string()
+                .contains(afd_validate::rules::HAS_NUL)
+        );
+    }
 
     /// A row with nothing the catalogue or the vault could tell us about.
     fn bare() -> ModelEntryRow<'static> {
