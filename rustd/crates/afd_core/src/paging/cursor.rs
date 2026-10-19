@@ -67,14 +67,6 @@ pub enum Cursor {
 }
 
 impl Cursor {
-    /// The boundary row's identifier.
-    #[must_use]
-    pub fn id(&self) -> &str {
-        match self {
-            Self::Timestamp { id, .. } | Self::Text { id, .. } => id,
-        }
-    }
-
     /// Which kind of boundary this carries.
     #[must_use]
     pub const fn kind(&self) -> BoundaryKind {
