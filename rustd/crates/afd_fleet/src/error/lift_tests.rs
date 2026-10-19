@@ -128,3 +128,47 @@ fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(),
     }
     Ok(())
 }
+
+/// A runner-host or setup-chat failure answers with the code, the sentence and
+/// the outage class its own crate decided, for every kind that crate has: the
+/// lease plane restates none of them.
+#[test]
+fn runner_and_authoring_failures_keep_their_crates_classification() {
+    let runners = afd_runner::error::one_of_each_kind()
+        .into_iter()
+        .map(|(kind, runner)| {
+            let decided = (
+                runner.code(),
+                runner.detail(),
+                runner.is_datastore_unavailable(),
+            );
+            (kind, decided, Error::from(runner))
+        });
+    let authoring = afd_db::error::one_of_each_kind()
+        .into_iter()
+        .map(|(kind, database)| {
+            let setup = afd_authoring::Error::from(database);
+            let decided = (
+                setup.code(),
+                setup.detail(),
+                setup.is_datastore_unavailable(),
+            );
+            (kind, decided, Error::from(setup))
+        });
+
+    let mut outages = 0;
+    for (kind, decided, lifted) in runners.chain(authoring) {
+        let read = (
+            lifted.code(),
+            lifted.detail(),
+            lifted.is_datastore_unavailable(),
+        );
+        assert_eq!(read, decided, "{kind}");
+        assert!(lifted.source().is_some(), "{kind} keeps its cause");
+        outages += usize::from(read.2);
+    }
+    assert!(
+        outages > 0,
+        "an outage sample proves the class is carried, not defaulted"
+    );
+}
