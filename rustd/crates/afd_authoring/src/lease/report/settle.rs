@@ -152,26 +152,29 @@ async fn publish(
     private: &guard::Guarded,
     owed: &mut Owed,
 ) -> Result<()> {
-    let state = verdict::outcome(s.verdict.outcome);
-    if write_message(connection, s, private, false).await? {
-        owed.finished(connection, s.attempt.into(), state).await?;
-    } else {
-        write_message(connection, s, private, true).await?;
-    }
+    write_message(connection, s, private).await?;
+    owed.finished(
+        connection,
+        s.attempt.into(),
+        verdict::outcome(s.verdict.outcome),
+    )
+    .await?;
     if s.verdict.answer_allowed {
         receipt::answer(drafts, connection, s.attempt, s.prepared, s.now).await?;
     }
     Ok(())
 }
 
-/// Writes the verdict onto the message, as its first finish or as the late
-/// rewrite of an unknown-usage failure; whether it matched.
+/// Writes the verdict onto the still-running message: this report's finish.
+///
+/// Only a report holding private access gets here, and `guard::bound` proved
+/// the message running under the attempt's row lock, which every writer that
+/// finishes a message takes first; so this write is the one that finishes it.
 async fn write_message(
     connection: &mut PgConnection,
     s: &Settlement<'_>,
     private: &guard::Guarded,
-    late: bool,
-) -> Result<bool> {
+) -> Result<()> {
     let answer = match &*s.prepared.request {
         Report::Terminal { answer, .. }
             if s.verdict.answer_allowed && s.verdict.outcome == Outcome::Completed =>
@@ -180,12 +183,7 @@ async fn write_message(
         }
         _ => None,
     };
-    let statement = if late {
-        sql::LATE_MESSAGE
-    } else {
-        sql::MESSAGE
-    };
-    let mut write = sqlx::query(statement)
+    sqlx::query(sql::MESSAGE)
         .bind(s.attempt.draft_id.as_str())
         .bind(s.attempt.message_sequence)
         .bind(verdict::outcome(s.verdict.outcome))
@@ -198,12 +196,9 @@ async fn write_message(
                 .map(afd_core::id::Uuid7::as_str),
         )
         .bind(s.verdict.reason.map(verdict::reason))
-        .bind(RUNNING);
-    if late {
-        write = write.bind(verdict::reason(
-            afd_wire::authoring::FailureReason::ProviderUsageUnknown,
-        ));
-    }
-    let written = write.execute(connection).await.map_err(query(CONTEXT))?;
-    Ok(written.rows_affected() == 1)
+        .bind(RUNNING)
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(())
 }
