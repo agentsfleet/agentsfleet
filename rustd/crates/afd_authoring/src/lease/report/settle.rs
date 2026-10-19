@@ -159,8 +159,10 @@ async fn publish(
         verdict::outcome(s.verdict.outcome),
     )
     .await?;
-    if s.verdict.answer_allowed {
-        receipt::answer(drafts, connection, s.attempt, s.prepared, s.now).await?;
+    // Only a terminal report publishes, and every terminal report carries an
+    // answer digest, absent answer included.
+    if let (true, Some(digest)) = (s.verdict.answer_allowed, &s.prepared.answer_digest) {
+        receipt::answer(drafts, connection, s.attempt, s.prepared, digest, s.now).await?;
     }
     Ok(())
 }

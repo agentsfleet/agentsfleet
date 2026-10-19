@@ -88,6 +88,49 @@ async fn platform_admission_reserves_priced_input_output_and_runtime() {
     f.cleanup().await;
 }
 
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
+    use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
+    let f = configured().await;
+    let draft = queued(&f).await;
+    let lease = claim(&f, &draft)
+        .await
+        .expect("configured platform model admitted");
+    let report = Report::Accounting {
+        accounting: Accounting {
+            fence: lease.fence.clone(),
+            report_id: mint().to_string(),
+            outcome: Outcome::Completed,
+            failure_reason: None,
+            usage: Meter {
+                knowledge: Knowledge::Known,
+                calls: 0,
+                input_tokens: Some(0),
+                output_tokens: Some(0),
+                runtime_ms: 1,
+                provider_cost_nanos: None,
+            },
+        },
+    };
+    let lease_id = afd_core::id::Uuid7::parse(&lease.lease_id).expect("lease identity");
+    let ack = f
+        .drafts
+        .report(&f.runner, &lease_id, report)
+        .await
+        .expect("the platform attempt settles");
+    assert!(ack.settled);
+    let postures: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT posture FROM billing.usage_lines WHERE work_id=$1::uuid",
+    )
+    .bind(&lease.attempt_id)
+    .fetch_all(&mut *f.connection().await)
+    .await
+    .expect("the attempt's lines");
+    assert_eq!(postures, [afd_billing::Posture::Platform.as_str()]);
+    f.cleanup().await;
+}
+
 // Value: protects=unsafe stored prices cannot overflow or create an uncovered obligation;
 // fails_when=negative/overflowing provider costs create an attempt instead of owner billing recovery;
 // why_new=workspace admission never prices provider tokens;
