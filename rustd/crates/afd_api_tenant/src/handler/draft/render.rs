@@ -108,7 +108,9 @@ pub(super) fn cancellation(value: Cancellation) -> wire::Cancellation {
 mod tests {
     use afd_core::id::Uuid7;
 
-    use super::{card, types};
+    use afd_wire::authoring::FailureReason;
+
+    use super::{card, message, types};
 
     /// A card at `revisions`: candidate, saved setup and publication.
     fn listed(revisions: (Option<i64>, Option<i64>, Option<i64>)) -> types::DraftCard {
@@ -156,5 +158,35 @@ mod tests {
                 "each summary is present on every card, null until the chat reaches it"
             );
         }
+    }
+
+    /// A failed message's recovery reaches the wire as the domain derived it:
+    /// the reason, its registry code and the action a client renders.
+    #[test]
+    fn a_failed_message_carries_its_reason_code_and_recovery_onto_the_wire() {
+        let failure = types::Failure::from(FailureReason::InsufficientBalance);
+        let (code, action) = (failure.error_code, failure.recovery_action);
+        let accepted = jiff::Timestamp::constant(1_760_000_000, 0);
+
+        let rendered = message(types::Message {
+            sequence: "7".to_owned(),
+            operation_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011")
+                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
+            role: "assistant",
+            state: types::MessageState::Failed,
+            text: None,
+            candidate_id: None,
+            usage: None,
+            failure: Some(failure),
+            created_at: accepted,
+            finished_at: Some(accepted),
+        });
+
+        let wire = rendered
+            .failure
+            .unwrap_or_else(|| panic!("a failed message keeps its failure"));
+        assert_eq!(wire.reason, FailureReason::InsufficientBalance);
+        assert_eq!(wire.error_code, code.as_str());
+        assert_eq!(wire.recovery_action, action);
     }
 }

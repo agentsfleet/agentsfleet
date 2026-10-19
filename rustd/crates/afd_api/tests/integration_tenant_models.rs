@@ -213,6 +213,42 @@ async fn a_tenant_with_no_selection_reads_a_view_rather_than_a_refusal() {
     fixture.cleanup().await;
 }
 
+/// A tenant holding no workspace has nowhere a credential could live, and a
+/// registration is refused naming that, rather than as a missing credential.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_tenant_with_no_workspace_is_refused_a_registration_naming_it() {
+    let fixture = Fixture::create().await;
+    fixture.seed_credential_only().await;
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .router();
+
+    let refused = send(
+        &router,
+        Method::POST,
+        ENTRIES,
+        Some(&fixture.token),
+        &format!(
+            r#"{{"model_id":"{}","secret_ref":"{CREDENTIAL}"}}"#,
+            fixture.first_model
+        ),
+    )
+    .await;
+
+    let status = refused.status();
+    let body = json_body(refused).await;
+    assert_eq!(
+        body["error_code"].as_str(),
+        Some(afd_core::error_code::TENANT_NO_PRIMARY_WORKSPACE.as_str()),
+        "{status}: {body}"
+    );
+    fixture.cleanup().await;
+}
+
 struct Fixture {
     lane: TestDatabase,
     database: Db,
@@ -245,6 +281,22 @@ impl Fixture {
             token: format!("agt_t{token_bits}"),
             lane,
         }
+    }
+
+    /// The tenant and its key, and no workspace: the bootstrap invariant every
+    /// other case upholds, deliberately broken.
+    async fn seed_credential_only(&self) {
+        let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        TenantSeed::new(&self.tenant)
+            .name("Live model registry, no workspace")
+            .insert(&mut *connection)
+            .await
+            .expect("the authenticated tenant seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+            .insert(&mut *connection)
+            .await
+            .expect("its key seeds");
     }
 
     async fn seed(&self) {

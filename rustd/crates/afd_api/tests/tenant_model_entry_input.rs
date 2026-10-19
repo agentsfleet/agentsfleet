@@ -73,9 +73,14 @@ async fn send(
 /// format, and a test that built it through the handler's own type would pass
 /// even if that order changed under it.
 fn token(tenant: &str, limit: u32) -> String {
+    token_naming("0195b4ba-8d3a-7f13-8abc-cd0000000002", tenant, limit)
+}
+
+/// [`token`], with its boundary id spelled as `id`.
+fn token_naming(id: &str, tenant: &str, limit: u32) -> String {
     let json = format!(
         "{{\"v\":2,\"created_at\":\"2025-04-07T04:26:40Z\",\
-\"id\":\"0195b4ba-8d3a-7f13-8abc-cd0000000002\",\
+\"id\":\"{id}\",\
 \"tenant_uuid\":\"{tenant}\",\"limit\":{limit}}}"
     );
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
@@ -283,6 +288,17 @@ async fn test_a_real_token_for_another_walk_is_refused_distinctly() {
         StatusCode::SERVICE_UNAVAILABLE,
         "a token naming this walk is carried past the cursor check"
     );
+}
+
+#[tokio::test]
+async fn test_a_token_for_this_walk_whose_id_is_no_identifier_is_malformed() {
+    // It decodes and names this tenant and page size, so only the id is wrong:
+    // re-parsed here rather than met as a `::uuid` cast failure in a 500.
+    let forged = token_naming("not-an-identifier", FIXTURE_TENANT, 50);
+    let path = format!("{ENTRIES}?limit=50&starting_after={forged}");
+    let refused = send(ENTRIES_READ, Method::GET, &path, Some(TENANT_KEY), "").await;
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code_of(refused).await, "UZ-LIBRARY-001");
 }
 
 #[tokio::test]

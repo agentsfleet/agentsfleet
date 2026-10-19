@@ -45,6 +45,11 @@ fn a_pointer_reads_as_the_entry_it_names() {
     assert_eq!(&*own.secret_ref, "anthropic-prod");
     assert_eq!(own.provider.as_deref(), Some("anthropic"));
     assert_eq!(own.context_cap_tokens, 200_000);
+    assert_eq!(
+        Selection::SelfManaged(own).posture(),
+        Posture::SelfManaged,
+        "a pointer means the tenant supplies the key"
+    );
 }
 
 #[test]
@@ -111,6 +116,25 @@ fn an_active_default_without_a_model_is_refused_as_corrupt() {
         .into_default()
         .expect_err("an unpriced default is not a default");
     assert!(refused.is_config_permanent());
+}
+
+#[test]
+fn an_active_default_whose_source_workspace_is_no_identifier_is_refused() {
+    let row = PlatformDefaultRow {
+        provider: "anthropic".to_owned(),
+        source_workspace_id: "not-a-workspace".to_owned(),
+        model_name: Some("claude-opus-5".to_owned()),
+        base_url: None,
+        context_cap_tokens: Some(200_000),
+    };
+    let refused = row
+        .into_default()
+        .expect_err("a default whose key lives nowhere nameable cannot resolve");
+    assert!(
+        !refused.is_config_permanent(),
+        "a broken row, not a missing key"
+    );
+    assert_eq!(refused.code(), afd_core::error_code::INTERNAL_DB_QUERY);
 }
 
 fn pointed_with(pointer: &str) -> SelectionRow {

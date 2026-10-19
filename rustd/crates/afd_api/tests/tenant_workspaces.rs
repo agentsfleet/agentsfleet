@@ -272,3 +272,18 @@ async fn a_body_that_is_not_json_is_refused() {
         );
     }
 }
+
+/// A session's account is read from its user row before a workspace is made
+/// under it, and a read that cannot answer is the outage class, never a
+/// workspace made under a guessed account.
+#[tokio::test]
+async fn a_session_whose_account_cannot_be_read_is_the_outage_class() {
+    let router = Fleet::new()
+        .with_live_ownership()
+        .with_dashboard_holding(SUBJECT, WORKSPACE_ADMIN)
+        .router();
+
+    let response = harness::send(&router, Method::POST, CREATE, Some("session"), "{}").await;
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
