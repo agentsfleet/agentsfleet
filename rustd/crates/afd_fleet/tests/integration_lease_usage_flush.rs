@@ -12,6 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_fleet::lease::report::RunTokens;
 use afd_wire::report::{RenewRequest, ReportRequest};
 use afd_wire::usage::{DAEMON_SEQ_BASE, LINES_MAX, RequestLines, RequestUsage};
 
@@ -144,6 +145,58 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
         Some(DEEP_POOL - total),
         "the wallet pays each line once"
     );
+
+    drop(plane);
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// A request that read and wrote the provider's cache in every class.
+const CACHED_REQUEST: RequestUsage = RequestUsage {
+    seq: 0,
+    at: jiff::Timestamp::UNIX_EPOCH,
+    input_tokens: 700,
+    cached_input_tokens: 300,
+    cache_write_tokens: 40,
+    cache_write_5m_tokens: 50,
+    cache_write_1h_tokens: 60,
+    output_tokens: 20,
+};
+
+/// A report whose lines wrote the cache answers those writes in the run's
+/// tokens, every lifetime summed, so its metrics count them as input.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_report_whose_lines_write_the_cache_counts_the_writes() {
+    let held = held().await;
+    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
+    let plane = held.fixtures.plane();
+    let line = |seq| RequestUsage {
+        seq,
+        at: held.now,
+        ..CACHED_REQUEST
+    };
+    let report = ReportRequest {
+        requests: RequestLines(vec![line(0), line(1)]),
+        ..processed(&held, None)
+    };
+
+    let settled = plane
+        .report(&held.runner, &report, held.now)
+        .await
+        .expect("the report settles the lease");
+
+    assert_eq!(
+        settled.tokens,
+        RunTokens {
+            input_tokens: 1_400,
+            cached_input_tokens: 600,
+            cache_write_tokens: 300,
+            output_tokens: 40,
+        },
+        "each class summed over both lines, writes across their lifetimes"
+    );
+    assert_eq!(settled.tokens.prompt(), 2_300, "reads and writes are input");
 
     drop(plane);
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;

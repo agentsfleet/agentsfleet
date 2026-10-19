@@ -207,6 +207,7 @@ version = "0.62.1"
 dependencies = [
  "afd_api_wire",
  "afd_authoring",
+ "afd_billing",
  "afd_core",
  "afd_cron",
  "afd_events",
