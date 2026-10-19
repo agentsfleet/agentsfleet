@@ -14,6 +14,14 @@
 //! checked once at parse could still be zero to every later reader;
 //! [`NonZeroU32`] carries the proof instead, so the anomaly evaluator has no
 //! zero case to consider and no branch to forget.
+//!
+//! # The timeout is a span from the parse on
+//!
+//! An author writes `timeout_ms`, an integer of milliseconds: that field is the
+//! config edge, and its name stays. The parse converts it once, here, into a
+//! [`Duration`], so no reader past it handles a millisecond count.
+
+use std::time::Duration;
 
 use crate::config::anomaly::AnomalyRule;
 use crate::config::raw;
@@ -30,9 +38,9 @@ const ACTION: &str = "action";
 /// raises its card under — that path matches no rule, so it has no policy value
 /// to read, and a second declaration beside it would be a second number to keep
 /// in step (RULE UFS).
-pub const DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_hours(1);
 /// Longest an approval may be made to wait.
-const MAX_TIMEOUT_MS: u64 = 86_400_000;
+const MAX_TIMEOUT: Duration = Duration::from_hours(24);
 
 /// What an approval rule does when it fires.
 pub type Behavior = raw::Behavior;
@@ -83,8 +91,8 @@ pub struct GatePolicy {
     rules: Box<[GateRule]>,
     /// Which repetitions end the run.
     anomaly_rules: Box<[AnomalyRule]>,
-    /// How long an approval may wait before it lapses, in milliseconds.
-    timeout_ms: u64,
+    /// How long an approval may wait before it lapses.
+    timeout: Duration,
 }
 
 impl GatePolicy {
@@ -100,10 +108,10 @@ impl GatePolicy {
         &self.anomaly_rules
     }
 
-    /// How long an approval may wait, in milliseconds.
+    /// How long an approval may wait.
     #[must_use]
-    pub const fn timeout_ms(&self) -> u64 {
-        self.timeout_ms
+    pub const fn timeout(&self) -> Duration {
+        self.timeout
     }
 
     /// Builds a policy directly from its parts.
@@ -123,12 +131,12 @@ impl GatePolicy {
     pub fn from_parts(
         rules: Vec<GateRule>,
         anomaly_rules: Vec<AnomalyRule>,
-        timeout_ms: u64,
+        timeout: Duration,
     ) -> Self {
         Self {
             rules: rules.into_boxed_slice(),
             anomaly_rules: anomaly_rules.into_boxed_slice(),
-            timeout_ms,
+            timeout,
         }
     }
 }
@@ -150,18 +158,19 @@ impl TryFrom<raw::Gates> for GatePolicy {
                 .into_iter()
                 .map(AnomalyRule::try_from)
                 .collect::<Result<_>>()?,
-            timeout_ms: clamp_timeout(authored.timeout_ms),
+            timeout: clamp_timeout(authored.timeout_ms),
         })
     }
 }
 
-/// Resolves an authored timeout into one this daemon will honour.
+/// Resolves an authored timeout, in milliseconds, into the span this daemon
+/// will honour: the one place the authored count becomes a [`Duration`].
 ///
 /// Clamping rather than refusing, and that is deliberate: an approval timeout
 /// out of range is an operator asking for a longer wait than the daemon
 /// offers, not a document that cannot be understood. Refusing would strand an
 /// already-installed fleet over a knob with a safe nearest value.
-fn clamp_timeout(authored: Option<i64>) -> u64 {
+fn clamp_timeout(authored: Option<i64>) -> Duration {
     authored
         // A negative timeout fails the conversion and lands on the default,
         // which is the same answer "no preference" gets — and it gets there
@@ -170,7 +179,9 @@ fn clamp_timeout(authored: Option<i64>) -> u64 {
         // Zero is "no preference" too, never "lapse immediately": the latter
         // would refuse every approval the moment it was asked for.
         .filter(|&value| value > 0)
-        .map_or(DEFAULT_TIMEOUT_MS, |value| value.min(MAX_TIMEOUT_MS))
+        .map_or(DEFAULT_TIMEOUT, |millis| {
+            Duration::from_millis(millis).min(MAX_TIMEOUT)
+        })
 }
 
 #[cfg(test)]
@@ -179,7 +190,9 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{DEFAULT_TIMEOUT_MS, GatePolicy, MAX_TIMEOUT_MS};
+    use std::time::Duration;
+
+    use super::{DEFAULT_TIMEOUT, GatePolicy, MAX_TIMEOUT};
     use crate::config::raw;
     use crate::error::Error;
     use crate::error::ErrorKind;
@@ -196,10 +209,8 @@ mod tests {
     #[test]
     fn an_absent_timeout_takes_the_default() {
         assert_eq!(
-            parse("{}")
-                .expect("an empty block is a policy")
-                .timeout_ms(),
-            DEFAULT_TIMEOUT_MS
+            parse("{}").expect("an empty block is a policy").timeout(),
+            DEFAULT_TIMEOUT
         );
     }
 
@@ -208,8 +219,20 @@ mod tests {
         assert_eq!(
             parse(r#"{"timeout_ms": 999999999}"#)
                 .expect("an over-long wait has a safe nearest value")
-                .timeout_ms(),
-            MAX_TIMEOUT_MS
+                .timeout(),
+            MAX_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn an_authored_timeout_becomes_the_span_it_names() {
+        // The one conversion is exact: ninety thousand milliseconds is a
+        // minute and a half, not a count a later reader must know the unit of.
+        assert_eq!(
+            parse(r#"{"timeout_ms": 90000}"#)
+                .expect("an in-range wait is honoured")
+                .timeout(),
+            Duration::from_secs(90)
         );
     }
 
@@ -218,8 +241,8 @@ mod tests {
         assert_eq!(
             parse(r#"{"timeout_ms": 0}"#)
                 .expect("zero is not `lapse immediately`")
-                .timeout_ms(),
-            DEFAULT_TIMEOUT_MS
+                .timeout(),
+            DEFAULT_TIMEOUT
         );
     }
 

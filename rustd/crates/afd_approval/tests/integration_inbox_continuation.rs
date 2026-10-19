@@ -147,7 +147,7 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 ///
 /// The worked case is the one an operator actually meets: a fleet asks to write
 /// to a repository at 10:00 under the default one-hour window
-/// (`afd_fleet_runtime::config::gates::DEFAULT_TIMEOUT_MS`), nobody is at their
+/// (`afd_fleet_runtime::config::DEFAULT_TIMEOUT`), nobody is at their
 /// desk, and a person approves it at 14:00 — three hours after the window
 /// closed. That approval lands, and the run it blocked continues.
 ///

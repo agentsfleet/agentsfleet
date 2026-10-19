@@ -148,6 +148,8 @@ fn fires(rule: &GateRule, context: Option<&Value>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::{Decision, match_rule};
     use afd_fleet_runtime::config::{Behavior, GatePolicy, GateRule};
     use serde_json::json;
@@ -164,7 +166,7 @@ mod tests {
     }
 
     fn policy(rules: Vec<GateRule>) -> GatePolicy {
-        GatePolicy::from_parts(rules, Vec::new(), 900_000)
+        GatePolicy::from_parts(rules, Vec::new(), Duration::from_mins(15))
     }
 
     #[test]

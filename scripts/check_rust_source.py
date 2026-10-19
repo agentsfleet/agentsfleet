@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Rules over the Rust tree that no compiler pass and no unit test can see.
 
-Each rule compares two things the repository declares in separate places and
+Most rules compare two things the repository declares in separate places and
 that must agree: a schema file with the migration list, a component name with
-every other component name, a default with the benchmark behind it.
+every other component name, a default with the benchmark behind it. One holds
+a type rule across every crate: no span as integer milliseconds.
 
     python3 scripts/check_rust_source.py [--root <dir>]
 
@@ -21,6 +22,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import check_source_lib as lib
+from check_tests_call_code_text import cfg_test_regions
 
 # --- One component name, one type -------------------------------------------
 # utoipa keys a document's components by name alone; a second type registered
@@ -46,6 +48,24 @@ TAIL_BASELINE = "bench/baselines/tail.rig.json"
 P95_BOUND_MS = 250.0
 HEAP_BOUND_BYTES = 256 * 1024 * 1024
 UNDELIVERED_BOUND = 0
+
+# --- No span or instant held as integer milliseconds -------------------------
+# A span is a `Duration` and an instant a `jiff::Timestamp` (M229 Dimension
+# 3.4). Milliseconds exist only at a protocol edge, converted there once, so an
+# integer `*_MS` constant is legal only as that conversion: its value read from
+# a `Duration` (`HEARTBEAT_INTERVAL.as_millis()`). The clock helpers that did
+# millisecond arithmetic are deleted and stay deleted.
+CRATES = "rustd/crates"
+MILLIS_CONST = re.compile(
+    r"\bconst (?P<name>[A-Z0-9_]*_MS(?:_[A-Z0-9_]+)?)\s*:\s*(?:[ui](?:8|16|32|64|128|size))\s*="
+)
+MILLIS_HELPER = re.compile(r"\b(?:UnixMillis|add_millis|millis_between)\b|\bclock::from_millis\b")
+EDGE_CONVERSION = ".as_millis()"
+LINE_COMMENT = re.compile(r"//.*$", re.MULTILINE)
+# Files and directories that only tests compile: unit-test files and the
+# `cfg(test)` or `test-util` seams beside them.
+RUST_TEST_FILE = re.compile(r"(?:^|_)tests?\.rs$|^(?:test_util|test_support|testing|fixture)\.rs$")
+RUST_TEST_DIRS = frozenset({"tests", "test_util", "test_support", "testing", "fixture", "examples", "benches"})
 
 
 def published_name(lines: list[str], derive_at: int) -> str | None:
@@ -138,7 +158,51 @@ def check_stream_ceiling(root: Path) -> list[lib.Finding]:
     return []
 
 
-RULES = (check_schema_names, check_migration_list, check_stream_ceiling)
+def rust_sources(root: Path) -> list[Path]:
+    """Every crate's non-test Rust source under `rustd/crates/*/src`."""
+    found = []
+    for crate in sorted((root / CRATES).glob("*/src")):
+        for path in lib.source_files(crate, (".rs",), include_tests=True):
+            if RUST_TEST_DIRS.intersection(path.relative_to(crate).parts[:-1]) or RUST_TEST_FILE.search(path.name):
+                continue
+            found.append(path)
+    return found
+
+
+def statement(code: str, start: int) -> str:
+    """The text from `start` to the `;` that ends its statement, braces balanced."""
+    depth = 0
+    for at in range(start, len(code)):
+        char = code[at]
+        depth += (char == "{") - (char == "}")
+        if char == ";" and depth == 0:
+            return code[start : at + 1]
+    return code[start:]
+
+
+def check_integer_millis(root: Path) -> list[lib.Finding]:
+    sources = rust_sources(root)
+    if not sources:
+        return [lib.Finding(CRATES, 1, "rust-integer-millis", "no crate source was read; the scan is broken, not the tree")]
+    findings = []
+    for path in sources:
+        source = path.read_text(encoding="utf-8")
+        tests = cfg_test_regions(source)
+        code = LINE_COMMENT.sub(lambda comment: " " * len(comment.group()), source)
+        for match in MILLIS_CONST.finditer(code):
+            if any(begin <= match.start() < end for begin, end in tests):
+                continue
+            if EDGE_CONVERSION in statement(code, match.end()):
+                continue
+            findings.append(lib.Finding(lib.relative(root, path), lib.line_of(code, match.start()), "rust-integer-millis", f"`{match['name']}` holds a span as integer milliseconds; declare a `Duration` and convert at the edge with `.as_millis()`"))
+        for match in MILLIS_HELPER.finditer(code):
+            if any(begin <= match.start() < end for begin, end in tests):
+                continue
+            findings.append(lib.Finding(lib.relative(root, path), lib.line_of(code, match.start()), "rust-integer-millis", f"`{match.group()}` is millisecond arithmetic; use `jiff::Timestamp` and `Duration`"))
+    return findings
+
+
+RULES = (check_schema_names, check_migration_list, check_stream_ceiling, check_integer_millis)
 
 
 def lint(root: Path) -> list[lib.Finding]:
