@@ -4,6 +4,7 @@ mod arithmetic;
 mod authorization;
 mod bounds;
 mod fixture;
+mod lapse;
 mod late_results;
 mod output_bounds;
 mod preamble;
