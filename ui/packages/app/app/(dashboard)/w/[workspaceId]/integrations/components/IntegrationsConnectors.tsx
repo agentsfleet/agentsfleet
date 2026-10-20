@@ -8,6 +8,7 @@ import { PlugIcon } from "lucide-react";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { OAuthConnectorRow, type ConnectorStatusOverride } from "./connector-rows";
+import { CONNECT_APPS_COPY } from "../copy";
 
 // The diagnosable shape of a failed catalog fetch, captured server-side in
 // page.tsx (console logging is lint-banned in app source, so the code/status is
@@ -57,7 +58,7 @@ export default function IntegrationsConnectors({
 
   return (
     <Section className="space-y-xl" data-testid="integrations-connectors">
-      {catalog.length > 0 ? <CollectionToolbar label="Search integrations" value={search} onChange={setSearch} summary={`${matches.length} of ${catalog.length} integrations`} /> : null}
+      {catalog.length > 0 ? <CollectionToolbar label={CONNECT_APPS_COPY.search} value={search} onChange={setSearch} summary={`${matches.length} of ${catalog.length} apps`} /> : null}
       {catalog.length === 0 ? (
         // The catalog is registry-driven (Slack/GitHub/Zoho/Jira/Linear/…),
         // never legitimately empty — an empty list here always means the
@@ -82,7 +83,7 @@ export default function IntegrationsConnectors({
           ))}
         </Grid>
       )}
-      {catalog.length > 0 && matches.length === 0 ? <EmptyState title="No matching integrations" description="Try another service name or clear your search." /> : null}
+      {catalog.length > 0 && matches.length === 0 ? <EmptyState title={CONNECT_APPS_COPY.noMatches} description="Try another service name or clear your search." /> : null}
     </Section>
   );
 }

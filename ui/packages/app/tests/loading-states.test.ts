@@ -7,6 +7,7 @@ import { INVITES_TITLE } from "../app/(dashboard)/invites/copy";
 import { MEMBERS_TITLE } from "../app/(dashboard)/settings/members/copy";
 import { SECRETS_PAGE_TITLE } from "../app/(dashboard)/w/[workspaceId]/secrets/copy";
 import { MODELS_PAGE_TITLE } from "../app/(dashboard)/w/[workspaceId]/settings/models/copy";
+import { CONNECT_APPS_COPY } from "../app/(dashboard)/w/[workspaceId]/integrations/copy";
 
 // Each Next.js segment has its own loading.tsx Suspense fallback, and every one
 // must render. Where the page renders its title from a shared copy constant,
@@ -74,7 +75,7 @@ describe("dashboard segment loading states", () => {
     {
       name: "integrations",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/integrations/loading"),
-      pageTitle: null,
+      pageTitle: CONNECT_APPS_COPY.title,
     },
     {
       name: "events",

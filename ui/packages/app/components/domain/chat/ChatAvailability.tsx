@@ -27,9 +27,9 @@ export function ChatModelAvailability({client, view, workspace, canManagePlatfor
   const description = incomplete ? "More configured models are available to check. Load them to find a model for chat."
     : configured ? "Your configured models are not available for setup chat. Check their provider credentials and model configuration."
     : "Configure a workspace model or ask your administrator to configure a platform model to start chatting.";
-  return <ChatAvailability title={incomplete ? "Load more chat models" : configured ? "No chat model is available" : "Add a model to start chatting"}
+  return <ChatAvailability title={incomplete ? "Load more chat models" : configured ? "No chat model is available" : "Create a model to start chatting"}
     actions={<>
       {incomplete ? <DraftLoadMore copy={LOAD_MORE_COPY.models} onLoad={() => client.loadMore(DRAFT_LIST.models)} /> : null}
-      <Button size="sm" variant="secondary" asChild><Link href={canManagePlatformModels ? "/admin/models" : `/w/${workspace}/settings/models`}>Add model</Link></Button>
+      <Button size="sm" variant="secondary" asChild><Link href={canManagePlatformModels ? "/admin/models" : `/w/${workspace}/settings/models`}>Create model</Link></Button>
     </>}>{description}</ChatAvailability>;
 }

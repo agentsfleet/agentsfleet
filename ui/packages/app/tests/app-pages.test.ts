@@ -11,6 +11,7 @@ const notFound = vi.fn(() => {
 const usePathname = vi.fn(() => "/w/ws_1");
 const auth = vi.fn();
 const useUser = vi.fn(() => ({ isLoaded: false, user: null }));
+const clerkProvider = vi.fn(({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children));
 
 vi.mock("next/navigation", () => ({
   redirect,
@@ -28,7 +29,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 vi.mock("@clerk/nextjs", () => ({
-  ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  ClerkProvider: clerkProvider,
   UserProfile: ({ path, routing, appearance }: { path: string; routing: string; appearance: unknown }) => React.createElement("div", { "data-user-profile": path, "data-routing": routing, "data-appearance": JSON.stringify(appearance) }),
   SignOutButton: ({ children }: { children: React.ReactNode }) => children,
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),
@@ -73,6 +74,10 @@ describe("app layouts and pages", () => {
     const authMarkup = renderToStaticMarkup(React.createElement(AuthLayout, null, React.createElement("div", null, "auth child")));
 
     expect(rootMarkup).toContain("root child");
+    expect(clerkProvider.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      signInUrl: "/sign-in", signUpUrl: "/sign-up",
+      signInFallbackRedirectUrl: "/", signUpFallbackRedirectUrl: "/",
+    }));
     expect(dashboardMarkup).toContain("dash child");
     expect(authMarkup).toContain("agentsfleet");
     expect(authMarkup).toContain('data-brand-mark="signal"');

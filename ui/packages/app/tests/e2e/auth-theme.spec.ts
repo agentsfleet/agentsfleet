@@ -30,6 +30,8 @@ for (const route of AUTH_ROUTES) {
     await page.goto(route);
     const input = page.locator(INPUT_SELECTOR).first();
     await expect(input).toBeVisible({ timeout: RENDER_TIMEOUT });
+    await expect(page.getByText("agentsfleet", { exact: true })).toBeVisible();
+    await expect(page.locator('.cl-rootBox img[src="/brand.svg"]')).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     const pulse = await tokenColor(page, "--pulse");
     const strongBorder = await tokenColor(page, "--border-strong");
@@ -62,6 +64,19 @@ for (const route of AUTH_ROUTES) {
     expect(await input.evaluate((element: HTMLInputElement) => element.validity.valid)).toBe(false);
     await expect(input).toBeVisible();
     expect(new URL(page.url()).pathname).toBe(route);
+  });
+
+  test(`${route} keeps the native auth footer link on the branded app`, async ({ page, baseURL }) => {
+    await page.goto(route);
+    await expect(page.locator(INPUT_SELECTOR).first()).toBeVisible({ timeout: RENDER_TIMEOUT });
+    const destination = AUTH_ROUTES.find(candidate => candidate !== route)!;
+    const link = page.locator(".cl-footerActionLink");
+    const target = new URL((await link.getAttribute("href"))!, baseURL);
+    expect(target.origin).toBe(new URL(baseURL!).origin);
+    expect(target.pathname).toBe(destination);
+    await link.click();
+    await expect(page).toHaveURL(url => url.origin === target.origin && url.pathname === destination);
+    await expect(page.locator('.cl-rootBox img[src="/brand.svg"]')).toBeVisible();
   });
 }
 
