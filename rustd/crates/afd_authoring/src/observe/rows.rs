@@ -82,7 +82,11 @@ struct Stored {
     metered: Metered,
 }
 
-pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Result<Vec<Notice>> {
+pub(super) async fn messages(
+    connection: &mut PgConnection,
+    draft: &Uuid7,
+    cancelled_through: i64,
+) -> Result<Vec<Notice>> {
     let rows: Vec<Stored> = sqlx::query_as(sql::message::NOTICES)
         .bind(draft.as_str())
         .bind(LIMIT)
@@ -117,7 +121,7 @@ pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Re
                     .as_deref()
                     .map(word::<FailureReason>)
                     .transpose()?
-                    .map(Into::into),
+                    .map(|reason| Failure::for_message(reason, stored.sequence, cancelled_through)),
             })
         })
         .collect()

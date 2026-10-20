@@ -11,7 +11,6 @@ import { PRIMARY_NAV, resolveActiveHref, resolveHref } from "./sidebar-navigatio
 import { Suspense } from "react";
 import { DraftSidebarHistory } from "./DraftSidebarHistory";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
-import { RecentFleets } from "./RecentFleets";
 
 export { resolveActiveHref } from "./sidebar-navigation-data";
 
@@ -61,7 +60,6 @@ export function SidebarNavigation({ pathname, workspaceId, operatorScopes, colla
     <NavSection items={PRIMARY_NAV} {...shared} />
     {!collapsed ? <div className="min-h-0 flex-1 overflow-y-auto">
       <Suspense><DraftSidebarHistory workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
-      <RecentFleets workspaceId={workspaceId} pathname={pathname} onNavigate={onNavigate} />
     </div> : <div className="flex-1" />}
     <div className="mt-auto shrink-0 border-t border-border px-sm pt-sm">
       <WorkspaceSwitcher workspaces={workspaces} operatorScopes={operatorScopes} collapsed={collapsed} />

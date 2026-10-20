@@ -83,7 +83,7 @@ function NavItem({
     className: cn(collapsed && "justify-center px-0"),
     onClick,
   };
-  if (label === "New fleet") return <Button asChild variant="secondary" className={cn("w-full", collapsed ? "px-0" : "justify-start")}><Link href={href} {...common}>{content}</Link></Button>;
+  if (label === "New fleet") return <Button asChild variant="secondary" size={collapsed ? "icon" : "default"} className={collapsed ? "self-center" : "w-full justify-start"}><Link href={href} {...common}>{content}</Link></Button>;
   if (external) {
     return <NavigationItem href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</NavigationItem>;
   }

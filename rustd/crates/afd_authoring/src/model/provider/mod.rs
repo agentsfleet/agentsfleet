@@ -3,10 +3,13 @@
 mod dispatch;
 mod network;
 mod prompt;
+mod rejections;
 mod request;
 mod resolver;
 mod response;
 
+#[cfg(test)]
+mod rejections_tests;
 #[cfg(test)]
 mod tests;
 
@@ -14,6 +17,7 @@ use std::time::Duration;
 
 use crate::Result;
 pub(in crate::model) use dispatch::{Outbound, complete};
+pub(in crate::model) use rejections::validate_key;
 
 pub use network::Network;
 

@@ -205,6 +205,19 @@
       ]
     },
     {
+      "provider": "openrouter", "model_name": "minimax/minimax-m3.1-flash:free",
+      "display_name": "MiniMax M3.1 Flash (Free)", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 524288},
+      "context": {"tokens":1000000,"source_url":"https://openrouter.ai/api/v1/models#minimax/minimax-m3.1-flash:free","verified_at":"2026-10-20T10:14:45Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-10-19T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0", "cached_input": "0", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0",
+        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-10-20T10:14:45Z",
+        "conditions": "OpenRouter lists zero prompt and completion rates for this free endpoint; free endpoints are rate limited." }
+      ]
+    },
+    {
       "provider": "groq", "model_name": "openai/gpt-oss-120b",
       "display_name": "GPT OSS 120B", "advanced": false,
       "inference": {"api": "chat", "base_url": "https://api.groq.com/openai/v1", "dialect": "groq", "max_output_tokens": 65536},

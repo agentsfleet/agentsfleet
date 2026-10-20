@@ -11,7 +11,7 @@ use rig_core::{
 };
 use std::sync::{
     Arc,
-    atomic::{AtomicU16, Ordering},
+    atomic::{AtomicBool, AtomicU16, Ordering},
 };
 use std::time::Duration;
 
@@ -29,22 +29,31 @@ pub(in crate::model) async fn complete(
     physical: Arc<dyn Transport>,
 ) -> Result<(u16, CompletionResponse)> {
     let configured = afd_inference::Configured::new(&outbound.inference, outbound.context_tokens)?;
-    let status = Arc::new(AtomicU16::new(0));
+    let outcome = Arc::new(Outcome::default());
     let transport = Once {
         physical,
         timeout: outbound.timeout,
-        status: Arc::clone(&status),
+        outcome: Arc::clone(&outcome),
     };
     let model = configured.with_transport(&outbound.model, outbound.key.expose(), transport);
-    let response = model.call(outbound.body).await?;
-    Ok((status.load(Ordering::Relaxed), response))
+    let response = model.call(outbound.body).await;
+    if outcome.rejected.load(Ordering::Relaxed) {
+        return Err(crate::error::ErrorKind::Model.into());
+    }
+    Ok((outcome.status.load(Ordering::Relaxed), response?))
+}
+
+#[derive(Default)]
+struct Outcome {
+    status: AtomicU16,
+    rejected: AtomicBool,
 }
 
 #[derive(Clone)]
 struct Once {
     physical: Arc<dyn Transport>,
     timeout: Duration,
-    status: Arc<AtomicU16>,
+    outcome: Arc<Outcome>,
 }
 
 impl<W> rig_core::driver::Transport<W> for Once
@@ -53,7 +62,7 @@ where
 {
     fn send(&self, payload: Encoded, _exchange: Exchange) -> Opening<WireFrame> {
         let physical = Arc::clone(&self.physical);
-        let status = Arc::clone(&self.status);
+        let outcome = Arc::clone(&self.outcome);
         let timeout = self.timeout;
         Opening::new(async move {
             let request = afd_inference::json_request(payload.request)?;
@@ -72,11 +81,15 @@ where
             let code = http::StatusCode::from_u16(reply.status).map_err(|_invalid| {
                 rig_core::ProviderError::request("invalid provider HTTP status")
             })?;
-            status.store(reply.status, Ordering::Relaxed);
+            outcome.status.store(reply.status, Ordering::Relaxed);
             // Decode usage even on a failed reply; publication separately checks the HTTP status.
             let document = serde_json::from_slice(&reply.body).map_err(|_invalid| {
                 rig_core::ProviderError::request("provider reply is not JSON")
             })?;
+            outcome.rejected.store(
+                super::rejections::authentication(code, &document),
+                Ordering::Relaxed,
+            );
             let opened = Opened::new(futures_util::stream::iter([Ok(WireFrame::Bytes(
                 reply.body,
             ))]))

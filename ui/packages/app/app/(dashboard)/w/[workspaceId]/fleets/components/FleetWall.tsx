@@ -11,7 +11,6 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
 import { listFleetsAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
-import { useRememberFleets } from "@/components/layout/RecentFleets";
 import FleetTile from "./FleetTile";
 import WallLiveBadge from "./WallLiveBadge";
 import { tileShouldStream } from "@/lib/wall/tile-liveness";
@@ -32,7 +31,6 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  useRememberFleets(workspaceId, fleets);
   const liveTotal = useMemo(
     () => fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length,
     [fleets],

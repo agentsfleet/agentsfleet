@@ -5,6 +5,7 @@ import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT, MESSAGE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DraftSidebarHistory } from "./DraftSidebarHistory";
+import { DraftSidebarItem } from "./DraftSidebarItem";
 import { useDraftSidebarBridge } from "./use-draft-sidebar-bridge";
 import { DraftSidebarProvider, useFreshFleetChat, removeSidebarDraft, type DraftSidebarState } from "./draft-sidebar-state";
 import { LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
@@ -18,6 +19,24 @@ const fresh = vi.spyOn(client, "fresh").mockImplementation(() => {});
 const initial: DraftView = { ...client.getSnapshot(), draft: DRAFT, listStatus: "ready" };
 const commits = vi.fn();
 const NEXT_DRAFT_ID = "0199a801-1000-7000-8000-00000000000a";
+
+it.each([false, true])("draft_sidebar_title_and_delete retain navigation typography and ellipsis (%s)", (active) => {
+  const title = "A long private setup request with emoji 🦉 and enough detail to overflow the sidebar";
+  const remove = vi.fn();
+  render(<DraftSidebarItem card={{id: DRAFT.id, title, detail: "In progress"}} workspace={WORKSPACE}
+    active={active} disabled={false} onNavigate={() => {}} onDelete={remove} />);
+  const link = screen.getByRole("link", {name: title});
+  expect(link.getAttribute("title")).toBe(title);
+  expect(link.classList.contains("font-sans")).toBe(true);
+  expect(link.classList.contains("text-body-sm")).toBe(true);
+  expect(link.querySelector("svg")).toBeNull();
+  const text = screen.getByText(title);
+  expect(text.classList.contains("truncate")).toBe(true);
+  expect(text.classList.contains("font-medium")).toBe(false);
+  expect(link.getAttribute("data-active")).toBe(active ? "true" : null);
+  fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${title}`}));
+  expect(remove).toHaveBeenCalledOnce();
+});
 
 it("keeps loaded chats visible while a page is pending and after it fails", async () => {
   const current = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
@@ -67,7 +86,16 @@ it("does not commit sidebar changes for reply chunks or unchanged history snapsh
   expect(screen.getByRole("link", { name: DRAFT.title }).getAttribute("href")).toContain(`draft=${DRAFT.id}`);
 });
 
-it("exposes unavailable history after access loss without starting a search", () => {
+it("shows Recent setup without search or fleet recents", () => {
+  render(tree(initial));
+  expect(screen.getByText("Recent setup")).toBeTruthy();
+  expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
+  expect(screen.queryByRole("textbox")).toBeNull();
+  expect(screen.queryByText("Fleet setup chats")).toBeNull();
+  expect(screen.queryByText("Recents")).toBeNull();
+});
+
+it("exposes unavailable history after access loss", () => {
   const fetcher = vi.spyOn(globalThis, "fetch");
   const view = render(tree(initial));
   expect(screen.getByRole("link", { name: DRAFT.title })).toBeTruthy();
@@ -79,16 +107,16 @@ it("exposes unavailable history after access loss without starting a search", ()
   fetcher.mockRestore();
 });
 
-it("distinguishes failed, loading, and empty history without offering an empty search", () => {
+it("distinguishes failed, loading, and empty history", () => {
   const empty = client.getSnapshot();
   const view = render(tree({...empty, busy: true}));
   expect(screen.getByText("Loading setup chats…")).toBeTruthy();
   expect(screen.queryByRole("textbox")).toBeNull();
   view.rerender(tree({...empty, error: "We couldn’t load your models and chats.", listStatus: "unavailable"}));
   expect(screen.getByText("Chat history is unavailable.")).toBeTruthy();
-  expect(screen.queryByText("Your fleet setup conversations will appear here.")).toBeNull();
+  expect(screen.queryByText("Your setup chats will appear here.")).toBeNull();
   view.rerender(tree({...empty, listStatus: "ready"}));
-  expect(screen.getByText("Your fleet setup conversations will appear here.")).toBeTruthy();
+  expect(screen.getByText("Your setup chats will appear here.")).toBeTruthy();
   expect(screen.queryByRole("textbox")).toBeNull();
 });
 
@@ -115,7 +143,7 @@ it("keeps a loaded history distinct from a failed or pending chat operation", ()
   expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
   expect(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`})).toHaveProperty("disabled", true);
   view.rerender(tree({...initial, draft: null, error: "Save failed", busy: true}));
-  expect(screen.getByText("Your fleet setup conversations will appear here.")).toBeTruthy();
+  expect(screen.getByText("Your setup chats will appear here.")).toBeTruthy();
   expect(screen.queryByText("Chat history is unavailable.")).toBeNull();
   expect(screen.queryByText("Loading setup chats…")).toBeNull();
 });
@@ -235,7 +263,7 @@ it("retains the newer chat owner's history when an older bridge unmounts", () =>
 it("removes a private card only from its owning scope and clears only the selected chat", () => {
   const scope = {workspace: WORKSPACE, subject: "reader"};
   const value: DraftSidebarState = {...scope, cards: [{id: DRAFT.id, title: DRAFT.title, detail: "Setup ready"}, {id: "other", title: "Other chat", detail: "In progress"}],
-    fresh: null, remove: null, owner: null, locked: false, current: DRAFT.id, more: null, status: "ready", searchVersion: null};
+    fresh: null, remove: null, owner: null, locked: false, current: DRAFT.id, more: null, status: "ready"};
   expect(removeSidebarDraft(null, scope, DRAFT.id)).toBeNull();
   expect(removeSidebarDraft(value, {...scope, workspace: "other"}, DRAFT.id)).toBe(value);
   expect(removeSidebarDraft(value, {...scope, subject: "other"}, DRAFT.id)).toBe(value);

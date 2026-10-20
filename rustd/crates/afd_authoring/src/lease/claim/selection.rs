@@ -10,7 +10,7 @@ use crate::{
     draft::read,
     error::raise::query,
     funnel::{Message, Owed},
-    lease::Status,
+    lease::{Status, pending},
     model,
     types::{CANCELLED, DraftState, EDITING, QUEUED},
 };
@@ -109,12 +109,7 @@ async fn select_message(
     connection: &mut PgConnection,
     draft: read::Locked,
 ) -> Result<Option<Selected>> {
-    let outstanding: bool = sqlx::query_scalar(sql::OBLIGATION)
-        .bind(draft.id.as_str())
-        .bind(Status::Settled.as_str())
-        .fetch_one(&mut *connection)
-        .await
-        .map_err(query(sql::CONTEXT))?;
+    let outstanding = pending::current(connection, &draft).await?.is_some();
     if draft.status != DraftState::Editing || outstanding {
         return Ok(None);
     }

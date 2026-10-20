@@ -11,14 +11,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M230
 **Workstream:** 001
 **Date:** Oct 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — setup chat can remain blocked after a provider failure and Stop
 **Categories:** API | DOCS | UI
 **Batch:** B1 — existing MiniMax and setup-chat stream
 **Branch:** fix/minimax-default-chat-polish
 **Baseline revision:** 211bcea539b62b5a13f5e2f3cb89dd342ca7dd6f
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending
+**Test Baseline:** 11,112 unit tests passed; 1,357 integration tests passed; zero failures
+**Baseline evidence:** `make test-unit-all` and `make test-integration-rustd` at the full revision above, on the same macOS host with isolated stores.
+Unit: `/tmp/minimax-baseline-unit.log`; integration: `/tmp/minimax-baseline-integration.log`.
+The unit lane intentionally ignored 1,362 datastore or platform tests; the integration lane ignored zero and filtered 4,187 nonselected tests.
 **Depends on:** none
 **Provenance:** LLM-drafted (GPT-6, Oct 20, 2026)
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` — Authoring admission and settlement; `docs/architecture/api_resources.md` — Private drafts
@@ -59,14 +61,24 @@ Keep late usage settlement, normal capacity checks, wallet holds, private access
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Separate chat blocking from retained liability |
 | `docs/architecture/api_resources.md` | EDIT | Send refusal and stopped failure recovery |
 | `docs/architecture/data_flow.md` | EDIT | Stop followed by Save and late accounting |
+| `docs/DESIGN_SYSTEM.md` | EDIT | Recent setup list without search or fleet recents |
 | `scripts/model-catalogue/catalogue.ts` | EDIT | Accept zero token prices for curated free models |
 | `scripts/model-catalogue/catalogue.test.ts` | EDIT | Free-model price regressions |
 | `scripts/model-catalogue/curated.ts` | EDIT | Reuse paid/free model identity |
 | `scripts/model-catalogue/curated.test.ts` | EDIT | Paid/free identity regression |
 | `scripts/model-catalogue/rows.test.ts` | EDIT | Free-model rows |
+| `scripts/model-catalogue/seed.integration.test.ts` | EDIT | Full curated document includes the new identity in real database writes |
 | `scripts/model-library-allowlist.json` | EDIT | Add MiniMax M3.1 Flash Free |
 | `rustd/crates/afd_authoring/src/lease/mod.rs` | EDIT | Shared pending-work query |
+| `rustd/crates/afd_authoring/src/lease/failure.rs` | EDIT | Emit a finish only for an actual terminal message transition |
 | `rustd/crates/afd_authoring/src/lease/pending.rs` | CREATE | One authoritative current-attempt check |
+| `rustd/crates/afd_authoring/src/maintenance/mod.rs` | EDIT | Expose the compiled sweep statement to query-plan tests under test-util |
+| `rustd/crates/afd_fleet/src/lease/billing_sweep.rs` | EDIT | Expose the compiled metering statement under test-util |
+| `rustd/crates/afd_db/Cargo.toml` | EDIT | Test-only domain dependencies for executable query-plan proofs |
+| `rustd/crates/afd_db/tests/migrations.rs` | EDIT | Test the migration adapter instead of reading source files |
+| `rustd/crates/afd_db/tests/integration_migrate/sweep_plans.rs` | EDIT | Explain the domain statements actually compiled into production |
+| `scripts/model-catalogue/seed.ts` | EDIT | Execute the shared compiled statement registry |
+| `scripts/model-catalogue/statements.ts` | CREATE | Load each SQL statement once for seeding and measured query plans |
 | `rustd/crates/afd_authoring/src/lease/sql/mod.rs` | EDIT | Register the shared query |
 | `rustd/crates/afd_authoring/src/lease/sql/pending.sql` | CREATE | Filter attempts past the Stop watermark |
 | `rustd/crates/afd_authoring/src/lease/claim/selection.rs` | EDIT | Use shared blocking rule under lock |
@@ -88,27 +100,44 @@ Keep late usage settlement, normal capacity checks, wallet holds, private access
 | `rustd/crates/afd_authoring/tests/draft/admission/mod.rs` | EDIT | Register recovery proofs |
 | `rustd/crates/afd_authoring/tests/draft/admission/stop.rs` | EDIT | Stop permits new work subject to normal limits |
 | `rustd/crates/afd_authoring/tests/draft/admission/recovery.rs` | CREATE | Unknown usage, replay, Stop, and concurrency proofs |
-| `rustd/crates/afd_authoring/tests/draft/model_calls/mod.rs` | EDIT | Register key rejection proofs |
-| `rustd/crates/afd_authoring/tests/draft/model_calls/rejections.rs` | CREATE | Real dispatch and settlement regressions |
+| `rustd/crates/afd_authoring/tests/draft/admission/history.rs` | CREATE | Indexed history, discovery, and concurrent Send and claim proofs |
+| `rustd/crates/afd_authoring/tests/draft/admission/rejections.rs` | CREATE | Real dispatch, key preflight, holds, and settlement regressions |
+| `rustd/crates/afd_authoring/tests/draft/admission/rejections/races.rs` | CREATE | Stop or model revocation racing a late key rejection finishes once |
 | `rustd/crates/afd_authoring/tests/draft/creation/mod.rs` | EDIT | Register lifecycle regression |
 | `rustd/crates/afd_authoring/tests/draft/creation/stopped.rs` | CREATE | Stop, Save, and late report isolation |
 | `ui/packages/app/components/layout/DraftSidebarItem.tsx` | EDIT | Remove chat icon and match navigation type |
 | `ui/packages/app/components/layout/DraftSidebarHistory.test.tsx` | EDIT | Keep title, delete, and long-title behavior |
+| `ui/packages/app/components/layout/DraftSidebarHistory.tsx` | EDIT | Recent setup heading and plain history list |
+| `ui/packages/app/components/layout/SidebarNavigation.tsx` | EDIT | Remove the fleet recents section |
+| `ui/packages/app/components/layout/ShellFrame.tsx` | EDIT | Remove unused fleet-history provider |
+| `ui/packages/app/components/layout/RecentFleets.tsx` | DELETE | Remove unused fleet-history tracking and rendering |
+| `ui/packages/app/tests/recent-fleets.test.tsx` | DELETE | Retire tests for the removed fleet-history feature |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | Remove unused visit tracking |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx` | EDIT | Remove unused fleet-list tracking |
+| `ui/packages/app/components/layout/draft-sidebar-state.tsx` | EDIT | Remove unused search refresh state |
+| `ui/packages/app/components/layout/use-draft-sidebar-bridge.ts` | EDIT | Remove unused search refresh subscriptions |
+| `ui/packages/app/components/layout/use-draft-search.ts` | DELETE | Remove unused dashboard search hook |
+| `ui/packages/app/components/layout/DraftSearchResults.tsx` | DELETE | Remove unused dashboard search results |
+| `ui/packages/app/components/layout/DraftSearchResultsDynamic.tsx` | DELETE | Remove unused dashboard search loader |
+| `ui/packages/app/components/layout/DraftSearchResultsDynamic.test.tsx` | DELETE | Retire tests for the removed search loader |
+| `ui/packages/app/components/layout/DraftSidebarSearch.test.tsx` | DELETE | Retire tests for the removed sidebar search |
+| `ui/packages/app/components/layout/DraftSearchUpdates.test.tsx` | DELETE | Retire tests for removed sidebar search refresh |
+| `ui/packages/app/components/layout/DraftSearchAccess.test.tsx` | DELETE | Retire tests for removed sidebar search access handling |
 | `ui/packages/app/components/layout/SidebarNavigationSections.tsx` | EDIT | Use compact icon button when collapsed |
 | `ui/packages/app/components/domain/chat/DraftConversation.tsx` | EDIT | Distinguish queued, running, and stopped messages |
-| `ui/packages/app/components/domain/chat/ChatComposer.tsx` | EDIT | Offer Stop for unresolved provider work |
+| `ui/packages/app/components/domain/chat/ChatComposer.tsx` | EDIT | Offer Stop for unresolved provider work and focus a ready New fleet composer |
 | `ui/packages/app/lib/api/draft-recovery.ts` | CREATE | Recovery derived from current watermark |
-| `ui/packages/app/lib/api/drafts.ts` | EDIT | Keep client recovery consistent with server admission |
+| `ui/packages/app/lib/api/drafts.ts` | EDIT | Remove access-reset method whose final sidebar-search caller was removed |
 | `ui/packages/app/tests/draft-recovery.test.ts` | CREATE | Recovery and stale-history cases |
 | `ui/packages/app/tests/draft-chat-recovery.test.tsx` | CREATE | Rendered Stop and pending-message behavior |
+| `ui/packages/app/tests/app-shell-navigation.test.tsx` | EDIT | Collapsed New Fleet icon button |
 | `VERSION` | EDIT | User-visible fix version |
 | `cli/package.json` | EDIT | Version synchronization |
-| `ui/packages/app/package.json` | EDIT | Version synchronization |
-| `ui/packages/website/package.json` | EDIT | Version synchronization |
-| `ui/packages/design-system/package.json` | EDIT | Version synchronization |
+| `rustd/Cargo.toml` | EDIT | Workspace version synchronization |
+| `rustd/Cargo.lock` | EDIT | Workspace package versions |
 
-Published documentation uses its own branch in `~/Projects/docs`, as previously authorized for this stream.
-Update affected setup-chat recovery pages and the changelog there; never write through this worktree.
+Published documentation in `~/Projects/docs` is excluded from completion by Indy's latest instruction, quoted under Discovery.
+Keep this repository's architecture and completed spec accurate; preserve earlier work in the separate repository without further edits or publication.
 Expand this table before additional implementation edits.
 
 ## Applicable Rules
@@ -139,36 +168,39 @@ Expand this table before additional implementation edits.
 
 ## Sections (implementation slices)
 
-### §1 — Current chat ownership and retained accounting
+### §1 — Current chat ownership and retained accounting — DONE
 
 Use the existing draft lock and watermark. Discovery and authoritative admission exclude stopped attempts from current chat blocking.
 Send first resolves exact replay, then refuses unresolved uncancelled provider usage without accepting text or consuming a sequence.
 
-- **Dimension 1.1** — Unknown usage refuses fresh Send but exact replay succeeds → Test `unknown_work_refuses_fresh_send_but_preserves_exact_replay`
-- **Dimension 1.2** — Stop permits subsequent claim without losing old liability → Test `stopped_unknown_work_does_not_block_new_claim_or_publish_late_text`
-- **Dimension 1.3** — Stop, Send, claim, and reports preserve ordering and single settlement → Test `send_racing_stop_keeps_one_lease_and_the_retained_report_settles_once`
-- **Dimension 1.4** — Save and setup cancellation never restore old publication authority → Test `save_after_stop_keeps_old_reports_accounting_only`
-- **Dimension 1.5** — Indexed cutoff checks remain bounded over retained history and concurrent callers → Test `stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_sequences`
+- **Dimension 1.1** — DONE — Unknown usage refuses fresh Send but exact replay succeeds → Test `unknown_work_refuses_fresh_send_but_preserves_exact_replay`
+- **Dimension 1.2** — DONE — Stop permits subsequent claim without losing old liability → Test `stopped_unknown_work_does_not_block_new_claim_or_publish_late_text`
+- **Dimension 1.3** — DONE — Stop, Send, claim, and reports preserve ordering and single settlement → Test `send_racing_stop_admits_new_work_and_the_retained_report_settles_once`
+- **Dimension 1.4** — DONE — Save and setup cancellation never restore old publication authority → Test `save_after_stop_keeps_old_reports_accounting_only`
+- **Dimension 1.5** — DONE — Indexed cutoff checks remain bounded over retained history and concurrent callers → Test `stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_sequences`
 
-### §2 — Definite key rejection
+### §2 — Definite key rejection — DONE
 
 Parse key header syntax before dispatch intent. A definite HTTP 401 authentication rejection ends the visible turn as failed.
 Keep already reported usage and runtime charges. Missing usage on uncertain transport or other failed responses remains unknown.
 
-- **Dimension 2.1** — Malformed keys create no dispatch intent or physical send → Test `malformed_key_is_refused_before_dispatch_intent`
-- **Dimension 2.2** — Definite authentication rejection settles once and releases unused reservation → Test `authentication_rejection_is_known_failed_usage_and_settles_once`
-- **Dimension 2.3** — Rejection classification preserves known usage and uncertain errors → Test `authentication_rejection_preserves_usage_and_does_not_reclassify_uncertainty`
+- **Dimension 2.1** — DONE — Malformed keys create no dispatch intent or physical send → Test `malformed_key_fails_before_dispatch_and_releases_unused_hold`
+- **Dimension 2.2** — DONE — Definite authentication rejection settles once and releases unused reservation → Test `authentication_rejection_fails_and_settles_without_cancelling_the_chat`
+- **Dimension 2.3** — DONE — Rejection classification preserves known usage and uncertain errors → Test `authentication_status_does_not_erase_reported_usage`
+- **Dimension 2.4** — DONE — A late rejection never emits another finish after Stop or model revocation → Test `stopped_authentication_reply_finishes_only_once`; also `revoked_model_authentication_reply_finishes_only_once`
 
-### §3 — Catalogue and chat recovery presentation
+### §3 — Catalogue and chat recovery presentation — DONE
 
 Register the free OpenRouter model and retain data-driven model labels.
 Remove the sidebar chat icon, match navigation typography, preserve delete and ellipsis, and center the compact collapsed plus button.
 Show Queued for unclaimed work. Offer Stop when unresolved provider work blocks Send, including after reload.
 
-- **Dimension 3.1** — Curated free MiniMax rows retain correct identity and zero pricing → Test `curated_model_catalogue_tests`
-- **Dimension 3.2** — Current watermark determines Stop and recovery even with older cached messages → Test `draft_recovery_uses_current_watermark`
-- **Dimension 3.3** — Rendered chat distinguishes queued, running, and recoverable failure → Test `chat_recovery_shows_stop_and_queued_state`
-- **Dimension 3.4** — Sidebar retains long titles, delete, and navigation typography → Test `draft_sidebar_title_and_delete`
+- **Dimension 3.1** — DONE — Curated free MiniMax rows retain correct identity and zero pricing → Test `curated_model_catalogue_tests`
+- **Dimension 3.2** — DONE — Current watermark determines Stop and recovery even with older cached messages → Test `draft_recovery_uses_current_watermark`
+- **Dimension 3.3** — DONE — Rendered chat distinguishes queued, running, and recoverable failure → Test `chat_recovery_shows_stop_and_queued_state`
+- **Dimension 3.4** — DONE — Sidebar retains long titles, delete, and navigation typography → Test `draft_sidebar_title_and_delete`
+- **Dimension 3.5** — DONE — Sidebar shows Recent setup without search or fleet recents → Test `shows Recent setup without search or fleet recents`; also expanded navigation regression
+- **Dimension 3.6** — DONE — New fleet focuses a ready composer, including a second click while already new → Test `focuses New fleet ready for typing without clicking the composer`; also readiness, same-page fresh action, and existing-chat navigation
 
 ## Interfaces
 
@@ -212,35 +244,50 @@ Recovery tests check single finish and unchanged private-data boundaries; no ana
 |-----------|------|------|---------|
 | 1.1 | integration | `unknown_work_refuses_fresh_send_but_preserves_exact_replay` | Fresh message refused without sequence change; exact replay returns original |
 | 1.2 | integration | `stopped_unknown_work_does_not_block_new_claim_or_publish_late_text` | Later claim succeeds subject to normal limits; old answer stays hidden |
-| 1.3 | integration | `send_racing_stop_keeps_one_lease_and_the_retained_report_settles_once` | No duplicate attempt or debit; delayed Stop cannot cancel later sequence |
+| 1.3 | integration | `send_racing_stop_admits_new_work_and_the_retained_report_settles_once` | No duplicate attempt or debit; delayed Stop cannot cancel later sequence |
 | 1.4 | integration | `save_after_stop_keeps_old_reports_accounting_only` | Save closes draft; setup Kill returns editing; old proposal/report stays fenced |
 | 1.5 | integration | `stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_sequences` | Query plan uses cutoff index; concurrent requests retain unique monotone sequences |
-| 2.1 | integration | `malformed_key_is_refused_before_dispatch_intent` | No physical send or pending receipt; model failure is durable |
-| 2.2 | integration | `authentication_rejection_is_known_failed_usage_and_settles_once` | Known failed dispatch, single settlement, released hold, fresh retry possible |
-| 2.3 | unit | `authentication_rejection_preserves_usage_and_does_not_reclassify_uncertainty` | Known usage retained; non-authentication failure stays unknown |
+| 2.1 | integration | `malformed_key_fails_before_dispatch_and_releases_unused_hold` | No physical send or pending receipt; model failure is durable |
+| 2.2 | integration | `authentication_rejection_fails_and_settles_without_cancelling_the_chat` | Known failed dispatch, single settlement, released hold, fresh retry possible |
+| 2.3 | unit | `authentication_status_does_not_erase_reported_usage` | Known usage retained; adjacent rejection tests preserve uncertain errors |
+| 2.4 | integration | `stopped_authentication_reply_finishes_only_once` | Stop racing rejection emits one terminal event and settles once; paired model-revocation regression proves the same boundary |
 | 3.1 | unit | `curated_model_catalogue_tests` | Free row uses correct model identity and nonnegative pricing |
 | 3.2 | unit | `draft_recovery_uses_current_watermark` | Old cached failure cannot block a stopped turn; newer unknown still blocks |
-| 3.3 | e2e | `chat_recovery_shows_stop_and_queued_state` | Rendered chat exposes recovery and does not call queued work Working |
-| 3.4 | e2e | `draft_sidebar_title_and_delete` | Long title truncates visually; delete and navigation remain accessible |
+| 3.3 | unit | `chat_recovery_shows_stop_and_queued_state` | Rendered component exposes recovery and does not call queued work Working |
+| 3.4 | unit | `draft_sidebar_title_and_delete` | Long title has truncation styles; delete and navigation remain accessible |
+| 3.5 | unit | `shows Recent setup without search or fleet recents` | Recent setup heading; no search input or fleet recents |
+| 3.6 | unit and browser | `focuses New fleet ready for typing without clicking the composer` | Ready input owns the caret; waiting or existing chat does not steal focus |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
-| R1 | Recovery and rejection proofs | `make test-integration-rustd` | exit 0; named recovery tests pass | P0 | |
-| R2 | Catalogue and rendered UI proofs | `make test-unit-all` | exit 0; named catalogue and recovery tests pass | P0 | |
-| R3 | Scope and baseline evidence complete | `orly gate pr` | exit 0 | P0 | |
-| S1 | Source checks | `make harness-verify` | exit 0 | P0 | |
-| S2 | Lint | `make lint-all` | exit 0 | P0 | |
-| S3 | Version synchronization | `make check-version` | exit 0 | P0 | |
-| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S5 | Published recovery instructions | Review affected docs branch | Recovery steps agree with runtime and no secret values appear | P1 | |
+| R1 | Recovery and rejection proofs | `make test-integration-rustd` | exit 0; named recovery tests pass | P0 | ✅ 1,364 parallel plus 3 exclusive tests passed; zero failures |
+| R2 | Catalogue and rendered UI proofs | `make test-unit-all` | exit 0; named catalogue and recovery tests pass | P0 | ✅ 11,125 passed; all four TypeScript package coverage gates at 100% |
+| R3 | Scope and baseline evidence complete | `orly gate pr` | exit 0 | P0 | Publication pending: runs after commit and push, before PR creation |
+| S1 | Source checks | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN |
+| S2 | Lint | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed |
+| S3 | Version synchronization | `make check-version` | exit 0 | P0 | ✅ all versions match 0.62.2 |
+| S4 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ staged scanner: no leaks found |
+| S5 | Architecture recovery description | Review architecture diff against Send, claim, Stop, and receipt paths | Current ownership and retained accounting match code | P1 | ✅ Watermark governs admission/publication; original attempt governs settlement |
+
+Proofs at implementation close: `/tmp/minimax-integration-final-2.log`, `/tmp/minimax-unit-final-3.log`,
+`/tmp/minimax-harness-final-5.log`, `/tmp/minimax-lint-final-5.log`, and `/tmp/minimax-version-final.log`.
+The additional public failure-recovery unit proof passed separately; the PR gate reruns the final tree.
+Rust coverage: 166/166 changed lines and all 17 measured touched files exceed 99%; lowest file 105/106.
+The five-point retained-history ladder uses 100, 200, 400, 800, and 1,000 rows; 100 Send callers retain unique sequences, and 100 claim callers produce one attempt.
+New Fleet: 60.75 → 60.57 kB gzipped; shared dashboard: 275.60 → 272.74 kB; unchanged limits pass.
+Local browser checks confirm 14px navigation/history text, a 36px collapsed button with an 18px plus, and repeated New fleet focus.
+Browser checks use the shared-dev API without sending or stopping chat; backend recovery is verified in isolated integration tests.
 
 ## Dead Code Sweep
 
 Remove `claim/sql/obligation.sql` and its `OBLIGATION` constant when the shared pending-work query replaces them.
 Verify `rg -n '\bOBLIGATION\b|claim/sql/obligation.sql' rustd/crates/afd_authoring/src` has zero matches.
-Remove the sidebar message icon import after its last use. No other file deletion is planned.
+Remove the sidebar message icon import after its last use.
+Remove the search hook, results, loader, and feature-specific tests when removing sidebar search.
+Remove fleet-recents tracking, provider, rendering, and feature-specific tests with that section.
+Retain the programmatic search API and its service/client tests.
 
 ## Out of Scope
 
@@ -275,6 +322,14 @@ Remove the sidebar message icon import after its last use. No other file deletio
 - **Consults** — Indy approved the revised existing-table design: “Yes i am signing off the design”.
   Earlier execution-table proposals are withdrawn. Static source review confirmed both claim queries ignore the Stop cutoff for retained attempts.
   Static source review also confirmed receipt completion treats every decoding failure as unknown usage.
+- **Sidebar scope** — Indy: “and no Recent Fleets under Recents. keep things imple”, then “i dont want the search, you can remove that.” and “for now”.
+- **Focus and verification** — Indy requested “all the test cases to be covered on unit, integration, performance, concurency” and that clicking New Fleet sets the caret ready to type.
+  Reuse the existing fresh action's message reset for focus; do not add a second chat identity or timing-dependent navigation timeout.
 - **Metrics review** — No event schema or funnel definition change; existing finish and accounting events retain their ownership.
-- **Skill-chain outcomes** — Spec workflow in progress; unit, integration, review, and post-push monitoring pending.
-- **Deferrals** — None.
+- **Lint repair** — Indy approved “Yes, repair the affected tests” for the four existing source-read lint failures.
+  Explain compiled domain statements and test the migration adapter; retain the lint rule and behavioral assertions.
+- **Documentation boundary** — Indy: “When i stop override documentation its in ~/Projects/docs repo”.
+  Relevant architecture updates in this repository remain authorized; leave the separate published-docs repository untouched.
+- **Skill-chain outcomes** — Unit and real-datastore integration checks passed; final review and post-push monitoring remain publication gates.
+- **Deferrals** — Published pages and changelog in `~/Projects/docs` only; architecture updates in this repository remain required.
+  > Indy (2026-10-21): “When i stop override documentation its in ~/Projects/docs repo” — context: skip separate published-docs updates for this PR.

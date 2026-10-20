@@ -20,6 +20,10 @@ pub struct Maintenance {
 }
 
 impl Drafts {
+    /// The compiled lapse statement, for real database query-plan measurements.
+    #[cfg(feature = "test-util")]
+    pub const EXPIRED_ATTEMPTS_QUERY: &'static str = sql::CANDIDATES;
+
     /// Runs the bounded cleanup used by the supervised daemon worker.
     ///
     /// # Errors

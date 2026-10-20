@@ -3,7 +3,7 @@
 pub(super) const CONTEXT: &str = "admit queued authoring message";
 pub(super) const SCAN_LIMIT: i64 = 64;
 
-/// Drafts with queued work and no open obligation, oldest request first.
+/// Drafts with queued work and no uncancelled attempt, oldest request first.
 ///
 /// `$1` the editing draft status, `$2` the queued message status, `$3` the
 /// settled attempt status, `$4` limit.
@@ -13,11 +13,6 @@ pub(super) const CANDIDATES: &str = include_str!("candidates.sql");
 ///
 /// `$1` draft, `$2` the queued status, `$3` the cutoff.
 pub(super) const MESSAGE: &str = include_str!("message.sql");
-
-/// Whether the draft still owes accounting for an earlier attempt.
-///
-/// `$1` draft, `$2` the settled status.
-pub(super) const OBLIGATION: &str = include_str!("obligation.sql");
 
 /// `$1` draft, `$2` the admitted sequence, `$3` limit.
 pub(super) const HISTORY: &str = include_str!("history.sql");

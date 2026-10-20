@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 import { z } from "zod";
-import { isCuratedModel, isOfficialPriceSource } from "./curated";
+import { isCuratedModel, isFreeModel, isOfficialPriceSource } from "./curated";
 
 export const NANOS_PER_USD = 1_000_000_000;
 export const TOKENS_PER_MTOK = 1_000_000;
@@ -8,7 +8,7 @@ export const PRICING_UNIT = `USD per ${TOKENS_PER_MTOK} tokens`;
 export const MAX_CATALOGUE_BYTES = 256 * 1024;
 export const CATALOGUE_URL = new URL("../model-library-allowlist.json", import.meta.url);
 const MONEY = z.string().max(32).regex(/^\d+(?:\.\d{1,9})?$/, { abort: true }).pipe(z.string().refine((value) =>
-  new Decimal(value).gt(0) && new Decimal(value).mul(NANOS_PER_USD).lte("9223372036854775807")));
+  new Decimal(value).gte(0) && new Decimal(value).mul(NANOS_PER_USD).lte("9223372036854775807")));
 const INSTANT = z.iso.datetime({ offset: true });
 const SOURCE = z.url().max(2048).pipe(z.string().refine((value) => new URL(value).protocol === "https:"));
 const CONTEXT_LIMIT = 2_147_483_647;
@@ -77,8 +77,14 @@ const modelSchema = z.strictObject({
     context.addIssue({ code: CUSTOM_ISSUE, message: `${model.model_name}: context source must name its provider models API` });
   if (model.advanced !== (model.provider === OPENAI_PROVIDER && model.model_name === "gpt-5.6-terra"))
     context.addIssue({ code: CUSTOM_ISSUE, message: `${model.model_name}: only gpt-5.6-terra is advanced` });
-  if (model.prices.every((price) => new Decimal(price.input).lt(MIN_CURATED_INPUT_PRICE)))
+  if (!isFreeModel(model) && model.prices.every((price) => new Decimal(price.input).lt(MIN_CURATED_INPUT_PRICE)))
     context.addIssue({ code: CUSTOM_ISSUE, message: `${model.model_name}: sentinel-sized input prices cannot enter the curated catalogue` });
+  if (isFreeModel(model) && model.prices.some((price) => price.input !== "0" || price.cached_input !== "0"
+    || price.output !== "0" || price.cache_write !== null || price.cache_write_5m !== null || price.cache_write_1h !== null))
+    context.addIssue({ code: CUSTOM_ISSUE, message: `${model.model_name}: free model prices must remain zero` });
+  if (!isFreeModel(model) && model.prices.some((price) => [price.input, price.cached_input, price.output,
+    price.cache_write, price.cache_write_5m, price.cache_write_1h].some((amount) => amount !== null && new Decimal(amount).isZero())))
+    context.addIssue({ code: CUSTOM_ISSUE, message: `${model.model_name}: zero prices are reserved for free models` });
   const tiers = new Map<number, Price[]>();
   for (const price of model.prices) {
     if (!isOfficialPriceSource(model.provider, price.source_url))
