@@ -43,15 +43,15 @@ pub(super) async fn owe_committed(harness: &OutboundHarness, row: &str, event_id
         .expect("the report's transaction commits");
     // Past both of the producer's spans, so a scan at production spans — and
     // the producer's own pass — offers it without a test waiting on a clock.
-    age(&harness.database, event_id).await;
+    age(&harness.owner, event_id).await;
     written
 }
 
 /// A fixture in the state each test starts from: parents seeded, nothing owed.
 pub(super) async fn ready() -> OutboundHarness {
     let harness = OutboundHarness::reset().await;
-    seed_parents(&harness.database).await;
-    clear_obligations(&harness.database).await;
+    seed_parents(&harness.owner).await;
+    clear_obligations(&harness.owner).await;
     harness
 }
 
@@ -129,7 +129,7 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
         .expect("recording the receipt");
     // The receipt moved `updated_at` to now; the entry has sat on the queue an
     // hour, as far as the undelivered scan can tell.
-    age(&harness.database, event).await;
+    age(&harness.owner, event).await;
 }
 
 /// A second handle on the lane's datastore, for the faults the queue cannot stage.

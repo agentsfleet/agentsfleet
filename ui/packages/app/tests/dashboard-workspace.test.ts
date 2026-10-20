@@ -263,7 +263,7 @@ describe("WorkspaceSwitcher component", () => {
     const items = screen.getAllByRole("menuitem");
     await user.click(items[0]!);
     await waitFor(() =>
-      expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets"),
+      expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets/new"),
     );
   });
 
@@ -343,7 +343,7 @@ describe("WorkspaceSwitcher component", () => {
       expect(screen.getByText("Workspace created: inline-prod.")).toBeTruthy(),
     );
     expect(screen.getByRole("menuitem", { name: "inline-prod" })).toBeTruthy();
-    expect(routerPush).toHaveBeenCalledWith("/w/ws_inline/fleets");
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_inline/fleets/new");
     expect(
       screen.getByTestId("workspace-new").getAttribute("aria-disabled"),
     ).toBe("true");
@@ -498,7 +498,7 @@ describe("WorkspaceSwitcher component", () => {
       screen.getByTestId("workspace-new").getAttribute("aria-disabled"),
     ).toBe("true");
     expect(screen.getByTestId("create-first-workspace").textContent).toBe(
-      "Open workspace",
+      "New fleet",
     );
     expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
   });
@@ -538,13 +538,13 @@ describe("WorkspaceSwitcher component", () => {
     await enterWorkspaceName("switcher");
     await user.click(await screen.findByTestId("workspace-create-submit"));
     await waitFor(() =>
-      expect(routerPush).toHaveBeenCalledWith("/w/ws_switcher/fleets"),
+      expect(routerPush).toHaveBeenCalledWith("/w/ws_switcher/fleets/new"),
     );
     expect(
       screen.getByTestId("workspace-new").getAttribute("aria-disabled"),
     ).toBe("true");
     expect(screen.getByTestId("create-first-workspace").textContent).toBe(
-      "Open workspace",
+      "New fleet",
     );
     await user.click(screen.getByTestId("create-first-workspace"));
     expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
@@ -654,7 +654,7 @@ describe("WorkspaceSwitcher component", () => {
       data: { workspace_id: "ws_owner", name: "owner" },
     });
     await waitFor(() =>
-      expect(routerPush).toHaveBeenCalledWith("/w/ws_owner/fleets"),
+      expect(routerPush).toHaveBeenCalledWith("/w/ws_owner/fleets/new"),
     );
   });
 
@@ -795,6 +795,8 @@ describe("WorkspaceSwitcher component", () => {
     await user.click(screen.getByTestId("workspace-new"));
     await enterWorkspaceName("layout-unmount");
     await user.click(await screen.findByTestId("workspace-create-submit"));
+    // Exclude the initial stale-shell recovery; late completion must cause no refresh.
+    routerRefresh.mockClear();
     view.unmount();
     await act(async () => {});
     expect(routerPush).not.toHaveBeenCalled();

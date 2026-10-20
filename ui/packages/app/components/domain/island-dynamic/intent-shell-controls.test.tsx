@@ -79,6 +79,7 @@ vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "person" 
 
 vi.mock("next/navigation", () => ({
   usePathname: () => state.pathname,
+  useRouter: () => ({ refresh: vi.fn() }),
 }));
 
 vi.mock("next/link", async () => {

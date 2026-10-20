@@ -62,6 +62,9 @@ function rowFor(modelId: string): HTMLElement {
 }
 
 async function loadedEditDialog(label: string) {
+  await screen.findByRole("button", { name: "Catalogue details" });
+  fireEvent.click(screen.getByRole("button", { name: "Catalogue details" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pricing" }));
   const field = await screen.findByLabelText(label);
   const dialog = field.closest('[role="dialog"]');
   if (!dialog) throw new Error("loaded edit field has no dialog owner");
@@ -134,7 +137,7 @@ it("CatalogueList — Edit (rates dialog wired to updateAdminModelAction) > reje
   renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
   fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
-  const dialog = within(await screen.findByRole("dialog"));
+  const dialog = await loadedEditDialog("Context window (tokens)");
   fireEvent.change(dialog.getByLabelText("Context window (tokens)"), { target: { value: "0" } });
   fireEvent.change(dialog.getByLabelText("Input ($/1M)"), { target: { value: "-1" } });
   fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
@@ -324,7 +327,7 @@ it("ModelsView > reflects an edited model's new rates in the table without a rou
   renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
 
   fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
-  const dialog = within(await screen.findByRole("dialog"));
+  const dialog = await loadedEditDialog("Input ($/1M)");
   fireEvent.change(dialog.getByLabelText("Input ($/1M)"), { target: { value: "0.99" } });
   fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 

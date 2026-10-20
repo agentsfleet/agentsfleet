@@ -78,6 +78,13 @@ export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 # 5 s connect budget. The Dragonfly certificate carries `IP:127.0.0.1` in its SAN
 # beside `DNS:localhost`, so TLS verification is unaffected.
 TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_PG_HOST_PORT)/agentsfleetdb?sslmode=disable
+# The API pool's login, as production's: a member of `api_runtime` and nothing
+# else (`pscale role create … --inherited-roles api_runtime`,
+# playbooks/operations/database_region_move/001_playbook.md). The owner above
+# holds every grant, so a suite connecting as it never meets a missing one; the
+# daemon does. `_migrate-test-db` creates this login once the schema's roles exist.
+TEST_DATABASE_API_LOGIN := agentsfleet_api
+TEST_DATABASE_URL_API ?= postgres://$(TEST_DATABASE_API_LOGIN):$(TEST_DATABASE_API_LOGIN)@127.0.0.1:$(AGENTSFLEET_PG_HOST_PORT)/agentsfleetdb?sslmode=disable
 # `redis://`, not `rediss://`, and the reason is measured rather than assumed.
 #
 # A TLS connect to the lane's Dragonfly runs a 232 ms median against 0.1 ms for
@@ -113,7 +120,7 @@ TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/dragonfly-bad-ca.crt
 # line and nothing about docker; the admin ports it reaches never leave the
 # container (see scripts/dragonfly-cluster.sh).
 TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
-export TEST_DATABASE_URL TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFLY_CA_CERT TEST_DRAGONFLY_BAD_CA TEST_DRAGONFLY_CONTROL
+export TEST_DATABASE_URL TEST_DATABASE_URL_API TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFLY_CA_CERT TEST_DRAGONFLY_BAD_CA TEST_DRAGONFLY_CONTROL
 
 # The invite email's sink: the port a suite's `smtp-relay` bag names, and the
 # API it reads the delivered message back from.

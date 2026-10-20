@@ -21,7 +21,7 @@ export default function PlatformCatalogTable({entries}: {entries: PlatformEntry[
     {state.error ? <Alert variant="destructive" data-testid="catalog-error">{state.error}</Alert> : null}
     <DataTable columns={columns} rows={state.current} rowKey={(row) => row.id} caption={FLEET_SETUPS_SECTION} isLoading={state.busy}
       empty={<EmptyState icon={<LibraryIcon size={20} aria-hidden="true" />} title={EMPTY_TITLE} description={EMPTY_DESCRIPTION}
-        action={<Button asChild variant="secondary"><Link href="/">Open workspace</Link></Button>} />} />
+        action={<Button asChild variant="secondary"><Link href="/">New fleet</Link></Button>} />} />
     {editing ? <EditFleetDialogDynamic key={editing.id} entry={editing} open onOpenChange={() => setEditing(null)}
       onSaved={(updated) => { state.remember(editing.etag, updated); setEditing(null); }} /> : null}
     <ConfirmDialog open={deleting !== null} onOpenChange={() => setDeleting(null)}

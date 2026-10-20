@@ -63,7 +63,7 @@ export function SidebarNavigation({ pathname, workspaceId, operatorScopes, colla
       <Suspense><DraftSidebarHistory workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
       <RecentFleets workspaceId={workspaceId} pathname={pathname} onNavigate={onNavigate} />
     </div> : <div className="flex-1" />}
-    <div className="mt-auto shrink-0 p-3">
+    <div className="mt-auto shrink-0 border-t border-border px-sm pt-sm">
       <WorkspaceSwitcher workspaces={workspaces} operatorScopes={operatorScopes} collapsed={collapsed} />
     </div>
   </Nav>;

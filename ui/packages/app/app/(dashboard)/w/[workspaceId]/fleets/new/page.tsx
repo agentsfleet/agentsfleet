@@ -28,6 +28,6 @@ export default async function NewFleetPage({params, searchParams}: {
   if (!query.success) notFound();
   const source = "library" in query.data ? {kind: SOURCE_KIND.library, library_id: query.data.library, revision_id: query.data.revision} : "fleet" in query.data ? {kind: SOURCE_KIND.fleet, fleet_id: query.data.fleet, setup_revision: query.data.setup_revision} : undefined;
   return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col">
-    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source} canPublishPlatform={await hasScope(SCOPE.PLATFORM_LIBRARY_WRITE)} />
+    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source} canPublishPlatform={await hasScope(SCOPE.PLATFORM_LIBRARY_WRITE)} canManagePlatformModels={await hasScope(SCOPE.MODEL_ADMIN)} />
   </PageLayout>;
 }

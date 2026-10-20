@@ -29,7 +29,8 @@ export function PriceScheduleFields() {
     return detail ? [`Price ${index + 1}: ${label}: ${detail}`] : [];
   }));
   return <div className="space-y-md">
-    <SectionHeader as="p">Price schedule</SectionHeader>
+    <SectionHeader as="p">Pricing tiers</SectionHeader>
+    <p className="text-sm text-muted-foreground">Keep one base price for standard requests. Add a tier only when the provider charges a different rate for long prompts or a different date range.</p>
     <Alert>{UNKNOWN_NOTE}</Alert>
     {message || rowMessages.length > 0 ? <Alert variant="destructive">
       {message}
@@ -49,6 +50,6 @@ export function PriceScheduleFields() {
       </AccordionItem>)}
     </Accordion>
     <Button type="button" variant="secondary" disabled={fields.length >= CATALOGUE_LIMITS.prices}
-      onClick={() => append({ ...EMPTY_PRICE })}>Add price</Button>
+      onClick={() => append({ ...EMPTY_PRICE })}>Add pricing tier</Button>
   </div>;
 }

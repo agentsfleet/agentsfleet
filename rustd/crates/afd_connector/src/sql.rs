@@ -52,14 +52,3 @@ pub const RELEASE_OTHER_INSTALLS: &str = include_str!("sql/release_other_install
 /// remove a row another workspace owns, and the two-column predicate is what
 /// makes that a property of the statement rather than of the caller.
 pub const DELETE_WORKSPACE_INSTALLS: &str = include_str!("sql/delete_workspace_installs.sql");
-
-/// The workspace row, locked first by a connect's landing and by a Disconnect
-/// so the two take turns per workspace.
-///
-/// The sealed handle's own row cannot order them on a FIRST connect: there is
-/// no row yet, so a Disconnect would lock nothing, then delete routing rows a
-/// connect commits in between and leave a grant nothing routes to. The
-/// workspace row exists before either. `FOR NO KEY UPDATE` rather than
-/// `FOR UPDATE`, so an insert that only references the workspace (it takes
-/// `FOR KEY SHARE`) is not held up. `$1` workspace.
-pub const LOCK_WORKSPACE: &str = include_str!("sql/lock_workspace.sql");

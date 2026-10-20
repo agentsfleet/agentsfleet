@@ -9,7 +9,8 @@ use afd_core::error_code::{self, Coded as _};
 use afd_core::test_util::trace::Capture;
 
 use super::{
-    Created, NOT_REMOVED, PlatformDefault, REMOVAL_PANICKED, Unremoved, remove, states, unremoved,
+    Created, DELETE_POLL, NOT_REMOVED, PlatformDefault, REMOVAL_PANICKED, Unremoved, remove,
+    states, unremoved,
 };
 
 /// A Postgres nobody listens on: port 1 is reserved and unbound.
@@ -54,6 +55,25 @@ async fn the_last_hold_over_an_unremovable_row_logs_it_and_frees_the_provider() 
     let left = state.get(PROVIDER).expect("the provider was counted");
     assert_eq!((left.holders, left.deleting), (0, false));
     assert!(left.created.is_none(), "the drop took the row it tried");
+}
+
+/// A holder arriving while the provider's row is being deleted waits for the
+/// delete to finish, then holds: it never counts itself onto a row going away.
+#[tokio::test]
+async fn a_holder_waits_out_a_delete_then_holds() {
+    const PROVIDER: &str = "deleting-provider";
+    states().entry(PROVIDER.to_owned()).or_default().deleting = true;
+    let mut arriving = tokio::spawn(PlatformDefault::enter(PROVIDER));
+
+    let waited = tokio::time::timeout(DELETE_POLL * 5, &mut arriving).await;
+    assert!(waited.is_err(), "a holder does not enter mid-delete");
+    assert_eq!(states().get(PROVIDER).map(|state| state.holders), Some(0));
+
+    states().entry(PROVIDER.to_owned()).or_default().deleting = false;
+    let hold = arriving.await.expect("the holder's task completes");
+    assert_eq!(states().get(PROVIDER).map(|state| state.holders), Some(1));
+    drop(hold);
+    assert_eq!(states().get(PROVIDER).map(|state| state.holders), Some(0));
 }
 
 #[test]

@@ -18,7 +18,7 @@ export function ChatAvailability({title, children, actions}: {title: string; chi
   </DashboardPanel>;
 }
 
-export function ChatModelAvailability({client, view, workspace}: {client: DraftClient; view: DraftView; workspace: string}) {
+export function ChatModelAvailability({client, view, workspace, canManagePlatformModels = false}: {client: DraftClient; view: DraftView; workspace: string; canManagePlatformModels?: boolean}) {
   if (view.error || view.inaccessible || view.models.some(model => model.eligibility.authoring)) return null;
   if (view.listStatus === DRAFT_LIST_STATUS.loading) return <Skeleton className="mx-auto h-24 w-full max-w-measure" aria-label="Loading chat models" />;
   if (view.listStatus !== DRAFT_LIST_STATUS.ready) return null;
@@ -27,9 +27,9 @@ export function ChatModelAvailability({client, view, workspace}: {client: DraftC
   const description = incomplete ? "More configured models are available to check. Load them to find a model for chat."
     : configured ? "Your configured models are not available for setup chat. Check their provider credentials and model configuration."
     : "Configure a workspace model or ask your administrator to configure a platform model to start chatting.";
-  return <ChatAvailability title={incomplete ? "Load more chat models" : configured ? "No chat model is available" : "Add a model to start chatting"}
+  return <ChatAvailability title={incomplete ? "Load more chat models" : configured ? "No chat model is available" : "Create a model to start chatting"}
     actions={<>
       {incomplete ? <DraftLoadMore copy={LOAD_MORE_COPY.models} onLoad={() => client.loadMore(DRAFT_LIST.models)} /> : null}
-      <Button size="sm" variant="secondary" asChild><Link href={`/w/${workspace}/settings/models`}>Open model settings</Link></Button>
+      <Button size="sm" variant="secondary" asChild><Link href={canManagePlatformModels ? "/admin/models" : `/w/${workspace}/settings/models`}>Create model</Link></Button>
     </>}>{description}</ChatAvailability>;
 }

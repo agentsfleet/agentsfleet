@@ -1,4 +1,4 @@
-SELECT m.provider, m.model_name, m.display_name, m.advanced,
+SELECT m.provider, m.model_name, m.display_name, m.advanced, m.inference,
        m.context_cap_tokens, m.context_source_url,
        to_jsonb(m.context_verified_at) #>> '{}' AS context_verified_at,
        COALESCE(jsonb_agg(jsonb_build_object(

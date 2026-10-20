@@ -9,11 +9,12 @@ export const PROFILE_APPEARANCE = {
     cardBox: {
       ...AUTH_APPEARANCE.elements.cardBox,
       width: "100%", maxWidth: "none", boxShadow: "none", backgroundColor: "var(--surface-1)",
+      height: "auto", minHeight: 0,
     },
     scrollBox: { borderRadius: "var(--r-lg)", boxShadow: "none" },
     pageScrollBox: {
       ...AUTH_APPEARANCE.elements.pageScrollBox,
-      padding: "var(--sp-2xl)",
+      padding: "var(--sp-2xl)", height: "auto",
     },
     navbarButton: {
       ...AUTH_APPEARANCE.elements.navbarButton,

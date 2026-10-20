@@ -60,6 +60,9 @@ function rowFor(modelId: string): HTMLElement {
 }
 
 async function loadedEditDialog(label: string) {
+  await screen.findByRole("button", { name: "Catalogue details" });
+  fireEvent.click(screen.getByRole("button", { name: "Catalogue details" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pricing" }));
   const field = await screen.findByLabelText(label);
   const dialog = field.closest('[role="dialog"]');
   if (!dialog) throw new Error("loaded edit field has no dialog owner");
@@ -156,6 +159,23 @@ it("CatalogueList — rows + rates + empty state > shows exact prices, the model
   expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
   // Touch and keyboard reach the id through its copy button, as on the workspace table.
   expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Copy model id: glm-5.2" })).toBeTruthy();
+});
+
+it("CatalogueList > keeps complete pricing and context evidence inside the phone-visible rates cell", () => {
+  renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+  const rates = screen.getByText("0.55 / 0.14 / 2.19").closest("td")!;
+  expect(rates.classList.contains("hidden")).toBe(false);
+  const details = within(rates);
+  expect(details.getByRole("link", { name: "Source" }).getAttribute("href")).toBe(SOURCE_URL);
+  const disclosure = details.getByRole("button", { name: "Price schedule (1)" });
+  expect(disclosure.closest(".hidden")).toBeNull();
+  fireEvent.click(disclosure);
+  expect(details.getByText("Base tier")).toBeTruthy();
+  expect(details.getByText("Effective from")).toBeTruthy();
+  expect(details.getByText("Cache write, 1-hour ($/1M)")).toBeTruthy();
+  expect(details.getAllByRole("link", { name: "Source" })).toHaveLength(2);
+  expect(screen.getByRole("columnheader", { name: "Context source" })).toBeTruthy();
+  expect(screen.getByRole("columnheader", { name: "Pricing details" })).toBeTruthy();
 });
 
 it("CatalogueList — rows + rates + empty state > sorts each catalogue data column from its header arrow", () => {

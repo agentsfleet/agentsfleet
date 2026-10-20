@@ -47,14 +47,26 @@ export const priceSchema = z.strictObject({
     context.addIssue({ code: CUSTOM_ISSUE, message: "cached_input exceeds input" });
 });
 
+export const inferenceSchema = z.strictObject({
+  api: z.enum(["chat", "responses", "messages", "gemini", "ollama"]),
+  base_url: SOURCE.pipe(z.string().refine((value) => {
+    const endpoint = new URL(value);
+    return endpoint.username === "" && endpoint.password === "" && !endpoint.href.includes("?") && !endpoint.href.includes("#");
+  })),
+  dialect: z.string().trim().min(1).max(64).optional(),
+  max_output_tokens: z.int().positive().max(CONTEXT_LIMIT),
+});
+
 const modelSchema = z.strictObject({
   provider: z.enum(PROVIDERS), model_name: z.string().min(1).max(256),
-  display_name: z.string().min(1).max(128), advanced: z.boolean(),
+  display_name: z.string().min(1).max(128), advanced: z.boolean(), inference: inferenceSchema,
   context: z.strictObject({ tokens: z.int().positive().max(CONTEXT_LIMIT),
     source_url: SOURCE, verified_at: INSTANT }).nullable(),
   context_unverified_reason: z.string().min(1).max(CONTEXT_REASON_LIMIT).nullable(),
   prices: z.array(priceSchema).min(1).max(PRICE_LIMIT),
 }).superRefine((model, context) => {
+  if (model.context && model.inference.max_output_tokens > model.context.tokens)
+    context.addIssue({ code: CUSTOM_ISSUE, message: `${model.model_name}: output limit exceeds context window` });
   if (!isCuratedModel(model))
     context.addIssue({ code: CUSTOM_ISSUE, message: `${model.model_name}: not a curated identity` });
   if (!model.context && !model.context_unverified_reason)

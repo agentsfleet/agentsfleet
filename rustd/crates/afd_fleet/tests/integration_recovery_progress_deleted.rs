@@ -13,6 +13,7 @@
 )]
 
 use afd_admission::Progress;
+use afd_db::config::DbRole;
 use afd_dragonfly::{EventId, FleetStreams};
 
 use crate::integration_admission_recovery::{
@@ -29,17 +30,19 @@ use crate::support::Fixtures;
 /// that put a `fleet_id` in front of them, so dropping the rows drops the
 /// fleet. The cursor, filed on the pass that just read it, now names a value
 /// no row carries.
+///
+/// The deletion is the scene, not the code under test, so it runs as the
+/// lane's owner: `api_runtime` holds no `DELETE` on the ledger.
 async fn forget_fleet_rows(fixtures: &Fixtures, fleet: &str) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
+    let owner = fixtures.open(DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("the ledger answers");
     sqlx::query("DELETE FROM fleet.admissions WHERE fleet_id = $1::uuid")
         .bind(fleet)
         .execute(&mut *connection)
         .await
         .unwrap_or_else(|_| panic!("deleting {fleet}'s admissions"));
+    drop(connection);
+    owner.close().await;
 }
 
 /// A cursor whose fleet has been deleted carries on, against the real scan.

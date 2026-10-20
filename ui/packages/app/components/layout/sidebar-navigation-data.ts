@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BotIcon, PlusIcon } from "lucide-react";
+import { PanelsTopLeftIcon, PlusIcon } from "lucide-react";
 import { workspacePath } from "@/lib/workspace-routes";
 
 export type NavEntry = {
@@ -8,15 +8,18 @@ export type NavEntry = {
   icon: LucideIcon;
   workspaceScoped?: boolean;
   external?: boolean;
+  analyticsSource?: string;
 };
 
 export type PlatformNavEntry = NavEntry & { scope?: string };
 
 export const NAV_SURFACE = "app_sidebar";
+export const NAV_ICON_SIZE = 18;
+export const NAV_ICON_STROKE_WIDTH = 1.5;
 
 export const PRIMARY_NAV: NavEntry[] = [
   { label: "New fleet", path: "fleets/new", icon: PlusIcon, workspaceScoped: true },
-  { label: "Your fleets", path: "fleets", icon: BotIcon, workspaceScoped: true },
+  { label: "Your fleets", path: "fleets", icon: PanelsTopLeftIcon, workspaceScoped: true },
 ];
 
 export function resolveHref(entry: NavEntry, workspaceId: string | null): string {
@@ -41,6 +44,7 @@ export function resolveActiveHref(hrefs: string[], pathname: string): string {
 }
 
 export function navSource(entry: NavEntry): string {
+  if (entry.analyticsSource) return entry.analyticsSource;
   if (entry.external) return `${NAV_SURFACE}_${entry.label.toLowerCase()}`;
   const canonical = entry.workspaceScoped ? `/${entry.path}` : entry.path;
   return `${NAV_SURFACE}_${canonical.replaceAll("/", "_").replace(/^_+/, "")}`;

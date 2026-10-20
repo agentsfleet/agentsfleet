@@ -74,9 +74,12 @@ async fn test_an_assignment_that_will_not_decode_is_refused_on_the_beat_and_the_
         .await
         .expect("the runner enrols");
     let token = enrolled.token.expose().to_owned();
+    // The corruption and its removal are scaffolding, so they run as the lane
+    // owner: `api_runtime` carries only what the routes under test need.
+    let migrator = lane.open(DbRole::Migrator, &[]).await;
     sqlx::query("UPDATE runner.runners SET sandbox_tier = 'not-a-tier' WHERE id = $1::uuid")
         .bind(enrolled.runner_id.as_str())
-        .execute(&mut *database.acquire().await.expect("a connection"))
+        .execute(&mut *migrator.acquire().await.expect("a seeding connection"))
         .await
         .expect("the fixture corrupts the stored tier");
     let router = Fleet::live(database.clone(), SUBJECT, ScopeSet::from_scopes(&[])).router();
@@ -94,6 +97,14 @@ async fn test_an_assignment_that_will_not_decode_is_refused_on_the_beat_and_the_
 
     let me = send(&router, Method::GET, "/v1/runners/me", Some(&token), "").await;
     assert_eq!(me.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    // The lane is shared: a row left undecodable fails every platform-wide
+    // runner page that reaches it, such as the operator list.
+    sqlx::query("DELETE FROM runner.runners WHERE id = $1::uuid")
+        .bind(enrolled.runner_id.as_str())
+        .execute(&mut *migrator.acquire().await.expect("a cleanup connection"))
+        .await
+        .expect("the corrupted runner cleans up");
+    drop(migrator);
     drop(database);
     lane.cleanup().await;
 }

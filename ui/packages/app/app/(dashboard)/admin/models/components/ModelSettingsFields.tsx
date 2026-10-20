@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { ModelSettingsValues } from "./model-settings";
 import { useFormContext, useWatch } from "react-hook-form";
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, SectionHeader,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from "@agentsfleet/design-system";
 import { INFERENCE_API } from "@/lib/api/admin-model-library-types";
 import { SettingsTextField } from "./SettingsTextField";
@@ -21,25 +23,41 @@ const API_LABELS = {
   [INFERENCE_API.messages]: "Messages", [INFERENCE_API.gemini]: "Gemini", [INFERENCE_API.ollama]: "Ollama",
 } as const;
 
-export function ModelSettingsFields() {
+export function ModelSettingsFields({ compact = false }: { compact?: boolean }) {
+  const form = useFormContext<ModelSettingsValues>();
+  const [expanded, setExpanded] = useState(compact ? [] : ["catalogue", "pricing"]);
+  const submits = form.formState.submitCount;
+  useEffect(() => { if (submits > 0) setExpanded(["catalogue", "pricing"]); }, [submits]);
   return <>
-    <div className="grid gap-md sm:grid-cols-2">
-      {METADATA_FIELDS.map(([name, label]) => <SettingsTextField key={name} name={name} label={label} />)}
-    </div>
-    <SettingsSwitch name="advanced" label="Advanced model" description="Shown in the picker only after an explicit advanced-model request." />
-    <PriceScheduleFields />
     <InferenceFields />
+    <Accordion type="multiple" value={expanded} onValueChange={setExpanded}>
+      <AccordionItem value="catalogue">
+        <AccordionTrigger>Catalogue details</AccordionTrigger>
+        <AccordionContent>
+          <div className="grid gap-md sm:grid-cols-2">
+            {METADATA_FIELDS.map(([name, label]) => <SettingsTextField key={name} name={name} label={label} />)}
+          </div>
+          <AdvancedModelField />
+        </AccordionContent>
+      </AccordionItem>
+      <AccordionItem value="pricing">
+        <AccordionTrigger>Pricing</AccordionTrigger>
+        <AccordionContent><PriceScheduleFields /></AccordionContent>
+      </AccordionItem>
+    </Accordion>
+    <p className="text-sm text-muted-foreground">Save changes applies the connection, catalogue details and all pricing tiers together.</p>
   </>;
 }
 
-function SettingsSwitch({ name, label, description }: {
-  name: "advanced" | "update_inference"; label: string; description: string;
-}) {
+function AdvancedModelField() {
   const form = useFormContext<ModelSettingsValues>();
-  return <FormField control={form.control} name={name} render={({ field }) => (
-    <FormItem><FormLabel>{label}</FormLabel>
-      <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-      <FormDescription>{description}</FormDescription><FormMessage />
+  return <FormField control={form.control} name="advanced" render={({ field }) => (
+    <FormItem className="mt-lg rounded-lg border p-md">
+      <div className="flex items-center justify-between gap-md">
+        <FormLabel>Advanced model</FormLabel>
+        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+      </div>
+      <FormDescription>Hide this model from the standard picker. Users can show it by choosing Show advanced models.</FormDescription><FormMessage />
     </FormItem>
   )} />;
 }
@@ -47,9 +65,14 @@ function SettingsSwitch({ name, label, description }: {
 function InferenceFields() {
   const form = useFormContext<ModelSettingsValues>();
   const update = useWatch({ control: form.control, name: "update_inference" });
+  const [hadConnection] = useState(update);
   return <>
-    <SettingsSwitch name="update_inference" label="Write inference settings"
-      description="When off, editing preserves the existing settings; a new model remains unavailable for inference." />
+    <SectionHeader as="p">Connection</SectionHeader>
+    <p className="text-sm text-muted-foreground">The priming script fills these settings for catalogue models. Credentials are added when you make a model the platform default.</p>
+    {!update ? <div className="space-y-sm">
+      <p className="text-sm text-muted-foreground">No connection configured. Saving catalogue details or prices leaves the connection unchanged.</p>
+      <Button type="button" variant="secondary" onClick={() => form.setValue("update_inference", true)}>Configure connection</Button>
+    </div> : null}
     {update ? <>
       <FormField control={form.control} name="api" render={({ field }) => (
         <FormItem><FormLabel>Inference API</FormLabel>
@@ -62,6 +85,12 @@ function InferenceFields() {
       <div className="grid gap-md sm:grid-cols-2">
         {INFERENCE_FIELDS.map(([name, label]) => <SettingsTextField key={name} name={name} label={label} />)}
       </div>
+      {!hadConnection ? <Button type="button" variant="ghost" onClick={() => {
+        form.resetField("api");
+        for (const [name] of INFERENCE_FIELDS) form.resetField(name);
+        form.setValue("update_inference", false);
+        form.clearErrors(["api", ...INFERENCE_FIELDS.map(([name]) => name)]);
+      }}>Leave connection unchanged</Button> : null}
     </> : null}
   </>;
 }

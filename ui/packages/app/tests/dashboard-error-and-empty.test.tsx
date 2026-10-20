@@ -431,10 +431,10 @@ describe("NoWorkspaceEmptyState", () => {
     await userEvent.click(screen.getByTestId("create-first-workspace"));
     await userEvent.click(screen.getByTestId("first-submit"));
     await waitFor(() =>
-      expect(routerPush).toHaveBeenCalledWith("/w/ws_first/fleets"),
+      expect(routerPush).toHaveBeenCalledWith("/w/ws_first/fleets/new"),
     );
     expect(screen.getByTestId("create-first-workspace").textContent).toBe(
-      "Open workspace",
+      "New fleet",
     );
   });
 
@@ -448,9 +448,9 @@ describe("NoWorkspaceEmptyState", () => {
     fireEvent.click(screen.getByTestId("first-submit"));
     await act(async () => Promise.resolve());
     const recovery = screen.getByTestId("create-first-workspace");
-    expect(recovery.textContent).toBe("Open workspace");
+    expect(recovery.textContent).toBe("New fleet");
     fireEvent.click(recovery);
-    expect(routerPush).toHaveBeenLastCalledWith("/w/ws_first/fleets");
+    expect(routerPush).toHaveBeenLastCalledWith("/w/ws_first/fleets/new");
     expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
   });
 
@@ -489,9 +489,9 @@ describe("NoWorkspaceEmptyState", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
     expect(routerPush).not.toHaveBeenCalled();
     const recovery = screen.getByTestId("create-first-workspace");
-    expect(recovery.textContent).toBe("Open workspace");
+    expect(recovery.textContent).toBe("New fleet");
     await userEvent.click(recovery);
-    expect(routerPush).toHaveBeenCalledWith("/w/ws_first/fleets");
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_first/fleets/new");
     expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
   });
 

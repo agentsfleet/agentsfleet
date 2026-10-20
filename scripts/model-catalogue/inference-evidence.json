@@ -1,0 +1,254 @@
+[
+  {
+    "provider": "anthropic",
+    "model_name": "claude-fable-5-1",
+    "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.1/endpoints#anthropic",
+    "response": [
+      {
+        "name": "Anthropic | anthropic/claude-fable-5.1-20260831",
+        "provider_name": "Anthropic",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "anthropic",
+    "model_name": "claude-opus-5-5",
+    "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-opus-5.5/endpoints#anthropic",
+    "response": [
+      {
+        "name": "Anthropic | anthropic/claude-opus-5.5-20260921",
+        "provider_name": "Anthropic",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "anthropic",
+    "model_name": "claude-sonnet-5-5",
+    "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints#anthropic",
+    "response": [
+      {
+        "name": "Anthropic | anthropic/claude-sonnet-5.5-20260928",
+        "provider_name": "Anthropic",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "anthropic",
+    "model_name": "claude-haiku-5-5",
+    "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints#anthropic",
+    "response": [
+      {
+        "name": "Anthropic | anthropic/claude-haiku-5.5-20261007",
+        "provider_name": "Anthropic",
+        "context_length": 1000000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "openai",
+    "model_name": "gpt-6.1-sol",
+    "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6.1-sol/endpoints#openai",
+    "response": [
+      {
+        "name": "OpenAI | openai/gpt-6.1-sol-20260929",
+        "provider_name": "OpenAI",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "openai",
+    "model_name": "gpt-6-astra",
+    "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-astra/endpoints#openai",
+    "response": [
+      {
+        "name": "OpenAI | openai/gpt-6-astra-20260903",
+        "provider_name": "OpenAI",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "openai",
+    "model_name": "gpt-6-luna",
+    "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai",
+    "response": [
+      {
+        "name": "OpenAI | openai/gpt-6-luna-20260922",
+        "provider_name": "OpenAI",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "openai",
+    "model_name": "gpt-5.6-terra",
+    "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai",
+    "response": [
+      {
+        "name": "OpenAI | openai/gpt-5.6-terra-20260709",
+        "provider_name": "OpenAI",
+        "context_length": 1050000,
+        "max_completion_tokens": 128000
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "fireworks",
+    "model_name": "accounts/fireworks/models/glm-5p3-flash",
+    "source_url": "https://openrouter.ai/api/v1/models/z-ai/glm-5.3-flash/endpoints#fireworks",
+    "response": [
+      {
+        "name": "Fireworks | z-ai/glm-5.3-flash-20260826",
+        "provider_name": "Fireworks",
+        "context_length": 1048576,
+        "max_completion_tokens": 943718
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "fireworks",
+    "model_name": "accounts/fireworks/models/kimi-k3",
+    "source_url": "https://openrouter.ai/api/v1/models/moonshotai/kimi-k3/endpoints#fireworks",
+    "response": [
+      {
+        "name": "Fireworks | moonshotai/kimi-k3-20260715",
+        "provider_name": "Fireworks",
+        "context_length": 1048576,
+        "max_completion_tokens": 943718
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "fireworks",
+    "model_name": "accounts/fireworks/models/deepseek-v4p1-flash",
+    "source_url": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints#fireworks",
+    "response": [
+      {
+        "name": "Fireworks | deepseek/deepseek-v4.1-flash-20260910",
+        "provider_name": "Fireworks",
+        "context_length": 1048576,
+        "max_completion_tokens": 943718
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "openrouter",
+    "model_name": "meta/muse-wonder",
+    "source_url": "https://openrouter.ai/api/v1/models#meta/muse-wonder",
+    "response": {
+      "id": "meta/muse-wonder",
+      "top_provider": {
+        "context_length": 1048576,
+        "max_completion_tokens": 943718,
+        "is_moderated": true
+      }
+    },
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "openrouter",
+    "model_name": "google/gemini-4-argon",
+    "source_url": "https://openrouter.ai/api/v1/models#google/gemini-4-argon",
+    "response": {
+      "id": "google/gemini-4-argon",
+      "top_provider": {
+        "context_length": 1048576,
+        "max_completion_tokens": 943718,
+        "is_moderated": false
+      }
+    },
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "openrouter",
+    "model_name": "qwen/qwen3.8-max-0902",
+    "source_url": "https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902",
+    "response": {
+      "id": "qwen/qwen3.8-max-0902",
+      "top_provider": {
+        "context_length": 1000000,
+        "max_completion_tokens": 131072,
+        "is_moderated": false
+      }
+    },
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "groq",
+    "model_name": "openai/gpt-oss-120b",
+    "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq",
+    "response": [
+      {
+        "name": "Groq | openai/gpt-oss-120b",
+        "provider_name": "Groq",
+        "context_length": 131072,
+        "max_completion_tokens": 65536
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "mistral",
+    "model_name": "mistral-large-4",
+    "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral",
+    "response": [
+      {
+        "name": "Mistral | mistralai/mistral-large-4-0-20261006",
+        "provider_name": "Mistral",
+        "context_length": 1048576,
+        "max_completion_tokens": 262144
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "mistral",
+    "model_name": "mistral-small-2603",
+    "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-small-2603/endpoints#mistral",
+    "response": [
+      {
+        "name": "Mistral | mistralai/mistral-small-2603",
+        "provider_name": "Mistral",
+        "context_length": 262144,
+        "max_completion_tokens": 209715
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "gemini",
+    "model_name": "gemini-4-argon",
+    "source_url": "https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio",
+    "response": [
+      {
+        "name": "Google AI Studio | google/gemini-4-argon-20261013",
+        "provider_name": "Google AI Studio",
+        "context_length": 1048576,
+        "max_completion_tokens": 943718
+      }
+    ],
+    "verified_at": "2026-10-19T18:05:29Z"
+  }
+]

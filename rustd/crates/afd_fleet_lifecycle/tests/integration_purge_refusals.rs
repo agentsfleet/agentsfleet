@@ -116,9 +116,11 @@ async fn a_purge_commits_when_the_queue_cannot_forget() {
 /// one table cannot deadlock; the value is the one the authoring fixture takes.
 const FIXTURE_DDL_LOCK: i64 = 0x6166_645f_6974;
 
-/// Runs `statements` as one transaction under [`FIXTURE_DDL_LOCK`].
+/// Runs `statements` as one transaction under [`FIXTURE_DDL_LOCK`], as the
+/// lane's owner: a trigger on `fleet.fleets` is the table owner's to install.
 async fn fixture_ddl(lane: &Lane, statements: [String; 2]) {
-    let mut connection = lane.connection().await;
+    let owner = lane.owner().await;
+    let mut connection = owner.acquire().await.expect("an owner connection");
     let mut tx = sqlx::Connection::begin(&mut *connection)
         .await
         .expect("a fixture DDL transaction");
@@ -134,6 +136,8 @@ async fn fixture_ddl(lane: &Lane, statements: [String; 2]) {
             .expect("the fixture DDL applies");
     }
     tx.commit().await.expect("the fixture DDL commits");
+    drop(connection);
+    owner.close().await;
 }
 
 /// A purge whose parent delete removes no row is refused and commits nothing,

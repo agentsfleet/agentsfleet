@@ -65,7 +65,7 @@ export default function EditModelDialog({
         <DialogHeader>
           <DialogTitle>Edit model</DialogTitle>
           <DialogDescription>
-            Configure this model&apos;s inference API, endpoint, token limits and rates.
+            Review the connection below. Expand catalogue details or pricing when you need to change them.
             Credentials stay in the workspace vault. Provider and model identify this row.
           </DialogDescription>
         </DialogHeader>
@@ -79,7 +79,7 @@ export default function EditModelDialog({
         </div>
         <Form {...form}>
           <ActionForm noValidate onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-lg">
-            <ModelSettingsFields />
+            <ModelSettingsFields compact />
             {apiError ? <Alert variant="destructive">{apiError}</Alert> : null}
             <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
               <Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>

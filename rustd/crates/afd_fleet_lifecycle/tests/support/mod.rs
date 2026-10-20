@@ -182,6 +182,16 @@ impl Lane {
         self.database.cleanup().await;
     }
 
+    /// A pool as the lane's owner, for the scene a test sets around the code
+    /// under test: rows `api_runtime` may not write, DDL, and the counts of
+    /// tables it may not read. The caller closes it.
+    ///
+    /// Opened per call rather than held, so a lane that never sets such a
+    /// scene keeps one pool's warm connections, not two.
+    pub(crate) async fn owner(&self) -> Db {
+        self.database.open(DbRole::Migrator, &[]).await
+    }
+
     /// One pooled connection, for the fixture's own reads and writes.
     pub(crate) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool

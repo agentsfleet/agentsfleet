@@ -12,6 +12,7 @@
 )]
 
 use afd_billing::limits::SELECT_FLEET_SPEND;
+use afd_db::config::DbRole;
 use sqlx::Row as _;
 
 use crate::queue;
@@ -43,6 +44,12 @@ const HISTORY_DAYS: i32 = 365;
 /// than leaving the planner believing in rows that no longer exist. The probed
 /// fleet gets a year of history and the decoys share it, so the plan is chosen
 /// for a fleet whose lines mostly fall before the month floor.
+///
+/// The probe runs on the lane owner's pool. `ANALYZE` is the table owner's
+/// statement — run by `api_runtime` it skips the table with a warning, and the
+/// planner then judges the read by statistics that never saw the seeded
+/// spread. The plan itself does not depend on the role: the table carries no
+/// row-level security.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_fleet_spend_read_is_served_by_its_index() {
@@ -62,12 +69,8 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
             .try_get(0)
             .expect("workspace_id decodes as text")
     };
-    let mut connection = held
-        .fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
+    let owner = held.fixtures.open(DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("an owner connection");
     sqlx::query("BEGIN")
         .execute(&mut *connection)
         .await
@@ -126,6 +129,7 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
             .expect("the planner probe cleans up after itself");
     }
     drop(connection);
+    owner.close().await;
 
     assert!(
         plan.contains(FLEET_INDEX),

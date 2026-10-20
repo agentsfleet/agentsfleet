@@ -20,7 +20,7 @@ impl Setup {
             creator: mint_id(),
         };
         let mut connection = owner
-            .database
+            .migrator
             .acquire()
             .await
             .expect("setup seed connection");
@@ -66,7 +66,7 @@ impl Setup {
     pub(super) async fn link(&self, owner: &Fixture) -> String {
         let fleet = mint_id();
         let mut connection = owner
-            .database
+            .migrator
             .acquire()
             .await
             .expect("link seed connection");
@@ -85,7 +85,7 @@ impl Setup {
             .bind(&self.draft)
             .execute(
                 &mut *owner
-                    .database
+                    .migrator
                     .acquire()
                     .await
                     .expect("private deletion connection"),

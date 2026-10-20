@@ -25,6 +25,7 @@
 
 use std::time::Duration;
 
+use afd_db::config::DbRole;
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::{Committed, Renewed};
 use sqlx::Connection as _;
@@ -67,7 +68,11 @@ async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
         .expect("the lease load must reach the datastore")
         .expect("the seeded lease belongs to the seeded runner");
 
-    let mut connection = held.fixtures.database.acquire().await.expect("blocker");
+    // The blocker is scaffolding, so it holds its row lock as the lane's
+    // owner: `FOR UPDATE` asks for `UPDATE` on the counter, which `api_runtime`
+    // reaches only through the usage-line trigger.
+    let owner = held.fixtures.open(DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("blocker");
     let mut blocker = connection.begin().await.expect("open the blocker");
     let blocker_pid: i32 = sqlx::query_scalar(HOLD_COUNTER)
         .bind(&held.fleet)
@@ -140,6 +145,7 @@ async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
     );
 
     drop(connection);
+    owner.close().await;
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }

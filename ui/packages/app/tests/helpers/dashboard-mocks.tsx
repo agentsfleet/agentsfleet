@@ -83,7 +83,7 @@ const LUCIDE_ICONS = [
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
   "BotIcon", "PlugIcon", "UnplugIcon", "CheckCircle2Icon", "CircleCheckIcon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
-  "BrainIcon", "LayoutDashboardIcon",
+  "BrainIcon", "LayoutDashboardIcon", "PanelsTopLeftIcon", "CpuIcon", "ChartNoAxesCombinedIcon", "LibraryBigIcon",
   // The gallery card's tier marks: which catalogue an entry came from.
   "GlobeIcon", "Building2Icon",
   "MessageSquareIcon", "Code2Icon", "FolderIcon",

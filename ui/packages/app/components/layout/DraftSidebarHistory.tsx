@@ -26,8 +26,8 @@ export function DraftSidebarHistory({workspace, onNavigate}: {workspace: string 
 function SidebarChats({history, onNavigate}: {history: DraftSidebarState; onNavigate: () => void}) {
   const [query, setQuery] = useState("");
   const searching = history.status === HISTORY_STATUS.ready && query.trim().length > 0;
-  return <div className="ph-no-capture ph-no-record px-3 pt-xl">
-    <SectionLabel className="px-md pb-md">{HISTORY_COPY.heading}</SectionLabel>
+  return <div className="ph-no-capture ph-no-record px-sm pt-xl">
+    <SectionLabel variant="navigation" className="mb-sm px-md">{HISTORY_COPY.heading}</SectionLabel>
     {history.cards.length > 0 || searching ? <div className="relative mb-sm">
       <SearchIcon size={14} className="pointer-events-none absolute left-3 top-3 text-muted-foreground" aria-hidden="true" />
       <Input aria-label={HISTORY_COPY.search} placeholder={HISTORY_COPY.search} value={query} maxLength={DRAFT_SEARCH_QUERY_MAX}

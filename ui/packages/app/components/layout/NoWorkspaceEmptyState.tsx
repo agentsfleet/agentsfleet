@@ -72,7 +72,7 @@ export default function NoWorkspaceEmptyState() {
             className="aria-disabled:pointer-events-none aria-disabled:cursor-wait aria-disabled:opacity-50"
             data-testid="create-first-workspace"
           >
-            {creation.settlingWorkspace ? "Open workspace" : "Create workspace"}
+            {creation.settlingWorkspace ? "New fleet" : "Create workspace"}
           </Button>
         }
       />

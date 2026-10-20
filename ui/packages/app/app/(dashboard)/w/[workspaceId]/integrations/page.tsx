@@ -13,11 +13,9 @@ import { ApiError } from "@/lib/api/errors";
 import IntegrationsConnectors, {
   type ConnectorFetchError,
 } from "./components/IntegrationsConnectors";
+import { CONNECT_APPS_COPY } from "./copy";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_TITLE = "Integrations";
-const PAGE_DESCRIPTION = "Connect the tools your fleets act through.";
 
 export default async function IntegrationsPage({
   params,
@@ -55,8 +53,8 @@ export default async function IntegrationsPage({
 
   return (
     <PageLayout>
-      <PageHeader description={PAGE_DESCRIPTION}>
-        <PageTitle>{PAGE_TITLE}</PageTitle>
+      <PageHeader description={CONNECT_APPS_COPY.description}>
+        <PageTitle>{CONNECT_APPS_COPY.title}</PageTitle>
       </PageHeader>
 
           <IntegrationsConnectors

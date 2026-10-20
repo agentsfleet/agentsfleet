@@ -7,7 +7,7 @@ import NoWorkspaceEmptyState from "@/components/layout/NoWorkspaceEmptyState";
 export const dynamic = "force-dynamic";
 
 // Dashboard entry (`/`). Resolves the caller's own workspace — or, owning none,
-// the first one they joined — and redirects once to its fleet wall; a caller
+// the first one they joined — and redirects once to New fleet; a caller
 // with no workspace at all lands on the create-workspace empty state instead
 // of a broken page. This is the ONLY place the "default workspace" is chosen —
 // every deeper page reads the workspace from its route param.

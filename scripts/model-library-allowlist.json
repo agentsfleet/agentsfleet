@@ -5,6 +5,7 @@
     {
       "provider": "anthropic", "model_name": "claude-fable-5-1",
       "display_name": "Fable 5.1", "advanced": false,
+      "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
       "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.1/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -17,6 +18,7 @@
     {
       "provider": "anthropic", "model_name": "claude-opus-5-5",
       "display_name": "Opus 5.5", "advanced": false,
+      "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
       "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-opus-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -29,6 +31,7 @@
     {
       "provider": "anthropic", "model_name": "claude-sonnet-5-5",
       "display_name": "Sonnet 5.5", "advanced": false,
+      "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
       "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -41,6 +44,7 @@
     {
       "provider": "anthropic", "model_name": "claude-haiku-5-5",
       "display_name": "Haiku 5.5", "advanced": false,
+      "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
       "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -57,6 +61,7 @@
     {
       "provider": "openai", "model_name": "gpt-6.1-sol",
       "display_name": "GPT-6.1 Sol", "advanced": false,
+      "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
       "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6.1-sol/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -73,6 +78,7 @@
     {
       "provider": "openai", "model_name": "gpt-6-astra",
       "display_name": "GPT-6 Astra", "advanced": false,
+      "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
       "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-astra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -89,6 +95,7 @@
     {
       "provider": "openai", "model_name": "gpt-6-luna",
       "display_name": "GPT-6 Luna", "advanced": false,
+      "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
       "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -105,6 +112,7 @@
     {
       "provider": "openai", "model_name": "gpt-5.6-terra",
       "display_name": "GPT-5.6 Terra", "advanced": true,
+      "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
       "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -121,6 +129,7 @@
     {
       "provider": "fireworks", "model_name": "accounts/fireworks/models/glm-5p3-flash",
       "display_name": "GLM 5.3 Flash", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://api.fireworks.ai/inference/v1", "max_output_tokens": 943718},
       "context": {"tokens":1048576,"source_url":"https://api.fireworks.ai/v1/accounts/fireworks/models/glm-5p3-flash#contextLength","verified_at":"2026-10-18T13:32:07Z"},
       "context_unverified_reason": null,
       "prices": [
@@ -133,6 +142,7 @@
     {
       "provider": "fireworks", "model_name": "accounts/fireworks/models/kimi-k3",
       "display_name": "Kimi K3", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://api.fireworks.ai/inference/v1", "max_output_tokens": 943718},
       "context": {"tokens":1048576,"source_url":"https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3#contextLength","verified_at":"2026-10-18T13:32:07Z"},
       "context_unverified_reason": null,
       "prices": [
@@ -145,6 +155,7 @@
     {
       "provider": "fireworks", "model_name": "accounts/fireworks/models/deepseek-v4p1-flash",
       "display_name": "DeepSeek V4.1 Flash", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://api.fireworks.ai/inference/v1", "max_output_tokens": 943718},
       "context": {"tokens":1048576,"source_url":"https://api.fireworks.ai/v1/accounts/fireworks/models/deepseek-v4p1-flash#contextLength","verified_at":"2026-10-18T13:32:07Z"},
       "context_unverified_reason": null,
       "prices": [
@@ -157,6 +168,7 @@
     {
       "provider": "openrouter", "model_name": "meta/muse-wonder",
       "display_name": "Muse Wonder", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 943718},
       "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#meta/muse-wonder","verified_at":"2026-10-18T13:32:07Z"},
       "context_unverified_reason": null,
       "prices": [
@@ -169,6 +181,7 @@
     {
       "provider": "openrouter", "model_name": "google/gemini-4-argon",
       "display_name": "Gemini 4 Argon", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 943718},
       "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#google/gemini-4-argon","verified_at":"2026-10-18T13:32:07Z"},
       "context_unverified_reason": null,
       "prices": [
@@ -181,6 +194,7 @@
     {
       "provider": "openrouter", "model_name": "qwen/qwen3.8-max-0902",
       "display_name": "Qwen3.8 Max 0902", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 131072},
       "context": {"tokens":1000000,"source_url":"https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902","verified_at":"2026-10-18T13:32:07Z"},
       "context_unverified_reason": null,
       "prices": [
@@ -193,6 +207,7 @@
     {
       "provider": "groq", "model_name": "openai/gpt-oss-120b",
       "display_name": "GPT OSS 120B", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://api.groq.com/openai/v1", "dialect": "groq", "max_output_tokens": 65536},
       "context": { "tokens": 131072, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -205,6 +220,7 @@
     {
       "provider": "mistral", "model_name": "mistral-large-4",
       "display_name": "Mistral Large 4", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://api.mistral.ai", "dialect": "mistral", "max_output_tokens": 262144},
       "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -217,6 +233,7 @@
     {
       "provider": "mistral", "model_name": "mistral-small-2603",
       "display_name": "Mistral Small 4", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://api.mistral.ai", "dialect": "mistral", "max_output_tokens": 209715},
       "context": { "tokens": 262144, "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-small-2603/endpoints#mistral", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
@@ -229,6 +246,7 @@
     {
       "provider": "gemini", "model_name": "gemini-4-argon",
       "display_name": "Gemini 4 Argon", "advanced": false,
+      "inference": {"api": "gemini", "base_url": "https://generativelanguage.googleapis.com", "max_output_tokens": 943718},
       "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [

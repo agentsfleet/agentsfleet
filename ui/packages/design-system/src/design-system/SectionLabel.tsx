@@ -2,11 +2,17 @@ import { type ComponentProps } from "react";
 import { cn } from "../utils";
 import { EYEBROW_CLASS } from "./eyebrow";
 
+const SECTION_LABEL_STYLE = {
+  eyebrow: EYEBROW_CLASS,
+  navigation: "font-sans text-label leading-label font-medium",
+} as const;
+
 /*
  * SectionLabel — eyebrow text above a section (e.g. "Pipeline", "Recent runs",
  * "Artifacts"). Mono, uppercase, muted. React Server Component-safe. Shares
  * EYEBROW_CLASS with every other eyebrow (table headers, nav groups, card
- * micro-labels) so the whole family stays one size.
+ * micro-labels) so the whole family stays one size. Navigation labels use a
+ * quieter, sentence-case variant while retaining the same heading semantics.
  *
  * `as` decides whether the eyebrow IS the section's heading or merely labels
  * one, and the two callers genuinely differ. A dashboard section names itself
@@ -20,13 +26,14 @@ import { EYEBROW_CLASS } from "./eyebrow";
 export type SectionLabelProps = ComponentProps<"h2"> & {
   /** `"h2"` when the eyebrow names the section; `"p"` when a heading follows it. */
   as?: "h2" | "p";
+  variant?: keyof typeof SECTION_LABEL_STYLE;
 };
 
-export function SectionLabel({ className, ref, as: Tag = "h2", ...props }: SectionLabelProps) {
+export function SectionLabel({ className, ref, as: Tag = "h2", variant = "eyebrow", ...props }: SectionLabelProps) {
   return (
     <Tag
       ref={ref}
-      className={cn("mb-3 text-muted-foreground", EYEBROW_CLASS, className)}
+      className={cn("mb-3 text-muted-foreground", SECTION_LABEL_STYLE[variant], className)}
       {...props}
     />
   );
