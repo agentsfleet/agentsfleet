@@ -17,10 +17,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — existing MiniMax and setup-chat stream
 **Branch:** fix/minimax-default-chat-polish
 **Baseline revision:** 211bcea539b62b5a13f5e2f3cb89dd342ca7dd6f
-**Test Baseline:** 11,112 unit tests passed; 1,357 integration tests passed; zero failures
-**Baseline evidence:** `make test-unit-all` and `make test-integration-rustd` at the full revision above, on the same macOS host with isolated stores.
-Unit: `/tmp/minimax-baseline-unit.log`; integration: `/tmp/minimax-baseline-integration.log`.
-The unit lane intentionally ignored 1,362 datastore or platform tests; the integration lane ignored zero and filtered 4,187 nonselected tests.
+**Test Baseline:** unit=11112 integration=1357
+**Baseline evidence:** docs/v2/done/M230_001_P1_API_DOCS_UI_STOPPED_AUTHORING_RECOVERY.md
 **Depends on:** none
 **Provenance:** LLM-drafted (GPT-6, Oct 20, 2026)
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` — Authoring admission and settlement; `docs/architecture/api_resources.md` — Private drafts
@@ -270,6 +268,17 @@ Recovery tests check single finish and unchanged private-data boundaries; no ana
 | S3 | Version synchronization | `make check-version` | exit 0 | P0 | ✅ all versions match 0.62.2 |
 | S4 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ staged scanner: no leaks found |
 | S5 | Architecture recovery description | Review architecture diff against Send, claim, Stop, and receipt paths | Current ownership and retained accounting match code | P1 | ✅ Watermark governs admission/publication; original attempt governs settlement |
+
+Baseline report: both commands ran at `211bcea539b62b5a13f5e2f3cb89dd342ca7dd6f` on the same macOS host, with isolated datastore namespaces.
+
+| Command | Passed | Failed | Ignored | Filtered | Captured output |
+|---------|--------|--------|---------|----------|-----------------|
+| `make test-unit-all` | 11,112 | 0 | 1,362 | 0 | `/tmp/minimax-baseline-unit.log` |
+| `make test-integration-rustd` | 1,357 | 0 | 0 | 4,187 | `/tmp/minimax-baseline-integration.log` |
+
+The unit total comprises 4,660 Rust, 3,868 app, 133 website, 1,953 command-line interface, and 498 design-system tests.
+The command-line interface lane also skipped 16 tests.
+Integration comprises 1,354 parallel and 3 exclusive tests.
 
 Proofs at implementation close: `/tmp/minimax-integration-final-2.log`, `/tmp/minimax-unit-final-3.log`,
 `/tmp/minimax-harness-final-5.log`, `/tmp/minimax-lint-final-5.log`, and `/tmp/minimax-version-final.log`.
