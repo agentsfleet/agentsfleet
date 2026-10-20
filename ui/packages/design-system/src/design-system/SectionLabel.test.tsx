@@ -32,4 +32,11 @@ describe("SectionLabel", () => {
     expect(cls).toContain("mb-0");
     expect(cls).toContain("font-sans");
   });
+
+  it("keeps navigation section headings quiet without changing heading semantics", () => {
+    render(<SectionLabel variant="navigation">Fleet setup chats</SectionLabel>);
+    const heading = screen.getByRole("heading", { level: 2, name: "Fleet setup chats" });
+    expect(heading).toHaveClass("text-label", "font-medium", "text-muted-foreground");
+    expect(heading).not.toHaveClass("uppercase", "tracking-wide", "text-eyebrow");
+  });
 });

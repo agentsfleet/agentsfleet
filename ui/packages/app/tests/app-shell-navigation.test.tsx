@@ -103,6 +103,9 @@ describe("conversation-first app navigation", () => {
     expect(screen.getByText("Workspace")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Fleet library" }).getAttribute("href")).toBe("/w/ws_1/library");
     expect(screen.getByRole("menuitem", { name: "Team" }).getAttribute("href")).toBe("/settings/members");
+    for (const name of ["API keys", "Integrations", "Secrets", "Billing"]) {
+      expect(screen.queryByRole("menuitem", { name })).toBeNull();
+    }
     await user.click(back);
     expect(screen.getByRole("menuitem", { name: /My workspace/ })).toBeTruthy();
     await user.keyboard("{Escape}");

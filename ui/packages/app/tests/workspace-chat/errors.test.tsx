@@ -53,9 +53,9 @@ it("offers model settings when a successful list confirms there are no authoring
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
     ? Promise.resolve(response({items: [], next_cursor: null})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  expect((await screen.findByRole("alert")).textContent).toContain("Add a model to start chatting");
+  expect((await screen.findByRole("alert")).textContent).toContain("Create a model to start chatting");
   expect(screen.getByRole("alert").className).toContain("max-w-measure");
-  expect(screen.getByRole("link", {name: "Add model"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/settings/models`);
+  expect(screen.getByRole("link", {name: "Create model"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/settings/models`);
   expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
 });
 
@@ -68,7 +68,7 @@ it("explains configured but ineligible models and prevents an empty model menu",
   const alert = await screen.findByRole("alert");
   expect(alert.textContent).toContain("No chat model is available");
   expect(alert.textContent).toContain("provider credentials and model configuration");
-  expect(screen.queryByText("Add a model to start chatting")).toBeNull();
+  expect(screen.queryByText("Create a model to start chatting")).toBeNull();
   expect(screen.getByRole("combobox")).toHaveProperty("disabled", true);
   expect(fixture.writes()).toEqual([]);
 });
@@ -80,12 +80,12 @@ it("keeps an incomplete model search distinct from a workspace with no configure
     ? Promise.resolve(response({items: [], next_cursor: "next-model-page"})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("alert")).textContent).toContain("Load more chat models");
-  expect(screen.queryByText("Add a model to start chatting")).toBeNull();
+  expect(screen.queryByText("Create a model to start chatting")).toBeNull();
   expect(within(screen.getByRole("alert")).getByRole("button", {name: /Load more models/})).toBeTruthy();
   const reads = fixture.fetch.mock.calls.length;
   fireEvent.click(within(screen.getByRole("alert")).getByRole("button", {name: /Load more models/}));
   await waitFor(() => expect(fixture.fetch.mock.calls.length).toBeGreaterThan(reads));
-  expect(screen.queryByText("Add a model to start chatting")).toBeNull();
+  expect(screen.queryByText("Create a model to start chatting")).toBeNull();
   expect(fixture.writes()).toEqual([]);
 });
 
@@ -101,7 +101,7 @@ it.each(["loading", "unavailable"] as const)("does not claim there are no models
 it("takes platform model administrators to the model library when no model is configured", () => {
   const client = new DraftClient({...CHAT_PROPS, subject: "creator"});
   render(<ChatModelAvailability client={client} view={{...client.getSnapshot(), listStatus: "ready"}} workspace={WORKSPACE} canManagePlatformModels />);
-  expect(screen.getByRole("link", {name: "Add model"}).getAttribute("href")).toBe("/admin/models");
+  expect(screen.getByRole("link", {name: "Create model"}).getAttribute("href")).toBe("/admin/models");
   expect(screen.queryByRole("button", {name: "Retry"})).toBeNull();
   client.dispose();
 });

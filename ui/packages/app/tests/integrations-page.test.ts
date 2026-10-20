@@ -105,7 +105,7 @@ describe("Integrations page", () => {
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
     const markup = renderToStaticMarkup(await renderPage(Page));
 
-    expect(markup).toContain(">Integrations<");
+    expect(markup).toContain(">Connect apps<");
     expect(markup).toContain('data-integrations-connectors="ws_1"');
     expect(markup).toContain('data-catalog="github,zoho"');
     expect(markup).toContain('data-github-status="connected"');

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthProvider, AuthSessionKeeper } from "@/lib/auth/client";
+import { SIGN_IN_PATH } from "@/lib/auth/sign-in-redirect";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 import AnalyticsBootstrap from "@/components/analytics/AnalyticsBootstrap";
 import { DASHBOARD_ROOT_PATH } from "@/lib/workspace-routes";
@@ -17,11 +18,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // `*FallbackRedirectUrl` (not force) sends a completed sign-in/sign-up to the
   // dashboard root, which resolves the default workspace and redirects to its
-  // fleet wall. Fallback (not force) so a legitimate Clerk-internal `redirect_url`
+  // New fleet page. Fallback (not force) so a legitimate Clerk-internal `redirect_url`
   // (email verification, SSO hops) is still honored.
   return (
     <AuthProvider
       appearance={AUTH_APPEARANCE}
+      signInUrl={SIGN_IN_PATH}
+      signUpUrl="/sign-up"
       signInFallbackRedirectUrl={DASHBOARD_ROOT_PATH}
       signUpFallbackRedirectUrl={DASHBOARD_ROOT_PATH}
       localization={{ userButton: { action__manageAccount: "Account" } }}
