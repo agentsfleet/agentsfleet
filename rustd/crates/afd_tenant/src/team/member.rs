@@ -34,12 +34,9 @@ impl Team {
 
     /// Removes `user`'s membership in the account.
     ///
-    /// The owners are locked before the count is read, so two removals cannot
-    /// each see another owner standing and together leave none. They are
-    /// locked before the removed row too: two owners removing each other then
-    /// queue on the same first lock, where locking their own rows first had
-    /// each wait on the other's until Postgres aborted one. Removing a
-    /// membership that does not exist is [`Removal::Absent`], not an error.
+    /// Nothing is locked; see [`sql::COUNT_OWNERS`] for the race that leaves
+    /// open. Removing a membership that does not exist is
+    /// [`Removal::Absent`], not an error.
     ///
     /// # Errors
     /// Refuses removing the account's last owner; reports a datastore that
@@ -51,13 +48,13 @@ impl Team {
             .await
             .map_err(&raise)?;
 
-        let owners: Vec<i32> = sqlx::query_scalar(sql::LOCK_OWNERS)
+        let owners: i64 = sqlx::query_scalar(sql::COUNT_OWNERS)
             .bind(tenant.as_str())
             .bind(ROLE_OWNER)
-            .fetch_all(&mut *transaction)
+            .fetch_one(&mut *transaction)
             .await
             .map_err(&raise)?;
-        let held: Option<String> = sqlx::query_scalar(sql::LOCK_MEMBERSHIP)
+        let held: Option<String> = sqlx::query_scalar(sql::SELECT_MEMBERSHIP)
             .bind(tenant.as_str())
             .bind(user.as_str())
             .fetch_optional(&mut *transaction)
@@ -66,7 +63,7 @@ impl Team {
         let Some(role) = held else {
             return Ok(Removal::Absent);
         };
-        if Role::parse(&role)? == Role::Owner && owners.len() <= 1 {
+        if Role::parse(&role)? == Role::Owner && owners <= 1 {
             return Err(error::member_last_owner());
         }
         sqlx::query(sql::DELETE_MEMBERSHIP)
