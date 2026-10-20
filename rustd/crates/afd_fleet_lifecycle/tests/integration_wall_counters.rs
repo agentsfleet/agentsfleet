@@ -27,7 +27,11 @@ pub(crate) const RAN: FleetCounters = FleetCounters {
 };
 
 /// Seeds the counter row the triggers maintain, for a fleet that "ran".
+///
+/// As the lane's owner: `api_runtime` only reads the counters, and the
+/// triggers that write them are not this test's subject.
 pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCounters) {
+    let owner = lane.owner().await;
     sqlx::query(
         "INSERT INTO fleet.activity_counters
            (fleet_id, event_count, budget_used_nanos, created_at, updated_at)
@@ -36,9 +40,10 @@ pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCou
     .bind(fleet.as_str())
     .bind(counters.events_processed)
     .bind(counters.budget_used_nanos)
-    .execute(&mut *lane.pool.acquire().await.expect("a pooled connection"))
+    .execute(&mut *owner.acquire().await.expect("an owner connection"))
     .await
     .expect("the counter row must insert");
+    owner.close().await;
 }
 
 /// Dimension 2.2. A fleet with no counter row still lists, with zeros: the

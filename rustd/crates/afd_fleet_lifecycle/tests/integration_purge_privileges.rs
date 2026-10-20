@@ -20,12 +20,10 @@
 //! `api_runtime` outright, which is why the purge leaves memory to the cascade. Neither proves `Fleets::purge_tagged` works, because each runs the
 //! statements itself.
 //!
-//! So the last test calls the real `purge` through a pool authenticating as a
-//! login role holding only `api_runtime`, over a fleet holding a row in every
-//! child table, memory included, and counts each after. `api_runtime` is
-//! `NOLOGIN` and cannot be connected as, and `purge` acquires its own connection
-//! and cannot be handed one — a role of the test's own making is what closes
-//! that.
+//! So the last test calls the real `purge` through the lane's API pool, which
+//! authenticates as production's API login does — a member of `api_runtime`
+//! and nothing else — over a fleet holding a row in every child table, memory
+//! included, and counts each after.
 //!
 //! `#[ignore]`d; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -34,23 +32,13 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
+use afd_fleet_lifecycle::FleetStatus;
 use afd_fleet_lifecycle::purge_statements as statements;
-use afd_fleet_lifecycle::{FleetStatus, Fleets};
 
 use crate::integration_purge_ledger_identity::{
     SEEDED, rows_for, seed_everything_the_purge_destroys,
 };
 use crate::support::{Lane, mint};
-
-/// A login role holding `api_runtime` and nothing else, created by the test.
-///
-/// The lane connects as the database owner, which bypasses grants entirely —
-/// the blind spot that let an ungranted purge ship. A role of our own is the
-/// only way to make the suite meet what a request meets, because `api_runtime`
-/// is `NOLOGIN` and cannot be connected as directly.
-const PROBE: &str = "purge_probe";
 
 /// A delete on memory, which `api_runtime` must be refused outright.
 const MEMORY_DELETE: &str = "DELETE FROM memory.entries WHERE fleet_id = $1::uuid";
@@ -151,65 +139,12 @@ async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
     lane.cleanup().await;
 }
 
-/// The lane's URL with the probe role's credentials in place of the owner's.
-///
-/// Everything after the userinfo is kept — host, database, and the query string
-/// carrying `sslmode`, which a rebuilt URL would drop and a TLS lane would then
-/// refuse.
-fn probe_url(lane_url: &str) -> String {
-    let (scheme, rest) = lane_url
-        .split_once("://")
-        .expect("the lane's URL carries a scheme");
-    let tail = rest.split_once('@').map_or(rest, |(_, tail)| tail);
-    format!("{scheme}://{PROBE}:{PROBE}@{tail}")
-}
-
-/// A `Fleets` whose pool authenticates as [`PROBE`] — the daemon's shape.
-///
-/// The role is created through the lane's owner connection, because creating it
-/// is setup rather than the thing under test. `IF NOT EXISTS` plus the
-/// duplicate-object arm because the lane's database is shared and two suites can
-/// reach this at once.
-async fn restricted(lane: &Lane) -> Fleets {
-    let mut connection = lane.connection().await;
-    for statement in [
-        "DO $$ BEGIN \
-           EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', 'purge_probe', 'purge_probe'); \
-         EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$",
-        "GRANT api_runtime TO purge_probe",
-    ] {
-        sqlx::query(statement)
-            .execute(&mut *connection)
-            .await
-            .expect("the lane's owner may create and grant to a probe role");
-    }
-    drop(connection);
-
-    // Pinned to one connection, which is all a single purge needs. The lane's
-    // Postgres is shared and its own fault suites connect through a proxy on a
-    // 400 ms budget: a second full-size pool warming beside them is enough
-    // connection pressure to make those budgets miss, which is a failure in
-    // their file and a cause in this one.
-    let database = TestDatabase::shared();
-    let pool = database
-        .open(
-            DbRole::Api,
-            &[
-                (DbRole::Api.url_knob(), &probe_url(&database.url())),
-                ("DATABASE_POOL_SIZE", "1"),
-                ("DATABASE_MIN_POOL_SIZE", "1"),
-            ],
-        )
-        .await;
-    Fleets::new(pool, lane.queue.clone())
-}
-
 /// The regression, bound to the code that shipped it.
 ///
 /// The two tests above prove the statements and the fence; neither proves that
 /// `Fleets::purge_tagged` empties every child, because both drive the statements
-/// themselves. This one calls the real purge through a pool that holds only
-/// `api_runtime`, over a row in every child table, so a schema that withheld
+/// themselves. This one calls the real purge through the lane's API pool,
+/// which holds only `api_runtime`, over a row in every child table, so a schema that withheld
 /// either DELETE, or a memory cascade the fence stopped, fails here and nowhere
 /// else.
 #[tokio::test]
@@ -220,8 +155,7 @@ async fn the_purge_itself_runs_as_api_runtime() {
     seed_everything_the_purge_destroys(&lane, &fleet).await;
     let tag = lane.kill(&fleet).await;
 
-    restricted(&lane)
-        .await
+    lane.fleets
         .purge_tagged(&lane.workspace, &fleet, &tag)
         .await
         .expect(

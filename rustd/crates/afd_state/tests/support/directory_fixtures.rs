@@ -253,8 +253,17 @@ impl Fixtures {
     /// make a query fail without touching the connection.
     ///
     /// Only ever a DISPOSABLE fixture's table — see [`Fixtures::destroy_database`].
+    /// Dropped as the lane's owner: a table is its owner's to drop, and the
+    /// directory under test keeps the api pool.
     pub(crate) async fn drop_table(&self, table: &str) {
-        self.run(&format!("DROP TABLE {table} CASCADE"), &[]).await;
+        let owner = self.lane.open(DbRole::Migrator, &[]).await;
+        let mut connection = owner.acquire().await.expect("an owner connection");
+        sqlx::query(AssertSqlSafe(format!("DROP TABLE {table} CASCADE")))
+            .execute(&mut *connection)
+            .await
+            .expect("the disposable fixture's table must drop");
+        drop(connection);
+        owner.close().await;
     }
 
     /// Destroys the database while this pool still holds connections to it.

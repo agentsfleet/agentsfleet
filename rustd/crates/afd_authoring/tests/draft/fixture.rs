@@ -165,7 +165,8 @@ impl Fixture {
         retired
     }
 
-    /// The lane owner's URL, which a fault fixture installs its trigger as.
+    /// The lane owner's URL, which scaffolding the API login may not run
+    /// connects as: fault triggers, row and table holds, lock census.
     pub(super) fn owner_url(&self) -> String {
         self.lane.url()
     }

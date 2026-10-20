@@ -67,12 +67,23 @@
 # beside it: `make -j` orders only what depends on what, so two siblings run
 # together and the reset can drop the schema the migration is applying.
 # Under `KEEP_TEST_STATE=1` the prerequisite is the plain infra check.
+# The API pool's login, created after the migration that creates `api_runtime`:
+# the provider's `--inherited-roles api_runtime`, spelled in plain Postgres.
+# Idempotent; roles are cluster-wide and outlive the schema reset.
+define _api_login
+docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -c \
+  "DO \$$\$$ BEGIN CREATE ROLE $(TEST_DATABASE_API_LOGIN) LOGIN PASSWORD '$(TEST_DATABASE_API_LOGIN)' IN ROLE api_runtime; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END \$$\$$" \
+  >/dev/null || { echo "✗ [infra] API login failed"; exit 1; }; \
+echo "✓ [infra] API login $(TEST_DATABASE_API_LOGIN) holds api_runtime"
+endef
+
 _migrate-test-db: $(TEST_STATE_DEP)
 	@echo "→ [infra] Applying migrations once, for the whole lane..."; \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
 	  cargo run --quiet --bin agentsfleetd -- migrate \
 	  || { echo "✗ [infra] migrate failed"; exit 1; }
 	@echo "✓ [infra] Schema applied"
+	@$(_api_login)
 
 # Integration tests are marked `#[ignore]` in the source and run ONLY here, via
 # `--ignored`. That is the cargo-native gate and it costs nothing at unit time:
@@ -376,6 +387,7 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  cargo llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
+	@$(_api_login)
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard runner: the runner crates, then the runner against the daemon..."; \
 	$(call _rust_lane,rustd-coverage-runner.log,[rustd] coverage: runner crates,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_RUNNER_PACKAGES)) -- --include-ignored); \

@@ -33,8 +33,8 @@ pub(super) fn delivery(event_id: &str) -> Delivery<'_> {
 pub(super) async fn ready() -> OutboundHarness {
     capture();
     let harness = OutboundHarness::reset().await;
-    seed_parents(&harness.database).await;
-    clear_obligations(&harness.database).await;
+    seed_parents(&harness.owner).await;
+    clear_obligations(&harness.owner).await;
     harness
 }
 
@@ -81,7 +81,7 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
         .expect("recording the receipt");
     // The entry has sat on the queue an hour, as far as the undelivered scan
     // can tell.
-    age(&harness.database, event).await;
+    age(&harness.owner, event).await;
     entry
 }
 

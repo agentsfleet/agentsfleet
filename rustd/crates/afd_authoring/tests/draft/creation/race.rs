@@ -76,13 +76,20 @@ impl Hold {
 /// and answers its process ID. Other sessions on the shared lane can queue
 /// behind the same holders (a trigger install waits on any open write to its
 /// table), so the statement, not the count, identifies the contender.
+///
+/// The census reads as the lane owner: `pg_stat_activity` hides another
+/// login's statement text, and the holders and the table lock run as the
+/// owner while the contenders run as the API login.
 async fn blocked(c: &Case, holders: &[i32], statement: &str) -> i32 {
+    let mut census = PgConnection::connect(&c.base.owner_url())
+        .await
+        .expect("census connects");
     bounded(statement, async {
         loop {
             let waiting: Option<i32> = sqlx::query_scalar(WAITER)
                 .bind(holders)
                 .bind(statement)
-                .fetch_optional(&mut *c.base.connection().await)
+                .fetch_optional(&mut census)
                 .await
                 .expect("lock census");
             if let Some(pid) = waiting {

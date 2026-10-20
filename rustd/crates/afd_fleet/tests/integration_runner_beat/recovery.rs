@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use afd_core::error_code::INTERNAL_DB_QUERY;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
+use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
 use afd_runner::heartbeat::holds::prove;
 use afd_runner::reconcile::REASON_LANDLOCK_UNAVAILABLE;
@@ -201,12 +202,16 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
     let runner = &enrolled.runner_id;
     let fleet = mint_id();
     let working = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT)).await;
-    let mut connection = fixtures.database.acquire().await.expect("a connection");
+    // Renaming a table is the owner's right; the beat under test keeps the
+    // api pool.
+    let owner = fixtures.open(DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("an owner connection");
     sqlx::query(MOVE_FLEETS)
         .execute(&mut *connection)
         .await
         .expect("the private database's table moves");
     drop(connection);
+    owner.close().await;
 
     let log = Capture::install();
     let failed = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT * 2)).await;

@@ -18,12 +18,12 @@ const MEMBERSHIP: &str = "\
 INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
 VALUES ($1::uuid,$2::uuid,$3::uuid,'member',now())";
 
-pub(super) struct Member {
-    pub(super) id: Uuid7,
-    pub(super) token: String,
+struct Member {
+    id: Uuid7,
+    token: String,
 }
 
-pub(super) async fn member(f: &mut Fixture) -> Member {
+async fn member(f: &mut Fixture) -> Member {
     let (tenant, id) = (mint(), mint());
     f.own_tenant(&tenant);
     let token = format!("agt_t{}{}", mint(), mint()).replace('-', "");

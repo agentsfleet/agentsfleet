@@ -177,6 +177,7 @@ impl PlatformDefault {
             .unwrap_or_else(|failure| panic!("the database must name itself: {failure}"));
         let url = super::TestDatabase {
             base_url: lane_url(),
+            api_base_url: super::api_lane_url(),
             owned: Some(database),
         }
         .url();
