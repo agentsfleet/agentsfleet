@@ -183,7 +183,7 @@ pub(crate) async fn reserve(
 /// Deletes one bounded batch of receipts past [`REPLAY_WINDOW`], returning how
 /// many went.
 ///
-/// Rows a claim holds are skipped; that claim deletes its own expired row.
+/// A row a claim is deleting is waited for, not skipped; see [`sql::SWEEP`].
 pub(crate) async fn sweep(connection: &mut PgConnection) -> Result<u64> {
     let swept = sqlx::query(sql::SWEEP)
         .bind(REPLAY_WINDOW)
