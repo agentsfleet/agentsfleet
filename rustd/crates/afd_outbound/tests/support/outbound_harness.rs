@@ -65,6 +65,13 @@ pub(crate) struct OutboundHarness {
     /// exists to give — a per-test database here would apply forty-seven
     /// migrations per case to serve a handful of statements.
     pub(crate) database: Db,
+    /// The lane owner's pool on the same shared schema, for fixture setup and
+    /// cleanup only: seeding parent rows, ageing and clearing obligations.
+    ///
+    /// The API login is `api_runtime` and nothing else, as in production, so
+    /// it may not write the rows a test stages around the code under test.
+    /// Product calls keep [`Self::database`].
+    pub(crate) owner: Db,
 }
 
 impl OutboundHarness {
@@ -86,6 +93,7 @@ impl OutboundHarness {
             redis,
             queue,
             database: TestDatabase::shared().open(DbRole::Api, &[]).await,
+            owner: TestDatabase::shared().open(DbRole::Migrator, &[]).await,
         }
     }
 
@@ -102,6 +110,7 @@ impl OutboundHarness {
             redis,
             queue,
             database: TestDatabase::shared().open(DbRole::Api, &[]).await,
+            owner: TestDatabase::shared().open(DbRole::Migrator, &[]).await,
         }
     }
 

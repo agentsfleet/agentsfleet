@@ -88,7 +88,7 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
     // What a connector removed from the catalogue leaves behind: a row naming
     // a destination and a connector nobody answers to.
     seed_owed_row(
-        &harness.database,
+        &harness.owner,
         OwedRow {
             nth: 10,
             event,
@@ -147,11 +147,7 @@ async fn a_reappend_whose_receipt_is_refused_stays_owed() {
 /// Installs, for `event`, or removes, for `None`, a trigger refusing every
 /// receipt written to that event's row.
 async fn refuse_receipts(harness: &OutboundHarness, event: Option<&str>) {
-    let mut connection = harness
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
+    let mut connection = harness.owner.acquire().await.expect("the ledger answers");
     let mut statements = vec![
         format!("DROP TRIGGER IF EXISTS {RECEIPT_REFUSAL} ON fleet.obligations"),
         format!("DROP FUNCTION IF EXISTS public.{RECEIPT_REFUSAL}()"),

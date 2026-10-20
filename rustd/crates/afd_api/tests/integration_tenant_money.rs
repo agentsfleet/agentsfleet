@@ -191,7 +191,11 @@ fn text<'value>(document: &'value Value, field: &str) -> &'value str {
 
 struct Fixture {
     lane: TestDatabase,
+    /// The pool the routes under test run on: production's API login.
     database: Db,
+    /// The lane owner's pool. Seeding and cleanup write rows `api_runtime`
+    /// may not, so they never borrow the API login's grants.
+    migrator: Db,
     tenant: String,
     key: String,
     token: String,
@@ -207,6 +211,7 @@ impl Fixture {
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
+            migrator: lane.open(DbRole::Migrator, &[]).await,
             provider: format!("live{}", tenant.replace('-', "")),
             tenant,
             key: mint_id(),
@@ -219,7 +224,7 @@ impl Fixture {
 
     async fn seed(&self) {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
-        let mut connection = self.database.acquire().await.expect("an API connection");
+        let mut connection = self.migrator.acquire().await.expect("a seeding connection");
         TenantSeed::new(&self.tenant)
             .name("Money lifecycle")
             .insert(&mut *connection)
@@ -269,7 +274,7 @@ impl Fixture {
     }
 
     async fn remove_wallet(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
+        let mut connection = self.migrator.acquire().await.expect("a seeding connection");
         sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
@@ -278,7 +283,7 @@ impl Fixture {
     }
 
     async fn cleanup(self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
+        let mut connection = self.migrator.acquire().await.expect("a seeding connection");
         sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1::uuid")
             .bind(&self.tenant)
             .execute(&mut *connection)
@@ -296,6 +301,7 @@ impl Fixture {
             .expect("the scoped tenant cleans up");
         drop(connection);
         drop(self.database);
+        drop(self.migrator);
         self.lane.cleanup().await;
     }
 }

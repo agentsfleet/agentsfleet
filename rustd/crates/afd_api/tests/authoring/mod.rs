@@ -22,7 +22,6 @@ mod proposals;
 mod readiness;
 #[path = "../../../afd_authoring/tests/support/refusal.rs"]
 mod refusal;
-mod runtime_role;
 mod saving;
 mod seed;
 mod stream;

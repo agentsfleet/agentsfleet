@@ -177,11 +177,7 @@ async fn exhausted_cycles_abandon_the_obligation() {
 
 /// Sets the row's spent delivery cycles, as that many re-offers would leave it.
 pub(super) async fn set_attempts(harness: &OutboundHarness, event: &str, cycles: i64) {
-    let mut connection = harness
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
+    let mut connection = harness.owner.acquire().await.expect("the ledger answers");
     sqlx::query(
         "UPDATE fleet.obligations SET attempt_count = $3
           WHERE fleet_id = $1::uuid AND event_id = $2::text",

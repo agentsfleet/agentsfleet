@@ -17,6 +17,7 @@
 use afd_billing::biller::{Release, WorkKey};
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
+use afd_db::config::DbRole;
 use afd_wire::report::RenewRequest;
 
 use crate::queue;
@@ -47,22 +48,19 @@ const HIDE_REVISIONS: &str = "ALTER TABLE fleet.revisions RENAME TO revisions_hi
 /// Uninstalls the fleet's head revision, as a purge racing the run leaves it.
 const UNINSTALL: &str = "UPDATE fleet.fleets SET head_revision_id = NULL WHERE id = $1::uuid";
 
+/// Runs one scene-setting statement as the lane's owner: renaming a table or
+/// column is the owner's right, and the scene is not the code under test.
 async fn run(held: &Held, statement: &'static str, binds: &[&str]) {
     let mut query = sqlx::query(statement);
     for bind in binds {
         query = query.bind(*bind);
     }
+    let owner = held.fixtures.open(DbRole::Migrator).await;
     query
-        .execute(
-            &mut *held
-                .fixtures
-                .database
-                .acquire()
-                .await
-                .expect("a connection"),
-        )
+        .execute(&mut *owner.acquire().await.expect("an owner connection"))
         .await
         .expect("the fixture statement runs");
+    owner.close().await;
 }
 
 /// Renews `held`'s lease with nothing to report.

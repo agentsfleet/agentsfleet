@@ -99,7 +99,7 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
         .await
         .expect("the report's transaction commits");
     // Past `MIN_AGE`, so the producer's own pass takes the row.
-    age(&harness.database, EVENT_ID).await;
+    age(&harness.owner, EVENT_ID).await;
     written
 }
 
@@ -110,8 +110,8 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
 async fn a_refused_append_leaves_every_scanned_row_still_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
-    seed_parents(&harness.database).await;
-    clear_obligations(&harness.database).await;
+    seed_parents(&harness.owner).await;
+    clear_obligations(&harness.owner).await;
 
     let row = obligation_id(1);
     assert!(
@@ -154,7 +154,7 @@ async fn a_refused_append_leaves_every_scanned_row_still_owed() {
     );
     assert_eq!(owed_after[0].id, row);
 
-    clear_obligations(&harness.database).await;
+    clear_obligations(&harness.owner).await;
 }
 
 /// An answer with nothing in it owes no delivery at all.
@@ -167,8 +167,8 @@ async fn a_refused_append_leaves_every_scanned_row_still_owed() {
 async fn an_empty_answer_owes_nothing() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = OutboundHarness::reset().await;
-    seed_parents(&harness.database).await;
-    clear_obligations(&harness.database).await;
+    seed_parents(&harness.owner).await;
+    clear_obligations(&harness.owner).await;
 
     assert!(
         !owe_committed(&harness, &obligation_id(2), "").await,

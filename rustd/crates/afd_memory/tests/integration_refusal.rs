@@ -119,9 +119,10 @@ async fn test_a_capture_whose_grants_cannot_be_read_reports_the_datastore_refusa
     assert_eq!(refused.code(), INTERNAL_DB_UNAVAILABLE);
 }
 
-/// A login role holding no grant at all, created by the test: the lane
-/// connects as the database owner, which may assume any role, so only a role
-/// of the test's own making meets a refused `SET LOCAL ROLE`.
+/// A login role holding no grant at all, created by the test: the lane's API
+/// login holds `api_runtime`, which may assume `memory_runtime`, and its owner
+/// may assume any role, so only a role of the test's own making meets a
+/// refused `SET LOCAL ROLE`.
 const ROLELESS: &str = "memory_roleless_probe";
 
 /// The lane's URL with its userinfo swapped for [`ROLELESS`], keeping the
@@ -135,8 +136,11 @@ fn roleless_url(lane_url: &str) -> String {
 }
 
 /// A store whose pool authenticates as [`ROLELESS`].
+///
+/// The role is created through the lane's owner pool: creating it is setup,
+/// and the API login may not create roles.
 async fn roleless_store(lane: &TestDatabase) -> PgStore {
-    let owner = lane.open(DbRole::Api, &[]).await;
+    let owner = lane.open(DbRole::Migrator, &[]).await;
     let mut connection = owner.acquire().await.expect("the lane's owner connects");
     // `IF NOT EXISTS` by exception: the lane is shared and a rerun finds it.
     sqlx::query(
@@ -149,6 +153,7 @@ async fn roleless_store(lane: &TestDatabase) -> PgStore {
     .await
     .expect("the lane's owner may create a probe role");
     drop(connection);
+    owner.close().await;
     let pool = lane
         .open(
             DbRole::Api,

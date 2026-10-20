@@ -87,6 +87,11 @@ pub const SEEDED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 1_000_000);
 /// The environment knob naming the lane's admin connection.
 const LANE_KNOB: &str = "TEST_DATABASE_URL";
 
+/// The environment knob naming the lane's API login: a member of
+/// `api_runtime` and nothing else, as production's `DATABASE_URL_API` is
+/// (`playbooks/operations/database_region_move/001_playbook.md`).
+const API_KNOB: &str = "TEST_DATABASE_URL_API";
+
 /// Distinguishes databases created by one process.
 ///
 /// Combined with the process id, so two lanes on one host cannot collide
@@ -101,6 +106,9 @@ static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 #[derive(Debug)]
 pub struct TestDatabase {
     base_url: String,
+    /// The same server through the API login, which is what [`DbRole::Api`]
+    /// connects as, so a missing grant fails here as it fails in production.
+    api_base_url: String,
     /// The database this handle CREATED, when it created one.
     ///
     /// `None` for the shared lane database, which this fixture does not own and
@@ -131,6 +139,7 @@ impl TestDatabase {
         install_subscriber();
         Self {
             base_url: lane_url(),
+            api_base_url: api_lane_url(),
             owned: None,
         }
     }
@@ -162,6 +171,7 @@ impl TestDatabase {
         Self::admin(&base_url, AssertSqlSafe(format!("CREATE DATABASE {name}"))).await;
         Self {
             base_url,
+            api_base_url: api_lane_url(),
             owned: Some(name),
         }
     }
@@ -181,11 +191,26 @@ impl TestDatabase {
     /// When the lane's URL is not a URL, which is a lane fault.
     #[must_use]
     pub fn url(&self) -> String {
+        self.on_this_database(&self.base_url, LANE_KNOB)
+    }
+
+    /// [`TestDatabase::url`] through the API login: what [`DbRole::Api`]
+    /// connects as.
+    ///
+    /// # Panics
+    /// When the API lane URL is not a URL, which is a lane fault.
+    #[must_use]
+    pub fn api_url(&self) -> String {
+        self.on_this_database(&self.api_base_url, API_KNOB)
+    }
+
+    /// `lane` with this handle's database swapped in, when it owns one.
+    fn on_this_database(&self, lane: &str, knob: &str) -> String {
         let Some(name) = self.owned.as_deref() else {
-            return self.base_url.clone();
+            return lane.to_owned();
         };
-        let mut url = url::Url::parse(&self.base_url)
-            .unwrap_or_else(|failure| panic!("{LANE_KNOB} must be a URL: {failure}"));
+        let mut url = url::Url::parse(lane)
+            .unwrap_or_else(|failure| panic!("{knob} must be a URL: {failure}"));
         url.set_path(&format!("/{name}"));
         url.into()
     }
@@ -206,13 +231,17 @@ impl TestDatabase {
         &self.base_url
     }
 
-    /// An environment pointing every role at this database.
+    /// An environment pointing every role at this database: the API role
+    /// through the API login, every other role through the lane's owner.
     #[must_use]
     pub fn env(&self, extra: &[(&str, &str)]) -> MapEnv {
-        let url = self.url();
+        let (url, api_url) = (self.url(), self.api_url());
         let mut pairs: Vec<(String, String)> = DbRole::ALL
             .iter()
-            .map(|role| (role.url_knob().to_owned(), url.clone()))
+            .map(|role| {
+                let target = if *role == DbRole::Api { &api_url } else { &url };
+                (role.url_knob().to_owned(), target.clone())
+            })
             .collect();
         pairs.extend(
             extra
@@ -323,8 +352,17 @@ pub fn mint_uuid7() -> afd_core::id::Uuid7 {
 
 /// The lane's connection URL, or a panic naming the knob that is unset.
 fn lane_url() -> String {
-    ProcessEnv.get(LANE_KNOB).unwrap_or_else(|| {
-        panic!("{LANE_KNOB} is unset — run these through `make test-integration-rustd`")
+    knob(LANE_KNOB)
+}
+
+/// The lane's API login URL, or a panic naming the knob that is unset.
+fn api_lane_url() -> String {
+    knob(API_KNOB)
+}
+
+fn knob(name: &str) -> String {
+    ProcessEnv.get(name).unwrap_or_else(|| {
+        panic!("{name} is unset — run these through `make test-integration-rustd`")
     })
 }
 

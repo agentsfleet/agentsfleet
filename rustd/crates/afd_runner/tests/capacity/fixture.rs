@@ -20,7 +20,10 @@ pub(super) const LIVE_FOR: Duration = Duration::from_mins(1);
 pub(super) const LAPSED_BY: Duration = Duration::from_millis(1);
 
 pub(super) struct Fixture {
+    /// The API login's pool, which the code under test runs on.
     pub(super) db: Db,
+    /// The lane owner's pool, for the rows a test seeds and removes around it.
+    owner: Db,
     pub(super) runner: Uuid7,
     tenant: String,
     workspace: String,
@@ -33,13 +36,14 @@ impl Fixture {
         let lane = TestDatabase::shared();
         let fixture = Self {
             db: lane.open(DbRole::Api, &[]).await,
+            owner: lane.open(DbRole::Migrator, &[]).await,
             runner: Uuid7::parse(&mint_id()).expect("fixture runner UUIDv7"),
             tenant: mint_id(),
             workspace: mint_id(),
             fleet: mint_id(),
             lane,
         };
-        let mut connection = fixture.db.acquire().await.expect("seed connection");
+        let mut connection = fixture.owner.acquire().await.expect("seed connection");
         TenantSeed::new(&fixture.tenant)
             .name("capacity")
             .insert(&mut *connection)
@@ -86,7 +90,7 @@ impl Fixture {
     }
 
     pub(super) async fn runtime(&self, until: Timestamp) {
-        let mut connection = self.db.acquire().await.expect("runtime seed connection");
+        let mut connection = self.owner.acquire().await.expect("runtime seed connection");
         rows::lease(
             &mut connection,
             LeaseRow {
@@ -130,7 +134,7 @@ impl Fixture {
     }
 
     pub(super) async fn cleanup(self) {
-        let mut connection = self.db.acquire().await.expect("cleanup connection");
+        let mut connection = self.owner.acquire().await.expect("cleanup connection");
         // Attempts outlive their runner by design, so a test removes the ones
         // it seeded itself rather than leaving them in the lane.
         sqlx::query("DELETE FROM authoring.attempts WHERE runner_id = $1::uuid")
@@ -150,6 +154,7 @@ impl Fixture {
             .expect("remove only this test's host");
         drop(connection);
         self.db.close().await;
+        self.owner.close().await;
         self.lane.cleanup().await;
     }
 }

@@ -208,7 +208,7 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
 async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations() {
     let mut fixture = Fixture::create().await;
     let runner = fixture.enrol().await;
-    let mut connection = fixture.database.acquire().await.expect("a seed connection");
+    let mut connection = fixture.owner.acquire().await.expect("a seed connection");
     let attempt = rows::attempt(
         &mut connection,
         (runner.as_str(), &mint_id(), &mint_id()),
