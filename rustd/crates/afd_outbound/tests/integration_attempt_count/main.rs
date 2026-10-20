@@ -227,7 +227,7 @@ async fn recovery_pacing_follows_the_cycle_start() {
         reoffered(&harness).await.is_empty(),
         "a row whose cycle just started is somebody's work, not the scan's"
     );
-    age(&harness.database, event).await;
+    age(&harness.owner, event).await;
     assert_eq!(
         reoffered(&harness).await,
         vec![event.to_owned()],

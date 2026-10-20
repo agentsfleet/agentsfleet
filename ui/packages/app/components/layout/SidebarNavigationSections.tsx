@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button, cn, NavItem as NavigationItem } from "@agentsfleet/design-system";
 import { useFreshFleetChat } from "./draft-sidebar-state";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
-import { NAV_SURFACE, navSource, resolveHref, type NavEntry } from "./sidebar-navigation-data";
+import { NAV_SURFACE, NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH, navSource, resolveHref, type NavEntry } from "./sidebar-navigation-data";
 
 export type NavListProps = {
   activeHref: string;
@@ -48,7 +48,7 @@ function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed }: Nav
 
 function NavGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-xs px-3">
+    <div className="flex flex-col gap-xs px-sm">
       {children}
     </div>
   );
@@ -73,7 +73,7 @@ function NavItem({
 }) {
   const content = (
     <>
-      <Icon size={20} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
+      <Icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0" aria-hidden="true" />
       {collapsed ? null : label}
     </>
   );
@@ -83,7 +83,7 @@ function NavItem({
     className: cn(collapsed && "justify-center px-0"),
     onClick,
   };
-  if (label === "New fleet") return <Button asChild variant="secondary" size="lg" className={cn("mb-sm w-full", collapsed ? "px-0" : "justify-start")}><Link href={href} {...common}>{content}</Link></Button>;
+  if (label === "New fleet") return <Button asChild variant="secondary" className={cn("w-full", collapsed ? "px-0" : "justify-start")}><Link href={href} {...common}>{content}</Link></Button>;
   if (external) {
     return <NavigationItem href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</NavigationItem>;
   }

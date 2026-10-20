@@ -15,6 +15,10 @@ function setup(edit: boolean) {
   render(<TooltipProvider>{edit
     ? <EditModelDialog model={ADMIN_MODEL} onOpenChange={close} onUpdated={saved} />
     : <AddModelDialog defaultOpen onCreated={saved} />}</TooltipProvider>);
+  if (edit) {
+    fireEvent.click(screen.getByRole("button", { name: "Catalogue details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pricing" }));
+  }
   if (!edit) for (const [label, value] of [
     ["Provider", ADMIN_MODEL.provider], ["Model", ADMIN_MODEL.model_id],
     ["Catalogue display name", ADMIN_MODEL.metadata.display_name], ["Context window (tokens)", String(ADMIN_MODEL.metadata.context_cap_tokens)],
@@ -53,15 +57,60 @@ it.each([false, true])("retains exact inputs on a rejected action round trip, th
   const body = action.mock.calls[1]?.[edit ? 1 : 0];
   expect(body.prices[0].input_nanos_per_mtok).toBe("9223372036854775807");
 });
-it("preserves inference when omitted and updates the returned row with the exact new schedule", async () => {
+it("saves the displayed connection and updates the returned row with the exact new schedule", async () => {
   update.mockResolvedValueOnce({ ok: true, data: { id: ADMIN_MODEL.id, updated: true } });
   const { saved, close, submit } = setup(true);
-  fireEvent.click(screen.getByRole("switch", { name: "Write inference settings" }));
+  expect(screen.queryByRole("button", { name: "Leave connection unchanged" })).toBeNull();
   change("Cache write ($/1M)", "0");
   change("Cache write, 1-hour ($/1M)", "9223372036.854775807");
   submit();
   const prices = [{ ...PRICE, cache_write_nanos_per_mtok: "0", cache_write_1h_nanos_per_mtok: "9223372036854775807" }];
   await waitFor(() => expect(saved).toHaveBeenCalledWith({ ...ADMIN_MODEL, prices }));
-  expect(update).toHaveBeenCalledWith(ADMIN_MODEL.id, { metadata: ADMIN_MODEL.metadata, prices });
+  expect(update).toHaveBeenCalledWith(ADMIN_MODEL.id, { metadata: ADMIN_MODEL.metadata, prices, inference: ADMIN_MODEL.inference });
   expect(close).toHaveBeenCalledWith(false);
+});
+
+it("saves catalogue details without inventing a connection for an unconfigured model", async () => {
+  update.mockResolvedValueOnce({ ok: true, data: { id: ADMIN_MODEL.id, updated: true } });
+  const model = { ...ADMIN_MODEL, inference: undefined };
+  const saved = vi.fn();
+  render(<TooltipProvider><EditModelDialog model={model} onOpenChange={vi.fn()} onUpdated={saved} /></TooltipProvider>);
+  expect(screen.queryByLabelText("Inference base URL")).toBeNull();
+  fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+  await waitFor(() => expect(saved).toHaveBeenCalledWith(model));
+  expect(update).toHaveBeenCalledWith(model.id, { metadata: model.metadata, prices: model.prices });
+});
+
+it("cancels unfinished connection setup, clears its errors and saves retained price-only edits", async () => {
+  update.mockResolvedValueOnce({ ok: true, data: { id: ADMIN_MODEL.id, updated: true } });
+  const model = { ...ADMIN_MODEL, inference: undefined };
+  const saved = vi.fn();
+  render(<TooltipProvider><EditModelDialog model={model} onOpenChange={vi.fn()} onUpdated={saved} /></TooltipProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "Pricing" }));
+  change("Input ($/1M)", "0.75");
+  fireEvent.click(screen.getByRole("button", { name: "Configure connection" }));
+  // Pin test: the dialect limit is 64 bytes.
+  change("Dialect (optional)", "d".repeat(65));
+  fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+  const endpointError = "Use an HTTPS base URL without credentials, query or fragment";
+  const outputError = "Output limit must be positive and fit in the model context window";
+  await screen.findByText(endpointError);
+  expect(screen.getByText(outputError)).toBeTruthy();
+  expect(update).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Leave connection unchanged" }));
+  expect(screen.queryByLabelText("Inference base URL")).toBeNull();
+  expect(screen.queryByText(endpointError)).toBeNull();
+  expect(screen.queryByText(outputError)).toBeNull();
+  expect(screen.getByLabelText("Input ($/1M)")).toHaveProperty("value", "0.75");
+  fireEvent.click(screen.getByRole("button", { name: "Configure connection" }));
+  expect(screen.getByLabelText("Dialect (optional)")).toHaveProperty("value", "");
+  expect(screen.getByLabelText("Inference base URL").getAttribute("aria-invalid")).toBe("false");
+  expect(screen.getByLabelText("Model output limit (tokens)").getAttribute("aria-invalid")).toBe("false");
+  expect(screen.queryByText(endpointError)).toBeNull();
+  expect(screen.queryByText(outputError)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Leave connection unchanged" }));
+  fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+  const prices = [{ ...PRICE, input_nanos_per_mtok: "750000000" }];
+  await waitFor(() => expect(saved).toHaveBeenCalledWith({ ...model, prices }));
+  expect(update).toHaveBeenCalledExactlyOnceWith(model.id, { metadata: model.metadata, prices });
 });

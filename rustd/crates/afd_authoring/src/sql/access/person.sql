@@ -4,4 +4,4 @@ SELECT u.id::text AS user_id,
   FROM identity.users u
   JOIN identity.workspaces w ON w.id = $1::uuid
  WHERE u.oidc_subject = $2
-   FOR SHARE OF u, w
+   FOR SHARE OF u

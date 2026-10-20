@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { nanosPerMtok, type Catalogue, type Price } from "./catalogue";
+import { inferenceSchema, nanosPerMtok, type Catalogue, type Price } from "./catalogue";
 
 const INSTANT = z.iso.datetime({ offset: true }).transform((value) => new Date(value).toISOString());
 const RATE = z.string().regex(/^\d+$/);
@@ -12,6 +12,7 @@ const priceRowSchema = z.strictObject({
 });
 const modelRowSchema = z.strictObject({
   provider: z.string(), model_name: z.string(), display_name: z.string(), advanced: z.boolean(),
+  inference: inferenceSchema.nullable(),
   context_cap_tokens: z.int().positive(), context_source_url: z.url(), context_verified_at: INSTANT,
   prices: z.array(priceRowSchema).transform((prices) => prices.sort(comparePrices)),
 });
@@ -25,7 +26,7 @@ export function desiredRows(catalogue: Catalogue): ModelRow[] {
   return catalogue.models.flatMap((model) => model.context === null ? [] : [modelRowSchema.parse({
     provider: model.provider, model_name: model.model_name, display_name: model.display_name, advanced: model.advanced,
     context_cap_tokens: model.context.tokens, context_source_url: model.context.source_url,
-    context_verified_at: model.context.verified_at, prices: model.prices.map(priceRow),
+    context_verified_at: model.context.verified_at, inference: model.inference, prices: model.prices.map(priceRow),
   })]);
 }
 
@@ -35,7 +36,7 @@ export function catalogueDiff(wanted: ModelRow[], live: ModelRow[]): CatalogueDi
   return {
     added: wanted.filter((model) => !current.has(modelKey(model))).map(modelKey),
     changed: wanted.filter((model) => current.has(modelKey(model))
-      && !Bun.deepEquals(model, current.get(modelKey(model)))).map(modelKey),
+      && !Bun.deepEquals({ ...model, inference: current.get(modelKey(model))?.inference ?? model.inference }, current.get(modelKey(model)))).map(modelKey),
     deleted: live.filter((model) => !desired.has(modelKey(model))).map(modelKey),
   };
 }

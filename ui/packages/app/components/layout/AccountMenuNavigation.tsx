@@ -7,8 +7,8 @@ import { ArrowLeftIcon, ChevronRightIcon, ShieldCheckIcon, LogOutIcon, SettingsI
 import { cn, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@agentsfleet/design-system";
 import { AuthSignOutButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
-import { NAV_SURFACE, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
-import { ACCOUNT_NAV, BOTTOM_NAV, PLATFORM_NAV, WORKSPACE_NAV } from "./account-menu-data";
+import { NAV_SURFACE, NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
+import { ACCOUNT_NAV, ACCOUNT_SHORTCUTS, SERVICE_SHORTCUTS, BOTTOM_NAV, PLATFORM_NAV, WORKSPACE_NAV } from "./account-menu-data";
 
 export const MENU_VIEW = { home: "home", settings: "settings", platform: "platform" } as const;
 export type MenuView = typeof MENU_VIEW[keyof typeof MENU_VIEW];
@@ -21,14 +21,17 @@ export function AccountMenuNavigation({ view, onView, workspaceId, operatorScope
   if (view === MENU_VIEW.home) return <>
     <DropdownMenuSeparator />
     <MenuDestination label="Settings" Icon={SettingsIcon} onSelect={() => onView(MENU_VIEW.settings)} />
+    <MenuLinks items={ACCOUNT_SHORTCUTS} workspaceId={workspaceId} />
+    <DropdownMenuSeparator />
+    <MenuLinks items={SERVICE_SHORTCUTS} workspaceId={workspaceId} />
     {platform.length > 0 ? <MenuDestination label="Platform" Icon={ShieldCheckIcon} onSelect={() => onView(MENU_VIEW.platform)} /> : null}
     <MenuLinks items={BOTTOM_NAV} workspaceId={workspaceId} />
     <DropdownMenuSeparator />
-    <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem><LogOutIcon size={18} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
+    <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem><LogOutIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
   </>;
   return <>
     <DropdownMenuItem ref={backRef} onSelect={(event) => { event.preventDefault(); onView(MENU_VIEW.home); }}>
-      <ArrowLeftIcon size={18} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />Back
+      <ArrowLeftIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" />Back
     </DropdownMenuItem>
     <DropdownMenuSeparator />
     {view === MENU_VIEW.settings ? <>
@@ -43,7 +46,7 @@ export function AccountMenuNavigation({ view, onView, workspaceId, operatorScope
 
 function MenuDestination({ label, Icon, onSelect }: { label: string; Icon: typeof SettingsIcon; onSelect: () => void }) {
   return <DropdownMenuItem onSelect={(event) => { event.preventDefault(); onSelect(); }}>
-    <Icon size={18} strokeWidth={1.75} className="shrink-0" aria-hidden="true" /><span className="flex-1">{label}</span><ChevronRightIcon size={14} />
+    <Icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{label}</span><ChevronRightIcon size={14} className="text-muted-foreground" aria-hidden="true" />
   </DropdownMenuItem>;
 }
 
@@ -56,7 +59,7 @@ function MenuLinks({ items, workspaceId }: { items: NavEntry[]; workspaceId: str
       <Link href={href} aria-current={href === activeHref ? "page" : undefined}
         className={cn(href === activeHref && "bg-accent text-primary")}
         {...(entry.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
-        <entry.icon size={18} strokeWidth={1.75} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{entry.label}</span>
+        <entry.icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{entry.label}</span>
       </Link>
     </DropdownMenuItem>;
   });

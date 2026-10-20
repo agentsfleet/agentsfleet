@@ -45,8 +45,8 @@ export function RecentFleetVisit({ workspace, id, description }: { workspace: st
 export function RecentFleets({ workspaceId, pathname, onNavigate }: { workspaceId: string | null; pathname: string; onNavigate: () => void }) {
   const recent = useContext(RecentContext);
   const fleets = workspaceId ? recent[workspaceId] ?? EMPTY_FLEETS : EMPTY_FLEETS;
-  return <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-6">
-    <SectionLabel className="px-md pb-md">Recents</SectionLabel>
+  return <div className="px-sm pb-xl pt-xl">
+    <SectionLabel variant="navigation" className="mb-sm px-md">Recents</SectionLabel>
     {workspaceId && fleets.length ? fleets.map((fleet) => {
       const href = workspacePath(workspaceId, `fleets/${fleet.id}`);
       return <NavItem key={fleet.id} asChild active={pathname === href || pathname.startsWith(`${href}/`)} onClick={onNavigate}>

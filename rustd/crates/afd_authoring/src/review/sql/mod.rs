@@ -6,7 +6,8 @@
 pub(super) const TARGET: &str = include_str!("target.sql");
 
 /// The creator's account membership as a version digest; no row when the
-/// creator no longer belongs to the workspace owner's account.
+/// creator no longer belongs to the workspace owner's account. Locks only the
+/// person's row, as `crate::sql::access::PERSON` explains.
 ///
 /// `$1` creator, `$2` workspace.
 pub(super) const AUTHORITY: &str = include_str!("authority.sql");

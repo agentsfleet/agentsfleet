@@ -36,7 +36,7 @@ export function NavItem({ asChild = false, active = false, className, onFocus, .
       aria-current={active ? "page" : undefined}
       data-active={active ? "true" : undefined}
       className={cn(
-        "flex min-h-11 shrink-0 items-center gap-md rounded-md px-md py-sm font-sans text-body-sm text-muted-foreground no-underline",
+        "flex min-h-9 shrink-0 items-center gap-md rounded-md px-md py-xs font-sans text-body-sm text-muted-foreground no-underline pointer-coarse:min-h-11",
         "transition duration-snap ease-snap hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "data-[active=true]:bg-pulse/10 data-[active=true]:font-medium data-[active=true]:text-pulse",
         className,

@@ -51,6 +51,9 @@ fn enrolment() -> RegisterRequest<'static> {
 struct Fixture {
     lane: TestDatabase,
     database: Db,
+    /// The lane owner's pool, for the rows a test stages and removes around
+    /// the store; the store itself runs on [`Self::database`], the API login.
+    owner: Db,
     runners: Runners,
     enrolled: Vec<Uuid7>,
 }
@@ -62,6 +65,7 @@ impl Fixture {
         Self {
             runners: Runners::new(database.clone(), Entropy::new()),
             database,
+            owner: lane.open(DbRole::Migrator, &[]).await,
             enrolled: Vec::new(),
             lane,
         }
@@ -89,7 +93,7 @@ impl Fixture {
     }
 
     async fn cleanup(self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
+        let mut connection = self.owner.acquire().await.expect("an owner connection");
         let ids: Vec<&str> = self.enrolled.iter().map(Uuid7::as_str).collect();
         sqlx::query("DELETE FROM runner.runners WHERE id = ANY(($1::text[])::uuid[])")
             .bind(&ids)
@@ -99,6 +103,7 @@ impl Fixture {
         drop(connection);
         drop(self.runners);
         self.database.close().await;
+        self.owner.close().await;
         self.lane.cleanup().await;
     }
 }

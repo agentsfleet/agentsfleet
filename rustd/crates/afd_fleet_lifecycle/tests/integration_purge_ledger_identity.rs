@@ -115,16 +115,21 @@ async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<ChargedAs> {
 
 /// Rows left in one table for one fleet.
 ///
-/// The table name is a literal from this file, never input.
+/// The table name is a literal from this file, never input. Counted as the
+/// lane's owner, because `memory.entries` is out of `api_runtime`'s reach and
+/// the count is the test's observation, not the code under test.
 pub(crate) async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
     let statement = sqlx::AssertSqlSafe(format!(
         "SELECT count(*) FROM {table} WHERE fleet_id = $1::uuid"
     ));
-    sqlx::query_scalar(statement)
+    let owner = lane.owner().await;
+    let rows = sqlx::query_scalar(statement)
         .bind(fleet.as_str())
-        .fetch_one(&mut *lane.connection().await)
+        .fetch_one(&mut *owner.acquire().await.expect("an owner connection"))
         .await
-        .expect("counting a fleet's rows")
+        .expect("counting a fleet's rows");
+    owner.close().await;
+    rows
 }
 
 /// Gives the fleet one row in every table the purge is responsible for.
@@ -132,8 +137,12 @@ pub(crate) async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
 /// Two gates rather than one: the append-only trigger fires per row, so a purge
 /// that opened its entitlement for the first and lost it for the second would
 /// leave exactly one behind — and a single-row fixture cannot see that.
+///
+/// Seeded as the lane's owner: `api_runtime` never writes `memory.entries`
+/// itself, and the seed is the scene, not the purge under test.
 pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid7) {
-    let mut connection = lane.connection().await;
+    let owner = lane.owner().await;
+    let mut connection = owner.acquire().await.expect("an owner connection");
 
     sqlx::query(
         "INSERT INTO memory.entries
@@ -169,6 +178,8 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
     .execute(&mut *connection)
     .await
     .expect("seeding a session");
+    drop(connection);
+    owner.close().await;
 }
 
 /// Two pending approval gates on the fleet — see

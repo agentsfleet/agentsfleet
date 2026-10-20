@@ -7,21 +7,20 @@
 /// member by the subject their steers record.
 pub const SELECT_MEMBERS: &str = include_str!("member/select_members.sql");
 
-/// One member's role, locked until the removal commits.
+/// One member's role.
 ///
 /// `$1` tenant · `$2` user.
-pub const LOCK_MEMBERSHIP: &str = include_str!("member/lock_membership.sql");
+pub const SELECT_MEMBERSHIP: &str = include_str!("member/select_membership.sql");
 
-/// The account's owners, locked, so two removals cannot each see another
-/// owner standing and together leave none.
+/// How many owners the account has.
 ///
-/// Every removal takes these first, in id order, before the row it removes:
-/// one order for everyone, so two removals queue instead of deadlocking. The
-/// lock is the point and the count the only fact read, so each row answers a
-/// constant rather than a column to decode.
+/// Unlocked: `api_runtime` holds no UPDATE on the immutable memberships table,
+/// and Postgres refuses a row lock without it. Two owners removing each other
+/// at the same instant can therefore both pass the last-owner check; Indy
+/// accepted that over locking (Oct 20, 2026, PR #778).
 ///
 /// `$1` tenant · `$2` the owner role's spelling.
-pub const LOCK_OWNERS: &str = include_str!("member/lock_owners.sql");
+pub const COUNT_OWNERS: &str = include_str!("member/count_owners.sql");
 
 /// Removes one membership.
 ///

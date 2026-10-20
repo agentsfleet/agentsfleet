@@ -21,6 +21,9 @@ use super::{ANSWER, BOT_USER, CHANNEL, THREAD};
 /// The key every fixture seals under — the harness's own, not a deployment's.
 const FIXTURE_KEK: [u8; 32] = [7u8; 32];
 
+/// Not [`FIXTURE_KEK`]: a vault holding it cannot open the fixture's grants.
+const ANOTHER_KEK: [u8; 32] = [9u8; 32];
+
 /// The status the seeded fleet carries.
 const FLEET_ACTIVE: &str = "active";
 
@@ -59,13 +62,28 @@ impl Fixture {
         )
     }
 
+    pub(super) fn poster(&self, api_base: &str) -> afd_outbound::SlackPoster {
+        self.poster_under(FIXTURE_KEK, api_base)
+    }
+
+    /// A poster whose vault holds a different key than the one the grant was
+    /// sealed under, as after a key change: every grant read fails to open.
+    pub(super) fn poster_under_another_key(&self, api_base: &str) -> afd_outbound::SlackPoster {
+        self.poster_under(ANOTHER_KEK, api_base)
+    }
+
     #[expect(
         clippy::disallowed_methods,
         reason = "a fixture client aimed at the suite's loopback Slack fake; afd_identity::direct would add a deadline and drop the environment proxy, neither of which this suite proves"
     )]
-    pub(super) fn poster(&self, api_base: &str) -> afd_outbound::SlackPoster {
+    fn poster_under(&self, kek: [u8; 32], api_base: &str) -> afd_outbound::SlackPoster {
+        let vault = Vault::new(
+            self.database.clone(),
+            Arc::new(Kek::from_bytes(kek)),
+            Entropy::new(),
+        );
         afd_outbound::SlackPoster::new(
-            Grants::new(self.vault(), self.database.clone(), Entropy::new()),
+            Grants::new(vault, self.database.clone(), Entropy::new()),
             reqwest::Client::new(),
             api_base.to_owned(),
         )

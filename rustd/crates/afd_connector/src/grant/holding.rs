@@ -17,7 +17,7 @@
 //! Two reads DO open one row each, and they are opening it for different
 //! things. [`Grants::connection`] opens a handle to read the label a person
 //! sees — public data that happens to be stored beside a secret. [`Grants::
-//! bot_token`] opens it for the secret itself, has exactly one caller
+//! bot_identity`] opens it for the secret itself, has exactly one caller
 //! (`afd_outbound`, posting a fleet's answer back), and hands the bytes on
 //! still wrapped so they zero on drop. The split is the point: [`Connection`]
 //! carries no field that could hold a token, so a status surface reaching for
@@ -101,27 +101,14 @@ impl Grants {
     ///
     /// # Errors
     /// Reports a datastore that would not answer and an envelope that would not
-    /// open. A name the vault would refuse is `None` rather than an error: it
-    /// is derived from a shipped provider id, so a refusal would be this
-    /// build's bug and not something to tell a person reading a status page.
+    /// open.
     pub async fn connection(
         &self,
         workspace: &Uuid7,
         provider: Provider,
     ) -> Result<Option<Connection>> {
-        let Ok(name) = SecretName::parse(provider.grant_key()) else {
-            return Ok(None);
-        };
-        let Some(stored) = self.vault.load(workspace, &name).await? else {
-            return Ok(None);
-        };
-        let Ok(handle) = serde_json::from_slice::<serde_json::Value>(stored.expose()) else {
-            return Ok(None);
-        };
-        if handle.get(HANDLE_INTEGRATION).is_none() {
-            return Ok(None);
-        }
-        Ok(Some(Connection {
+        let handle = self.landed_handle(workspace, provider).await?;
+        Ok(handle.map(|handle| Connection {
             label: non_empty_str(&handle, HANDLE_LABEL).map(str::to_owned),
         }))
     }
@@ -155,7 +142,8 @@ impl Grants {
             .collect())
     }
 
-    /// The bot token this workspace's grant holds for `provider`.
+    /// The bot this workspace's grant speaks as: its token, and the user id the
+    /// provider knows it by.
     ///
     /// The ONE read in this module that opens an envelope for what is inside
     /// it rather than to answer a question about it, and it exists for exactly
@@ -163,65 +151,53 @@ impl Grants {
     /// place the question came from. Nothing on the request path calls it —
     /// [`Connection`] is deliberately shaped so a status surface cannot.
     ///
-    /// # Why the token is a [`SecretString`]
+    /// The id is what lets an inbound mention recognise the bot's own messages
+    /// and its own leading mention; the token is what a thread re-read spends.
+    /// One read, so the two can never come from different grants.
     ///
-    /// It is zeroed on drop, and handing back a `String` would silently end
-    /// that: the caller builds one `Authorization` header from it and has no
-    /// reason to keep a copy. It is text because the grant stored it as a JSON
-    /// string, so no caller re-checks an encoding that cannot be wrong.
+    /// The token is a [`SecretString`] because it is zeroed on drop, and a
+    /// `String` would silently end that: the caller builds one `Authorization`
+    /// header from it and has no reason to keep a copy.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and an envelope that would not
     /// open. `None` for every shape that is not a landed grant carrying a token
     /// — no handle, a body that is not an object, an object with no
-    /// [`HANDLE_INTEGRATION`] marker, a token field that is absent or empty.
-    /// A caller cannot act differently on any of them: all four mean this
-    /// workspace cannot post as itself until somebody reconnects.
-    pub async fn bot_token(
-        &self,
-        workspace: &Uuid7,
-        provider: Provider,
-    ) -> Result<Option<SecretString>> {
-        Ok(self
-            .bot_identity(workspace, provider)
-            .await?
-            .map(|identity| identity.token))
-    }
-
-    /// The bot this workspace's grant speaks as: its token, and the user id the
-    /// provider knows it by.
-    ///
-    /// The id is what lets an inbound mention recognise the bot's own messages
-    /// and its own leading mention; the token is what a thread re-read spends.
-    /// One read, so the two can never come from different grants.
-    ///
-    /// # Errors
-    /// As [`Self::bot_token`]: `None` for every shape that is not a landed
-    /// grant carrying a token. A grant with a token and no user id answers the
-    /// token with no id rather than nothing.
+    /// [`HANDLE_INTEGRATION`] marker, a token field that is absent or empty;
+    /// all mean this workspace cannot post as itself until somebody
+    /// reconnects. A grant with a token and no user id answers the token with
+    /// no id rather than nothing.
     pub async fn bot_identity(
         &self,
         workspace: &Uuid7,
         provider: Provider,
     ) -> Result<Option<BotIdentity>> {
-        let Ok(name) = SecretName::parse(provider.grant_key()) else {
-            return Ok(None);
-        };
-        let Some(stored) = self.vault.load(workspace, &name).await? else {
-            return Ok(None);
-        };
-        let Ok(handle) = serde_json::from_slice::<serde_json::Value>(stored.expose()) else {
-            return Ok(None);
-        };
-        if handle.get(HANDLE_INTEGRATION).is_none() {
-            return Ok(None);
-        }
-        Ok(
+        let handle = self.landed_handle(workspace, provider).await?;
+        Ok(handle.and_then(|handle| {
             non_empty_str(&handle, HANDLE_BOT_TOKEN).map(|token| BotIdentity {
                 token: SecretString::new(token.to_owned()),
                 user_id: non_empty_str(&handle, HANDLE_BOT_USER_ID).map(str::to_owned),
-            }),
-        )
+            })
+        }))
+    }
+
+    /// The handle this daemon landed for `provider`, or `None` for any other
+    /// shape: no row, a body that is not JSON, or JSON without the
+    /// [`HANDLE_INTEGRATION`] marker.
+    ///
+    /// The marker is what separates a handle this daemon wrote from any other
+    /// document stored under the same name.
+    async fn landed_handle(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+    ) -> Result<Option<serde_json::Value>> {
+        let name = SecretName::parse(provider.grant_key())?;
+        let Some(stored) = self.vault.load(workspace, &name).await? else {
+            return Ok(None);
+        };
+        let handle = serde_json::from_slice::<serde_json::Value>(stored.expose()).ok();
+        Ok(handle.filter(|handle| handle.get(HANDLE_INTEGRATION).is_some()))
     }
 
     /// Forgets this workspace's connection to `provider`.
@@ -230,9 +206,8 @@ impl Grants {
     /// both live in this Postgres and either alone is a state a reader cannot
     /// detect: rows naming an account with no credential behind them, or a
     /// credential a second workspace can claim the account away from while it
-    /// still mints. It takes its turn on the workspace row first, as
-    /// [`Grants::land`] does, so a Disconnect and a callback serialise even on
-    /// a first connect, before any handle row exists to lock.
+    /// still mints. Unordered against a concurrent [`Grants::land`]; see the
+    /// module note.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a vault that refused the
@@ -243,7 +218,6 @@ impl Grants {
         let name = SecretName::parse(provider.grant_key())?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_FORGET))?;
-        Self::take_turn(&mut transaction, workspace, CONTEXT_FORGET).await?;
         let forgotten = match self
             .vault
             .directory()
@@ -265,9 +239,10 @@ impl Grants {
         // whether a credential went: the vault's own `secret_deleted` is not
         // emitted on this path.
         let credential_removed = matches!(forgotten, Forgotten::Disconnected);
+        let (workspace_id, provider) = (workspace.as_str(), provider.id());
         tracing::info!(
-            workspace_id = workspace.as_str(),
-            provider = provider.id(),
+            workspace_id,
+            provider,
             credential_removed,
             event = "connector_disconnected",
         );

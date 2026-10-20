@@ -5,6 +5,7 @@ import { CATALOGUE_URL, readCatalogue } from "./catalogue";
 import { assertCompleteCatalogue } from "./curated";
 import { CATALOGUE_DATABASE_URL, NO_OTHER_CLIENTS, openIntegrationDatabase, removeFixtureModels, snapshot, version, waitForClientCount } from "./integration-fixtures";
 import { seedCatalogue } from "./seed";
+import { desiredRows } from "./rows";
 import { APPLY_FLAG, catalogueFixture, MODEL_NAME, modelFixture, priceFixture } from "./test-fixtures";
 
 const database = openIntegrationDatabase();
@@ -14,6 +15,8 @@ const FILES: string[] = [];
 const TEST_FILE_PREFIX = `${tmpdir()}/agentsfleet-seeder-live`;
 const CONCURRENT_CONNECTIONS = 8;
 const CONCURRENT_APPLIES = 100;
+const EXPLAIN_PREFIX = "EXPLAIN (ANALYZE, BUFFERS) ";
+const SQL_DIRECTORY = `${import.meta.dir}/sql`;
 
 describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
   beforeEach(() => removeFixtureModels(database));
@@ -35,8 +38,9 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
     expect(diff.diff.added.toSorted()).toEqual(wanted);
     expect(await snapshot(database)).toEqual(initial);
     expect((await seedCatalogue(database, catalogue, true)).applied).toBe(true);
-    const rows = await database`SELECT provider || '/' || model_name AS identity FROM model.platform_models`;
+    const rows = await database`SELECT provider || '/' || model_name AS identity, inference FROM model.platform_models`;
     expect(rows.map((row: { identity: string }) => row.identity).toSorted()).toEqual(wanted);
+    for (const model of catalogue.models) expect(rows.find((row: {identity: string; inference: unknown}) => row.identity === `${model.provider}/${model.model_name}`)?.inference).toEqual(model.inference);
     expect((await seedCatalogue(database, catalogue)).diff).toEqual({ added: [], changed: [], deleted: [] });
   });
 
@@ -66,6 +70,37 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
       cache_write_1h_nanos_per_mtok: null, source_url: priceFixture().source_url, conditions: priceFixture().conditions,
       effective_until: null, effective_from: new Date("2026-10-18T12:00:00Z"),
     }]);
+  });
+
+  test("catalogue reads and connection backfills have measured query plans", async () => {
+    const catalogue = await readCatalogue(CATALOGUE_URL);
+    await seedCatalogue(database, catalogue, true);
+    const identities = desiredRows(catalogue).map(({ prices: _, ...identity }) => ({ id: Bun.randomUUIDv7(), ...identity }));
+    await database`UPDATE model.platform_models SET inference = NULL`;
+    for (const name of ["upsert_models", "select_rows"]) {
+      const query = EXPLAIN_PREFIX + await Bun.file(`${SQL_DIRECTORY}/${name}.sql`).text();
+      const parameters = name === "upsert_models" ? [identities] : [];
+      const plan = await database.unsafe(query, parameters);
+      const lines = plan.map((row: { "QUERY PLAN": string }) => row["QUERY PLAN"]);
+      console.info(`CATALOGUE EXPLAIN ${name}\n${lines.join("\n")}`);
+      expect(lines.some((line: string) => line.startsWith("Execution Time:"))).toBe(true);
+    }
+    expect((await seedCatalogue(database, catalogue)).diff.changed).toEqual([]);
+  });
+
+  test("apply backfills a missing connection and preserves an administrator's endpoint on later priming", async () => {
+    const catalogue = catalogueFixture();
+    await seedCatalogue(database, catalogue, true);
+    await database`UPDATE model.platform_models SET inference = NULL`;
+    expect((await seedCatalogue(database, catalogue)).diff.changed).toEqual([KEY]);
+    expect((await seedCatalogue(database, catalogue, true)).applied).toBe(true);
+    expect((await database`SELECT inference FROM model.platform_models`)[0].inference).toEqual(modelFixture().inference);
+    const custom = { ...modelFixture().inference, base_url: "https://gateway.example.com/v1" };
+    await database.unsafe("UPDATE model.platform_models SET inference = $1::jsonb", [custom]);
+    expect((await seedCatalogue(database, catalogue, true)).applied).toBe(false);
+    const renamed = catalogueFixture([modelFixture({ display_name: "Renamed" })]);
+    expect((await seedCatalogue(database, renamed, true)).applied).toBe(true);
+    expect((await database`SELECT inference FROM model.platform_models`)[0].inference).toEqual(custom);
   });
 
   test("repeat apply preserves identifiers, clocks and generation", async () => {

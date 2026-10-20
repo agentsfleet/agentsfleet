@@ -126,6 +126,6 @@ it("explains an empty platform library and provides a workspace destination", ()
   show([]);
   expect(screen.getByText("Manage fleet setups shared across workspaces.")).toBeTruthy();
   expect(screen.getByText("No fleet setups yet")).toBeTruthy();
-  expect(screen.getByRole("link", {name: "Open workspace"}).getAttribute("href")).toBe("/");
+  expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe("/");
   expect(screen.queryByText(/catalog entries|reviewed candidate|stage a/i)).toBeNull();
 });

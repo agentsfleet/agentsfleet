@@ -1,7 +1,7 @@
 "use client";
 
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
-import { FolderIcon, PlusIcon } from "lucide-react";
+import { CheckIcon, FolderIcon, PlusIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +18,7 @@ import { useWorkspaceMenu } from "./workspace-menu-state";
 import { type SwitcherSection, WORKSPACE_LABEL } from "./workspace-groups";
 import { AccountMenuNavigation, MENU_VIEW, type MenuView } from "./AccountMenuNavigation";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
+import { NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH } from "./sidebar-navigation-data";
 
 type WorkspaceSwitcherMenuProps = {
   operatorScopes?: string[];
@@ -76,7 +77,7 @@ function WorkspaceChoices({ menu, firstItemRef }: { menu: ReturnType<typeof useW
     <DropdownMenuItem ref={menu.menuWorkspaces.length === 0 ? firstItemRef : undefined}
       onSelect={() => menu.setCreateDialogOpen(true)} disabled={menu.creation.locked}
       aria-disabled={menu.creation.locked || undefined} data-testid="workspace-new">
-      <PlusIcon size={14} aria-hidden="true" /><span className="flex-1">Create workspace</span>
+      <PlusIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">Create workspace</span>
     </DropdownMenuItem>
   </>;
 }
@@ -105,11 +106,11 @@ function WorkspaceSection({ section, activeId, firstMenuId, firstItemRef, onPick
         onSelect={() => onPick(workspace.id)}
         data-active={workspace.id === activeId ? "true" : undefined}
       >
-        <FolderIcon size={14} strokeWidth={1.75} aria-hidden="true" className="text-muted-foreground" />
+        <FolderIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} aria-hidden="true" className="shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate" title={label}>
           {label}
         </span>
-        {workspace.id === activeId ? <span aria-hidden="true">✓</span> : null}
+        {workspace.id === activeId ? <CheckIcon size={14} strokeWidth={NAV_ICON_STROKE_WIDTH} aria-hidden="true" /> : null}
       </DropdownMenuItem>
     );
   });

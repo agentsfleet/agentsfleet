@@ -67,12 +67,23 @@
 # beside it: `make -j` orders only what depends on what, so two siblings run
 # together and the reset can drop the schema the migration is applying.
 # Under `KEEP_TEST_STATE=1` the prerequisite is the plain infra check.
+# The API pool's login, created after the migration that creates `api_runtime`:
+# the provider's `--inherited-roles api_runtime`, spelled in plain Postgres.
+# Idempotent; roles are cluster-wide and outlive the schema reset.
+define _api_login
+docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -c \
+  "DO \$$\$$ BEGIN CREATE ROLE $(TEST_DATABASE_API_LOGIN) LOGIN PASSWORD '$(TEST_DATABASE_API_LOGIN)' IN ROLE api_runtime; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END \$$\$$" \
+  >/dev/null || { echo "✗ [infra] API login failed"; exit 1; }; \
+echo "✓ [infra] API login $(TEST_DATABASE_API_LOGIN) holds api_runtime"
+endef
+
 _migrate-test-db: $(TEST_STATE_DEP)
 	@echo "→ [infra] Applying migrations once, for the whole lane..."; \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
 	  cargo run --quiet --bin agentsfleetd -- migrate \
 	  || { echo "✗ [infra] migrate failed"; exit 1; }
 	@echo "✓ [infra] Schema applied"
+	@$(_api_login)
 
 # Integration tests are marked `#[ignore]` in the source and run ONLY here, via
 # `--ignored`. That is the cargo-native gate and it costs nothing at unit time:
@@ -165,56 +176,17 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # A ratchet only moves UP. Lowering this number to make a red lane green is
 # the thing it exists to prevent: raise it whenever a run beats it, and never
 # reduce it without recording why, here.
-# Raised 96 -> 97 on Indy's call (2026-08-31): the last Pull Request measured
-# 97, so the ratchet moves up to meet it. Not re-measured here — the coverage
-# lane needs the live datastores, and the same provenance rule the 96 was set
-# under applies: the number is the user's reading, recorded rather than
-# re-derived.
-# Raised 97 -> 98 on Indy's call (2026-09-02), during M181_004. That raise did
-# NOT follow a measurement the way 96 -> 97 did: it was a target set ahead of
-# the code, so the ratchet led rather than trailed.
-#
-# Returned 98 -> 97 on Indy's call, later the same day, and the distinction
-# matters enough to write down. The rule this file states is that a floor never
-# drops below a number a run ACHIEVED, because that is how a regression gets
-# hidden. 98 was never achieved: the lane measured 97.0409% when the target was
-# set and 97.2041% after the tests written against it. So this is not a floor
-# retreating from its own history — it is an aspiration returning to the
-# measurement, which is where every other number in this list came from.
-#
-# What that costs is honest: the gap to 98 was 295 lines at the last reading,
-# and 97 does not close it. It concedes that reaching 98 is a milestone of its
-# own — 295 lines spread across 240 files, whose cheap seams are spent and
-# whose remainder is untaken-branch bodies and Err paths, one live-datastore
-# fixture apiece. The 100% contract in the header remains authoritative and
-# unchanged; this line is the ratchet, not the goal.
-#
-# Raised 97 -> 97.5 on Indy's call (2026-09-19), and it is the first number in
-# this list that is not an integer. The lane reads it through
-# `cargo llvm-cov report --fail-under-lines`, which parses a float and decides
-# the verdict by exit code — the shell below only formats the sentence — so the
-# half point is enforced rather than rounded. Verified both ways before the
-# move: 97.5 exits 0 against this measurement and 99.9 exits 1.
-#
-# The measurement is 97.6994% — 41,362 of 42,336 lines, 974 missed — which is
-# what makes this a ratchet onto ground already held rather than a second
-# attempt at the 98 the paragraph above records failing twice. The margin is
-# deliberate and small: 0.1994%, about 84 lines. A floor set at the
-# measurement goes red on the next commit that touches an uncovered path, and a
-# floor nobody can commit against is a floor someone switches off.
-#
-# What it concedes is the same thing 97 conceded, now with the remainder named.
-# The gap to 98 is 128 lines, and the cheap seams really are spent: what is
-# left is dominated by FAIL-OPEN arms — the branch a gate takes when the
-# datastore will not answer, which by construction needs a datastore that will
-# not answer — and by defensive arms over cases the types already exclude.
-# `lease/coverage.rs` is the shape: all nine of its missed lines are
-# `admit_unreadable`, reached only by breaking a read mid-question. Those are
-# reachable, but not from the shared lane — a test that breaks the database
-# breaks every suite running beside it. `Fixtures::create_isolated` is the seam
-# that would do it honestly, on a private migrated database, and it is unused.
-# 98 remains available behind that work; it is a milestone, not a knob.
-RUSTD_COVERAGE_FLOOR ?= 97.5
+# History, each move on Indy's call:
+#   96 -> 97   (2026-08-31) to meet the last Pull Request's reading.
+#   97 -> 98   (2026-09-02) set ahead of the code; never achieved (97.2041%).
+#   98 -> 97   (2026-09-02) returned to the measurement, not below it.
+#   97 -> 97.5 (2026-09-19) on 97.6994%, 41,362 of 42,336 lines.
+#   97.5 -> 99.5 (2026-10-20) on 99.5863%, 72,214 of 72,514 lines, PR #778's
+#   merge run. The margin is about 62 lines: a change that leaves an uncovered
+#   path covers it, which is the point.
+# `scripts/rustd_coverage.py` compares in exact decimals, so a half point is
+# enforced rather than rounded. The 100% contract in the header remains the goal.
+RUSTD_COVERAGE_FLOOR ?= 99.5
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
@@ -274,7 +246,7 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/afd_bench/)
 # only grade a profile it holds; the merge job holds lcov files, not profiles.
 # The two read the same numbers: LCOV's `LF:`/`LH:` records are llvm-cov's line
 # denominator and numerator (verified equal on a probe crate, 2/5 = 40.00% both
-# ways), and the script compares in exact decimals, so 97.5 is enforced rather
+# ways), and the script compares in exact decimals, so 99.5 is enforced rather
 # than rounded. A red run prints the missed lines by crate, the answer to
 # "where" that used to cost a second instrumented run.
 #
@@ -376,6 +348,7 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  cargo llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
+	@$(_api_login)
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard runner: the runner crates, then the runner against the daemon..."; \
 	$(call _rust_lane,rustd-coverage-runner.log,[rustd] coverage: runner crates,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_RUNNER_PACKAGES)) -- --include-ignored); \

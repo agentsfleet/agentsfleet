@@ -1,4 +1,5 @@
 import RouteLoading from "@/components/layout/RouteLoading";
+import { CONNECT_APPS_COPY } from "./copy";
 
 // Paints the correct Integrations header instantly on navigation while the
 // connector status + stored-secret reads resolve, so the header never flashes a
@@ -6,8 +7,9 @@ import RouteLoading from "@/components/layout/RouteLoading";
 export default function IntegrationsLoading() {
   return (
     <RouteLoading
-      title="Integrations"
-      description="Connect the tools your fleets act through."
+      title={CONNECT_APPS_COPY.title}
+      description={CONNECT_APPS_COPY.description}
+      layout="cards"
     />
   );
 }

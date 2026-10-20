@@ -6,12 +6,12 @@
 
 /** Route prefix for the workspace-scoped dashboard segment (`app/(dashboard)/w/[workspaceId]`). */
 export const WORKSPACE_ROUTE_PREFIX = "/w";
-export const DEFAULT_WORKSPACE_SUBPATH = "fleets";
+export const DEFAULT_WORKSPACE_SUBPATH = "fleets/new";
 export const WORKSPACE_INTEGRATIONS_PATH = "/integrations";
 
 /**
  * Dashboard root (`app/(dashboard)/page.tsx`) — the single place that resolves
- * the "default workspace" and redirects to its fleet wall. It is also the
+ * the "default workspace" and redirects to New fleet. It is also the
  * post-auth landing target: Clerk's `signInFallbackRedirectUrl` /
  * `signUpFallbackRedirectUrl` point here so a completed sign-in flows through
  * default-workspace resolution instead of Clerk's own default, which would
@@ -65,7 +65,7 @@ const RESOURCE_DETAIL_SECTIONS = new Set(["fleets", "approvals"]);
 
 /**
  * Maps a workspace sub-path to the sub-path a workspace *switch* should land on.
- * An empty path lands on the fleet wall instead of the redirect-only root.
+ * An empty path lands on New fleet instead of the redirect-only root.
  * A resource-detail path (`fleets/<id>`, `approvals/<gateId>`) collapses to its
  * section root (`fleets`, `approvals`) — the target workspace doesn't own that
  * resource. Generic pages (`fleets/new`, `settings/models`, `integrations`, …)

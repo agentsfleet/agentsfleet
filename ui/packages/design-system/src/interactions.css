@@ -50,8 +50,8 @@
 @media (prefers-reduced-motion: no-preference) {
   /* The resting frame retains no transform, so fixed dialogs stay viewport-bound. */
   @keyframes page-enter {
-    from { opacity: 0; transform: translateY(var(--sp-sm)); }
-    to { opacity: 1; transform: none; }
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
   @keyframes content-enter {
     from { opacity: 0; transform: translateY(var(--sp-md)); }

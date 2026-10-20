@@ -273,7 +273,8 @@ Make movement explain arrival, focus, selection, and disclosure. A finished inte
 | Interaction | Shared timing | Treatment |
 |---|---|---|
 | Hover and press | Snap, 120 ms | Color, boundary and a small press response |
-| Page and fleet-section arrival | Fade, 240 ms | Opacity and a small upward settle |
+| Page arrival | Fade, 240 ms | Opacity only; route loaders and resolved pages keep their position |
+| Fleet-section arrival | Fade, 240 ms | Opacity and a small upward settle |
 | Chat entrance and interactive cards | Fade, 240 ms | Gentle settle, card lift and composer focus light |
 | Disclosure | Shared Accordion timing | Height follows the revealed content |
 

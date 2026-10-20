@@ -38,6 +38,7 @@
 
 mod cases;
 mod disconnect;
+mod handle_shapes;
 mod routing;
 mod vendor;
 
@@ -160,15 +161,17 @@ impl Round {
     /// Seals the Jira app bag this deployment connects with.
     pub(crate) async fn configure_jira(&self) {
         let name = Provider::Jira.app_key();
+        self.seal_into(&self.admin, &name, JIRA_APP_BAG.as_bytes())
+            .await;
+    }
+
+    /// Seals `body` under `name` in `workspace`, as the vault would store it.
+    pub(crate) async fn seal_into(&self, workspace: &Uuid7, name: &str, body: &[u8]) {
         let kek = Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed");
         let sealed = Sealer::new()
-            .seal(
-                &kek,
-                &Aad::new(self.admin.as_str(), &name),
-                JIRA_APP_BAG.as_bytes(),
-            )
-            .expect("the fixture bag seals");
-        insert_secret(&self.database, self.admin.as_str(), &name, &sealed).await;
+            .seal(&kek, &Aad::new(workspace.as_str(), name), body)
+            .expect("the fixture body seals");
+        insert_secret(&self.database, workspace.as_str(), name, &sealed).await;
     }
 
     /// The grant store the connectors write through, for verbs a round trip

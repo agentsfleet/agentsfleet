@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::requests;
+use afd_db::config::DbRole;
 
 /// A live authoring attempt held by the same runner, in the same workspace.
 const AUTHORING: &str = "\
@@ -90,15 +91,16 @@ async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &str, lease
     assert_eq!(inserted.rows_affected(), 1, "the fleet's tenant owns it");
 }
 
+/// Cleanup through the lane's owner: `api_runtime` never deletes an attempt,
+/// and the fixture must not borrow a right production does not have.
 async fn remove_authoring(fixtures: &Fixtures, attempt: &str) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
+    let owner = fixtures.open(DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("an owner connection");
     sqlx::query("DELETE FROM authoring.attempts WHERE id = $1::uuid")
         .bind(attempt)
         .execute(&mut *connection)
         .await
         .expect("remove only this test's attempt");
+    drop(connection);
+    owner.close().await;
 }

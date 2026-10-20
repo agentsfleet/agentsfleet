@@ -52,6 +52,10 @@ use tokio_util::sync::CancellationToken;
 )]
 mod gated_poster;
 #[path = "../support/outbound_harness.rs"]
+#[allow(
+    dead_code,
+    reason = "one harness, several binaries: the worker suite stages no ledger rows, so it never reads the owner pool"
+)]
 mod support;
 
 use self::support::{OUTBOUND_LANE, OutboundHarness};

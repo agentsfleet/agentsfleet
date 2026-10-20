@@ -10,7 +10,7 @@ const { pathnameMock, createdWorkspacesMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "reader", displayName: "Kishore Kumar" }) }));
 
-vi.mock("next/navigation", () => ({ usePathname: () => pathnameMock() }));
+vi.mock("next/navigation", () => ({ usePathname: () => pathnameMock(), useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("./WorkspaceCreationProvider", () => ({
   useCreatedWorkspaces: () => createdWorkspacesMock(),
 }));

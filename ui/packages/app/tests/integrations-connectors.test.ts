@@ -9,10 +9,12 @@ import { routerRefresh } from "./helpers/dashboard-mocks";
 // connectors are OAuth/app_install (api-key providers are custom secrets, not
 // connectors). The connect action is mocked; the real security boundary is the
 // backend, proven by its own suite.
-const { disconnectConnectorActionMock, startConnectActionMock } = vi.hoisted(() => ({
+const { disconnectConnectorActionMock, startConnectActionMock, captureProductEventMock } = vi.hoisted(() => ({
   disconnectConnectorActionMock: vi.fn(),
   startConnectActionMock: vi.fn(),
+  captureProductEventMock: vi.fn(),
 }));
+vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions", () => ({
   disconnectConnectorAction: disconnectConnectorActionMock,
@@ -23,7 +25,6 @@ vi.mock("lucide-react", () => {
     React.createElement("svg", { ...p, "data-icon": name });
   return {
     SearchIcon: make("SearchIcon"),
-    BookOpenIcon: make("BookOpenIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     GitPullRequestIcon: make("GitPullRequestIcon"),
     Grid2x2Icon: make("Grid2x2Icon"),
@@ -36,7 +37,8 @@ vi.mock("lucide-react", () => {
 
 import IntegrationsConnectors from "@/app/(dashboard)/w/[workspaceId]/integrations/components/IntegrationsConnectors";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
-import { CONNECTOR_STATUS, CONNECTOR_NOT_CONFIGURED_DOCS_URI, type ConnectorStatus } from "@/lib/api/connectors-types";
+import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
+import { EVENTS } from "@/lib/analytics/events";
 
 const WS = "ws_test";
 
@@ -78,6 +80,7 @@ afterEach(() => {
   disconnectConnectorActionMock.mockReset();
   startConnectActionMock.mockReset();
   routerRefresh.mockReset();
+  captureProductEventMock.mockReset();
 });
 
 describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () => {
@@ -299,24 +302,38 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
-  it("renders an unconfigured OAuth connector with the UZ-CONN-001 docs link, no Connect", () => {
+  it("requests a connector inline and confirms it without navigation or setup actions", () => {
     renderConnectors([entry({ id: "jira", archetype: "oauth2", display_name: "Jira", configured: false })]);
     const jira = screen.getByTestId("integration-jira");
+    const request = within(jira).getByRole("button", { name: "Request connector" });
+    expect(request.closest("p")?.textContent).toBe("A platform admin needs to enable this connector. Choose Request connector to register your interest.");
     expect(jira.textContent).toContain("Admin setup required");
-    expect(jira.textContent).toContain("A platform admin needs to enable this connector.");
+    expect(request.classList.contains("text-info")).toBe(true);
     expect(screen.queryByRole("button", { name: /connect jira/i })).toBeNull();
-    const link = within(jira).getByRole("link", { name: /setup guide/i });
-    expect(link.getAttribute("href")).toBe(CONNECTOR_NOT_CONFIGURED_DOCS_URI);
+    expect(within(jira).queryByRole("link")).toBeNull();
+    expect(captureProductEventMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workspace-toast").getAttribute("aria-hidden")).toBe("true");
+    const currentUrl = window.location.href;
+    fireEvent.click(request);
+    expect(captureProductEventMock).toHaveBeenCalledExactlyOnceWith(EVENTS.integration_requested, {
+      integration_id: "jira", integration_name: "Jira",
+    });
+    expect(screen.getByTestId("workspace-toast").textContent).toBe("Requested");
+    expect(screen.getByTestId("workspace-toast").getAttribute("aria-hidden")).toBe("false");
+    expect(window.location.href).toBe(currentUrl);
+    expect(startConnectActionMock).not.toHaveBeenCalled();
+    expect(disconnectConnectorActionMock).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 });
 
 it("searches integrations locally and clears an unmatched query", async () => {
   renderConnectors([GITHUB, SLACK]);
-  fireEvent.change(screen.getByRole("searchbox", {name: "Search integrations"}), {target: {value: "sLaCk"}});
+  fireEvent.change(screen.getByRole("searchbox", {name: "Search apps"}), {target: {value: "sLaCk"}});
   await waitFor(() => expect(screen.queryByTestId("integration-github")).toBeNull());
   expect(screen.getByRole("button", {name: "Connect Slack"}).textContent).toContain("Connect");
-  fireEvent.change(screen.getByRole("searchbox", {name: "Search integrations"}), {target: {value: "No matching connector"}});
-  await screen.findByText("No matching integrations");
+  fireEvent.change(screen.getByRole("searchbox", {name: "Search apps"}), {target: {value: "No matching connector"}});
+  await screen.findByText("No matching apps");
   expect(screen.queryByRole("button", {name: "Connect Slack"})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Clear search"}));
   await screen.findByRole("button", {name: "Connect GitHub"});

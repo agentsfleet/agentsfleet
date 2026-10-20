@@ -6,6 +6,7 @@ use super::{
 };
 use afd_authoring::types::Source;
 use afd_core::error_code;
+use sqlx::{Connection as _, PgConnection};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test]
@@ -67,9 +68,14 @@ async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_re
         } else {
             "UPDATE authoring.dispatches SET status='completed',usage='{\"knowledge\":\"known\",\"input_tokens\":1,\"output_tokens\":1,\"provider_cost_nanos\":\"3000\"}'::jsonb WHERE attempt_id=$1::uuid"
         };
+        // The concurrent change is scaffolding, so it runs as the lane owner:
+        // `api_runtime` holds no DELETE on attempts.
+        let mut owner = PgConnection::connect(&f.owner_url())
+            .await
+            .expect("the lane owner connects");
         sqlx::query(statement)
             .bind(a.id.as_str())
-            .execute(&mut *f.connection().await)
+            .execute(&mut owner)
             .await
             .expect("selected concurrent durable change");
         provider.resume();
