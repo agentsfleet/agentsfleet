@@ -27,7 +27,11 @@ const PROBE: &str = "tenant_runtime_probe";
 /// Creates the probe role through the owner's pool; setup, not the subject.
 /// The duplicate arms cover two suites racing on the shared lane.
 async fn grant_probe(fixture: &Fixture) {
-    let mut connection = fixture.database.acquire().await.expect("an owner connection");
+    let mut connection = fixture
+        .database
+        .acquire()
+        .await
+        .expect("an owner connection");
     for statement in [
         "DO $$ BEGIN \
            EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', 'tenant_runtime_probe', 'tenant_runtime_probe'); \
@@ -46,7 +50,8 @@ async fn runtime(fixture: &Fixture) -> Db {
     grant_probe(fixture).await;
     let mut url = url::Url::parse(&fixture.lane.url()).expect("the lane's URL is a URL");
     url.set_username(PROBE).expect("the URL takes a user");
-    url.set_password(Some(PROBE)).expect("the URL takes a password");
+    url.set_password(Some(PROBE))
+        .expect("the URL takes a password");
     TestDatabase::shared()
         .open(
             DbRole::Api,
