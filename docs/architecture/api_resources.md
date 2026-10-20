@@ -97,7 +97,9 @@ Requirements are derived immutable setup, not readiness results. Review digest e
 | `attempt_timed_out` | `UZ-AUTHOR-016` | `retry_message` |
 | `policy_changed` | `UZ-AUTHOR-009` | `review_setup` |
 
-An unresolved provider obligation takes precedence over a retry action. Stop/delete/revocation fences text writes; revoked callers receive no private failure detail. Retrying is an explicit new message/key after the blocking condition clears.
+An uncancelled provider obligation takes precedence over a retry action. After Stop covers its sequence, `provider_usage_unknown` keeps its reason and reports `retry_message` as the recovery action. Its accounting hold remains independent of chat recovery.
+
+Stop/delete/revocation fences text writes; revoked callers receive no private failure detail. Fresh Send refuses unresolved, uncancelled unknown usage with `UZ-AUTHOR-015` before accepting text or advancing sequence. Exact accepted replay is checked first. Retrying uses an explicit new message/key after Stop or accounting clears the blocking condition.
 
 `Setup = {state:"checking"|"waiting"|"ready"|"cancelled",checks[]}`. Check = `{kind,subject,state:"pending"|"ready"|"blocked",next_action?}`. Check kinds: `source|policy|model|wallet|credentials|connections|grants|stream|activation`. Grant checks record actual approved access; missing approval cannot be logged as ready.
 
