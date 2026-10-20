@@ -25,7 +25,6 @@ vi.mock("lucide-react", () => {
     React.createElement("svg", { ...p, "data-icon": name });
   return {
     SearchIcon: make("SearchIcon"),
-    BookOpenIcon: make("BookOpenIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     GitPullRequestIcon: make("GitPullRequestIcon"),
     Grid2x2Icon: make("Grid2x2Icon"),
@@ -38,7 +37,7 @@ vi.mock("lucide-react", () => {
 
 import IntegrationsConnectors from "@/app/(dashboard)/w/[workspaceId]/integrations/components/IntegrationsConnectors";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
-import { CONNECTOR_STATUS, CONNECTOR_NOT_CONFIGURED_DOCS_URI, type ConnectorStatus } from "@/lib/api/connectors-types";
+import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { EVENTS } from "@/lib/analytics/events";
 
 const WS = "ws_test";
@@ -303,24 +302,28 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
-  it("explains admin setup in an informational notice and records explicit connector interest", () => {
+  it("requests a connector inline and confirms it without navigation or setup actions", () => {
     renderConnectors([entry({ id: "jira", archetype: "oauth2", display_name: "Jira", configured: false })]);
     const jira = screen.getByTestId("integration-jira");
+    const request = within(jira).getByRole("button", { name: "Request connector" });
+    expect(request.closest("p")?.textContent).toBe("A platform admin needs to enable this connector. Choose Request connector to register your interest.");
     expect(jira.textContent).toContain("Admin setup required");
-    expect(jira.textContent).toContain("A platform admin needs to enable this connector.");
+    expect(request.classList.contains("text-info")).toBe(true);
     expect(screen.queryByRole("button", { name: /connect jira/i })).toBeNull();
-    expect(within(jira).getByRole("status").textContent).toContain("register your interest and open the setup guide");
-    const link = within(jira).getByRole("link", { name: /request connector/i });
-    expect(link.getAttribute("href")).toBe(CONNECTOR_NOT_CONFIGURED_DOCS_URI);
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(within(jira).queryByRole("link")).toBeNull();
     expect(captureProductEventMock).not.toHaveBeenCalled();
-    fireEvent.click(link);
+    expect(screen.getByTestId("workspace-toast").getAttribute("aria-hidden")).toBe("true");
+    const currentUrl = window.location.href;
+    fireEvent.click(request);
     expect(captureProductEventMock).toHaveBeenCalledExactlyOnceWith(EVENTS.integration_requested, {
       integration_id: "jira", integration_name: "Jira",
     });
+    expect(screen.getByTestId("workspace-toast").textContent).toBe("Requested");
+    expect(screen.getByTestId("workspace-toast").getAttribute("aria-hidden")).toBe("false");
+    expect(window.location.href).toBe(currentUrl);
     expect(startConnectActionMock).not.toHaveBeenCalled();
     expect(disconnectConnectorActionMock).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 });
 

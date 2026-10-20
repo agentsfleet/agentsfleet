@@ -15,7 +15,6 @@ import {
   type StatusPillVariant,
 } from "@agentsfleet/design-system";
 import {
-  BookOpenIcon,
   BriefcaseIcon,
   GitPullRequestIcon,
   Grid2x2Icon,
@@ -25,7 +24,7 @@ import {
   UnplugIcon,
 } from "lucide-react";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
-import { CONNECTOR_NOT_CONFIGURED_DOCS_URI, CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
+import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { disconnectConnectorAction, startConnectAction } from "../connector-actions";
 import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
 import { EVENTS } from "@/lib/analytics/events";
@@ -47,7 +46,8 @@ const REQUEST_CONNECTOR_LABEL = "Request connector";
 const INSTALLED_ON_PREFIX = "Installed on ";
 const CONNECTED_DESCRIPTION = "Ready for your fleets to use.";
 const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connector.";
-const REQUEST_CONNECTOR_DESCRIPTION = "Choose Request connector to register your interest and open the setup guide.";
+const REQUEST_CONNECTOR_PROMPT = " Choose ";
+const REQUEST_CONNECTOR_DESCRIPTION = " to register your interest.";
 
 // The card LIST comes from the catalog; this map only decorates a known provider
 // id with an icon. An unknown id falls back to a generic plug, so a newly
@@ -93,10 +93,12 @@ export function OAuthConnectorRow({
   entry,
   workspaceId,
   override,
+  onRequest,
 }: {
   entry: ConnectorCatalogEntry;
   workspaceId: string;
   override?: ConnectorStatusOverride;
+  onRequest: () => void;
 }) {
   const router = useRouter();
   const Icon = providerIcon(entry.id);
@@ -173,15 +175,16 @@ export function OAuthConnectorRow({
       </div>
       <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>{pill.label}</StatusPill>
     </DashboardPanelHeader>
-    {!entry.configured ? <Alert variant="info"><span>{description} {REQUEST_CONNECTOR_DESCRIPTION}</span></Alert>
-      : <DashboardPanelDescription className="flex-1">{description}</DashboardPanelDescription>}
+    <DashboardPanelDescription className="flex-1">
+      {description}{!entry.configured ? <>{REQUEST_CONNECTOR_PROMPT}<Button variant="link" size="eyebrow" className="h-auto px-0 text-body-sm text-info"
+        onClick={() => {
+          captureProductEvent(EVENTS.integration_requested, { integration_id: entry.id, integration_name: entry.display_name });
+          onRequest();
+        }}>{REQUEST_CONNECTOR_LABEL}</Button>{REQUEST_CONNECTOR_DESCRIPTION}</> : null}
+    </DashboardPanelDescription>
     {error ? <Alert variant="destructive">{error}</Alert> : null}
-    <div className="flex items-center justify-end border-t border-border pt-lg">
-      {!entry.configured ? <Button variant="ghost" size="sm" asChild>
-        <a href={CONNECTOR_NOT_CONFIGURED_DOCS_URI} target="_blank" rel="noopener noreferrer"
-          onClick={() => captureProductEvent(EVENTS.integration_requested, { integration_id: entry.id, integration_name: entry.display_name })}>
-          <BookOpenIcon size={16} aria-hidden="true" />{REQUEST_CONNECTOR_LABEL}</a>
-      </Button> : isConnected ? <Button variant="ghost" size="sm"
+    {entry.configured ? <div className="flex items-center justify-end border-t border-border pt-lg">
+      {isConnected ? <Button variant="ghost" size="sm"
         aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`}
         disabled={disconnecting} aria-busy={disconnecting} onClick={() => void disconnect()}>
         {disconnecting ? <Spinner size="sm" /> : <UnplugIcon size={16} aria-hidden="true" />}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
@@ -190,6 +193,6 @@ export function OAuthConnectorRow({
         disabled={connecting} aria-busy={connecting} onClick={() => void connect()}>
         {connecting ? <Spinner size="sm" /> : <PlugIcon size={16} aria-hidden="true" />}{connecting ? CONNECTING_LABEL : CONNECT_LABEL}
       </Button>}
-    </div>
+    </div> : null}
   </DashboardPanel>;
 }

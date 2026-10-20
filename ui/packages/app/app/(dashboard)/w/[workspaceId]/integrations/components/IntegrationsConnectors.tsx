@@ -4,11 +4,14 @@ import { Button, EmptyState, Grid, Section } from "@agentsfleet/design-system";
 import { useDeferredValue, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
+import { useWorkspaceNotice, WorkspaceNotice } from "@/components/layout/WorkspaceNotice";
 import { PlugIcon } from "lucide-react";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { OAuthConnectorRow, type ConnectorStatusOverride } from "./connector-rows";
 import { CONNECT_APPS_COPY } from "../copy";
+
+const CONNECTOR_REQUESTED_MESSAGE = "Requested";
 
 // The diagnosable shape of a failed catalog fetch, captured server-side in
 // page.tsx (console logging is lint-banned in app source, so the code/status is
@@ -40,6 +43,7 @@ export default function IntegrationsConnectors({
   slackTeam?: string | null;
 }) {
   const [search, setSearch] = useState("");
+  const { notice, showNotice } = useWorkspaceNotice();
   const query = useDeferredValue(search.trim().toLowerCase());
   const [refreshing, startRefresh] = useTransition();
   const router = useRouter();
@@ -79,11 +83,13 @@ export default function IntegrationsConnectors({
               entry={entry}
               workspaceId={workspaceId}
               override={overrideFor(entry.id)}
+              onRequest={() => showNotice("success", CONNECTOR_REQUESTED_MESSAGE)}
             />
           ))}
         </Grid>
       )}
       {catalog.length > 0 && matches.length === 0 ? <EmptyState title={CONNECT_APPS_COPY.noMatches} description="Try another service name or clear your search." /> : null}
+      <WorkspaceNotice notice={notice} />
     </Section>
   );
 }
