@@ -99,13 +99,23 @@ Resolve models and billing from `Owned.tenant`, the workspace owner's account, r
 
 **Locks.** Authoring transactions take subject → attempt; no authoring path locks the wallet row. Money moves in the biller's own transactions, which lock wallet → holds → lines, so the two orders never meet. Claim and renewal first take the runner guard. A renewal reads the clock after its attempt lock, so an attempt that expired while it waited is refused.
 
-Charge cumulative known usage once, with monotone counters and exact replay identity. Provider timeout/crash without trusted usage records `knowledge:"unknown"`, not a fabricated zero. Keep its full bound counted until the attempt is safely stopped and accounted for; it may block later admission. Fence expiry prevents candidate writes but does not prove the provider stopped billing. A replacement attempt cannot silently overlap uncertain work; explicit recovery must retain both obligations until resolved. Content-free usage records include tenant, model, prices, attempt identity, known charges, and unknown liability, never prompts or answers.
+Charge cumulative known usage once, with monotone counters and exact replay identity. Provider timeout/crash without trusted usage records `knowledge:"unknown"`, never an estimated zero. Its hold remains until accounting resolves, including after Stop.
+
+Current chat blocking considers attempts whose message sequence exceeds the draft's `cancelled_through_sequence`. Discovery and admission under the draft lock use that same rule. Stop releases publication authority for covered sequences, while their content-free attempts and holds retain accounting liability.
+
+A later message can claim only through normal runner capacity and balance checks. Retained liability can still consume either limit. Fence expiry alone never authorizes replacement or proves that provider billing stopped.
+
+Fresh Send refuses while an uncancelled attempt has unknown provider usage. Exact accepted replay is checked first and returns its original sequence. Explicit Stop permits later work without discarding the old obligation.
+
+Parse inference-key header syntax before saving dispatch intent. A definite HTTP 401 authentication rejection records a failed call with known usage. Preserve reported usage when supplied; otherwise authentication rejection has no generated tokens. Other failed responses without trusted usage remain unknown. The terminal report settles earlier calls and runtime fees once, then releases unused reservation.
 
 ### Stop and terminal races
 
 Stop carries the last accepted sequence and atomically raises `cancelled_through`. Queue entries at or below it become cancelled. A later send receives a greater sequence and is not cancelled by a delayed old Stop. Stop, report, and candidate proposal share the guarded attempt/subject rows. If completion commits first it stays completed; otherwise cancellation fences later text/proposal writes. Repeated lower cutoffs return the standing watermark.
 
 A terminal report can settle already-incurred usage after Stop without displaying a late answer. Replayed reports never charge twice. Timeout, cancellation, and provider errors are separate visible states. Stop does not claim it can undo provider work already started.
+
+Save uses the reviewed candidate after queued/running messages have stopped. Closing the draft does not remove its accounting attempts or restore old publication authority. Cancelling installing setup returns the linked draft to editing and keeps its Stop watermark. A late old report remains accounting-only in both cases.
 
 ## Detail
 
