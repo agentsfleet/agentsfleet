@@ -58,11 +58,13 @@ it("lets Stop unblock unknown usage with queued text while retaining the origina
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", true);
   expect(screen.getByRole("log").textContent).toContain("Stop this turn");
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
-  await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
-  expect(screen.getByRole("log").textContent).toContain("earlier usage is still being reconciled");
-  expect(screen.queryByRole("status", {name: "Queued"})).toBeNull();
-  expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
-  expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
+  await waitFor(() => {
+    expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
+    expect(screen.getByRole("log").textContent).toContain("earlier usage is still being reconciled");
+    expect(screen.queryByRole("status", {name: "Queued"})).toBeNull();
+    expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
+    expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
+  });
 });
 
 it("offers Stop for a failed unknown turn even when nothing is running", async () => {
