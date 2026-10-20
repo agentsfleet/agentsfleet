@@ -1,11 +1,10 @@
-//! The receipt sweep deletes a bounded batch past the window, skips a receipt a
-//! claim holds, and leaves every message its operation key.
+//! The receipt sweep deletes a bounded batch past the window and leaves every
+//! message its operation key.
 
 use super::{Fixture, mint, now};
 use crate::draft::window::{PAST, message_id, receipts, refile};
 use afd_authoring::types::MessageQuery;
 use afd_core::timing::DAY;
-use sqlx::{Postgres, Transaction};
 use std::time::Duration;
 
 /// The most receipts one pass deletes (`afd_authoring`'s `SWEEP_LIMIT`).
@@ -13,14 +12,6 @@ const SWEEP_LIMIT: u64 = 64;
 /// How many passes a proof runs for a sweep to converge. Every lane's pass
 /// sweeps every lane's expired receipts, so a pass may find its batch taken.
 const PASSES: usize = 20;
-/// How long a pass may take before it is waiting on a lock it should skip.
-const UNBLOCKED: Duration = Duration::from_secs(10);
-/// Older than every other seeded receipt, so it is the first row every pass
-/// reaches and a pass that waited on locks would wait on it.
-const OLDEST: Duration = PAST.saturating_add(Duration::from_hours(1));
-
-/// Locks one receipt, as a claim deleting its expired row holds it; `$1` id.
-const LOCK: &str = "SELECT id::text FROM authoring.replay_receipts WHERE id=$1::uuid FOR UPDATE";
 
 /// Files one expired receipt per id in `$1`, each under its own key.
 const EXPIRED: &str = "\
@@ -64,55 +55,27 @@ async fn seed(f: &Fixture, ids: &[String], age: Duration) {
         .expect("seeded receipts");
 }
 
-/// An expired receipt locked by an open claim, and that receipt's id.
-///
-/// Every lane's pass sweeps every lane's receipts, so one can delete the row
-/// between its insert and the lock; the lock then finds nothing and another
-/// receipt is filed.
-async fn hold(f: &Fixture) -> (Transaction<'static, Postgres>, String) {
-    let mut held = None;
-    for _ in 0..PASSES {
-        let id = mint().to_string();
-        seed(f, std::slice::from_ref(&id), OLDEST).await;
-        let claim = Transaction::begin(f.connection().await, None).await;
-        let mut claim = claim.expect("claim transaction");
-        let locked: Option<String> = sqlx::query_scalar(LOCK)
-            .bind(&id)
-            .fetch_optional(&mut *claim)
-            .await
-            .expect("claim locks");
-        if locked.is_some() {
-            held = Some((claim, id));
-            break;
-        }
-        claim.rollback().await.expect("claim releases");
-    }
-    held.expect("a claim held an expired receipt")
-}
-
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn the_receipt_sweep_is_bounded_and_skips_a_receipt_a_claim_holds() {
+async fn the_receipt_sweep_is_bounded_and_keeps_receipts_inside_the_window() {
     let f = Fixture::create().await;
     let ids: Vec<String> = (0..=SWEEP_LIMIT).map(|_| mint().to_string()).collect();
     seed(&f, &ids, PAST).await;
     let live = mint().to_string();
     seed(&f, std::slice::from_ref(&live), Duration::ZERO).await;
-    let (claim, held) = hold(&f).await;
-    let pass = tokio::time::timeout(UNBLOCKED, f.drafts.maintain()).await;
-    let pass = pass.expect("the pass skips the held receipt rather than waiting");
-    let swept = pass.expect("maintenance pass").expired_receipts;
+    let swept = f
+        .drafts
+        .maintain()
+        .await
+        .expect("maintenance pass")
+        .expired_receipts;
     assert!(swept <= SWEEP_LIMIT, "one pass deleted {swept}");
-    sweep_until(&f, 1, async || expired(&f).await).await;
-    assert_eq!(receipts(&f, &held).await, 1, "the held receipt was skipped");
+    sweep_until(&f, 0, async || expired(&f).await).await;
     assert_eq!(
         receipts(&f, &live).await,
         1,
         "a receipt inside the window stays"
     );
-    claim.rollback().await.expect("claim releases");
-    sweep_until(&f, 0, async || expired(&f).await).await;
-    assert_eq!(receipts(&f, &live).await, 1);
     f.cleanup().await;
 }
 

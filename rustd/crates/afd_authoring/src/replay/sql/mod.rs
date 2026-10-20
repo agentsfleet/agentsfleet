@@ -21,8 +21,12 @@ pub(super) const EXPIRE: &str = include_str!("expire.sql");
 /// `$6` request digest, `$7` resource.
 pub(super) const INSERT: &str = include_str!("insert.sql");
 
-/// Deletes a bounded batch of receipts outside the window, skipping rows a
-/// claim holds.
+/// Deletes a bounded batch of receipts outside the window.
+///
+/// No row lock: `api_runtime` holds no UPDATE on this immutable table, so
+/// Postgres would refuse one, and none is needed. A sweep that meets a row a
+/// claim is deleting ([`EXPIRE`]) waits for that claim and then finds the row
+/// gone; deleting a receipt twice harms nothing.
 ///
 /// `$1` the replay window, `$2` limit.
 pub(super) const SWEEP: &str = include_str!("sweep.sql");

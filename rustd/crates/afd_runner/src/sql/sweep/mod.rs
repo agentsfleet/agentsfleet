@@ -121,6 +121,10 @@ pub const DELETE_TERMINAL_LEASES_BATCH: &str = include_str!("delete_terminal_lea
 /// — are never eligible, because they are the record of what a host did over
 /// its whole life and an operator reading a six-month-old incident needs them.
 ///
+/// No row lock: `api_runtime` holds no UPDATE on `runner.events`, so Postgres
+/// would refuse one, and two sweeps meeting one row only means the second
+/// waits and finds it gone.
+///
 /// `$1` the deletable event types, `$2` the retention window, `$3` the batch
 /// limit.
 pub const DELETE_AGED_RUNNER_EVENTS_BATCH: &str =
