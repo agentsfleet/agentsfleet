@@ -173,16 +173,11 @@ impl SlackPoster {
             return Err(failed(job, "identifier_unparseable", Verdict::Permanent));
         };
 
-        let identity = match self.grants.bot_identity(&workspace, Provider::Slack).await {
-            Ok(Some(identity)) => identity,
-            // No handle, or no token in it: disconnected, uninstalled, malformed.
-            // Retryable, so a reconnect inside the lanes' cycle budget delivers.
-            Ok(None) => {
-                return Err(failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Retryable));
-            }
-            Err(_unreadable) => {
-                return Err(failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Retryable));
-            }
+        // No handle, no token in it, or one that will not open: disconnected,
+        // uninstalled, malformed, or sealed under another key. Retryable, so a
+        // reconnect inside the lanes' cycle budget delivers.
+        let Ok(Some(identity)) = self.grants.bot_identity(&workspace, Provider::Slack).await else {
+            return Err(failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Retryable));
         };
 
         let marker = AnswerMarker {
@@ -201,15 +196,15 @@ impl SlackPoster {
     /// The POST itself, with no pool connection held — see the module note.
     async fn post(&self, job: &OutboundDelivery, inputs: &Inputs) -> Verdict {
         let text = escape::literal(&job.answer);
+        // Strings and the marker's strings cannot fail to serialize; an empty
+        // body on that unreachable arm is refused by Slack, never a delivery.
         let body = serde_json::to_vec(&Message {
             channel: &inputs.destination.channel_id,
             thread_ts: &inputs.destination.thread_ts,
             text: &text,
             metadata: inputs.marker.metadata(),
-        });
-        let Ok(body) = body else {
-            return failed(job, "slack_post_body_unserializable", Verdict::Permanent);
-        };
+        })
+        .unwrap_or_default();
 
         let response = self
             .http
