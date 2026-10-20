@@ -94,6 +94,8 @@ mod integration_team_members;
 mod integration_team_privacy;
 #[path = "integration_team_races.rs"]
 mod integration_team_races;
+#[path = "integration_team_runtime_role.rs"]
+mod integration_team_runtime_role;
 #[path = "integration_workspace_access_plan.rs"]
 mod integration_workspace_access_plan;
 #[path = "integration_workspace_directory.rs"]

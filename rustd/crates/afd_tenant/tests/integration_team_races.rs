@@ -1,7 +1,7 @@
-//! The team store's races against live Postgres: two owners removing each
-//! other, an accept against a revoke, an accept against a fresh invite, and two
-//! invites to one address. Each
+//! The team store's races against live Postgres: an accept against a revoke,
+//! an accept against a fresh invite, and two invites to one address. Each
 //! runs a dozen rounds, since a lost lock order shows in most but not all.
+//! Two owners removing each other is deliberately unguarded (PR #778).
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -11,9 +11,6 @@
 use afd_core::error_code;
 use afd_db::test_util::mint_id;
 use afd_tenant::error::InviteConflict;
-use afd_tenant::team::Removal;
-use afd_tenant::test_util::hold;
-use afd_tenant::workspace::access::ROLE_OWNER;
 use jiff::Timestamp;
 
 use crate::access_lane::{Fixture, id};
@@ -24,51 +21,6 @@ const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 /// How many times each race runs. Two concurrent removals that lock in
 /// different orders deadlock in most rounds, so a dozen shows it.
 const RACE_ROUNDS: usize = 12;
-
-/// Two owners removing each other at once: every round, one goes and the
-/// other is told it is the last owner. Locking the target's row before the
-/// owners let each removal hold its own row and wait on the other's, and
-/// Postgres broke the deadlock by aborting one, which answered as a datastore
-/// failure.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_keep_one_owner_when_two_owners_remove_each_other_concurrently() {
-    let fixture = Fixture::create().await;
-    let tenant = id(&fixture.john.tenant);
-    for round in 0..RACE_ROUNDS {
-        for owner in [&fixture.john, &fixture.carol] {
-            hold(
-                &fixture.database,
-                &fixture.john.tenant,
-                &owner.user,
-                ROLE_OWNER,
-            )
-            .await;
-        }
-        let (john, carol) = tokio::join!(
-            fixture.team.remove(&tenant, &fixture.john.user_id),
-            fixture.team.remove(&tenant, &fixture.carol.user_id),
-        );
-        let outcomes = [john, carol];
-        let removed = outcomes
-            .iter()
-            .filter(|outcome| matches!(outcome, Ok(Removal::Removed)))
-            .count();
-        let refused: Vec<_> = outcomes
-            .iter()
-            .filter_map(|outcome| outcome.as_ref().err())
-            .map(afd_tenant::Error::code)
-            .collect();
-        assert_eq!(removed, 1, "round {round}: exactly one owner goes");
-        assert_eq!(
-            refused,
-            [error_code::MEMBER_LAST_OWNER],
-            "round {round}: the other is the last owner, not a datastore failure"
-        );
-        assert_eq!(fixture.owners_in_johns().await, 1, "round {round}");
-    }
-    fixture.cleanup().await;
-}
 
 /// An accept racing a revoke settles one way: Carol joins, the invite is
 /// spent and the revoke says she is a member; or the revoke wins and she is

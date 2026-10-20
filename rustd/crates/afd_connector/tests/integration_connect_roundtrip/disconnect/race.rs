@@ -1,7 +1,8 @@
 //! A Disconnect racing a connect, held at a row lock until both have queued.
 //!
-//! Both writers must take their turn on the workspace row, so whichever order
-//! the lock releases them in, the handle and the routing rows end agreeing.
+//! Both writers touch the sealed handle's row, so whichever order its lock
+//! releases them in, the handle and the routing rows end agreeing. A first
+//! connect has no handle row yet and is deliberately unordered (PR #778).
 
 use std::time::Duration;
 
@@ -32,9 +33,8 @@ async fn a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither() {
         .await
         .expect("the first connect lands");
 
-    // Hold the handle's row so both writers queue, the reconnect first, then
-    // release them together. The Disconnect queues behind the reconnect's
-    // turn on the workspace row, not behind the handle.
+    // Hold the handle's row so both writers queue on it, the reconnect first,
+    // then release them together.
     let (mut holder, holder_pid) = hold(
         &round,
         "SELECT 1 FROM vault.secrets \
@@ -60,48 +60,6 @@ async fn a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither() {
         forgotten,
         Forgotten::Disconnected,
         "it removed the reconnect's grant"
-    );
-    assert_both_or_neither(&round).await;
-
-    round.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_disconnect_racing_a_first_connect_waits_its_turn() {
-    let vendor = FakeAtlassian::serving().await;
-    let round = Round::create(&vendor).await;
-    let now = NOW;
-
-    // No handle exists yet, so nothing in the vault can order these two. Both
-    // must queue on the workspace row; a path that skipped it would not wait,
-    // and could delete routing rows the connect commits mid-Disconnect.
-    // The production statement itself, so the hold cannot drift from the lock
-    // both writers take.
-    let (mut holder, holder_pid) = hold(
-        &round,
-        afd_connector::sql::LOCK_WORKSPACE,
-        &[round.workspace.as_str()],
-    )
-    .await;
-    let connect = spawn_land(&round, &account(&round, ACCOUNT_A), now);
-    queued_on_a_lock(&round, holder_pid, 1).await;
-    let disconnect = spawn_forget(&round);
-    queued_on_a_lock(&round, holder_pid, 2).await;
-    holder.release().await;
-
-    connect
-        .await
-        .expect("the connect task completes")
-        .expect("the first connect lands");
-    let forgotten = disconnect
-        .await
-        .expect("the disconnect task completes")
-        .expect("the disconnect commits");
-    assert_eq!(
-        forgotten,
-        Forgotten::Disconnected,
-        "it removed what the connect landed"
     );
     assert_both_or_neither(&round).await;
 
