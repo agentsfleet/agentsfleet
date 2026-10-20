@@ -72,6 +72,9 @@ pub(crate) struct OutboundHarness {
     /// it may not write the rows a test stages around the code under test.
     /// Product calls keep [`Self::database`].
     pub(crate) owner: Db,
+    /// The database both pools reach: the lane's shared one, or a private one
+    /// [`Self::isolated`] created and [`Self::cleanup`] drops.
+    lane: TestDatabase,
 }
 
 impl OutboundHarness {
@@ -89,12 +92,7 @@ impl OutboundHarness {
             .ensure_group()
             .await
             .expect("the consumer group must be creatable on an empty stream");
-        Self {
-            redis,
-            queue,
-            database: TestDatabase::shared().open(DbRole::Api, &[]).await,
-            owner: TestDatabase::shared().open(DbRole::Migrator, &[]).await,
-        }
+        Self::over(redis, queue, TestDatabase::shared()).await
     }
 
     /// Connects and leaves the stream absent, with no group on it.
@@ -106,12 +104,48 @@ impl OutboundHarness {
 
         Self::drop_stream(&redis).await;
         let queue = OutboundQueue::new(redis.clone());
+        Self::over(redis, queue, TestDatabase::shared()).await
+    }
+
+    /// [`Self::reset`] over a private, migrated database.
+    ///
+    /// For a test that asserts on a ledger-wide scan: on the shared database
+    /// every other suite's owed rows answer the same scan.
+    pub(crate) async fn isolated() -> Self {
+        let lane = TestDatabase::create().await;
+        let migrator = lane.open(DbRole::Migrator, &[]).await;
+        afd_db::Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("the isolated ledger has the production schema");
+        migrator.close().await;
+        let redis = Self::connect().await;
+        Self::drop_stream(&redis).await;
+        let queue = OutboundQueue::new(redis.clone());
+        queue
+            .ensure_group()
+            .await
+            .expect("the consumer group must be creatable on an empty stream");
+        Self::over(redis, queue, lane).await
+    }
+
+    /// The pools over `lane`: the API login for the code under test, the
+    /// owner for the rows a test stages around it.
+    async fn over(redis: Dragonfly, queue: OutboundQueue, lane: TestDatabase) -> Self {
         Self {
             redis,
             queue,
-            database: TestDatabase::shared().open(DbRole::Api, &[]).await,
-            owner: TestDatabase::shared().open(DbRole::Migrator, &[]).await,
+            database: lane.open(DbRole::Api, &[]).await,
+            owner: lane.open(DbRole::Migrator, &[]).await,
+            lane,
         }
+    }
+
+    /// Closes both pools and drops the database when this harness created it.
+    pub(crate) async fn cleanup(self) {
+        self.database.close().await;
+        self.owner.close().await;
+        self.lane.cleanup().await;
     }
 
     /// Writes an entry no reader can decode, as a foreign writer would.

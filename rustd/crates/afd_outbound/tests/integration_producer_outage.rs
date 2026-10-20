@@ -109,7 +109,7 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_refused_append_leaves_every_scanned_row_still_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
-    let harness = OutboundHarness::reset().await;
+    let harness = OutboundHarness::isolated().await;
     seed_parents(&harness.owner).await;
     clear_obligations(&harness.owner).await;
 
@@ -154,7 +154,7 @@ async fn a_refused_append_leaves_every_scanned_row_still_owed() {
     );
     assert_eq!(owed_after[0].id, row);
 
-    clear_obligations(&harness.owner).await;
+    harness.cleanup().await;
 }
 
 /// An answer with nothing in it owes no delivery at all.
@@ -166,7 +166,7 @@ async fn a_refused_append_leaves_every_scanned_row_still_owed() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_empty_answer_owes_nothing() {
     let _lane = OUTBOUND_LANE.lock().await;
-    let harness = OutboundHarness::reset().await;
+    let harness = OutboundHarness::isolated().await;
     seed_parents(&harness.owner).await;
     clear_obligations(&harness.owner).await;
 
@@ -178,6 +178,7 @@ async fn an_empty_answer_owes_nothing() {
         .await
         .expect("the ledger answers a scan");
     assert!(owed.is_empty(), "an empty answer wrote a row: {owed:?}");
+    harness.cleanup().await;
 }
 
 /// Trimming the outbound stream never removes an answer the group has not
