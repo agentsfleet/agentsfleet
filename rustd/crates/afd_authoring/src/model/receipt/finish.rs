@@ -30,6 +30,7 @@ pub(in crate::model) async fn finish(
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
     let mut owed = Owed::default();
     let denied = authorization(&mut tx, runner, lease, counters, attempt, &mut owed).await?;
+    let (decoded, rejection) = rejection(decoded);
     let decoded = match decoded {
         Ok(known) => known,
         Err(error) => {
@@ -45,18 +46,26 @@ pub(in crate::model) async fn finish(
             }));
         }
     };
-    let private = if denied.is_none() {
-        decoded.result.as_ref()
-    } else {
-        None
-    };
+    let private = decoded.result.as_ref().filter(|_| denied.is_none());
     write(&mut tx, attempt, request, private, Some(&decoded)).await?;
+    if let Some(error) = &rejection {
+        failure::record(&mut tx, attempt, error, &mut owed).await?;
+    }
     tx.commit().await.map_err(query(CONTEXT))?;
     owed.settle(&drafts.analytics);
-    if let Some(error) = denied {
+    if let Some(error) = denied.or(rejection) {
         return Err(error);
     }
     decoded.result.ok_or_else(|| ErrorKind::Provider.into())
+}
+
+fn rejection(decoded: Result<Decoded>) -> (Result<Decoded>, Option<Error>) {
+    match decoded {
+        Err(error) if error.code() == error_code::AUTHORING_MODEL => {
+            (Ok(Decoded::rejected()), Some(error))
+        }
+        other => (other, None),
+    }
 }
 
 /// Whether the late result may publish, as the refusal that withholds it.

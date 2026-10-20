@@ -12,7 +12,7 @@ const ACTION_CHOOSE_MODEL: &str = "choose_authoring_model";
 const ACTION_REDUCE_CONTEXT: &str = "reduce_context";
 /// A new message with a new key may be sent.
 const ACTION_RETRY_MESSAGE: &str = "retry_message";
-/// The provider obligation must settle before anything else is offered.
+/// Uncancelled provider work must settle or be explicitly stopped.
 const ACTION_AWAIT_ACCOUNTING: &str = "await_accounting";
 /// The setup must be reviewed again under the current policy.
 const ACTION_REVIEW_SETUP: &str = "review_setup";
@@ -26,6 +26,20 @@ pub struct Failure {
     pub error_code: ErrorCode,
     /// Stable client action; authorized labels/links are derived on read.
     pub recovery_action: &'static str,
+}
+
+impl Failure {
+    pub(crate) fn for_message(
+        reason: FailureReason,
+        sequence: i64,
+        cancelled_through: i64,
+    ) -> Self {
+        let mut failure = Self::from(reason);
+        if reason == FailureReason::ProviderUsageUnknown && sequence <= cancelled_through {
+            failure.recovery_action = ACTION_RETRY_MESSAGE;
+        }
+        failure
+    }
 }
 
 impl From<FailureReason> for Failure {

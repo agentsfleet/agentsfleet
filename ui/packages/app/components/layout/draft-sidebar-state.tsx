@@ -7,7 +7,7 @@ import type { DeleteDraft } from "@/lib/api/draft-request";
 import type { SidebarDraft } from "@/lib/api/draft-summary";
 import type { DRAFT_LIST_STATUS as HISTORY_STATUS } from "@/lib/api/draft-list-types";
 
-export type DraftSidebarState = { workspace: string; subject: string; cards: readonly SidebarDraft[]; fresh: (() => void) | null; remove: DeleteDraft | null; owner: DraftClient | null; locked: boolean; current: string | null; searchVersion: string | null;
+export type DraftSidebarState = { workspace: string; subject: string; cards: readonly SidebarDraft[]; fresh: (() => void) | null; remove: DeleteDraft | null; owner: DraftClient | null; locked: boolean; current: string | null;
   more: (() => Promise<void>) | null; status: DraftHistoryStatus };
 type DraftHistoryStatus = typeof HISTORY_STATUS[keyof typeof HISTORY_STATUS];
 export const HistoryContext = createContext<DraftSidebarState | null>(null);

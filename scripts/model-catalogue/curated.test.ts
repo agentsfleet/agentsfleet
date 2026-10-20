@@ -1,12 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { assertCompleteCatalogue, CURATED_IDENTITIES, isCuratedModel, isOfficialPriceSource } from "./curated";
-import { parseCatalogue } from "./catalogue";
+import { assertCompleteCatalogue, CURATED_IDENTITIES, isCuratedModel, isFreeModel, isOfficialPriceSource } from "./curated";
+import { parseCatalogue, readCatalogue } from "./catalogue";
 import { catalogueFixture, modelFixture, priceFixture } from "./test-fixtures";
 
 describe("curated catalogue bounds", () => {
-  test("exactly 18 identities include native and routed Gemini independently", () => {
-    expect(CURATED_IDENTITIES).toHaveLength(18);
+  test("free models refuse a nonzero price", async () => {
+    const catalogue = await readCatalogue(new URL("../model-library-allowlist.json", import.meta.url));
+    const free = catalogue.models.filter(isFreeModel);
+    expect(free).toHaveLength(1);
+    expect(free[0]).toMatchObject({ provider: "openrouter", model_name: "minimax/minimax-m3.1-flash:free" });
+    expect(() => parseCatalogue({ ...catalogue, models: free.map((model) => ({ ...model,
+      prices: model.prices.map((price) => ({ ...price, output: "0.01" })),
+    })) })).toThrow("free model prices must remain zero");
+  });
+
+  test.each(["input", "cached_input", "output", "cache_write", "cache_write_5m", "cache_write_1h"])(
+    "paid models refuse decimal zero in %s", (field) => {
+      const subject = modelFixture({ prices: [priceFixture({ [field]: "0.0" })] });
+      expect(() => parseCatalogue(catalogueFixture([subject]))).toThrow("zero prices are reserved for free models");
+    });
+
+  test("curated identities include native and routed Gemini independently", () => {
+    expect(CURATED_IDENTITIES).toHaveLength(19);
     expect(isCuratedModel(modelFixture({ provider: "gemini", model_name: "gemini-4-argon" }))).toBe(true);
     expect(isCuratedModel(modelFixture({ provider: "openrouter", model_name: "google/gemini-4-argon" }))).toBe(true);
     expect(isCuratedModel(modelFixture({ model_name: "accounts/fireworks/models/deepseek-v4-pro-0813" }))).toBe(false);

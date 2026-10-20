@@ -13,7 +13,6 @@ export function useDraftSidebarBridge(client: DraftClient, view: DraftView, work
   const remove = useCallback((id: string, signal: AbortSignal) => client.remove(id, signal), [client]);
   const loadChats = useCallback(() => client.loadMore(DRAFT_LIST.chats), [client]);
   const current = view.draft?.id ?? null;
-  const searchVersion = view.draft ? `${view.draft.id}:${view.draft.etag}` : null;
   const request = firstChatRequest(view.messages);
   const source = view.cards;
   const inaccessible = view.inaccessible;
@@ -27,11 +26,11 @@ export function useDraftSidebarBridge(client: DraftClient, view: DraftView, work
     update((previous) => {
       const sameScope = previous?.workspace === workspace && previous.subject === subject;
       const nextCards = sameScope && !inaccessible && (status === HISTORY_STATUS.loading || sameCards(previous.cards, cards)) ? previous.cards : cards;
-      if (sameScope && previous.fresh === fresh && previous.remove === remove && previous.locked === locked && previous.current === current && previous.more === more && previous.status === status && previous.searchVersion === searchVersion
+      if (sameScope && previous.fresh === fresh && previous.remove === remove && previous.locked === locked && previous.current === current && previous.more === more && previous.status === status
         && previous.cards === nextCards && previous.owner === client) return previous;
-      return { workspace, subject, cards: nextCards, fresh, remove, locked, current, more, status, owner: client, searchVersion };
+      return { workspace, subject, cards: nextCards, fresh, remove, locked, current, more, status, owner: client };
     });
-  }, [update, workspace, subject, cards, fresh, remove, locked, current, more, status, client, inaccessible, searchVersion]);
+  }, [update, workspace, subject, cards, fresh, remove, locked, current, more, status, client, inaccessible]);
   useEffect(() => () => update((current) => current?.owner !== client ? current : current.status !== HISTORY_STATUS.loading
     ? {...current, fresh: null, remove: null, owner: null, current: null, more: null, locked: current.status !== HISTORY_STATUS.ready} : null), [update, client]);
 }

@@ -7,6 +7,7 @@ import { CATALOGUE_DATABASE_URL, NO_OTHER_CLIENTS, openIntegrationDatabase, remo
 import { seedCatalogue } from "./seed";
 import { desiredRows } from "./rows";
 import { APPLY_FLAG, catalogueFixture, MODEL_NAME, modelFixture, priceFixture } from "./test-fixtures";
+import { SELECT_ROWS, UPSERT_MODELS } from "./statements";
 
 const database = openIntegrationDatabase();
 const KEY = `fireworks/${MODEL_NAME}`;
@@ -16,7 +17,6 @@ const TEST_FILE_PREFIX = `${tmpdir()}/agentsfleet-seeder-live`;
 const CONCURRENT_CONNECTIONS = 8;
 const CONCURRENT_APPLIES = 100;
 const EXPLAIN_PREFIX = "EXPLAIN (ANALYZE, BUFFERS) ";
-const SQL_DIRECTORY = `${import.meta.dir}/sql`;
 
 describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
   beforeEach(() => removeFixtureModels(database));
@@ -29,7 +29,7 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
   test("the complete curated document seeds every proved context on an empty database", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
     assertCompleteCatalogue(catalogue.models);
-    expect(catalogue.models).toHaveLength(18);
+    expect(catalogue.models).toHaveLength(19);
     expect(catalogue.models.every((model) => model.context !== null)).toBe(true);
     const wanted = catalogue.models.map((model) => `${model.provider}/${model.model_name}`).toSorted();
     const initial = await snapshot(database);
@@ -77,8 +77,8 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
     await seedCatalogue(database, catalogue, true);
     const identities = desiredRows(catalogue).map(({ prices: _, ...identity }) => ({ id: Bun.randomUUIDv7(), ...identity }));
     await database`UPDATE model.platform_models SET inference = NULL`;
-    for (const name of ["upsert_models", "select_rows"]) {
-      const query = EXPLAIN_PREFIX + await Bun.file(`${SQL_DIRECTORY}/${name}.sql`).text();
+    for (const [name, statement] of [["upsert_models", UPSERT_MODELS], ["select_rows", SELECT_ROWS]]) {
+      const query = EXPLAIN_PREFIX + statement;
       const parameters = name === "upsert_models" ? [identities] : [];
       const plan = await database.unsafe(query, parameters);
       const lines = plan.map((row: { "QUERY PLAN": string }) => row["QUERY PLAN"]);

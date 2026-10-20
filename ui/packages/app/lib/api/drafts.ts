@@ -45,7 +45,6 @@ export class DraftClient {
   get canStagePlatform(): boolean { return this.#platformPublisher !== undefined; }
   readonly getSnapshot = (): DraftView => this.#snapshot;
   readonly subscribe = (listener: () => void): (() => void) => { this.#listeners.add(listener); return () => this.#listeners.delete(listener); };
-  invalidateAccess(): void { this.#failed(new SetupUnavailable("This workspace is no longer available.", 403), true); }
   dispose(): void {
     this.#view.abort(); this.#owner.abort(); this.#operation.clear(); this.#history.clear(); this.#lists.clear();
     this.#continueSave = undefined; this.#setupTarget = undefined; this.#source = {kind: SOURCE_KIND.blank};

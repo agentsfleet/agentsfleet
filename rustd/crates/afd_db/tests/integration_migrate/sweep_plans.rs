@@ -11,12 +11,10 @@ use sqlx::AssertSqlSafe;
 use super::*;
 
 /// The lapse sweep (`afd_authoring` maintenance): `$1` status, `$2` limit.
-const ATTEMPT_CANDIDATES: &str =
-    include_str!("../../../afd_authoring/src/maintenance/sql/candidates.sql");
+const ATTEMPT_CANDIDATES: &str = afd_authoring::Drafts::EXPIRED_ATTEMPTS_QUERY;
 
 /// The metering sweep (`afd_fleet` lease): `$1` status, `$2` grace, `$3` limit.
-const UNBILLED_LEASES: &str =
-    include_str!("../../../afd_fleet/src/lease/sql/select_unbilled_expired_leases.sql");
+const UNBILLED_LEASES: &str = afd_fleet::lease::billing_sweep::UNBILLED_LEASES_QUERY;
 
 /// The plan of `statement`, prepared as `types` and executed with `binds`, a
 /// generic plan with sequential scans priced out.

@@ -10,7 +10,6 @@ import {
 import { ShellControls } from "./ShellControls";
 import { WorkspaceCreationProvider } from "./WorkspaceCreationProvider";
 import { DraftSidebarProvider } from "./draft-sidebar-state";
-import { RecentFleetsProvider } from "./RecentFleets";
 
 const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
@@ -34,15 +33,11 @@ export function ShellFrame({
   const knownWorkspaceIds = workspaces.map((workspace) => workspace.id);
   return (
     <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
-      <RecentFleetsProvider><DraftSidebarProvider><div
+      <DraftSidebarProvider><div
         className="app-surface fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
         data-surface="dashboard"
       >
-        {/*
-          The header owns no horizontal padding of its own: its leading cluster
-          has to start where the sidebar column starts, and each cluster pads
-          itself instead.
-        */}
+        {/* Each header cluster supplies its own padding to align with the sidebar. */}
         <DashboardShellHeader className="px-0 md:px-0">
           <ShellControls
             workspaces={workspaces}
@@ -50,9 +45,7 @@ export function ShellFrame({
             sidebarNavId={SIDEBAR_NAV_ID}
           />
           <div className="app-shell-trailing ml-auto flex min-w-0 items-center gap-md md:gap-xl">
-            {/* What is left to spend, on every page — the billing page owns
-                the meter and the history; the header owns the one figure. A
-                failed read renders nothing rather than a wrong number. */}
+            {/* A failed billing read hides the balance. */}
             {billing ? (
               <BalanceLink balanceNanos={billing.balance_nanos} isExhausted={billing.is_exhausted} />
             ) : null}
@@ -80,7 +73,7 @@ export function ShellFrame({
             </div>
           </div>
         </main>
-      </div></DraftSidebarProvider></RecentFleetsProvider>
+      </div></DraftSidebarProvider>
     </WorkspaceCreationProvider>
   );
 }

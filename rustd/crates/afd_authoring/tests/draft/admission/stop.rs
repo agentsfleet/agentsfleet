@@ -86,7 +86,7 @@ pub(super) fn finished(lease: &Claimed) -> Report {
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn send_racing_stop_keeps_one_lease_and_the_retained_report_settles_once() {
+async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once() {
     let f = super::funded(2).await;
     let draft = queue(&f, "First").await;
     let first = claim(&f, &draft).await.expect("first request admitted");
@@ -104,14 +104,47 @@ async fn send_racing_stop_keeps_one_lease_and_the_retained_report_settles_once()
     );
     assert_eq!(sent.expect("send commits around the Stop").sequence, "2");
     assert_eq!(stopped.expect("Stop commits").cancelled_through, "1");
-    assert!(
-        raced.is_none(),
-        "an outstanding attempt blocks a second lease"
+    let second = match raced {
+        Some(lease) => lease,
+        None => claim(&f, &draft)
+            .await
+            .expect("new request can run after Stop"),
+    };
+    assert_eq!(second.sequence, "2");
+    let both = obligations(&f, &draft).await;
+    assert_eq!(both.0, 2, "both attempts retain accounting");
+    assert!(both.1 > held.1, "the old bound survives new admission");
+    assert!(claim(&f, &draft).await.is_none(), "no duplicate admission");
+    settle_once(&f, &first).await;
+    assert_eq!(
+        obligations(&f, &draft).await.0,
+        1,
+        "new attempt still owns its hold"
     );
-    assert_eq!(obligations(&f, &draft).await, held, "Stop keeps the bound");
-    assert!(claim(&f, &draft).await.is_none(), "still one live attempt");
-    let report = finished(&first);
-    let before = balance(&f).await;
+    assert_current_turn(&f, &draft).await;
+    f.drafts
+        .cancel(f.access(), &draft.id, 2)
+        .await
+        .expect("Stop current turn");
+    settle_once(&f, &second).await;
+    assert_eq!(obligations(&f, &draft).await, (0, 0));
+    f.cleanup().await;
+}
+
+async fn assert_current_turn(f: &Fixture, draft: &Draft) {
+    let after = states(f, draft).await;
+    assert!(
+        after
+            .iter()
+            .all(|(_, _, text)| text.as_deref() != Some("Late private answer"))
+    );
+    assert!(after.contains(&("1:user".into(), "cancelled".into(), Some("First".into()))));
+    assert!(after.contains(&("2:user".into(), "running".into(), Some("Second".into()))));
+}
+
+async fn settle_once(f: &Fixture, first: &Claimed) {
+    let report = finished(first);
+    let before = balance(f).await;
     let lease = afd_core::id::Uuid7::parse(&first.lease_id).expect("lease id");
     for replayed in [false, true] {
         let ack = f
@@ -123,39 +156,32 @@ async fn send_racing_stop_keeps_one_lease_and_the_retained_report_settles_once()
         assert_eq!(ack.replayed, replayed);
     }
     assert_eq!(
-        balance(&f).await,
+        balance(f).await,
         before - RUNTIME_DEBIT_NANOS,
         "debited once"
     );
-    assert_eq!(obligations(&f, &draft).await, (0, 0));
-    let after = states(&f, &draft).await;
-    assert!(
-        after
-            .iter()
-            .all(|(_, _, text)| text.as_deref() != Some("Late private answer"))
-    );
-    assert!(after.contains(&("1:user".into(), "cancelled".into(), Some("First".into()))));
-    assert!(after.contains(&("2:user".into(), "queued".into(), Some("Second".into()))));
-    claim_racing_stop(&f, &draft).await;
-    f.cleanup().await;
 }
 
 /// A queued request is either stopped before admission or admitted and then
 /// stopped; both leave at most one attempt holding its whole bound.
-async fn claim_racing_stop(f: &Fixture, draft: &Draft) {
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn claim_racing_stop_keeps_at_most_one_accounting_obligation() {
+    let f = super::funded(2).await;
+    let draft = queue(&f, "Second").await;
     let (claimed, stopped) =
-        tokio::join!(claim(f, draft), f.drafts.cancel(f.access(), &draft.id, 2));
-    assert_eq!(stopped.expect("Stop commits").cancelled_through, "2");
-    let (live, reserved) = obligations(f, draft).await;
+        tokio::join!(claim(&f, &draft), f.drafts.cancel(f.access(), &draft.id, 1));
+    assert_eq!(stopped.expect("Stop commits").cancelled_through, "1");
+    let (live, reserved) = obligations(&f, &draft).await;
     assert_eq!(live, i64::from(claimed.is_some()));
     assert_eq!(
         reserved > 0,
         claimed.is_some(),
         "an admitted attempt keeps its bound"
     );
-    assert!(claim(f, draft).await.is_none(), "nothing left to admit");
-    let second = states(f, draft).await;
-    assert!(second.contains(&("2:user".into(), "cancelled".into(), Some("Second".into()))));
+    assert!(claim(&f, &draft).await.is_none(), "nothing left to admit");
+    let second = states(&f, &draft).await;
+    assert!(second.contains(&("1:user".into(), "cancelled".into(), Some("Second".into()))));
     if let Some(lease) = claimed {
         let id = afd_core::id::Uuid7::parse(&lease.lease_id).expect("lease id");
         let ack = f
@@ -164,6 +190,7 @@ async fn claim_racing_stop(f: &Fixture, draft: &Draft) {
             .await
             .expect("report after Stop");
         assert!(ack.settled);
-        assert_eq!(obligations(f, draft).await, (0, 0));
+        assert_eq!(obligations(&f, &draft).await, (0, 0));
     }
+    f.cleanup().await;
 }

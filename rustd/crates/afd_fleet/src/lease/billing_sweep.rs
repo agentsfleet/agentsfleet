@@ -26,6 +26,10 @@ use crate::lease::usage::{self, Pricing, SliceColumns};
 /// Leases that ended unreported with run time their cursor never billed.
 const SELECT_UNBILLED_EXPIRED_LEASES: &str = include_str!("sql/select_unbilled_expired_leases.sql");
 
+/// The compiled metering statement, for real database query-plan measurements.
+#[cfg(feature = "test-util")]
+pub const UNBILLED_LEASES_QUERY: &str = SELECT_UNBILLED_EXPIRED_LEASES;
+
 /// One such lease's last slice: its cursor advanced to its deadline, and the
 /// run time between, under the lease's row lock.
 const BILL_EXPIRED_SLICE: &str = include_str!("sql/bill_expired_slice.sql");
