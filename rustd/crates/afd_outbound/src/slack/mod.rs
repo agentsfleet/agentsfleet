@@ -310,7 +310,7 @@ impl Deliver for SlackPoster {
 #[derive(Debug)]
 struct Inputs {
     destination: Thread,
-    /// Still wrapped, so it zeroes on drop — see `Grants::bot_token`.
+    /// Still wrapped, so it zeroes on drop — see `Grants::bot_identity`.
     token: SecretString,
     /// The bot user the grant recorded: a marker counts only from it.
     author: Option<String>,
