@@ -159,6 +159,10 @@ function buildColumns({
       cell: (m) => (
         <div className="space-y-sm">
           <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">{formatRatesPerMtok(currentBasePrice(m.prices))}</span>
+          <div className="space-y-sm text-left sm:hidden">
+            <CatalogueEvidence source={m.metadata.context_source_url} verifiedAt={m.metadata.context_verified_at} />
+            <ModelPriceSchedule prices={m.prices} />
+          </div>
         </div>
       ),
     },
