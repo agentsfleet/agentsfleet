@@ -65,6 +65,7 @@ function AdvancedModelField() {
 function InferenceFields() {
   const form = useFormContext<ModelSettingsValues>();
   const update = useWatch({ control: form.control, name: "update_inference" });
+  const [hadConnection] = useState(update);
   return <>
     <SectionHeader as="p">Connection</SectionHeader>
     <p className="text-sm text-muted-foreground">The priming script fills these settings for catalogue models. Credentials are added when you make a model the platform default.</p>
@@ -84,6 +85,12 @@ function InferenceFields() {
       <div className="grid gap-md sm:grid-cols-2">
         {INFERENCE_FIELDS.map(([name, label]) => <SettingsTextField key={name} name={name} label={label} />)}
       </div>
+      {!hadConnection ? <Button type="button" variant="ghost" onClick={() => {
+        form.resetField("api");
+        for (const [name] of INFERENCE_FIELDS) form.resetField(name);
+        form.setValue("update_inference", false);
+        form.clearErrors(["api", ...INFERENCE_FIELDS.map(([name]) => name)]);
+      }}>Leave connection unchanged</Button> : null}
     </> : null}
   </>;
 }
