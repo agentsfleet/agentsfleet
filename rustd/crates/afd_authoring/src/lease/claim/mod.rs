@@ -3,6 +3,7 @@
 mod context;
 mod issue;
 mod selection;
+mod snapshot;
 mod sql;
 
 use afd_billing::biller::{Hold, Reservation};
@@ -82,6 +83,8 @@ impl Drafts {
         ticket: Option<Ticket>,
     ) -> Result<Placement> {
         let mut connection = self.database.acquire().await?;
+        // Read before any lock, so the locked section only proves it current.
+        let snapshot = snapshot::take(&mut connection, hint).await?;
         let mut tx = connection.begin().await.map_err(query(sql::CONTEXT))?;
         let Some(host) = afd_runner::capacity::lock(&mut tx, runner).await? else {
             return Ok(Placement::Busy);
@@ -93,7 +96,11 @@ impl Drafts {
         }
         let mut owed = Owed::default();
         let selected = match selection::authorize(&mut tx, hint, &mut owed).await? {
-            Authorized::Selected(selected) => *selected,
+            Authorized::Selected(selected)
+                if snapshot.as_ref().is_none_or(|read| read.current(&selected)) =>
+            {
+                *selected
+            }
             passed => {
                 tx.commit().await.map_err(query(sql::CONTEXT))?;
                 owed.settle(&self.analytics);
@@ -109,7 +116,8 @@ impl Drafts {
                 return Ok(Placement::Skipped);
             }
         };
-        let admitted = issue::admit(self, &mut tx, runner, hint, selected, &mut owed).await?;
+        let admitted =
+            issue::admit(self, &mut tx, runner, hint, (selected, snapshot), &mut owed).await?;
         if admitted.is_some()
             && !choice::record(&mut tx, runner, host, LeaseKind::Authoring).await?
         {

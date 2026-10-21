@@ -21,6 +21,11 @@ pub(super) const HOLD_DRAFT: &str = include_str!("hold_draft.sql");
 /// is held.
 pub(super) const LOCK_NOT_AVAILABLE: &str = "55P03";
 
+/// What a snapshot is checked against once the draft is locked.
+///
+/// `$1` draft, `$2` the editing status.
+pub(super) const SNAPSHOT: &str = include_str!("snapshot.sql");
+
 /// The draft's next queued message past its cutoff, with its pinned model.
 ///
 /// `$1` draft, `$2` the queued status, `$3` the cutoff.

@@ -103,28 +103,47 @@ async fn a_claim_chosen_as_a_deadlock_victim_surfaces_the_datastore_error() {
     // every lane's model reads share.
     let f = fund(Fixture::isolated().await, 1).await;
     let draft = queue(&f, "Claimed into a lock cycle").await;
-    let mut holder = sqlx::PgConnection::connect(&f.owner_url())
+    // The claim reads its context, and the catalogue with it, before any
+    // lock; the cycle has to meet the model read it repeats under the host
+    // lock. So one session holds the host until the claim queues on it, and a
+    // second takes the catalogue before the host is let go.
+    let mut host = f.connection().await;
+    let mut host_held = host.begin().await.expect("host holder");
+    let host_pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM runner.runners WHERE id=$1::uuid FOR UPDATE",
+    )
+    .bind(f.runner.as_str())
+    .fetch_one(&mut *host_held)
+    .await
+    .expect("hold the host");
+    let mut catalogue = sqlx::PgConnection::connect(&f.owner_url())
         .await
         .expect("the lane owner connects");
-    let mut held = holder.begin().await.expect("holder transaction");
-    let pid: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM model.catalogue_version FOR UPDATE")
-            .fetch_one(&mut *held)
-            .await
-            .expect("hold the catalogue");
+    let mut catalogue_held = catalogue.begin().await.expect("catalogue holder");
     let (placed, ()) = tokio::join!(f.drafts.claim_queued(&f.runner, &draft.id), async {
-        // The claim holds the host and waits on the catalogue its model read
-        // shares; asking for the host closes the cycle, and the claim, which
-        // waited first, is the one Postgres aborts.
-        f.waits_on(pid, 1).await;
+        f.waits_on(host_pid, 1).await;
+        let catalogue_pid: i32 =
+            sqlx::query_scalar("SELECT pg_backend_pid() FROM model.catalogue_version FOR UPDATE")
+                .fetch_one(&mut *catalogue_held)
+                .await
+                .expect("hold the catalogue");
+        host_held
+            .commit()
+            .await
+            .expect("let the claim take the host");
+        // The claim holds the host and waits on the catalogue; asking for the
+        // host closes the cycle, and the claim, which waited first, is the
+        // one Postgres aborts.
+        f.waits_on(catalogue_pid, 1).await;
         sqlx::query(LOCK_HOST)
             .bind(f.runner.as_str())
-            .execute(&mut *held)
+            .execute(&mut *catalogue_held)
             .await
             .expect("the host frees once the claim is aborted");
-        held.rollback().await.expect("release both");
+        catalogue_held.rollback().await.expect("release both");
     });
-    drop(holder);
+    drop(host);
+    drop(catalogue);
     let refused = placed.expect_err("a deadlock victim admits nothing");
     assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(attempts(&f).await, 0);
