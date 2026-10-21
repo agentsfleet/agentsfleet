@@ -3,7 +3,8 @@ import { inspectBuilds, readAppBuild, readBuildResponse, readProcessRecord, writ
 import { BUILD_COMPONENTS, BUILD_HASH_KEYS, buildDigest, buildInspectionSchema, buildManifestSchema, runnerProcessSchema } from "../../../../../../../scripts/build-manifest";
 
 const runnerSchema = z.object({
-  id: z.uuid(), status: z.literal("active"), last_seen_at: z.number().int().positive(),
+  id: z.uuid(), status: z.literal("active"),
+  last_seen_at: z.iso.datetime().transform((value) => Date.parse(value)).pipe(z.number().int().positive()),
   achievable: z.object({ build_id: buildDigest }),
 });
 const HEALTH = "/healthz";
