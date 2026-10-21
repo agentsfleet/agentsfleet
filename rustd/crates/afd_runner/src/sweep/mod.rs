@@ -103,9 +103,10 @@ impl Swept {
 /// reads may still be mid-migration.
 pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
     let name = sweeper.name();
+    let interval_ms = sweeper.interval().as_millis();
     tracing::debug!(
         sweeper = name,
-        interval_ms = sweeper.interval().as_millis(),
+        interval_ms,
         event = EVENT_STARTED,
         "a sweeper started"
     );

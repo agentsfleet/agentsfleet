@@ -38,8 +38,9 @@ impl Creations {
             Ok(None) => return Ok(()),
             Err(unconfirmed) => {
                 // The activation is committed. A retry reads the same producer key.
-                let (event, error_code) = (EVENT_UNCONFIRMED, unconfirmed.code());
-                tracing::warn!(event, fleet_id = %fleet, error_code = error_code.as_str());
+                let event = EVENT_UNCONFIRMED;
+                let error_code = unconfirmed.code().as_str();
+                tracing::warn!(event, fleet_id = %fleet, error_code);
                 return Ok(());
             }
         };

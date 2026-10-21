@@ -115,6 +115,52 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let seeded = ready(&fixtures).await;
+    let claimed = claim(&fixtures, &seeded).await;
+    fixtures
+        .leases()
+        .record_received(&claimed)
+        .await
+        .expect("first delivery");
+    fixtures
+        .end_event(
+            &seeded.fleet,
+            &seeded.event_id,
+            afd_core::event::status::PROCESSED,
+        )
+        .await;
+    let before = afd_events::fleet_counters(&fixtures.database, &seeded.fleet)
+        .await
+        .expect("counters");
+    fixtures
+        .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
+        .await;
+    let answer = drive(&fixtures, &seeded, claimed).await;
+    assert!(answer.contains(NO_LEASE));
+    assert_eq!(
+        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        Some((afd_core::event::status::PROCESSED.to_owned(), String::new()))
+    );
+    assert!(fixtures.admission_settled(&seeded.event_id).await);
+    assert_eq!(
+        afd_events::fleet_counters(&fixtures.database, &seeded.fleet)
+            .await
+            .expect("unchanged counters"),
+        before
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE event_id=$1")
+        .bind(&seeded.event_id)
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
+        .await
+        .expect("one narrative");
+    assert_eq!(rows, 1);
+    fixtures.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
 async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recorded() {
     let fixtures = Fixtures::create_isolated_with_queue().await;
     let seeded = ready(&fixtures).await;

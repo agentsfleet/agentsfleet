@@ -77,6 +77,51 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, fleet: &str, workspace: &str)
     action
 }
 
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_stale_claim_cannot_park_or_release_its_replacement() {
+    let fixtures = Fixtures::create_isolated().await;
+    let (fleet, workspace, _, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
+    let event = enqueue(&fixtures, &fleet, &workspace).await;
+    let leases = fixtures.leases_with_dead_queue();
+    let old = next(&leases, &runner).await.expect("first claim");
+    seed_gate(&fixtures, &fleet, &workspace).await;
+    fixtures
+        .age(
+            crate::rows::Row::Slot(&fleet),
+            "lease_expires_at",
+            crate::rows::LAPSE,
+        )
+        .await;
+    let current = next(&leases, &rival).await.expect("replacement claim");
+    assert!(current.fence.as_i64() > old.fence.as_i64());
+    leases
+        .park(&old.fleet_id, &event, old.fence)
+        .await
+        .expect("stale park is harmless");
+    let state: (bool, Option<i64>, i64) = sqlx::query_as(
+        "SELECT a.parked_at IS NOT NULL, a.lease_fence, s.fencing_token \
+         FROM fleet.admissions a JOIN runner.fleet_slots s ON s.fleet_id=a.fleet_id \
+         WHERE a.id=$1::uuid AND s.last_runner_id=$2::uuid",
+    )
+    .bind(&event)
+    .bind(rival.as_str())
+    .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
+    .await
+    .expect("the replacement still owns the slot");
+    assert_eq!(
+        state,
+        (false, Some(current.fence.as_i64()), current.fence.as_i64())
+    );
+    leases
+        .park(&current.fleet_id, &event, current.fence)
+        .await
+        .expect("the current holder can park");
+    assert!(fixtures.slot_is_free(&fleet).await);
+    drop(leases);
+    fixtures.cleanup().await;
+}
+
 async fn answer_while_blocked(
     fixtures: &Fixtures,
     action: &str,

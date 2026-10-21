@@ -2,7 +2,7 @@
 type: explanation
 audience: contributor
 verified: 2026-10-21
-product_version: 0.62.2
+product_version: 0.65.0
 executable: false
 ---
 
@@ -27,6 +27,7 @@ The replacement must preserve ordering, lease fencing, report billing, gate reco
 | Admission remains accepted when its notification fails | `afd_admission/tests/receipts/confirmation.rs` |
 | Retrying an admission retains its event identity | `afd_admission/tests/receipts/confirmation.rs` and `receipts/staging.rs` |
 | Save and run retains one fleet and initial event | `afd_authoring/tests/draft/creation/contention.rs` |
+| Missing, mismatched or unavailable confirmation retains the saved initial event for retry | `afd_authoring/tests/draft/creation/confirmation.rs` |
 | A stopped or failed authoring message permits the next message | `afd_authoring/tests/draft/admission/recovery.rs` and `admission/failure.rs`, retained from Pull Request 779 |
 | Competing replicas claim one admission once | `afd_fleet/tests/integration_ledger_queue/contention.rs` |
 | A locked or parked oldest admission holds later work | `afd_fleet/tests/integration_ledger_queue.rs` |
@@ -34,6 +35,9 @@ The replacement must preserve ordering, lease fencing, report billing, gate reco
 | Report failure rolls back admission settlement and permits retry | `afd_fleet/tests/integration_ledger_queue/settlement.rs` |
 | An expired slot requalifies its admission without a repair job | `afd_fleet/tests/integration_ledger_queue/reclaim.rs` |
 | A gate answer during a park lock wait prevents a stale park | `afd_fleet/tests/integration_ledger_queue/parking.rs` |
+| A superseded park cannot release or park the current holder | `afd_fleet/tests/integration_ledger_queue/parking.rs` |
+| Stale terminal settlement leaves the current admission claim intact | `afd_fleet/tests/integration_terminal_redelivery.rs` |
+| An unreadable redelivery preserves an existing terminal ending | `afd_fleet/tests/integration_lease_gates/faults.rs` |
 | An answer or expiry waits for an uncommitted park, then clears it | `afd_fleet/tests/integration_ledger_queue/parking_commit.rs` |
 | First delivery commits while an admission holds the fleet budget lock | `afd_fleet/tests/integration_ledger_queue/delivery.rs` |
 | Delivery-stamp failure rolls back history and counters; retry delivers once | `afd_fleet/tests/integration_ledger_queue/delivery.rs` |
@@ -45,6 +49,7 @@ The replacement must preserve ordering, lease fencing, report billing, gate reco
 | Queued steers appear once in ordered history | `afd_events/tests/integration_admission_history.rs` |
 | Public history uses one statement snapshot per page | `afd_events/tests/queued/snapshot.rs` |
 | Runtime roles can use the migrated queue columns | `afd_db/tests/integration_admissions_queue.rs` |
+| Notification lag and reconnect gaps are counted without losing the next valid hint | `afd_dragonfly/src/doorbell/tests.rs` |
 
 ### Failure boundaries
 

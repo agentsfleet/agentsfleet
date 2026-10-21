@@ -105,15 +105,16 @@ impl Admissions {
         } else {
             AdmissionOutcome::Replayed
         });
+        let replayed = !ledger.inserted;
         tracing::debug!(
             producer,
             fleet_id = admission.fleet,
             event_id,
             event = "admission_committed",
-            replayed = !ledger.inserted
+            replayed
         );
         Ok(Admitted {
-            replayed: !ledger.inserted,
+            replayed,
             stored: ledger.stored,
         })
     }
