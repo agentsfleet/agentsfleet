@@ -2,10 +2,14 @@
 //!
 //! The draft and attempt are locked before the host row, never after: a busy
 //! draft then keeps this renewal waiting while it holds nothing of the
-//! runner's, so the runner's polls for every other tenant go on. No cycle can
-//! form, because the one path that holds a host and then asks for a draft —
-//! the claim — takes the draft `NOWAIT`. Database time is sampled again after
-//! the host lock, so every expiry check reads time after every wait.
+//! runner's, so the runner's polls for every other tenant go on. The claim, the
+//! one path that holds a host and then asks for a draft, takes the draft
+//! `NOWAIT`, so the two never wait on each other. Retiring a revoked runner is
+//! the one opposite order left: its delete holds the runner row while the key's
+//! `SET NULL` locks that runner's attempts. Postgres breaks that cycle within
+//! `deadlock_timeout` by aborting one side, and a revoked runner's renewal is
+//! refused by `can_renew` either way. Database time is sampled again after the
+//! host lock, so every expiry check reads time after every wait.
 
 use afd_core::{clock, id::Uuid7, timing::LEASE_TTL};
 use afd_wire::authoring::{Renew, Renewed};

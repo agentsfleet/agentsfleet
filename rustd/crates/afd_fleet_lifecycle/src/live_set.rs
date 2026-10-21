@@ -31,8 +31,10 @@
 //! An entry weighs the fleets it holds, so the bound is on what is kept in
 //! memory: one workspace with thousands of fleets evicts by its weight rather
 //! than costing every small workspace its entry. A workspace with no fleets
-//! still weighs one, so empty sets are bounded too. No single set is capped
-//! yet: the product has no per-workspace fleet limit to cap it at.
+//! still weighs one, so empty sets are bounded too. A set heavier than the
+//! whole bound is never kept, so that workspace re-reads on every tick (its
+//! concurrent readers still share one load). No single set is capped yet: the
+//! product has no per-workspace fleet limit to cap it at.
 //!
 //! # The counters beside the set are NOT cached
 //!
@@ -117,7 +119,7 @@ impl Fleets {
     pub async fn live_set(&self, workspace: &Uuid7) -> Result<Arc<BTreeSet<String>>> {
         let load = async { self.enumerate(workspace).await.map(Arc::new) };
         self.live_sets
-            .try_get_with(workspace.as_str().to_owned(), load)
+            .try_get_with_by_ref(workspace.as_str(), load)
             .await
             .map_err(error::shared)
     }
