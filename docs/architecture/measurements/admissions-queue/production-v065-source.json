@@ -1,0 +1,10 @@
+{
+  "version": "0.65.0",
+  "head_revision": "ab66bb2ec992c87f0158470672a33bab30a58f38",
+  "worktree_dirty": true,
+  "integrated_base": "124c2bce303c95533745312c1ec725092bb604cb",
+  "rust_schema_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "fingerprint_command": "git diff --binary ab66bb2ec992c87f0158470672a33bab30a58f38 -- rustd schema | shasum -a 256",
+  "command": "RUSTUP_TOOLCHAIN=1.99.1 CARGO_BUILD_JOBS=2 BENCH_FLEETS=N BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1",
+  "note": "Final queue source and version, including review and coverage repairs. Owned worktree-specific rig after the canonical coverage reset and migrations. Every sample checks processed/event/lease counts, zero failures and unsettled rows, and complete prefixed fixture cleanup. No concurrent local test or benchmark lane used this rig."
+}

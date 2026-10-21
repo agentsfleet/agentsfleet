@@ -1,0 +1,60 @@
+{
+  "lane": "lease",
+  "profile": "rig",
+  "provenance": {
+    "revision": "ab66bb2ec",
+    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2",
+    "owned": true
+  },
+  "created": true,
+  "parameters": {
+    "BENCH_FLEETS": 160,
+    "BENCH_RUNNERS": 8,
+    "ledger_queue": 1,
+    "pool_size": 20
+  },
+  "measurements": {
+    "drain_commits_per_lease": 22.83125,
+    "drain_dragonfly_calls_per_lease": 3.0875,
+    "drain_event_rows": 160.0,
+    "drain_events": 160.0,
+    "drain_events_processed": 160.0,
+    "drain_failures": 0.0,
+    "drain_idle_dragonfly_calls_per_poll": 0.0010094891984655764,
+    "drain_idle_polls": 9906.0,
+    "drain_lease_p95_ms": 49.183,
+    "drain_leases": 160.0,
+    "drain_leases_per_second": 134.6289642279996,
+    "drain_ledger_rows_per_event": 1.0,
+    "drain_polls": 285.0,
+    "drain_report_p95_ms": 33.247,
+    "drain_statements_per_lease": 52.8125,
+    "drain_unsettled_rows": 0.0,
+    "error_rate": 0.0,
+    "exhausted": 1.0,
+    "failures": 0.0,
+    "idle_commits_per_poll": 1.0003028467595396,
+    "idle_statements_per_poll": 1.0,
+    "leases": 160.0,
+    "max_ms": 12.103,
+    "p95_ms": 8.135,
+    "p99_ms": 11.679,
+    "polls_per_second": 1775.0417900108132,
+    "rate_per_second": 1775.0417900108132,
+    "roundtrips_per_lease": 5.01875,
+    "wasted_claim_rate": 0.041916167664670656
+  },
+  "datastores": {
+    "dragonfly": {
+      "operations": 4
+    },
+    "postgres": {
+      "operations": 803
+    }
+  },
+  "fixture": {
+    "run_prefix": "bench-1792607012244-21711",
+    "created": 976,
+    "swept": 976
+  }
+}
