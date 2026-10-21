@@ -26,6 +26,21 @@ pub(in crate::model) struct Decoded {
     pub(in crate::model) output: i64,
 }
 
+impl Decoded {
+    pub(in crate::model) fn rejected() -> Self {
+        Self {
+            result: None,
+            continuation: None,
+            output: 0,
+            usage: ModelUsage::Known {
+                input_tokens: 0,
+                output_tokens: 0,
+                provider_cost_nanos: 0.to_string(),
+            },
+        }
+    }
+}
+
 pub(in crate::model) fn decode(
     status: u16,
     response: &CompletionResponse,

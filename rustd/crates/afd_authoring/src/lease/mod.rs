@@ -4,6 +4,7 @@ mod claim;
 pub(crate) mod failure;
 pub(crate) mod guard;
 pub(crate) mod meter;
+pub(crate) mod pending;
 mod renew;
 pub(crate) mod report;
 pub(crate) mod sql;

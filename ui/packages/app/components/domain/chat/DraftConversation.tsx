@@ -10,6 +10,7 @@ import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, useExterna
 import { GitPullRequestIcon, RadarIcon, SunriseIcon } from "lucide-react";
 import { SignalSpinner, BrandMark, Button, PageTitle, cn } from "@agentsfleet/design-system";
 import { isRunning, MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
+import { chatRecovery, isStopped, UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
 import { FleetReplyMarkdown } from "../FleetMarkdown";
 import { CHAT_EXAMPLES } from "./chat-defaults";
 import { ChatComposer } from "./ChatComposer";
@@ -19,21 +20,23 @@ const FAILURE_COPY: Readonly<Record<string, string>> = {
   choose_authoring_model: "Choose an available authoring model, then send a new message.",
   reduce_context: "Shorten the request or instructions before trying again.",
   retry_message: "Send a new message to try again.",
-  await_accounting: "The provider outcome is still being reconciled. Wait before retrying.",
+  await_accounting: "The provider outcome is uncertain. Stop this turn before sending a new message. Its usage will still be reconciled.",
   review_setup: "The setup changed. Check the updated instructions, then try again.",
 };
 
 export function DraftConversation({client, view, children}: {client: DraftClient; view: DraftView; children?: ReactNode}) {
-  const running = view.messages.some(isRunning);
+  const recovery = chatRecovery(view);
+  const cutoff = view.draft?.cancelled_through ?? "0";
+  const messages = useMemo(() => threadMessages(view.messages, cutoff), [view.messages, cutoff]);
   const adapter = useMemo(() => ({
-    messages: view.messages, isRunning: running, convertMessage: toThreadMessage,
+    messages, isRunning: recovery.pending, convertMessage: (message: ThreadMessageLike) => message,
     onNew: async (message: AppendMessage) => {
       const text = message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
       await client.send(text);
     },
     onCancel: () => client.stop(),
-  }), [client, view.messages, running]);
-  const runtime = useExternalStoreRuntime<Message>(adapter);
+  }), [client, messages, recovery.pending]);
+  const runtime = useExternalStoreRuntime(adapter);
   const empty = view.messages.length === 0 && !view.fleet && !view.draft && !view.preview;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -46,7 +49,7 @@ export function DraftConversation({client, view, children}: {client: DraftClient
             {children}
           </div>
           <ThreadPrimitive.ViewportFooter className={cn("mx-auto w-full max-w-measure bg-background py-md", !empty && "sticky bottom-0")}>
-            <ChatComposer client={client} view={view} running={running} />
+            <ChatComposer client={client} view={view} canStop={recovery.canStop} blocked={recovery.blocked} />
           </ThreadPrimitive.ViewportFooter>
           {empty ? <ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} /> : null}
         </ThreadPrimitive.Viewport>
@@ -84,22 +87,37 @@ function renderMessage({message}: {message: MessageState}) {
   const user = message.role === MESSAGE_ROLE.user;
   const text = message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
   const running = message.status?.type === "running";
+  const queued = message.metadata.custom.queued === true;
   return <MessagePrimitive.Root className="py-md">
     <div className={user ? "ml-auto max-w-prose rounded-xl bg-muted px-lg py-md" : "max-w-prose space-y-sm"}>
       <p className="text-xs font-medium text-muted-foreground">{user ? "You" : "Fleet setup"}</p>
-      {running && !text ? <output aria-label="Working" className="inline-flex items-center gap-sm text-label text-muted-foreground"><SignalSpinner className="text-pulse" />Working…</output>
+      {queued && !text ? <output aria-label="Queued" className="text-label text-muted-foreground">Queued…</output>
+        : running && !text ? <output aria-label="Working" className="inline-flex items-center gap-sm text-label text-muted-foreground"><SignalSpinner className="text-pulse" />Working…</output>
         : <FleetReplyMarkdown text={text} streaming={running} />}
     </div>
   </MessagePrimitive.Root>;
 }
 
-function toThreadMessage(message: Message): ThreadMessageLike {
+function threadMessages(messages: readonly Message[], cutoff: string): ThreadMessageLike[] {
+  const assistants = new Set(messages.filter((message) => message.role === MESSAGE_ROLE.assistant).map((message) => message.sequence));
+  return messages.flatMap((message) => {
+    const row = toThreadMessage(message, cutoff);
+    if (message.role !== MESSAGE_ROLE.user || !isRunning(message) || assistants.has(message.sequence)) return [row];
+    return [row, toThreadMessage({...message, role: MESSAGE_ROLE.assistant, text: undefined}, cutoff)];
+  });
+}
+
+function toThreadMessage(message: Message, cutoff: string): ThreadMessageLike {
   const failure = message.failure;
-  const recovery = failure ? FAILURE_COPY[failure.recovery_action] ?? "Refresh the durable status before continuing." : "";
-  const pending = isRunning(message);
+  const stopped = isStopped(message, cutoff);
+  const recovery = failure?.reason === UNKNOWN_USAGE_REASON && stopped
+    ? "Stopped. You can send a new message; earlier usage is still being reconciled."
+    : failure ? FAILURE_COPY[failure.recovery_action] ?? "Refresh the durable status before continuing." : "";
+  const pending = isRunning(message) && !stopped;
   const text = [message.text ?? "",
     message.role === MESSAGE_ROLE.assistant && failure ? `${failure.error_code}: ${recovery}` : "",
-    message.role === MESSAGE_ROLE.assistant && message.state === MESSAGE_STATE.cancelled ? "Authoring stopped." : ""].filter(Boolean).join("\n\n");
+    message.role === MESSAGE_ROLE.assistant && (message.state === MESSAGE_STATE.cancelled || (stopped && isRunning(message))) ? "Authoring stopped." : ""].filter(Boolean).join("\n\n");
   return {id: `${message.sequence}:${message.role}`, role: message.role, content: [{type: "text", text}], createdAt: new Date(message.created_at),
+    metadata: {custom: {queued: pending && message.state === MESSAGE_STATE.queued}},
     ...(message.role === MESSAGE_ROLE.assistant ? {status: pending ? {type: "running"} : {type: "complete", reason: "stop"}} : {})};
 }

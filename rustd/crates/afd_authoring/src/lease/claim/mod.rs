@@ -31,6 +31,10 @@ enum Placement {
 }
 
 impl Drafts {
+    /// The compiled discovery statement, for real database query-plan measurements.
+    #[cfg(feature = "test-util")]
+    pub const QUEUED_DRAFTS_QUERY: &'static str = sql::CANDIDATES;
+
     /// Admits one oldest queued message within an eligible private draft, under
     /// the shared poll's optimistic host choice.
     ///

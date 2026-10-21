@@ -1,25 +1,40 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { assertCompleteCatalogue, CURATED_IDENTITIES, isCuratedModel, isOfficialPriceSource } from "./curated";
-import { parseCatalogue } from "./catalogue";
+import { catalogueModelNames, isCuratedModel, isFreeModel, isOfficialPriceSource } from "./curated";
+import { CATALOGUE_URL, parseCatalogue, readCatalogue } from "./catalogue";
 import { catalogueFixture, modelFixture, priceFixture } from "./test-fixtures";
 
 describe("curated catalogue bounds", () => {
-  test("exactly 18 identities include native and routed Gemini independently", () => {
-    expect(CURATED_IDENTITIES).toHaveLength(18);
+  test("free models refuse a nonzero price", async () => {
+    const catalogue = await readCatalogue(new URL("../model-library-allowlist.json", import.meta.url));
+    const free = catalogue.models.filter(isFreeModel);
+    expect(free).toHaveLength(1);
+    expect(free[0]).toMatchObject({ provider: "openrouter", model_name: "minimax/minimax-m3.1-flash:free" });
+    expect(() => parseCatalogue({ ...catalogue, models: free.map((model) => ({ ...model,
+      prices: model.prices.map((price) => ({ ...price, output: "0.01" })),
+    })) })).toThrow("free model prices must remain zero");
+  });
+
+  test.each(["input", "cached_input", "output", "cache_write", "cache_write_5m", "cache_write_1h"])(
+    "paid models refuse decimal zero in %s", (field) => {
+      const subject = modelFixture({ prices: [priceFixture({ [field]: "0.0" })] });
+      expect(() => parseCatalogue(catalogueFixture([subject]))).toThrow("zero prices are reserved for free models");
+    });
+
+  test("the allowlist includes native and routed Gemini independently", () => {
     expect(isCuratedModel(modelFixture({ provider: "gemini", model_name: "gemini-4-argon" }))).toBe(true);
     expect(isCuratedModel(modelFixture({ provider: "openrouter", model_name: "google/gemini-4-argon" }))).toBe(true);
     expect(isCuratedModel(modelFixture({ model_name: "accounts/fireworks/models/deepseek-v4-pro-0813" }))).toBe(false);
     expect(() => parseCatalogue(catalogueFixture([modelFixture({ model_name: "unrequested-model" })]))).toThrow("not a curated identity");
   });
 
-  test("a missing, extra or repeated identity refuses catalogue replacement", () => {
-    const wanted = CURATED_IDENTITIES.map((identity) => ({ provider: identity.split("/")[0], model_name: identity.slice(identity.indexOf("/") + 1) }));
-    expect(() => assertCompleteCatalogue(wanted)).not.toThrow();
-    expect(() => assertCompleteCatalogue(wanted.slice(1))).toThrow("missing: anthropic/claude-fable-5-1");
-    expect(() => assertCompleteCatalogue([...wanted, modelFixture()])).toThrow("exactly the curated identities");
-    expect(() => assertCompleteCatalogue([...wanted, { provider: "openai", model_name: "unrequested-model" }])).toThrow("exactly the curated identities");
-    expect(() => assertCompleteCatalogue(wanted.map((model) => ({ ...model, provider: "fireworks" })))).toThrow("exactly the curated identities");
+  test("membership and safe diagnostic names come from the allowlist", async () => {
+    const catalogue = await readCatalogue(CATALOGUE_URL);
+    expect(catalogue.models).toHaveLength(19);
+    expect(catalogue.models.every(isCuratedModel)).toBe(true);
+    expect([...catalogueModelNames]).toEqual([...new Set(catalogue.models.map((model) => model.model_name))]);
+    expect(() => parseCatalogue(catalogueFixture([modelFixture(), modelFixture()])))
+      .toThrow("duplicate model identity");
   });
 
   test("a quoted price belongs to the provider's official host", () => {

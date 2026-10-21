@@ -454,6 +454,14 @@ One creation sequence serves both sources; §"Fleet creation and setup recovery"
 
 A draft has no queued/running message when Save begins. GET draft returns normalized effective setup, immutable requirements, live readiness, and a digest. The person chooses Save or Save and run now; trigger content is identical. Library installation of an unchanged revision bypasses a draft and reads its review through Inspect. Changing its name/model/setup opens a draft so every effective input has been reviewed.
 
+Stop raises the draft's accepted-message watermark before Save. It cancels queued and running messages through that sequence; retained attempts keep their accounting and reservations. Discovery and locked admission check only attempts above the watermark.
+
+A fresh Send refuses uncancelled unknown provider usage after checking exact replay. Stop allows a higher-sequence message to run subject to ordinary capacity and balance checks.
+
+Save preserves the watermark while the draft enters `saving`; activation closes it. A setup Kill that restores `editing` also preserves the watermark, so old proposals and answers remain fenced. Old reports may still settle their original attempt.
+
+Already accepted candidate edits remain available for the person's review; Stop does not undo them. The [Stop implementation](../../rustd/crates/afd_authoring/src/message/cancel.rs), [publication guard](../../rustd/crates/afd_authoring/src/lease/guard/mod.rs), and [creation regression](../../rustd/crates/afd_authoring/tests/draft/creation/stopped.rs) define these boundaries.
+
 POST fleets carries a UUIDv7 `Idempotency-Key`, immutable candidate or Library revision, reviewed name, review digest, and start choice. Authorize first, then record key/body digest and one fleet identity in a short transaction. A different body for the accepted key returns409. A same-key retry resumes that fleet; a progress response may advance, but accepted inputs and identity never change. Keep the content-free key receipt while the fleet exists and a 24-hour tombstone after purge; tombstone replay returns 410.
 
 The draft enters `saving` with the linked fleet identity. A previously published candidate's Library receipt remains a source pin; do not publish it again or change an existing revision. Save itself creates no Library entry. Publishing before Save and Save without publication both work.

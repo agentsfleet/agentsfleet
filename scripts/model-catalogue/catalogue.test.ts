@@ -143,7 +143,7 @@ describe("catalogue provenance", () => {
       expect(issues.map((issue) => issue.path)).toEqual([["models", 0, "prices", 0, field]]);
       expect(issues[0]?.message.startsWith(`${MODEL}: `)).toBe(true);
     }
-    for (const amount of ["0", "-1", "NaN", "1.0000000001", "9223372037", "1".repeat(33)])
+    for (const amount of ["-1", "NaN", "1.0000000001", "9223372037", "1".repeat(33)])
       expect(() => nanosPerMtok(amount)).toThrow();
   });
 });
@@ -185,6 +185,7 @@ describe("request pricing", () => {
   });
 
   test.each([
+    ["0", "0"],
     ["0.006", "6000000"], ["0.015", "15000000"], ["0.0375", "37500000"],
     ["0.0625", "62500000"], ["0.075", "75000000"], ["0.125", "125000000"],
     ["0.1875", "187500000"], ["0.000000001", "1"], ["9223372036.854775807", "9223372036854775807"],

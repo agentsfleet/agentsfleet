@@ -40,6 +40,21 @@ describe("conversation-first app navigation", () => {
     expect(docs.getAttribute("target")).toBe("_blank");
     expect(docs.getAttribute("rel")).toBe("noopener noreferrer");
   });
+  it("uses the compact centered New fleet icon button when collapsed", () => {
+    render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId={WORKSPACE.id} operatorScopes={[]} collapsed onNavigate={() => {}} />);
+    const action = screen.getByRole("link", {name: "New fleet"});
+    expect(action.classList.contains("w-9")).toBe(true);
+    expect(action.classList.contains("h-9")).toBe(true);
+    expect(action.classList.contains("self-center")).toBe(true);
+    expect(action.classList.contains("w-full")).toBe(false);
+    expect(action.getAttribute("title")).toBe("New fleet");
+  });
+  it("keeps the expanded sidebar free of search and fleet recents", () => {
+    mount();
+    expect(screen.getByRole("link", {name: "Your fleets"})).toBeTruthy();
+    expect(screen.queryByRole("textbox", {name: "Search all chats"})).toBeNull();
+    expect(screen.queryByText("Recents")).toBeNull();
+  });
   it("opens New fleet and records account and documentation destinations", async () => {
     mount(); const user = userEvent.setup();
     await user.click(screen.getByRole("link", {name: "New fleet"}));

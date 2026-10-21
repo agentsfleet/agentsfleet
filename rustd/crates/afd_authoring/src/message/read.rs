@@ -51,7 +51,7 @@ impl Drafts {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
-        read::lock(&mut tx, access, &person, id).await?;
+        let draft = read::lock(&mut tx, access, &person, id).await?;
         let binding = replay::digest(&(
             CURSOR_RESOURCE,
             access.workspace,
@@ -81,7 +81,7 @@ impl Drafts {
                 break;
             }
             next_cursor = Some(cursor(&binding, row.sequence, row.ordinal));
-            items.push(project(row)?);
+            items.push(project(row, draft.cancelled_through_sequence)?);
         }
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(Page {
@@ -92,7 +92,7 @@ impl Drafts {
     }
 }
 
-fn project(stored: Stored) -> Result<Message> {
+fn project(stored: Stored, cancelled_through: i64) -> Result<Message> {
     let user = stored.ordinal == 0;
     let state: MessageState = word(&stored.status)?;
     Ok(Message {
@@ -116,7 +116,9 @@ fn project(stored: Stored) -> Result<Message> {
             .as_deref()
             .map(word::<afd_wire::authoring::FailureReason>)
             .transpose()?
-            .map(Into::into),
+            .map(|reason| {
+                crate::types::Failure::for_message(reason, stored.sequence, cancelled_through)
+            }),
         created_at: stored.created_at,
         finished_at: stored.finished_at.map(jiff_sqlx::Timestamp::to_jiff),
     })

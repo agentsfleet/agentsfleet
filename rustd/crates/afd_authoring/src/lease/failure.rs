@@ -46,9 +46,9 @@ pub(crate) async fn record(
     } else {
         attempt.failure_reason.unwrap_or(reason)
     };
-    // Every caller holds the guard, which proved the message running under the
-    // draft's lock that every writer of a message takes: this write finishes it.
-    sqlx::query(crate::sql::message::FAIL)
+    // Late refusals retain attempt evidence even when Stop already finished
+    // the message. Only a real transition earns its terminal event.
+    let changed = sqlx::query(crate::sql::message::FAIL)
         .bind(attempt.draft_id.as_str())
         .bind(attempt.message_sequence)
         .bind(FAILED)
@@ -57,6 +57,8 @@ pub(crate) async fn record(
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
-    owed.finished(connection, attempt.into(), FAILED).await?;
+    if changed.rows_affected() == 1 {
+        owed.finished(connection, attempt.into(), FAILED).await?;
+    }
     Ok(true)
 }

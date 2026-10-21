@@ -2,14 +2,18 @@
 
 mod capacity;
 mod context;
+mod discovery;
 mod failure;
 mod fixture;
 mod funnel;
+mod history;
 mod holds;
 mod identity;
 mod obligations;
 mod offered;
 mod platform;
+mod recovery;
+mod rejections;
 mod replacement;
 mod revalidation;
 mod stop;

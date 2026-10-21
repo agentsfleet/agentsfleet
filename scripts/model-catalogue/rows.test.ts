@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseCatalogue } from "./catalogue";
+import { CATALOGUE_URL, parseCatalogue, readCatalogue } from "./catalogue";
 import { catalogueDiff, desiredRows, hasChanges, modelRowsSchema } from "./rows";
 import { seedReport } from "./seed";
 import { catalogueFixture, HAIKU_PROMPT_THRESHOLD, MODEL_NAME, modelFixture, priceFixture } from "./test-fixtures";
@@ -9,6 +9,20 @@ const KEY = `fireworks/${MODEL_NAME}`;
 const NANOS = ["150000000", "30000000", "500000000"];
 
 describe("seeder rows", () => {
+  test("the checked-in free MiniMax model seeds exact zero prices", async () => {
+    const rows = desiredRows(await readCatalogue(CATALOGUE_URL));
+    const minimax = rows.find((row) => row.model_name === "minimax/minimax-m3.1-flash:free");
+    expect(minimax?.provider).toBe("openrouter");
+    expect(minimax?.prices).toHaveLength(1);
+    const price = minimax?.prices[0];
+    // pin test: free inference must remain exactly zero in database units.
+    expect([price?.input_nanos_per_mtok, price?.cached_input_nanos_per_mtok, price?.output_nanos_per_mtok])
+      .toEqual(["0", "0", "0"]);
+    expect(price?.cache_write_nanos_per_mtok).toBeNull();
+    expect(price?.cache_write_5m_nanos_per_mtok).toBeNull();
+    expect(price?.cache_write_1h_nanos_per_mtok).toBeNull();
+  });
+
   test("only proved contexts become identities and exact integer price rows", () => {
     const catalogue = parseCatalogue(catalogueFixture([modelFixture(), modelFixture({ model_name: "accounts/fireworks/models/kimi-k3",
       context: null, context_unverified_reason: "No authenticated models API evidence." })]));
