@@ -47,6 +47,8 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_dragonfly::Error => QueueUnavailable,
     afd_events::Error => SteerPathFaulted,
     afd_fleet::Error => LeasePathFaulted,
+    afd_authoring::Error => AuthoringPathFaulted,
+    afd_fleet_lifecycle::Error => LiveSetFaulted,
     afd_admission::Error => LedgerUnreadable,
     afd_runner::Error => RunnerUnenrollable,
     sqlx::Error => FixtureUnseedable,

@@ -32,6 +32,13 @@ afd_billing.workspace = true
 afd_credential.workspace = true
 afd_gate.workspace = true
 afd_approval.workspace = true
+# The setup chat half of the production poll: `Plane::claim` admits chat
+# work through `Drafts`, and the saturation shape seeds its drafts through
+# `Drafts::create`, the route's own write path.
+afd_authoring.workspace = true
+# The live set a wall's viewers re-read every tick, read beside the poll so the
+# saturation shape measures the two competing for one pool.
+afd_fleet_lifecycle.workspace = true
 # The client the credential broker is built over. The drain never mints — its
 # fleets declare no integration — but the broker will not construct without one.
 reqwest.workspace = true

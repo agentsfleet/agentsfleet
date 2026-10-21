@@ -20,7 +20,9 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole, SubscriptionHub};
 
-use crate::error::Result;
+use sqlx::Connection as _;
+
+use crate::error::{ErrorKind, Result};
 
 /// The Dragonfly commands this crate spells itself, in one place.
 ///
@@ -112,6 +114,9 @@ pub struct Datastores {
     /// How many connections the pool may open, for the result file and for
     /// refusing more runners than that.
     pub pool_size: u32,
+    /// The URL the pool was resolved from, for a sampler that connects
+    /// outside it.
+    database_url: String,
     /// The Dragonfly configuration the queue was opened from, kept so a lane
     /// needing its own parked connection opens one from the same resolution.
     redis: DragonflyConfig,
@@ -139,8 +144,24 @@ impl Datastores {
             database,
             queue,
             pool_size: pool.max_connections(),
+            database_url: database_url.to_owned(),
             redis,
         })
+    }
+
+    /// A Postgres connection of the lane's own, outside the pool.
+    ///
+    /// For a sampler watching the pool under saturation: a pooled one would
+    /// queue behind the requesters it measures and report their wait as its
+    /// own.
+    ///
+    /// # Errors
+    ///
+    /// `SamplerUnavailable` when the connection will not open.
+    pub async fn sampler(&self) -> Result<sqlx::PgConnection> {
+        sqlx::PgConnection::connect(&self.database_url)
+            .await
+            .map_err(|source| ErrorKind::SamplerUnavailable { source }.into())
     }
 
     /// A connection of the lane's own, for a reader that parks on a stream.
