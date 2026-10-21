@@ -158,3 +158,45 @@ async fn a_claim_skips_a_creator_another_transaction_holds_rather_than_waiting()
     );
     f.cleanup().await;
 }
+
+/// Runs `statement` as the isolated lane's owner: privileges are the owner's to
+/// change, and they live in this database alone.
+async fn as_owner(f: &Fixture, statement: &'static str) {
+    let mut owner = sqlx::PgConnection::connect(&f.owner_url())
+        .await
+        .expect("the lane owner connects");
+    sqlx::query(statement)
+        .execute(&mut owner)
+        .await
+        .expect("the owner changes the API role's privileges");
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_claim_whose_non_waiting_lock_fails_otherwise_surfaces_the_datastore_error() {
+    let f = fund(Fixture::isolated().await, 1).await;
+    let draft = queue(&f, "Locked under a privilege the API lost").await;
+    // `FOR UPDATE` needs UPDATE: the draft's NOWAIT now fails as a permission
+    // error, not as a held row, and a failure is no reason to skip.
+    as_owner(&f, "REVOKE UPDATE ON authoring.drafts FROM api_runtime").await;
+    let refused = f.drafts.claim_queued(&f.runner, &draft.id).await;
+    as_owner(&f, "GRANT UPDATE ON authoring.drafts TO api_runtime").await;
+    let refused = refused.expect_err("a lock that failed is not a lock that was held");
+    assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
+    assert_eq!(attempts(&f).await, 0);
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_claim_whose_access_read_fails_surfaces_the_datastore_error() {
+    let f = fund(Fixture::isolated().await, 1).await;
+    let draft = queue(&f, "Authorized through a table the API cannot read").await;
+    as_owner(&f, "REVOKE SELECT ON identity.workspaces FROM api_runtime").await;
+    let refused = f.drafts.claim_queued(&f.runner, &draft.id).await;
+    as_owner(&f, "GRANT SELECT ON identity.workspaces TO api_runtime").await;
+    let refused = refused.expect_err("an unreadable membership is no skip");
+    assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
+    assert_eq!(attempts(&f).await, 0);
+    f.cleanup().await;
+}
