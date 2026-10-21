@@ -4,7 +4,9 @@ use afd_credential::provider::RegisteredModel;
 use afd_wire::authoring::{ContextMessage, ContextRole, ENVELOPE_BYTES_MAX};
 use sqlx::PgConnection;
 
-use super::{selection::Selected, sql};
+use afd_core::id::Uuid7;
+
+use super::sql;
 use crate::{
     Result, candidate,
     error::{
@@ -18,6 +20,7 @@ use crate::{
 const HISTORY_ROWS_MAX: i64 = 64;
 const FIXED_INPUT_TOKENS: i64 = 2048 + 4096;
 
+#[derive(Debug)]
 pub(super) struct Context {
     pub(super) candidate: Option<Candidate>,
     pub(super) messages: Vec<ContextMessage>,
@@ -29,18 +32,27 @@ struct Envelope<'a> {
     text: &'a str,
 }
 
+/// Where a context is read from: the draft, its head candidate, and the
+/// message being admitted.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Source<'a> {
+    pub(super) draft: &'a Uuid7,
+    pub(super) head: Option<&'a Uuid7>,
+    pub(super) sequence: i64,
+}
+
 pub(super) async fn read(
     connection: &mut PgConnection,
-    selected: &Selected,
+    source: Source<'_>,
     model: &RegisteredModel,
 ) -> Result<Context> {
-    let candidate = match &selected.draft.head_candidate_id {
-        Some(id) => Some(candidate::read(connection, &selected.draft.id, id).await?),
+    let candidate = match source.head {
+        Some(id) => Some(candidate::read(connection, source.draft, id).await?),
         None => None,
     };
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(sql::HISTORY)
-        .bind(selected.draft.id.as_str())
-        .bind(selected.sequence)
+        .bind(source.draft.as_str())
+        .bind(source.sequence)
         .bind(HISTORY_ROWS_MAX + 1)
         .fetch_all(connection)
         .await
@@ -69,7 +81,8 @@ pub(super) async fn read(
     Ok(context)
 }
 
-fn fits(context: &Context, model: &RegisteredModel) -> Result<()> {
+/// Whether `context`, framed, fits `model`'s per-call budget and window.
+pub(super) fn fits(context: &Context, model: &RegisteredModel) -> Result<()> {
     let text = serde_json::to_string(&(&context.messages, &context.candidate)).map_err(stored)?;
     if garde::Unvalidated::new(Envelope { text: &text })
         .validate()
