@@ -233,4 +233,40 @@ pub(crate) enum ErrorKind {
 
     #[error("a lease answer would not parse as a lease response")]
     LeaseUnreadable { source: serde_json::Error },
+
+    /// Refused rather than defaulted: a misspelt shape would otherwise run the
+    /// default lane under the name of the one asked for.
+    #[error("unknown bench shape {name:?}: expected one of {expected}")]
+    UnknownShape {
+        name: String,
+        expected: &'static str,
+    },
+
+    /// Exhausting a deployed pool on purpose is an outage drill, not a
+    /// measurement, so the saturation shape runs on the compose rig alone.
+    #[error("shape {shape} runs only under profile rig, not {profile}")]
+    ShapeNeedsRig {
+        shape: &'static str,
+        profile: Profile,
+    },
+
+    #[error("the saturation sampler's own Postgres connection would not open or answer")]
+    SamplerUnavailable { source: sqlx::Error },
+
+    #[error("the setup chat path would not run")]
+    AuthoringPathFaulted { source: afd_authoring::Error },
+
+    #[error("the fleet live set would not be read")]
+    LiveSetFaulted { source: afd_fleet_lifecycle::Error },
+
+    /// The saturation shape's correctness half: a number above zero here is a
+    /// defect under load, and a rate measured beside it would be quoted
+    /// without it.
+    /// Refused rather than reported as clean: a census over work never
+    /// issued counts zero whatever the path would have done.
+    #[error("under saturation no {kind} lease was issued, so the window measured nothing about it")]
+    NothingIssued { kind: &'static str },
+
+    #[error("under saturation {invariant} was broken {count} time(s)")]
+    InvariantBroken { invariant: &'static str, count: u64 },
 }

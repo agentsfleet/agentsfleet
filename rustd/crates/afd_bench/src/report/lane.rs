@@ -20,6 +20,10 @@ pub enum Lane {
     Steer,
     /// Leases per second, and the Postgres cost of each.
     Lease,
+    /// The production poll with more requesters than connections: rate, pool
+    /// wait and hold time, and the lease invariants under that pressure.
+    #[serde(rename = "lease-saturation")]
+    LeaseSaturation,
     /// What one delivery worker sustains, and what a slow destination costs.
     Outbound,
     /// What an idle fleet costs when there are a million of them.
@@ -33,9 +37,10 @@ impl Lane {
     ///
     /// The one list a binary iterates and the one a usage line is built from,
     /// so adding a lane is the enum arm and nothing else.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Steer,
         Self::Lease,
+        Self::LeaseSaturation,
         Self::Outbound,
         Self::Cardinality,
         Self::Tail,
@@ -47,6 +52,7 @@ impl Lane {
         match self {
             Self::Steer => "steer",
             Self::Lease => "lease",
+            Self::LeaseSaturation => "lease-saturation",
             Self::Outbound => "outbound",
             Self::Cardinality => "cardinality",
             Self::Tail => "tail",
@@ -83,4 +89,5 @@ impl core::str::FromStr for Lane {
 }
 
 /// How the lane names are spelled, for the refusal an unknown one raises.
-const LANE_USAGE: &str = "expected one of steer, lease, outbound, cardinality, tail";
+const LANE_USAGE: &str =
+    "expected one of steer, lease, lease-saturation, outbound, cardinality, tail";

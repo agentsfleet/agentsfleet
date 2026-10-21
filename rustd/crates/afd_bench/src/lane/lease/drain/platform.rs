@@ -25,7 +25,6 @@ use afd_db::test_util::{DefaultSeed, ModelSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::value::RawValue;
 
-use super::stage::INDEX_BASE;
 use crate::datastores::Datastores;
 use crate::error::{ErrorKind, Result, seed_refused};
 use crate::lane::lease::seed::{self, SEEDED_AT};
@@ -42,7 +41,11 @@ const PROVIDER: &str = "anthropic";
 const MODEL: &str = "bench-drain-model";
 
 /// A credential shaped like a provider key and worth nothing.
-const CREDENTIAL_BODY: &str = r#"{"api_key":"bench-not-a-credential"}"#;
+///
+/// It names its provider because the vault projects `meta_provider` from that
+/// field, and a setup chat resolves the platform model only through a
+/// credential whose projected provider matches the default's.
+const CREDENTIAL_BODY: &str = r#"{"provider":"anthropic","api_key":"bench-not-a-credential"}"#;
 
 /// The context window the catalogue row advertises; the column is required.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
@@ -58,23 +61,27 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 /// # Errors
 ///
 /// `CredentialUnsealable` when the host will not supply entropy.
-pub(super) fn minted_kek() -> Result<Kek> {
+pub(in crate::lane::lease) fn minted_kek() -> Result<Kek> {
     let mut bytes = [0_u8; afd_crypto::KEY_LEN];
     Entropy::new().fill(&mut bytes)?;
     Ok(Kek::from_bytes(bytes))
 }
 
 /// The catalogue row, the credential sealed under `kek`, and the default
-/// naming both.
+/// naming both, keyed off the population whose identifiers start at `base`.
 ///
 /// # Errors
 ///
 /// Whatever Postgres refused, a credential the vault would not store, and
 /// `PlatformDefaultHeld` when another run holds the default.
-pub(super) async fn stage(stores: &Datastores, kek: &Arc<Kek>) -> Result<()> {
-    let workspace = source_workspace();
+pub(in crate::lane::lease) async fn stage(
+    stores: &Datastores,
+    kek: &Arc<Kek>,
+    base: u64,
+) -> Result<()> {
+    let workspace = source_workspace(base);
     let mut connection = stores.database.acquire().await?;
-    ModelSeed::new(&model_row(), PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
+    ModelSeed::new(&model_row(base), PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
         .rates(
             INPUT_NANOS_PER_MTOK,
             CACHED_INPUT_NANOS_PER_MTOK,
@@ -129,12 +136,12 @@ async fn seal_credential(stores: &Datastores, kek: &Arc<Kek>, workspace: &str) -
 /// # Errors
 ///
 /// Whatever Postgres refused.
-pub(super) async fn release(stores: &Datastores) -> Result<()> {
+pub(in crate::lane::lease) async fn release(stores: &Datastores, base: u64) -> Result<()> {
     let mut connection = stores.database.acquire().await?;
-    DefaultSeed::release(&mut *connection, PROVIDER, &source_workspace())
+    DefaultSeed::release(&mut *connection, PROVIDER, &source_workspace(base))
         .await
         .map_err(seed_refused)?;
-    ModelSeed::remove(&mut *connection, &model_row())
+    ModelSeed::remove(&mut *connection, &model_row(base))
         .await
         .map_err(seed_refused)?;
     Ok(())
@@ -144,11 +151,11 @@ pub(super) async fn release(stores: &Datastores) -> Result<()> {
 ///
 /// Derived from the index rather than carried from staging, so a staging that
 /// failed halfway can still be released.
-fn source_workspace() -> String {
-    seed::identities(INDEX_BASE).workspace
+fn source_workspace(base: u64) -> String {
+    seed::identities(base).workspace
 }
 
 /// The catalogue row's identifier, derived for the same reason.
-fn model_row() -> String {
-    seed::identifier(KIND_MODEL, INDEX_BASE)
+fn model_row(base: u64) -> String {
+    seed::identifier(KIND_MODEL, base)
 }
