@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M226
 **Workstream:** 001
 **Date:** Oct 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — no user surface changes; it removes the second copy of the work queue and the sweepers that keep the two copies in step
 **Categories:** API, OBS
 **Batch:** B1 — one Pull Request; the queue cannot half-move, so the cutover, the deletions and the docs ship together
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m226-admissions-ledger-queue`
+**Baseline revision:** 0fa9e55356571d57df69cd3a13fb3b90930b0e49
+**Test Baseline:** pending — measured before the Pull Request with the declared unit and integration lanes
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M225_001 — its doorbell (a sharded publish on every mark that wakes a parked lease poll) lands first; this spec moves the doorbell off the readiness index it deletes
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 13, 2026) from the adversarial review of the pickup path during M225_001 review round 2: three source maps of `feat/m225-lease-pickup-wake-hint` at `b25be9c72`, re-checked against `main` at `4a53b948c`
