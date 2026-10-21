@@ -94,9 +94,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Before the existing reads, the claim takes the creator's user row and the draft row with `NOWAIT`, in the order it already locks them; a held lock makes that candidate skipped and the walk continues to the next. The shared lock statements and their other callers are unchanged. Lock order stays host, then user, then draft. Prompt context serialisation and its size check move out of the locked section and are revalidated against the committed state.
 
-- **Dimension 2.1** — with tenant A's draft held, a claim admits tenant B's message and does not wait on A → Test `test_locked_draft_does_not_block_other_tenant`
-- **Dimension 2.2** — when every candidate's draft is locked, the claim returns no work promptly instead of blocking → Test `test_all_drafts_locked_returns_no_work`
-- **Dimension 2.4** — with tenant A's wallet row held `FOR UPDATE`, a claim still admits A's message; pins `f74ad2323`'s removal of the wallet lock → Test `test_locked_wallet_does_not_block_claim`
+- **Dimension 2.1** — DONE — with tenant A's draft held, a claim admits tenant B's message and does not wait on A → Test `test_locked_draft_does_not_block_other_tenant`
+- **Dimension 2.2** — DONE — when every candidate's draft is locked, the claim returns no work promptly instead of blocking → Test `test_all_drafts_locked_returns_no_work`
+- **Dimension 2.4** — DONE — with tenant A's wallet row held `FOR UPDATE`, a claim still admits A's message; pins `f74ad2323`'s removal of the wallet lock → Test `test_locked_wallet_does_not_block_claim`
 - **Dimension 2.3** — a message whose context changed between preparation and commit is not admitted on stale context → Test `test_stale_context_is_revalidated`
 
 ### §3 — Live-set loads coalesce
@@ -147,7 +147,7 @@ the live-set read becomes a coalesced load. `make bench-lease` gains BENCH_SHAPE
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit + bench | `test_saturation_profile_holds_invariants` | the census judge admits a clean run; live, `make bench-lease BENCH_SHAPE=saturation` with requesters at twice the pool size across 5 tenants → 0 duplicate leases, 0 oversubscribed hosts, pool serves every connection again; the live run refuses non-zero (`afd_bench` is outside `make test-integration-rustd`, `make/test-integration-rustd.mk:155`) |
 | 1.2 | manual | `test_saturation_baseline_recorded` | baseline run output (rate, p95, pool wait, hold time) pasted in Session Notes before §2 |
-| 2.1 | integration | `test_locked_draft_does_not_block_other_tenant` | A's draft held, A older than B → claim admits B within the poll, A untouched |
+| 2.1 | integration | `test_locked_draft_does_not_block_other_tenant` | A's draft held (owner, older) and B's free (member, newer) → claim admits B while A is held, then admits A once released; fails by timeout without the skip |
 | 2.2 | integration | `test_all_drafts_locked_returns_no_work` | every candidate draft held → claim returns none without waiting on any |
 | 2.3 | integration | `test_stale_context_is_revalidated` | draft changed after preparation → candidate skipped; next poll admits on fresh context |
 | 2.4 | integration | `test_locked_wallet_does_not_block_claim` | A's wallet row held `FOR UPDATE` → claim admits A's message |
@@ -208,4 +208,5 @@ N/A — no files deleted.
 - **Metrics review** — adds the operator event `authoring_claim_draft_skipped`; no analytics/funnel playbook change, since it is an operator signal with no product funnel.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **§1 baseline** (Oct 21, 2026, reset rig, `bench/baselines/lease-saturation.rig.json`, built over `89bc76631` plus the §1 lane): 40 hosts × 4 workers on a 20-connection pool, 5 chat tenants × 8 drafts, 200 fleets, slow writer holding tenant A's drafts 1 s of every 1.25 s. `leases_per_second=19.80 lease_p95_ms=5394 chat_lease_p95_ms=4760 pool_wait_p95_ms=93.6 hold_p95_ms=973 live_set_p95_ms=33.2`, 0 doubled, 0 oversubscribed, pool recovered. Two `KEEP_TEST_STATE=1` repeats: chat p95 7524 / 5566 ms, rate 16.8 / 20.0 — roughly 25% spread, the margin §4 decisions must clear. Without the slow writer the same shape ran 7055 polls vs 292, chat stall absent.
+- **§2 skip, measured** (Oct 21, 2026; three runs per variant, first on a reset rig; same bench, hold sampler excluding the slow writer's own session; only `lease/claim/{mod,selection,sql/mod}.rs` differ). Medians, before (`8fb113cc8` claim) → after: `leases_per_second` 41.7 → 62.7, `chat_lease_p95_ms` 3006 → 707, `lease_p95_ms` 3207 → 745, `hold_p95_ms` 959 → 17, `pool_wait_p95_ms` 28 → 13; every invariant clean in all six. In-set spread about 4% on rate. Decision: keep. The committed baseline is replaced by the before set's reset-rig run, because the earlier one counted the slow writer's holds as the path's.
 - **Deferrals** — none.

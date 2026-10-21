@@ -28,6 +28,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
 | Test handshake | handshakes, never sleeps | channels, `Notify` and `CancellationToken` on both planes; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
+| Setup chat claim | never waits on a row lock | the creator and draft rows are taken `NOWAIT` in a savepoint; a held one skips that draft for the next | §Runner capacity and authoring lock order |
 | Discipline scope | no roster | C1–C5 hold at review; RULE NLR owns cleanup of the files a change touches | §Expanding the discipline base |
 
 ## Traps
@@ -41,6 +42,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Never free shared state before its tasks and threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
 - New cross-boundary channels declare one producer and one consumer, and the payload's ownership at the boundary; reshaping existing ones is a separate judgment with this doc as input (§Channel inventory).
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
+- Never let a setup chat claim wait on a row while it holds the host row: every other tenant on that poll waits behind it. Take the row `NOWAIT` and skip (§Runner capacity and authoring lock order).
 
 ## The five invariants (rules C1–C5)
 
@@ -306,4 +308,27 @@ Integration (CI) job that runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims and both lease renewal kinds acquire the runner row before counting or extending live capacity. Sample database time after this guard; an original expired lease/affinity cannot revive. Authoring admission/dispatch/renewal acquires wallet → draft → attempt after the host guard where required. Runtime renewal uses runner → lease/affinity → wallet. Runtime reports use lease → wallet and do not acquire the runner or authoring rows. Stop/delete uses wallet → draft → attempt and never later takes the runner guard. Commit dispatch intent before network I/O; release every database lock before provider calls. Unknown provider usage retains its outstanding admission bound. Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
+All claims and both lease renewal kinds acquire the runner row before counting or extending live capacity. Sample database time after this guard; an original expired lease/affinity cannot revive. Runtime renewal uses runner → lease/affinity → wallet. Runtime reports use lease → wallet and do not acquire the runner or authoring rows. Commit dispatch intent before network I/O; release every database lock before provider calls. Unknown provider usage retains its outstanding admission bound. Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
+
+No setup chat path locks the wallet row: since the chat moved its money onto the Biller, the claim gate reads the balance less every open hold without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`), and the only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`). Stop and delete take draft → attempt and never later take the runner guard.
+
+### The setup chat claim never waits on a row
+
+A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_authoring/src/lease/claim/mod.rs`). Each locks the host row, then the creator's user row, then the draft. Every draft writer — a message sent, an edit, a revision applied, a review — takes that draft lock too, and the claim sets no `lock_timeout`. So a claim that WAITED on a busy draft held its host row the whole time, and every other tenant's message behind that draft waited with it:
+
+```
+BEFORE — the claim waits                      AFTER — the claim skips
+                                              
+ runner R polls                                runner R polls
+   │ lock host row R                             │ lock host row R
+   ├─ draft A1 (tenant A) ── held by a writer    ├─ draft A1 ── held? NOWAIT refuses
+   │     ⏳ waits until the writer commits        │     ↩ savepoint rolls back, A1 skipped
+   │     (host row R held, ~1 s per write)       ├─ draft B1 (tenant B) ── free
+   ├─ draft B1 (tenant B) ── never reached       │     ✔ admitted, lease issued
+   │     until A's write ends                    └─ commit; A1 is admitted on a later
+   └─ every poll repeats the wait                    poll, once its writer lets go
+```
+
+`authorize` takes the creator's row `FOR SHARE NOWAIT` and the draft's `FOR UPDATE NOWAIT`, in the order the reads after it lock them, inside a savepoint (`afd_authoring/src/lease/claim/selection.rs`, `sql/hold_user.sql`, `sql/hold_draft.sql`). A refused lock raises `55P03 lock_not_available`; rolling the savepoint back keeps the claim's own transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads that follow re-take locks the transaction already holds and never wait. The skip logs `authoring_claim_draft_skipped` at `debug` — under contention it fires on every poll of the walk. A skipped draft is passed over, not dropped: its order by age resumes on the first poll after the writer commits.
+
+Measured by `make bench-lease BENCH_SHAPE=saturation` (40 hosts on a 20-connection pool, one writer holding a tenant's drafts 1 s of every 1.25 s; medians of three runs): claim hold p95 959 → 17 ms, chat lease p95 3 006 → 707 ms, 41.7 → 62.7 leases/s, no lease doubled and no host over its workers either way — see `scaling.md` §Measured ceilings. Proofs: `tests/draft/admission/skipping.rs`; a claim can still be a deadlock victim on a lock it does wait for, the catalogue its model read shares (`tests/draft/admission/revalidation.rs`).

@@ -12,13 +12,21 @@ use afd_wire::lease::LeaseKind;
 use sqlx::Connection as _;
 
 use crate::{Drafts, Result, error::raise::query, funnel::Owed, types::Candidate};
-use selection::Hint;
+use selection::{Authorized, Hint};
 
 /// The complete private placement returned only to the authenticated runner.
 pub type Claimed = afd_wire::authoring::Lease<Candidate>;
 
 /// Logged when a freshly claimed attempt's hold was not placed.
 const EVENT_HOLD_UNPLACED: &str = "setup_chat_hold_unplaced";
+
+/// Logged when a claim skips a candidate whose creator or draft another
+/// transaction holds.
+const EVENT_DRAFT_SKIPPED: &str = "authoring_claim_draft_skipped";
+
+/// What [`EVENT_DRAFT_SKIPPED`] says.
+const MESSAGE_DRAFT_SKIPPED: &str =
+    "a held draft was skipped, not waited on; a later poll admits it";
 
 /// What [`EVENT_HOLD_UNPLACED`] says, whichever way the hold was missed.
 const MESSAGE_HOLD_UNPLACED: &str =
@@ -84,10 +92,22 @@ impl Drafts {
             return Ok(Placement::Busy);
         }
         let mut owed = Owed::default();
-        let Some(selected) = selection::authorize(&mut tx, hint, &mut owed).await? else {
-            tx.commit().await.map_err(query(sql::CONTEXT))?;
-            owed.settle(&self.analytics);
-            return Ok(Placement::Skipped);
+        let selected = match selection::authorize(&mut tx, hint, &mut owed).await? {
+            Authorized::Selected(selected) => *selected,
+            passed => {
+                tx.commit().await.map_err(query(sql::CONTEXT))?;
+                owed.settle(&self.analytics);
+                if matches!(passed, Authorized::Locked) {
+                    // Debug: under contention this fires on every poll of the walk.
+                    let runner_id = runner.as_str();
+                    tracing::debug!(
+                        runner_id,
+                        event = EVENT_DRAFT_SKIPPED,
+                        MESSAGE_DRAFT_SKIPPED
+                    );
+                }
+                return Ok(Placement::Skipped);
+            }
         };
         let admitted = issue::admit(self, &mut tx, runner, hint, selected, &mut owed).await?;
         if admitted.is_some()

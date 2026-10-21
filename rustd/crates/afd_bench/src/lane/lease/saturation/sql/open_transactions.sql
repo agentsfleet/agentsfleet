@@ -4,3 +4,4 @@ SELECT (EXTRACT(EPOCH FROM clock_timestamp() - xact_start) * 1000)::float8
    AND backend_type = 'client backend'
    AND xact_start IS NOT NULL
    AND pid <> pg_backend_pid()
+   AND application_name <> $1

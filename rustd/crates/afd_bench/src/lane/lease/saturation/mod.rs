@@ -168,7 +168,7 @@ async fn spawn_writer(
     staged: &stage::Staged,
     shared: &Arc<Shared>,
 ) -> Result<tokio::task::JoinHandle<Result<u64>>> {
-    let mut locker = stores.sampler().await?;
+    let mut locker = slow::named(stores.sampler().await?).await?;
     let tenant = staged
         .tenants
         .first()

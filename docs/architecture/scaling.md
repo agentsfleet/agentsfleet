@@ -256,8 +256,9 @@ Dragonfly — `make bench-<lane> PROFILE=rig` — and the committed result sits 
 it in `bench/baselines/`. Absolute rates move with hardware; the shapes below
 do not. A baseline that moves takes its row here with it in the same commit.
 The steer, delivery and cardinality rows were re-measured at `774f99cbd`; the
-lease rows come from the result file stamped `c82badcb5`, and the live-tail rows
-from `e2d250172`, the revision the tail lane was built on. Latency columns moved with
+lease rows come from the result file stamped `c82badcb5`, the live-tail rows
+from `e2d250172`, the revision the tail lane was built on, and the saturation row
+from paired runs on Oct 21, 2026 that differ only in the claim code. Latency columns moved with
 host load between runs on this shared machine; the counts beside them did not.
 
 Statement and commit counts are Postgres's own: `pg_stat_statements` calls
@@ -275,6 +276,7 @@ says why each correction is there.
 | Delivery, healthy | 49.6 jobs/s per worker with one 250 ms destination in sixteen | Ten times the five-per-second estimate the refactor argument was made from — but see the next row. |
 | Delivery, head-of-line | the OTHER fifteen destinations' p95 3 752 ms against the slow one's 3 758 ms | With 6% of jobs slow, the healthy 94% wait exactly as long. One stream, one worker, one queue position at a time. |
 | Delivery, retry | 95.9% of the window in the ladder with two refusing destinations in sixteen (not re-measured at `774f99cbd`: the default run refuses nothing, and that baseline now carries a retry occupancy of 0) | Eight jobs that never resolve cost every job behind them the whole ladder. |
+| Setup chat claim under saturation | before → after the claim stopped waiting on a held draft: claim hold p95 959 → 17 ms, chat lease p95 3 006 → 707 ms, any-lease p95 3 207 → 745 ms, pool wait p95 28 → 13 ms, 41.7 → 62.7 leases/s; 0 doubled leases, 0 hosts over their workers, pool served every connection afterwards in all six runs (medians of three each; 40 hosts × 4 workers on a 20-connection pool, 5 chat tenants × 8 drafts, 200 fleets, one writer holding a tenant's drafts 1 s of every 1.25 s; `make bench-lease BENCH_SHAPE=saturation`, baseline `lease-saturation.rig.json` is the before set's reset-rig run) | One busy draft used to hold its claim's host row for the length of the write, so every tenant behind it waited. Skipped instead, the hold drops to the claim's own work; what remains of the chat tail is the held tenant's drafts waiting for the writer's gaps. |
 | Cardinality | 4.6 KB of Dragonfly per idle fleet, flat from 10 to 10 000 (4 624 / 4 608 / 4 641 / 4 641 B); peek 0.09–0.24 ms, stream read 0.06–0.26 ms, candidate query 0.54 ms at 10 000 | Linear. A million idle fleets is roughly 4.6 GB of Dragonfly and no slower a hot path. |
 | Live tail fan-out | 3.05–3.06 allocations per delivered frame with 1 024 viewers on one fleet, flat from 200 B to 64 KiB (3.12–3.14 at 256, 3.45–3.52 at 64, 31–36 at one); 8.3 / 10.2 / 20.0 µs of runtime busy time per delivered frame and publish-to-receive p95 3.1 / 4.1 / 7.4 ms at 1 024 viewers for 200 B / 4 KiB / 64 KiB; every frame delivered, no lag notice (`make bench-tail`) | About three allocations per viewer per frame: the hub's per-reader copy of the message and the SSE frame built from it. Fan-out cost grows with viewers × frames, and with payload size through the copy. |
 | Live tail streams | 13.5 KB of heap per open, idle per-fleet stream, flat from 64 to 4 096 streams (13 800 / 13 494 / 13 521 / 13 529 B), so 4 096 streams hold about 53 MiB; one frame sent to every stream arrives at p95 0.18 / 0.14 / 0.14 / 0.13 ms, none lost (`make bench-tail`, after the hub shared each frame; 21.7 KB per stream before) | Flat per stream: at the `SSE_MAX_STREAMS` default of 256 that is 3.3 MiB. Memory and latency bind nothing up to 4 096 streams; file descriptors bind first. |
