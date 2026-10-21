@@ -3,9 +3,9 @@
 use super::{Fixtures, relation_scans, run};
 use crate::report_seed::held_in;
 use afd_db::config::DbRole;
+use afd_fleet::lease::sql::queue::CLAIM_HEAD;
 use sqlx::{Connection as _, PgConnection};
 
-const CLAIM: &str = include_str!("../../src/lease/sql/lease/claim_admission_head.sql");
 const RETAINED: &str = "WITH events AS (INSERT INTO fleet.events \
     (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,created_at,updated_at) \
     SELECT l.fleet_id,l.workspace_id,'retained-'||n,'fixture','chat','processed','{}',now(),now() \
@@ -74,7 +74,7 @@ async fn prior_lease_lookup_uses_both_event_index_keys_for_fresh_and_reclaimed_h
 
 async fn claim_plan(connection: &mut PgConnection, fleet: &str, runner: &str) -> serde_json::Value {
     sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-        "EXPLAIN (ANALYZE, FORMAT JSON) {CLAIM}"
+        "EXPLAIN (ANALYZE, FORMAT JSON) {CLAIM_HEAD}"
     )))
     .bind(fleet)
     .bind(runner)
