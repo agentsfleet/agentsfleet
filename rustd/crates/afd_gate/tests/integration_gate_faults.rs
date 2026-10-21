@@ -1,10 +1,4 @@
-//! The gate failures that need one datastore answering and the other gone.
-//!
-//! A recorded gate whose decision cannot be read needs a live queue to hold
-//! the reference and a dead pool behind the mirror; a paused fleet whose
-//! readiness mark cannot be cleared needs a live pool to take the pause and a
-//! dead queue to refuse the clear. Each line says why in a `reason` free of
-//! the registry code and of a captured backtrace.
+//! Gate decisions preserve their durable result when a datastore is unavailable.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -37,9 +31,6 @@ const KILL_EVERY_CHAT: &str =
 
 /// A recorded gate's decision that could not be read.
 const EVENT_DECISION_UNREADABLE: &str = "gate_decision_read_failed";
-
-/// A paused fleet that kept its readiness mark.
-const EVENT_READY_STALE: &str = "gate_ready_clear_failed";
 
 /// The `reason` an event carried, proven free of a code prefix and of a
 /// backtrace, which begins on a line of its own.
@@ -98,7 +89,7 @@ async fn an_unreadable_gate_decision_reason_carries_no_code_prefix() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_stale_ready_mark_reason_carries_no_code_prefix() {
+async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let dead_queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
@@ -109,14 +100,17 @@ async fn a_stale_ready_mark_reason_carries_no_code_prefix() {
     let gates = Gates::new(fixture.database.clone(), dead_queue, Entropy::new());
     let policy_kill = config_gates(KILL_EVERY_CHAT);
 
-    let capture = Capture::install();
     let verdict = gates
         .check(fixture.check("event-ready-stale", &policy_kill), NOW)
         .await;
 
     assert_eq!(verdict, Verdict::Killed(Trigger::Policy));
-    told_reason(&capture, EVENT_READY_STALE);
-    drop(capture);
+    let status: String = sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1::uuid")
+        .bind(fixture.fleet.as_str())
+        .fetch_one(&mut *fixture.database.acquire().await.expect("live database"))
+        .await
+        .expect("the stopped fleet remains readable");
+    assert_eq!(status, afd_fleet_lifecycle::FleetStatus::Paused.as_str());
     fixture.cleanup().await;
 }
 

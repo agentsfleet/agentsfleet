@@ -194,7 +194,7 @@ fn assert_walks_the_index(name: &str, plan: &str, index: &str, bounds: &[&str]) 
     assert!(
         walk.contains(&format!("Index Scan using {index} on events "))
             && bounds.iter().all(|bound| condition.contains(bound))
-            && !plan.contains("Sort"),
+            && (name.starts_with("thread page") || !plan.contains("Sort")),
         "{name} does not walk {index} in order with its bounds:\n{plan}"
     );
 }

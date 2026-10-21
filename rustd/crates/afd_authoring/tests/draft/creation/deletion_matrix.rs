@@ -142,7 +142,7 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_deletion_matrix_keeps_money() {
     let c = Case::create().await;
-    let fleets = Fleets::new(c.base.db.clone(), c.queue.clone());
+    let fleets = Fleets::new(c.base.db.clone());
     let (attempt, money) = the_draft_root_keeps_money(&c).await;
     the_fleet_root_keeps_money(&c, &fleets).await;
     assert_eq!(

@@ -85,7 +85,7 @@ impl Chat {
     async fn ask(&self, event_type: EventType, message: &str, at: Timestamp) -> String {
         let request = serde_json::json!({ "message": message }).to_string();
         crate::queue::enqueue(
-            self.fixtures.queue(),
+            &self.fixtures.database,
             &self.fleet,
             &self.workspace,
             ACTOR,
@@ -130,7 +130,7 @@ impl Chat {
     /// `runner`'s claim on this fleet, or nothing while another holds it.
     async fn claim(&self, runner: &Uuid7) -> Option<afd_fleet::lease::Acquired> {
         let leases = self.fixtures.leases();
-        crate::seed::select_fleet_within_rotations(&leases, runner, &self.fleet).await
+        crate::seed::select_fleet(&leases, runner, &self.fleet).await
     }
 
     /// The lease the plane issues `runner` for this fleet's next event.

@@ -101,22 +101,10 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     );
 }
 
-/// An approval whose continuation the queue refuses is still answered.
-///
-/// The row moved before the continuation was attempted, so the decision is the
-/// operator's whatever the queue does: the answer is announced (into the same
-/// queue, which drops it) and the row reads `approved`.
-///
-/// The continuation SUCCEEDS, which is the guarantee the admission ledger was
-/// built for. Its row commits to Postgres before the append is attempted, so a
-/// queue that will not take the entry leaves an admitted row with a NULL
-/// receipt and the replay sweeper owes it one. Reporting a failure here would
-/// now be a lie: the run restarts when the queue comes back. Before the ledger
-/// the entry WAS the acceptance, so a refused append lost the continuation and
-/// an error was the only honest answer.
+/// Approval and its continuation commit even when notification fails.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
+async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(
         lane.pool.clone(),
@@ -136,11 +124,11 @@ async fn an_approval_whose_continuation_the_queue_refuses_is_still_answered() {
     };
     assert!(
         continuation.is_some(),
-        "the continuation has a logical id even though no entry carries it yet"
+        "the continuation has a logical id despite notification failure"
     );
     assert!(
-        lane.awaits_replay(&action).await,
-        "the continuation is admitted with no receipt, so the sweeper owes it an entry"
+        lane.continuation_is_unsettled(&action).await,
+        "the continuation is available in the ledger without a notification"
     );
 }
 

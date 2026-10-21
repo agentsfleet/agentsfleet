@@ -10,7 +10,6 @@
 use std::time::Instant;
 
 use afd_core::id::Uuid7;
-use afd_dragonfly::ReadyToken;
 use jiff::Timestamp;
 
 use super::Plane;
@@ -24,7 +23,7 @@ use crate::lease::envelope::Acquired;
 struct Held {
     fleet_id: Uuid7,
     fence: Fence,
-    ready: ReadyToken,
+    event_id: String,
 }
 
 impl Plane {
@@ -46,7 +45,7 @@ impl Plane {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
             fence: acquired.fence,
-            ready: acquired.ready.clone(),
+            event_id: acquired.event_id.clone(),
         };
         let pass = match self
             .admit_claimed(acquired, runner_id, now)
@@ -64,8 +63,9 @@ impl Plane {
                 Ok(Polled::Empty(answer))
             }
             Ok(Step::Park(answer)) => {
-                self.let_go(&held).await;
-                self.leases.clear_mark(&held.fleet_id, &held.ready).await;
+                self.leases
+                    .park(&held.fleet_id, &held.event_id, held.fence)
+                    .await?;
                 Ok(Polled::Empty(answer))
             }
             Err(fault) => {

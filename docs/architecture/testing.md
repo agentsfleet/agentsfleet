@@ -192,15 +192,9 @@ identifier, that identifier is minted per test. `Lane::isolated` is the shape:
 mint the workspace and fleet, seed them, scope every read. Cost is a few
 statements; it removes the whole row-collision class.
 
-**ISO-2 — ISO-1 does not reach a key the product spells globally.** The ready
-index, `fleet:ready`, is shared by the whole deployment: 16 partition hashes
-(`READY_PARTITIONS` in `rustd/crates/afd_dragonfly/src/ready/partition/mod.rs`), and
-a poll samples one with `HRANDFIELD`, so it hands a poller somebody's fleet at
-random. That is competing consumers, which is the design. Minted row ids do not
-touch it. Isolation here means a key family of the test's own:
-`ReadyPrefix::private(name)` (behind the `test-util` feature) gives a test an
-index no other writer touches, as `afd_fleet/tests/integration_lease_ready.rs`
-does. A test that drives the production index falls back to ISO-3.
+**ISO-2 — Placement reads a deployment-wide set.** A lease poll can choose any eligible fleet in its database.
+A test that asserts absence or exact placement needs a private database or uniquely required runner labels.
+A minted fleet identity alone cannot isolate a global candidate scan.
 
 **ISO-3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
 `UPDATE … WHERE status = pending AND timeout_at <= $5`: no workspace, no fleet,
@@ -208,18 +202,15 @@ correctly, because a sweeper is system-wide. Nothing namespaces that. Those
 tests take a named lock — and BOTH sides take it, the actor and the test whose
 premise is the actor's input, since a lock one side ignores separates nothing.
 Hold it for the test body; prefer a guard the fixture owns (`Scenario` holds the
-ready-stream guard as its last field) over a line every test must remember.
+placement guard as its last field) over a line every test must remember.
 
 **Which tier applies.** Ask what the assertion reads. One row by its own minted
 id is ISO-1. A SET — a count, a listing, a queue depth — is ISO-1, and ISO-2 as well if
 the set lives behind a global key. An assertion whose premise a system-wide
 writer can invalidate is ISO-3, whatever else is true of it.
 
-**ISO-3 is a debt, not a resting place.** Serialisation buys correctness with wall
-time: the daemon end-to-end scenarios are exclusive over `fleet:ready`, and the
-lane measured `tests_s` 110-123 with the guard against 71 for the concurrent
-runs that were producing wrong answers. Recovering that time means moving those
-scenarios onto a private ready index (ISO-2), not removing the guard.
+**ISO-3 costs wall time.** Prefer private databases or scoped placement labels when a test needs a deployment-wide premise.
+Keep the shared guard until both the reader and writer have an isolated replacement.
 
 ## The wire
 

@@ -1,29 +1,8 @@
-//! Re-leasing a dead holder's event from Postgres alone.
-//!
-//! When a claim wins a fleet whose prior claim had lapsed, the dead holder's
-//! still-`active` lease row carries the billing context and the event row it
-//! names carries the body. [`Leases::reclaim_prior_active`] takes both in one
-//! atomic statement and expires the old lease on the way, so the caller can
-//! re-lease the SAME event under the fresh, higher fence — no Dragonfly re-read
-//! (the envelope is durable in Postgres) and no re-billing (the original lease
-//! already debited).
-//!
-//! No prior active lease means the fleet is simply free, and the caller pulls a
-//! fresh event instead.
-
-use afd_core::id::Uuid7;
-use jiff::Timestamp;
-
-use crate::error::{Result, query};
-use crate::lease::sql;
-use crate::lease::store::Leases;
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RECLAIM: &str = "lease reclaim";
+//! Billing carried from an earlier attempt of the same admitted event.
 
 /// The billing a reclaimed lease carries FORWARD rather than re-charging.
 ///
-/// Separate from [`Reclaimed`] because it is the half that must not be
+/// The billing must not be
 /// re-derived: the original lease already debited the tenant, so a reclaim that
 /// resolved these afresh could bill twice, and a rotation between the two
 /// resolutions would bill the wrong rate. Carried, never recomputed.
@@ -35,57 +14,4 @@ pub struct Reused {
     pub posture: String,
     /// The model it was charged for.
     pub model: String,
-}
-
-/// A dead holder's work, re-leasable under a fresh fence.
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
-pub struct Reclaimed {
-    /// The lease that was expired to release this work.
-    pub lease_id: String,
-    /// The event to re-run — the ledger's logical id.
-    pub event_id: String,
-    /// The stream entry the dead holder was handed, carried forward so the
-    /// re-leased run acknowledges the entry that is actually pending.
-    pub receipt: String,
-    /// Who raised it.
-    pub actor: String,
-    /// Its type.
-    pub event_type: String,
-    /// Its body, as stored.
-    pub request_json: String,
-    /// When the producer raised it.
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub event_created_at: Timestamp,
-    /// The workspace it belongs to.
-    pub workspace_id: String,
-    /// The billing carried forward.
-    #[sqlx(flatten)]
-    pub reused: Reused,
-}
-
-impl Leases {
-    /// Expire `fleet_id`'s latest active lease and take back what it was
-    /// executing.
-    ///
-    /// Answers `None` when the fleet has no active lease — it is simply free,
-    /// and the caller pulls fresh work. Also answers `None` when the event row
-    /// has been deleted out from under a live lease: the statement's join is
-    /// INNER, so there is nothing to re-deliver, and the dead lease is still
-    /// expired on the way past rather than left lingering.
-    ///
-    /// Call only after winning the claim, so the row found here is
-    /// unambiguously the holder this runner displaced.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub async fn reclaim_prior_active(&self, fleet_id: &Uuid7) -> Result<Option<Reclaimed>> {
-        let mut connection = self.pool().acquire().await?;
-        sqlx::query_as(sql::lease::RECLAIM_PRIOR_ACTIVE)
-            .bind(fleet_id.as_str())
-            .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(sql::LEASE_STATUS_EXPIRED)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RECLAIM))
-    }
 }

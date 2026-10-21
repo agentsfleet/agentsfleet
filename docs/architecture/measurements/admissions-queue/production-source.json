@@ -1,0 +1,10 @@
+{
+  "base_revision": "0fa9e55356571d57df69cd3a13fb3b90930b0e49",
+  "head_revision": "40c127268683a37a9c51e908a14fbc895cdf2143",
+  "worktree_dirty": true,
+  "rust_schema_diff_sha256": "2c619f572d44eac3119395144cb4dad61df49cb16ffee40f3f2576bf7918f97b",
+  "fingerprint_command": "git diff --binary 40c127268683a37a9c51e908a14fbc895cdf2143 -- rustd schema | shasum -a 256",
+  "base_integration_after_measurement": "124c2bce303c95533745312c1ec725092bb604cb",
+  "command": "RUSTUP_TOOLCHAIN=1.99.1 CARGO_BUILD_JOBS=2 BENCH_FLEETS=N BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1",
+  "note": "Measured production queue path before integrating the later base revision. The fingerprint compares the measured working tree with head_revision, not a moving origin/main. First 200-fleet run reset and migrated the owned rig. Later runs reuse state after every fixture is swept. Shared developer host; rates depend on concurrent load."
+}

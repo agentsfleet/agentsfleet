@@ -1,11 +1,4 @@
-//! What the datastores hold at population, one figure per class of state.
-//!
-//! The ladder above says what a fleet COSTS; this says what the deployment is
-//! FULL of, and keeps the classes apart because they are different incidents:
-//! a stream backlog and a readiness backlog are drained by different things,
-//! retained history and pending work are paid for differently, and a shard
-//! with no replica is a risk no byte count shows. Recorded as separate
-//! measurements so a grader can budget each one, and never summed.
+//! Measure each datastore class independently: history, pending outbound work, topology and admission backlog.
 
 use afd_admission::Admissions;
 use afd_core::clock;
@@ -29,8 +22,6 @@ const STREAMS: &str = "datastore_streams";
 const STREAMS_WALKED: &str = "datastore_streams_walked";
 const RETAINED_ENTRIES: &str = "datastore_retained_entries";
 const PENDING_ENTRIES: &str = "datastore_pending_entries";
-const READY_PARTITIONS: &str = "datastore_ready_partitions";
-const READY_MARKS: &str = "datastore_ready_marks";
 const PRIMARIES: &str = "datastore_primaries";
 const REPLICAS: &str = "datastore_replicas";
 const LEDGER_BACKLOG_ROWS: &str = "ledger_backlog_rows";
@@ -43,8 +34,6 @@ pub const MEASUREMENTS: &[&str] = &[
     STREAMS_WALKED,
     RETAINED_ENTRIES,
     PENDING_ENTRIES,
-    READY_PARTITIONS,
-    READY_MARKS,
     PRIMARIES,
     REPLICAS,
     LEDGER_BACKLOG_ROWS,
@@ -62,8 +51,6 @@ pub(super) async fn record(stores: &Datastores, report: &mut Report) -> Result<(
     report.measurement(STREAMS_WALKED, count(sample.streams_walked));
     report.measurement(RETAINED_ENTRIES, count(sample.retained_entries));
     report.measurement(PENDING_ENTRIES, count(sample.pending_entries));
-    report.measurement(READY_PARTITIONS, count(sample.ready_partitions));
-    report.measurement(READY_MARKS, count(sample.ready_marks));
     report.measurement(PRIMARIES, count(sample.primaries));
     report.measurement(REPLICAS, count(sample.replicas));
 

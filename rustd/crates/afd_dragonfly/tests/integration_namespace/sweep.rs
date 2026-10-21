@@ -1,10 +1,9 @@
 //! Inspect physical state to catch a store that forgets namespace mapping.
 
 use super::{
-    Dragonfly, DragonflyHarness, Duration, FleetStreams, OutboundJob, OutboundQueue, ReadyIndex,
-    SessionStore, SubscriptionHub, deliver, session,
+    Dragonfly, DragonflyHarness, Duration, FleetStreams, OutboundJob, OutboundQueue, SessionStore,
+    SubscriptionHub, deliver, session,
 };
-use afd_dragonfly::ready::{Partition, ReadyPrefix};
 use afd_dragonfly::session::{AbortOutcome, AbortReason, Approval, ApproveOutcome, SessionStatus};
 use afd_dragonfly::{Dedicated, OUTBOUND_STREAM_KEY, OutboundReader};
 use std::collections::BTreeSet;
@@ -24,10 +23,7 @@ async fn namespaced_surface_writes_nothing_outside_its_prefix() {
         .expect("scoped connection");
     let payload = "dev:foreign:STREAMS {tag} \0 opaque";
     write_values_and_session(&redis, &marker, payload).await;
-    let streams = round_trip_stream(&redis, &marker, payload).await;
-    let ready_prefix = ReadyPrefix::private(&marker);
-    let ready = ReadyIndex::under(redis.clone(), ready_prefix.clone());
-    ready.mark(&marker).await.expect("mark");
+    let streams = FleetStreams::new(redis.clone());
     write_outbound(&config, &redis, &harness.redis, &marker, payload).await;
     let hub = SubscriptionHub::start(config).await.expect("hub");
     let mut subscription = hub.subscribe(&marker);
@@ -36,8 +32,6 @@ async fn namespaced_surface_writes_nothing_outside_its_prefix() {
         marker.clone(),
         format!("{marker}_counter"),
         afd_dragonfly::session::session_key(&marker),
-        afd_dragonfly::fleet_stream_key(&marker),
-        Partition::of(&marker).key_under(&ready_prefix),
         OUTBOUND_STREAM_KEY.to_owned(),
     ]
     .into_iter()
@@ -61,7 +55,6 @@ async fn namespaced_surface_writes_nothing_outside_its_prefix() {
     );
     drop(subscription);
     hub.shutdown();
-    ready.force_clear(&marker).await.expect("clear own mark");
     for key in expected {
         harness
             .redis
@@ -69,26 +62,6 @@ async fn namespaced_surface_writes_nothing_outside_its_prefix() {
             .await
             .expect("remove owned state");
     }
-}
-
-/// Appends `payload` to `marker`'s fleet stream, reads it back, acknowledges
-/// and trims it, so the stream and its group exist under the namespace.
-async fn round_trip_stream(redis: &Dragonfly, marker: &str, payload: &str) -> FleetStreams {
-    let streams = FleetStreams::new(redis.clone());
-    streams.ensure_group(marker).await.expect("fleet group");
-    let id = streams
-        .append(marker, &[("dev:field", payload)])
-        .await
-        .expect("append");
-    let entry = streams
-        .read_new(marker, marker)
-        .await
-        .expect("read")
-        .expect("entry");
-    assert_eq!(entry.field("dev:field"), Some(payload));
-    assert!(streams.ack(marker, &id).await.expect("ack"));
-    streams.trim(marker).await.expect("trim");
-    streams
 }
 
 async fn write_values_and_session(redis: &Dragonfly, marker: &str, payload: &str) {

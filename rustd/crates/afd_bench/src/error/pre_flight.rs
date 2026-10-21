@@ -65,7 +65,8 @@ impl Error {
             | ErrorKind::SamplerUnavailable { .. }
             | ErrorKind::LiveSetFaulted { .. }
             | ErrorKind::NothingIssued { .. }
-            | ErrorKind::InvariantBroken { .. } => false,
+            | ErrorKind::InvariantBroken { .. }
+            | ErrorKind::DrainIncomplete { .. } => false,
         }
     }
 }

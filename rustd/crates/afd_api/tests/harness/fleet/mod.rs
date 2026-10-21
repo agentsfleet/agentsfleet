@@ -52,7 +52,7 @@ impl Fleet {
             capabilities,
             authenticator,
         } = Inputs::new(database);
-        let authoring = authoring::stores(&database, &queue, &ledger, &providers);
+        let authoring = authoring::stores(&database, &ledger, &providers);
         Self {
             ready: ReadyInputs {
                 database: true,
@@ -78,7 +78,7 @@ impl Fleet {
             invite_mail: afd_mail::InviteMailer::new(vault(database.clone())),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             logins: logins(&queue),
-            fleets: clients::fleets(&database, &queue),
+            fleets: clients::fleets(&database),
             secrets: vault(database.clone()),
             connectors: connectors(&database, &queue),
             interjector: interjector(&database),

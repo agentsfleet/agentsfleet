@@ -10,7 +10,6 @@
 use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
 use super::{hold, id, live, slot};
-use crate::queue;
 use crate::rows::Row;
 use crate::seed::{self, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -35,19 +34,18 @@ async fn test_holder_claims_its_held_fleet() {
     )
     .await;
 
-    let acquired = seed::select_fleet_within_rotations(&leases, &holder, &fleet)
+    let acquired = seed::select_fleet(&leases, &holder, &fleet)
         .await
         .expect("the holder leases its held fleet");
 
     assert_eq!(acquired.fleet_id.as_str(), fleet);
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_other_runner_skips_held_fleet() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create_isolated_with_queue().await;
     let Seeded {
         runners: [holder, other],
         fleet,
@@ -64,12 +62,12 @@ async fn test_other_runner_skips_held_fleet() {
     )
     .await;
 
-    let skipped = seed::select_fleet_within_rotations(&leases, &other, &fleet).await;
+    let skipped = seed::select_fleet(&leases, &other, &fleet).await;
     let refused = leases
         .claim(&id(&fleet), &other, LEASE_TTL)
         .await
         .expect("the claim answers");
-    let held = seed::select_fleet_within_rotations(&leases, &holder, &fleet).await;
+    let held = seed::select_fleet(&leases, &holder, &fleet).await;
 
     assert!(
         skipped.is_none(),
@@ -77,7 +75,6 @@ async fn test_other_runner_skips_held_fleet() {
     );
     assert!(refused.is_none(), "and its claim loses");
     assert!(held.is_some(), "while the holder still leases it");
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -152,7 +149,6 @@ async fn test_holder_polls_its_holds_first() {
         .expect("one poll finds the held fleet, whichever partition it is in");
 
     assert_eq!(first_poll.fleet_id.as_str(), fleet);
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 

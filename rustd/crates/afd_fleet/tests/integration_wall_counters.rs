@@ -77,7 +77,7 @@ async fn parked() -> Parked {
 
     let now = fixtures.enrolled_at();
     let leases = fixtures.leases();
-    let held = crate::seed::select_fleet_within_rotations(&leases, &runner, &fleet)
+    let held = crate::seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
     let received = leases

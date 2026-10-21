@@ -209,7 +209,7 @@ fn spawn_viewers(
     workspaces: &Arc<[Uuid7]>,
     shared: &Arc<Shared>,
 ) -> Vec<tokio::task::JoinHandle<Result<live::Reads>>> {
-    let fleets = Fleets::new(stores.database.clone(), stores.queue.clone());
+    let fleets = Fleets::new(stores.database.clone());
     (0..live::READERS)
         .map(|_| {
             let (fleets, workspaces, shared) =

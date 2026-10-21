@@ -34,8 +34,7 @@
 //! — that last would need a new registry code. Any body, or none, gets that
 //! shape.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
+use afd_core::{error_code, id::Uuid7};
 use afd_wire::event::EventType;
 use jiff::Timestamp;
 
@@ -62,9 +61,6 @@ mod tests;
 
 pub(in crate::lease) use self::step::{Leased, Step, claim_lost};
 pub use poll::Polled;
-
-/// A finished event's redelivery could not be acknowledged.
-const EVENT_TERMINAL_ACK_FAILED: &str = "terminal_redelivery_ack_failed";
 
 /// A finished event's redelivery was acknowledged and not executed.
 const EVENT_TERMINAL_SUPPRESSED: &str = "terminal_redelivery_suppressed";
@@ -167,15 +163,7 @@ impl Plane {
             .map(Polled::into_body)
     }
 
-    /// Every gate over one already-claimed event.
-    ///
-    /// Ends the pass on anything that means "not this poll", writing the
-    /// terminal row where one is owed. Split from the selection because the
-    /// two fail for different reasons and are proven differently: WHICH event
-    /// a poll gets is the readiness index's decision, and what then happens to
-    /// it is this chain's. The suite enters below the selection through
-    /// [`Self::lease_claimed`], naming its own fleet, instead of polling a
-    /// process-global partition cursor until that fleet comes up.
+    /// Run gates after selection under the slot and admission fences.
     async fn admit_claimed(
         &self,
         acquired: Acquired,
@@ -191,7 +179,13 @@ impl Plane {
             Err(ended) => return Ok(ended),
         };
 
-        let received = self.leases.record_received(&acquired).await?;
+        let received = match self.leases.record_received(&acquired).await {
+            Ok(received) => received,
+            Err(stale) if stale.code() == error_code::RUN_STALE_FENCING_TOKEN => {
+                return claim_lost(runner_id, &acquired);
+            }
+            Err(failure) => return Err(failure),
+        };
         let delivery = received.delivery;
         if delivery == crate::lease::event::Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
@@ -250,41 +244,14 @@ impl Plane {
         }))
     }
 
-    /// Dimension 7.4: the event already ran. Acknowledge the entry and stop
-    /// BEFORE any of the gates, the money, the secrets or the lease row,
-    /// because every one of them is an effect of executing, and the execution
-    /// already happened: the tenant paid for it, and its answer is already
-    /// owed or delivered.
-    ///
-    /// Acknowledging is the whole point rather than a tidy-up. An entry left
-    /// pending is offered again, so a terminal event that is only SKIPPED
-    /// comes back on the next poll forever. A failed acknowledgement is logged,
-    /// not propagated: the entry stays pending and this runs again, which is
-    /// the same answer one turn later, and failing the lease would refuse a
-    /// runner that has done nothing wrong.
+    /// A durable ending suppresses execution and settles the admission under its fence.
     async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<Admission2>> {
-        let fleet_id = acquired.fleet_id.as_str();
-        let agentsfleet_event_id = acquired.event_id.as_str();
-        if let Err(failure) = self
-            .leases
-            .acknowledge(&acquired.fleet_id, &acquired.receipt)
-            .await
-        {
-            let Logged { error_code, reason } = failure.logged();
-            tracing::warn!(
-                error_code,
-                fleet_id,
-                agentsfleet_event_id,
-                reason,
-                event = EVENT_TERMINAL_ACK_FAILED,
-                "a finished event was not acknowledged; it will be offered again"
-            );
-        }
+        self.leases.settle_terminal(acquired).await?;
         tracing::info!(
-            fleet_id,
-            agentsfleet_event_id,
+            fleet_id = acquired.fleet_id.as_str(),
+            agentsfleet_event_id = acquired.event_id.as_str(),
             event = EVENT_TERMINAL_SUPPRESSED,
-            "a redelivered event had already finished; it was acknowledged, not executed"
+            "the redelivered event already has a durable ending"
         );
         no_work(runner_id, REDELIVERED_FINISHED).map(Step::Stop)
     }

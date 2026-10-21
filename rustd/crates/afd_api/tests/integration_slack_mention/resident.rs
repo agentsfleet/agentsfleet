@@ -1,9 +1,4 @@
-//! A channel no fleet is attached to answers through its resident.
-//!
-//! Split from the route cases beside it. The router here holds a live fleet
-//! queue, because the first mention in a channel installs the resident and an
-//! install creates the fleet's stream. What is read back is the store: the
-//! fleet rows, the binding rows, the admissions, and the fleet's memory.
+//! Resident selection, native installation, and channel memory through the live stores.
 
 #![cfg(feature = "test-util")]
 
@@ -234,34 +229,32 @@ async fn a_fact_captured_in_one_channel_stays_there(
     );
 }
 
-/// A resident whose install fails for any reason but a taken name refuses the
-/// mention with the install's own answer, and leaves no fleet or binding
-/// behind. Here the fleet's stream cannot be created, because this router's
-/// queue is not there, so the install rolls back: the lifecycle's 500
-/// (`InstallRolledBack`), which Slack retries like any 5xx.
+/// A lost wake cannot roll back the resident or its accepted mention.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_resident_that_cannot_be_installed_refuses_for_a_retry() {
+async fn a_resident_installs_and_admits_without_dragonfly() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-
     let body = mention_at(&fixture.team, "EvRes20", CHANNEL, THREAD_TS);
-    let status = deliver(&fixture.router(), &body).await.status();
 
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(
-        residents(&fixture).await.is_empty(),
-        "the install rolled back"
+    assert_eq!(
+        deliver(&fixture.router(), &body).await.status(),
+        StatusCode::OK
     );
-    assert_eq!(bindings(&fixture, CHANNEL).await, 0, "nothing was bound");
-    assert!(
-        fixture
-            .admission(&key(&fixture.team, "EvRes20"))
-            .await
-            .is_none(),
-        "nothing was admitted"
-    );
+    let fleets = residents(&fixture).await;
+    assert_eq!(fleets.len(), 1);
+    assert_eq!(bindings(&fixture, CHANNEL).await, 1);
+    let event = admitted(&fixture, "EvRes20").await;
+    assert_native_setup(&fixture, &event.fleet).await;
+    assert_eq!(fleets, [resident_name(&fixture)]);
 
+    assert_eq!(
+        deliver(&fixture.router(), &body).await.status(),
+        StatusCode::OK
+    );
+    assert_eq!(admitted(&fixture, "EvRes20").await, event);
+    assert_eq!(residents(&fixture).await, fleets);
+    assert_eq!(bindings(&fixture, CHANNEL).await, 1);
     fixture.cleanup().await;
 }
 

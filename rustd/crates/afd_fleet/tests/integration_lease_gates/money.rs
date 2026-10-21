@@ -65,7 +65,7 @@ impl Funded {
         fixtures.seed_wallet(&tenant, DEEP_POOL).await;
         let default = seed_provider_resolution(&fixtures, &fleet).await;
         crate::queue::enqueue(
-            fixtures.queue(),
+            &fixtures.database,
             &fleet,
             &workspace,
             ACTOR,
@@ -92,13 +92,9 @@ impl Funded {
 
     /// The lease `plane` issues for the fleet's event.
     async fn lease(&self, plane: &Plane) -> Issued {
-        let claimed = crate::seed::select_fleet_within_rotations(
-            &self.fixtures.leases(),
-            &self.runner,
-            &self.fleet,
-        )
-        .await
-        .expect("the fleet is leasable");
+        let claimed = crate::seed::select_fleet(&self.fixtures.leases(), &self.runner, &self.fleet)
+            .await
+            .expect("the fleet is leasable");
         let answer = plane
             .lease_claimed(claimed, &self.runner, self.fixtures.enrolled_at())
             .await
@@ -120,7 +116,6 @@ impl Funded {
     }
 
     async fn close(self) {
-        crate::queue::clear_ready(self.fixtures.queue(), &self.fleet).await;
         self.fixtures.cleanup().await;
     }
 }

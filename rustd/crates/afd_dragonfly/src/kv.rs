@@ -5,7 +5,7 @@
 //! `afd_fleet` names no Dragonfly command, for the same reason it names no axum
 //! type: the crate boundary IS the seam, and a `redis::cmd` built in a domain
 //! module is that seam leaking. Every other Dragonfly shape this daemon uses
-//! already arrives through a typed surface — [`crate::ready::ReadyIndex`],
+//! already arrives through a typed surface — [`crate::SessionStore`],
 //! [`crate::streams::FleetStreams`], [`crate::session::SessionStore`] — and
 //! these are the same thing for the gate.
 //!

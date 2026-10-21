@@ -16,13 +16,6 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# The families this crate produces. The dependency points this way and not the
-# other: telemetry knows nothing about sweeps, and the counts below exist only
-# where the work happens.
-# Where a verification event is accepted before anything is queued, and the
-# ledger the replay sweeper walks. Its unique index on the intent row is what
-# makes a retried dispatch answer the first attempt's event rather than
-# starting a second verification with real provider spend.
 afd_admission.workspace = true
 afd_observability.workspace = true
 # Identifiers, the clock a liveness instant is stamped with, the registry codes.
@@ -46,7 +39,7 @@ jiff-sqlx.workspace = true
 # The stored vocabulary two planes share — admin states, lease statuses, the
 # never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
 afd_state.workspace = true
-# The reclaim and repair sweepers re-deliver through the fleet streams.
+# The outbound rebuild sweeper restores its transport group.
 afd_dragonfly.workspace = true
 # The enrolment and heartbeat request shapes, as the frozen wire spells them.
 afd_api_wire.workspace = true
@@ -72,17 +65,10 @@ test-util = [
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }
-# The reconcile sweeper's resume state is handed in and out of a mutex around
-# every pass, and that hand-off is the one part of it decidable without a
-# datastore. Reaching it needs a `Reconcile`, which needs an `Admissions`, which
-# needs a pool and a client handle — both of which these crates can build
-# lazily, without opening a socket.
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly.workspace = true
-# The raw `XCLAIM`/`XPENDING` `integration_reclaim_faults.rs` ages and reads an
-# entry through.
-redis.workspace = true
+afd_observability = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "runner_suite"

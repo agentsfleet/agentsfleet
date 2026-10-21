@@ -21,14 +21,12 @@ const OLD: Timestamp = Timestamp::constant(1, 0);
 /// Passes the lane's backlog may take to drain: far past any lane's runners
 /// over the liveness batch.
 const MAX_DRAIN_PASSES: usize = 64;
+static SWEEP_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn liveness_and_retention_converge_real_runner_rows() {
-    // The liveness pass expires EVERY abandoned active lease in the lane, and
-    // the reclaim fixtures strand one on purpose; run beside them, this pass
-    // flips that lease before their reclaim pass can surface it.
-    let _lane = crate::integration_reclaim_faults::RECLAIM_LANE.lock().await;
+    let _lane = SWEEP_LANE.lock().await;
     let fixture = Fixture::create().await;
     fixture.seed().await;
 
@@ -214,7 +212,7 @@ const LEFT_OVER: i64 = 500;
 async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     // Every retention pass in the lane deletes from the same tables; the
     // sweep above runs one, so the two take turns.
-    let _lane = crate::integration_reclaim_faults::RECLAIM_LANE.lock().await;
+    let _lane = SWEEP_LANE.lock().await;
     let fixture = Fixture::create().await;
     let mut connection = fixture.database.acquire().await.expect("an API connection");
     afd_db::test_util::RunnerSeed::new(

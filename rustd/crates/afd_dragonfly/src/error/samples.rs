@@ -20,7 +20,7 @@ const REFUSED: &str = "refused";
 /// The command the write-side samples ran.
 const APPEND: &str = "XADD";
 /// The stream every stream-side sample names.
-const STREAM: &str = "fleet:x:events";
+const STREAM: &str = "connector:outbound";
 
 /// One error of every kind, for tests that walk the whole surface.
 ///
@@ -30,7 +30,6 @@ const STREAM: &str = "fleet:x:events";
 /// every kind.
 #[must_use]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    let (refused_draw, unencodable) = unmintable();
     vec![
         (
             "missing url",
@@ -111,8 +110,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
                 command: "SSUBSCRIBE",
             }),
         ),
-        ("entropy", Error::from(refused_draw)),
-        ("identifier", Error::from(unencodable)),
         ("unexpected reply", unexpected_reply("PING")),
         ("hub closed", Error::new(ErrorKind::HubClosed)),
     ]
@@ -143,24 +140,4 @@ fn refusal(code: &str) -> redis::RedisError {
     redis::parse_redis_value(reply.as_bytes())
         .and_then(redis::Value::extract_error)
         .expect_err("a RESP error reply extracts as an error, not a value")
-}
-
-/// The two ways a readiness token fails to mint, each raised by the crate that
-/// owns it: a source told to refuse, and an instant before the epoch.
-#[expect(
-    clippy::expect_used,
-    reason = "a mocked source that draws, or a pre-epoch instant that encodes, is a broken sample"
-)]
-fn unmintable() -> (afd_crypto::error::Error, afd_core::error::Error) {
-    let (entropy, ctrl) = afd_crypto::entropy::Entropy::new_mocked();
-    ctrl.fail_next();
-    let refused_draw = entropy
-        .uuid_randomness()
-        .expect_err("a mocked source told to fail refuses the draw");
-    let unencodable = afd_core::id::Uuid7::encode(
-        jiff::Timestamp::constant(-1, 0),
-        [0; afd_core::id::ENTROPY_LEN],
-    )
-    .expect_err("an instant before the epoch has no version-7 spelling");
-    (refused_draw, unencodable)
 }

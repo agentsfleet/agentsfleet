@@ -13,7 +13,6 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_dragonfly::Error => Queue,
     afd_crypto::error::Error => Entropy,
 );
 
@@ -103,11 +102,6 @@ impl sqlx::error::DatabaseError for DiskFull {
 /// documents as refusable, so no failure is fabricated and none needs a
 /// datastore.
 ///
-/// [`ErrorKind::Queue`] appears three times on purpose. Its answer branches on
-/// `afd_dragonfly::Error::is_unavailable` and `is_full`, so one sample would
-/// leave two thirds of that decision — and the 503-versus-500 the HTTP edge
-/// turns on — unread.
-///
 /// # Panics
 /// When a sibling crate stops refusing an input this builder relies on being
 /// refused. That is a change in that crate's contract rather than a runtime
@@ -127,27 +121,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .uuid_randomness()
         .expect_err("a mocked source told to fail refuses the draw");
 
-    // Partitioned in one pass rather than searched twice: `afd_dragonfly::Error`
-    // is not `Clone`, so a second search over the same vector would have to
-    // rebuild it and the two halves could come from different samples.
-    let (mut outages, answered): (Vec<_>, Vec<_>) = afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .partition(|(_label, error)| error.is_unavailable());
-    let unreachable = outages
-        .pop()
-        .expect("afd_dragonfly declares an unavailable kind")
-        .1;
-    // The queue's two refusals this crate answers differently: one that is
-    // full, and one that answered anything else.
-    let (mut fulls, mut answered): (Vec<_>, Vec<_>) = answered
-        .into_iter()
-        .partition(|(_label, error)| error.is_full());
-    let full = fulls.pop().expect("afd_dragonfly declares a full kind").1;
-    let answered = answered
-        .pop()
-        .expect("afd_dragonfly declares a kind that is not an outage")
-        .1;
-
     vec![
         (
             "datastore",
@@ -156,17 +129,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "query",
             query("admitting an event")(sqlx::Error::RowNotFound),
-        ),
-        (
-            "queue unreachable",
-            ErrorKind::Queue {
-                source: unreachable,
-            }
-            .into(),
-        ),
-        (
-            "queue answered",
-            ErrorKind::Queue { source: answered }.into(),
         ),
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
         (
@@ -181,7 +143,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "exhausted",
             query("admitting an event")(sqlx::Error::Database(Box::new(DiskFull))),
         ),
-        ("queue full", ErrorKind::Queue { source: full }.into()),
+        ("policy", ErrorKind::Policy.into()),
     ]
 }
 

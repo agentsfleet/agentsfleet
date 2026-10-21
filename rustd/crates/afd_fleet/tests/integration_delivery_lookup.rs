@@ -1,44 +1,6 @@
-//! The delivery stamp's index, and the predicate it was NOT allowed to gain.
-//!
-//! # Why the plan is not asserted here
-//!
-//! The obvious test is `EXPLAIN` over the stamp, asserting it names the new
-//! index. On this suite's fixtures it would assert nothing: a table holding a
-//! handful of rows is read fastest by a sequential scan and PostgreSQL says so,
-//! correctly. The two ways to make such a test go green are to seed a
-//! production-sized table on every run, or to `SET enable_seqscan = off` — and
-//! the second is the test writing the answer it wanted to read.
-//!
-//! So the plan evidence is a MEASUREMENT, recorded where a measurement belongs:
-//! the Pull Request and the slot's own comment carry the before and after from
-//! a 400,600-row table. What is asserted here is what stays true at any size —
-//! that the index exists, that its columns and predicate are the ones the
-//! stamp's own predicate implies, and that the stamp still marks the rows it
-//! has to mark.
-//!
-//! # The predicate the stamp must never gain
-//!
-//! `idx_fleet_admissions_undelivered` could not serve the stamp because it is
-//! partial on `receipt IS NOT NULL` and the stamp says nothing about the
-//! receipt. The cheap fix is to add that clause to the stamp, and it is wrong:
-//! a delivery can be recorded before the append writes its receipt back, and
-//! replay can replace a receipt under a row that was already delivered. Slot
-//! 914 moves the index to the query instead. The second test here is what stops
-//! the cheap fix coming back.
+//! The queued history index remains available after receipt removal.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    clippy::panic,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
-
-use afd_dragonfly::FleetStreams;
-
-use crate::integration_admission_recovery::{
-    EVERY_FLEET, EVERY_ROW, NO_GRACE, RECOVERY_LANE, admission, deferring, ledger, producer_key,
-};
-use crate::rows::Row;
-use crate::seed::seeded_parts;
+#![expect(clippy::expect_used, clippy::panic, reason = "test assertions")]
 use crate::support::Fixtures;
 
 /// The index the delivery stamp is served by.
@@ -67,145 +29,13 @@ async fn definition(fixtures: &Fixtures, index: &str) -> String {
         .unwrap_or_else(|failure| panic!("{index} must exist after migration: {failure}"))
 }
 
-/// Slot 914's index is the one the delivery stamp's predicate implies.
-///
-/// Asserted against `pg_indexes` rather than against the file, so what is
-/// graded is the index the database actually built. The negative half carries
-/// the point: a definition mentioning the receipt would be back to an index the
-/// stamp cannot use, whatever its name promised.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_delivery_lookup_index_implies_the_stamps_predicate() {
-    let _lane = RECOVERY_LANE.lock().await;
-    let fixtures = Fixtures::create_with_queue().await;
-
+async fn the_delivery_lookup_index_matches_the_queued_history_predicate() {
+    let fixtures = Fixtures::create().await;
     let lookup = definition(&fixtures, LOOKUP_INDEX).await;
-    assert!(
-        lookup.contains(LOOKUP_COLUMNS),
-        "the stamp keys on the fleet and the admission: {lookup}"
-    );
-    assert!(
-        lookup.contains(LOOKUP_PREDICATE),
-        "the predicate must be the one the stamp implies, and only that: {lookup}"
-    );
-    assert!(
-        !lookup.contains(RECEIPT_CLAUSE),
-        "a receipt clause is what made the older index unusable for the stamp: {lookup}"
-    );
-
-    // The older index keeps its stricter predicate; the recovery reads imply it
-    // and nothing in this slot was supposed to touch them.
-    let undelivered = definition(&fixtures, "idx_admissions_undelivered").await;
-    assert!(
-        undelivered.contains(RECEIPT_CLAUSE),
-        "the reconciliation index still carries the receipt test it reads on: {undelivered}"
-    );
-
+    assert!(lookup.contains(LOOKUP_COLUMNS), "{lookup}");
+    assert!(lookup.contains(LOOKUP_PREDICATE), "{lookup}");
+    assert!(!lookup.contains(RECEIPT_CLAUSE), "{lookup}");
     fixtures.cleanup().await;
-}
-
-/// The stamp marks a delivery whose receipt is absent, and one replay replaced.
-///
-/// Both are rows the tempting `receipt IS NOT NULL` fix would have stopped
-/// marking. The first is the window between the row committing and the append
-/// writing its entry id back. The second is a row recovery re-appended, whose
-/// stored receipt is not the one it was admitted with — keyed on the logical
-/// event id, the stamp does not care, and that is the property being pinned.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn delivery_stamps_before_and_after_a_replayed_receipt() {
-    let _lane = RECOVERY_LANE.lock().await;
-    let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
-    let live = ledger(&fixtures);
-    let streams = FleetStreams::new(fixtures.queue().clone());
-
-    // ── A row that has no receipt yet: the queue was not there to give one.
-    let unreceipted_key = producer_key(&fleet, "stamp-unreceipted");
-    let unreceipted = deferring(&fixtures)
-        .admit(admission(&fleet, &workspace, &unreceipted_key))
-        .await
-        .expect("the row commits whatever the queue does");
-    assert_eq!(
-        fixtures
-            .text(Row::Admission(&unreceipted.stored.id), "receipt")
-            .await,
-        None,
-        "an append that never happened records no receipt"
-    );
-
-    // ── A row whose receipt recovery replaced with a different one.
-    let replayed_key = producer_key(&fleet, "stamp-replayed");
-    let replayed = live
-        .admit(admission(&fleet, &workspace, &replayed_key))
-        .await
-        .expect("a live queue admits and receipts");
-    let first_receipt = fixtures
-        .text(Row::Admission(&replayed.stored.id), "receipt")
-        .await
-        .expect("a live append records its receipt");
-    streams
-        .forget(&fleet)
-        .await
-        .expect("destroying this fleet's stream data");
-    live.reconcile(
-        EVERY_FLEET,
-        EVERY_ROW,
-        &mut afd_admission::Progress::default(),
-    )
-    .await
-    .expect("the reconcile pass runs");
-    live.replay(NO_GRACE, EVERY_ROW)
-        .await
-        .expect("the replay pass runs");
-    let second_receipt = fixtures
-        .text(Row::Admission(&replayed.stored.id), "receipt")
-        .await
-        .expect("replay re-appended the row and recorded a new receipt");
-    assert_ne!(
-        first_receipt, second_receipt,
-        "the point of this row is that its receipt MOVED"
-    );
-
-    // ── The stamp, run as the lease path runs it, against both rows.
-    for event_id in [&unreceipted.stored.id, &replayed.stored.id] {
-        assert_eq!(
-            stamp(&fixtures, &fleet, event_id).await,
-            1,
-            "{event_id} is undelivered and must be stamped, receipt or no receipt"
-        );
-        assert!(
-            fixtures
-                .instant(Row::Admission(event_id), "delivered_at")
-                .await
-                .is_some(),
-            "{event_id} carries the instant it was delivered"
-        );
-        assert_eq!(
-            stamp(&fixtures, &fleet, event_id).await,
-            0,
-            "{event_id} is already stamped, so a second delivery moves nothing"
-        );
-    }
-
-    fixtures.cleanup().await;
-}
-
-/// Runs `MARK_DELIVERED` for one logical event, answering rows affected.
-///
-/// Binds the shipped statement rather than a copy of it, so a predicate added
-/// to the real one fails here instead of passing against a stale duplicate.
-async fn stamp(fixtures: &Fixtures, fleet: &str, event_id: &str) -> u64 {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("the ledger answers");
-    sqlx::query(afd_admission::sql::MARK_DELIVERED)
-        .bind(fleet)
-        .bind(event_id)
-        .execute(&mut *connection)
-        .await
-        .expect("the stamp runs")
-        .rows_affected()
 }

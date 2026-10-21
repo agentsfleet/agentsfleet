@@ -1,37 +1,11 @@
-//! What an idle fleet costs when there are a great many of them.
-//!
-//! # A ladder, not a jump
-//!
-//! The population is created in rungs, and every rung reports the same three
-//! things: Dragonfly memory per fleet, the readiness peek's latency, and one
-//! stream's read latency. A single number at a million would say what a
-//! million costs; the ladder says whether the cost is LINEAR, which is the
-//! question the per-fleet stream and consumer group design actually hangs on.
-//!
-//! # The top rung reads Postgres, and both stores by class
-//!
-//! Table sizes, and the candidate query's plan and execution time at
-//! population — the real `SELECT_READY_CANDIDATES`, bound as the lease path
-//! binds it, under `EXPLAIN ANALYZE`. It is measured once, at the top, because
-//! the rungs below are subsets of the same rows and the plan does not change.
-//! [`capacity`] then records what each store holds, one figure per class of
-//! state, on the rig and on a deployed target alike.
-//!
-//! # A deployed profile observes and creates nothing
-//!
-//! Creating a million streams in a shared environment is not a measurement
-//! anyone consented to. Against a deployed target the lane reads what is
-//! there — the fleet population from Postgres, the readiness depth from Dragonfly,
-//! each under its own name — reports it in the same shape, and says
-//! `created: false`.
+//! Measure storage and query cost across a ladder of fleet populations.
+//! The deployed profile observes existing state without creating fixtures.
 
 pub mod capacity;
 mod probe;
 
-use afd_dragonfly::ReadyIndex;
-
 use self::probe::{
-    FLEETS_TABLE_BYTES, peek_ms, postgres_at_population, stream_read_ms, table_sizes,
+    FLEETS_TABLE_BYTES, admission_read_ms, candidate_ms, postgres_at_population, table_sizes,
 };
 use crate::datastores::{Datastores, dragonfly_used_memory};
 use crate::error::Result;
@@ -46,18 +20,14 @@ const LADDER: &str = "ladder_fleets";
 /// Series key: Dragonfly bytes per fleet at each rung, over the rung below.
 const BYTES_PER_FLEET: &str = "dragonfly_bytes_per_fleet";
 
-/// Series key: readiness peek latency at each rung, milliseconds.
-const PEEK_MS: &str = "peek_ms";
+/// Series key: candidate query latency at each rung, milliseconds.
+const CANDIDATE_MS: &str = "candidate_ms";
 
-/// Series key: one stream's read latency at each rung, milliseconds.
-const STREAM_READ_MS: &str = "stream_read_ms";
+/// Series key: one admission head read latency at each rung, milliseconds.
+const ADMISSION_READ_MS: &str = "admission_read_ms";
 
 /// Measurement key: Dragonfly bytes the whole population added.
 const DRAGONFLY_BYTES_TOTAL: &str = "dragonfly_bytes_total";
-
-/// Measurement key: how many fleets the readiness index holds on a deployed
-/// target. Its own name, because it is not the population.
-const READY_DEPTH: &str = "ready_depth";
 
 /// How many rungs the ladder has below its ceiling, each ten times the last.
 ///
@@ -169,6 +139,7 @@ async fn climb(
             rung,
             ratio(added, fleets_added),
             &last_fleet,
+            runner.as_str(),
         )
         .await?;
         previous_bytes = bytes;
@@ -216,14 +187,19 @@ async fn measure_rung(
     rung: u64,
     bytes_per_fleet: f64,
     last_fleet: &str,
+    runner: &str,
 ) -> Result<()> {
     push(report, LADDER, count(rung));
     push(report, BYTES_PER_FLEET, bytes_per_fleet);
-    push(report, PEEK_MS, peek_ms(&stores.queue).await?);
     push(
         report,
-        STREAM_READ_MS,
-        stream_read_ms(&stores.queue, last_fleet).await?,
+        CANDIDATE_MS,
+        candidate_ms(&stores.database, runner).await?,
+    );
+    push(
+        report,
+        ADMISSION_READ_MS,
+        admission_read_ms(&stores.database, last_fleet).await?,
     );
     Ok(())
 }
@@ -235,11 +211,6 @@ async fn observe(stores: &Datastores, report: &mut Report) -> Result<()> {
         LADDER,
         count(probe::fleet_population(&stores.database).await?),
     );
-    report.measurement(
-        READY_DEPTH,
-        count(ReadyIndex::new(stores.queue.clone()).len().await?),
-    );
-    push(report, PEEK_MS, peek_ms(&stores.queue).await?);
     report.measurement(
         FLEETS_TABLE_BYTES,
         count(table_sizes(&stores.database).await?),

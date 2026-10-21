@@ -28,10 +28,9 @@
 
 mod floor;
 
-use redis::streams::{StreamInfoGroupsReply, StreamInfoStreamReply};
+use redis::streams::StreamInfoGroupsReply;
 
 pub(crate) use self::floor::trim_history;
-use super::{FLEET_CONSUMER_GROUP, FleetStreams};
 use crate::client::Dragonfly;
 use crate::error::{self, Result};
 
@@ -40,7 +39,6 @@ const CMD_XLEN: &str = "XLEN";
 const CMD_XINFO: &str = "XINFO";
 
 /// `XINFO` subcommands.
-const XINFO_STREAM: &str = "STREAM";
 const XINFO_GROUPS: &str = "GROUPS";
 
 /// How many acknowledged entries a stream keeps above its floor.
@@ -201,70 +199,6 @@ pub(crate) async fn backlog_of(
 /// counts in. Lossless on every target this daemon builds for.
 fn as_u64(count: usize) -> u64 {
     u64::try_from(count).unwrap_or(u64::MAX)
-}
-
-impl FleetStreams {
-    /// What the fleet's consumer group still owes, or `None` when the group
-    /// does not exist yet.
-    ///
-    /// # Errors
-    /// As [`backlog_of`].
-    pub async fn backlog(&self, fleet_id: &str) -> Result<Option<Backlog>> {
-        backlog_of(
-            &self.redis,
-            &self.stream_key(fleet_id),
-            FLEET_CONSUMER_GROUP,
-        )
-        .await
-    }
-
-    /// Trims the fleet's acknowledged history back to
-    /// [`ACKNOWLEDGED_HISTORY`] once it is more than [`TRIM_SLACK`] past it,
-    /// never crossing the oldest entry the group still owes.
-    ///
-    /// # Errors
-    /// Returns a command error, or an unavailable error when the datastore
-    /// is gone. Callers on the acknowledgement path log and continue: the
-    /// acknowledgement already landed, and the next one trims again.
-    pub async fn trim(&self, fleet_id: &str) -> Result<Trimmed> {
-        trim_history(
-            &self.redis,
-            &self.stream_key(fleet_id),
-            FLEET_CONSUMER_GROUP,
-            ACKNOWLEDGED_HISTORY,
-        )
-        .await
-    }
-
-    /// Whether this fleet holds work a runner could still pick up.
-    ///
-    /// The backstop for a readiness mark that was lost — an ingress mark that
-    /// failed, an index that was evicted or flushed. The streams are the system
-    /// of record and the index is a hint, so this asks the record.
-    ///
-    /// # Errors
-    /// Returns a command error, or an unavailable error when Dragonfly is gone. A
-    /// probe that cannot answer is REPORTED rather than read as "nothing to
-    /// recover" — this is the recovery path's own backstop, and a silent false
-    /// would leave it inert while looking exactly like an idle system.
-    pub async fn has_deliverable(&self, fleet_id: &str) -> Result<bool> {
-        let key = self.stream_key(fleet_id);
-        let mut stream_info = redis::cmd(CMD_XINFO);
-        stream_info.arg(XINFO_STREAM).arg(&key);
-        let stream: StreamInfoStreamReply =
-            self.redis.command(CMD_XINFO, &key, &stream_info).await?;
-        // No entries ever generated, so nothing to deliver whatever the group
-        // says about itself.
-        if stream.length == 0 {
-            return Ok(false);
-        }
-        // No consumer group yet: no runner has ever read this fleet, so every
-        // entry present is undelivered.
-        Ok(self
-            .backlog(fleet_id)
-            .await?
-            .is_none_or(Backlog::is_deliverable))
-    }
 }
 
 #[cfg(test)]

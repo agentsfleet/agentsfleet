@@ -18,7 +18,6 @@
 
 use afd_fleet::lease::Committed;
 
-use crate::queue;
 use crate::report_commit::{RESPONSE_ACCEPTED, assert_nothing_landed, report};
 use crate::report_seed::held;
 use crate::rows::{LAPSE, Row};
@@ -41,10 +40,9 @@ async fn test_a_superseded_report_commits_nothing() {
     held.fixtures
         .age(Row::Slot(&held.fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed =
-        crate::seed::select_fleet_within_rotations(&held.leases, &held.spare, &held.fleet)
-            .await
-            .expect("a lapsed claim is winnable");
+    let reclaimed = crate::seed::select_fleet(&held.leases, &held.spare, &held.fleet)
+        .await
+        .expect("a lapsed claim is winnable");
     assert!(
         reclaimed.fence > held.fence,
         "the reclaim must outrank the holder it displaced, or this test proves nothing"
@@ -89,6 +87,5 @@ async fn test_a_superseded_report_commits_nothing() {
     );
     assert_nothing_landed(&held, "a lease row that is gone writes none of the four").await;
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }

@@ -1,10 +1,4 @@
-//! Which key family an index reads, and what a connection says about itself.
-//!
-//! No server: every claim here is about how a handle is ADDRESSED, not about
-//! anything it would find. The live-datastore suites all build their index the
-//! same way — `ReadyIndex::under` with a private prefix — so the accessor that
-//! reports which family they landed in, and the default the production path
-//! relies on, are never read by the tests that use them.
+//! Connection diagnostics exclude driver internals.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -15,7 +9,6 @@ use std::time::Duration;
 
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::ready::{READY_INDEX_KEY, ReadyIndex, ReadyPrefix};
 
 /// Long enough to be visibly a real setting in the rendering below, short
 /// enough that nothing here could wait it out.
@@ -29,33 +22,6 @@ fn pending_connection() -> Dragonfly {
         DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1/".to_owned())
             .with_request_timeout(REQUEST_BUDGET);
     Dragonfly::unreachable(&config).expect("a well-formed URL builds a pending connection")
-}
-
-/// The default IS the production family, spelled once. A separate constant
-/// here would be a second answer to a question the index already answers, and
-/// the two would drift the moment either moved.
-#[test]
-fn the_default_prefix_is_the_production_family() {
-    assert_eq!(ReadyPrefix::default(), ReadyPrefix::production());
-    assert_eq!(ReadyPrefix::default().as_str(), READY_INDEX_KEY);
-}
-
-/// An index reports the family it was built over, which is what tells a
-/// suite's own keys apart from the production ones it must never touch.
-#[tokio::test]
-async fn an_index_reports_the_family_it_was_built_over() {
-    let production = ReadyIndex::new(pending_connection());
-    assert_eq!(production.prefix(), &ReadyPrefix::production());
-
-    let private = ReadyPrefix::private("index-addressing");
-    let isolated = ReadyIndex::under(pending_connection(), private.clone());
-    assert_eq!(isolated.prefix(), &private);
-    assert_ne!(
-        isolated.prefix(),
-        production.prefix(),
-        "a private family that reads as the production one would let a suite \
-         write into the index a deployment polls"
-    );
 }
 
 /// A connection renders its role and its budget and stops there. It is the

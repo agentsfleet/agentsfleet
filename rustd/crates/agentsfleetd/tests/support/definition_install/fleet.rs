@@ -55,10 +55,6 @@ pub(super) async fn install(
     {
         approve(&mut connection, &fleet, now).await;
     }
-    afd_dragonfly::FleetStreams::new(booted.queue.clone())
-        .ensure_group(fleet.as_str())
-        .await
-        .expect("the fleet's stream and group exist");
     fleet
 }
 

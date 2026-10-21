@@ -26,7 +26,6 @@ async fn test_thread_read_includes_queued_steers() {
     assert_eq!(first.request_json, BODY);
     assert_eq!(first.response_text, None);
 
-    clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
     lane.cleanup().await;
 }
 
@@ -66,6 +65,5 @@ async fn test_thread_read_dedupes_leased_steer() {
         Some(status::QUEUED)
     );
 
-    clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
     lane.cleanup().await;
 }

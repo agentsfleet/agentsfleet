@@ -16,7 +16,6 @@ mod system;
 use crate::Setup;
 use afd_admission::Admissions;
 use afd_approval::IntegrationGrants;
-use afd_dragonfly::{Dragonfly, FleetStreams};
 
 pub use progress::{SetupCheck, SetupProgress};
 pub use read::SavedFleet;
@@ -26,7 +25,6 @@ pub use system::SystemSetup;
 #[derive(Debug, Clone)]
 pub struct Creations {
     setup: Setup,
-    streams: FleetStreams,
     admissions: Admissions,
     grants: IntegrationGrants,
     schedules: afd_cron::Schedules,
@@ -35,7 +33,7 @@ pub struct Creations {
 impl Creations {
     /// Shares the daemon's ledger, queue, pool and credential inspection service.
     #[must_use]
-    pub fn new(setup: Setup, queue: Dragonfly, admissions: Admissions) -> Self {
+    pub fn new(setup: Setup, admissions: Admissions) -> Self {
         Self {
             schedules: afd_cron::Schedules::new(
                 setup.drafts.database.clone(),
@@ -45,7 +43,6 @@ impl Creations {
                 setup.drafts.database.clone(),
                 setup.drafts.entropy.clone(),
             ),
-            streams: FleetStreams::new(queue),
             setup,
             admissions,
         }

@@ -18,18 +18,11 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use afd_dragonfly::hub::{Received, Subscription};
-use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel, fleet_stream_key};
+use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
 use afd_dragonfly::{Dedicated, SubscriptionHub};
 
 use crate::cluster::{CLUSTER_LANE, ClusterHarness};
 use crate::support::DragonflyHarness;
-
-/// How many events are appended across the migration.
-const APPENDS: u32 = 64;
-
-/// The append the migration is started on, so the move lands mid-stream
-/// rather than before or after it.
-const MIGRATE_AFTER: u32 = 16;
 
 /// How long a frame or a reply is waited for before the test fails.
 const BUDGET: Duration = Duration::from_secs(20);
@@ -40,95 +33,10 @@ const SCANNED_KEYS: u32 = 24;
 /// How long a scanned key lives, comfortably past the test.
 const KEY_TTL_SECONDS: i64 = 300;
 
-/// The field an appended entry carries its identity in.
-const FIELD_EVENT_ID: &str = "event_id";
-
 /// How long the dedicated reader parks, and the ceiling a command on the
 /// SHARED handle must answer well inside of while it does.
 const PARK: Duration = Duration::from_secs(5);
 const SHARED_REPLY_CEILING: Duration = Duration::from_secs(1);
-
-/// A slot migration during appends preserves one physical entry per logical
-/// event and no partial acceptance.
-///
-/// Every append is issued through `FleetStreams` while the fleet's own slot
-/// moves between primaries. What is graded is the correspondence: the entries
-/// on the stream afterwards are exactly the appends that were ANSWERED, each
-/// once. An append that failed left nothing behind, and one that succeeded
-/// left exactly one entry — a duplicate would be a second run of an agent, a
-/// gap would be accepted work nobody executes.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the live Dragonfly cluster: make test-integration-rustd"]
-async fn test_cluster_resharding_preserves_atomic_append() {
-    let _lane = CLUSTER_LANE.lock().await;
-    let cluster = ClusterHarness::from_lane();
-    let harness = DragonflyHarness::connect().await;
-    let streams = FleetStreams::new(harness.redis.clone());
-    let fleet = harness.name("resharded");
-
-    let mut raw = cluster.connect().await;
-    let slot = ClusterHarness::keyslot(&mut raw, &fleet_stream_key(&fleet)).await;
-    let owner = ClusterHarness::canonical_primary(slot);
-    let target = ClusterHarness::other_primary(owner);
-    streams
-        .ensure_group(&fleet)
-        .await
-        .expect("the group exists");
-
-    let mut answered = BTreeSet::new();
-    let mut refused = BTreeSet::new();
-    let mut migration = None;
-    for n in 0..APPENDS {
-        if n == MIGRATE_AFTER {
-            migration = Some(cluster.move_slot(slot, owner, target));
-        }
-        let event_id = format!("event-{n}");
-        match streams
-            .append(&fleet, &[(FIELD_EVENT_ID, event_id.as_str())])
-            .await
-        {
-            Ok(_receipt) => {
-                answered.insert(event_id);
-            }
-            // A refusal mid-migration is allowed; what is not allowed is a
-            // refusal that still left an entry behind. Recorded so the read
-            // below can grade exactly that.
-            Err(_mid_migration) => {
-                refused.insert(event_id);
-            }
-        }
-        if let Some(moving) = migration.take() {
-            moving.await;
-        }
-    }
-
-    let on_stream = entries_on(&mut raw, &fleet).await;
-    let mut distinct = BTreeSet::new();
-    for event_id in &on_stream {
-        assert!(
-            distinct.insert(event_id.clone()),
-            "{event_id} is on the stream twice: an agent would run it twice"
-        );
-    }
-    assert_eq!(
-        distinct, answered,
-        "the stream holds exactly the appends that were answered"
-    );
-    for event_id in &refused {
-        assert!(
-            !distinct.contains(event_id),
-            "{event_id} was refused and still landed: a partial acceptance"
-        );
-    }
-    assert!(
-        answered.len() > usize::try_from(MIGRATE_AFTER).unwrap_or(usize::MAX),
-        "the fixture must answer appends on both sides of the move: {}",
-        answered.len()
-    );
-
-    cluster.move_slot(slot, target, owner).await;
-    streams.forget(&fleet).await.expect("cleanup");
-}
 
 /// A node's slots moving restores every subscription and leaves every scan
 /// finding all of its keys, and a parked blocking read never shares a socket.
@@ -301,27 +209,4 @@ async fn deliver(streams: &FleetStreams, fleet: &str, payload: &str, reader: &mu
     })
     .await;
     assert!(seen.is_ok(), "the reader never saw {payload}");
-}
-
-/// Every `event_id` on the fleet's stream, in the order Dragonfly holds them.
-async fn entries_on(
-    connection: &mut redis::cluster_async::ClusterConnection,
-    fleet: &str,
-) -> Vec<String> {
-    let mut cmd = redis::cmd("XRANGE");
-    cmd.arg(fleet_stream_key(fleet)).arg("-").arg("+");
-    let entries: Vec<(String, Vec<String>)> = cmd
-        .query_async(connection)
-        .await
-        .expect("the stream reads back");
-    entries
-        .into_iter()
-        .filter_map(|(_receipt, fields)| {
-            let (pairs, _odd) = fields.as_chunks::<2>();
-            pairs
-                .iter()
-                .find(|[name, _value]| name == FIELD_EVENT_ID)
-                .map(|[_name, value]| value.clone())
-        })
-        .collect()
 }

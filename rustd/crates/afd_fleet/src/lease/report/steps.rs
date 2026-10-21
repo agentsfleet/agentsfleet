@@ -1,32 +1,11 @@
-//! What a committed report still owes the world, none of it durable.
+//! Best-effort announcements after a report and its admission settle in Postgres.
 //!
-//! Split from [`super`] at the commit: everything in `report.rs` and the
-//! transaction it drives can still refuse the report, and nothing here can —
-//! the money, the result, the session cursor and the freed slot have all
-//! committed, so an error now would ask the runner to retry a report whose
-//! money cannot be charged twice.
-//!
-//! Three things are left, and each is a fan-out rather than a fact: the frame
-//! that tells a watching tail the run ended, the acknowledgement that takes the
-//! entry off the fleet's stream, and the audit row that closes the lease's
-//! history. Every one is attempted, logged if it does not land, and never
-//! propagated.
-//!
-//! # The acknowledgement is last on purpose
-//!
-//! It is the one write here that loses work if it runs EARLY. Acknowledged
-//! before the commit and then rolled back, the entry is gone from the stream
-//! while `fleet.events` still says `received` — an event nothing will
-//! ever deliver again. Acknowledged after, the worst case is an entry left
-//! pending: it is redelivered, and the durable terminal state is what the
-//! redelivery is measured against. So the ordering is not a preference, and
-//! the queue's absence from [`super::Plane::report`]'s transaction is why it
-//! cannot be anything else — no transaction spans Postgres and Dragonfly.
+//! Tail frames, outbound appends, and lease audit events cannot undo acceptance
+//! of the report. The committed outbound obligation repairs a missed append.
 
 use afd_billing::Nanos;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_dragonfly::EventId;
 use afd_events::Closed;
 use afd_observability::producers;
 use afd_wire::report::ReportRequest;
@@ -49,9 +28,8 @@ const EVENT_STEP_FAILED: &str = "report_finalize_step_failed";
 impl Plane {
     /// Announce a report that committed, and clear what it leaves behind.
     ///
-    /// The writes that commit with the money already ran inside the
-    /// transaction. What is left runs in this order: announce the ending,
-    /// acknowledge the stream entry, then close the lease's own history.
+    /// The money and queue transitions already committed. Completion frames
+    /// and the lease audit event are best effort after that boundary.
     pub(super) async fn announce(
         &self,
         runner_id: &Uuid7,
@@ -85,7 +63,6 @@ impl Plane {
                 .publish_completion(&closed, Some(request.response_text.as_ref()))
                 .await;
         }
-        self.acknowledge_entry(lease, lease_id).await;
         step(
             "record_released",
             lease,
@@ -113,16 +90,8 @@ impl Plane {
         );
     }
 
-    /// Acknowledge the entry behind a report this lease had already settled.
-    ///
-    /// The runner is here because it never received the first response, and the
-    /// likeliest reason the first response was lost is that the process died
-    /// between the commit and the acknowledgement below — so the entry may well
-    /// still be pending. Nothing else is re-run: the result, the cursor and the
-    /// slot are durable from the first report, a second audit row would record
-    /// a release that happened once as two, and re-announcing an ending would
-    /// put a completion frame on the tail for a run that ended earlier.
-    pub(super) async fn acknowledge_again(&self, lease: &Reported, lease_id: &str) {
+    /// A repeated report returns the stored outcome without duplicating side effects.
+    pub(super) fn record_repeat(lease: &Reported, lease_id: &str) {
         let fleet = lease.fleet_id.as_str();
         let event = lease.event_id.as_str();
         tracing::info!(
@@ -131,22 +100,6 @@ impl Plane {
             lease_id,
             event = EVENT_ALREADY_SETTLED,
             "the runner re-sent a settled report; its stored outcome stands"
-        );
-        self.acknowledge_entry(lease, lease_id).await;
-    }
-
-    /// Take the entry this lease executed off the fleet's stream.
-    ///
-    /// Addresses the RECEIPT, never the logical event id — see
-    /// [`Leases::acknowledge`](crate::lease::Leases::acknowledge).
-    async fn acknowledge_entry(&self, lease: &Reported, lease_id: &str) {
-        step(
-            "acknowledge",
-            lease,
-            lease_id,
-            self.leases
-                .acknowledge(&lease.fleet_id, &EventId::of(&lease.receipt))
-                .await,
         );
     }
 }

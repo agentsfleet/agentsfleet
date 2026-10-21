@@ -14,7 +14,6 @@ use afd_fleet::lease::{Billed, Kind, Leases};
 use jiff::Timestamp;
 
 use super::{hold, id, live};
-use crate::queue;
 use crate::rows::{LAPSE, Row};
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -123,7 +122,7 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
     let now = fixtures.enrolled_at();
     let tenant_id = Uuid7::parse(&tenant).expect("a seeded tenant");
 
-    let fresh = seed::select_fleet_within_rotations(&leases, &holder, &fleet)
+    let fresh = seed::select_fleet(&leases, &holder, &fleet)
         .await
         .expect("the holder leases its held fleet");
     leases
@@ -144,13 +143,12 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed = seed::select_fleet_within_rotations(&leases, &holder, &fleet)
+    let reclaimed = seed::select_fleet(&leases, &holder, &fleet)
         .await
         .expect("a lapsed lease is reclaimable");
 
     assert!(fresh.resume_hold, "the fresh event resumes the live hold");
     assert_eq!(reclaimed.kind, Kind::Reclaim);
     assert!(!reclaimed.resume_hold, "the reclaimed event builds fresh");
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }

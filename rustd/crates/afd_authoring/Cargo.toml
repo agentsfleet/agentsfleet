@@ -27,7 +27,6 @@ afd_wire.workspace = true
 afd_runner.workspace = true
 afd_admission.workspace = true
 afd_approval.workspace = true
-afd_dragonfly.workspace = true
 afd_cron.workspace = true
 # The product-analytics reporter the private-chat-to-fleet funnel steps go to,
 # each after the commit that made it true.

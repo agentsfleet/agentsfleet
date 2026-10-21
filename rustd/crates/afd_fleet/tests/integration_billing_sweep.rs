@@ -22,7 +22,6 @@ use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::{BillingSwept, GRACE, sweep};
 use afd_wire::usage::{DAEMON_SEQ_BASE, UsageLine};
 
-use crate::queue;
 use crate::report_seed::{DEEP_POOL, Held, held_in};
 use crate::support::Fixtures;
 
@@ -90,7 +89,6 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
         "a second pass finds nothing left"
     );
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -130,7 +128,6 @@ async fn test_fleet_expiry_bills_its_last_slice() {
         .expect("the pass reads");
     assert_eq!(again.expired_billed, 0, "the cursor reached the deadline");
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -168,7 +165,6 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
         "the tail is billed exactly once between the two"
     );
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 

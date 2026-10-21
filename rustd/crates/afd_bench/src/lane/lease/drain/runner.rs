@@ -1,19 +1,4 @@
-//! One simulated runner inside the drain: poll, run nothing, report.
-//!
-//! # What one iteration is
-//!
-//! `Plane::lease` — the whole verb the runner route serves, from the readiness
-//! peek to the serialized answer — then, when it issued work,
-//! `Plane::report` with a processed outcome. The run in between is empty on
-//! purpose: the drain measures what the SCHEDULER and the ledger cost per
-//! event, and a sleep standing in for a model call would only lengthen the
-//! window those costs are divided over.
-//!
-//! # A refusal is counted, never propagated
-//!
-//! As in the contended window: a datastore that would not answer is an
-//! outcome to count and hand to the abort monitor, not a reason to stop the
-//! other runners mid-drain.
+//! Drive the production lease and report paths for each benchmark runner.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -111,35 +96,49 @@ pub(super) async fn drive(plane: &Plane, runner: &Uuid7, shared: &Shared) -> Res
     let mut tally = Tally::new()?;
     while shared.open() {
         tally.polls += 1;
-        let started = Instant::now();
-        let Ok(answer) = plane.lease(runner, &[], false, clock::now()).await else {
-            tally.failures += 1;
-            shared.abort.record(false);
-            continue;
-        };
-        let took = started.elapsed();
-        shared.abort.record(true);
-        let response: LeaseResponse<'_> = serde_json::from_str(&answer)
-            .map_err(|source| ErrorKind::LeaseUnreadable { source })?;
-        let Some(afd_wire::lease::TaggedLease::Fleet(lease)) = response.lease else {
-            continue;
-        };
-        tally.leased += 1;
-        tally.lease_latency.record(took)?;
-        let reporting = Instant::now();
-        if plane
-            .report(runner, &processed(&lease), clock::now())
-            .await
-            .is_ok()
-        {
-            tally.report_latency.record(reporting.elapsed())?;
-            shared.reported.fetch_add(1, Ordering::Relaxed);
-        } else {
+        if let Err(refused) = step(plane, runner, shared, &mut tally).await {
+            if tally.failures == 0 {
+                refusal(&refused);
+            }
             tally.failures += 1;
             shared.abort.record(false);
         }
     }
     Ok(tally)
+}
+
+/// Keep each refusal's cause intact before the driver counts it.
+async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally) -> Result<()> {
+    let started = Instant::now();
+    let answer = plane.lease(runner, &[], false, clock::now()).await?;
+    let took = started.elapsed();
+    shared.abort.record(true);
+    let response: LeaseResponse<'_> =
+        serde_json::from_str(&answer).map_err(|source| ErrorKind::LeaseUnreadable { source })?;
+    let Some(afd_wire::lease::TaggedLease::Fleet(lease)) = response.lease else {
+        return Ok(());
+    };
+    tally.leased += 1;
+    tally.lease_latency.record(took)?;
+    let reporting = Instant::now();
+    plane
+        .report(runner, &processed(&lease), clock::now())
+        .await?;
+    tally.report_latency.record(reporting.elapsed())?;
+    shared.reported.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+}
+
+/// The first refusal per runner is enough to diagnose a failed measurement.
+fn refusal(error: &crate::error::Error) {
+    // logging: the benchmark has no subscriber; its first refusal belongs on the same stderr as the final run failure.
+    eprintln!("drain runner refused: {error}");
+    let mut cause = core::error::Error::source(error);
+    while let Some(reason) = cause {
+        // logging: preserve the cause chain for a benchmark failure without printing any fixture request.
+        eprintln!("  caused by: {reason}");
+        cause = reason.source();
+    }
 }
 
 /// The report a runner that ran the event and answered sends back.

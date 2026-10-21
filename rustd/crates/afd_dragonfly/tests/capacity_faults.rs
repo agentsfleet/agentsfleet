@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use afd_core::error_code;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::streams::FleetStreams;
 use afd_dragonfly::{Dragonfly, preflight};
+use afd_dragonfly::{OutboundJob, OutboundQueue};
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 
@@ -59,7 +59,14 @@ async fn a_full_datastore_is_its_own_class_and_invites_a_retry() {
 
     let error = tokio::time::timeout(
         BUDGET,
-        FleetStreams::new(redis).append("fleet-1", &[("kind", "created")]),
+        OutboundQueue::new(redis).enqueue(OutboundJob {
+            provider: "fixture",
+            destination: "destination",
+            workspace_id: "workspace",
+            fleet_id: "fleet",
+            event_id: "event",
+            answer: "answer",
+        }),
     )
     .await
     .expect("the fake answers, so the append must not hang")

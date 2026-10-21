@@ -13,15 +13,10 @@
 //! same connections the thing under measurement is using, and the lane would
 //! report the sum of two paths under the name of one.
 //!
-//! # Idle cost is the drain's to measure
+//! # Idle cost belongs to the drain
 //!
-//! This window leases and never reports, so every fleet it touched ends it
-//! claimed and still marked: work in flight, not drained. What a deployment
-//! holding no work costs a runner fleet is measured by [`drain`], which drives
-//! the full lease and report verbs over a population of its own until the
-//! lease path itself has cleared every mark, and polls on from there. This
-//! lane once measured idle here too, over an index it had emptied by hand —
-//! a number that described the hand, not the path.
+//! This window claims without reporting, so its admissions remain unsettled.
+//! [`drain`] reports each event before measuring polls over an empty queue.
 
 pub mod drain;
 pub mod drive;
@@ -96,6 +91,7 @@ impl Parameters {
         report.parameter(Parameter::Fleets.name(), self.fleets);
         report.parameter(Parameter::Runners.name(), self.runners);
         report.parameter(POOL_SIZE, u64::from(pool_size));
+        report.parameter("ledger_queue", 1);
         report
     }
 }
@@ -144,18 +140,10 @@ pub async fn run(
     Ok(report)
 }
 
-/// The drain, then the contended window, as one report: `make bench-lease`.
-///
-/// On a rig the run owns, the readiness index is emptied before anything is
-/// seeded, so the idle cost measured is this run's. The drain goes FIRST. The contended window leases and never reports, so
-/// its fleets end it claimed and marked for a claim's whole lifetime; a drain
-/// after it would poll those marks, and its idle cost would be theirs. Each
-/// population is its own, so the contended numbers stay comparable with
-/// every earlier baseline either way.
+/// Measure complete drains, then contended claims, with separate fixture populations.
 ///
 /// # Errors
-///
-/// Whatever either population refused, the drain's first.
+/// Returns the first failed measurement or cleanup.
 pub async fn run_both(
     profile: Profile,
     provenance: Provenance,
@@ -163,9 +151,6 @@ pub async fn run_both(
     stores: &Datastores,
     prefix: &RunPrefix,
 ) -> Result<Report> {
-    if provenance.owned {
-        drain::reset_readiness(stores).await?;
-    }
     let mut drained = Report::new(Lane::Lease, profile, provenance.clone());
     drain::run(profile, parameters, stores, prefix, &mut drained).await?;
     let mut report = run(profile, provenance, parameters, stores, prefix).await?;

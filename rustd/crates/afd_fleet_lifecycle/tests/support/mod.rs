@@ -1,19 +1,6 @@
-//! The lane's database, its Dragonfly, and the rows a fleet needs to exist.
-//!
-//! Built on [`afd_db::test_util::TestDatabase`], which hands back the database
-//! the lane already migrated.
-//!
-//! # One isolation argument, now used on both sides
-//!
-//! Dragonfly never had a database-per-test equivalent, so every key this suite
-//! touches is namespaced by a fleet identifier the test minted for itself: two
-//! tests running at once cannot collide because neither can name the other's
-//! fleet. That worked. Postgres is now isolated the same way and for the same
-//! reason — see [`afd_db::test_util`] on what the per-test database cost and
-//! what it was actually buying.
+//! Owned tenant, workspace and fleet fixtures against the lane database.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 #![allow(
@@ -21,30 +8,14 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use std::time::Duration;
-
-use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
+use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed};
 use afd_db::{Db, PoolConfig};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_lifecycle::Fleets;
 use jiff::Timestamp;
-
-/// The environment knob naming the lane's Dragonfly.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// The environment knob naming its certificate authority, where the lane uses one.
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
-/// A Postgres nobody is listening on.
-///
-/// Port 1 is reserved and unbound on every platform this builds for, so a
-/// connection fails on refusal rather than waiting out a timeout.
-const NOWHERE: &str = "redis://127.0.0.1:1";
 
 /// A Postgres connection string nothing listens on.
 const NOWHERE_DATABASE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
@@ -71,49 +42,22 @@ mod seed;
 pub(crate) struct Lane {
     database: TestDatabase,
     pub(crate) pool: Db,
-    pub(crate) queue: Dragonfly,
     pub(crate) fleets: Fleets,
     pub(crate) workspace: Uuid7,
     pub(crate) tenant: Uuid7,
 }
 
 impl Lane {
-    /// Connects the queue and seeds a tenant and one workspace inside the
-    /// lane's shared database.
-    ///
-    /// No `CREATE DATABASE` and no migration — the lane brought both. Isolation
-    /// is the minted `tenant` and `workspace`, which is the same isolation the
-    /// Dragonfly side has always relied on: keys namespaced by identifiers only
-    /// this test can name.
     pub(crate) async fn create() -> Self {
-        let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
-            .await
-            .expect("the lane's Dragonfly must be reachable");
-        Self::over(queue).await
-    }
-
-    /// The lane's database with a Dragonfly nobody answers on.
-    ///
-    /// For the proofs that are settled in Postgres before a purge reaches the
-    /// queue — a refused purge never forgets a stream — so they run wherever the
-    /// lane's Postgres does. The lazy manager opens no socket until asked.
-    pub(crate) async fn without_queue() -> Self {
-        let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned());
-        Self::over(Dragonfly::unreachable(&config).expect("a lazy manager opens no socket")).await
-    }
-
-    /// Seeds a tenant and one workspace and builds the store over `queue`.
-    async fn over(queue: Dragonfly) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let fleets = Fleets::new(pool.clone(), queue.clone());
+        let fleets = Fleets::new(pool.clone());
 
         let lane = Self {
             tenant: mint(),
             workspace: mint(),
             database,
             pool,
-            queue,
             fleets,
         };
         lane.seed_tenant_and_workspace().await;
@@ -134,9 +78,7 @@ impl Lane {
             &PoolConfig::resolve(&environment, DbRole::Api)
                 .expect("the fixture connection string is well formed"),
         );
-        let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned());
-        let queue = Dragonfly::unreachable(&config).expect("a lazy manager opens no socket");
-        Fleets::new(dead, queue)
+        Fleets::new(dead)
     }
 
     /// A second workspace under the same tenant, for the cross-workspace proofs.
@@ -216,16 +158,6 @@ impl Lane {
             .await
             .expect("seeding a workspace");
     }
-}
-
-/// The lane's Dragonfly configuration.
-fn dragonfly_config() -> DragonflyConfig {
-    let url = ProcessEnv.get(DRAGONFLY_URL_KNOB).unwrap_or_else(|| {
-        panic!("{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`")
-    });
-    DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-        .with_request_timeout(Duration::from_secs(5))
 }
 
 /// A fresh identifier, so no two fixtures can name each other's rows.

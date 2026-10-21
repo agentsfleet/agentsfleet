@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::queue;
 use afd_core::id::Uuid7;
 use afd_core::timing::{LEASE_TTL, MAX_RUNTIME};
 use afd_fleet::lease::sql::meter::Metering;
@@ -143,7 +142,6 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         "and the refused renewal advanced nothing"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -175,7 +173,7 @@ async fn test_renew_after_reclaim_is_lost() {
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
-    crate::seed::select_fleet_within_rotations(&leases, &second, &fleet)
+    crate::seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 
@@ -187,7 +185,6 @@ async fn test_renew_after_reclaim_is_lost() {
         "the reclaim expired this lease, so its former holder must terminate its child"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -212,7 +209,6 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
         fixtures,
         runner,
         issued,
-        fleet,
         tenant,
         now,
         ..
@@ -257,6 +253,5 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
         "a refused renewal advances nothing — the lease expires on its original deadline"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }

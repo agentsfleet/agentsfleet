@@ -107,17 +107,19 @@ the workload.
 
 ## Service Level Objectives
 
-Four indicators, and the reason there are only four: an indicator needs a
-family with a producer behind it, and most of what an operator would want to
-promise here does not have one yet. Each row names the measurement its target
-came from, because a target nobody measured is a number, not an objective.
+Three candidate objectives have metric producers. Their targets remain unproven;
+the table records the available measurements. Backlog age is a diagnostic until
+a pickup objective is measured.
 
 | Indicator | Good events over valid events | Target | Where the target came from |
 |---|---|---|---|
-| Admission availability | `agentsfleet_admissions_total{outcome=~"appended\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Measured Sep 17, 2026 on development: 13 `appended`, 1 `replayed`, nothing refused or deferred. Fourteen events set no objective. |
+| Admission availability | `agentsfleet_admissions_total{outcome=~"accepted\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Historical development measurement on 2026-09-17: 13 `appended`, 1 `replayed`, no refusals or deferrals. The current ledger producer labels committed work `accepted`. |
 | Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the same family excluding `fault="workload"` | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash` — both platform classes, so the blame split leaves the measured 70% unchanged. |
-| Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_admissions_total{outcome="appended"}` | 99% | unproven, and not for want of traffic: both families landed in M197_002 and the deployed daemon predates them, so there are zero series. The first reading worth having is the one after the next deploy. |
-| Work picked up inside the replay floor | samples where `agentsfleet_admission_backlog_oldest_age_seconds` is below the floor, over all samples | 99% | the floor is derived, the target is not. `MIN_AGE + INTERVAL` in `rustd/crates/afd_runner/src/sweep/replay.rs` is 60 seconds. |
+| Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_admissions_total{outcome="accepted"}` | 99% | unproven. Measure both families from a ledger-queue daemon before assigning this target. |
+
+`agentsfleet_admission_backlog_oldest_age_seconds` reports the oldest unsettled
+admission. Parked work remains unsettled, so backlog age includes time waiting
+for an answer. The ledger has no replay interval that defines a pickup deadline.
 
 `over_budget` is excluded from valid events on purpose. It is the deployment
 refusing work because a budget is spent, which is the system doing what its

@@ -36,7 +36,6 @@ mod read;
 mod sql;
 
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
 
 /// The purge's statements, for the lane that runs them against a live role.
 ///
@@ -58,31 +57,21 @@ pub use self::read::{After, FleetPage, FleetRow, Triggers};
 
 /// The workspace's fleets, as one store.
 ///
-/// Holds Postgres and two views of Dragonfly, because a purge removes the row
-/// and then forgets the stream and the readiness mark that hang off it.
+/// Reads and purges the durable fleet state in Postgres.
 #[derive(Debug, Clone)]
 pub struct Fleets {
     database: Db,
-    streams: FleetStreams,
-    ready: ReadyIndex,
     /// One enumeration per workspace per tick, shared by every viewer of it.
     /// See [`live_set`] for why this read is cached where the others are not.
     live_sets: live_set::LiveSets,
 }
 
 impl Fleets {
-    /// Binds the store to already-connected handles.
-    ///
-    /// Takes the Dragonfly CONNECTION and builds both views over it, rather
-    /// than taking the views: which of them this crate needs is its own
-    /// business, and a composition root assembling them would have to be
-    /// edited every time that answer changed.
+    /// Bind the store to the durable fleet database.
     #[must_use]
-    pub fn new(database: Db, queue: Dragonfly) -> Self {
+    pub fn new(database: Db) -> Self {
         Self {
             database,
-            streams: FleetStreams::new(queue.clone()),
-            ready: ReadyIndex::new(queue),
             live_sets: live_set::live_sets(),
         }
     }
@@ -95,7 +84,7 @@ impl Fleets {
 /// silently matches no row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FleetStatus {
-    /// The row exists; its setup checks or its stream may not yet.
+    /// The row exists; its setup checks may not yet pass.
     ///
     /// The state every fleet is born in. Setup activation flips it to
     /// [`FleetStatus::Active`] only after a fresh locked recheck.

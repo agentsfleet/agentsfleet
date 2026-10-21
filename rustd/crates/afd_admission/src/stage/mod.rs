@@ -21,20 +21,19 @@ impl Admissions {
     /// # Errors
     /// Preserves capacity, entropy and datastore failures without recording acceptance.
     pub async fn prepare<'a>(&self, admission: Admission<'a>) -> Result<PreparedAdmission<'a>> {
-        self.refuse_over_fleet_budget(admission.fleet).await?;
         let now = clock::now();
         Ok(PreparedAdmission {
             admission,
             row_id: self.entropy.uuid7(now)?,
-            estimate: self.deployment_estimate(now).await?,
+            estimate: self.deployment_estimate(now).await,
         })
     }
 
     /// Records the prepared admission on the caller's transaction, without queue I/O.
     ///
-    /// The caller must commit before confirming delivery. A rollback removes both
-    /// the admission and its surrounding activation. `confirm` appends that same
-    /// producer identity and answers accepted only after saving its receipt.
+    /// The caller must commit before confirming acceptance. A rollback removes both
+    /// the admission and its surrounding activation. `confirm` reads the saved
+    /// producer identity and rings the doorbell after the commit.
     ///
     /// # Errors
     /// Preserves a failed statement or the deployment ceiling's refusal.

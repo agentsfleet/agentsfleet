@@ -23,13 +23,13 @@ fn the_error_surface_holds() {
     let samples = one_of_each_kind();
     assert_eq!(
         samples.len(),
-        21,
+        19,
         "a kind was added or dropped without its sample"
     );
     grade(
         &samples,
         Expect {
-            with_source: 8,
+            with_source: 6,
             distinct_codes: 3,
         },
     );
@@ -79,7 +79,6 @@ fn test_the_accessors_partition_the_kinds() {
             error.is_full(),
             error.is_unsafe_eviction(),
             error.is_unsuitable_datastore(),
-            error.is_unmintable(),
         ];
         let claimed = answers.iter().filter(|answer| **answer).count();
         assert_eq!(claimed, 1, "{label} is claimed by {claimed} accessors");

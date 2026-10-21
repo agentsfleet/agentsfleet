@@ -17,11 +17,11 @@ use afd_core::error_code::{self, ErrorCode};
 use super::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED,
     DETAIL_CONNECTOR_RECONNECT, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
-    DETAIL_EVENT_MALFORMED, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
-    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME,
-    DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT, DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED,
-    DETAIL_MINT_UNCONFIGURED, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
-    DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
+    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
+    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT,
+    DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
+    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
+    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
 
 impl Error {
@@ -38,7 +38,6 @@ impl Error {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
-            ErrorKind::Admission { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
             _ => false,
         }
@@ -60,7 +59,7 @@ impl Error {
     /// each family's reason is written here rather than between the arms, so
     /// the table reads as one table:
     ///
-    /// - **Delegated** — billing, runner, authoring, admission, credential,
+    /// - **Delegated** — billing, runner, authoring, credential,
     ///   gate, events, outbound and memory each already decide which of their
     ///   failures is an outage and which is their own fault. A second copy of
     ///   that mapping here is the drift this crate's module header warns about.
@@ -94,7 +93,6 @@ impl Error {
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Authoring { ref source } => source.code(),
-            ErrorKind::Admission { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
             ErrorKind::Events { ref source } => source.code(),
@@ -105,9 +103,7 @@ impl Error {
             }
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
-            ErrorKind::Envelope { .. }
-            | ErrorKind::EnvelopeMalformed { .. }
-            | ErrorKind::Mint { .. }
+            ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Queue { .. }
             | ErrorKind::ConfigUnreadable { .. }
@@ -175,10 +171,6 @@ impl Error {
             ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),
-            ErrorKind::Admission { ref source } => source.detail(),
-            ErrorKind::Envelope { .. } | ErrorKind::EnvelopeMalformed { .. } => {
-                DETAIL_EVENT_MALFORMED
-            }
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
             ErrorKind::Scrub { .. } => afd_core::error::DETAIL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,

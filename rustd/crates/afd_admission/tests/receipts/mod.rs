@@ -1,6 +1,6 @@
-//! Durable receipts and recovery are exercised through real ledger statements.
+//! Durable acceptance and capacity use the production ledger statements.
 
-mod claims;
+mod budgets;
 mod confirmation;
 mod failures;
 mod lane;

@@ -5,11 +5,10 @@ use std::error::Error as _;
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_DATABASE_ERROR, DETAIL_EVENT_MALFORMED,
-    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
-    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED,
-    DETAIL_MINT_UNCONFIGURED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
-    DETAIL_VAULT_DATA_INVALID, Error,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_DATABASE_ERROR, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
+    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME,
+    DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
+    DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error,
 };
 
 struct Expected {
@@ -159,24 +158,7 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
     );
     malformed.has_source = true;
 
-    for expected in &[
-        expected(
-            super::envelope_field("event_id"),
-            error_code::INTERNAL_OPERATION_FAILED,
-            DETAIL_EVENT_MALFORMED,
-        ),
-        // Its own row rather than a variant of the one above: the two report the
-        // same code and detail to the caller and DIFFERENT prose to the
-        // operator, and only a separate case proves the second exists at all.
-        expected(
-            super::envelope_malformed("created_at"),
-            error_code::INTERNAL_OPERATION_FAILED,
-            DETAIL_EVENT_MALFORMED,
-        ),
-        rejected,
-        query,
-        malformed,
-    ] {
+    for expected in &[rejected, query, malformed] {
         assert_error(expected);
     }
 

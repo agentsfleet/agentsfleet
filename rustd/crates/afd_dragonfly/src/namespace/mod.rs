@@ -1,6 +1,6 @@
 //! Development isolation without changing the logical application key names.
 
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::Result;
 
 /// Optional development namespace. Empty configuration preserves deployed keys.
 pub const NAMESPACE_KNOB: &str = "AGENTSFLEET_DEV_NAMESPACE";
@@ -28,9 +28,7 @@ impl Namespace {
         if raw.trim().is_empty() {
             return Ok(Self::default());
         }
-        let input = garde::Unvalidated::new(Input { value: raw })
-            .validate()
-            .map_err(|source| Error::new(ErrorKind::InvalidNamespace { source }))?;
+        let input = garde::Unvalidated::new(Input { value: raw }).validate()?;
         Ok(Self::from_valid(&input))
     }
 

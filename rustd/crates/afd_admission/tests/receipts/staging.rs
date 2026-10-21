@@ -4,7 +4,6 @@ use super::{
     lane::Lane,
     queue::{confirm, over_fake},
 };
-use crate::fake_redis::Reply;
 use afd_admission::{Admission, Key, Producer, Reply as ReplyTo};
 use afd_wire::event::EventType;
 use sqlx::Connection as _;
@@ -24,7 +23,7 @@ fn request(lane: &Lane) -> Admission<'_> {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn rollback_removes_staged_admission_and_no_append_escapes() {
+async fn rollback_removes_staged_admission_without_a_notification() {
     let lane = Lane::seed().await;
     let (server, admissions) = over_fake(&lane, &[]).await;
     let prepared = admissions
@@ -48,7 +47,12 @@ async fn rollback_removes_staged_admission_and_no_append_escapes() {
             .await
             .expect("rolled-back state");
     assert_eq!(count, 0);
-    assert!(!server.seen().iter().any(|line| line.starts_with("XADD")));
+    assert!(
+        !server
+            .seen()
+            .iter()
+            .any(|line| line.starts_with("SPUBLISH"))
+    );
     assert_eq!(
         admissions
             .confirm(Producer::Steer, &lane.fleet)
@@ -61,9 +65,9 @@ async fn rollback_removes_staged_admission_and_no_append_escapes() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn committed_stage_is_pending_until_one_receipt_commits() {
+async fn a_committed_stage_confirms_without_a_second_queue_record() {
     let lane = Lane::seed().await;
-    let (server, admissions) = over_fake(&lane, &[("XADD", Reply::Bulk("1790000000000-0"))]).await;
+    let (server, admissions) = over_fake(&lane, &[]).await;
     let prepared = admissions
         .prepare(request(&lane))
         .await
@@ -78,12 +82,15 @@ async fn committed_stage_is_pending_until_one_receipt_commits() {
         .await
         .expect("activation and initial admission commit");
     drop(connection);
-    assert_eq!(lane.receipt().await, None);
-    assert!(!server.seen().iter().any(|line| line.starts_with("XADD")));
+    assert!(
+        !server
+            .seen()
+            .iter()
+            .any(|line| line.starts_with("SPUBLISH"))
+    );
     let accepted = confirm(&admissions, &lane)
         .await
         .expect("same event confirmed");
-    assert!(accepted.accepted);
     assert_eq!(accepted.event_id, first.stored.id);
     assert_eq!(
         confirm(&admissions, &lane)
@@ -95,9 +102,9 @@ async fn committed_stage_is_pending_until_one_receipt_commits() {
         server
             .seen()
             .iter()
-            .filter(|line| line.starts_with("XADD"))
+            .filter(|line| line.starts_with("SPUBLISH"))
             .count(),
-        1
+        2
     );
     lane.cleanup().await;
 }

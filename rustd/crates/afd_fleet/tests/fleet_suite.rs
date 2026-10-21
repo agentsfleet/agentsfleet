@@ -52,7 +52,6 @@ mod view_heartbeat;
 
 #[path = "integration_activity_publish.rs"]
 mod integration_activity_publish;
-mod integration_admission_recovery;
 #[path = "integration_billing_sweep.rs"]
 mod integration_billing_sweep;
 #[path = "integration_billing_sweep_faults.rs"]
@@ -88,17 +87,13 @@ mod integration_lease_issue;
 mod integration_lease_issue_refusals;
 #[path = "integration_lease_plan.rs"]
 mod integration_lease_plan;
-#[path = "integration_lease_ready.rs"]
-mod integration_lease_ready;
-#[path = "integration_lease_retention.rs"]
-mod integration_lease_retention;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
 #[path = "integration_lease_usage_flush.rs"]
 mod integration_lease_usage_flush;
 #[path = "integration_lease_verbs.rs"]
 mod integration_lease_verbs;
-mod integration_lease_wake;
+mod integration_ledger_queue;
 #[path = "integration_ledger_reads.rs"]
 mod integration_ledger_reads;
 #[path = "integration_memory_capture.rs"]
@@ -109,22 +104,6 @@ mod integration_memory_hydrate_order;
 mod integration_money_gates;
 #[path = "integration_money_gates_debt.rs"]
 mod integration_money_gates_debt;
-#[path = "integration_recovery_budget.rs"]
-mod integration_recovery_budget;
-#[path = "integration_recovery_outage.rs"]
-mod integration_recovery_outage;
-#[path = "integration_recovery_progress.rs"]
-mod integration_recovery_progress;
-#[path = "integration_recovery_progress_deleted.rs"]
-mod integration_recovery_progress_deleted;
-#[path = "integration_recovery_progress_live.rs"]
-mod integration_recovery_progress_live;
-#[path = "integration_recovery_progress_restart.rs"]
-mod integration_recovery_progress_restart;
-#[path = "integration_recovery_progress_walk.rs"]
-mod integration_recovery_progress_walk;
-#[path = "integration_recovery_row_locks.rs"]
-mod integration_recovery_row_locks;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]
@@ -157,8 +136,6 @@ mod integration_runner_views;
 mod integration_runner_views_malformed;
 #[path = "integration_steer_admitted_stamp.rs"]
 mod integration_steer_admitted_stamp;
-#[path = "integration_steer_receipt_cutover.rs"]
-mod integration_steer_receipt_cutover;
 mod integration_terminal_redelivery;
 #[path = "integration_wall_counters.rs"]
 mod integration_wall_counters;

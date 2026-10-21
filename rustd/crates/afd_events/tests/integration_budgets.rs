@@ -1,6 +1,6 @@
 //! Dimension 3.2 — a full datastore produces classified backpressure and no
 //! silent drop: a fleet holding its budget of outstanding entries, or a
-//! deployment holding its budget of unconfirmed admissions, refuses the
+//! deployment holding its budget of unsettled admissions, refuses the
 //! producer with the capacity class and commits nothing.
 //!
 //! The budgets are set small through `Admissions::with_budgets`; the
@@ -17,16 +17,12 @@
 
 use afd_admission::{Admission, Admissions, Budgets, Key, Producer};
 use afd_core::error_code;
-use afd_dragonfly::streams::FleetStreams;
 use afd_wire::event::EventType;
 
 use crate::support::EventsLane;
 
 /// How many entries the fleet may hold outstanding before it is refused.
 const FLEET_BUDGET: u64 = 3;
-
-/// The consumer the test drains one entry under.
-const CONSUMER: &str = "budget-reader";
 
 /// A delivery key no earlier run holds.
 ///
@@ -76,19 +72,14 @@ fn assert_capacity_refusal(refused: &afd_admission::Error) {
     assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
 }
 
-/// Dimension 3.2, the fleet budget: outstanding entries on the stream.
+/// Dimension 3.2, the fleet budget: unsettled admissions.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_fleet_holding_its_budget_of_outstanding_entries_refuses_the_producer() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
-    streams
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("group create");
     let ledger = lane.admissions().with_budgets(Budgets {
         fleet_backlog: FLEET_BUDGET,
-        replay_backlog: u64::MAX,
+        deployment_backlog: u64::MAX,
     });
 
     for index in 0..FLEET_BUDGET {
@@ -111,23 +102,22 @@ async fn a_fleet_holding_its_budget_of_outstanding_entries_refuses_the_producer(
         "a refusal commits nothing: the row is what the budget protects"
     );
 
-    // Draining one entry makes room for exactly one more.
-    let event = streams
-        .read_new(&lane.fleet, CONSUMER)
+    let mut connection = lane.connection().await;
+    sqlx::query("UPDATE fleet.admissions SET settled_at = now() WHERE id = (SELECT id FROM fleet.admissions WHERE fleet_id = $1::uuid ORDER BY created_at, sequence LIMIT 1)")
+        .bind(&lane.fleet)
+        .execute(&mut *connection)
         .await
-        .expect("read")
-        .expect("an entry is outstanding");
-    assert!(streams.ack(&lane.fleet, &event.receipt).await.expect("ack"));
+        .expect("settle the oldest admission");
+    drop(connection);
     ledger
         .admit(admission(&lane, &delivery(&lane, "one-over")))
         .await
         .expect("room was made");
 
-    streams.forget(&lane.fleet).await.expect("cleanup");
     lane.cleanup().await;
 }
 
-/// Dimension 3.2, the deployment budget: rows the queue never confirmed.
+/// Dimension 3.2, the deployment budget: unsettled rows.
 ///
 /// The budget is a deployment-wide count that other suites in this lane can
 /// raise concurrently, so the refusal is proven with a budget of zero — under
@@ -138,10 +128,6 @@ async fn a_fleet_holding_its_budget_of_outstanding_entries_refuses_the_producer(
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() {
     let lane = EventsLane::open().await;
-    FleetStreams::new(lane.queue.clone())
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("group create");
     let open = lane.admissions();
     let admitted = open
         .admit(admission(&lane, &delivery(&lane, "already-admitted")))
@@ -150,7 +136,7 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
 
     let spent = lane.admissions().with_budgets(Budgets {
         fleet_backlog: u64::MAX,
-        replay_backlog: 0,
+        deployment_backlog: 0,
     });
     let before = rows_for(&lane).await;
     let refused = spent
@@ -170,10 +156,6 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
         "and answered its original id"
     );
 
-    FleetStreams::new(lane.queue.clone())
-        .forget(&lane.fleet)
-        .await
-        .expect("cleanup");
     lane.cleanup().await;
 }
 
@@ -182,10 +164,9 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
 /// what this test deferred.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_ledger_reports_its_unconfirmed_rows_and_the_age_of_the_oldest() {
+async fn the_ledger_reports_its_unsettled_rows_and_the_age_of_the_oldest() {
     let lane = EventsLane::open().await;
-    // A queue nothing listens on: every append is deferred, so the row is
-    // committed and the receipt stays NULL.
+    // Notifications can fail without changing acceptance or backlog.
     let unreachable = afd_dragonfly::Dragonfly::unreachable(
         &afd_dragonfly::DragonflyConfig::from_url(
             afd_dragonfly::DragonflyRole::Default,

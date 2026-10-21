@@ -35,12 +35,8 @@
 //! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
 //! everything else still runs concurrently.
 //!
-//! # Dragonfly is here because an approval CONTINUES a run
-//!
-//! The resolve appends a stream entry for the event it unblocked. That is the
-//! one reason this suite needs a queue, and it is why the fixture connects a
-//! real one rather than a dead handle: a continuation nothing appended is the
-//! failure the dimension exists to catch.
+//! Dragonfly carries activity frames and wake notifications. Continuations
+//! commit to the admissions ledger; notification failure cannot undo them.
 #![expect(
     clippy::expect_used,
     clippy::panic,

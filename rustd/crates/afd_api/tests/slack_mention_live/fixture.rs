@@ -4,9 +4,8 @@
 //! Everything a mention reads on its way to the ledger is real here: the app
 //! bag the wall verifies against, the install row the team resolves through,
 //! the sealed grant the bot's identity is read from, and fleet rows whose
-//! stored configurations are ones Save accepts. Only the queue is
-//! absent, and a mention admitted without it is exactly the deferral the
-//! ledger promises: the row commits and the sweeper appends later.
+//! stored configurations are ones Save accepts. Dragonfly is unreachable;
+//! admission commits to Postgres and its notification may fail independently.
 //!
 //! Slack is a loopback. A routed mention reads its thread back before it is
 //! admitted, and the connectors' exchange is pinned at [`FakeSlack`] so that
@@ -114,8 +113,7 @@ impl Fixture {
         harness::unreachable_ingress(self.database.clone())
     }
 
-    /// The same router with a live fleet queue, for a mention that installs
-    /// the channel's resident: an install creates the fleet's stream.
+    /// The router with live Dragonfly notifications.
     pub(super) async fn resident_router(&self) -> axum::Router {
         self.instance()
             .with_fleet_queue(self.database.clone(), harness::connect_redis().await)

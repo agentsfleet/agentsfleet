@@ -1,12 +1,17 @@
-WITH probe AS (
+WITH locked_slot AS MATERIALIZED (
+    SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
+    FROM runner.fleet_slots s JOIN runner.leases l ON l.fleet_id = s.fleet_id
+    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $4
+    FOR UPDATE OF s
+), probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, e.event_id,
            l.fencing_token, l.created_at, l.lease_expires_at, l.last_metered_at,
            a.fencing_token AS live_fence, a.lease_expires_at AS slot_expires_at
     FROM runner.leases l
-    JOIN runner.fleet_slots a ON a.fleet_id = l.fleet_id
+    JOIN locked_slot a ON a.fleet_id = l.fleet_id
     JOIN fleet.events e ON e.id = l.fleet_event_id
     WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $4
-    FOR UPDATE OF l, a
+    FOR UPDATE OF l
 ), instant AS MATERIALIZED (
     SELECT clock_timestamp() AS checked_at FROM probe
 ), metered AS (
@@ -28,6 +33,11 @@ WITH probe AS (
                     AND LEAST(checked_at + $6::interval, created_at + $7::interval) > checked_at
                     AND lease_expires_at > checked_at AND slot_expires_at > checked_at
           END
+      AND EXISTS (
+          SELECT 1 FROM fleet.admissions a
+          WHERE a.id = metered.event_id::uuid AND a.fleet_id = metered.fleet_id
+            AND a.lease_fence = metered.fencing_token AND a.settled_at IS NULL
+      )
 ), moved AS (
     UPDATE runner.leases l
     SET status           = CASE WHEN $5::boolean THEN $8 ELSE l.status END,
@@ -42,6 +52,13 @@ WITH probe AS (
         updated_at = now()
     FROM guard g WHERE a.fleet_id = g.fleet_id
     RETURNING a.fleet_id
+), settled AS (
+    UPDATE fleet.admissions a
+    SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
+    FROM guard g
+    WHERE $5::boolean AND a.id = g.event_id::uuid AND a.fleet_id = g.fleet_id
+      AND a.lease_fence = g.fencing_token AND a.settled_at IS NULL
+      AND EXISTS (SELECT 1 FROM moved)
 ), tally AS (
     INSERT INTO runner.lifetime_counters AS c
       (runner_id, acquired_count, succeeded_count, failed_count, expired_count,

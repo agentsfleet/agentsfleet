@@ -7,11 +7,9 @@
 use core::time::Duration;
 use std::time::Instant;
 
-use afd_dragonfly::{Dragonfly, Partition, ReadyCursor, ReadyIndex, fleet_stream_key};
-use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
-use afd_fleet::lease::sql::lease::SELECT_READY_CANDIDATES;
+use afd_fleet::lease::assign::MAX_CANDIDATES_PER_POLL;
+use afd_fleet::lease::sql::queue::SELECT_CANDIDATES;
 
-use crate::datastores::command::{COUNT, RANGE_END, RANGE_START, XRANGE};
 use crate::datastores::{Datastores, postgres_count};
 use crate::error::{ErrorKind, Result};
 use crate::report::Report;
@@ -46,84 +44,59 @@ const MILLIS_PER_SECOND: f64 = 1_000.0;
 /// `fleet.fleets` and every index on it, in bytes.
 const TABLE_SIZE_QUERY: &str = include_str!("sql/select_fleets_size.sql");
 
-/// How many fleets exist, whatever their readiness.
+/// How many fleets exist, whether they have queued work.
 const POPULATION_QUERY: &str = include_str!("sql/select_fleet_population.sql");
 
-/// The datastore named when a Dragonfly sample set is empty.
-const DRAGONFLY: &str = "dragonfly";
+/// The store named when a latency sample set is empty.
+const POSTGRES: &str = "postgres";
+const SELECT_ADMISSION_HEAD: &str = include_str!("sql/select_admission_head.sql");
 
-/// Median readiness-peek latency over [`SAMPLES`] calls, asking for the same
-/// number of candidates the lease path asks for.
-pub(super) async fn peek_ms(queue: &Dragonfly) -> Result<f64> {
-    let index = ReadyIndex::new(queue.clone());
-    // Rotated the way the lease path rotates, so the sample covers every
-    // partition rather than timing one hash over and over.
-    let cursor = ReadyCursor::new();
+/// Median candidate discovery latency over the serving query.
+pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
+    let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        index
-            .peek(cursor.advance(), MAX_READY_CANDIDATES_PER_POLL)
+        let _candidates: Vec<String> = sqlx::query_scalar(SELECT_CANDIDATES)
+            .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+            .bind(runner)
+            .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
+            .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
+            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
+            .bind(Vec::<String>::new())
+            .bind(None::<&str>)
+            .fetch_all(&mut *connection)
             .await?;
         samples.push(started.elapsed());
     }
     median_ms(samples).ok_or_else(|| {
         ErrorKind::CounterUnreadable {
-            datastore: DRAGONFLY,
-            field: "readiness peek samples",
+            datastore: POSTGRES,
+            field: "candidate samples",
         }
         .into()
     })
 }
 
-/// Median single-stream read latency over [`SAMPLES`] calls.
-pub(super) async fn stream_read_ms(queue: &Dragonfly, fleet: &str) -> Result<f64> {
-    let key = fleet_stream_key(fleet);
+/// Median indexed head lookup latency over the unsettled ledger.
+pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &str) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
+    let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
-        let mut command = redis::cmd(XRANGE);
-        command
-            .arg(&key)
-            .arg(RANGE_START)
-            .arg(RANGE_END)
-            .arg(COUNT)
-            .arg(1);
         let started = Instant::now();
-        let _entries: Vec<(String, Vec<String>)> = queue.command(XRANGE, &key, &command).await?;
+        let _head: Option<String> = sqlx::query_scalar(SELECT_ADMISSION_HEAD)
+            .bind(fleet)
+            .fetch_optional(&mut *connection)
+            .await?;
         samples.push(started.elapsed());
     }
     median_ms(samples).ok_or_else(|| {
         ErrorKind::CounterUnreadable {
-            datastore: DRAGONFLY,
-            field: "stream read samples",
+            datastore: POSTGRES,
+            field: "admission head samples",
         }
         .into()
     })
-}
-
-/// Up to one peek's worth of ready fleets, gathered over a full rotation.
-///
-/// The plan below is explained against the same membership list a poll
-/// binds, and a single partition of a freshly seeded population may hold
-/// fewer fleets than the poll ceiling; walking the rotation fills the list
-/// the way consecutive polls would.
-async fn ready_across_partitions(queue: &Dragonfly) -> Result<Vec<String>> {
-    let index = ReadyIndex::new(queue.clone());
-    let mut ready = Vec::with_capacity(MAX_READY_CANDIDATES_PER_POLL);
-    for partition in Partition::all() {
-        let room = MAX_READY_CANDIDATES_PER_POLL.saturating_sub(ready.len());
-        if room == 0 {
-            break;
-        }
-        ready.extend(
-            index
-                .peek(partition, room)
-                .await?
-                .into_iter()
-                .map(|entry| entry.fleet_id),
-        );
-    }
-    Ok(ready)
 }
 
 /// Table sizes and the candidate query's plan at population.
@@ -137,26 +110,22 @@ pub(super) async fn postgres_at_population(
         crate::report::count(table_sizes(&stores.database).await?),
     );
     let mut connection = stores.database.acquire().await?;
-    let ready = ready_across_partitions(&stores.queue).await?;
     // `AssertSqlSafe` because the statement is assembled from two constants
     // this crate and `afd_fleet` own; nothing a caller typed reaches it.
-    let lines: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-        "{EXPLAIN}{SELECT_READY_CANDIDATES}"
-    )))
-    .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
-    .bind(runner)
-    .bind(&ready)
-    .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-    // How long a silent holder binds, and the status a holder must be in to
-    // bind at all: the lease path's own binds for the hold condition. The
-    // instant they compare against is the statement's own clock.
-    .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
-    .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-    // The ids the cursor's partition offered, which sort first: every sampled
-    // id here, as a held-first poll binds them, so the plan carries the key.
-    .bind(&ready)
-    .fetch_all(&mut *connection)
-    .await?;
+    let lines: Vec<String> =
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("{EXPLAIN}{SELECT_CANDIDATES}")))
+            .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+            .bind(runner)
+            .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
+            // How long a silent holder binds, and the status a holder must be in to
+            // bind at all: the lease path's own binds for the hold condition. The
+            // instant they compare against is the statement's own clock.
+            .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
+            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
+            .bind(Vec::<String>::new())
+            .bind(None::<&str>)
+            .fetch_all(&mut *connection)
+            .await?;
     if let Some(execution) = plan_time(&lines, EXECUTION_TIME) {
         report.measurement(CANDIDATE_QUERY_MS, execution);
     }

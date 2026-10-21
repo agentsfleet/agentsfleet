@@ -14,7 +14,6 @@ use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry
 use jiff::Timestamp;
 
 use super::{id, slot};
-use crate::queue;
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
 use crate::report_seed::{Held, SLICE, SLICE_MS, held};
 use crate::seed::seeded_parts;
@@ -106,7 +105,6 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
         "the slot holds the fleet one idle window and no longer: {stored} outside {window:?}"
     );
     assert_eq!(holder, Some(held.runner.as_str().to_owned()));
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 

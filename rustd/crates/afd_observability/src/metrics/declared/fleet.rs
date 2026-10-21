@@ -1,9 +1,6 @@
 //! What the runner plane and the background sweepers say about themselves.
 //!
-//! The widest group, and it stays one module because an operator reading a
-//! stalled fleet reads across all of it: whether work was found (the ready
-//! index), whether a runner took it (the lease poll), what the runner did with
-//! it (the per-runner counters), and whether the sweepers behind them kept up.
+//! Queue backlog, lease polls, runner activity, and background maintenance.
 
 use crate::metrics::family::{CounterKind, Declared, GaugeKind, HistogramKind};
 
@@ -28,12 +25,11 @@ pub const LEASE_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_
 pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_candidates_scanned_total");
 
-/// Rate ÷ polls = DB cost per poll; idle polls must add zero.
+/// Rate ÷ polls = database cost per poll; an idle poll adds one.
 pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
 
-/// Rate ÷ polls = Dragonfly cost per poll; an idle poll adds two, plus one per
-/// sandbox the runner holds.
+/// Rate ÷ polls = Dragonfly cost per poll; an idle poll adds zero.
 pub const LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_dragonfly_commands_total");
 
@@ -54,11 +50,7 @@ pub const LEASE_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
 pub const LEASE_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_history_read_failures_total");
 
-/// Won claims that found nothing deliverable; each clears one drained mark.
-pub const LEASE_CLAIMS_EMPTY_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_claims_empty_total");
-
-/// Leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed
+/// Leases granted; fresh ÷ accepted admissions is pickup, a rising reclaimed
 /// share is runners dying mid-run.
 ///
 /// Labels: `kind`.
@@ -72,19 +64,7 @@ pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
 pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
     Declared::new("agentsfleet_fleet_delivery_stage_seconds");
 
-/// Ready fleets a poll's peeks offered (not summable across replicas).
-///
-/// The rotation's partition and the one the readiness doorbell rang, if any,
-/// at most twice the poll ceiling, of which the candidate scan returns at
-/// most the ceiling.
-pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
-
-/// Dragonfly index writes failing.
-pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_fleet_ready_write_failures_total");
-
-/// Readiness-doorbell rings and rung peeks failing or past their deadline,
-/// and stretches of rings a replica missed.
+/// Wake notifications failing or past their deadline, and interrupted listeners.
 ///
 /// A ring past its deadline is counted though the publish may still land; a
 /// gap is counted per partition channel, so one redial counts up to sixteen.
@@ -106,22 +86,15 @@ pub const RUNNER_RETENTION_SWEPT_TOTAL: Declared<CounterKind> =
 pub const RUNNER_RETENTION_SWEEP_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_retention_sweep_failures_total");
 
-/// Admitted, replayed, deferred and refused acceptances.
+/// Accepted and replayed admissions, database refusals, and budget refusals.
 ///
 /// Labels: `outcome`.
 pub const ADMISSIONS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_admissions_total");
 
-/// Re-appended and still-unreceipted admissions the replay sweeper handled.
-///
-/// Labels: `outcome`.
-pub const ADMISSION_REPLAYS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_admission_replays_total");
-
-/// Admitted rows the queue has not confirmed, as the last replay pass counted
-/// them.
+/// Unsettled admissions counted by the last fleet census pass.
 pub const ADMISSION_BACKLOG: Declared<GaugeKind> = Declared::new("agentsfleet_admission_backlog");
 
-/// How long the oldest unconfirmed admission has waited.
+/// How long the oldest unsettled admission has waited.
 pub const ADMISSION_BACKLOG_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
     Declared::new("agentsfleet_admission_backlog_oldest_age_seconds");
 

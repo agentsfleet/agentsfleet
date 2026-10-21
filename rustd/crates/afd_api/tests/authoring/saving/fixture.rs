@@ -1,10 +1,10 @@
-//! Each Save owns its private draft, wallet, model and shared fleet stream.
+//! Each Save owns its private draft, wallet and model.
 
 use super::super::{fixture::Fixture, json_body, mint, send, send_with_headers};
 use afd_auth::Scope;
 use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::{
-    Dragonfly, FleetStreams, ReadyIndex,
+    Dragonfly,
     config::{DragonflyConfig, DragonflyRole},
 };
 use axum::Router;
@@ -114,22 +114,6 @@ impl Case {
     }
 
     pub(super) async fn cleanup(self) {
-        let fleets: Vec<String> =
-            sqlx::query_scalar("SELECT id::text FROM fleet.fleets WHERE workspace_id=$1::uuid")
-                .bind(self.base.workspace.as_str())
-                .fetch_all(&mut *self.base.db.acquire().await.expect("cleanup connection"))
-                .await
-                .expect("owned fleets");
-        for fleet in fleets {
-            FleetStreams::new(self.queue.clone())
-                .forget(&fleet)
-                .await
-                .expect("remove own stream");
-            ReadyIndex::new(self.queue.clone())
-                .force_clear(&fleet)
-                .await
-                .expect("remove own hint");
-        }
         self.base.cleanup().await;
     }
 }

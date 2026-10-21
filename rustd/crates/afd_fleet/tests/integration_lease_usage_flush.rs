@@ -17,7 +17,6 @@ use afd_wire::report::{RenewRequest, ReportRequest};
 use afd_wire::usage::{DAEMON_SEQ_BASE, LINES_MAX, RequestLines, RequestUsage};
 
 use crate::integration_held_sandbox::report::processed;
-use crate::queue;
 use crate::report_seed::{DEEP_POOL, Held, held};
 use crate::seed::{MODEL, PROVIDER};
 
@@ -147,9 +146,10 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
     );
 
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
+
+const LONG_CACHE_WRITE_TOKENS: u32 = 60;
 
 /// A request that read and wrote the provider's cache in every class.
 const CACHED_REQUEST: RequestUsage = RequestUsage {
@@ -159,7 +159,7 @@ const CACHED_REQUEST: RequestUsage = RequestUsage {
     cached_input_tokens: 300,
     cache_write_tokens: 40,
     cache_write_5m_tokens: 50,
-    cache_write_1h_tokens: 60,
+    cache_write_1h_tokens: LONG_CACHE_WRITE_TOKENS,
     output_tokens: 20,
 };
 
@@ -199,6 +199,5 @@ async fn a_report_whose_lines_write_the_cache_counts_the_writes() {
     assert_eq!(settled.tokens.prompt(), 2_300, "reads and writes are input");
 
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }

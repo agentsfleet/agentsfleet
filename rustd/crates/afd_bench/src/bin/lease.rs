@@ -83,6 +83,6 @@ async fn measure() -> Result<String> {
         // logging: the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
         println!("{summary}");
     }
-    let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
+    let swept = sweep::everything(&stores.database, &prefix).await;
     cli::finish(lane, profile, measured, swept)
 }

@@ -17,12 +17,11 @@
 )]
 
 use afd_admission::{Admission, Key, Producer, Reply};
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer, Steered};
 use afd_wire::event::EventType;
 
 use crate::integration_steer_replay::{CAUSE_PAYLOAD, CHANGED_JSON};
-use crate::integration_steer_retry::{KEY_SEPARATOR, PRODUCER_STEER, REQUEST_JSON, clean};
+use crate::integration_steer_retry::{KEY_SEPARATOR, PRODUCER_STEER, REQUEST_JSON};
 use crate::support::EventsLane;
 use afd_core::test_util::trace::Capture;
 
@@ -77,8 +76,6 @@ async fn test_replayed_append_decides_from_its_insert() {
             admitted_at: None,
         }
     );
-
-    clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
 }
 
 /// A repeat whose stored row holds another payload, or another fleet, is
@@ -110,8 +107,6 @@ async fn test_replayed_append_never_answers_unchecked() {
     assert!(foreign_fleet.is_operation_conflict(), "{foreign_fleet}");
     assert_eq!(causes(&logs), [CAUSE_FLEET], "the fleet is named first");
     drop(logs);
-
-    clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
 }
 
 /// A steer's reused id is the caller's conflict, logged once as one; a
@@ -155,8 +150,6 @@ async fn test_steer_reuse_is_not_an_internal_failure() {
         "a drifted redelivery still warns"
     );
     drop(logs);
-
-    clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
 }
 
 /// One steer of `request_json` under [`OPERATION`].

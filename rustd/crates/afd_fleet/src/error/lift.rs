@@ -8,7 +8,7 @@
 //! knows.
 //!
 //! Each source lands in its own kind. Most are planes that moved to their own
-//! crate — admission, billing, credentials, gates, memory, events, outbound —
+//! crate — billing, credentials, gates, memory, events, outbound —
 //! while the lease still speaks THIS crate's error, so their faults compose in
 //! with the code and sentence their own plane decided.
 //!
@@ -32,7 +32,6 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_runner::Error => Runner,
     afd_dragonfly::Error => Queue,
-    afd_admission::Error => Admission,
     afd_gate::Error => Gate,
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,
