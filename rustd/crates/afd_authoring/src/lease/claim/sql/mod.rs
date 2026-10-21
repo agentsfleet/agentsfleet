@@ -9,6 +9,18 @@ pub(super) const SCAN_LIMIT: i64 = 64;
 /// settled attempt status, `$4` limit.
 pub(super) const CANDIDATES: &str = include_str!("candidates.sql");
 
+/// The creator's row, shared, refusing rather than waiting when another
+/// transaction holds it. `$1` user.
+pub(super) const HOLD_USER: &str = include_str!("hold_user.sql");
+
+/// The draft's row, refusing rather than waiting when another transaction
+/// holds it. `$1` draft.
+pub(super) const HOLD_DRAFT: &str = include_str!("hold_draft.sql");
+
+/// Postgres's `lock_not_available`, which a `NOWAIT` lock raises when the row
+/// is held.
+pub(super) const LOCK_NOT_AVAILABLE: &str = "55P03";
+
 /// The draft's next queued message past its cutoff, with its pinned model.
 ///
 /// `$1` draft, `$2` the queued status, `$3` the cutoff.
