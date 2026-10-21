@@ -120,10 +120,12 @@ pub(super) const SELECT_THREAD_FINISHED_BEFORE: &str =
 mod actor;
 pub(super) use self::actor::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
 
-mod queued;
+/// The unified thread reads also cover waiting admissions in one snapshot.
 #[cfg(feature = "test-util")]
-pub use self::queued::QUEUED_READ_TEXTS;
-pub(super) use self::queued::{SELECT_THREAD_QUEUED, SELECT_THREAD_QUEUED_AFTER};
+pub const QUEUED_READ_TEXTS: [(&str, &str); 2] = [
+    ("waiting", SELECT_THREAD_PAGE),
+    ("waiting after", SELECT_THREAD_PAGE_AFTER),
+];
 
 /// Every listing and thread text, named, for the suite that asks Postgres how
 /// it plans each one.

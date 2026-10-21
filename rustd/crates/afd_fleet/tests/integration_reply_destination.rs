@@ -20,7 +20,7 @@
 use afd_admission::{Admission, Admitted, Key, Producer, Reply, sql};
 use afd_wire::event::EventType;
 
-use crate::integration_admission_recovery::{admission, ledger, producer_key};
+use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 

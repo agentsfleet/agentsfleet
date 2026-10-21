@@ -81,7 +81,7 @@ pub(crate) enum ErrorKind {
 
     /// No source: a join failure is a panic or a cancellation in this process,
     /// and the panic's own message has already been printed by the runtime.
-    /// The role names which task, because a lost readiness sampler and a lost
+    /// The role names which task, because a lost backlog sampler and a lost
     /// delivery worker are different failures to a reader.
     #[error("the {role} task was lost, so the window measured less than it drove")]
     TaskLost { role: &'static str },
@@ -269,4 +269,13 @@ pub(crate) enum ErrorKind {
 
     #[error("under saturation {invariant} was broken {count} time(s)")]
     InvariantBroken { invariant: &'static str, count: u64 },
+
+    #[error(
+        "lease drain incomplete: expected {expected}, processed {processed}, failures {failures}"
+    )]
+    DrainIncomplete {
+        expected: u64,
+        processed: u64,
+        failures: u64,
+    },
 }

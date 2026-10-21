@@ -37,6 +37,6 @@ async fn measure() -> Result<String> {
         // logging: the make target's output is what a reader of the ladder sees first; no daemon runs here to carry an event.
         println!("{}", tail::summary(report));
     }
-    let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
+    let swept = sweep::everything(&stores.database, &prefix).await;
     cli::finish(Lane::Tail, profile, measured, swept)
 }

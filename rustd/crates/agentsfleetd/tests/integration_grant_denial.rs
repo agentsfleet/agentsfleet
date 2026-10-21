@@ -12,8 +12,7 @@ use crate::wire::{assert_no_lease_for_fleet_under_test, capable_beat, fleet_poll
 use afd_approval::{Decision, Inbox};
 use afd_core::id::Uuid7;
 use afd_crypto::{entropy::Entropy, secret::Kek};
-use afd_dragonfly::FleetStreams;
-use afd_fleet::lease::{Leases, runner_consumer};
+use afd_fleet::lease::Leases;
 use afd_vault::{SecretBody, SecretName, Vault};
 use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
@@ -90,41 +89,14 @@ async fn gate_cards(run: &Scenario) -> i64 {
         .expect("the gate count must run")
 }
 
-/// Polls a full rotation budget, ending when `reached` says the daemon has
-/// done the thing under test to this fleet.
-///
-/// # Why one request is not enough
-///
-/// Readiness is sixteen partitions and a poll reads one of them, so a single
-/// request reaches a given fleet about one time in sixteen. The trap is that
-/// the assertion still passes when it does not: a poll that never looked at
-/// this fleet answers `lease: null`, which is exactly what a gate-blocked
-/// fleet answers too. The test then went on to assert a card that nothing had
-/// raised, and failed several steps later with `0 != 1`, pointing at the gate
-/// rather than at the poll.
-///
-/// # Why the condition is a parameter
-///
-/// It was `gate_cards(run) > 0` for every call, and a card is raised ONCE and
-/// then resolved rather than removed — so every poll after the first returned
-/// on its first iteration, having usually sampled some other partition. The
-/// denial was then asserted against an event no poll had revisited. Each call
-/// site now names the row IT is waiting for: the card for the gate, the
-/// event's own label for the refusals that follow it.
-///
-/// Every response on the way is still checked, because "no work" is the answer
-/// under test and a 200 carrying a lease would mean the gate let it through.
+/// Poll until the durable outcome is visible, checking that no run was issued.
 async fn poll_until<F, Fut>(http: &reqwest::Client, run: &Scenario, awaited: &str, mut reached: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    const ROTATIONS: u16 = 8;
-    for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
-        // A no-work poll retains its affinity claim until expiry. Move that
-        // deadline into the past so this test reaches redelivery without a
-        // wall-clock sleep. Dragonfly remains untouched: a missing acknowledgment
-        // must still be visible.
+    const POLL_LIMIT: usize = 8;
+    for _poll in 0..POLL_LIMIT {
         sqlx::query(
             "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval '1 millisecond' \
              WHERE fleet_id = $1::uuid",
@@ -147,12 +119,7 @@ where
             return;
         }
     }
-    panic!(
-        "{awaited} never happened in {ROTATIONS} rotations of the readiness index — \
-         every poll answered no-work, so either no poll reached this fleet's partition \
-         or the daemon declined it for a reason only its own log carries \
-         (`AFD_TEST_LOG=1`)."
-    )
+    panic!("{awaited} did not happen in {POLL_LIMIT} polls; inspect AFD_TEST_LOG=1")
 }
 
 /// The fleet's monotonic claim counter.
@@ -236,29 +203,23 @@ async fn refusal_drains(preended: bool) {
     );
     deny(&run).await;
     if preended {
-        // The durable half succeeded before a crash or a failed Dragonfly acknowledgment.
-        Leases::new(
-            run.booted.database.clone(),
-            run.booted.queue.clone(),
-            Entropy::new(),
-        )
-        .block(
-            &Uuid7::parse(&run.fleet).expect("fleet"),
-            &run.event_id,
-            afd_fleet::lease::admit::Refusal {
-                label: afd_core::event::label::GRANT_DENIED,
-                detail: "",
-            },
-        )
-        .await
-        .expect("terminal write before retry");
+        // A pre-existing terminal narrative must settle the queue without executing.
+        sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1::uuid AND event_id = $2")
+            .bind(&run.fleet).bind(&run.event_id)
+            .bind(afd_core::event::status::GATE_BLOCKED)
+            .bind(afd_core::event::label::GRANT_DENIED)
+            .execute(&mut *run.booted.database.acquire().await.expect("database"))
+            .await.expect("terminal narrative");
     }
     poll_until_reached(&http, &run, "no poll revisited the denied event").await;
     let first_label = event_column(&run, &run.event_id, LABEL).await;
-    let pending = FleetStreams::new(run.booted.queue.clone())
-        .take_over_oldest(&run.fleet, &runner_consumer())
-        .await
-        .expect("pending read");
+    let settled: bool = sqlx::query_scalar(
+        "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1::uuid",
+    )
+    .bind(&run.event_id)
+    .fetch_one(&mut *run.booted.database.acquire().await.expect("database"))
+    .await
+    .expect("queue state");
     let second = run.enqueue_event(EventType::Chat).await;
     poll_until_reached(&http, &run, "no poll reached the fleet's next event").await;
     let second_label = event_column(&run, &second, LABEL).await;
@@ -268,10 +229,7 @@ async fn refusal_drains(preended: bool) {
         first_label.as_deref(),
         Some(afd_core::event::label::GRANT_DENIED)
     );
-    assert!(
-        pending.is_none(),
-        "a terminal refusal must acknowledge its pending entry"
-    );
+    assert!(settled, "a terminal refusal must settle its admission");
     assert_eq!(
         second_label.as_deref(),
         Some(afd_core::event::label::GRANT_DENIED),
@@ -287,6 +245,6 @@ async fn a_denied_grant_does_not_block_later_events() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_terminal_refusal_redelivery_retries_acknowledgment() {
+async fn terminal_history_is_settled_without_blocking_later_events() {
     refusal_drains(true).await;
 }

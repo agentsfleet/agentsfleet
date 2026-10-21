@@ -4,7 +4,7 @@
 //! that module's own header draws. A refusal there says the system worked and
 //! the answer is no; every constructor here says the system did not work — a
 //! statement Postgres would not run, a column holding a value this daemon
-//! cannot read, an object store that answered with a fault, a stream entry the
+//! cannot read, an object store that answered with a fault, an admission the
 //! producer wrote wrong.
 //!
 //! Splitting them was the file cap's doing and it improved the module: what is
@@ -14,25 +14,6 @@
 //! spells this module.
 
 use super::{Error, ErrorKind};
-
-/// Reports a stream entry that does not satisfy the producer's contract.
-///
-/// `field` is `&'static str` rather than an owned name because every caller
-/// passes one of the envelope's own constants — a name that had to be
-/// allocated would mean it came from somewhere other than the contract.
-pub(crate) fn envelope_field(field: &'static str) -> Error {
-    Error::new(ErrorKind::Envelope { field })
-}
-
-/// Reports a field the entry carries but this daemon cannot read.
-///
-/// Separate from [`envelope_field`] because the operator action differs: a
-/// missing field means the producer omitted it, an unreadable one means the
-/// producer wrote a shape this reader does not parse. Reporting the second as
-/// the first sends whoever is holding the pager looking for an absent field.
-pub(crate) fn envelope_malformed(field: &'static str) -> Error {
-    Error::new(ErrorKind::EnvelopeMalformed { field })
-}
 
 /// Refuses a request the caller can correct, quoting the detail the call site
 /// chose from `detail.rs`.

@@ -27,7 +27,7 @@ pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
 /// The database-fault detail every crate shares through `afd_core::error`.
 pub use afd_core::error::DETAIL_DATABASE_ERROR;
 
-/// An event on the stream this daemon cannot execute.
+/// An admitted event this daemon cannot run.
 ///
 /// The caller is a runner asking for work, so what it reads says nothing about
 /// its own request — the missing field goes to the log, where an operator can

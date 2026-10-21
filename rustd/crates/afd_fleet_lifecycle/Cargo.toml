@@ -17,17 +17,11 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# The families this crate produces. The dependency points this way and not the
-# other: telemetry knows nothing about fleets, and a readiness mark this crate
-# could not write is a fact only this crate holds.
-afd_observability.workspace = true
 # Identifiers, the clock, the registry codes, and the keyset cursor the list
 # walk resumes from.
 afd_core.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# The per-fleet event stream and readiness mark a purge forgets after the row.
-afd_dragonfly.workspace = true
 # The counter snapshot the live wall's `hello` carries.
 afd_api_wire.workspace = true
 # The lease status spelling a purge deletes its fleet's live leases by.
@@ -40,7 +34,6 @@ jiff-sqlx.workspace = true
 moka.workspace = true
 sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
-tracing.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
@@ -48,22 +41,17 @@ tracing.workspace = true
 test-util = [
   "afd_core/test-util",
   "afd_db/test-util",
-  "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]
-# The integration lane drives a real Postgres and a real Redis, so it needs a
-# runtime with threads under it.
+afd_observability.workspace = true
+# The integration lane uses real Postgres.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # The fixture mints the identifiers its rows carry.
 afd_crypto.workspace = true
 # The lane fixture and the fleet seed its rows go in through. A dev-dependency
 # feature only.
 afd_db = { workspace = true, features = ["test-util"] }
-# The lane's live Dragonfly connect and the lazy manager a dead-datastore
-# fixture is built on. A dev-dependency feature only.
-afd_dragonfly = { workspace = true, features = ["test-util"] }
-
 [[test]]
 name = "lifecycle_suite"
 path = "tests/lifecycle_suite.rs"

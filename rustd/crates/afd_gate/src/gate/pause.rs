@@ -7,16 +7,6 @@
 //! an operator is told, which is why the trigger travels as a value rather than
 //! as two copies of this function.
 //!
-//! # The readiness clear runs only if the pause committed
-//!
-//! A paused fleet leaves the candidate query's reach — that query filters
-//! `status = 'active'` — so the poll-site clear can never remove its readiness
-//! field afterwards. It is cleared HERE instead, after the pause commits. On a
-//! failed update the clear is skipped, and that direction matters: the fleet is
-//! still active, so its mark still names live work, and clearing it would hide
-//! a running fleet from every later poll.
-
-use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 
@@ -29,9 +19,6 @@ const CONTEXT_PAUSE: &str = "fleet pause";
 
 /// A fleet was stopped by the gate.
 const EVENT_FLEET_PAUSED: &str = "gate_fleet_paused";
-
-/// The readiness mark outlived the pause that should have cleared it.
-const EVENT_READY_STALE: &str = "gate_ready_clear_failed";
 
 /// What stopped the fleet.
 ///
@@ -58,7 +45,7 @@ impl Trigger {
 }
 
 impl Gates {
-    /// Stop `fleet_id`, and drop its readiness mark.
+    /// Pause `fleet_id` so candidate discovery excludes it.
     ///
     /// # Errors
     /// Reports a datastore that would not answer the pause. The caller absorbs
@@ -66,10 +53,7 @@ impl Gates {
     /// could be flipped — but absorbing it is the caller's visible decision
     /// rather than something swallowed here.
     ///
-    /// The readiness clear is best-effort and does NOT reach the caller: a
-    /// stale mark costs one wasted candidate check on a later poll, and the
-    /// fleet is already paused where it counts. The row is stamped on the
-    /// database clock.
+    /// The row is stamped on the database clock.
     pub async fn pause(&self, fleet_id: &Uuid7, trigger: Trigger) -> Result<()> {
         let mut connection = self.database().acquire().await?;
         sqlx::query(sql::PAUSE_FLEET)
@@ -89,18 +73,6 @@ impl Gates {
             "the fleet is stopped; no further work of its is admitted"
         );
 
-        // Only after the pause committed. See the module note.
-        if let Err(fault) = self.ready().force_clear(fleet).await {
-            afd_observability::producers::fleet::ready_write_failed();
-            let Logged { error_code, reason } = fault.logged();
-            tracing::warn!(
-                error_code,
-                event = EVENT_READY_STALE,
-                fleet_id = fleet,
-                reason,
-                "a paused fleet kept its readiness mark; a later poll pays one wasted check"
-            );
-        }
         Ok(())
     }
 }

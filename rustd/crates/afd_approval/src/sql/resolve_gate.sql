@@ -23,7 +23,12 @@ WITH resolved AS (
     AND r.event_id IS NULL
     AND g.status != $8
   RETURNING g.id
+), unparked AS (
+  UPDATE fleet.admissions a SET parked_at = NULL, updated_at = now()
+  FROM resolved r
+  WHERE a.fleet_id = r.fleet_id AND a.settled_at IS NULL
 )
+
 SELECT id::text AS gate_id, action_id, workspace_id::text AS workspace_id,
        fleet_id::text AS fleet_id, status, resolved_at, resolved_by, detail, event_id,
        (SELECT COUNT(*) FROM fleet.approval_gates g

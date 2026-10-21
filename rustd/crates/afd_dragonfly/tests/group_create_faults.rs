@@ -15,8 +15,8 @@
 use std::time::Duration;
 
 use afd_dragonfly::Dragonfly;
+use afd_dragonfly::OutboundQueue;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::streams::{EventId, FleetStreams, GroupCursor};
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 
@@ -32,7 +32,7 @@ const BAD_START: &str = "-ERR Invalid stream ID specified as stream command argu
 /// `BUSYGROUP`, the one refusal a create answers as success.
 const ALREADY_THERE: &str = "-BUSYGROUP Consumer Group name already exists\r\n";
 
-/// Restores a fleet's group against a fake whose `XGROUP` answers `reply`,
+/// Creates the outbound group against a fake whose `XGROUP` answers `reply`,
 /// answering the outcome and every command the client sent.
 async fn restore_against(reply: &'static str) -> (afd_dragonfly::error::Result<()>, Vec<String>) {
     install_subscriber();
@@ -48,13 +48,9 @@ async fn restore_against(reply: &'static str) -> (afd_dragonfly::error::Result<(
         .await
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted");
-    let cursor = GroupCursor::After(EventId::of("not-an-id"));
-    let outcome = tokio::time::timeout(
-        BUDGET,
-        FleetStreams::new(redis).restore_group("fleet-1", &cursor),
-    )
-    .await
-    .expect("the fake answers, so the restore must not hang");
+    let outcome = tokio::time::timeout(BUDGET, OutboundQueue::new(redis).ensure_group())
+        .await
+        .expect("the fake answers, so the restore must not hang");
     (outcome, server.seen())
 }
 

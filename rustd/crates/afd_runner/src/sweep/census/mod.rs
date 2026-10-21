@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use afd_db::Db;
 use afd_observability::metrics::label::fleet::FleetStatusLabel;
-use afd_observability::producers::fleet::census;
+use afd_observability::producers::fleet::{self, census};
 
 use crate::error::{Result, query};
 use crate::sql;
@@ -100,6 +100,24 @@ impl Census {
         Self { database }
     }
 
+    /// Publish the durable queue backlog, withdrawing stale values on failure.
+    async fn backlog(&self) -> Result<()> {
+        let counted = async {
+            let mut connection = self.database.acquire().await?;
+            sqlx::query_as::<_, BacklogRow>(sql::sweep::COUNT_ADMISSION_BACKLOG)
+                .fetch_one(&mut *connection)
+                .await
+                .map_err(query(CONTEXT_CENSUS))
+        }
+        .await;
+        let row = counted.inspect_err(|_| fleet::admission_backlog_withdrawn())?;
+        fleet::admission_backlog_observed(
+            row.rows.unsigned_abs(),
+            row.oldest_seconds.unsigned_abs(),
+        );
+        Ok(())
+    }
+
     /// The grouped count, one row per distinct status.
     async fn count(&self) -> Result<Vec<Counted>> {
         let mut connection = self.database.acquire().await?;
@@ -163,6 +181,17 @@ impl Sweep for Census {
     }
 
     async fn sweep(&self) -> Result<Swept> {
-        settle(self.count().await)
+        let counted = self.count().await;
+        let backlog = self.backlog().await;
+        let swept = settle(counted)?;
+        backlog?;
+        Ok(swept)
     }
+}
+
+/// One snapshot of the unsettled queue, including an empty queue's zero age.
+#[derive(Debug, sqlx::FromRow)]
+struct BacklogRow {
+    rows: i64,
+    oldest_seconds: i64,
 }

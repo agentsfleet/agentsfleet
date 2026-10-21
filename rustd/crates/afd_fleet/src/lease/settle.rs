@@ -58,9 +58,6 @@ pub struct Reported {
     pub tenant_id: Uuid7,
     /// The event that was executed — the ledger's logical id.
     pub event_id: String,
-    /// The stream entry it arrived on, which is what the acknowledgement
-    /// addresses.
-    pub receipt: String,
     /// Who or what raised the event.
     pub actor: String,
     /// The billing posture resolved at issue.
@@ -256,7 +253,6 @@ struct LeaseForReport {
     provider: String,
     model: String,
     fencing_token: i64,
-    receipt: String,
 }
 
 impl LeaseForReport {
@@ -269,7 +265,6 @@ impl LeaseForReport {
             workspace_id: id(&self.workspace_id, "workspace_id")?,
             tenant_id: id(&self.tenant_id, "tenant_id")?,
             event_id: self.event_id,
-            receipt: self.receipt,
             actor: self.actor,
             posture: self.posture,
             provider: self.provider,

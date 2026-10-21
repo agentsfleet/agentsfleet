@@ -30,16 +30,6 @@ const NOWHERE: &str = "redis://127.0.0.1:1";
 /// Any v7-shaped runner id; the pass never reaches the row it would name.
 const RUNNER: &str = "0195b4ba-8d3a-7001-8abc-000000000001";
 
-/// A Postgres nobody listens on either; the pass fails at the peek before it.
-const NO_DATABASE: &str = "postgres://nobody:nobody@127.0.0.1:1/nothing?sslmode=disable";
-
-/// A pool config over [`NO_DATABASE`], resolved the way a lane resolves one.
-fn no_pool() -> afd_db::config::PoolConfig {
-    let role = afd_db::config::DbRole::Api;
-    let env = afd_core::env::MapEnv::from_pairs([(role.url_knob(), NO_DATABASE)]);
-    afd_db::config::PoolConfig::resolve(&env, role).expect("a URL resolves")
-}
-
 #[tokio::test]
 async fn test_a_run_aborts_when_the_target_starts_failing() {
     let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
@@ -47,7 +37,7 @@ async fn test_a_run_aborts_when_the_target_starts_failing() {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");
-    let leases = Leases::new(afd_db::Db::unreachable(&no_pool()), queue, Entropy::new());
+    let leases = Leases::new(afd_db::test_util::unreachable_db(), queue, Entropy::new());
     let runner = Uuid7::parse(RUNNER).expect("a v7 spelling");
     let abort = Arc::new(Abort::new(0.5));
     let shared = Shared {

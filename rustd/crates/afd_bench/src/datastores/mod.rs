@@ -109,7 +109,7 @@ impl EnvSource for LaneEnv<'_> {
 pub struct Datastores {
     /// The pool the candidate query runs on.
     pub database: Db,
-    /// The readiness index and the fleet streams.
+    /// Live activity, notifications and outbound delivery.
     pub queue: Dragonfly,
     /// How many connections the pool may open, for the result file and for
     /// refusing more runners than that.

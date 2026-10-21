@@ -9,13 +9,6 @@ use crate::metrics::label::closed_set;
 /// same thing.
 const REPLAYED: &str = "replayed";
 
-/// The entry reached the stream on this pass.
-///
-/// Shared by the two sets that observe it for the same reason [`REPLAYED`] is:
-/// a first admission and a sweeper's re-append are different events with the
-/// same outcome, and a dashboard summing them has to see one spelling.
-const APPENDED: &str = "appended";
-
 closed_set! {
     /// Which side of the platform boundary a failed run fell on.
     ///
@@ -59,43 +52,16 @@ closed_set! {
 }
 
 closed_set! {
-    /// What became of one admission.
-    ///
-    /// Five, and the split is the one an operator needs: `Deferred` is work
-    /// this daemon ACCEPTED and could not queue — the row is safe and the
-    /// replay sweeper owes it an entry — where `Refused` is work it did not
-    /// accept at all, and `OverBudget` is work it refused ON PURPOSE because
-    /// a fleet or the deployment holds as much as it is allowed to. A single
-    /// "failed" would hide the difference between a queue outage nobody loses
-    /// work to, a database outage a producer must retry through, and a
-    /// deployment doing exactly what its budgets say.
+    /// The result of admitting work to the durable queue.
     AdmissionOutcome {
-        /// Committed and appended.
-        Appended => APPENDED,
-        /// Seen before; the first admission's id stands.
+        /// The ledger row committed.
+        Accepted => "accepted",
+        /// Seen before; the first admission's identity stands.
         Replayed => REPLAYED,
-        /// Committed; the queue would not take the entry yet.
-        Deferred => "deferred",
-        /// Not committed, and the producer was told so.
+        /// The durable write failed and the producer must retry.
         Refused => "refused",
-        /// Not committed because a budget is spent; the producer backs off.
+        /// A fleet or deployment budget is spent.
         OverBudget => "over_budget",
-    }
-}
-
-closed_set! {
-    /// What became of one replayed admission.
-    ///
-    /// `Full` is its own member because its cure is the opposite of
-    /// `Failed`'s: a queue that is gone wants the pass to come back, and one
-    /// that is full wants everything to stop until something drains.
-    ReplayOutcome {
-        /// Re-appended, and the receipt recorded.
-        Appended => APPENDED,
-        /// The queue would not take it; the row keeps its NULL receipt.
-        Failed => "failed",
-        /// The queue refused to grow; the row keeps its NULL receipt.
-        Full => "full",
     }
 }
 
@@ -133,7 +99,7 @@ closed_set! {
     /// this one, so the two cannot share a type, and a test over there holds
     /// them equal member for member instead.
     FleetStatusLabel {
-        /// The row exists; its stream may not yet.
+        /// The row exists; setup checks have not activated the fleet.
         Installing => "installing",
         /// Leasable. The only status the runner's candidate query admits.
         Active => "active",
@@ -181,7 +147,7 @@ closed_set! {
     /// Two rather than two families: an operator reads them as one line split
     /// by cause, and `sum()` over one family stays the count of runs begun.
     RunStart {
-        /// A new entry read off the stream.
+        /// An admission claimed for the first time.
         Fresh => "fresh",
         /// A lapsed holder's event, re-leased under a higher fence.
         Reclaimed => "reclaimed",
@@ -189,18 +155,11 @@ closed_set! {
 }
 
 closed_set! {
-    /// Which part of the readiness doorbell failed.
-    ///
-    /// Three, because each costs something different when it is lost: a ring
-    /// leaves fresh work to the rotation on every replica, a peek leaves the
-    /// partition one poll was sent to for the rotation to reach, and a gap
-    /// leaves whatever rang during it to the rotation on one replica.
+    /// The lost notification still leaves work discoverable in Postgres.
     ReadyWake {
-        /// A mark's ring was not published within the doorbell's deadline.
+        /// A publish failed or exceeded its deadline.
         Ring => "ring",
-        /// A poll could not peek the partition its doorbell rang in time.
-        Peek => "peek",
-        /// A replica's subscription lost or lagged rings it cannot name.
+        /// A replica lost or lagged notifications.
         Gap => "gap",
     }
 }

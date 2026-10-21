@@ -1,6 +1,6 @@
 [package]
 name = "afd_admission"
-description = "The admission ledger: the Postgres row that is a producer's acceptance, the queue entry that is only its receipt, and the replay that re-appends a receipt the queue lost."
+description = "Durable admission, ordering and backlog budgets for the Postgres work queue."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -24,22 +24,18 @@ afd_crypto.workspace = true
 afd_db.workspace = true
 # The semantics marker accepted by the same validator that runtime leases use.
 afd_fleet_runtime.workspace = true
-# The stream an admitted entry is appended to, and the readiness mark that
-# makes it promptly leasable.
+# Best-effort notification transport.
 afd_dragonfly.workspace = true
-# The admission and replay counters.
+# Admission outcome counters.
 afd_observability.workspace = true
-# The event type spellings and the stream field names an entry is written
-# under. The ledger appends through the wire's own `Entry`, so the reader on
-# the other side cannot disagree with it about a field name.
+# Event types accepted by producers.
 afd_wire.workspace = true
 # The payload digest a producer key is checked against on a retry, and its
 # rendering. `hex::encode` rather than a `{:02x}` loop, for the reason
 # `afd_auth::directory` gives.
 hex.workspace = true
 sha2.workspace = true
-# Row instants, read through the `TIMESTAMPTZ(3)` bridge, and the one bound
-# instant: the resume key a reconciliation walk carries between passes.
+# Database timestamp bridge.
 jiff.workspace = true
 jiff-sqlx.workspace = true
 # `derive` for the typed rows every statement decodes into.
@@ -68,9 +64,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "ne
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_crypto = { workspace = true, features = ["test-util"] }
-# The replay proofs read the stream back by exact entry, which is what a
-# lease does; the crate's own reader samples through a consumer group.
-redis.workspace = true
 # The error surface reaches THROUGH the chain to the driver's own
 # `DatabaseError`, which is the only way to grade what the exhausted-disk
 # sample claims to be. A dev-dependency on a crate this one already depends

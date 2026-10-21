@@ -12,7 +12,7 @@ use afd_core::id::Uuid7;
 use afd_core::spelling::from_spelling;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, ReadyIndex};
+use afd_dragonfly::Dragonfly;
 
 use super::sql;
 use crate::error::{DETAIL_GATE_REFERENCE_UNWRITABLE, Result, encoded, query};
@@ -117,15 +117,6 @@ impl Gates {
     /// The entropy source a raised gate draws its identifiers from.
     pub(super) const fn entropy(&self) -> &Entropy {
         &self.entropy
-    }
-
-    /// The readiness index a paused fleet is dropped from.
-    ///
-    /// Built per call rather than held: it is a thin binding over the same
-    /// connection this store already owns, and storing a second handle to one
-    /// connection would suggest there were two.
-    pub(super) fn ready(&self) -> ReadyIndex {
-        ReadyIndex::new(self.queue.clone())
     }
 
     /// The gate `event_id` is already waiting on, if any.

@@ -41,7 +41,6 @@ pub(super) struct Authoring {
 /// preference.
 pub(super) fn authoring(
     drafts: afd_authoring::Drafts,
-    queue: &Dragonfly,
     kek: &Arc<Kek>,
     providers: &Providers,
     admissions: &Admissions,
@@ -50,7 +49,7 @@ pub(super) fn authoring(
     let setup = afd_authoring::Setup::new(drafts.clone(), Arc::clone(kek));
     let models =
         afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport));
-    let creations = afd_authoring::Creations::new(setup.clone(), queue.clone(), admissions.clone());
+    let creations = afd_authoring::Creations::new(setup.clone(), admissions.clone());
     Authoring {
         drafts,
         setup,

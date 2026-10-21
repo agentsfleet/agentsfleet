@@ -43,7 +43,7 @@ else
 fi
 echo ""
 echo "NEXT: restart or redeploy every agentsfleetd machine before traffic."
-echo "Startup recreates connector:outbound; normal writes recreate"
-echo "fleet:{fleet_id}:events, fleet_lease, and the fleet:ready:{p} partitions."
+echo "Startup recreates connector:outbound; normal writes recreate session keys."
+echo "Accepted admissions and outbound obligations remain in Postgres."
 
 exit "$exit_code"

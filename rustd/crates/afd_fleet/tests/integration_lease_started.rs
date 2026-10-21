@@ -23,7 +23,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::queue;
 use crate::seed;
 use crate::support;
 use afd_core::id::Uuid7;
@@ -59,7 +58,7 @@ async fn test_fresh_grant_counts_one_run() {
     } = seeded::<1>(&fixtures).await;
     let before = capture.sum(RUNS_STARTED, &[(KIND, FRESH)]);
 
-    let acquired = seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
+    let acquired = seed::select_fleet(&fixtures.leases(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
     assert_eq!(acquired.kind, Kind::Fresh);
@@ -70,7 +69,6 @@ async fn test_fresh_grant_counts_one_run() {
         "a fresh grant moves the fresh series: {before} -> {after}"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -92,7 +90,7 @@ async fn test_reclaim_counts_as_reclaimed() {
     let leases = fixtures.leases();
     let now = fixtures.enrolled_at();
 
-    let held = seed::select_fleet_within_rotations(&leases, &first, &fleet)
+    let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     leases
@@ -120,7 +118,7 @@ async fn test_reclaim_counts_as_reclaimed() {
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed = seed::select_fleet_within_rotations(&leases, &second, &fleet)
+    let reclaimed = seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
     assert_eq!(reclaimed.kind, Kind::Reclaim);
@@ -131,6 +129,5 @@ async fn test_reclaim_counts_as_reclaimed() {
         "a reclaim moves the reclaimed series: {before} -> {after}"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }

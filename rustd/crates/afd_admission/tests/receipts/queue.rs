@@ -1,4 +1,4 @@
-//! Queue faults and captured events are shared across receipt recovery cases.
+//! Notification faults and captured events for ledger acceptance cases.
 
 use super::lane::Lane;
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
@@ -40,7 +40,10 @@ impl Run {
 /// which serves for as long as it is held.
 pub(super) async fn over_fake(lane: &Lane, rules: &[(&str, Reply)]) -> (FakeRedis, Admissions) {
     install_subscriber();
-    let mut table = vec![("PING", Reply::Raw("+PONG\r\n"))];
+    let mut table = vec![
+        ("PING", Reply::Raw("+PONG\r\n")),
+        ("SPUBLISH", Reply::Raw(":0\r\n")),
+    ];
     table.extend(rules.iter().cloned());
     let server = FakeRedis::spawn(&table).await;
     let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
@@ -52,21 +55,14 @@ pub(super) async fn over_fake(lane: &Lane, rules: &[(&str, Reply)]) -> (FakeRedi
     (server, admissions)
 }
 
-/// A sibling sweep may briefly own the row; retry only that explicit outcome.
 pub(super) async fn confirm(
     admissions: &Admissions,
     lane: &Lane,
 ) -> afd_admission::Result<afd_admission::Confirmation> {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if let Some(confirmed) = admissions.confirm(Producer::Steer, &lane.fleet).await? {
-                return Ok(confirmed);
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("the fixture's row becomes available")
+    Ok(admissions
+        .confirm(Producer::Steer, &lane.fleet)
+        .await?
+        .expect("committed row"))
 }
 
 /// Admits one event for `lane`'s fleet against a fake queue answering
@@ -91,25 +87,6 @@ pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Run {
     }
 }
 
-/// Replays every owed row against a fake queue answering `rules`, returning
-/// every event the pass logged.
-///
-/// Not filtered to `lane`'s fleet: a pass stops at the first append the queue
-/// refuses, and parallel tests leave owed rows of their own in the shared lane,
-/// so the row that meets the refusal may be another fleet's. Every row in the
-/// pass meets the same fake queue, so its line is the one a caller asserts on.
-pub(crate) async fn replay_against(
-    lane: &Lane,
-    rules: &[(&str, Reply)],
-) -> Vec<HashMap<String, String>> {
-    let (_server, admissions) = over_fake(lane, rules).await;
-    // No minimum age, so every committed row is old enough.
-    let (replayed, events) = recording(admissions.replay(Duration::ZERO, REPLAY_LIMIT)).await;
-    let _replayed = replayed
-        .expect("a queue that will not take an append is the pass's outcome, not its error");
-    events
-}
-
 /// Runs `work` on this thread with every event it logs recorded, and answers
 /// both. Concurrent futures joined inside `work` log to the same record.
 pub(super) async fn recording<F: Future>(work: F) -> (F::Output, Vec<HashMap<String, String>>) {
@@ -122,6 +99,3 @@ pub(super) async fn recording<F: Future>(work: F) -> (F::Output, Vec<HashMap<Str
         .collect();
     (output, events)
 }
-
-/// Rows one replay reaches, so the shared lane's other rows cannot crowd out this one's.
-const REPLAY_LIMIT: i64 = 10_000;

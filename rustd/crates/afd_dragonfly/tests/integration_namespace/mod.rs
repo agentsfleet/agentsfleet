@@ -11,7 +11,7 @@ use afd_dragonfly::hub::{Received, Subscription};
 use afd_dragonfly::session::{AbortReason, SessionState};
 use afd_dragonfly::{
     Dedicated, Dragonfly, DragonflyConfig, FleetStreams, OutboundJob, OutboundQueue,
-    OutboundReader, ReadyIndex, SessionStore, SubscriptionHub,
+    OutboundReader, SessionStore, SubscriptionHub,
 };
 use std::time::Duration;
 
@@ -112,59 +112,8 @@ async fn assert_session_isolation(a: Dragonfly, b: Dragonfly) {
 
 #[tokio::test]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn namespaces_isolate_streams_readiness_and_outbound() {
+async fn namespaces_isolate_outbound() {
     let (ca, a, cb, b) = pair().await;
-    let fa = FleetStreams::new(a.clone());
-    let fb = FleetStreams::new(b.clone());
-    fa.ensure_group("same-fleet").await.expect("group a");
-    fb.ensure_group("same-fleet").await.expect("group b");
-    let id = fa
-        .append("same-fleet", &[("type", "a")])
-        .await
-        .expect("append a");
-    assert!(
-        fb.read_new("same-fleet", "same-consumer")
-            .await
-            .expect("read b")
-            .is_none()
-    );
-    assert_eq!(
-        fa.read_new("same-fleet", "same-consumer")
-            .await
-            .expect("read a")
-            .expect("event")
-            .receipt,
-        id
-    );
-    assert!(!fb.ack("same-fleet", &id).await.expect("foreign ack"));
-    assert!(fa.ack("same-fleet", &id).await.expect("own ack"));
-    assert_eq!(
-        afd_dragonfly::test_util::fleet_entries(&a, "same-fleet")
-            .await
-            .expect("scoped history a")
-            .len(),
-        1
-    );
-    assert_eq!(
-        afd_dragonfly::test_util::fleet_entries(&b, "same-fleet")
-            .await
-            .expect("scoped history b"),
-        [] as [afd_dragonfly::FleetEvent; 0]
-    );
-    let ia = ReadyIndex::new(a.clone());
-    let ib = ReadyIndex::new(b.clone());
-    let token = ia.mark("same-fleet").await.expect("mark a");
-    assert!(
-        ib.token_for("same-fleet")
-            .await
-            .expect("b unmarked")
-            .is_none()
-    );
-    ib.force_clear("same-fleet").await.expect("clear b");
-    assert_eq!(
-        ia.token_for("same-fleet").await.expect("a survives"),
-        Some(token)
-    );
     outbound_isolation(ca, a, cb, b).await;
 }
 

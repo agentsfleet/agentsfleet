@@ -12,7 +12,6 @@
 
 use afd_admission::{Admission, Key, Producer};
 use afd_core::id::Uuid7;
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{Filter, History, next_cursor};
 use afd_wire::event::EventType;
 use jiff::Timestamp;
@@ -42,11 +41,6 @@ fn admission<'a>(lane: &'a EventsLane, key: &'a str) -> Admission<'a> {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn two_admissions_in_one_millisecond_list_once_newest_first() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
-    streams
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("group create");
     let ledger = lane.admissions();
     let mut ids = Vec::new();
     for name in ["first", "second"] {
@@ -105,6 +99,5 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
         .expect("the detail reads");
     assert!(legacy.is_none(), "a {{millis}}-{{seq}} id names nothing");
 
-    streams.forget(&lane.fleet).await.expect("cleanup");
     lane.cleanup().await;
 }

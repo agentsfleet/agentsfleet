@@ -33,9 +33,7 @@ use core::time::Duration;
 
 use afd_observability::metrics::instrument::Instruments;
 use afd_observability::metrics::label::cost::{ChargeClass, ErrorType};
-use afd_observability::metrics::label::fleet::{
-    AdmissionOutcome, ReadyWake, ReplayOutcome, SignupFailure,
-};
+use afd_observability::metrics::label::fleet::{AdmissionOutcome, ReadyWake, SignupFailure};
 use afd_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
 };
@@ -81,12 +79,10 @@ const NANOCREDITS: u64 = 1_000_000;
 fn test_every_fleet_producer_runs_its_body() {
     install();
 
-    producers::fleet::ready_depth_observed(3);
     producers::fleet::signup_bootstrapped();
     producers::fleet::signup_replayed();
     producers::fleet::lease_polled(11, 2, 3);
-    producers::fleet::ready_write_failed();
-    for wake in [ReadyWake::Ring, ReadyWake::Peek, ReadyWake::Gap] {
+    for wake in [ReadyWake::Ring, ReadyWake::Gap] {
         producers::fleet::ready_wake_failed(wake);
     }
     producers::fleet::retention_swept(9);
@@ -97,22 +93,13 @@ fn test_every_fleet_producer_runs_its_body() {
     // its budget, so a variant added without a spelling here is a counter that
     // silently stops distinguishing them.
     for outcome in [
-        AdmissionOutcome::Appended,
+        AdmissionOutcome::Accepted,
         AdmissionOutcome::Replayed,
-        AdmissionOutcome::Deferred,
         AdmissionOutcome::Refused,
         AdmissionOutcome::OverBudget,
     ] {
         producers::fleet::admission::admitted(outcome);
     }
-    for outcome in [
-        ReplayOutcome::Appended,
-        ReplayOutcome::Failed,
-        ReplayOutcome::Full,
-    ] {
-        producers::fleet::admission::replayed(outcome);
-    }
-
     // Every arm, because the label is what distinguishes them and a variant
     // added without a spelling is the failure this catches.
     for reason in [

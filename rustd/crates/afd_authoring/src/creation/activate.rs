@@ -1,5 +1,7 @@
 //! External setup work is bounded; only a fresh locked recheck can activate.
 
+use std::time::Duration;
+
 use super::{ACTIVE, CONTEXT, Creations, INSTALLING, progress, read, sql};
 use crate::{
     Access, Result, access,
@@ -11,9 +13,7 @@ use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
 use jiff::Timestamp;
 use sqlx::Connection as _;
-use std::time::Duration;
 
-pub(super) const EXTERNAL_LIMIT: Duration = Duration::from_secs(5);
 const SETUP_BUDGET: Duration = Duration::from_secs(15);
 
 impl Creations {
@@ -69,16 +69,6 @@ impl Creations {
             return Ok(());
         }
         if row.setup_stream_ready != Some(true) {
-            if !matches!(
-                tokio::time::timeout(EXTERNAL_LIMIT, self.streams.ensure_group(fleet.as_str()))
-                    .await,
-                Ok(Ok(()))
-            ) {
-                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(event = "fleet_setup_stream_pending", fleet_id = %fleet, error_code);
-                return Ok(());
-            }
             let mut connection = self.setup.drafts.database.acquire().await?;
             sqlx::query(sql::STREAM_READY)
                 .bind(fleet.as_str())

@@ -68,8 +68,8 @@ pub(super) fn ingress(database: &Db, ledger: &afd_admission::Admissions) -> Harn
     )))
 }
 
-pub(super) fn fleets(database: &Db, queue: &Dragonfly) -> Fleets {
-    Fleets::new(database.clone(), queue.clone())
+pub(super) fn fleets(database: &Db) -> Fleets {
+    Fleets::new(database.clone())
 }
 
 pub(super) fn dashboard() -> afd_connector::Dashboard {

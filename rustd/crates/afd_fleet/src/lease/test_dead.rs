@@ -21,7 +21,7 @@ use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole, EventId, ReadyToken};
+use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_gate::gate::Gates;
 use jiff::Timestamp;
 
@@ -99,14 +99,12 @@ pub(crate) fn acquired() -> Acquired {
         leased_until: afd_core::clock::after(AT, afd_core::timing::LEASE_TTL),
         kind: Kind::Fresh,
         event_id: "1767225600000-1".to_owned(),
-        receipt: EventId::of("1767225600000-0"),
         actor: "fixture:steer".to_owned(),
         event_type: "chat".to_owned(),
         request_json: "{}".to_owned(),
         workspace_id: id(2),
         event_created_at: AT,
         reused: None,
-        ready: ReadyToken::mint(&Entropy::new(), AT).expect("the host has entropy"),
         resume_hold: false,
         redelivered: false,
     }

@@ -45,6 +45,5 @@ async fn test_waiting_overflow_reaches_later_pages() {
         "every waiting message, newest first, once"
     );
 
-    clean(&lane, &FleetStreams::new(lane.queue.clone())).await;
     lane.cleanup().await;
 }

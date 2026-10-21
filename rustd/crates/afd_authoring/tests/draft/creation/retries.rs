@@ -8,13 +8,12 @@
 //! to save, and many retries racing one stalled setup.
 
 use super::super::{fixture::now, mint, refusal::Refusal};
-use super::fixture::{Case, NO_ADMISSIONS, NO_EVENTS, check};
+use super::fixture::{Case, NO_ADMISSIONS, check};
 use afd_authoring::{
     SavedFleet,
     types::{DraftState, SaveFleet, Start, StartOutcome, StartState},
 };
 use afd_core::{error_code, id::Uuid7};
-use afd_dragonfly::streams::FLEET_CONSUMER_GROUP;
 use std::sync::Arc;
 use tokio::sync::Barrier;
 
@@ -79,12 +78,6 @@ async fn revisions(c: &Case, fleet: &Uuid7) -> i64 {
         .expect("definition revisions")
 }
 
-async fn groups(c: &Case, fleet: &Uuid7) -> Vec<String> {
-    afd_dragonfly::test_util::fleet_groups(&c.queue, fleet.as_str())
-        .await
-        .expect("the fleet stream exists")
-}
-
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_creates_one_fleet() {
@@ -132,7 +125,7 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn a_stream_group_created_while_its_record_failed_is_reused_by_the_retry() {
+async fn a_readiness_record_failure_keeps_activation_and_its_run_uncommitted() {
     let c = Case::create().await;
     let (_, request) = c.request("stream-record-fault", run_now()).await;
     let key = mint();
@@ -158,17 +151,13 @@ async fn a_stream_group_created_while_its_record_failed_is_reused_by_the_retry()
         .expect("retained fleet");
     assert_eq!(stalled.status, "installing");
     assert_eq!(check(&stalled, "stream"), "pending", "the record was lost");
-    assert_eq!(groups(&c, &fleet).await, [FLEET_CONSUMER_GROUP]);
     assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
-    assert_eq!(c.stream_events(&fleet).await, NO_EVENTS);
     drop(refusal);
     let finished = c.save(&key, request.clone()).await;
     assert_eq!(finished.id, fleet);
     assert_eq!(finished.status, "active");
     let event = named_event(&finished).expect("one initial run").to_owned();
-    assert_eq!(groups(&c, &fleet).await, [FLEET_CONSUMER_GROUP]);
     assert_eq!(c.admissions(&fleet).await.len(), 1);
-    assert_eq!(c.stream_events(&fleet).await, std::slice::from_ref(&event));
     assert_eq!(
         named_event(&c.save(&key, request).await),
         Some(event.as_str())
@@ -179,7 +168,7 @@ async fn a_stream_group_created_while_its_record_failed_is_reused_by_the_retry()
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn concurrent_retries_after_an_aborted_activation_admit_one_run_on_one_stream() {
+async fn concurrent_retries_after_an_aborted_activation_admit_one_run() {
     let c = Arc::new(Case::create().await);
     let (_, request) = c.request("concurrent-retry", run_now()).await;
     let key = mint();
@@ -230,9 +219,6 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run_on_one_str
     assert_eq!(named_event(&settled), Some(event.as_str()));
     let rows = c.admissions(&fleet).await;
     assert_eq!(rows.len(), 1, "one initial admission: {rows:?}");
-    assert!(rows.iter().all(|(_, receipt)| receipt.is_some()));
-    assert!(c.stream_events(&fleet).await.iter().all(|id| *id == event));
-    assert_eq!(groups(&c, &fleet).await, [FLEET_CONSUMER_GROUP]);
     assert_eq!(c.fleet_count().await, 1);
     Arc::try_unwrap(c)
         .ok()

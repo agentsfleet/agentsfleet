@@ -115,23 +115,16 @@ impl Fleet {
     ) -> Self {
         self.creations = afd_authoring::Creations::new(
             self.authoring_setup.clone(),
-            queue.clone(),
-            afd_admission::Admissions::for_tests(database.clone(), queue.clone())
-                .with_budgets(budgets),
+            afd_admission::Admissions::for_tests(database.clone(), queue).with_budgets(budgets),
         );
-        self.fleets = Fleets::new(database, queue);
+        self.fleets = Fleets::new(database);
         self
     }
 
     /// Runs the signed-ingress routes over a live database and queue.
     ///
-    /// The production [`Ingress`] with both stores actually there, where
-    /// [`Self::live`] leaves the queue unreachable and [`Self::with_ingress`]
-    /// replaces the store entirely. That makes this the only arm on which the
-    /// whole resolve → open → append order runs as the daemon runs it: the
-    /// binding comes out of `fleet.revisions`, the secret out of `vault.secrets`,
-    /// and the claim lands in Dragonfly. A suite on `Scripted` proves what the
-    /// HANDLER decided; this one proves the store underneath it answers.
+    /// Resolve bindings and secrets through production stores, then commit the
+    /// admission. Dragonfly receives the notification after acceptance.
     pub(crate) fn with_live_ingress(mut self, database: Db, queue: Dragonfly) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
@@ -143,14 +136,7 @@ impl Fleet {
         self
     }
 
-    /// Appends a verified fire to a live queue rather than an unreachable one.
-    ///
-    /// `Fleet::live` gives the schedules plane a Dragonfly nothing resolves, which
-    /// is the right default: every schedules suite but one proves what the
-    /// route REFUSES, and a route that refuses never reaches an append. The
-    /// exception is the accepted fire — the only path on which the handler
-    /// renders a queued event's own identifier back to the scheduler, and the
-    /// only one a suite cannot reach without a queue that takes the write.
+    /// Admit a verified schedule fire to the live ledger and notify through Dragonfly.
     pub(crate) fn with_live_fire(mut self, database: Db, queue: Dragonfly) -> Self {
         let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
         self.schedules = SchedulePlane::new(
@@ -169,11 +155,7 @@ impl Fleet {
         self
     }
 
-    /// Runs the fleet message ingress over a live queue.
-    ///
-    /// Takes the pool as well as the queue, because a steer's acceptance is a
-    /// LEDGER row now and the append that follows is its receipt — a seam
-    /// handed only a queue could no longer build the producer.
+    /// Admit fleet messages to the live ledger and send wake notifications.
     pub(crate) fn with_steering_queue(mut self, database: Db, queue: Dragonfly) -> Self {
         self.steering = Steer::new(afd_admission::Admissions::for_tests(database, queue));
         self

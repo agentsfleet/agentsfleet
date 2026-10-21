@@ -20,8 +20,6 @@ mod models;
 mod privacy;
 mod proposals;
 mod readiness;
-#[path = "../../../afd_authoring/tests/support/refusal.rs"]
-mod refusal;
 mod saving;
 mod seed;
 mod stream;

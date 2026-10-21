@@ -29,7 +29,6 @@ mod actor;
 mod cursor;
 mod detail;
 mod filter;
-mod queued;
 mod row;
 pub(crate) mod statement;
 mod tool_call;
@@ -203,16 +202,12 @@ impl History {
         let mut connection = self.database.acquire().await?;
         let rows = scoped
             .bind(bound)
+            .bind(afd_admission::Producer::Steer.as_str())
+            .bind(status::QUEUED)
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_THREAD))?;
-        let delivered = rows
-            .iter()
-            .map(EventDetailRow::read)
-            .collect::<Result<Vec<_>>>()?;
-        let waiting = queued::waiting(&mut connection, workspace, fleet, cursor, bound).await?;
-        let cut = usize::try_from(bound).unwrap_or(usize::MAX);
-        Ok(queued::merged(delivered, waiting, cut))
+        rows.iter().map(EventDetailRow::read).collect()
     }
 
     /// The finished rows of a fleet's thread before `at`, newest first, bodies

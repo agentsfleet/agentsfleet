@@ -40,12 +40,8 @@ const PROVIDER: &str = "anthropic";
 /// this lane's and releasing it can never remove an operator's.
 const MODEL: &str = "bench-drain-model";
 
-/// A credential shaped like a provider key and worth nothing.
-///
-/// It names its provider because the vault projects `meta_provider` from that
-/// field, and a setup chat resolves the platform model only through a
-/// credential whose projected provider matches the default's.
-const CREDENTIAL_BODY: &str = r#"{"provider":"anthropic","api_key":"bench-not-a-credential"}"#;
+/// Synthetic key bytes; the stored body also names the provider so registration resolves it.
+const CREDENTIAL_KEY: &str = "bench-not-a-credential";
 
 /// The context window the catalogue row advertises; the column is required.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
@@ -113,8 +109,10 @@ pub(in crate::lane::lease) async fn stage(
 /// Seal the credential into `workspace`'s vault under the name resolution
 /// opens it by — the provider's.
 async fn seal_credential(stores: &Datastores, kek: &Arc<Kek>, workspace: &str) -> Result<()> {
-    let body = RawValue::from_string(CREDENTIAL_BODY.to_owned())
-        .map_err(|source| ErrorKind::CredentialMalformed { source })?;
+    let body = RawValue::from_string(
+        serde_json::json!({"provider": PROVIDER, "api_key": CREDENTIAL_KEY}).to_string(),
+    )
+    .map_err(|source| ErrorKind::CredentialMalformed { source })?;
     let workspace = Uuid7::parse(workspace)?;
     Vault::new(stores.database.clone(), Arc::clone(kek), Entropy::new())
         .create(

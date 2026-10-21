@@ -101,7 +101,7 @@ fn unreachable(c: &Case) -> afd_authoring::Creations {
         queue.clone(),
         afd_crypto::entropy::Entropy::new(),
     );
-    afd_authoring::Creations::new(c.setup.clone(), queue, admissions)
+    afd_authoring::Creations::new(c.setup.clone(), admissions)
 }
 
 fn stream_state(saved: &afd_authoring::SavedFleet) -> &str {
@@ -116,7 +116,7 @@ fn stream_state(saved: &afd_authoring::SavedFleet) -> &str {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn failed_stream_stage_retains_identity_and_still_binds_body_and_actor() {
+async fn save_with_unavailable_notifications_activates_and_still_binds_body_and_actor() {
     let c = Case::create().await;
     c.fund().await;
     let (_, request) = c.request("stream-fault", Start::None).await;
@@ -126,15 +126,15 @@ async fn failed_stream_stage_retains_identity_and_still_binds_body_and_actor() {
         .save(c.base.access(), &key, request.clone(), now())
         .await
         .expect("a failed external stage is progress, not an error");
-    assert_eq!(first.status, "installing");
-    assert_eq!(stream_state(&first), "pending");
+    assert_eq!(first.status, "active");
+    assert_eq!(stream_state(&first), "ready");
     let again = broken
         .save(c.base.access(), &key, request.clone(), now())
         .await
         .expect("retry against the same failure");
     assert_eq!(
         (again.id.clone(), again.status.as_str()),
-        (first.id.clone(), "installing")
+        (first.id.clone(), "active")
     );
     assert_bound(&c, &broken, &key, &request).await;
     assert_eq!(c.fleet_count().await, 1, "no stage failure allocates twice");

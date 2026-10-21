@@ -30,26 +30,13 @@ use crate::semconv;
 /// difference rather than for the failure.
 pub(super) const UNMODELLED_REASON: &str = "unknown";
 
-/// How many fleets the last lease poll found holding work.
-///
-/// Published by the poll rather than read from Dragonfly in the callback: the
-/// index is a network round trip, and a collection callback runs under the
-/// SDK's pipeline lock where an await is not available and a stall would take
-/// every family silent at once.
-static READY_DEPTH: Observed = Observed::new();
-
-/// Admitted rows the last replay pass found without a receipt.
+/// Unsettled admissions counted by the fleet census.
 static ADMISSION_BACKLOG: Observed = Observed::new();
 
 /// How long the oldest of them had waited, in seconds.
 static ADMISSION_OLDEST: Observed = Observed::new();
 
-/// Publishes what a completed lease poll saw in the readiness index.
-pub fn ready_depth_observed(fleets: u64) {
-    READY_DEPTH.publish(fleets);
-}
-
-/// Publishes what a completed replay pass found the queue still owing.
+/// Publishes the unsettled backlog counted by a completed census pass.
 ///
 /// Both readings together, because they describe one backlog: rows without
 /// an age cannot say whether the sweeper is keeping up. An empty backlog
@@ -57,6 +44,12 @@ pub fn ready_depth_observed(fleets: u64) {
 pub fn admission_backlog_observed(rows: u64, oldest_age_seconds: u64) {
     ADMISSION_BACKLOG.publish(rows);
     ADMISSION_OLDEST.publish(oldest_age_seconds);
+}
+
+/// Withdraw a failed census reading rather than publishing an invented zero.
+pub fn admission_backlog_withdrawn() {
+    ADMISSION_BACKLOG.withdraw();
+    ADMISSION_OLDEST.withdraw();
 }
 
 /// The instruments the runner plane and the sweepers record through.
@@ -69,19 +62,16 @@ pub struct Handles {
     lease_candidates: Counter<u64>,
     lease_roundtrips: Counter<u64>,
     lease_dragonfly_commands: Counter<u64>,
-    lease_claims_empty: Counter<u64>,
     history_bytes: Histogram<f64>,
     history_cuts: Counter<u64>,
     history_read_failures: Counter<u64>,
     held_claims: Counter<u64>,
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
-    ready_write_failures: Counter<u64>,
     ready_wake_failures: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
     admissions: Counter<u64>,
-    admission_replays: Counter<u64>,
     runner_failures: Counter<u64>,
     runner_failures_overflow: Counter<u64>,
     runner_executions: Counter<u64>,
@@ -114,7 +104,6 @@ impl Handles {
             lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
             lease_dragonfly_commands: instruments
                 .counter_u64(&declared::LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL)?,
-            lease_claims_empty: instruments.counter_u64(&declared::LEASE_CLAIMS_EMPTY_TOTAL)?,
             history_bytes: instruments.histogram_f64(&declared::LEASE_HISTORY_BYTES)?,
             history_cuts: instruments.counter_u64(&declared::LEASE_HISTORY_CUTS_TOTAL)?,
             history_read_failures: instruments
@@ -122,15 +111,12 @@ impl Handles {
             held_claims: instruments.counter_u64(&declared::LEASE_HELD_CLAIMS_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
-            ready_write_failures: instruments
-                .counter_u64(&declared::FLEET_READY_WRITE_FAILURES_TOTAL)?,
             ready_wake_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
                 .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
             admissions: instruments.counter_u64(&declared::ADMISSIONS_TOTAL)?,
-            admission_replays: instruments.counter_u64(&declared::ADMISSION_REPLAYS_TOTAL)?,
             runner_failures: instruments.counter_u64(&declared::RUNNER_FAILURES_TOTAL)?,
             runner_failures_overflow: instruments
                 .counter_u64(&declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
@@ -151,7 +137,6 @@ impl Handles {
     /// Whatever [`Instruments`] refuses — see [`super::install`].
     fn observe_gauges(instruments: &Instruments, runners: &Arc<RunnerMetrics>) -> Result<()> {
         instruments.gauge_u64(&declared::FLEETS, census::fleet_census_readings)?;
-        instruments.gauge_u64(&declared::FLEET_READY_DEPTH, unlabelled(&READY_DEPTH))?;
         instruments.gauge_u64(&declared::ADMISSION_BACKLOG, unlabelled(&ADMISSION_BACKLOG))?;
         instruments.gauge_u64(
             &declared::ADMISSION_BACKLOG_OLDEST_AGE_SECONDS,
@@ -226,17 +211,6 @@ pub fn lease_polled(candidates_scanned: u64, database_roundtrips: u64, dragonfly
     }
 }
 
-/// Records a won claim whose fleet had nothing deliverable.
-///
-/// The cost a drained fleet adds before its mark is cleared: one claim, one
-/// stream read, one release. A rate that stays up while runs do not start is
-/// marks that keep coming back — a writer re-marking fleets with no work.
-pub fn lease_claimed_empty() {
-    if let Some(producers) = installed() {
-        producers.fleet.lease_claims_empty.add(1, &[]);
-    }
-}
-
 /// Records one run started: a lease granted, fresh or by reclaim.
 ///
 /// Called at the one grant point, on the `Some` it returns. A poll that found
@@ -258,13 +232,6 @@ pub fn delivery_stage(stage: DeliveryStage, elapsed: core::time::Duration) {
             elapsed.as_secs_f64(),
             &[KeyValue::new(semconv::LABEL_STAGE, stage.as_str())],
         );
-    }
-}
-
-/// Records a readiness mark or clear the index would not accept.
-pub fn ready_write_failed() {
-    if let Some(producers) = installed() {
-        producers.fleet.ready_write_failures.add(1, &[]);
     }
 }
 

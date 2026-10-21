@@ -1,10 +1,7 @@
 //! One issued, active lease with a funded tenant behind it.
 //!
-//! Every §3 suite starts from the same precondition — §2 has already run to
-//! completion — and assembling that inline in each is several chances for the
-//! suites to disagree about what "an issued lease" means. `fleet_lease_seed`
-//! stops one step earlier, at a fleet with work on its stream; this carries on
-//! through the claim, the narrative log and the lease row.
+//! Builds on `fleet_lease_seed` through the claim, narrative log and lease row,
+//! so report tests share the same funded starting state.
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
@@ -69,6 +66,7 @@ pub(crate) const SLICE_NANOS: i64 = SLICE_MS * RUN_NANOS_PER_SEC / MS_PER_SEC;
 /// and assembling it inline four times is four chances for the tests to
 /// disagree about what "an issued lease" means.
 pub(crate) struct Held {
+    pub(crate) acquired: afd_fleet::lease::Acquired,
     pub(crate) fixtures: Fixtures,
     /// The issued lease as the work its usage lines name.
     pub(crate) lease_key: Uuid7,
@@ -106,7 +104,7 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
     let now = fixtures.enrolled_at();
     fixtures.seed_wallet(&tenant, DEEP_POOL).await;
 
-    let acquired = crate::seed::select_fleet_within_rotations(&leases, &runner, &fleet)
+    let acquired = crate::seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the seeded fleet is leasable");
     assert_eq!(
@@ -150,6 +148,7 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         spare,
         issued,
         fence: acquired.fence,
+        acquired,
         fleet,
         tenant,
         event_id,

@@ -1,38 +1,9 @@
 //! The one transaction a terminal report commits, and what it answers.
 //!
-//! Five writes with one fate: the money, the result, the session cursor, the
-//! freed slot, and the delivery the answer is owed. Before §7 the first four
-//! were a settle that committed on its own
-//! followed by four best-effort writes that each logged their own failure, and
-//! the gap between them is where a run's answer could be lost for good — the
-//! wallet drawn down, the lease flipped to `reported`, and `fleet.events`
-//! still holding the row as `received` with no response in it. Nothing
-//! recovers that: the runner's retry is refused because the lease is no longer
-//! active, and the tenant has paid for an answer the platform cannot produce.
-//!
-//! # Why the money still goes first INSIDE the transaction
-//!
-//! [`super::report`] explains why the settle precedes everything else, and the
-//! reason survives the change: a run that reaches `MAX_RUNTIME` races the
-//! reclaim sweep, and `METER_LEASE` takes `FOR UPDATE OF l, a` — the
-//! affinity row lock that holds the sweep off until this commits. Running it
-//! first now holds that lock for the whole transaction rather than for one
-//! statement, which is strictly stronger: the sweep that would have bumped the
-//! fence cannot interleave anywhere in here, not merely between two statements.
-//!
-//! The cost is that a fleet's affinity row is locked across three more
-//! same-fleet writes. They are keyed writes on rows this transaction already
-//! holds or has no contender for, which is why the lock is affordable; a
-//! statement added here that reaches a table under general contention would
-//! not be.
-//!
-//! # Rollback is the language's, not a compensating write
-//!
-//! `sqlx::Transaction` rolls back when it is DROPPED, so every `?` below
-//! unwinds all five writes with no rollback path of its own — the argument
-//! `afd_connector`'s grant install already makes, and the reason RULE TXN's
-//! "every failure branch must ROLLBACK" is satisfied here without a `match`
-//! per statement.
+//! Usage, admission settlement, result, checkpoint, slot release, and outbound
+//! obligation commit together. Metering locks the slot and lease before testing
+//! their fences, so a reclaim cannot interleave with the remaining writes.
+//! Dropping the transaction on any error rolls every write back.
 
 use afd_billing::biller::Settlement;
 use afd_core::id::Uuid7;
@@ -132,13 +103,7 @@ pub enum Committed {
 }
 
 impl Leases {
-    /// Commit one terminal report: the usage line, the result, the cursor, the
-    /// slot.
-    ///
-    /// One transaction, in that order, on one pooled connection. The queue is
-    /// NOT acknowledged here and cannot be — see [`super::finalize`] — so a
-    /// caller that returns success without acknowledging afterwards leaves the
-    /// entry pending and redelivered, which is the safe direction.
+    /// Commit a terminal report and settle its admission on one pooled connection.
     ///
     /// The host's capacity lock comes first, as it does for a renewal
     /// ([`Leases::extend`]): host row, then lease and slot rows. The metering

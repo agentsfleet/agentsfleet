@@ -1,15 +1,7 @@
-//! The lane's Dragonfly, and the two things a lease test has to put in it.
+//! Live and unavailable Dragonfly handles, plus deterministic ledger fixtures.
 //!
-//! Separate from `fleet_fixtures.rs` because the two harnesses have opposite
-//! lifetimes. That file creates a DATABASE PER TEST and drops it, which is what
-//! keeps row assertions independent. Dragonfly has no such equivalent: the
-//! readiness index is one hash at a fixed key and the streams are keyed by
-//! fleet, so isolation here comes from every test declaring its own fleet ids
-//! rather than from tearing anything down.
-//!
-//! That difference is why a leaked readiness mark is harmless: the candidate
-//! query joins `fleet.fleets` in the test's OWN database, so another test's
-//! fleet id cannot survive the filter even when its mark is still in the index.
+//! Shared-database tests scope rows by fleet. Tests asserting deployment-wide
+//! candidate or backlog counts use a private database.
 #![allow(
     dead_code,
     reason = "test support: shared by several test binaries, each using a subset"
@@ -21,8 +13,7 @@
 )]
 
 use afd_core::env::{EnvSource as _, ProcessEnv};
-use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole, FleetStreams, ReadyIndex};
-use afd_wire::event::Entry;
+use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 
 /// The lane's Dragonfly URL.
 const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
@@ -71,16 +62,9 @@ pub(crate) async fn connect() -> Dragonfly {
         .expect("the lane's Dragonfly must be reachable")
 }
 
-/// Puts one event on a fleet's stream and marks the fleet ready.
-///
-/// Both halves, because either alone is a state the daemon never produces:
-/// ingress appends and marks in one path, and a mark with no entry would make
-/// the assignment pass look broken when it is the fixture that is.
-///
-/// The field names are the ones `afd_wire`'s `Entry::queued_pairs` writes —
-/// the producer's side of the entry `assign.rs` reads.
+/// Place a durable admission with the fixture's deterministic event clock.
 pub(crate) async fn enqueue(
-    queue: &Dragonfly,
+    database: &afd_db::Db,
     fleet: &str,
     workspace: &str,
     actor: &str,
@@ -88,114 +72,12 @@ pub(crate) async fn enqueue(
     request_json: &str,
     created_at: jiff::Timestamp,
 ) -> String {
-    let streams = FleetStreams::new(queue.clone());
-    streams
-        .ensure_group(fleet)
-        .await
-        .expect("the consumer group must exist before a read");
-    let created = created_at.to_string();
-    let logical = afd_db::test_util::mint_id();
-    // `Entry::queued_pairs` and NOT a hand-written field list. The list this
-    // fixture used to carry went stale the moment the ledger added `event_id`:
-    // every
-    // entry it wrote was refused by `lease::envelope` as "appended by something
-    // that did not admit it", dropped, and the fleet looked empty — which is
-    // how one fixture failed twenty-six integration tests at once. Routing the
-    // shape through the producer's own helper is what makes that impossible to
-    // repeat: a field added there arrives here with it.
-    let entry = Entry {
-        actor,
-        event_type,
-        workspace_id: workspace,
-        request_json,
-        created_at: &created,
-    };
-    let _receipt = streams
-        .append(fleet, &entry.queued_pairs(&logical))
-        .await
-        .expect("the append must land");
-    mark_ready(queue, fleet).await;
-    logical
-}
-
-/// Appends an entry in the shape the Rust producers wrote before the wire fix.
-///
-/// `event_type` and `request_json` rather than `type` and `request`, and no
-/// `created_at` at all. Entries in exactly this shape are sitting on real
-/// streams, which is why the reader has to survive one rather than wedge the
-/// fleet behind it. The field names are LITERALS on purpose: routing them
-/// through `afd_wire`'s constants would make the fixture move with the code it
-/// exists to contradict.
-pub(crate) async fn enqueue_cutover_era(
-    queue: &Dragonfly,
-    fleet: &str,
-    workspace: &str,
-    actor: &str,
-    event_type: &str,
-    request_json: &str,
-) -> String {
-    let streams = FleetStreams::new(queue.clone());
-    streams
-        .ensure_group(fleet)
-        .await
-        .expect("the consumer group must exist before a read");
-    let id = streams
-        .append(
-            fleet,
-            &[
-                ("event_type", event_type),
-                ("actor", actor),
-                ("workspace_id", workspace),
-                ("request_json", request_json),
-            ],
-        )
-        .await
-        .expect("the append must land");
-    mark_ready(queue, fleet).await;
-    id.as_str().to_owned()
-}
-
-/// Marks a fleet ready so the readiness peek can surface it.
-/// Every entry on one fleet's stream, as `(receipt, logical event id)`.
-///
-/// Over `afd_dragonfly::test_util::fleet_entries`, which is an `XRANGE` and not
-/// a group read — `XREADGROUP` would move `last-delivered-id` and with it the
-/// retention floor, changing the thing the caller is about to assert on.
-///
-/// Both halves are returned because after a replay one logical event
-/// legitimately sits on two entries: the receipt is the physical copy and the
-/// field is the identity.
-pub(crate) async fn entries_on(queue: &Dragonfly, fleet: &str) -> Vec<(String, String)> {
-    afd_dragonfly::test_util::fleet_entries(queue, fleet)
-        .await
-        .expect("the lane's stream answers a range read")
-        .iter()
-        .map(|entry| {
-            (
-                entry.receipt.as_str().to_owned(),
-                entry
-                    .field(afd_wire::event::field::EVENT_ID)
-                    .unwrap_or_default()
-                    .to_owned(),
-            )
-        })
-        .collect()
-}
-
-pub(crate) async fn mark_ready(queue: &Dragonfly, fleet: &str) {
-    ReadyIndex::new(queue.clone())
-        .mark(fleet)
-        .await
-        .expect("the readiness mark must land");
-}
-
-/// Removes a fleet's readiness mark, so one test's fleet does not crowd the
-/// bounded peek another test depends on.
-pub(crate) async fn clear_ready(queue: &Dragonfly, fleet: &str) {
-    let index = ReadyIndex::new(queue.clone());
-    let token = index
-        .mark(fleet)
-        .await
-        .expect("re-marking to obtain the token must succeed");
-    let _cleared = index.clear_if_unchanged(fleet, &token).await;
+    use jiff_sqlx::ToSqlx as _;
+    let event = afd_db::test_util::mint_id();
+    sqlx::query("INSERT INTO fleet.admissions (id,fleet_id,workspace_id,producer,producer_key,payload_digest,actor,event_type,request_json,event_created_at,created_at,updated_at) VALUES ($1::uuid,$2::uuid,$3::uuid,'steer',$1,'fixture',$4,$5,$6,$7,$7,$7)")
+        .bind(&event).bind(fleet).bind(workspace).bind(actor).bind(event_type)
+        .bind(request_json).bind(created_at.to_sqlx())
+        .execute(&mut *database.acquire().await.expect("runtime connection"))
+        .await.expect("durable admission");
+    event
 }

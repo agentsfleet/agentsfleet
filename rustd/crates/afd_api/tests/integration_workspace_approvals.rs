@@ -48,7 +48,8 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
-    let fixture = Fixture::create().await;
+    const SUBJECT: &str = "user_live_approval_absent";
+    let fixture = Fixture::create_as(SUBJECT).await;
     fixture.seed().await;
     let queue = harness::connect_redis().await;
     let router = Fleet::live(

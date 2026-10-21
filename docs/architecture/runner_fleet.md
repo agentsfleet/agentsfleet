@@ -15,12 +15,12 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Lease expiry backstop | `LEASE_TTL` = 30 s (single-sourced for the control plane in `afd_core`'s timing constants) | reclaim sweep re-leases an expired lease with a higher fencing token | §Failure recovery model |
+| Lease expiry backstop | `LEASE_TTL` = 30 s (single-sourced for the control plane in `afd_core`'s timing constants) | the next eligible ledger claim re-leases an expired slot with a higher fencing token | §Failure recovery model |
 | Max run duration | `MAX_RUNTIME` hard cap | `/renew` extends to `min(now+LEASE_TTL, created_at+MAX_RUNTIME)` | §Per-lease renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
-| Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | the reclaim sweeper's `BATCH_LIMIT` = 100 fleets a pass, every 30 s, keyset cursor on `(updated_at, id)`; min-idle is `AUTOCLAIM_MIN_IDLE_MS` = 5 min; ≈5.5 min at 100 fleets, ≈10 at 1 000, ≈30 at 5 000 | §Failure recovery model |
+| Lost wake recovery | next eligible lease poll | every poll probes PostgreSQL, with or without a wake notification | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Fleet** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
@@ -36,7 +36,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
 | Debit point | the run's usage, per renewal | the issued lease's hold is reserved; each `/renew` and the report log the slice as a usage line that the biller settles after commit | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
-| Readiness index | sixteen `fleet:ready:{p}` hashes, a fleet's partition being CRC16 of its id modulo sixteen | field = fleet id, value = a minted UUIDv7 token; a hint, never the record; a poll reads one partition per rotation step, and one the readiness doorbell rang as well | §Datastore topology, [`datastore_scaling.md`](./datastore_scaling.md) |
+| Admissions queue | `fleet.admissions` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
 
 ## Traps
 
@@ -46,12 +46,12 @@ Each trap is enforced in its owner section; this list is the index.
 - Do not conflate runner status into one Kubernetes-style JSONB object; the three categories stay separate (§Runner state).
 - There is no `runner_runtime` Postgres role, and there must never be one (§Datastore role model).
 - `runner:enroll` is a token scope, not a Postgres role — it must not become a database `GRANT` (§Datastore role model).
-- Quote operators the readiness-recovery formula, not the single-batch case (§Failure recovery model).
+- A lost wake does not require a repair sweep; the next poll probes PostgreSQL (§Failure recovery model).
 - Sandbox tiers are not egress policy — no tier substitutes for the egress model (§Sandbox tiers).
 - The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
-- The readiness index is a hint, never the system of record — a lost mark costs latency, never the event (§Datastore topology).
+- The doorbell only prioritizes candidates; the admissions ledger owns work (§Datastore topology).
 - Not a general scheduler: no autoscale, no fairness engine, no arbitrary workload types (§"Scope — an execution plane, deliberately not a control plane").
-- A dashboard must not sum `agentsfleet_fleet_ready_depth`; each replica reports what its own polls' peeks of the one shared index offered (§The four per-runner families).
+- Admission backlog is a shared-database census gauge; use the latest successful reading across replicas.
 - Memory isolation does not rest on `fleet_id` scoping alone; a feature breaking single-live-holder must scope by `lease_id` first (§Memory continuity).
 - No secret enters a sandbox: model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
 - Config is never cached; warm mode reuses only the sandbox shell (§Cold and warm execution).
@@ -84,7 +84,7 @@ Deeper diagrams stay with their sections: the renewal timeline (§Per-lease rene
 | Operator pre-mints `agt_r`; no host self-registration | no enrollment-grade credential ever touches a host (Option B, the GitLab-16 model) | §Registering a runner; M84_001 |
 | Typed columns + event log, not a `status` JSONB | one operator-intent dimension; JSONB conditions are for many writers | §Runner state; cross-validated Jun 2026 |
 | Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor is invisible to Dragonfly consumer-idle | §Datastore topology; M80_001 |
-| `fleet:ready` token is a UUIDv7, not a counter | an evicted counter restarts and re-issues a token a live poll still holds | §Datastore topology |
+| Slot and admission fences advance together | a stale runner must not settle a newer claim | §Datastore topology |
 | Cold-start reconciliation deferred | discovery scaffolding the future scheduler replaces (Indy-acked, M141_001 Discovery) | §Failure recovery model |
 | The agent loop runs in the supervisor; only tool calls cross into a per-lease sandbox | no model key or runner token enters a sandbox, and the supervisor keeps the network a sandbox may be denied | §The split; [Runner execution](./runner_execution.md) §Process model |
 | Renewal meters the run per slice (M80_010), superseding the coverage-only check | a run is charged as it runs, so an empty wallet stops it at the next renewal | §Money gates |
@@ -115,23 +115,20 @@ A runner has no durable identity that the system depends on. It is enrolled once
 
 ## Failure recovery model
 
-Recovery latency is **emergent from fleet polling density**, not a hard bound — a dead runner's work is picked up when its lease expires and another runner next leases. The current Service Level Agreement (SLA) is the S0 floor; tightening it is the M80_006 mandate, not optional polish.
+A runner's work becomes eligible when its slot expires. Another eligible runner must still poll; recovery time depends on available capacity and fleet selection.
 
-| Failure | SLA today (S0) | Mechanism | Tradeoff | M80_006 path |
-|---|---|---|---|---|
-| Runner dies mid-lease | work resumes within ~`LEASE_TTL` (30 s) + next lease latency | lease expiry + reclaim sweep re-leases with a higher fencing token | recovery latency is lazy (tied to the TTL), not push-driven | heartbeat-detected death → proactive reassignment; sub-10 s recovery |
-| Stale report after reclaim | immediate | `report` CAS verifies `fencing_token`; stale holder rejected (`UZ-RUN-005`) | the redone work by the new holder is the authority; the slow holder's compute is wasted | unchanged — fencing is the durable guard |
-| **Fleet outruns the lease TTL** | resolved (§3) — a live runner renews its own lease | the runner renews through the fenced `/renew` verb on every tick while the lease's task lives; liveness is decoupled from execution duration, bounded by a hard `MAX_RUNTIME` cap | a runner that dies stops renewing — its lease expires at its deadline and is reclaimed + re-run; never double-run (fencing) | **shipped**; §1 cordon-drain + §2 heartbeat-lapse reassignment build on top |
-| Sandbox setup fails | immediate | the turn never runs; runner reports `fleet_error` as `startup_posture` | a host with a broken sandbox fails each lease it takes until the operator cordons it | cordon / reaping of hosts that repeatedly fail to establish a sandbox |
-| Control plane unreachable | bounded by runner backoff | runner retries with backoff; the un-acked lease redelivers | a runner that can't reach `agentsfleetd` does no work until the link returns | unchanged — the runner is the reconnect handler |
-| Assignment errors *after* winning a fleet's slot | next poll (~immediate) | `try_candidate` releases the won `runner.fleet_slots` slot through `let_go` before the error propagates, on the reclaim probe and on the fresh-envelope build alike (`rustd/crates/afd_fleet/src/lease/assign/claim.rs`). A release that itself fails degrades to the slot's own `lease_expires_at` expiry | one poll is burned; the slot is not held for a full `LEASE_TTL` on a transient database or allocation failure | unchanged — the release is token-guarded, so it can never free a *newer* holder's claim |
-| Readiness mark lost (Dragonfly unavailable at ingress, eviction, flush, lossy failover) | `AUTOCLAIM_MIN_IDLE_MS` + `ceil(active_fleets / BATCH_LIMIT)` × the 30 s pass interval — **scales with fleet count** | the reclaim sweeper (`afd_runner::sweep::reclaim`) re-marks any fleet still holding deliverable work. Its probe reads the consumer group's `lag` (entries never delivered) and pending count from `XINFO GROUPS`, and reads an unknown `lag` as deliverable, so it sees **undelivered** entries — the case `XAUTOCLAIM` can never reach, because an appended-but-unmarked entry is in nobody's pending list. It also re-marks on a non-empty PEL, which recovers another replica's strand a full pass sooner | the event is never lost; delivery is delayed. The sweep only re-marks and never clears: a false positive costs one wasted candidate check, a false negative strands an event | a scheduler subsumes discovery, replacing the polled backstop |
+| Failure | Recovery | Durable guard |
+|---|---|---|
+| Runner dies mid-lease | A later poll claims the same unsettled admission after its 30-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
+| Wake notification lost | The next poll probes PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
+| Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
+| Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |
+| Report fails before commit | Retry the report; lease, usage and settlement all roll back. | No charge or terminal admission without the report transaction. |
+| Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery obligation. |
+| Sandbox setup fails | The runner reports `fleet_error` as `startup_posture`. | Work never runs without the assigned sandbox. |
 
-> **The readiness recovery bound is a function of fleet count, not a flat interval.** A sweep pass runs every 30 s and reaches at most `BATCH_LIMIT` active fleets (100), advancing through the population by keyset cursor on `(updated_at, id)` (`rustd/crates/afd_runner/src/sweep/reclaim/mod.rs`). So a strand outside the current batch waits `min-idle + ceil(active_fleets / 100) × interval`, where min-idle is `AUTOCLAIM_MIN_IDLE_MS`, five minutes (`rustd/crates/afd_dragonfly/src/streams/mod.rs`): about 5.5 minutes at 100 active fleets, about 10 at 1 000, about 30 at 5 000. Quote operators the formula, not the single-batch case.
->
-> The same arithmetic is the **cold-start** window. On first deploy the index is empty while streams already hold undelivered entries, so nothing is leasable until a sweep finds it. This is a deliberate, Indy-acked deferral (M141_001 Discovery): a boot-time reconciliation pass and a raised batch bound were both offered and declined, because both are discovery scaffolding the future scheduler replaces. What is *not* deferred is the keyset cursor — without it the fleets past the first batch are never reached at all rather than merely reached late.
-
-> **The renewal gap is closed (§3).** A live runner renews its lease through the fenced `/renew` verb before `lease_expires_at`, so execution duration is decoupled from `LEASE_TTL` — which stays short (single-sourced for the control plane in `afd_core`'s timing constants) as the silent-death backstop, *not* as the cap on how long a Fleet may run. Renewal is credit-gated and bounded by a hard `MAX_RUNTIME` cap; a runner that dies stops renewing, and its lease is reclaimed at its deadline. The runner can now default for fleets that run well past the TTL.
+A live runner renews through the fenced `/renew` route. Renewal remains credit-gated and bounded by `MAX_RUNTIME`.
+A runner that stops renewing loses its slot at the database deadline.
 
 ### Per-lease renewal — how a long fleet keeps its lease
 
@@ -371,18 +368,12 @@ agentsfleet-runner supervisor: admit the policy, take the fleet's turn, hydrate 
    │
 report → agentsfleetd: one transaction (settle + terminal state + checkpoint
          + freed slot + the OWED DELIVERY), then — after it commits — the
-         activity frame, the XACK, and the answer onto connector:outbound
+         activity frame and the answer onto connector:outbound
 ```
 
-The parenthesis is the guarantee, not a description of the order. Those five writes
-commit together or none of them does, so there is no interval in which the tenant has
-paid for a run whose answer was never stored. The acknowledgement is outside the
-transaction because no transaction spans Postgres and the datastore, and it runs after
-it because a redelivered entry is recoverable where an acknowledged-then-rolled-back one
-is not. A report that fails leaves the lease `active` and the wallet untouched, so the
-runner retries; a report whose RESPONSE is lost retries into a lease already `reported`
-by that same runner and is answered with the stored outcome for no charge. See
-[`data_flow.md`](./data_flow.md) §"C. EXECUTE".
+The admission settlement, usage, terminal event, checkpoint, slot release and outbound obligation commit together.
+A failed transaction leaves the lease active and unsettled. A lost response is retried against the stored outcome without another charge.
+Activity publication and outbound dispatch follow the commit. See [`data_flow.md`](./data_flow.md) §"C. EXECUTE".
 
 The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). On the runner, each lease is one task that owns its sandbox: a sandbox is held or destroyed exactly once, and the engine's boot sweep removes what a crashed runner left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
 
@@ -542,19 +533,14 @@ The gates run before the lease is issued and charge nothing; the issued lease's 
 
 ## Datastore topology
 
-Surface semantics — cardinality, purpose, volume — are canonical in [`data_flow.md` §"Two streams + one pub/sub channel"](./data_flow.md). What this page owns is `fleet:ready`.
+PostgreSQL owns the inbound admissions queue. Dragonfly carries activity, wake notifications, session state and outbound delivery.
+The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
 
-| Surface | Who drives it |
-|---|---|
-| `fleet:ready:{p}:wake` (readiness doorbell, sixteen sharded pub/sub channels) | **One channel per partition, on that partition's slot**, so a ring lands on the node that took the mark and no slot serves every mark and every poll. `ReadyIndex::mark` publishes the mark's token right after the mark it announces, so a woken poll finds the mark already there. Admission and an answered approval gate ring; the reclaim sweeper re-marks through `ReadyIndex::mark_quiet`, because its pass re-marks fleets mid-run and claims a long run's idle entry, which proves no dead holder, and the rotation reaches what it writes. Every replica's subscription hub subscribes all sixteen at boot and sets the partition's bit in a process-local `Doorbell`; a gap or a lag is counted under `kind="gap"` and rings nothing, because ringing all sixteen would send each poll to its own cursor's partition and hide every real ring for a turn. A poll peeks the rotation's partition and, when a bit is set, the first rung partition at or after the cursor, together, clearing that bit, so consecutive polls take different rung partitions. The poll sets the bit again, in process and with no Dragonfly command, only when it leased and left the rung partition work: the candidate scan offered a fleet from it that the poll never tried, or the scan was cut at its 64-fleet ceiling, so the rung fleets after the cursor's were never offered (a cut may cost the next poll one empty peek, and never loops, since only a poll that leased is cut), and never when the rung partition's own peek failed, so a slow node is not sent every later poll; a fleet the scan left out, running or not the runner's labels, never holds the bell, and every other exit leaves it clear, a faulted poll's included, so one broken fleet cannot keep drawing every poll. A poll dropped before it settles gives its ring back. The ring and the rung peek give up at `READY_WAKE_DEADLINE` (100 ms), so a slow node costs a mark its ring or a poll its rung peek, never the datastore's request timeout. Because the doorbell holds subscriptions on every primary for the life of the process, the hub's wait before a redial climbs to its ceiling across connections that end inside 5 s, a dead primary refusing the subscribes or a node confirming and dropping them, and restarts only after one held 5 s; a primary that returns is heard within one ceiling step, up to about 10 s with jitter. With no hub nothing rings and the rotation alone serves. A lost ring costs that fleet the rotation's speed, never its work. |
-| `fleet:ready:{p}` (readiness index, sixteen hashes) | **Sixteen hashes for the whole deployment**, shared by every replica, a fleet's partition being CRC16 of its id modulo sixteen (the count and the poll rotation are in [`datastore_scaling.md`](./datastore_scaling.md)). Field = fleet id, value = the generation token that fleet's last mark minted. Marked by admission (the single producer all five ingress paths funnel through), by an answered or expired approval gate, and by the reclaim sweeper; read by the lease before it opens a Postgres connection, and cleared by the lease alone. Global-under-`fleet:` mirrors the retired `fleet:control` shape rather than the per-fleet `fleet:{id}:…` streams. |
+A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in one transaction.
+Locked or parked heads cannot expose later admissions. A gate answer clears the park stamp and publishes a best-effort wake.
 
-**The readiness index is a hint, never the system of record.** The streams are. A lost mark costs delivery latency, never the event — the reclaim sweeper re-derives readiness from the streams themselves (below). Every write to it is best-effort and none may fail an accepted ingress call or a lease reply.
-
-Fields carry a token because the lease clears them. Ingress takes no per-fleet claim and can append and mark at any instant — including between a poll's last read and its clear. `clear_if_unchanged` therefore deletes a field only when its stored token still equals the one the poll peeked, evaluated atomically inside Dragonfly. Nothing ever compares two tokens for order, only for equality, which is why the token is a UUIDv7 rather than a counter: a counter whose key is evicted restarts and re-issues a token a live poll still holds. `ReadyIndex::mark` mints it for every write and callers pass none — two mark sites once passed the fleet id, which made every generation the same value and the compare an unconditional delete.
-
-The lease clears on exactly two exits, both after a won claim. **Drained:** the claim first takes over the consumer group's oldest pending entry, whichever consumer holds it (`XAUTOCLAIM` min-idle 0, `COUNT 1`) — a won claim proves no live lease holds the fleet, so a pending entry is a re-poll, a parked event or a dead replica's strand — and only when nothing is pending anywhere and nothing is new does the poll free the claim and clear the mark (`agentsfleet_lease_claims_empty_total` counts these). Reading only its own consumer's pending list would clear a mark over another replica's entry. **Parked:** a gate awaiting a person (`Waiting::Parked`/`Pending`) or an open grant card frees the claim and clears the mark, because the answer re-marks the fleet — the continuation admission, the runless wake, a denial's wake, or the inbox expiry sweep. Every other stop — a refusal, a retry, an unreadable gate, a fault — frees the claim and keeps the mark, so the next poll comes back. The candidate scan skips a slot a live runner holds, so a fleet mid-run keeps its mark without costing each poll a losing claim. It also skips a fleet another runner holds a sandbox for (§"Cold and warm execution"). A claim that leases nothing also drops the sticky hint it wrote, and ties among the rest break at random: a poll hands out one fleet's work, so a fleet whose pass keeps stopping — an unreadable config whose refusal cannot be recorded, say — would otherwise be tried first on every poll of its partition and starve the fleets beside it.
-
+The candidate query prefers held fleets and a recent wake hint, then the runner's previous fleet, with random ordering for the rest.
+It checks runner labels and live sandbox holds before attempting a claim. Every poll probes PostgreSQL; missing notifications cannot hide accepted work.
 
 ## Sandbox tiers
 
@@ -649,11 +635,13 @@ Logs, spans and runner families: [observability.md](./observability.md) §"Signa
 
 The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_leases`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`docs/metrics.census.tsv`](../metrics.census.tsv).
 
-The write-failure counter is deliberately unlabelled — which of the two writes failed does not change the operator's response, and a `reason` label would double the series for no decision. Sweep re-marks are visible today only inside the `changed` count on the reclaim sweeper's `sweep_completed` log line, which also counts claimed entries, and as one `stranded_lease_surfaced` line per fleet the ledger check re-marks; there is no counter family for them; promoting them to a metric needs a name from the pinned semantic registry first.
+The poll counters describe global discovery cost without entity labels.
+Divide candidate, Postgres and Dragonfly command counters by `lease_polls_total` to compare cost per poll.
+An idle poll adds one Postgres probe and no Dragonfly commands.
 
-They carry no fleet, workspace, tenant, event, lease, or runner label — they describe the control plane, not any one entity, so a per-entity label here would be pure cardinality. `lease_polls_total` exists as a denominator: mean fan-out per poll is a ratio, and shipping only the numerators would make a traffic increase indistinguishable from a fan-out regression. An idle poll contributes a sample of zero rather than no sample at all, because the idle case is the one the fan-out defect lived in.
-
-`fleet_ready_depth` is **sampled**, not counted. The index is sixteen hashes shared by every replica, so a process-local mark/clear counter could not describe it. One replica marks while another clears. A restart zeroes the local delta. A repeat mark for an already-present fleet changes no field count. Each poll publishes how many ready fleets its peeks offered, the rotation's partition and the one the doorbell rang, if any, at most twice the poll ceiling, and the export reads the last value, which keeps the export path datastore-free. Each replica's series is its own polls' sample of at most two of the sixteen partitions, so a dashboard reads one replica's series or the maximum across them, and must not sum them.
+The fleet census publishes unsettled admission count and oldest age.
+Use the maximum across replicas, since each census reads the deployment-wide ledger.
+A failed census withdraws both gauges rather than exporting an old value.
 
 The four per-runner families live in a fixed-capacity (4096-series) table keyed on `runner_id`, held by the daemon in `afd_observability`: a lookup takes a read lock and the counters underneath it are atomics, so recording never blocks another recorder. The OTLP export reads only that in-memory snapshot — **zero Postgres on the export path**, so the export stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore bounded by that cap regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
 

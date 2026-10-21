@@ -73,38 +73,6 @@ pub const EXPIRE_ACTIVE_LEASE_SLOTS: &str = include_str!("expire_active_lease_sl
 /// event id, `$6` event type, `$7` the from-status key, `$8` the to-status key.
 pub const MARK_DRAINED_IF_IDLE: &str = include_str!("mark_drained_if_idle.sql");
 
-/// The next page of active fleets, after the cursor's position.
-///
-/// A KEYSET cursor, not an offset: `(updated_at, id) > ($2, $3)` resumes
-/// exactly where the last page stopped, so successive passes advance through
-/// the population instead of re-reading its head. The composite comparison is
-/// what makes it total: `updated_at` alone repeats across fleets touched in the
-/// same millisecond, and a cursor that skipped them would drop fleets rather
-/// than revisit them.
-///
-/// `$1` the active status, `$2` the cursor's instant, `$3` the cursor's id,
-/// `$4` the batch limit.
-pub const SELECT_ACTIVE_FLEETS_AFTER: &str = include_str!("select_active_fleets_after.sql");
-
-/// Fleets holding an `active` lease whose expiry has passed.
-///
-/// The readiness index's third writer. Its other two — ingress, and this
-/// sweeper's own stream probe — both go quiet for a fleet whose stream was
-/// lost while a runner held its work: nothing marks it, so nobody polls it,
-/// and the lease path's reclaim, which only runs when a claim wins the fleet,
-/// never gets its turn. This statement finds those fleets from the ledger and
-/// the caller marks them. It flips nothing — that reclaim re-leases from
-/// PostgreSQL alone and needs the lease still `active`.
-///
-/// `DISTINCT`, because one fleet can hold several expired leases and wants one
-/// mark. Keyset on `fleet_id` after `$3`, so a fleet that stays in the set
-/// until a runner claims it cannot starve the fleets behind it; the caller
-/// rewinds on a short page, so the scan is cyclic.
-///
-/// `$1` the active status, `$2` the batch limit, `$3` the cursor's fleet id.
-pub const SELECT_FLEETS_HOLDING_EXPIRED_LEASES: &str =
-    include_str!("select_fleets_holding_expired_leases.sql");
-
 /// One batch of settled leases past the retention window.
 ///
 /// `updated_at`, not `created_at`, is the retention clock: settle and reclaim
@@ -152,3 +120,6 @@ pub const EXPIRE_ABANDONED_ACTIVE_LEASES_BATCH: &str =
 /// No `WHERE` and no `LIMIT`: the answer is one row per distinct status, so
 /// the result is bounded by the status vocabulary and never by the table.
 pub const COUNT_FLEETS_BY_STATUS: &str = include_str!("count_fleets_by_status.sql");
+
+/// Unsettled admissions and age of the oldest, from the queue index.
+pub const COUNT_ADMISSION_BACKLOG: &str = include_str!("count_admission_backlog.sql");

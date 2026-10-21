@@ -63,7 +63,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack as a resident surface (Rung 0) — M106" |
 | How many datastore connections does a deployment need? | [`scaling.md`](./scaling.md) §"Connection budget after the cutover" |
 | What is the datastore target, and what has moved so far? | [`datastore_scaling.md`](./datastore_scaling.md) |
-| What drives idle request volume? | [`scaling.md`](./scaling.md) §"Per-request volume (now a machine, not a bill)" |
+| What drives idle request volume? | [`scaling.md`](./scaling.md) §"Idle request volume" |
 | Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §"Tuneup knobs and when to turn them" |
 | Where is the next bottleneck? | [`scaling.md`](./scaling.md) §"Where the next ceiling actually lives" |
 | Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §"The three signal paths" |
@@ -169,11 +169,10 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **Workspace** (`identity.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
 | **Fleet** (`fleet.fleets`, `fleet_id`) | A durable AI agent defined by a reviewed Definition, saved into one workspace. [(more)](./high_level.md#1-product-thesis) |
 | **Definition** | A validated description, instructions and fleet configuration stored in immutable revisions. [(more)](./fleet_definitions.md#validated-definition) |
-| **Producer** (`afd_admission::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation` or `slack_mention`), stored on the admission with its dedup key. [(more)](./lease_flow.md#admission-the-row-is-the-acceptance-the-stream-entry-is-a-receipt) |
-| **Admission** (`fleet.admissions`) | The ledger row that accepts one piece of work for a fleet, unique per `(producer, producer_key)` so a retried delivery is not run twice. [(more)](./lease_flow.md#admission-the-row-is-the-acceptance-the-stream-entry-is-a-receipt) |
-| **Fleet stream** (`fleet:{id}:events`) | The fleet's durable Dragonfly stream: each new admission appends one entry, and `agentsfleetd` reads it through consumer group `fleet_lease` when a runner asks for work. [(more)](./data_flow.md#two-streams--one-pubsub-channel--and-the-one-that-retired) |
-| **Readiness index** (`fleet:ready:{p}`) | Sixteen Dragonfly hashes marking which fleets have work waiting; a hint the lease poll reads before it touches Postgres, never the record. [(more)](./runner_fleet.md#datastore-topology) |
-| **Readiness doorbell** (`fleet:ready:{p}:wake`) | One pub/sub channel per readiness partition; a new mark rings it so the next lease poll checks that partition first. [(more)](./runner_fleet.md#datastore-topology) |
+| **Producer** (`afd_admission::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation` or `slack_mention`), stored on the admission with its dedup key. [(more)](./lease_flow.md#admission-commits-the-queue-row) |
+| **Admission** (`fleet.admissions`) | The ledger row that accepts one piece of work for a fleet, unique per `(producer, producer_key)` so a retried delivery is not run twice. [(more)](./lease_flow.md#admission-commits-the-queue-row) |
+| **Admissions queue** (`fleet.admissions`) | Unsettled admissions ordered by `(created_at, sequence)` within each fleet. Lease polls claim the oldest head under slot and admission fences. [(more)](./datastore_scaling.md#the-admissions-ledger-is-the-queue) |
+| **Wake notification** (`fleet:wake:{shard}`) | Sixteen channels prioritize a bounded local set of fleet hints. Every idle poll still reads Postgres. [(more)](./runner_fleet.md#datastore-topology) |
 | **Affinity slot** (`runner.fleet_slots`) | One row per fleet that one runner at a time can claim; a won claim raises `fencing_token` and holds until `lease_expires_at`. [(more)](./lease_flow.md#the-poll-ready-index--claim--event--row) |
 | **Fencing token** | The slot's `fencing_token` a won claim returns, copied onto the lease's `fencing_token`; a report carrying an older one is refused. [(more)](./runner_fleet.md#system-guarantees-read-this-first) |
 | **Lease** (`runner.leases`, `afd_fleet::lease::Leases`) | One runner's time-limited right to run one event, renewed while the run lasts. [(more)](./data_flow.md#one-active-lease-per-fleet--the-ownership-model) |
@@ -181,7 +180,7 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **Report** (`POST /v1/runners/me/reports`) | The runner's terminal result for one run (`afd_wire::report::ReportRequest`), carrying its lease and fencing token. [(more)](./data_flow.md#c-execute--lease--runner--report) |
 | **Obligation** (`fleet.obligations`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./lease_flow.md#4-how-agent-bob-01-can-reply) |
 | **Activity channel** (`fleet:{id}:activity`) | The fleet's pub/sub channel for live-tail frames: best effort, with no history. [(more)](./data_flow.md#two-streams--one-pubsub-channel--and-the-one-that-retired) |
-| **Subscription hub** (`afd_dragonfly::SubscriptionHub`) | The one pub/sub connection in each `agentsfleetd` process; it subscribes each channel once and copies frames to every viewer and to the readiness doorbell. [(more)](./data_flow.md#two-streams--one-pubsub-channel--and-the-one-that-retired) |
+| **Subscription hub** (`afd_dragonfly::SubscriptionHub`) | The one pub/sub connection in each `agentsfleetd` process; it subscribes each channel once and copies frames to every viewer and to the wake listeners. [(more)](./data_flow.md#two-streams--one-pubsub-channel--and-the-one-that-retired) |
 | **Supervisor** (`afr_supervisor`) | The trusted half of `agentsfleet-runner`, outside every sandbox: it speaks to `agentsfleetd`, holds the model keys and runs the agent loop. [(more)](./runner_execution.md#process-model) |
 | **Agent loop** (`afr_agent`) | The supervisor's model loop, outside the sandbox. [(more)](./runner_execution.md#process-model) |
 | **Sandbox** (`afr_sandbox`) | The confined Linux environment, built per lease by `BubblewrapEngine`, where that lease's tool calls run with no credentials. [(more)](./runner_execution.md#sandbox-engines) |

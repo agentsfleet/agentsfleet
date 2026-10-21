@@ -1,12 +1,4 @@
-//! The background work no request pays for.
-//!
-//! The sweepers keep the runner plane honest between requests: a runner that
-//! stopped beating has to be noticed, a lease its holder abandoned has to
-//! become leasable again, history has to stop growing, an admission the queue
-//! never took has to be re-appended, and one whose entry the queue LOST has to
-//! be found at all.
-//! None of them belongs on a request path — every one is unbounded work on
-//! someone else's row.
+//! Runner liveness, retention, outbound recovery and durable census sampling.
 //!
 //! # One loop, every sweeper
 //!
@@ -26,9 +18,6 @@
 pub mod census;
 pub mod liveness;
 pub mod rebuild;
-pub mod reclaim;
-pub mod reconcile;
-pub mod replay;
 pub mod retention;
 
 use std::time::Duration;

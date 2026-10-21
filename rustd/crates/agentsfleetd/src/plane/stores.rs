@@ -55,15 +55,10 @@ pub(super) struct Tenant {
 }
 
 /// Builds the tenant surface's stores.
-pub(super) fn tenant(
-    database: &Db,
-    queue: &Dragonfly,
-    kek: &Arc<Kek>,
-    providers: &Providers,
-) -> Tenant {
+pub(super) fn tenant(database: &Db, kek: &Arc<Kek>, providers: &Providers) -> Tenant {
     Tenant {
         workspaces: Workspaces::new(database.clone(), Entropy::new()),
-        fleets: Fleets::new(database.clone(), queue.clone()),
+        fleets: Fleets::new(database.clone()),
         api_keys: ApiKeys::new(database.clone(), Entropy::new()),
         team: Team::new(database.clone(), Entropy::new()),
         invite_mail: platform::invite_mailer(database, kek),

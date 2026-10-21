@@ -9,8 +9,8 @@
 
 use std::time::Duration;
 
+use afd_dragonfly::Subscription;
 use afd_dragonfly::hub::Received;
-use afd_dragonfly::{ReadyIndex, Subscription};
 use serde_json::Value;
 
 use crate::lane::Lane;
@@ -52,11 +52,18 @@ pub(crate) async fn next_frame(tail: &mut Subscription) -> Option<Value> {
     serde_json::from_str(&message.payload).ok()
 }
 
-/// The current ready token for the lane's fleet.
-pub(crate) async fn ready_token(lane: &Lane) -> Option<String> {
-    ReadyIndex::new(lane.queue.clone())
-        .token_for(lane.fleet.as_str())
-        .await
-        .expect("the ready index is readable")
-        .map(|token| token.as_str().to_owned())
+/// Seed the state a parked head leaves while its approval is pending.
+pub(crate) async fn park_delivery(lane: &Lane) {
+    let id = afd_db::test_util::mint_id();
+    sqlx::query("INSERT INTO fleet.admissions (id,fleet_id,workspace_id,producer,producer_key,payload_digest,actor,event_type,request_json,event_created_at,created_at,updated_at,parked_at) VALUES ($1::uuid,$2::uuid,$3::uuid,'steer',$1,'fixture','steer:fixture','chat','{}',now(),now(),now(),now())")
+        .bind(&id).bind(lane.fleet.as_str()).bind(lane.workspace.as_str())
+        .execute(&mut *lane.pool.acquire().await.expect("runtime connection"))
+        .await.expect("parked admission");
+}
+
+/// No parked unsettled delivery remains after the gate answer commits.
+pub(crate) async fn delivery_unparked(lane: &Lane) -> bool {
+    sqlx::query_scalar("SELECT NOT EXISTS (SELECT 1 FROM fleet.admissions WHERE fleet_id=$1::uuid AND settled_at IS NULL AND parked_at IS NOT NULL)")
+        .bind(lane.fleet.as_str()).fetch_one(&mut *lane.pool.acquire().await.expect("runtime connection"))
+        .await.expect("durable park state")
 }

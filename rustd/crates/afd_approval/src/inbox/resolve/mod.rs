@@ -13,8 +13,7 @@ use std::borrow::Cow;
 use afd_api_wire::approval::status;
 use afd_api_wire::grant::status as grant_status;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_core::error_code::{Coded as _, Logged};
-use afd_dragonfly::{FleetStreams, ReadyIndex};
+use afd_dragonfly::FleetStreams;
 
 use super::announce::Answer;
 use super::row::{StoredResolution, StoredWin};
@@ -36,9 +35,6 @@ const GRANT_REVOKED: &str = grant_status::REVOKED;
 pub(super) const CONTEXT_RESOLVE: &str = "gate.inbox.resolve";
 
 const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
-
-/// The ready mark that wakes a parked delivery would not write.
-const EVENT_WAKE_READY_MARK_FAILED: &str = "gate_wake_ready_mark_failed";
 
 /// The actor a continuation event records.
 ///
@@ -142,11 +138,9 @@ impl Inbox {
         {
             self.continue_from(&resolved, event_id).await
         } else {
-            // Every other answer leaves a delivery parked on the stream for
-            // the next poll to read — a runless gate's, or a refused run's,
-            // which that poll ends — and the park cleared the fleet's mark.
-            self.wake_parked_delivery(&resolved.fleet_id, &resolved.gate_id)
-                .await;
+            // Resolution already cleared the durable park. Notify a waiting
+            // poll that the original delivery is available again.
+            self.wake_parked_delivery(&resolved.fleet_id).await;
             Ok(None)
         };
         // After the continuation, so an approval's frame carries the count the
@@ -168,36 +162,9 @@ impl Inbox {
         Ok(resolved)
     }
 
-    /// Wakes a fleet whose delivery is parked on a gate that changed state.
-    ///
-    /// A parked delivery stays on the fleet stream, and the answer changes
-    /// what that same delivery reads on its next poll — so the answer wakes
-    /// the ready index instead of appending an event. Install-time integration
-    /// grants carry no `event_id` at all; a refused or expired run's parked
-    /// delivery is ended by the poll this sends. Either way the poll that
-    /// parked it cleared the fleet's mark, so nothing else would send one.
-    ///
-    /// Best-effort for the same reason regular chat ingress is: the database
-    /// answer is already durable, and a Dragonfly mark failure should not turn a
-    /// completed human decision into a retry that can no longer win the row.
-    /// The reclaim sweep re-marks a fleet whose owed entry has sat idle.
-    pub(super) async fn wake_parked_delivery(&self, fleet: &str, gate: &str) {
-        if let Err(error) = ReadyIndex::new(self.queue.clone()).mark(fleet).await {
-            let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let Logged {
-                error_code: cause_error_code,
-                reason,
-            } = error.logged();
-            tracing::warn!(
-                error_code = code,
-                cause_error_code,
-                event = EVENT_WAKE_READY_MARK_FAILED,
-                fleet_id = fleet,
-                gate_id = gate,
-                reason,
-                "the gate changed state but the fleet readiness mark could not be refreshed"
-            );
-        }
+    /// The answer already cleared the durable park in its own transaction.
+    pub(super) async fn wake_parked_delivery(&self, fleet: &str) {
+        afd_dragonfly::doorbell::publish(&self.queue, fleet).await;
     }
 
     /// Lands the event that resumes the run an approved gate had blocked.

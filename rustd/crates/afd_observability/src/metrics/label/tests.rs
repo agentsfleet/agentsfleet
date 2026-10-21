@@ -65,10 +65,6 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::DeliveryStage::ALL.len(),
         ),
         (
-            fleet::ADMISSION_REPLAYS_TOTAL.wire_name(),
-            fleet_labels::ReplayOutcome::ALL.len(),
-        ),
-        (
             fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
             fleet_labels::HistoryCut::ALL.len(),
         ),
@@ -148,7 +144,6 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::fleet::HistoryCut),
         set!(crate::metrics::label::fleet::HeldClaim),
         set!(crate::metrics::label::fleet::AdmissionOutcome),
-        set!(crate::metrics::label::fleet::ReplayOutcome),
         set!(crate::metrics::label::http::Signal),
         set!(crate::metrics::label::http::DiscardReason),
         set!(crate::metrics::label::http::OmittedAttribute),

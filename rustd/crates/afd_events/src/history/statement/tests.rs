@@ -50,7 +50,10 @@ fn listings() -> Vec<&'static str> {
 #[test]
 fn every_read_opens_with_the_one_row_column_list() {
     for text in listings().into_iter().chain(THREADS).chain([SELECT_DETAIL]) {
-        assert!(text.starts_with(ROW_COLUMNS), "drifted:\n{text}");
+        assert!(
+            text.trim_start_matches('(').starts_with(ROW_COLUMNS),
+            "drifted:\n{text}"
+        );
     }
 }
 
@@ -62,7 +65,10 @@ fn every_body_read_appends_the_bodies_after_the_row() {
         SELECT_THREAD_PAGE_AFTER,
         SELECT_THREAD_FINISHED_BEFORE,
     ] {
-        let rest = text.strip_prefix(ROW_COLUMNS).unwrap_or_default();
+        let rest = text
+            .trim_start_matches('(')
+            .strip_prefix(ROW_COLUMNS)
+            .unwrap_or_default();
         assert!(rest.starts_with(BODY_COLUMNS), "drifted:\n{text}");
     }
 }

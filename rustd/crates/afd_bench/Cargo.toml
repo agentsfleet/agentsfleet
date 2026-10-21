@@ -58,7 +58,7 @@ futures-util.workspace = true
 # with them. The release build names its package (`make/build.mk`), so this
 # feature never reaches the shipped daemon.
 afd_db = { workspace = true, features = ["test-util"] }
-# The readiness index and the fleet streams a poll peeks and reads.
+# The live tail, doorbell and outbound queue used by the measured paths.
 afd_dragonfly.workspace = true
 # `INFO commandstats`, for the Redis half of the attribution. The library never
 # spells a Redis command itself -- `afd_dragonfly` owns every one the product

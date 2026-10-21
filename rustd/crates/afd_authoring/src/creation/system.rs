@@ -6,8 +6,8 @@
 //! read, Kill and purge treat it exactly like a saved fleet.
 
 use super::{
-    ACTIVE, CONTEXT, Creations, INITIAL_VERSION, INSTALLING, activate::EXTERNAL_LIMIT,
-    reserve::Instance, source::Captured, sql,
+    ACTIVE, CONTEXT, Creations, INITIAL_VERSION, INSTALLING, reserve::Instance, source::Captured,
+    sql,
 };
 use crate::{
     Result,
@@ -90,14 +90,8 @@ impl Creations {
         Ok(id)
     }
 
-    /// The stream and the flip share one failure policy: both, or neither.
+    /// Queue readiness and activation commit in the same database transaction.
     async fn open_system(&self, workspace: &Uuid7, id: &Uuid7) -> Result<()> {
-        tokio::time::timeout(EXTERNAL_LIMIT, self.streams.ensure_group(id.as_str()))
-            .await
-            .map_err(|_elapsed| ErrorKind::RolledBack { source: None })?
-            .map_err(|source| ErrorKind::RolledBack {
-                source: Some(source),
-            })?;
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         sqlx::query(sql::STREAM_READY)

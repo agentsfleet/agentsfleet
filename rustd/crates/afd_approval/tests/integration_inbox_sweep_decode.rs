@@ -14,7 +14,7 @@
 )]
 
 use afd_approval::error::one_of_each_kind;
-use afd_dragonfly::ReadyIndex;
+use afd_dragonfly::SubscriptionHub;
 
 use crate::lane::Lane;
 
@@ -28,12 +28,11 @@ const GATE: &str = "gate-fixture";
 async fn an_undecodable_row_does_not_strand_the_rows_that_decoded() {
     let lane = Lane::isolated().await;
     let fleet = lane.fleet.as_str().to_owned();
-    let index = ReadyIndex::new(lane.queue.clone());
-    // The state a park leaves behind: the mark gone, waiting on the answer.
-    index
-        .force_clear(&fleet)
+    let hub = SubscriptionHub::start(crate::lane::dragonfly_config())
         .await
-        .expect("the test can clear the ready mark");
+        .expect("live hub");
+    let mut tail = hub.subscribe(&format!("fleet:{fleet}:activity"));
+    tokio::time::sleep(crate::tail_watch::SUBSCRIBE_SETTLE).await;
     let (label, undecodable) = one_of_each_kind()
         .into_iter()
         .next()
@@ -54,12 +53,11 @@ async fn an_undecodable_row_does_not_strand_the_rows_that_decoded() {
         code,
         "the bad row's own error is raised ({label})"
     );
-    assert!(
-        index
-            .token_for(&fleet)
-            .await
-            .expect("the ready index is readable")
-            .is_some(),
-        "the row that decoded is woken even though an earlier row did not decode"
+    let frame = crate::tail_watch::next_frame(&mut tail)
+        .await
+        .expect("good row still announced");
+    assert_eq!(
+        frame.get("kind").and_then(serde_json::Value::as_str),
+        Some("gate_resolved")
     );
 }
