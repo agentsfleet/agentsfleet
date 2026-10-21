@@ -44,7 +44,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **First executable slice** — add the nullable queue stamps, then measure a benchmark-only ledger selector over the drain fixture. Its issued work runs the existing gate, lease and report code through `Plane::lease_claimed`; benchmark housekeeping marks a successfully reported row settled. This measures the proposed claim and idle probe, not the completed production settlement or crash-recovery design. The development cutover resets disposable authored drafts and fleets; it does not backfill old queue state.
 - **Verification plan** — fresh-schema/runtime-role proof, competing claims and locked/parked-head proofs, then the 200-fleet drain and idle probe. Full declared baseline and final lanes remain due at the Pull Request boundary.
 - **Quality ceiling** — one durable queue removes the recovery copies. The measured transaction cost decides whether the claim needs statement consolidation; no new queue service is proposed.
-- **Surface check** — OpenAPI and command-line interface unchanged; architecture and release/version review due at close; additive and receipt-removal migrations required, with specific owner approval recorded in Discovery. Published operational behavior will be checked before close. Source drift is corrected here before implementation.
+- **Surface check** — routes, response fields and command-line interface unchanged; regenerate OpenAPI for the corrected Save and run description. Architecture and release/version review are due at close; additive and receipt-removal migrations require the specific owner approval recorded in Discovery. Published documentation is outside the owner-approved repository scope.
 
 ## Implementing agent — read these first
 
@@ -60,7 +60,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 
 | File | Action | Why |
 |------|--------|-----|
-| `VERSION`, `cli/package.json`, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | synchronize the owner-approved minor release, `0.63.0`, across the CLI and Rust workspace |
+| `VERSION`, `cli/package.json`, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | synchronize the owner-approved minor release, `0.65.0`, across the CLI and Rust workspace |
 | `schema/2110_fleet_admissions_queue.sql` | CREATE | additive lease, park and settle stamps, the unsettled partial index and runtime grants |
 | `schema/2120_fleet_admissions_drop_receipt.sql` | CREATE | drops admission `receipt`, `replay_count`, `replay_claim_expires_at`, their dependent indexes and lease `receipt` after their readers are removed (owner approval, Discovery Q3); prepare for review before registration |
 | `scripts/check_architecture_doc_schema.py`, `scripts/check_architecture_doc_test_schema.sh` | EDIT | owner-approved schema-checker update applies ordered column additions and removals while retaining drift refusal and testing unsupported changes |
@@ -129,6 +129,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_dragonfly/tests/integration_doorbell.rs`, `rustd/crates/afd_dragonfly/tests/datastore_suite.rs` | CREATE / EDIT | prove cross-process sharded notification delivery and release every subscription at shutdown |
 | `rustd/crates/afd_fleet/tests/integration_lease_plan.rs`, `integration_lease_plan/` | EDIT / CREATE | prove composite prior-event lookup, bounded head reads, indexed renewal/settlement and skipped fleet scans on an empty ledger with 20,001 active fleets |
 | `rustd/crates/afd_events/tests/queued/{mod.rs,snapshot.rs}` | EDIT / CREATE | count actual public history statements before and after delivery; one statement supplies one snapshot |
+| `rustd/crates/afd_authoring/tests/draft/creation/{mod,confirmation}.rs`, `rustd/crates/afd_fleet/tests/integration_lease_gates/faults.rs`, `integration_terminal_redelivery.rs` | EDIT / CREATE | prove durable initial-event confirmation, preservation of terminal refusals and stale terminal-settlement fencing |
 
 ## Applicable Rules
 
@@ -277,6 +278,11 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 | 5.3 | integration | `test_retry_keeps_one_queued_message_and_its_delivered_identity` | retry before delivery, then deliver → one stable message identity |
 | 5.3 | integration | `thread_pages_use_one_statement_snapshot_before_and_after_delivery` | public history calls before delivery, after delivery and on an empty cursor page → one statement each and one message identity |
 | 5.4 | integration | `test_census_publishes_every_status` | 3 unsettled rows → backlog gauge 3 and oldest age ≥ 0; a failed sample withdraws stale gauges |
+| 3.1 | integration | `a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answers`, `a_confirmation_for_another_event_cannot_accept_the_initial_run`, `a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_admission` | missing, mismatched or unavailable confirmation → pending with the original fleet and event; restored confirmation → accepted once |
+| 4.2 | integration | `terminal_redelivery_cannot_settle_after_its_claim_is_superseded` | fence changes after delivery → stale terminal settlement retains the current claim; expiry permits settlement |
+| 4.2 | integration | `an_unreadable_redelivery_preserves_an_existing_terminal_ending` | unreadable redelivery → original terminal ending remains, admission settles without another history row |
+| 4.3 | integration | `a_stale_claim_cannot_park_or_release_its_replacement` | stale holder parks after reclaim → current admission and slot remain held; current holder can park |
+| 4.4 | unit | `gaps_and_lag_are_counted_without_losing_the_next_valid_hint` | lag and reconnect gap → two gap counts; malformed hints ignored, next valid hint delivered, subscription released |
 | 6.1 | manual | `manual_source_documentation_audit` | no runtime dependency on the removed queue; historical comparison data and absence assertions are explicitly retained |
 
 ## Acceptance Rubric (single scoring surface)
@@ -294,6 +300,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 | S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
 | S5 | Version in sync | `make check-version` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S7 | Rust coverage meets the owner's requirements | `make test-coverage-rustd` | global ≥99.5%; changed lines ≥99%; each changed Rust source file ≥99%, with no added exclusions | P0 | |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.orly/orly.json` into a Verify cell, verbatim, with an Expected value. See `.orly/dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -365,7 +372,8 @@ doorbell               M225_001's sharded publish, rung after the admission comm
     Update architecture and generated API descriptions here; do not write to `~/Projects/docs`.
   - **Generic ship helper — answered** — Indy (Oct 21, 2026): "Use repository gates and accept this counter finding (Recommended)". The helper flagged `fencing_token = s.fencing_token + 1` as a credential and could not map Rust/schema paths to test commands. Record this as a numeric fencing counter and use the repository's declared `orly gate pr` and gitleaks checks. No scanner suppression or gate configuration changes are authorized.
   - **Schema checker — answered** — Indy (Oct 21, 2026): "Approve these two checker files (Recommended)". Update only `scripts/check_architecture_doc_schema.py` and `scripts/check_architecture_doc_test_schema.sh` so the inventory follows forward column migrations. The reviewed proposal keeps column drift, invalid changes, unsupported renames and table removals as failures. This specific approval permits that harness change; it adds no scanner suppression.
-  - **Release version — answered** — Indy (Oct 21, 2026): "approved for minor versoin". Use `0.63.0`; the queue lookup found no collision. This answer approves the minor version only; it does not record acceptance of incomplete verification.
+  - **Release version — answered** — Indy (Oct 21, 2026): "approved for minor versoin", followed by "ensure the verison is updated to 0.65, and PR is pushed, the CI jobs are green". Use `0.65.0`. The later instruction supersedes the earlier `0.63.0` selection.
+  - **Final quality requirements** — Indy requires at least 99% changed-line coverage and at least 99% coverage for each changed Rust file, plus 100% TypeScript coverage; follow `docs/RUST_ERROR_STANDARD.md`, regenerate changed OpenAPI descriptions and provide benchmark evidence. Coordinate with M230 in the separate development-acceptance worktree; the owner will merge M230 first, then this Pull Request. Do not merge either stream here.
 - **Metrics review** — `agentsfleet_fleet_ready_depth` removed with its dashboard panel; the backlog gauge changes producer only; analytics/funnel playbook update not required — no product event changes.
 - **Measured preparation** — `BENCH_LEASE_QUEUE={ledger,streams} make bench-lease PROFILE=rig KEEP_TEST_STATE=1`, sequential runs with 200 fleets, eight runners, pool 20; every run processed 200/200 events with no failures and swept 1,216/1,216 fixture records. Statement consolidation reduced the ledger prototype from 6.98 to 4.665 claim round trips per lease; streams cost 2.425. Idle costs one Postgres statement against zero. Consolidated drains cost 55.695 versus 55.64 statements, 26.41 versus 27.85 commits, and 5.72 versus 16.155 Dragonfly calls per lease. Raw results are retained under `docs/architecture/measurements/admissions-queue/`; latency varies with this shared host. These figures establish cost, not a throughput improvement. Production report settlement and its final measurement remain due.
 - **Skill-chain outcomes** — pending.

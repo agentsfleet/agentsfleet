@@ -1,5 +1,6 @@
 use super::Doorbell;
 use afd_core::id::Uuid7;
+use afd_observability::test_util::Capture;
 
 fn fleet(index: usize) -> afd_core::error::Result<Uuid7> {
     Uuid7::parse(&format!("0195b4ba-8d3a-7000-8abc-{index:012x}"))
@@ -65,4 +66,46 @@ async fn shutdown_releases_every_doorbell_listener_and_its_buffer() {
     })
     .await;
     assert!(stopped.is_ok(), "hub shutdown must release every listener");
+}
+
+#[tokio::test]
+async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> afd_core::error::Result<()>
+{
+    let metrics = Capture::install();
+    let family = "agentsfleet_fleet_ready_wake_failures_total";
+    let labels = [("kind", "gap")];
+    let before = metrics.sum(family, &labels);
+    let (hub, server) = crate::SubscriptionHub::detached();
+    let channel = super::channel(0);
+    let subscription = hub.subscribe(&channel);
+    let bell = Doorbell::new();
+    server.confirm(&channel);
+    server.confirm(&channel);
+    // Overflow the broadcast buffer before its listener starts. This loses
+    // the first gap; the later confirmation supplies a separate reconnect gap.
+    for _ in 0..=crate::hub::CHANNEL_CAPACITY {
+        server.publish(&channel, "invalid fleet");
+    }
+    server.confirm(&channel);
+    let expected = fleet(1)?;
+    server.publish(&channel, expected.as_str());
+    hub.shutdown();
+    let stopped = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        super::answer(subscription, bell.clone()),
+    )
+    .await;
+    assert!(
+        stopped.is_ok(),
+        "the listener drains and exits after shutdown"
+    );
+    assert_eq!(bell.take(), Some(expected));
+    assert_eq!(bell.take(), None, "invalid and lost frames create no hints");
+    assert_eq!(metrics.sum(family, &labels) - before, 2);
+    assert_eq!(
+        hub.readers(&channel),
+        0,
+        "the listener releases its channel"
+    );
+    Ok(())
 }

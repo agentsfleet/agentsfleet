@@ -247,9 +247,11 @@ impl Plane {
     /// A durable ending suppresses execution and settles the admission under its fence.
     async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<Admission2>> {
         self.leases.settle_terminal(acquired).await?;
+        let fleet_id = acquired.fleet_id.as_str();
+        let agentsfleet_event_id = acquired.event_id.as_str();
         tracing::info!(
-            fleet_id = acquired.fleet_id.as_str(),
-            agentsfleet_event_id = acquired.event_id.as_str(),
+            fleet_id,
+            agentsfleet_event_id,
             event = EVENT_TERMINAL_SUPPRESSED,
             "the redelivered event already has a durable ending"
         );

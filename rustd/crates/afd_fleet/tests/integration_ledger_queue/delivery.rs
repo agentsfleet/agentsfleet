@@ -27,14 +27,14 @@ const RESTORE_DELIVERY: &str = "DROP TRIGGER refuse_delivery ON fleet.admissions
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_failed_delivery_stamp_rolls_back_narrative_and_counters_then_retries_once() {
-    let fixtures = Fixtures::create_isolated().await;
+    let fixtures = Fixtures::create_isolated_with_queue().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let leases = fixtures.leases_with_dead_queue();
     let acquired = next(&leases, &runner).await.expect("claim");
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
-    assert_stamp_failure_rolls_back(&fixtures, &mut connection, &leases, &acquired).await;
+    assert_stamp_failure_rolls_back(&fixtures, &mut connection, &leases, &acquired, &runner).await;
     let first =
         receive_with_counter_read_refused(&fixtures, &mut connection, &leases, &acquired).await;
     assert_eq!(first.delivery, Delivery::First);
@@ -68,6 +68,7 @@ async fn assert_stamp_failure_rolls_back(
     connection: &mut sqlx::PgConnection,
     leases: &Leases,
     acquired: &Acquired,
+    runner: &afd_core::id::Uuid7,
 ) {
     let before = afd_events::fleet_counters(&fixtures.database, acquired.fleet_id.as_str())
         .await
@@ -84,6 +85,12 @@ async fn assert_stamp_failure_rolls_back(
         failure.to_string().contains("admission delivered stamp"),
         "{failure}"
     );
+    let failure = fixtures
+        .plane_with_dead_queue()
+        .lease_claimed(acquired.clone(), runner, fixtures.enrolled_at())
+        .await
+        .expect_err("a failed delivery cannot issue a lease");
+    assert_eq!(failure.code(), afd_core::error_code::INTERNAL_DB_QUERY);
     assert_eq!(
         delivery_state(fixtures, &acquired.event_id).await,
         (0, false)
