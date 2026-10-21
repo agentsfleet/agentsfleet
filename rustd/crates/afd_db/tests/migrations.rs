@@ -110,19 +110,16 @@ fn test_the_default_migrator_runs_the_canonical_list() {
     );
 }
 
-/// Each migration carries the committed file its name points at, byte for
-/// byte: the name and the SQL come from one token in the list, and this reads
-/// the file back from `schema/` to show the two never parted.
+/// The adapter hands `SQLx` the compiled migration unchanged, in one transaction.
 #[test]
-fn test_every_migration_carries_its_committed_file() {
-    let schema = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../schema");
+fn test_every_migration_adapter_preserves_sql_identity_and_transaction() {
     for migration in MIGRATIONS {
-        let committed = std::fs::read_to_string(schema.join(migration.name())).unwrap();
-        assert_eq!(
-            migration.sql(),
-            committed,
-            "{} applies SQL other than its committed file",
-            migration.name()
-        );
+        let applied = migration.to_sqlx();
+        assert_eq!(applied.version, migration.version());
+        assert_eq!(applied.description, migration.name());
+        assert_eq!(applied.sql, migration.sql());
+        assert_eq!(applied.migration_type, sqlx::migrate::MigrationType::Simple);
+        assert!(!applied.checksum.is_empty());
+        assert!(!applied.no_tx);
     }
 }

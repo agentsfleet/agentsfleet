@@ -21,4 +21,5 @@ mod refusals;
 mod retries;
 mod rollback;
 mod stages;
+mod stopped;
 mod stored;

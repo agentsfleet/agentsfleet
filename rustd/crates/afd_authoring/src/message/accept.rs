@@ -8,6 +8,7 @@ use crate::{
         ErrorKind,
         raise::{invalid, query},
     },
+    lease::pending::{self, Pending},
     model, replay, sql,
     types::{Accepted, DraftState, QUEUED, SendMessage},
 };
@@ -45,58 +46,20 @@ impl Drafts {
         let person = access::current(&mut tx, access).await?;
         let draft = read::lock(&mut tx, access, &person, id).await?;
         let scope = scope(access.workspace, id);
-        let prior = replay::find(
+        let prior = replayed(
             &mut tx,
             &scope,
-            replay::Resource::Message,
             &request.operation_id,
             &person.id,
             &digest,
+            id,
         )
         .await?;
-        let accepted = if let Some(message) = prior {
-            let sequence: Option<i64> = sqlx::query_scalar(sql::message::SEQUENCE)
-                .bind(message.as_str())
-                .bind(id.as_str())
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(query(CONTEXT))?;
-            Accepted {
-                status: super::ACCEPTED,
-                sequence: sequence.ok_or(ErrorKind::Gone)?.to_string(),
-                replayed: true,
-            }
+        let accepted = if let Some(accepted) = prior {
+            accepted
         } else {
-            if draft.status != DraftState::Editing {
-                return Err(ErrorKind::State {
-                    current: draft.status.as_str(),
-                }
-                .into());
-            }
-            let sequence = draft
-                .last_message_sequence
-                .checked_add(1)
-                .ok_or_else(|| invalid(SEQUENCE_EXHAUSTED))?;
-            insert(
-                &mut tx,
-                Insertion {
-                    id: &self.mint(now)?,
-                    receipt: &self.mint(now)?,
-                    workspace: access.workspace,
-                    person: &person,
-                    draft: id,
-                    sequence,
-                    operation: &request.operation_id,
-                    text: &text,
-                    model: &draft.authoring_model_ref,
-                },
-            )
-            .await?;
-            Accepted {
-                status: super::ACCEPTED,
-                sequence: sequence.to_string(),
-                replayed: false,
-            }
+            self.accept_fresh(&mut tx, &person, &draft, &request, &text, now)
+                .await?
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         if !accepted.replayed {
@@ -106,6 +69,83 @@ impl Drafts {
         }
         Ok(accepted)
     }
+
+    async fn accept_fresh(
+        &self,
+        connection: &mut PgConnection,
+        person: &Person,
+        draft: &read::Locked,
+        request: &SendMessage,
+        text: &str,
+        now: Timestamp,
+    ) -> Result<Accepted> {
+        if draft.status != DraftState::Editing {
+            return Err(ErrorKind::State {
+                current: draft.status.as_str(),
+            }
+            .into());
+        }
+        if pending::current(connection, draft).await? == Some(Pending::UsageUnknown) {
+            return Err(ErrorKind::Unknown.into());
+        }
+        let sequence = draft
+            .last_message_sequence
+            .checked_add(1)
+            .ok_or_else(|| invalid(SEQUENCE_EXHAUSTED))?;
+        insert(
+            connection,
+            Insertion {
+                id: &self.mint(now)?,
+                receipt: &self.mint(now)?,
+                workspace: &draft.workspace_id,
+                person,
+                draft: &draft.id,
+                sequence,
+                operation: &request.operation_id,
+                text,
+                model: &draft.authoring_model_ref,
+            },
+        )
+        .await?;
+        Ok(Accepted {
+            status: super::ACCEPTED,
+            sequence: sequence.to_string(),
+            replayed: false,
+        })
+    }
+}
+
+async fn replayed(
+    connection: &mut PgConnection,
+    scope: &str,
+    operation: &Uuid7,
+    person: &Uuid7,
+    digest: &str,
+    draft: &Uuid7,
+) -> Result<Option<Accepted>> {
+    let Some(message) = replay::find(
+        connection,
+        scope,
+        replay::Resource::Message,
+        operation,
+        person,
+        digest,
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    let sequence: Option<i64> = sqlx::query_scalar(sql::message::SEQUENCE)
+        .bind(message.as_str())
+        .bind(draft.as_str())
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(Some(Accepted {
+        status: super::ACCEPTED,
+        sequence: sequence.ok_or(ErrorKind::Gone)?.to_string(),
+        replayed: true,
+    }))
 }
 
 pub(crate) struct Insertion<'a> {

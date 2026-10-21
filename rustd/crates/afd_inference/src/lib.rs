@@ -1,12 +1,14 @@
 //! Rig codecs for explicit persisted settings; authorization and key resolution stay with callers.
 
 mod budget;
+mod credential;
 mod error;
 mod header_key;
 mod json;
 mod logs;
 
 pub use budget::input_tokens;
+pub use credential::validate_key;
 pub use json::json_request;
 pub use logs::log_filter;
 

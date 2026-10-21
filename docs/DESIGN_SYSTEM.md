@@ -307,9 +307,10 @@ Use native setup records throughout. Do not offer file imports, bundle exports, 
 
 ### Workspace authoring and publication
 
-The sidebar labels private New Fleet conversations as Fleet setup chats. Search loaded chats filters their loaded titles within the current workspace.
-It does not search message bodies or fleets. Hide search until there are loaded conversations.
-Distinguish loading, unavailable history, a successful empty list, and no matching titles. Failed loading must never look like an empty history.
+The sidebar labels private New Fleet conversations as Recent setup. It shows the chat list without a search control or a fleet recents section.
+Chat titles use the same 14px Instrument Sans as navigation, with ellipsis and the full title on hover.
+
+Distinguish loading, unavailable history, and a successful empty list. Failed loading must never look like an empty history.
 
 Keep every accepted message and persisted assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
 During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
