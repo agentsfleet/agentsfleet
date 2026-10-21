@@ -87,7 +87,7 @@ where
                 rig_core::ProviderError::request("provider reply is not JSON")
             })?;
             outcome.rejected.store(
-                super::rejections::authentication(code, &document),
+                super::rejections::is_authentication_rejection(code, &document),
                 Ordering::Relaxed,
             );
             let opened = Opened::new(futures_util::stream::iter([Ok(WireFrame::Bytes(

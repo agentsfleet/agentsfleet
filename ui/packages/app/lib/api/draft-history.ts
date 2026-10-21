@@ -1,8 +1,9 @@
-// Advance only past terminal pages: an in-flight user's state remains mutable.
+// Usage settlement can still change a terminal message's recovery action.
 
 import type { Draft, Message } from "./draft-types";
 import { DraftSchema, isRunning, MESSAGE_ROLE, MessagesSchema, PAGE_LIMIT } from "./draft-types";
 import { setupRequest, SetupUnavailable } from "./draft-request";
+import { isStopped, UNKNOWN_USAGE_REASON } from "./draft-recovery";
 
 type DraftRead = {draft: Draft; messages: readonly Message[]};
 
@@ -31,8 +32,9 @@ export class DraftHistory {
     }
     const read = (async () => {
       signal.throwIfAborted();
+      const current = setupRequest({path}, DraftSchema, signal);
       const [messages, draft] = await Promise.all([
-        this.read(path, signal), setupRequest({path}, DraftSchema, signal),
+        this.read(path, signal, current), current,
       ]);
       signal.throwIfAborted();
       return {messages, draft};
@@ -41,15 +43,19 @@ export class DraftHistory {
     try { return await read; } finally { if (this.#reading === read) this.#reading = undefined; }
   }
 
-  async read(path: string, signal: AbortSignal): Promise<readonly Message[]> {
+  async read(path: string, signal: AbortSignal, current?: Promise<Draft>): Promise<readonly Message[]> {
     let cursor = this.#cursor;
     let canAdvance = true;
     for (let page = 0; page < MAX_WALK_PAGES; page += 1) {
       const query = new URLSearchParams({limit: String(PAGE_LIMIT)});
       if (cursor) query.set("starting_after", cursor);
-      const result = await setupRequest({path: `${path}/messages?${query}`}, MessagesSchema, signal);
+      const [result, draft] = await Promise.all([
+        setupRequest({path: `${path}/messages?${query}`}, MessagesSchema, signal), current,
+      ]);
       for (const message of result.items) this.#remember(message);
-      if (result.items.some(isRunning)) canAdvance = false;
+      const cutoff = draft?.cancelled_through ?? "0";
+      if (result.items.some((message) => !isStopped(message, cutoff)
+        && (isRunning(message) || message.failure?.reason === UNKNOWN_USAGE_REASON))) canAdvance = false;
       if (!result.next_cursor) return [...this.#rows.values()].sort(ordered);
       if (canAdvance) this.#cursor = result.next_cursor;
       cursor = result.next_cursor;

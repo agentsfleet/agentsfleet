@@ -219,7 +219,7 @@ impl ModelCalls {
             )
             .await?
             .ok_or(ErrorKind::Model)?;
-        provider::validate_key(&key)?;
+        provider::validate_key(prepared.inference.api, &key)?;
         let now = guard::refresh(connection, &guarded, counters).await?;
         let authorized_at = Instant::now();
         insert(connection, request, &guarded.attempt, digest).await?;

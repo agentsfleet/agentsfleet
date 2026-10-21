@@ -12,6 +12,7 @@ use afd_wire::authoring::{
     Accounting, FailureReason, Knowledge, Meter, ModelCall, ModelMessage, ModelRequest, Outcome,
     Report,
 };
+use afd_wire::inference::InferenceApi;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
@@ -160,9 +161,25 @@ fn unknown_report(lease: &Claimed, calls: u32) -> Report {
 // fails_when=header parsing happens only after intent; seam=physical provider.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn malformed_key_fails_before_dispatch_and_releases_unused_hold() {
+async fn should_release_unused_hold_when_key_contains_a_literal_newline() {
+    malformed_key(InferenceApi::Responses, "fixture-key\n").await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn should_reject_before_intent_when_gemini_key_decodes_to_a_newline() {
+    malformed_key(InferenceApi::Gemini, "fixture-key%0A").await;
+}
+
+async fn malformed_key(api: InferenceApi, key: &str) {
     let f = funded(2).await;
-    replace(&f, "fixture-key\n").await;
+    sqlx::query("UPDATE model.platform_models SET inference=jsonb_set(inference,'{api}',$2::jsonb) WHERE id=$1::uuid")
+        .bind(f.catalogue[0].as_str())
+        .bind(json!(api))
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("select the persisted inference API");
+    replace(&f, key).await;
     let draft = queue(&f, TEXT).await;
     let lease = claim(&f, &draft).await.expect("admission");
     assert!(state(&f, &lease).await.3, "reservation is real");

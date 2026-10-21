@@ -2,6 +2,7 @@
 
 mod capacity;
 mod context;
+mod discovery;
 mod failure;
 mod fixture;
 mod funnel;

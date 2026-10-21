@@ -49,7 +49,13 @@ async fn history(f: &Fixture, draft: &Draft, lease: &Claimed) {
     }
 }
 
-async fn seed(owner: &mut PgConnection, draft: &Draft, lease: &Claimed, first: i64, last: i64) {
+pub(super) async fn seed(
+    owner: &mut PgConnection,
+    draft: &Draft,
+    lease: &Claimed,
+    first: i64,
+    last: i64,
+) {
     sqlx::query(CLONE_HISTORY)
         .bind(&lease.attempt_id)
         .bind(

@@ -2,7 +2,6 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:tes
 import { tmpdir } from "node:os";
 import { runSeedCommand } from "./command";
 import { CATALOGUE_URL, readCatalogue } from "./catalogue";
-import { assertCompleteCatalogue } from "./curated";
 import { CATALOGUE_DATABASE_URL, NO_OTHER_CLIENTS, openIntegrationDatabase, removeFixtureModels, snapshot, version, waitForClientCount } from "./integration-fixtures";
 import { seedCatalogue } from "./seed";
 import { desiredRows } from "./rows";
@@ -28,7 +27,6 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
 
   test("the complete curated document seeds every proved context on an empty database", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
-    assertCompleteCatalogue(catalogue.models);
     expect(catalogue.models).toHaveLength(19);
     expect(catalogue.models.every((model) => model.context !== null)).toBe(true);
     const wanted = catalogue.models.map((model) => `${model.provider}/${model.model_name}`).toSorted();

@@ -10,7 +10,8 @@ import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { CHAT_PLACEHOLDER } from "./chat-defaults";
 import { ChatToolbar } from "./ChatToolbar";
 
-const ignore = (): void => undefined;
+// DraftClient records this failure in view.error before rejecting the request.
+const errorAlreadyVisible = (): void => undefined;
 
 export function ChatComposer({ client, view, canStop, blocked }: { client: DraftClient; view: DraftView; canStop: boolean; blocked: boolean }) {
   const stopDisabled = view.busy || view.pending || view.inaccessible || Boolean(view.draft && view.draft.state !== DRAFT_STATE.editing);
@@ -29,7 +30,7 @@ export function ChatComposer({ client, view, canStop, blocked }: { client: Draft
         </ComposerPrimitive.Input>
         <div className="flex items-end gap-sm">
           <ChatToolbar client={client} view={view} />
-          {canStop ? <Button variant="secondary" size="icon" aria-label="Stop authoring" disabled={stopDisabled} onClick={() => { void client.stop().catch(ignore); }}><SquareIcon className="size-4" /></Button>
+          {canStop ? <Button variant="secondary" size="icon" aria-label="Stop authoring" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }}><SquareIcon className="size-4" /></Button>
             : <ComposerPrimitive.Send asChild><Button size="icon" aria-label="Send message" disabled={disabled}><ArrowUpIcon className="size-4" /></Button></ComposerPrimitive.Send>}
         </div>
       </ComposerPrimitive.Root>

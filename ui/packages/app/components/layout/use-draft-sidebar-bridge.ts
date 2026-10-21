@@ -3,6 +3,7 @@
 import { useCallback, useContext, useEffect, useMemo } from "react";
 import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
+import type { DraftSidebarState } from "./draft-sidebar-state";
 import { firstChatRequest, sidebarDrafts, type SidebarDraft } from "@/lib/api/draft-summary";
 import { DRAFT_LIST, DRAFT_LIST_STATUS as HISTORY_STATUS } from "@/lib/api/draft-list-types";
 import { UpdateContext } from "./draft-sidebar-state";
@@ -23,16 +24,26 @@ export function useDraftSidebarBridge(client: DraftClient, view: DraftView, work
     [source, view.draft, request, inaccessible, setupRevision]);
   const status = view.listStatus;
   useEffect(() => {
-    update((previous) => {
-      const sameScope = previous?.workspace === workspace && previous.subject === subject;
-      const nextCards = sameScope && !inaccessible && (status === HISTORY_STATUS.loading || sameCards(previous.cards, cards)) ? previous.cards : cards;
-      if (sameScope && previous.fresh === fresh && previous.remove === remove && previous.locked === locked && previous.current === current && previous.more === more && previous.status === status
-        && previous.cards === nextCards && previous.owner === client) return previous;
-      return { workspace, subject, cards: nextCards, fresh, remove, locked, current, more, status, owner: client };
-    });
+    const next = {workspace, subject, cards, fresh, remove, locked, current, more, status, owner: client};
+    update((previous) => reconcileSidebar(previous, next, inaccessible));
   }, [update, workspace, subject, cards, fresh, remove, locked, current, more, status, client, inaccessible]);
-  useEffect(() => () => update((current) => current?.owner !== client ? current : current.status !== HISTORY_STATUS.loading
-    ? {...current, fresh: null, remove: null, owner: null, current: null, more: null, locked: current.status !== HISTORY_STATUS.ready} : null), [update, client]);
+  useEffect(() => () => update((current) => releaseSidebar(current, client)), [update, client]);
+}
+
+function reconcileSidebar(previous: DraftSidebarState | null, next: DraftSidebarState, inaccessible: boolean): DraftSidebarState {
+  if (!previous || previous.workspace !== next.workspace || previous.subject !== next.subject) return next;
+  const keepCards = !inaccessible && (next.status === HISTORY_STATUS.loading || sameCards(previous.cards, next.cards));
+  const cards = keepCards ? previous.cards : next.cards;
+  if (previous.fresh === next.fresh && previous.remove === next.remove && previous.locked === next.locked
+    && previous.current === next.current && previous.more === next.more && previous.status === next.status
+    && previous.cards === cards && previous.owner === next.owner) return previous;
+  return {...next, cards};
+}
+
+function releaseSidebar(current: DraftSidebarState | null, owner: DraftClient): DraftSidebarState | null {
+  if (current?.owner !== owner) return current;
+  if (current.status === HISTORY_STATUS.loading) return null;
+  return {...current, fresh: null, remove: null, owner: null, current: null, more: null, locked: current.status !== HISTORY_STATUS.ready};
 }
 
 function sameCards(left: readonly SidebarDraft[], right: readonly SidebarDraft[]): boolean {

@@ -6,16 +6,18 @@ import type { Draft, Fleet, Review, Source, Start } from "./draft-types";
 import { z as schema } from "zod";
 import { DraftOperation } from "./draft-operation";
 import { DraftHistory } from "./draft-history";
+import { DraftWatch } from "./draft-watch";
 import { DraftLists } from "./draft-lists";
 import { DRAFT_LIST_STATUS, defaultChatModel, type DraftList } from "./draft-list-types";
 import { EMPTY_DRAFT_VIEW as EMPTY, type DraftIdentity, type DraftView, type DrawerEdit } from "./draft-state";
 import { drawerPatch } from "./draft-edits";
 import { sourcePreview } from "./draft-source";
 import { followDraft } from "./draft-events";
+import { chatRecovery } from "./draft-recovery";
 import { REQUEST_METHOD, deleteDraft, losesAccess, setupErrorMessage, setupRequest, SetupUnavailable, type SetupRequest } from "./draft-request";
 import {
   AcceptedSchema, AppliedSchema, CancellationSchema, CreatedMessageSchema, DRAFT_STATE, DraftSchema, FleetSchema,
-  MessageInputSchema, PublishedSchema, SETUP_HEADERS, SOURCE_KIND, START_KIND, ScheduleSchema, appliedNotice, isRunning,
+  MessageInputSchema, PublishedSchema, SETUP_HEADERS, SOURCE_KIND, START_KIND, ScheduleSchema, appliedNotice,
 } from "./draft-types";
 import { scheduleSynced, scheduleSyncPath, type Schedule } from "./draft-schedules";
 
@@ -35,7 +37,7 @@ export class DraftClient {
   #view = new AbortController();
   #snapshot: DraftView = EMPTY;
   #source: Source = {kind: SOURCE_KIND.blank};
-  #watching: string | undefined;
+  readonly #watching = new DraftWatch();
   #continueSave: (() => Promise<void>) | undefined;
   #setupTarget: Fleet | undefined;
   constructor(identity: DraftIdentity, platformPublisher?: PlatformPublisher) {
@@ -247,6 +249,7 @@ export class DraftClient {
       await this.#request({path: `${this.#base}/drafts/${id}/cancellations`, method: REQUEST_METHOD.post,
         body: {through_sequence: this.#history.highest}}, CancellationSchema);
       await this.#read(id);
+      this.#watching.stop(); this.#startWatching();
     });
   }
   rename(title: string): Promise<void> {
@@ -293,7 +296,7 @@ export class DraftClient {
     this.#setupTarget = fleet;
   }
   #idle(): void {
-    if (this.#operation.pending || this.#snapshot.messages.some(isRunning)) throw new SetupUnavailable("Stop or finish the current operation before editing setup.", 409);
+    if (this.#operation.pending || chatRecovery(this.#snapshot).pending) throw new SetupUnavailable("Stop or finish the current operation before editing setup.", 409);
   }
   async #patch(body: unknown, expected?: string): Promise<void> {
     const current = this.#draft();
@@ -309,20 +312,16 @@ export class DraftClient {
   }
   #startWatching(): void {
     const id = this.#snapshot.draft?.id;
-    if (!id || this.#watching === id || !this.#snapshot.messages.some(isRunning)) return;
-    this.#watching = id;
-    const view = this.#view;
-    void this.#watch(id, view.signal).catch((cause: unknown) => {
-      if (!view.signal.aborted) this.#failed(cause);
-    }).finally(() => { if (this.#view === view) this.#watching = undefined; });
+    if (!id || !chatRecovery(this.#snapshot).canStop) return;
+    this.#watching.start(id, this.#view.signal, (signal) => this.#watch(id, signal), (cause) => this.#failed(cause));
   }
   async #watch(id: string, view: AbortSignal): Promise<void> {
     const owner = AbortSignal.any([this.#owner.signal, view, AbortSignal.timeout(FOLLOW_LIMIT_MS)]);
     await followDraft(`${this.#base}/drafts/${id}`, id, owner, async () => {
       await this.#read(id);
-      return this.#snapshot.messages.some(isRunning);
-    });
-    if (!view.aborted && this.#snapshot.messages.some(isRunning)) this.#update({notice: "Work is still pending. Refresh its durable status or Stop."});
+      return chatRecovery(this.#snapshot).canStop;
+    }, () => chatRecovery(this.#snapshot).blocked);
+    if (!view.aborted && chatRecovery(this.#snapshot).canStop) this.#update({notice: "Work is still pending. Refresh its durable status or Stop."});
   }
   async #act(action: () => Promise<void>, opening = false): Promise<void> {
     if (this.#snapshot.inaccessible) throw new SetupUnavailable("Reload this page to check access before continuing.", 403);
@@ -339,7 +338,7 @@ export class DraftClient {
   }
   #reset(): void {
     this.#view.abort(); this.#view = new AbortController(); this.#history.clear(); this.#operation.clear();
-    this.#continueSave = undefined; this.#setupTarget = undefined; this.#watching = undefined;
+    this.#continueSave = undefined; this.#setupTarget = undefined; this.#watching.stop();
     this.#update({draft: null, messages: [], preview: null, fleet: null, schedules: [], error: null, notice: null, truncated: false});
   }
   #update(patch: Partial<DraftView>): void {
