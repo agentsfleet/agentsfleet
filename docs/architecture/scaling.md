@@ -278,30 +278,31 @@ which is a floor and not a capacity plan.
 
 ### Admissions ledger measurements
 
-The production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1`.
-The first run reset the owned rig; later runs reused the services and swept their fixtures.
+The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1`.
+The canonical coverage run reset the owned rig before measurement; benchmarks reused those migrated services and swept their own fixtures.
 Each row is the median of three runs on the shared development machine, with pool size 20.
-Every run processed its entire population, left zero unsettled admissions and swept every fixture.
+All 15 runs completed: 1,500 drain events, zero failures, zero unsettled admissions and 9,240 of 9,240 fixture records swept.
 These are production claim and report transactions, including admission settlement.
 
 | Fleets / events | Drain statements per event | Drain commits per event | Dragonfly calls per event | Completed events / second | Claim round trips per lease | Idle discovery statements per poll |
 | --- | --- | --- | --- | --- | --- | --- |
-| 20 | 66.050 | 40.350 | 3.250 | 31.25 | 10.050 | 1.000 |
-| 40 | 55.825 | 27.425 | 3.175 | 38.65 | 8.075 | 1.000 |
-| 80 | 54.175 | 24.213 | 3.213 | 39.64 | 6.000 | 1.000 |
-| 160 | 53.056 | 22.138 | 3.144 | 42.55 | 5.019 | 1.000 |
-| 200 | 52.915 | 21.755 | 3.120 | 56.15 | 4.725 | 1.000 |
+| 20 | 63.650 | 38.800 | 3.150 | 90.23 | 11.550 | 1.000 |
+| 40 | 57.025 | 29.600 | 3.100 | 108.18 | 7.475 | 1.000 |
+| 80 | 53.450 | 24.363 | 3.075 | 130.26 | 6.263 | 1.000 |
+| 160 | 52.813 | 22.838 | 3.088 | 136.55 | 5.019 | 1.000 |
+| 200 | 52.725 | 22.535 | 3.045 | 142.37 | 4.860 | 1.000 |
 
-The 20-to-200 event increase used 8.01 times as many drain statements for ten times the completed work.
+The 20-to-200 event increase used 8.28 times as many drain statements for ten times the completed work.
 This measures client statement volume; it does not establish a bound on database rows examined or server CPU.
-The measured snapshot probed eligible active fleets even after the ledger drained.
-The current empty-ledger precheck skips those fleet scans; nonempty discovery still examines eligible fleets.
-At 200 events the median lease and report p95 were 130.623 ms and 99.327 ms.
+The empty-ledger precheck skips fleet scans; nonempty discovery still examines eligible fleets.
+At 200 events the median lease and report p95 were 43.679 ms and 33.695 ms.
 The raw claim `rate_per_second` counts polls, including misses; the table uses the drain's explicit completed-event rate.
 
-[Raw samples and medians](measurements/admissions-queue/production-summary.json) and
-[source provenance](measurements/admissions-queue/production-source.json) identify the measured dirty source snapshot.
-Idle Dragonfly samples include roughly 0.0027 commands per poll from the measurement window; serving discovery makes no Dragonfly command.
+[Raw samples and medians](measurements/admissions-queue/production-v065-summary.json) and
+[source provenance](measurements/admissions-queue/production-v065-source.json) identify the measured source at `ab66bb2ec`.
+Documentation edits were pending; runtime sources matched that commit throughout all measurements.
+Idle Dragonfly samples include roughly 0.0024 commands per poll from the measurement window; serving discovery makes no Dragonfly command.
+The [earlier production samples](measurements/admissions-queue/production-summary.json) predate the integrated base and final coverage repairs.
 
 The fresh comparison checkout at `0fa9e55356571d57df69cd3a13fb3b90930b0e49` exited successfully but completed none of its 200 drain events, recorded 17 failures and left readiness depth 200.
 Its [incomplete result](measurements/admissions-queue/baseline-incomplete-200-1.json) cannot support zero-cost ratios or a completed-throughput comparison.

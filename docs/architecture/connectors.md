@@ -241,11 +241,11 @@ nothing — it goes silently inert rather than failing visibly. An origination
 path reachable only with a credential the fleet does not hold produces exactly
 that silence.
 
-A lease is the last checkpoint: a credential that resolves to a mintable handle
-with no approved grant **parks the event** rather than dropping the credential
-and issuing a lease that can never mint. The delivery stays leasable, so the
-next poll re-evaluates it and an approval takes effect with no redeploy. A
-grant a person revoked ends the event with `grant_denied` instead of parking it.
+A lease is the last checkpoint. A credential with a mintable handle but no
+approved grant **parks the event**.
+
+Parked admissions stay out of runner claims until gate resolution clears the
+park stamp. A revoked grant ends the event with `grant_denied`.
 
 An incoming delivery follows this order:
 
@@ -271,13 +271,13 @@ active fleets in that workspace
 fleet.admissions row (body digest + fleet) → XADD fleet:{id}:events
 ```
 
-Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app/mod.rs`).
+Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are admitted on redelivery. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app/mod.rs`).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries": a delivery fails when the receiver is down or takes longer than **ten seconds** to answer, and recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries. This page previously credited the recovery to "GitHub's retry", which does not exist, and the correction matters because it moves the boundary of what is recoverable:
 
 | Where the fan-out fails | What survives |
 |---|---|
-| After a leg's admission row commits | Durable. The replay sweeper appends whatever the queue did not take; the work runs. |
+| After a leg's admission row commits | Durable. The committed ledger row remains available for the next eligible runner claim; wake notifications are best effort. |
 | Before it commits — the failing leg, and every leg after it in the loop | **Nothing.** No row, no entry, and no sender that will ask again. |
 
 So the durable-acceptance guarantee covers work this deployment ACCEPTED, and the window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow. The ten-second budget is a hard deadline rather than a target, and it is shared across signature verification, fleet resolution, and one admission per subscribed fleet — fan-out width spends it. And deduplication is still worth every line, because the redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed, which is exactly when a duplicate review would otherwise appear on a pull request.

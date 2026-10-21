@@ -187,7 +187,8 @@ has no census row. What follows is what no family measures yet.
 **End-to-end fleet availability now has both halves.** It was the headline gap
 here until M197_002 shipped `agentsfleet_fleet_runs_started_total{kind}`,
 incremented at the one lease grant point;
-`agentsfleet_admissions_total{outcome="appended"}` was always the denominator.
+`agentsfleet_admissions_total{outcome="accepted"}` is the ledger queue's
+denominator; the stream queue used `outcome="appended"`.
 The trigger counter this section used to name as the missing denominator was
 retired rather than produced — declared for years and incremented nowhere, so
 it left the census instead of gaining a caller.

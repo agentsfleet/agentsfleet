@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M226
 **Workstream:** 001
 **Date:** Oct 13, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — remove the second work queue and accept Save and run once the initial admission commits
 **Categories:** API, OBS
 **Batch:** B1 — one Pull Request; the queue cannot half-move, so the cutover, the deletions and the docs ship together
 **Branch:** `feat/m226-admissions-ledger-queue`
 **Baseline revision:** 0fa9e55356571d57df69cd3a13fb3b90930b0e49
-**Test Baseline:** unit failed after 10,668 passed, one failed and 1,390 skipped/ignored; integration failed after 608 passed and one failed; both use the exact comparison revision
-**Baseline evidence:** `docs/reviews/admissions-queue.md` records commands, isolated environment, partial selections and the two deadline failures; `/tmp/m226-baseline-unit-4.log` and `/tmp/m226-baseline-integration-2.log` retain raw output
+**Test Baseline:** unit=10668 integration=608 — both failed at the exact comparison revision; unit had one failure and 1,390 skipped/ignored, integration had one failure before the remaining packages ran
+**Baseline evidence:** docs/reviews/admissions-queue.md
 **Depends on:** M225_001 — its doorbell (a sharded publish on every mark that wakes a parked lease poll) lands first; this spec moves the doorbell off the readiness index it deletes
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 13, 2026) from the adversarial review of the pickup path during M225_001 review round 2: three source maps of `feat/m225-lease-pickup-wake-hint` at `b25be9c72`, re-checked against `main` at `4a53b948c`
 **Canonical architecture:** `docs/architecture/datastore_scaling.md` §The admissions ledger is the queue; `docs/architecture/runner_fleet.md` §Datastore topology; `docs/architecture/lease_flow.md`
@@ -80,6 +80,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `src/producers/fleet/mod.rs`, `docs/metrics.census.tsv`, `playbooks/operations/observability/assets/dashboard.json` | EDIT | `agentsfleet_fleet_ready_depth` goes; the backlog gauge changes producer |
 | `rustd/crates/afd_bench/src/lane/{lease/mod,steer/mod,cardinality/mod,sweep}.rs` and their directories | EDIT | §1 ledger-claim variant; lanes stop seeding or counting readiness |
 | `rustd/crates/afd_bench/src/bin/lease.rs`, `rustd/crates/afd_bench/Cargo.toml`, `rustd/crates/afd_bench/tests/ledger_claim.rs` | EDIT / CREATE (test) | prove the production ledger drain, sweep database fixtures, and refuse incomplete measurements |
+| `rustd/crates/afd_bench/src/datastores/mod.rs`, `rustd/crates/afd_bench/src/lane/lease/{window.rs,seed/}`, `rustd/crates/afd_bench/src/lane/lease/drain/owned.rs` | EDIT | remove the stream queue fixture, seed ledger admissions, and keep benchmark cleanup ownership explicit |
 | `rustd/crates/afd_bench/src/lane/lease/saturation/mod.rs` | EDIT | adapt the upstream saturation viewer to the database-only fleet lifecycle constructor |
 | `rustd/crates/afd_bench/tests/abort_wiring.rs` | EDIT | reuse the bounded unreachable database fixture so failed ledger polls exercise the abort threshold |
 | `rustd/crates/afd_bench/src/error/{kind,pre_flight}.rs` | EDIT | refuse incomplete drains instead of publishing zero cost after an abort; classify them as failures after fixture creation |
@@ -87,10 +88,11 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_fleet/tests/integration_ledger_queue.rs`, `integration_ledger_queue/`, `rustd/crates/afd_fleet/tests/fleet_suite.rs` | CREATE / EDIT (suite) | prove competing replicas, parked/locked head ordering, reclaim and transactional rollback without a working Dragonfly |
 | `rustd/crates/afd_fleet/tests/support/{fleet_fixtures,fleet_lease_seed,fleet_lease_reads,fleet_report_seed,fleet_report_reads}.rs` | EDIT | share the admission settlement read and remove obsolete stream, receipt and readiness descriptions from the ledger fixtures |
 | `rustd/crates/afd_fleet/src/lease/sql/meter.rs`, `sql/meter_lease.sql`, and `sql/lease/*.sql` | EDIT / CREATE | current settlement implementation and domain SQL files introduced since the draft |
+| `rustd/crates/afd_fleet/src/lease/{commit.rs,issue.rs,test_dead.rs,deliver/,report/}` | EDIT | pass the ledger claim through delivery and settlement, retaining report fencing and adapting inline fixtures |
 | `rustd/crates/afd_fleet/src/lease/{affinity,reclaim}.rs` | EDIT | reuse the existing slot and expired-lease operations on the ledger claim's transaction connection |
 | `rustd/crates/afd_bench/src/lane/lease/drain/{mod,runner,settled,stage,platform,summary,window,tests}.rs`, `drain/sql/` | EDIT / CREATE | measure the production ledger claim and settlement, count residual admissions, and refuse incomplete drains |
 | `rustd/crates/afd_db/tests/integration_migrate/shape.rs`, `docs/architecture/postgres_schemas.md` | EDIT | keep the existing complete schema inventory aligned with the additive columns |
-| `rustd/crates/afd_fleet/src/lease/sql/{mod,queue}.rs` | EDIT / CREATE | typed statement registry for the ledger claim prototype |
+| `rustd/crates/afd_fleet/src/lease/sql/{mod,queue}.rs` | EDIT / CREATE | typed statement registry for the production ledger claim |
 | `rustd/crates/agentsfleetd/src/plane/{mod,tests}.rs`, `src/serve/optional.rs` | EDIT | composition-root references to the independent doorbell |
 | `docs/architecture/{README,testing}.md`, `docs/architecture/scenarios/{two-fleets-github-slack,github-pr-reviewer}.md`, `playbooks/operations/teardown/dragonfly/{001_playbook.md,03_verify.sh}` | EDIT | live queue references and the GitHub scenario's renamed admission heading |
 | tests under `rustd/crates/{afd_dragonfly,afd_fleet,afd_runner,afd_approval,afd_events,afd_admission,agentsfleetd}/tests/` that the discovery grep names | EDIT / DELETE | readiness and stream suites go; lease, reclaim and approval suites assert ledger state |
@@ -103,7 +105,9 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_observability/src/{metrics/label/fleet.rs,producers/fleet/,metrics/label/tests.rs}`, affected observability tests | EDIT / DELETE | accepted ledger outcomes and removal of obsolete queue/replay producers |
 | `rustd/crates/afd_events/src/history/{mod.rs,statement/}`, `rustd/crates/afd_dragonfly/src/test_util.rs` | EDIT / DELETE | one statement snapshot for queued and delivered history; remove inbound test adapters |
 | `docs/architecture/{runner_fleet,datastore_scaling,lease_flow,scaling,data_flow,concurrency,observability}.md` | EDIT | one queue, its accepted-admission labels and backlog measurements, described as the design |
-| `docs/architecture/measurements/admissions-queue/*.json` | CREATE | retain the measured stream comparison and ledger prototype with their counts and rig parameters |
+| `docs/architecture/direction.md`, `docs/architecture/capabilities.md`, `docs/architecture/api_resources.md`, `docs/architecture/user_flow.md`, `docs/architecture/web_app.md`, `docs/architecture/connectors.md`, `docs/architecture/scenarios/slack-channel-resident.md` | EDIT | align adjacent live ingress, initial-run acceptance and message-history descriptions with the ledger queue |
+| `public/llms.txt` | EDIT | describe committed admissions and ledger claims in the authored discovery index |
+| `docs/architecture/measurements/admissions-queue/*.json` | CREATE | retain stream, prototype and final production measurements, their source references, and the per-file Rust coverage denominators |
 | `rustd/crates/afd_fleet_lifecycle/Cargo.toml`, `rustd/crates/agentsfleetd/src/plane/stores.rs`, lifecycle and API test fixtures constructing `Fleets` | EDIT | remove the purge store's unused Dragonfly dependency and constructor parameter |
 | `rustd/crates/afd_bench/src/bin/{tail,cardinality,steer}.rs` | EDIT | fixture sweep no longer requires an inbound queue handle |
 | `rustd/crates/afd_authoring/src/{creation/mod.rs,error/mod.rs}`, `rustd/crates/agentsfleetd/src/plane/surfaces.rs`, API authoring constructor fixtures | EDIT | remove stream-only setup state and its unreachable failure |
@@ -124,6 +128,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_api/tests/integration_workspace_approvals.rs` | EDIT | give concurrently running approval cases distinct unique user subjects |
 | `rustd/crates/agentsfleetd/tests/support/{e2e,e2e_seed}.rs`, `support/definition_install/mod.rs`, `integration_sweepers.rs`, `integration_runner_e2e/{mod,labels,money_gate,refusals}.rs`, `rustd/crates/afd_approval/src/inbox/sweep.rs`, `rustd/crates/afd_fleet/src/lease/sql/tool_detail.rs` | EDIT | align placement fixture isolation and comments with the ledger queue; preserve operator label placement coverage |
 | `playbooks/operations/observability/assets/alerts.json`, `playbooks/operations/observability/lib.sh` | EDIT / DELETE | remove the retired readiness alert and replay-floor rendering that reads the deleted sweeper |
+| `docs/v2/{active,done}/M226_001_P2_API_OBS_ADMISSIONS_LEDGER_IS_THE_ONLY_QUEUE.md` | EDIT / MOVE | retain decisions and evidence, grade acceptance, and close the milestone after verification |
 | `docs/reviews/admissions-queue.md` | CREATE | retain baseline counts, failure coverage, concurrency and resource evidence, measurements and review outcomes |
 | `rustd/crates/afd_dragonfly/src/streams/render.rs`, `rustd/crates/afd_dragonfly/tests/keys_and_config/mod.rs` | DELETE / EDIT | remove stream rendering and its sample test after their production consumer is removed |
 | `rustd/crates/afd_dragonfly/tests/integration_doorbell.rs`, `rustd/crates/afd_dragonfly/tests/datastore_suite.rs` | CREATE / EDIT | prove cross-process sharded notification delivery and release every subscription at shutdown |
@@ -135,7 +140,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 
 - **`.orly/docs/greptile-learnings/RULES.md`** — NDC (every repairer is deleted, not left idle), NLR (touched readiness callers are cleaned, not wrapped), ORP (cross-layer orphan sweep over keys, metrics, docs and the dashboard), NSQ and STS (named, schema-qualified statements; no literal state strings in the migration), SGR (grants in the new migration), UFS (column and key names as constants).
 - **`.orly/dispatch/write_rust.md`** and **`docs/RUST_ERROR_STANDARD.md`** — removed stream-failure error kinds leave no dead `ErrorKind` variants; new fallible paths use `error_shell!`.
-- **`.orly/dispatch/write_sql.md`** — `VERSION` is `0.62.2`, so every schema change is a forward migration and obsolete queue-column removal needs owner approval for that specific change.
+- **`.orly/dispatch/write_sql.md`** — comparison `VERSION` is `0.62.2`; the release is `0.65.0`. Every schema change is a forward migration and obsolete queue-column removal needs owner approval for that specific change.
 - **`.orly/docs/SCHEMA_CONVENTIONS.md`** — column, index and grant shape of the two migrations.
 
 ## Applicable Gates
@@ -156,53 +161,53 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 
 ## Sections (implementation slices)
 
-### §1 — Measure the ledger claim before cutting
+### §1 — DONE — Measure the ledger claim before cutting
 
 A bench variant of `make bench-lease` runs the §3 claim against a seeded ledger and reports leases per second, Postgres round trips per lease and the idle probe's cost, beside the current contended row (1,928 leases/s, 2.4 round trips, `docs/architecture/scaling.md:272`) and idle row (1.00 Dragonfly command, 0 Postgres statements, `scaling.md:271`). Completion: both figures recorded in `scaling.md` and Indy's answers to Q1 and Q2 quoted in Discovery. Missing either blocks §3–§5. **Implementation default:** the variant reuses the drain lane's seeding because it already proves every event processed once.
 
-- **Dimension 1.1** — the ledger-claim lane runs and reports round trips per lease → Test `test_ledger_claim_lane_reports_round_trips`
-- **Dimension 1.2** — figures recorded and Q1/Q2 answered → Test `manual_ledger_claim_figures_recorded`
+- **Dimension 1.1** — DONE — the ledger-claim lane runs and reports round trips per lease → Test `test_ledger_claim_lane_reports_round_trips`
+- **Dimension 1.2** — DONE — figures recorded and Q1/Q2 answered → Test `manual_ledger_claim_figures_recorded`
 
-### §2 — The ledger carries queue state
+### §2 — DONE — The ledger carries queue state
 
 A forward migration adds three nullable stamps to `fleet.admissions`: the fence of the lease holding the row, when it parked on a gate, and when its report settled it. A partial index on `(fleet_id, created_at, sequence)` covers unsettled rows. The owner confirmed this is a development deployment with disposable authored drafts and fleets. The cutover stops old readers and admission, resets that development data, applies the forward migrations and starts only ledger readers. No populated-history backfill is required.
 
-- **Dimension 2.1** — fresh bootstrap creates the stamps, index and grants → Test `test_admissions_queue_migration_bootstraps`
-- **Dimension 2.2** — the development reset removes old fleet queue state before ledger readers start → Test `manual_development_cutover_reset`
+- **Dimension 2.1** — DONE — fresh bootstrap creates the stamps, index and grants → Test `test_admissions_queue_migration_bootstraps`
+- **Dimension 2.2** — DONE — the development reset removes old fleet queue state before ledger readers start → Test `manual_development_cutover_reset`
 
-### §3 — The claim takes the work
+### §3 — DONE — The claim takes the work
 
 Admission commits the ledger row, then rings the doorbell; no append, no mark. A poll's candidate scan reads eligible fleets from the unsettled index (fleet `active`, slot free or expired, oldest unsettled row not parked). The claim then, in one transaction, wins the slot, bumps `fencing_token`, locks that fleet's oldest unsettled row with `FOR UPDATE SKIP LOCKED` and stamps the fence on it. `Acquired` is built from the row; `redelivered` is `delivered_at IS NOT NULL`. Gates and issue keep today's order after the claim and stay fence-guarded. Both backlog budgets count unsettled rows, the per-fleet one bounded by `LIMIT 10001`.
 
-- **Dimension 3.1** — an admitted event is leased from the ledger → Test `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows`
-- **Dimension 3.2** — two replicas claiming the same fleet: one lease, one empty answer → Test `test_concurrent_claims_lease_one_row`
-- **Dimension 3.3** — a fleet's rows lease in `(created_at, sequence)` order, and a parked oldest row holds the rows behind it → Test `test_fleet_rows_lease_in_order_behind_a_park`
-- **Dimension 3.4** — a re-claimed row is marked redelivered → Test `test_reclaimed_row_is_leased_as_redelivered`
-- **Dimension 3.5** — the fleet budget refuses at 10,000 unsettled rows → Test `test_fleet_budget_counts_unsettled_rows`
+- **Dimension 3.1** — DONE — an admitted event is leased from the ledger → Test `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows`
+- **Dimension 3.2** — DONE — two replicas claiming the same fleet: one lease, one empty answer → Test `test_concurrent_claims_lease_one_row`
+- **Dimension 3.3** — DONE — a fleet's rows lease in `(created_at, sequence)` order, and a parked oldest row holds the rows behind it → Test `test_fleet_rows_lease_in_order_behind_a_park`
+- **Dimension 3.4** — DONE — a re-claimed row is marked redelivered → Test `test_reclaimed_row_is_leased_as_redelivered`
+- **Dimension 3.5** — DONE — the fleet budget refuses at 10,000 unsettled rows → Test `test_fleet_budget_counts_unsettled_rows`
 
-### §4 — Report, park, answer and expiry move the row
+### §4 — DONE — Report, park, answer and expiry move the row
 
 `METER_LEASE` stamps `settled_at` in the report transaction, under its fence guard. A terminal refusal or block settles through the same admission fence. A park stamps the row and frees the slot; a gate answer clears the stamp and rings the doorbell. An expired lease needs no queue sweeper: the expired slot and unsettled row requalify by the §3 predicate. Every poll probes Postgres, so a lost doorbell leaves the event available on the next retry after `NO_WORK_RETRY_AFTER`.
 
-- **Dimension 4.1** — settle stamps the row in the report transaction; a rollback leaves it unsettled → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once`
-- **Dimension 4.2** — an expired lease is re-leased and the dead holder's late report is refused → Test `test_reclaimed_row_is_leased_as_redelivered`; superseded-report proof is also listed below
-- **Dimension 4.3** — park holds later work, and gate resolution and expiry durably unpark → Test `test_approval_resolution_leases_next_poll`; ordering, expiry and lock-wait proofs are also listed below
-- **Dimension 4.4** — a lost doorbell still leases on the next probe → Test `test_a_fleet_is_discovered_without_any_notification`; stale-hint proof is also listed below
+- **Dimension 4.1** — DONE — settle stamps the row in the report transaction; a rollback leaves it unsettled → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once`
+- **Dimension 4.2** — DONE — an expired lease is re-leased and the dead holder's late report is refused → Test `test_reclaimed_row_is_leased_as_redelivered`; superseded-report proof is also listed below
+- **Dimension 4.3** — DONE — park holds later work, and gate resolution and expiry durably unpark → Test `test_approval_resolution_leases_next_poll`; ordering, expiry and lock-wait proofs are also listed below
+- **Dimension 4.4** — DONE — a lost doorbell still leases on the next probe → Test `test_a_fleet_is_discovered_without_any_notification`; stale-hint proof is also listed below
 
-### §5 — Delete the Dragonfly queue and its repairers
+### §5 — DONE — Delete the Dragonfly queue and its repairers
 
 The readiness index, its partitions and the M225_001 directory if it still exists; the inbound stream and its consumer group; group restore and the delivered cursor; replay, reconcile and its progress/scan/walk; the reclaim sweeper's stream probe and re-mark; the pause and purge clears; `MARK_DELIVERED`'s second arm and the history view's duplicate merge. Rebuild keeps only the outbound pass. The second migration drops `receipt` and its two indexes after Q3.
 
-- **Dimension 5.1** — a full admit → lease → report cycle leaves no inbound stream or readiness key → Test `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows`
-- **Dimension 5.2** — the receipt drop applies on a populated ledger → Test `test_receipt_drop_migration_applies_populated`
-- **Dimension 5.3** — a queued steer shows once in history, from the ledger → Test `test_thread_read_includes_queued_steers`; delivery and retry identity proofs are also listed below
-- **Dimension 5.4** — the census pass publishes and withdraws the admission backlog → Test `test_census_publishes_every_status`
+- **Dimension 5.1** — DONE — a full admit → lease → report cycle leaves no inbound stream or readiness key → Test `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows`
+- **Dimension 5.2** — DONE — the receipt drop applies on a populated ledger → Test `test_receipt_drop_migration_applies_populated`
+- **Dimension 5.3** — DONE — a queued steer shows once in history, from the ledger → Test `test_thread_read_includes_queued_steers`; delivery and retry identity proofs are also listed below
+- **Dimension 5.4** — DONE — the census pass publishes and withdraws the admission backlog → Test `test_census_publishes_every_status`
 
-### §6 — Architecture docs describe one queue
+### §6 — DONE — Architecture docs describe one queue
 
 `runner_fleet.md`, `datastore_scaling.md`, `lease_flow.md`, `scaling.md`, `data_flow.md` and `concurrency.md` describe the ledger as the queue and Dragonfly's remaining roles. The scaling rows are re-measured, not edited by hand.
 
-- **Dimension 6.1** — no live source or operational document requires the deleted queue; historical measurements and negative assertions retain their original names → Test `manual_source_documentation_audit`
+- **Dimension 6.1** — DONE — no live source or operational document requires the deleted queue; historical measurements and negative assertions retain their original names → Test `manual_source_documentation_audit`
 
 ## Interfaces
 
@@ -289,18 +294,18 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Work leases from the ledger alone (§3) | `make test-integration-rustd` | `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows` passed | P0 | |
-| R2 | Expiry, park and lost doorbell lose no event (§4) | `make test-integration-rustd` | reclaim, superseded-report, parked-head, resolution, expiry and notification-loss tests passed | P0 | |
-| R3 | No Dragonfly queue remains (§5) | `git grep -n -w -E 'ReadyIndex\|ReadyCursor\|READY_PARTITIONS\|restore_group\|delivered_cursor\|XAUTOCLAIM' -- 'rustd/crates/*/src/**'` | 0 runtime matches; documentation audit recorded separately | P0 | |
-| R4 | Ledger claim measured and Q1–Q4 answered (§1) | manual — Discovery quotes and `scaling.md` rows | Q1–Q4 answers quoted, including combined Q1/Q2; two re-measured rows | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | Rust coverage meets the owner's requirements | `make test-coverage-rustd` | global ≥99.5%; changed lines ≥99%; each changed Rust source file ≥99%, with no added exclusions | P0 | |
+| R1 | Work leases from the ledger alone (§3) | `make test-integration-rustd` | `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows` passed | P0 | ✅ full cycle passed; 1,328 integration tests passed; Pull Request Session Notes retain the final gate |
+| R2 | Expiry, park and lost doorbell lose no event (§4) | `make test-integration-rustd` | reclaim, superseded-report, parked-head, resolution, expiry and notification-loss tests passed | P0 | ✅ reclaim, park, fence, resolution and notification-loss proofs passed; final gate in Pull Request Session Notes |
+| R3 | No Dragonfly queue remains (§5) | `git grep -n -w -E 'ReadyIndex\|ReadyCursor\|READY_PARTITIONS\|restore_group\|delivered_cursor\|XAUTOCLAIM' -- 'rustd/crates/*/src/**'` | 0 runtime matches; documentation audit recorded separately | P0 | ✅ 0 runtime matches; six retired queue modules absent |
+| R4 | Ledger claim measured and Q1–Q4 answered (§1) | manual — Discovery quotes and `scaling.md` rows | Q1–Q4 answers quoted, including combined Q1/Q2; two re-measured rows | P0 | ✅ Q1–Q4 recorded; 15 complete production samples and idle probe retained |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ source, tests, migrations, generated API and evidence paths covered by Files Changed |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `make harness-verify` exit 0; all gates green; final gate in Pull Request Session Notes |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ 11,114 passed, 1,349 skipped/ignored; TypeScript gates 100%; final gate in Pull Request Session Notes |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ `make lint-all` exit 0; all lint checks passed; final gate in Pull Request Session Notes |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | ✅ 1,328 passed, 0 failed; final gate in Pull Request Session Notes |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | ✅ all versions match 0.65.0; final gate in Pull Request Session Notes |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ 7,430 commits scanned; no leaks found |
+| S7 | Rust coverage meets the owner's requirements | `make test-coverage-rustd` | global ≥99.5%; changed lines ≥99%; each changed Rust source file ≥99%, with no added exclusions | P0 | ✅ 99.5435% global; 397/397 changed lines; all 72 measured changed files ≥99%, minimum 99.2308%; `coverage-v065.json` |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.orly/orly.json` into a Verify cell, verbatim, with an Expected value. See `.orly/dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -375,6 +380,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
   - **Release version — answered** — Indy (Oct 21, 2026): "approved for minor versoin", followed by "ensure the verison is updated to 0.65, and PR is pushed, the CI jobs are green". Use `0.65.0`. The later instruction supersedes the earlier `0.63.0` selection.
   - **Final quality requirements** — Indy requires at least 99% changed-line coverage and at least 99% coverage for each changed Rust file, plus 100% TypeScript coverage; follow `docs/RUST_ERROR_STANDARD.md`, regenerate changed OpenAPI descriptions and provide benchmark evidence. Coordinate with M230 in the separate development-acceptance worktree; the owner will merge M230 first, then this Pull Request. Do not merge either stream here.
 - **Metrics review** — `agentsfleet_fleet_ready_depth` removed with its dashboard panel; the backlog gauge changes producer only; analytics/funnel playbook update not required — no product event changes.
-- **Measured preparation** — `BENCH_LEASE_QUEUE={ledger,streams} make bench-lease PROFILE=rig KEEP_TEST_STATE=1`, sequential runs with 200 fleets, eight runners, pool 20; every run processed 200/200 events with no failures and swept 1,216/1,216 fixture records. Statement consolidation reduced the ledger prototype from 6.98 to 4.665 claim round trips per lease; streams cost 2.425. Idle costs one Postgres statement against zero. Consolidated drains cost 55.695 versus 55.64 statements, 26.41 versus 27.85 commits, and 5.72 versus 16.155 Dragonfly calls per lease. Raw results are retained under `docs/architecture/measurements/admissions-queue/`; latency varies with this shared host. These figures establish cost, not a throughput improvement. Production report settlement and its final measurement remain due.
-- **Skill-chain outcomes** — pending.
+- **Measured preparation** — `BENCH_LEASE_QUEUE={ledger,streams} make bench-lease PROFILE=rig KEEP_TEST_STATE=1`, sequential runs with 200 fleets, eight runners, pool 20; every run processed 200/200 events with no failures and swept 1,216/1,216 fixture records. Statement consolidation reduced the ledger prototype from 6.98 to 4.665 claim round trips per lease; streams cost 2.425. Idle costs one Postgres statement against zero. Consolidated drains cost 55.695 versus 55.64 statements, 26.41 versus 27.85 commits, and 5.72 versus 16.155 Dragonfly calls per lease. These prototype costs informed Q1/Q2; they do not establish a throughput improvement.
+- **Production measurements** — the final `0.65.0` ladder ran `BENCH_FLEETS=N BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1` three times each at 20, 40, 80, 160 and 200 events. All 15 samples completed: 1,500/1,500 events, zero failures, zero unsettled admissions, 9,240/9,240 fixture records swept. At 200 events, medians were 52.725 statements, 22.535 commits, 3.045 Dragonfly calls per event and 142.37 completed events/s. Idle discovery costs one Postgres statement per poll. Raw samples, provenance and medians are retained in `docs/architecture/measurements/admissions-queue/production-v065-*.json`; host load limits latency comparisons. No general throughput or chat-streaming improvement is claimed.
+- **Skill-chain outcomes** — unit and real-datastore integration audits are recorded in `docs/reviews/admissions-queue.md`; source reviews found no remaining runtime defect. The bounded gate review inspected 42/553 eligible hunks, leaving 511 outside its scope. Historical exploratory checks remain inconclusive because several commands identify superseded binaries; the owner then instructed: "Well run the test and send the PR". Current repository verification is required before publication; no historical failure is waived.
 - **Deferrals** — none.

@@ -224,7 +224,7 @@ Why a narrative table and a usage table (`fleet.events` + `billing.usage_lines`)
 - `fleet.events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
 - `billing.usage_lines` holds numeric audit columns — small, priced once and never repriced, retained for billing reconciliation independent of whether the conversation row is purged; it has no foreign keys, so a line outlives the fleet, workspace and price row it names.
 
-The durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `fleet` schema and never carries user strings.
+The durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `runner` schema and never carries user strings.
 
 ### The list read and the detail read are different reads
 
@@ -686,7 +686,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 
 - `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_token`. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently. The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
-- Continuity across runs lives in `agentsfleetd`, never in runner-local state, so any runner can pick up the next run. Today only fleet memory reaches the next lease; the session checkpoint is saved to `fleet.sessions` and handed to no lease ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). Sticky routing (prefer `last_runner_id`, random among the rest, `rustd/crates/afd_fleet/src/lease/sql/lease/mod.rs`) is a hint for warm-sandbox reuse, never ownership.
+- Continuity across runs lives in `agentsfleetd`, never in runner-local state, so any runner can pick up the next run. Today only fleet memory reaches the next lease; the session checkpoint is saved to `fleet.sessions` and handed to no lease ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). Sticky routing (prefer `last_runner_id`, random among the rest, `rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`) is a hint for warm-sandbox reuse, never ownership.
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency and its bound: [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model".
 
@@ -718,4 +718,4 @@ activation + initial admission commit -> Accepted; register schedules independen
 wake notification fails -> Accepted; the next idle poll reads the ledger
 ```
 
-Do not delete the retained fleet on setup failure, claim activation after a zero-row update, or submit another initial event on retry. Receipt-less admissions participate in ordinary message history before and after append; merge by logical identity with stable pagination. The recovery sweeper uses that same event identity. No creation worker is introduced.
+Do not delete the retained fleet on setup failure, claim activation after a zero-row update, or submit another initial event on retry. Undelivered, unsettled steer admissions participate in ordinary message history alongside delivered events in one statement snapshot, with stable event identity and pagination (`afd_events/src/history/statement/select_thread_page.sql`). No creation worker is introduced.
