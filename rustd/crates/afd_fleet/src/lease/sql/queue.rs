@@ -4,6 +4,7 @@
 pub const SELECT_CANDIDATES: &str = include_str!("lease/select_ledger_candidates.sql");
 
 /// Claim the slot, stamp its exact oldest admission and expire any prior lease.
+///
 /// Selecting the head before SKIP LOCKED prevents exposing a later row. The
 /// caller rolls the transaction back when no admission is returned.
 pub const CLAIM_HEAD: &str = include_str!("lease/claim_admission_head.sql");
