@@ -102,7 +102,7 @@ pub(super) async fn stage(
         runners: Vec::new(),
         kek: Arc::new(platform::minted_kek()?),
     };
-    platform::stage(stores, &staged.kek).await?;
+    platform::stage(stores, &staged.kek, INDEX_BASE).await?;
     for fleet in &staged.fleets {
         seed::enqueue(&stores.database, &stores.queue, fleet, EventType::Chat).await?;
     }
@@ -130,36 +130,42 @@ async fn fund(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
 
 impl Staged {
     /// The daemon's lease plane over the lane's pool and queue.
-    ///
-    /// Composed the way the daemon's root composes it, with a broker over a
-    /// deployment holding no platform app: a drained fleet declares no
-    /// integration, so nothing here is ever asked to mint.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a drained fleet declares no integration, so the broker's vendor client never sends a request"
-    )]
     pub(super) fn plane(&self, stores: &Datastores) -> Plane {
-        let database = stores.database.clone();
-        Plane {
-            leases: Leases::new(database.clone(), stores.queue.clone(), Entropy::new()),
-            gates: Gates::new(database.clone(), stores.queue.clone(), Entropy::new()),
-            accounts: Accounts::new(database.clone()),
-            // The daemon wraps this in its outage policy and metrics; a drain
-            // lane reaches neither, so the bare ledger is the same money path.
-            biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
-                database.clone(),
-                Entropy::new(),
-                Arc::new(afd_core::clock::SystemClock),
-            )),
-            memories: Memories::new(database.clone(), Entropy::new()),
-            providers: Providers::new(database.clone(), Arc::clone(&self.kek), Entropy::new()),
-            vault: Vault::new(database.clone(), Arc::clone(&self.kek)),
-            broker: Arc::new(Broker::new(
-                Arc::new(Registry::default()),
-                Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
-            )),
-            grants: IntegrationGrants::new(database, Entropy::new()),
-            thread: Arc::new(afd_events::History::new(stores.database.clone())),
-        }
+        plane(stores, &self.kek)
+    }
+}
+
+/// The daemon's lease plane over the lane's pool and queue, resolving the
+/// platform credential sealed under `kek`.
+///
+/// Composed the way the daemon's root composes it, with a broker over a
+/// deployment holding no platform app: a seeded fleet declares no
+/// integration, so nothing here is ever asked to mint.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a seeded fleet declares no integration, so the broker's vendor client never sends a request"
+)]
+pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Plane {
+    let database = stores.database.clone();
+    Plane {
+        leases: Leases::new(database.clone(), stores.queue.clone(), Entropy::new()),
+        gates: Gates::new(database.clone(), stores.queue.clone(), Entropy::new()),
+        accounts: Accounts::new(database.clone()),
+        // The daemon wraps this in its outage policy and metrics; a bench
+        // lane reaches neither, so the bare ledger is the same money path.
+        biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
+            database.clone(),
+            Entropy::new(),
+            Arc::new(afd_core::clock::SystemClock),
+        )),
+        memories: Memories::new(database.clone(), Entropy::new()),
+        providers: Providers::new(database.clone(), Arc::clone(kek), Entropy::new()),
+        vault: Vault::new(database.clone(), Arc::clone(kek)),
+        broker: Arc::new(Broker::new(
+            Arc::new(Registry::default()),
+            Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
+        )),
+        grants: IntegrationGrants::new(database, Entropy::new()),
+        thread: Arc::new(afd_events::History::new(stores.database.clone())),
     }
 }

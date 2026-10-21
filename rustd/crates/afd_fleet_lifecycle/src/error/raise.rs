@@ -5,6 +5,8 @@
 //! ways to produce one. A reader asking "what can go wrong here" and a reader
 //! asking "where does this get raised" are looking for different things.
 
+use std::sync::Arc;
+
 use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
@@ -34,4 +36,9 @@ pub(crate) fn source_stale(current: impl Into<Box<str>>) -> Error {
         current: current.into(),
     }
     .into()
+}
+
+/// Hands one shared load's failure to one of the readers that waited on it.
+pub(crate) fn shared(source: Arc<Error>) -> Error {
+    ErrorKind::Shared { source }.into()
 }
