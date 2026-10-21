@@ -75,7 +75,11 @@ async fn stopped(f: &Fixture) -> (Draft, Claimed) {
 }
 
 fn indexed(plan: &Value, history: i64) {
-    let root = &plan[0]["Plan"];
+    let item = plan
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("query plan item");
+    let root = &item["Plan"];
     assert_eq!(root["Actual Rows"].as_f64(), Some(2.0), "{plan}");
     let mut scans = Vec::new();
     attempt_scans(root, &mut scans);
@@ -101,7 +105,7 @@ fn indexed(plan: &Value, history: i64) {
     );
     eprintln!(
         "discovery: 2 queued drafts, {history} stopped attempts each; buffers={buffers}/{BUFFER_BOUND}; execution_ms={}",
-        plan[0]["Execution Time"]
+        item["Execution Time"]
     );
 }
 
