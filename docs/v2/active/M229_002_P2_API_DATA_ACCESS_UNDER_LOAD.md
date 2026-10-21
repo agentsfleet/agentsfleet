@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M229
 **Workstream:** 002
 **Date:** Oct 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — throughput and load behaviour under contention; nothing is broken at today's load
 **Categories:** API
 **Batch:** B2 — follows M229_001 on the rebuilt schema
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m229-data-access-under-load
+**Baseline revision:** 0fa9e55356571d57df69cd3a13fb3b90930b0e49
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M229_001 — the rebuilt schema, typed row reads and connection time limits this workstream measures against
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 17, 2026), from the adversarial review of M229_001 and source reads at `7704a01ff`
