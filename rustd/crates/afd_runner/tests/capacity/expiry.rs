@@ -67,7 +67,10 @@ async fn test_expired_status_active_rows_do_not_occupy_capacity() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_expiry_checks_read_clock_after_lock() {
     let fixture = Fixture::create(1).await;
-    fixture.runtime(clock::after(clock::now(), LAPSES_IN)).await;
+    // Seeded long-lived, so the refusal below cannot race the expiry: a slow
+    // run (coverage instrumentation) once let a 200 ms lease lapse before the
+    // first claim finished, and that claim then succeeded.
+    fixture.runtime(clock::after(clock::now(), LIVE_FOR)).await;
     assert!(
         !fixture.try_claim().await,
         "the live lease fills the only worker"
@@ -76,6 +79,8 @@ async fn test_expiry_checks_read_clock_after_lock() {
     let mut holder = fixture.db.acquire().await.expect("competing connection");
     let mut held = holder.begin().await.expect("competing transaction");
     fixture.lock_host(&mut held).await;
+    // Only now, with the host held, is the lease set to lapse inside the hold.
+    fixture.lapse_runtime_in(LAPSES_IN).await;
     let release = async move {
         tokio::time::sleep(LOCK_HELD_FOR).await;
         held.rollback()

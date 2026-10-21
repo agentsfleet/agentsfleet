@@ -30,7 +30,9 @@ impl Error {
             | ErrorKind::UnknownLane { .. }
             | ErrorKind::BelowFloor { .. }
             | ErrorKind::WindowTooShort { .. }
-            | ErrorKind::RunnersExceedPool { .. } => true,
+            | ErrorKind::RunnersExceedPool { .. }
+            | ErrorKind::UnknownShape { .. }
+            | ErrorKind::ShapeNeedsRig { .. } => true,
             ErrorKind::LatencyUnavailable { .. }
             | ErrorKind::LatencyUnrecordable { .. }
             | ErrorKind::LatencyUnmergeable { .. }
@@ -58,7 +60,12 @@ impl Error {
             | ErrorKind::CredentialMalformed { .. }
             | ErrorKind::IdentifierRefused { .. }
             | ErrorKind::CeilingRefused { .. }
-            | ErrorKind::LeaseUnreadable { .. } => false,
+            | ErrorKind::LeaseUnreadable { .. }
+            | ErrorKind::AuthoringPathFaulted { .. }
+            | ErrorKind::SamplerUnavailable { .. }
+            | ErrorKind::LiveSetFaulted { .. }
+            | ErrorKind::NothingIssued { .. }
+            | ErrorKind::InvariantBroken { .. } => false,
         }
     }
 }

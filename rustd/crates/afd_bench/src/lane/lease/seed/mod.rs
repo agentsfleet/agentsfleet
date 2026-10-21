@@ -271,6 +271,24 @@ pub(crate) async fn enqueue(
 ///
 /// Whatever enrolment refused.
 pub async fn runner(database: &Db, host: &str, tag: &str, now: Timestamp) -> Result<Uuid7> {
+    runner_with(database, host, tag, RUNNER_WORKERS, now).await
+}
+
+/// Enrol one runner declaring `workers` concurrent workers.
+///
+/// The saturation shape's hosts hold several unreported leases at once, so
+/// they keep polling under contention rather than going busy after one.
+///
+/// # Errors
+///
+/// Whatever enrolment refused.
+pub async fn runner_with(
+    database: &Db,
+    host: &str,
+    tag: &str,
+    workers: u32,
+    now: Timestamp,
+) -> Result<Uuid7> {
     let runners = Runners::new(database.clone(), Entropy::new());
     let request = RegisterRequest {
         host_id: host.into(),
@@ -278,7 +296,7 @@ pub async fn runner(database: &Db, host: &str, tag: &str, now: Timestamp) -> Res
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowListEgress,
             registry_allowlist: Vec::new(),
-            worker_count: RUNNER_WORKERS,
+            worker_count: workers,
             extra_binds: Vec::new(),
         },
         // The placement tag, and nothing else: the candidate query filters
