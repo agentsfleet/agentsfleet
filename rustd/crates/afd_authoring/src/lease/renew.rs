@@ -1,4 +1,11 @@
 //! Host capacity and live authorization stay locked through the fresh expiry write.
+//!
+//! The draft and attempt are locked before the host row, never after: a busy
+//! draft then keeps this renewal waiting while it holds nothing of the
+//! runner's, so the runner's polls for every other tenant go on. No cycle can
+//! form, because the one path that holds a host and then asks for a draft —
+//! the claim — takes the draft `NOWAIT`. Database time is sampled again after
+//! the host lock, so every expiry check reads time after every wait.
 
 use afd_core::{clock, id::Uuid7, timing::LEASE_TTL};
 use afd_wire::authoring::{Renew, Renewed};
@@ -26,13 +33,14 @@ impl Drafts {
         let held = budget::held(self, runner, lease).await;
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        let mut guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
         let host = afd_runner::capacity::lock(&mut tx, runner)
             .await?
             .ok_or(ErrorKind::Hidden)?;
         if !host.can_renew() {
             return Err(ErrorKind::Fence.into());
         }
-        let guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
+        guarded.now = guard::refresh(&mut tx, &guarded, &counters).await?;
         let mut owed = Owed::default();
         let (verified, remaining_output_tokens) = match available(held, &mut tx, &guarded, &request)
             .await

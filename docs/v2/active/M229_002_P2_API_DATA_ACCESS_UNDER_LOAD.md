@@ -56,6 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_bench/**`, `bench/baselines/lease-saturation.rig.json` | EDIT | Saturation shape: the production poll (`Plane::claim`) over seeded chat drafts across tenants plus concurrent live-set readers; more requesters than connections; pool wait and hold time reported |
 | `make/bench.mk` | EDIT | `BENCH_SHAPE=saturation` on the existing `bench-lease` target, rig only; no new target |
+| `rustd/crates/afd_authoring/src/lease/renew.rs` | EDIT | Renewal locks draft and attempt before the host row |
 | `rustd/crates/afd_authoring/src/lease/claim/**` | EDIT | Non-waiting user and draft locks (claim-only statements), skip on contention, context prepared outside the locked section |
 | `rustd/crates/afd_fleet_lifecycle/src/live_set.rs`, `rustd/crates/afd_fleet_lifecycle/src/sql/**`, `rustd/crates/afd_fleet_lifecycle/src/error/**` | EDIT | Coalesced load per workspace; weighted capacity; bounded snapshot; shared-failure error kind |
 | `rustd/crates/afd_authoring/tests/**`, `rustd/crates/afd_fleet_lifecycle/tests/**` | EDIT | Contention and coalescing tests |
@@ -106,6 +107,12 @@ A miss loads through the cache's coalescing loader, so concurrent misses for one
 - **Dimension 3.1** — DONE — concurrent misses for one workspace run exactly one database read → Test `test_concurrent_misses_read_once`
 - **Dimension 3.2** — DONE — a workspace with many fleets evicts by weight before several small ones are lost → Test `test_large_workspace_weighs_more`
 
+### §5 — Chat renewal never waits holding the host
+
+Folded in on the owner's call (Discovery). A renewal locked the runner's host row and then waited on its draft, so a busy draft stalled the runner's polls for every tenant, as the claim did before §2. A renewal cannot skip its draft, so it takes the draft and attempt first and the host row last, and samples database time again after the host lock. No cycle forms: the claim is the only path that holds a host and then asks for a draft, and it takes the draft `NOWAIT`.
+
+- **Dimension 5.1** — DONE — while a renewal waits on a busy draft, the runner's host row is free, and the renewal completes once the draft is released → Test `test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free`
+
 ### §4 — Keep only what the numbers support
 
 Rerun the saturation profile after §2 and after §3. A change that regresses p95 or rate without a correctness gain is reverted, and the decision is recorded with both runs.
@@ -153,6 +160,7 @@ the live-set read becomes a coalesced load. `make bench-lease` gains BENCH_SHAPE
 | 2.4 | integration | `test_locked_wallet_does_not_block_claim` | A's wallet row held `FOR UPDATE` → claim admits A's message |
 | 3.1 | integration | `test_concurrent_misses_read_once` | 20 concurrent misses for one workspace → every answer is the same `Arc` (one load; separate loads each return their own), and a dead database hands all 20 `INTERNAL_DB_UNAVAILABLE` |
 | 3.2 | unit | `test_large_workspace_weighs_more` | one large and three small workspaces over capacity → large evicted first |
+| 5.1 | integration | `test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free` | draft held while the renewal waits → `FOR UPDATE NOWAIT` on the host row succeeds; released → renewal succeeds; under the old order the probe gets `55P03` |
 | 4.1 | manual | `test_saturation_results_recorded` | before/after numbers and keep/revert per section in Session Notes |
 
 ## Acceptance Rubric (single scoring surface)
@@ -211,4 +219,5 @@ N/A — no files deleted.
 - **§2 skip, measured** (Oct 21, 2026; three runs per variant, first on a reset rig; same bench, hold sampler excluding the slow writer's own session; only `lease/claim/{mod,selection,sql/mod}.rs` differ). Medians, before (`8fb113cc8` claim) → after: `leases_per_second` 41.7 → 62.7, `chat_lease_p95_ms` 3006 → 707, `lease_p95_ms` 3207 → 745, `hold_p95_ms` 959 → 17, `pool_wait_p95_ms` 28 → 13; every invariant clean in all six. In-set spread about 4% on rate. Decision: keep. The committed baseline is replaced by the before set's reset-rig run, because the earlier one counted the slow writer's holds as the path's.
 - **§2 context snapshot, measured and reverted** (Oct 21, 2026; owner chose "Build it now" via AskUserQuestion). Built in `d0e7be347`: context read before the locks, revalidated against `resource_version`, sequence and head candidate under them, with a stale draft skipped (`test_stale_context_is_revalidated` passed, and failed with the check stubbed). Three runs per variant, skip-only (`39fff5b8a`) → skip + snapshot: `chat_lease_p95_ms` 700 → 968, `lease_p95_ms` 764 → 1017, `hold_p95_ms` 14.1 → 9.7, `leases_per_second` 63.2 → 63.2, invariants clean in all six; the chat p95 sets do not overlap (633–745 vs 902–978). The locked section shrank by milliseconds while every candidate the walk passes paid a second read, and the in-lock read was already current, so there is no correctness gain. §4's rule reverts it; the commit stays in history to restore.
 - **§3 live set, measured** (Oct 21, 2026; three runs on `6beffdd7a`'s live set, six on the coalesced one). The saturation window ends in about 2.5 s, inside the 10 s live-set TTL, so no entry expires mid-window and `live_set_p95_ms` is about 11 ms either way (10.8 vs 11.9): the bench cannot see coalescing, and the proof is `test_concurrent_misses_read_once`, which fails on the old get-then-insert read. Rate and chat p95 hold level (62.8 vs 62.7 leases/s; 546–686 vs 619–692 ms in five of six runs; one reset-rig outlier at 24.8/s). Decision: keep. The `hold_p95_ms` swings between runs come from chat renewals of the held tenant's leases waiting on its draft lock while holding the host row (`lease/renew.rs`, `lease/guard/mod.rs`), present on both sides; folded into this PR as §5 on the owner's call.
+- **§5 renewal order, measured under load** (Oct 21, 2026, three runs per variant on `deddb3774`'s renewal vs draft-first; machine load average 20–25 from another worktree's test suite, so in-set spread is 10.9–31.5 and 20.8–61.7 leases/s and the set decides nothing). Medians old → new: `leases_per_second` 30.1 → 31.2, `chat_lease_p95_ms` 2976 → 1913, `hold_p95_ms` 253 → 121, invariants clean in all six. Kept on its deterministic proof (`test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free`, which fails under the old order with `55P03` on the host row) and no regression; clean numbers are due before the Pull Request.
 - **Deferrals** — Snapshot cap on one live set (§3, Failure Modes "Oversized workspace"). Owner via AskUserQuestion, Oct 21, 2026: > Indy (2026-10-21): "Ignore this cap for now, we deal with this after testing" > Indy (2026-10-21): "since we donot know the limits yet" — context: no per-workspace fleet limit exists and no registry code fits, so a cap would be a new public refusal this spec rules out.
