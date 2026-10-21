@@ -13,10 +13,8 @@ use sha2::{Digest as _, Sha256};
 use sqlx::PgConnection;
 
 use super::{
-    Claimed,
-    context::{self, Source},
+    Claimed, context,
     selection::{Hint, Selected},
-    snapshot::Snapshot,
     sql,
 };
 use crate::{
@@ -45,10 +43,10 @@ pub(super) async fn admit(
     connection: &mut PgConnection,
     runner: &Uuid7,
     hint: &Hint,
-    (selected, snapshot): (Selected, Option<Snapshot>),
+    selected: Selected,
     owed: &mut Owed,
 ) -> Result<Option<(Claimed, Reservation)>> {
-    let prepared = prepare(connection, hint, &selected, snapshot).await;
+    let prepared = prepare(connection, hint, &selected).await;
     let gate = Gate {
         hint,
         selected: &selected,
@@ -106,30 +104,15 @@ async fn allowed<T>(
     }
 }
 
-/// The model, context and bound one admission issues under.
-///
-/// The context comes from the claim's unlocked snapshot when there is one,
-/// which the caller has already proved current; without one it is read here,
-/// under the draft lock, as it always was.
 async fn prepare(
     connection: &mut PgConnection,
     hint: &Hint,
     selected: &Selected,
-    snapshot: Option<Snapshot>,
 ) -> Result<(RegisteredModel, context::Context, i64)> {
     let model = model::selected(connection, &hint.tenant_id, &selected.model_ref).await?;
     let bound = budget::bound(&model)?;
     budget::gate(connection, &hint.tenant_id, bound).await?;
-    let context = if let Some(read) = snapshot {
-        read.context(&model)?
-    } else {
-        let source = Source {
-            draft: &selected.draft.id,
-            head: selected.draft.head_candidate_id.as_ref(),
-            sequence: selected.sequence,
-        };
-        context::read(connection, source, &model).await?
-    };
+    let context = context::read(connection, selected, &model).await?;
     Ok((model, context, bound))
 }
 
