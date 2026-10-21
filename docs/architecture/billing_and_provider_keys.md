@@ -107,15 +107,21 @@ A later message can claim only through normal runner capacity and balance checks
 
 Fresh Send refuses while an uncancelled attempt has unknown provider usage. Exact accepted replay is checked first and returns its original sequence. Explicit Stop permits later work without discarding the old obligation.
 
-Parse inference-key header syntax before saving dispatch intent. A definite HTTP 401 authentication rejection records a failed call with known usage. Preserve reported usage when supplied; otherwise authentication rejection has no generated tokens. Other failed responses without trusted usage remain unknown. The terminal report settles earlier calls and runtime fees once, then releases unused reservation.
+Parse inference-key header syntax before saving dispatch intent. A definite HTTP 401 authentication rejection records a failed call with known usage. Preserve reported usage when supplied; otherwise authentication rejection has no generated tokens.
+
+Other failed responses without trusted usage remain unknown. The terminal report settles earlier calls and runtime fees once, then releases unused reservation.
 
 ### Stop and terminal races
 
 Stop carries the last accepted sequence and atomically raises `cancelled_through`. Queue entries at or below it become cancelled. A later send receives a greater sequence and is not cancelled by a delayed old Stop. Stop, report, and candidate proposal share the guarded attempt/subject rows. If completion commits first it stays completed; otherwise cancellation fences later text/proposal writes. Repeated lower cutoffs return the standing watermark.
 
-A terminal report can settle already-incurred usage after Stop without displaying a late answer. Replayed reports never charge twice. A late key rejection retains attempt evidence, but emits a message finish only if its guarded update actually changes a running message. This also prevents duplicate finishes when model revocation wins first. Timeout, cancellation, and provider errors are separate visible states. Stop does not claim it can undo provider work already started.
+A terminal report can settle already-incurred usage after Stop without displaying a late answer. Replayed reports never charge twice. A late key rejection retains attempt evidence, but emits a message finish only if its guarded update actually changes a running message.
 
-Save uses the reviewed candidate after queued/running messages have stopped. Closing the draft does not remove its accounting attempts or restore old publication authority. Cancelling installing setup returns the linked draft to editing and keeps its Stop watermark. A late old report remains accounting-only in both cases.
+This also prevents duplicate finishes when model revocation wins first. Timeout, cancellation, and provider errors are separate visible states. Stop does not claim it can undo provider work already started.
+
+Save uses the reviewed candidate after queued/running messages have stopped. Closing the draft does not remove its accounting attempts or restore old publication authority.
+
+Cancelling installing setup returns the linked draft to editing and keeps its Stop watermark. A late old report remains accounting-only in both cases.
 
 ## Detail
 
