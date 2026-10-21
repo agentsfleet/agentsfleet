@@ -20,12 +20,14 @@
 //! raiser, and those live in [`raise`] beside the `From` impls that lift a
 //! foreign error into its variant.
 
+use std::sync::Arc;
+
 use afd_core::error_code::{self, ErrorCode};
 
 pub mod detail;
 mod raise;
 
-pub(crate) use self::raise::{query, row_malformed, source_stale};
+pub(crate) use self::raise::{query, row_malformed, shared, source_stale};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -75,6 +77,14 @@ pub(crate) enum ErrorKind {
         /// The tag the row holds now, so a caller retries in one round trip.
         current: Box<str>,
     },
+
+    /// One load every concurrent reader of a cache entry waited on, and its
+    /// failure, which each of them receives behind the same `Arc`.
+    #[error("a load shared by every concurrent reader failed")]
+    Shared {
+        #[source]
+        source: Arc<Error>,
+    },
 }
 
 impl Error {
@@ -99,6 +109,10 @@ impl Error {
             ErrorKind::SourceStale { .. } => {
                 (error_code::AGENTSFLEET_SOURCE_STALE, detail::SOURCE_STALE)
             }
+            // A shared load answers as the failure beneath it, so a caller of
+            // a coalesced read tells an outage from a bad statement as one
+            // that ran its own statement does.
+            ErrorKind::Shared { source } => source.answer(),
         }
     }
 
@@ -127,6 +141,7 @@ impl Error {
         // decides. `answer()` above is exhaustive for the same reason.
         match &self.inner.kind {
             ErrorKind::Datastore { .. } => true,
+            ErrorKind::Shared { source } => source.is_datastore_unavailable(),
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::NotFound

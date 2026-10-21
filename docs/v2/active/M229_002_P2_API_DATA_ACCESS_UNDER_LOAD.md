@@ -99,12 +99,12 @@ Before the existing reads, the claim takes the creator's user row and the draft 
 - **Dimension 2.4** — DONE — with tenant A's wallet row held `FOR UPDATE`, a claim still admits A's message; pins `f74ad2323`'s removal of the wallet lock → Test `test_locked_wallet_does_not_block_claim`
 - **Dimension 2.3** — REVERTED per §4 (built in `d0e7be347`, reverted on the numbers; see Discovery) — a message whose context changed between preparation and commit is not admitted on stale context → Test `test_stale_context_is_revalidated`
 
-### §3 — Live-set loads coalesce
+### §3 — Live-set loads coalesce — DONE
 
-A miss loads through the cache's coalescing loader, so concurrent misses for one workspace run one query. Capacity is weighted by fleet count, and one snapshot is capped by a named constant.
+A miss loads through the cache's coalescing loader, so concurrent misses for one workspace run one query. Capacity is weighted by fleet count. The single-snapshot cap is deferred (Discovery): the product has no per-workspace fleet limit to cap it at.
 
-- **Dimension 3.1** — concurrent misses for one workspace run exactly one database read → Test `test_concurrent_misses_read_once`
-- **Dimension 3.2** — a workspace with many fleets evicts by weight before several small ones are lost → Test `test_large_workspace_weighs_more`
+- **Dimension 3.1** — DONE — concurrent misses for one workspace run exactly one database read → Test `test_concurrent_misses_read_once`
+- **Dimension 3.2** — DONE — a workspace with many fleets evicts by weight before several small ones are lost → Test `test_large_workspace_weighs_more`
 
 ### §4 — Keep only what the numbers support
 
@@ -126,8 +126,8 @@ the live-set read becomes a coalesced load. `make bench-lease` gains BENCH_SHAPE
 | Starved tenant | A tenant's draft is locked on every poll | Its message is skipped while locked and admitted on the first poll after release; ordering by age resumes |
 | All locked | Every candidate's draft is locked | Claim returns no work; the runner polls again |
 | Stale context | Draft changes between context preparation and commit | Revalidation fails; that candidate is skipped this poll |
-| Load error under coalescing | The single shared load fails | Every waiter receives the error; nothing is cached; the next read retries |
-| Oversized workspace | A workspace's live set exceeds the snapshot cap | Read is refused with a named error rather than materialising an unbounded set |
+| Load error under coalescing | The single shared load fails | Every waiter receives the error behind one `Arc` as the `Shared` kind, which answers the code beneath it (an outage stays `INTERNAL_DB_UNAVAILABLE`); nothing is cached; the next read retries |
+| Oversized workspace | A workspace's live set is very large | Deferred (Discovery): no cap; the set is read whole and weighs its fleet count, so it evicts by its own weight rather than costing small workspaces their entries |
 
 ## Invariants
 
@@ -151,7 +151,7 @@ the live-set read becomes a coalesced load. `make bench-lease` gains BENCH_SHAPE
 | 2.2 | integration | `test_all_drafts_locked_returns_no_work` | every candidate draft held → claim returns none without waiting on any |
 | 2.3 | integration | `test_stale_context_is_revalidated` | draft changed after preparation → candidate skipped; next poll admits on fresh context |
 | 2.4 | integration | `test_locked_wallet_does_not_block_claim` | A's wallet row held `FOR UPDATE` → claim admits A's message |
-| 3.1 | integration | `test_concurrent_misses_read_once` | 20 concurrent misses for one workspace → 1 enumerate query |
+| 3.1 | integration | `test_concurrent_misses_read_once` | 20 concurrent misses for one workspace → every answer is the same `Arc` (one load; separate loads each return their own), and a dead database hands all 20 `INTERNAL_DB_UNAVAILABLE` |
 | 3.2 | unit | `test_large_workspace_weighs_more` | one large and three small workspaces over capacity → large evicted first |
 | 4.1 | manual | `test_saturation_results_recorded` | before/after numbers and keep/revert per section in Session Notes |
 
@@ -210,4 +210,5 @@ N/A — no files deleted.
 - **§1 baseline** (Oct 21, 2026, reset rig, `bench/baselines/lease-saturation.rig.json`, built over `89bc76631` plus the §1 lane): 40 hosts × 4 workers on a 20-connection pool, 5 chat tenants × 8 drafts, 200 fleets, slow writer holding tenant A's drafts 1 s of every 1.25 s. `leases_per_second=19.80 lease_p95_ms=5394 chat_lease_p95_ms=4760 pool_wait_p95_ms=93.6 hold_p95_ms=973 live_set_p95_ms=33.2`, 0 doubled, 0 oversubscribed, pool recovered. Two `KEEP_TEST_STATE=1` repeats: chat p95 7524 / 5566 ms, rate 16.8 / 20.0 — roughly 25% spread, the margin §4 decisions must clear. Without the slow writer the same shape ran 7055 polls vs 292, chat stall absent.
 - **§2 skip, measured** (Oct 21, 2026; three runs per variant, first on a reset rig; same bench, hold sampler excluding the slow writer's own session; only `lease/claim/{mod,selection,sql/mod}.rs` differ). Medians, before (`8fb113cc8` claim) → after: `leases_per_second` 41.7 → 62.7, `chat_lease_p95_ms` 3006 → 707, `lease_p95_ms` 3207 → 745, `hold_p95_ms` 959 → 17, `pool_wait_p95_ms` 28 → 13; every invariant clean in all six. In-set spread about 4% on rate. Decision: keep. The committed baseline is replaced by the before set's reset-rig run, because the earlier one counted the slow writer's holds as the path's.
 - **§2 context snapshot, measured and reverted** (Oct 21, 2026; owner chose "Build it now" via AskUserQuestion). Built in `d0e7be347`: context read before the locks, revalidated against `resource_version`, sequence and head candidate under them, with a stale draft skipped (`test_stale_context_is_revalidated` passed, and failed with the check stubbed). Three runs per variant, skip-only (`39fff5b8a`) → skip + snapshot: `chat_lease_p95_ms` 700 → 968, `lease_p95_ms` 764 → 1017, `hold_p95_ms` 14.1 → 9.7, `leases_per_second` 63.2 → 63.2, invariants clean in all six; the chat p95 sets do not overlap (633–745 vs 902–978). The locked section shrank by milliseconds while every candidate the walk passes paid a second read, and the in-lock read was already current, so there is no correctness gain. §4's rule reverts it; the commit stays in history to restore.
-- **Deferrals** — none.
+- **§3 live set, measured** (Oct 21, 2026; three runs on `6beffdd7a`'s live set, six on the coalesced one). The saturation window ends in about 2.5 s, inside the 10 s live-set TTL, so no entry expires mid-window and `live_set_p95_ms` is about 11 ms either way (10.8 vs 11.9): the bench cannot see coalescing, and the proof is `test_concurrent_misses_read_once`, which fails on the old get-then-insert read. Rate and chat p95 hold level (62.8 vs 62.7 leases/s; 546–686 vs 619–692 ms in five of six runs; one reset-rig outlier at 24.8/s). Decision: keep. The `hold_p95_ms` swings between runs come from chat renewals of the held tenant's leases waiting on its draft lock while holding the host row (`lease/renew.rs`, `lease/guard/mod.rs`), present on both sides; folded into this PR as §5 on the owner's call.
+- **Deferrals** — Snapshot cap on one live set (§3, Failure Modes "Oversized workspace"). Owner via AskUserQuestion, Oct 21, 2026: > Indy (2026-10-21): "Ignore this cap for now, we deal with this after testing" > Indy (2026-10-21): "since we donot know the limits yet" — context: no per-workspace fleet limit exists and no registry code fits, so a cap would be a new public refusal this spec rules out.
