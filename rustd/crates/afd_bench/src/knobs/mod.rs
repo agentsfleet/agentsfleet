@@ -17,6 +17,9 @@ use crate::error::{ErrorKind, Result};
 /// How long a lane's measured window may run, in whole seconds.
 pub const WINDOW_VARIABLE: &str = "BENCH_WINDOW_SECONDS";
 
+/// Which population the lease lane drives; see `lane::lease::shape`.
+pub const SHAPE_VARIABLE: &str = "BENCH_SHAPE";
+
 /// Fraction of delivery destinations scripted slow.
 pub const SLOW_FRACTION_VARIABLE: &str = "BENCH_SLOW_FRACTION";
 

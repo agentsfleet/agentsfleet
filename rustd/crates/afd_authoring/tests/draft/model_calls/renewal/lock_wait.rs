@@ -136,3 +136,45 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
     );
     f.cleanup().await;
 }
+
+/// Takes the runner's host row only if nobody holds it.
+const TAKE_HOST_NOW: &str = "SELECT id FROM runner.runners WHERE id=$1::uuid FOR UPDATE NOWAIT";
+
+/// A renewal that waits on a busy draft waits holding nothing of the
+/// runner's: the host row stays free for the runner's other placements, and
+/// the renewal still succeeds once the draft is released.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
+    let mut connection = f.connection().await;
+    let mut held = connection.begin().await.expect("draft holder");
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE",
+    )
+    .bind(a.draft.id.as_str())
+    .fetch_one(&mut *held)
+    .await
+    .expect("hold the draft");
+    let probe = async {
+        tokio::time::timeout(Duration::from_secs(5), blocked(&f, pid))
+            .await
+            .expect("the renewal waits on the draft");
+        let mut session = f.connection().await;
+        let mut taken = session.begin().await.expect("host probe");
+        let host = sqlx::query(TAKE_HOST_NOW)
+            .bind(f.runner.as_str())
+            .fetch_optional(&mut *taken)
+            .await;
+        taken.rollback().await.expect("release the probe");
+        held.commit().await.expect("release the draft");
+        host
+    };
+    let (renewed, host) = tokio::join!(f.drafts.renew(&f.runner, &a.lease, request()), probe);
+    host.expect("the host row was free while the renewal waited");
+    renewed.expect("the renewal completes once the draft is free");
+    drop(connection);
+    f.cleanup().await;
+}
