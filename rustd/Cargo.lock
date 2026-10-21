@@ -371,6 +371,7 @@ version = "0.62.2"
 dependencies = [
  "afd_admission",
  "afd_approval",
+ "afd_authoring",
  "afd_billing",
  "afd_core",
  "afd_credential",
@@ -379,6 +380,7 @@ dependencies = [
  "afd_dragonfly",
  "afd_events",
  "afd_fleet",
+ "afd_fleet_lifecycle",
  "afd_gate",
  "afd_memory",
  "afd_observability",

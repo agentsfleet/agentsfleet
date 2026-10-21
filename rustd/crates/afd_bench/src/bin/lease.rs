@@ -9,7 +9,8 @@ use std::process::ExitCode;
 use afd_bench::RunPrefix;
 use afd_bench::cli;
 use afd_bench::error::Result;
-use afd_bench::lane::lease::{self, drain};
+use afd_bench::lane::lease::shape::Shape;
+use afd_bench::lane::lease::{self, drain, saturation};
 use afd_bench::lane::sweep;
 use afd_bench::report::Lane;
 use afd_core::env::ProcessEnv;
@@ -28,6 +29,10 @@ const DEFAULT_FLEETS: u64 = 200;
 /// population is enough of both to see each.
 const DEFAULT_RUNNERS: u64 = 8;
 
+/// Requesters per pool connection under the saturation shape, when the
+/// caller does not say how many.
+const SATURATION_FACTOR: u64 = 2;
+
 /// How long the contended window may run when the caller does not say.
 const DEFAULT_WINDOW_SECONDS: u64 = 30;
 
@@ -40,7 +45,9 @@ async fn main() -> ExitCode {
 async fn measure() -> Result<String> {
     let env = ProcessEnv;
     let (profile, _target, provenance) = cli::admitted(&env)?;
-    let parameters = lease::Parameters {
+    let shape = Shape::read(&env)?;
+    shape.admit(profile)?;
+    let mut parameters = lease::Parameters {
         fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,
         runners: number(&env, Parameter::Runners.name(), DEFAULT_RUNNERS)?,
         window: Duration::from_secs(number(&env, WINDOW_VARIABLE, DEFAULT_WINDOW_SECONDS)?),
@@ -48,14 +55,34 @@ async fn measure() -> Result<String> {
     parameters.admit(profile)?;
 
     let stores = cli::datastores(&env).await?;
+    if shape == Shape::Saturation {
+        // More requesters than connections is the shape's whole point, so its
+        // default is read off the pool it was handed.
+        let saturating = SATURATION_FACTOR * u64::from(stores.pool_size);
+        parameters.runners = number(&env, Parameter::Runners.name(), saturating)?;
+        parameters.admit(profile)?;
+    }
     let prefix = RunPrefix::mint();
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
-    let measured = lease::run_both(profile, provenance, parameters, &stores, &prefix).await;
+    let (lane, measured) = match shape {
+        Shape::Default => (
+            Lane::Lease,
+            lease::run_both(profile, provenance, parameters, &stores, &prefix).await,
+        ),
+        Shape::Saturation => (
+            Lane::LeaseSaturation,
+            saturation::run(profile, provenance, parameters, &stores, &prefix).await,
+        ),
+    };
     if let Ok(report) = &measured {
+        let summary = match shape {
+            Shape::Default => drain::summary(report),
+            Shape::Saturation => saturation::summary(report),
+        };
         // logging: the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
-        println!("{}", drain::summary(report));
+        println!("{summary}");
     }
     let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
-    cli::finish(Lane::Lease, profile, measured, swept)
+    cli::finish(lane, profile, measured, swept)
 }

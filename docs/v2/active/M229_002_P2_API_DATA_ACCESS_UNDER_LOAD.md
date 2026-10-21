@@ -54,7 +54,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_bench/src/lane/lease/**`, `rustd/crates/afd_bench/src/{knobs,cli,error,bin}/**`, `rustd/crates/afd_bench/Cargo.toml` | EDIT | Saturation shape: the production poll (`Plane::claim`) over seeded chat drafts across tenants plus concurrent live-set readers; more requesters than connections; pool wait and hold time reported |
+| `rustd/crates/afd_bench/**`, `bench/baselines/lease-saturation.rig.json` | EDIT | Saturation shape: the production poll (`Plane::claim`) over seeded chat drafts across tenants plus concurrent live-set readers; more requesters than connections; pool wait and hold time reported |
 | `make/bench.mk` | EDIT | `BENCH_SHAPE=saturation` on the existing `bench-lease` target, rig only; no new target |
 | `rustd/crates/afd_authoring/src/lease/claim/**` | EDIT | Non-waiting user and draft locks (claim-only statements), skip on contention, context prepared outside the locked section |
 | `rustd/crates/afd_fleet_lifecycle/src/live_set.rs`, `rustd/crates/afd_fleet_lifecycle/src/sql/**`, `rustd/crates/afd_fleet_lifecycle/src/error/**` | EDIT | Coalesced load per workspace; weighted capacity; bounded snapshot; shared-failure error kind |
@@ -83,12 +83,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Saturation benchmark first
+### §1 — Saturation benchmark first — DONE
 
 `make bench-lease BENCH_SHAPE=saturation` (rig only; `PROFILE` keeps meaning the environment) drives the production poll, `Plane::claim`, so chat claims and fleet leases compete as they do in production, over seeded chat drafts across several tenants, with concurrent live-set readers beside it. Requesters outnumber pool connections. It reports lease rate, p95, pool wait and connection hold time separately, and asserts correctness under pressure. **Implementation default:** the saturation shape bypasses the `fit` guard explicitly, because exceeding the pool is its purpose; the default shape keeps the guard.
 
-- **Dimension 1.1** — the saturation profile completes or refuses every request within its budget, never issues a duplicate lease or exceeds host capacity, and the pool serves normally afterwards → Test `test_saturation_profile_holds_invariants`
-- **Dimension 1.2** — a baseline run on the M229_001 schema is recorded before §2 or §3 changes anything → Test `test_saturation_baseline_recorded` (manual)
+- **Dimension 1.1** — DONE — the saturation profile completes or refuses every request within its budget, never issues a duplicate lease or exceeds host capacity, and the pool serves normally afterwards → Test `test_saturation_profile_holds_invariants`
+- **Dimension 1.2** — DONE — a baseline run on the M229_001 schema is recorded before §2 or §3 changes anything → Test `test_saturation_baseline_recorded` (manual)
 
 ### §2 — Chat claims skip a locked draft
 
@@ -145,7 +145,7 @@ the live-set read becomes a coalesced load. `make bench-lease` gains BENCH_SHAPE
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_saturation_profile_holds_invariants` | requesters at twice the pool size across 5 tenants → 0 duplicate leases, 0 oversubscribed hosts, pool idle count restored |
+| 1.1 | unit + bench | `test_saturation_profile_holds_invariants` | the census judge admits a clean run; live, `make bench-lease BENCH_SHAPE=saturation` with requesters at twice the pool size across 5 tenants → 0 duplicate leases, 0 oversubscribed hosts, pool serves every connection again; the live run refuses non-zero (`afd_bench` is outside `make test-integration-rustd`, `make/test-integration-rustd.mk:155`) |
 | 1.2 | manual | `test_saturation_baseline_recorded` | baseline run output (rate, p95, pool wait, hold time) pasted in Session Notes before §2 |
 | 2.1 | integration | `test_locked_draft_does_not_block_other_tenant` | A's draft held, A older than B → claim admits B within the poll, A untouched |
 | 2.2 | integration | `test_all_drafts_locked_returns_no_work` | every candidate draft held → claim returns none without waiting on any |
@@ -207,4 +207,5 @@ N/A — no files deleted.
   Owner decision via AskUserQuestion, Oct 21, 2026 (PLAN found `PROFILE` already names the environment and no bench lane reaching the chat claim or the live set): Indy chose "BENCH_SHAPE, rig only (Recommended)" and "Real poll + live set (Recommended)".
 - **Metrics review** — adds the operator event `authoring_claim_draft_skipped`; no analytics/funnel playbook change, since it is an operator signal with no product funnel.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
+- **§1 baseline** (Oct 21, 2026, reset rig, `bench/baselines/lease-saturation.rig.json`, built over `89bc76631` plus the §1 lane): 40 hosts × 4 workers on a 20-connection pool, 5 chat tenants × 8 drafts, 200 fleets, slow writer holding tenant A's drafts 1 s of every 1.25 s. `leases_per_second=19.80 lease_p95_ms=5394 chat_lease_p95_ms=4760 pool_wait_p95_ms=93.6 hold_p95_ms=973 live_set_p95_ms=33.2`, 0 doubled, 0 oversubscribed, pool recovered. Two `KEEP_TEST_STATE=1` repeats: chat p95 7524 / 5566 ms, rate 16.8 / 20.0 — roughly 25% spread, the margin §4 decisions must clear. Without the slow writer the same shape ran 7055 polls vs 292, chat stall absent.
 - **Deferrals** — none.
