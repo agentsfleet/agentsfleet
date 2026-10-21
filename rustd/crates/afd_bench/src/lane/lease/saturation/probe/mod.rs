@@ -44,7 +44,8 @@ const SAMPLE_EVERY: Duration = Duration::from_millis(20);
 const MILLIS_PER_SECOND: f64 = 1_000.0;
 
 /// The age, in milliseconds, of every transaction open on this database but
-/// the sampler's own.
+/// the sampler's own and the slow writer's, whose holds are the bench's
+/// doing and not the path's. `$1` the slow writer's application name.
 const OPEN_TRANSACTIONS: &str = include_str!("../sql/open_transactions.sql");
 
 /// A pool the probe asks for connections.
@@ -83,6 +84,7 @@ pub(super) trait Sampler {
 impl Sampler for PgConnection {
     async fn ages(&mut self) -> Result<Vec<f64>> {
         sqlx::query_scalar(OPEN_TRANSACTIONS)
+            .bind(super::slow::APPLICATION)
             .fetch_all(self)
             .await
             .map_err(|source| ErrorKind::SamplerUnavailable { source }.into())

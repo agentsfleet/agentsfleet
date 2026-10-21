@@ -9,6 +9,9 @@ use sqlx::Connection as _;
 /// Holds the fixture host the way admission locks it first.
 const LOCK_HOST: &str = "SELECT id FROM runner.runners WHERE id=$1::uuid FOR UPDATE";
 
+/// Longer than any unblocked claim takes on a loaded lane.
+const PROMPT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn a_creator_removed_while_the_claim_waits_on_the_host_admits_nothing() {
@@ -96,21 +99,23 @@ async fn a_draft_row_in_no_known_state_refuses_the_claim_as_a_stored_fault() {
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn a_claim_chosen_as_a_deadlock_victim_surfaces_the_datastore_error() {
-    let f = funded(1).await;
+    // Its own database: the cycle runs through the catalogue's one row, which
+    // every lane's model reads share.
+    let f = fund(Fixture::isolated().await, 1).await;
     let draft = queue(&f, "Claimed into a lock cycle").await;
-    let mut holder = f.connection().await;
+    let mut holder = sqlx::PgConnection::connect(&f.owner_url())
+        .await
+        .expect("the lane owner connects");
     let mut held = holder.begin().await.expect("holder transaction");
-    let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM identity.users WHERE id=$1::uuid FOR UPDATE",
-    )
-    .bind(f.owner.as_str())
-    .fetch_one(&mut *held)
-    .await
-    .expect("hold the creator's account");
+    let pid: i32 =
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM model.catalogue_version FOR UPDATE")
+            .fetch_one(&mut *held)
+            .await
+            .expect("hold the catalogue");
     let (placed, ()) = tokio::join!(f.drafts.claim_queued(&f.runner, &draft.id), async {
-        // The claim holds the host and waits on the account; asking for the
-        // host closes the cycle, and the claim, which waited first, is the
-        // one Postgres aborts.
+        // The claim holds the host and waits on the catalogue its model read
+        // shares; asking for the host closes the cycle, and the claim, which
+        // waited first, is the one Postgres aborts.
         f.waits_on(pid, 1).await;
         sqlx::query(LOCK_HOST)
             .bind(f.runner.as_str())
@@ -123,5 +128,33 @@ async fn a_claim_chosen_as_a_deadlock_victim_surfaces_the_datastore_error() {
     let refused = placed.expect_err("a deadlock victim admits nothing");
     assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(attempts(&f).await, 0);
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_claim_skips_a_creator_another_transaction_holds_rather_than_waiting() {
+    let f = funded(1).await;
+    let draft = queue(&f, "Queued by a creator whose account is busy").await;
+    let mut holder = f.connection().await;
+    let mut held = holder.begin().await.expect("holder transaction");
+    sqlx::query("SELECT id FROM identity.users WHERE id=$1::uuid FOR UPDATE")
+        .bind(f.owner.as_str())
+        .fetch_one(&mut *held)
+        .await
+        .expect("hold the creator's account");
+    // Called while the account is held: a claim that waited could not answer.
+    let placed = tokio::time::timeout(PROMPT, f.drafts.claim_queued(&f.runner, &draft.id))
+        .await
+        .expect("the claim answered while the account was held")
+        .expect("a skipped creator is no error");
+    assert!(placed.is_none(), "a held creator is skipped, not admitted");
+    held.rollback().await.expect("release the account");
+    // Handed back before cleanup: closing the pool waits for every checkout.
+    drop(holder);
+    assert!(
+        super::fixture::claim(&f, &draft).await.is_some(),
+        "admitted once free"
+    );
     f.cleanup().await;
 }

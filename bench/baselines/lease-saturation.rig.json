@@ -2,7 +2,7 @@
   "lane": "lease-saturation",
   "profile": "rig",
   "provenance": {
-    "revision": "89bc76631",
+    "revision": "8fb113cc8",
     "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2",
     "owned": true
   },
@@ -15,27 +15,27 @@
     "pool_size": 20
   },
   "measurements": {
-    "chat_lease_max_ms": 4857.855,
-    "chat_lease_p95_ms": 4759.551,
+    "chat_lease_max_ms": 3080.191,
+    "chat_lease_p95_ms": 3006.463,
     "chat_leases": 40.0,
     "doubled_chat_leases": 0.0,
     "doubled_fleet_leases": 0.0,
     "failures": 0.0,
     "fleet_leases": 120.0,
-    "hold_max_ms": 1253.375,
-    "hold_p95_ms": 973.311,
-    "lease_p95_ms": 5394.431,
-    "leases_per_second": 19.79720005870924,
-    "live_set_p95_ms": 33.151,
+    "hold_max_ms": 1063.935,
+    "hold_p95_ms": 959.487,
+    "lease_p95_ms": 3207.167,
+    "leases_per_second": 41.76211774972448,
+    "live_set_p95_ms": 1026.559,
     "live_set_refused": 0.0,
     "oversubscribed_hosts": 0.0,
-    "polls": 261.0,
+    "polls": 304.0,
     "pool_recovered": 1.0,
     "pool_refused": 0.0,
-    "pool_wait_max_ms": 1138.687,
-    "pool_wait_p95_ms": 93.631,
-    "renewals": 74.0,
-    "slow_writer_holds": 6.0
+    "pool_wait_max_ms": 1069.055,
+    "pool_wait_p95_ms": 28.127,
+    "renewals": 64.0,
+    "slow_writer_holds": 3.0
   },
   "datastores": {
     "dragonfly": {
@@ -46,7 +46,7 @@
     }
   },
   "fixture": {
-    "run_prefix": "bench-1792562132955-69127",
+    "run_prefix": "bench-1792563324002-64956",
     "created": 695,
     "swept": 695
   }

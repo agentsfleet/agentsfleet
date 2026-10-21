@@ -16,6 +16,7 @@ mod recovery;
 mod rejections;
 mod replacement;
 mod revalidation;
+mod skipping;
 mod stop;
 
 use super::{
