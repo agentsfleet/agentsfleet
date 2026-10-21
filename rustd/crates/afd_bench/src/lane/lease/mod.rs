@@ -25,7 +25,9 @@
 
 pub mod drain;
 pub mod drive;
+pub mod saturation;
 pub mod seed;
+pub mod shape;
 mod window;
 
 use core::time::Duration;

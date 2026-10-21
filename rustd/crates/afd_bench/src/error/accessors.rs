@@ -11,9 +11,9 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::DatabaseUnavailable { .. } | ErrorKind::StatementsUnreadable { .. } => {
-                error_code::INTERNAL_DB_UNAVAILABLE
-            }
+            ErrorKind::DatabaseUnavailable { .. }
+            | ErrorKind::StatementsUnreadable { .. }
+            | ErrorKind::SamplerUnavailable { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::FixtureUnseedable { .. } | ErrorKind::FixtureRefused { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }

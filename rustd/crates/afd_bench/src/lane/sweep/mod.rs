@@ -30,10 +30,14 @@ const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
 /// A run's fleets; their revisions, events and slots go with them.
 const DELETE_FLEETS: &str = include_str!("sql/delete_fleets.sql");
 
-/// A run's workspaces; their sealed secrets go with them.
+/// A run's setup chat attempts, which hold no key to the workspace (money
+/// outlives it), so no cascade removes them.
+const DELETE_ATTEMPTS: &str = include_str!("sql/delete_attempts.sql");
+
+/// A run's workspaces; their sealed secrets and drafts go with them.
 const DELETE_WORKSPACES: &str = include_str!("sql/delete_workspaces.sql");
 
-/// A run's tenants; their wallets go with them.
+/// A run's tenants; their wallets, owners and holds go with them.
 const DELETE_TENANTS: &str = include_str!("sql/delete_tenants.sql");
 
 /// Matches every name a run prefixed.
@@ -89,6 +93,7 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     for statement in [
         DELETE_RUNNERS,
         DELETE_FLEETS,
+        DELETE_ATTEMPTS,
         DELETE_WORKSPACES,
         DELETE_TENANTS,
     ] {

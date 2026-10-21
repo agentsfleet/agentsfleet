@@ -19,10 +19,10 @@
 //! a pool-acquire count would not.
 
 mod owned;
-mod platform;
+pub(in crate::lane::lease) mod platform;
 mod runner;
 mod settled;
-mod stage;
+pub(in crate::lane::lease) mod stage;
 
 pub use self::owned::reset_readiness;
 
@@ -150,7 +150,7 @@ pub async fn run(
         Ok(staged) => measure(profile, parameters, stores, &staged, report).await,
         Err(refused) => Err(refused),
     };
-    let released = platform::release(stores).await;
+    let released = platform::release(stores, stage::INDEX_BASE).await;
     measured.and(released)
 }
 

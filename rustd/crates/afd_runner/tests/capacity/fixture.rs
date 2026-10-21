@@ -107,6 +107,23 @@ impl Fixture {
         .await;
     }
 
+    /// Moves this host's runtime lease to lapse `after` from now on the
+    /// database clock, the clock the census compares against.
+    pub(super) async fn lapse_runtime_in(&self, after: Duration) {
+        let millis = i64::try_from(after.as_millis()).expect("a test interval fits");
+        let mut connection = self.owner.acquire().await.expect("lease update connection");
+        sqlx::query(
+            "UPDATE runner.leases \
+             SET lease_expires_at = clock_timestamp() + $2 * interval '1 millisecond' \
+             WHERE runner_id = $1::uuid",
+        )
+        .bind(self.runner.as_str())
+        .bind(millis)
+        .execute(&mut *connection)
+        .await
+        .expect("the runtime lease's expiry moves");
+    }
+
     pub(super) async fn try_claim(&self) -> bool {
         let mut connection = self.db.acquire().await.expect("claim connection");
         let mut tx = connection.begin().await.expect("claim transaction");
