@@ -54,8 +54,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_bench/src/lane/lease/**` | EDIT | Saturation profile: more requesters than connections, many tenants, pool wait and hold time reported |
-| `make/bench.mk` | EDIT | `PROFILE=saturation` on the existing `bench-lease` target; no new target |
+| `rustd/crates/afd_bench/src/lane/lease/**`, `rustd/crates/afd_bench/src/{knobs,cli,error,bin}/**`, `rustd/crates/afd_bench/Cargo.toml` | EDIT | Saturation shape: the production poll (`Plane::claim`) over seeded chat drafts across tenants plus concurrent live-set readers; more requesters than connections; pool wait and hold time reported |
+| `make/bench.mk` | EDIT | `BENCH_SHAPE=saturation` on the existing `bench-lease` target, rig only; no new target |
 | `rustd/crates/afd_authoring/src/lease/claim/**` | EDIT | Non-waiting user and draft locks (claim-only statements), skip on contention, context prepared outside the locked section |
 | `rustd/crates/afd_fleet_lifecycle/src/live_set.rs`, `rustd/crates/afd_fleet_lifecycle/src/sql/**`, `rustd/crates/afd_fleet_lifecycle/src/error/**` | EDIT | Coalesced load per workspace; weighted capacity; bounded snapshot; shared-failure error kind |
 | `rustd/crates/afd_authoring/tests/**`, `rustd/crates/afd_fleet_lifecycle/tests/**` | EDIT | Contention and coalescing tests |
@@ -85,7 +85,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Saturation benchmark first
 
-`make bench-lease PROFILE=saturation` runs more requesters than pool connections across several tenants, with renewals and background work competing. It reports lease rate, p95, pool wait and connection hold time separately, and asserts correctness under pressure. **Implementation default:** the profile bypasses the `fit` guard explicitly, because exceeding the pool is its purpose; every other profile keeps the guard.
+`make bench-lease BENCH_SHAPE=saturation` (rig only; `PROFILE` keeps meaning the environment) drives the production poll, `Plane::claim`, so chat claims and fleet leases compete as they do in production, over seeded chat drafts across several tenants, with concurrent live-set readers beside it. Requesters outnumber pool connections. It reports lease rate, p95, pool wait and connection hold time separately, and asserts correctness under pressure. **Implementation default:** the saturation shape bypasses the `fit` guard explicitly, because exceeding the pool is its purpose; the default shape keeps the guard.
 
 - **Dimension 1.1** — the saturation profile completes or refuses every request within its budget, never issues a duplicate lease or exceeds host capacity, and the pool serves normally afterwards → Test `test_saturation_profile_holds_invariants`
 - **Dimension 1.2** — a baseline run on the M229_001 schema is recorded before §2 or §3 changes anything → Test `test_saturation_baseline_recorded` (manual)
@@ -116,7 +116,7 @@ Rerun the saturation profile after §2 and after §3. A change that regresses p9
 
 ```
 No API, CLI or wire change. Internal: the chat claim's placement gains a skip-on-locked-draft path;
-the live-set read becomes a coalesced load. `make bench-lease` gains PROFILE=saturation.
+the live-set read becomes a coalesced load. `make bench-lease` gains BENCH_SHAPE=saturation (rig only).
 ```
 
 ## Failure Modes
@@ -159,7 +159,7 @@ the live-set read becomes a coalesced load. `make bench-lease` gains PROFILE=sat
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Saturation profile runs and holds invariants (§1) | `make bench-lease PROFILE=saturation` | exit 0 | P0 | |
+| R1 | Saturation shape runs and holds invariants (§1) | `make bench-lease BENCH_SHAPE=saturation` | exit 0 | P0 | |
 | R2 | Locked draft does not stall other tenants (§2) | `make test-integration-rustd` | exit 0 | P0 | |
 | R3 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -204,6 +204,7 @@ N/A — no files deleted.
 
 - **Consults** — Owner decision via AskUserQuestion, Oct 17, 2026: > Indy (2026-10-17): "Yes make the M229_002 as a follow up" — context: chat-claim contention and live-set coalescing move out of M229_001.
   Owner decision via AskUserQuestion, Oct 21, 2026 (CHORE(open) found the claim's wallet lock already removed by `f74ad2323`): > Indy (2026-10-21): "Claude AIWA CTO what is your recommendation here,  i think it seems 2 to me." — option 2 = retarget §2 at the draft and user row locks; agent recommended the same, adding Dimension 2.4 to pin the wallet-lock removal.
+  Owner decision via AskUserQuestion, Oct 21, 2026 (PLAN found `PROFILE` already names the environment and no bench lane reaching the chat claim or the live set): Indy chose "BENCH_SHAPE, rig only (Recommended)" and "Real poll + live set (Recommended)".
 - **Metrics review** — adds the operator event `authoring_claim_draft_skipped`; no analytics/funnel playbook change, since it is an operator signal with no product funnel.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — none.
