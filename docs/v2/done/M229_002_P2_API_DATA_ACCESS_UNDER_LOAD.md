@@ -62,6 +62,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_authoring/tests/**`, `rustd/crates/afd_fleet_lifecycle/tests/**` | EDIT | Contention and coalescing tests |
 | `playbooks/operations/acceptance/baselines/M229_002-0fa9e555.md` | CREATE | Comparison-revision unit and integration counts |
 | `docs/architecture/scaling.md` | EDIT | Measured ceilings row for the saturation lane |
+| `rustd/crates/afd_runner/tests/capacity/{expiry,fixture}.rs` | EDIT | CI flake fix: the clock-after-lock proof seeded a 200 ms lease that could lapse before its first claim finished under coverage |
 | `docs/architecture/concurrency.md` | EDIT | Claim skips a locked draft; live-set load coalescing |
 
 ## Applicable Rules
