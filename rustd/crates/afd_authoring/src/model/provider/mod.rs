@@ -9,8 +9,6 @@ mod resolver;
 mod response;
 
 #[cfg(test)]
-mod rejections_tests;
-#[cfg(test)]
 mod tests;
 
 use std::time::Duration;

@@ -2,7 +2,7 @@
 
 #![expect(clippy::expect_used, reason = "fixture failures must fail the test")]
 
-use super::{Outbound, ProviderRequest, ProviderResponse, Transport, complete};
+use super::super::{Outbound, ProviderRequest, ProviderResponse, Transport, complete};
 use crate::{Result, error::ErrorKind};
 use afd_core::error_code;
 use afd_crypto::secret::SecretString;
@@ -68,7 +68,7 @@ fn physical(status: u16, document: &Value) -> Arc<Physical> {
 // Value: protects=all supported APIs retain an explicit authentication refusal;
 // fails_when=an SDK decoding error erases HTTP rejection; seam=physical transport.
 #[tokio::test]
-async fn authentication_rejection_is_preserved_without_retry_or_private_diagnostics() {
+async fn should_preserve_authentication_rejection_when_any_supported_api_refuses_credentials() {
     for api in [
         InferenceApi::Chat,
         InferenceApi::Responses,
@@ -92,7 +92,7 @@ async fn authentication_rejection_is_preserved_without_retry_or_private_diagnost
 // Value: protects=ambiguous errors never claim an authentication refusal;
 // fails_when=arbitrary failed or successful HTTP replies invent known zero usage.
 #[tokio::test]
-async fn ambiguous_errors_and_http_success_are_not_authentication_rejections() {
+async fn should_preserve_uncertainty_when_response_lacks_explicit_authentication_rejection() {
     for (status, document) in [
         (400, json!({"error":{}})),
         (403, json!({"error":{}})),
@@ -119,7 +119,7 @@ async fn ambiguous_errors_and_http_success_are_not_authentication_rejections() {
 }
 
 #[tokio::test]
-async fn authentication_status_does_not_erase_reported_usage() {
+async fn should_preserve_reported_usage_when_authentication_status_is_unauthorized() {
     let boundary = physical(
         401,
         &json!({"status":"failed","error":{"code":"invalid_key","message":"rejected"},
@@ -138,7 +138,7 @@ async fn authentication_status_does_not_erase_reported_usage() {
 }
 
 #[tokio::test]
-async fn a_lost_or_malformed_authentication_reply_remains_uncertain() {
+async fn should_preserve_uncertainty_when_authentication_reply_is_lost_or_malformed() {
     for fail in [false, true] {
         let boundary = Arc::new(Physical {
             status: 401,

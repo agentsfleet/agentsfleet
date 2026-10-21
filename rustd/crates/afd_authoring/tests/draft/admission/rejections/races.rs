@@ -91,15 +91,20 @@ async fn exercise(interruption: Interruption) {
 async fn settle(f: &Fixture, lease: &Claimed) {
     let id = Uuid7::parse(&lease.lease_id).expect("lease");
     let report = unknown_report(lease, 1);
-    for replayed in [false, true] {
-        let ack = f
-            .drafts
-            .report(&f.runner, &id, report.clone())
-            .await
-            .expect("late accounting");
-        assert!(ack.settled);
-        assert_eq!(ack.replayed, replayed);
-    }
+    let first = f
+        .drafts
+        .report(&f.runner, &id, report.clone())
+        .await
+        .expect("initial late accounting");
+    assert!(first.settled);
+    assert!(!first.replayed);
+    let duplicate = f
+        .drafts
+        .report(&f.runner, &id, report)
+        .await
+        .expect("replayed late accounting");
+    assert!(duplicate.settled);
+    assert!(duplicate.replayed);
     assert_eq!(state(f, lease).await, ("settled".into(), false, 1, false));
 }
 

@@ -1,10 +1,12 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from "vitest";
 import { DraftHistory } from "@/lib/api/draft-history";
+import { UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DRAFT, MESSAGE, response } from "./helpers/draft-fixtures";
 
 const OWNER = new AbortController();
+const SETTLED_REASON = "provider_failed";
 afterEach(() => vi.unstubAllGlobals());
 
 it("revisits an in-flight page and orders a late assistant beside its own user", async () => {
@@ -111,4 +113,29 @@ it("does not let a cancelled generation release or restore its replacement read"
   await Promise.all([oldRead, waiting]);
   latest.resolve(response({...DRAFT, items: [{...MESSAGE, text: "new owner"}], next_cursor: null}));
   expect((await next).messages.map(({text}) => text)).toEqual(["new owner"]);
+});
+
+it.each([false, true])("should release a cached unknown-usage page after reconciliation (stopped=%s)", async (stopped) => {
+  let reconciled = false;
+  const cursors: (string | null)[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+    if (!input.includes("/messages?")) return response({...DRAFT, cancelled_through: stopped && reconciled ? "1" : "0"});
+    const cursor = new URL(input, "https://app.example.test").searchParams.get("starting_after");
+    cursors.push(cursor);
+    const message = {...MESSAGE, state: MESSAGE_STATE.failed,
+      failure: {reason: reconciled && !stopped ? SETTLED_REASON : UNKNOWN_USAGE_REASON,
+        error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}};
+    return response({items: [{...message, role: cursor ? MESSAGE_ROLE.assistant : MESSAGE_ROLE.user}],
+      next_cursor: cursor ? null : "second"});
+  }));
+  const history = new DraftHistory();
+  await history.synchronize("/draft", OWNER.signal);
+  reconciled = true;
+  const result = await history.synchronize("/draft", OWNER.signal);
+  expect(cursors).toEqual([null, "second", null, "second"]);
+  expect(result.messages[0]?.failure?.reason).toBe(stopped ? UNKNOWN_USAGE_REASON : SETTLED_REASON);
+  expect(result.draft.cancelled_through).toBe(stopped ? "1" : "0");
+  await history.synchronize("/draft", OWNER.signal);
+  expect(cursors.at(-1)).toBe("second");
+  expect(cursors).toHaveLength(5);
 });

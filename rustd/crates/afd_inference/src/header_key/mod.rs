@@ -32,6 +32,11 @@ pub(crate) const KEY_HEADER: HeaderName = HeaderName::from_static("x-goog-api-ke
 #[derive(Clone)]
 pub(crate) struct HeaderKey<T>(pub(crate) T);
 
+/// Reproduces rig's raw query interpolation without allocating a completion body.
+pub(crate) fn key_probe(key: &str) -> Result<Uri> {
+    Ok(format!("/?{KEY_PARAMETER}={key}").parse()?)
+}
+
 impl<T: Transport<GenerateContent>> Transport<GenerateContent> for HeaderKey<T> {
     fn send(&self, mut payload: Encoded, exchange: Exchange) -> Opening<WireFrame> {
         match move_key(&mut payload.request) {

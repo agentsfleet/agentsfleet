@@ -5,6 +5,8 @@
     reason = "fixture construction and a refused request must fail the test if their outcome changes"
 )]
 
+mod rejections;
+
 use super::*;
 use afd_crypto::secret::SecretString;
 use afd_wire::inference::{InferenceApi, ModelInference};

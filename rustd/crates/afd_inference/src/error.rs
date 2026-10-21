@@ -40,7 +40,7 @@ pub(crate) enum ErrorKind {
     OutputLimit,
     #[error("complete inference input exhausts the model context window")]
     ContextLimit,
-    #[error("the Gemini API key is not a valid header value")]
+    #[error("the model API key is not a valid header value")]
     KeyHeader {
         #[source]
         source: http::header::InvalidHeaderValue,
