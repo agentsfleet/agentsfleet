@@ -8,7 +8,7 @@
 //! takes one pooled connection every [`PROBE_EVERY`], times the acquire alone,
 //! and hands it straight back: the wait any requester would have seen then.
 //!
-//! # Hold, from the server's side
+//! # Open-transaction age, from the server's side
 //!
 //! How long a connection stays checked out is the transaction it carries, and
 //! only Postgres sees every one of those. A sampler on a connection of its own
@@ -99,7 +99,7 @@ pub(super) struct Watched {
     /// Acquires the pool refused inside its budget.
     pub(super) refused: u64,
     /// How long transactions had been open when sampled.
-    pub(super) hold: Latency,
+    pub(super) age: Latency,
 }
 
 /// Probe `pool` and sample `sampler` while the window is open.
@@ -112,12 +112,12 @@ pub(super) async fn watch<P: Pool, S: Sampler + Send>(
     sampler: &mut S,
     shared: &Shared,
 ) -> Result<Watched> {
-    let (wait, hold) = tokio::join!(waits(pool, shared), holds(sampler, shared));
+    let (wait, age) = tokio::join!(waits(pool, shared), ages(sampler, shared));
     let (wait, refused) = wait?;
     Ok(Watched {
         wait,
         refused,
-        hold: hold?,
+        age: age?,
     })
 }
 
@@ -138,15 +138,17 @@ async fn waits<P: Pool>(pool: &P, shared: &Shared) -> Result<(Latency, u64)> {
 }
 
 /// Sample every open transaction's age while the window is open.
-async fn holds<S: Sampler>(sampler: &mut S, shared: &Shared) -> Result<Latency> {
-    let mut hold = Latency::new()?;
+async fn ages<S: Sampler>(sampler: &mut S, shared: &Shared) -> Result<Latency> {
+    let mut age = Latency::new()?;
     while shared.open() {
-        for age in sampler.ages().await? {
-            hold.record(Duration::from_secs_f64(age.max(0.0) / MILLIS_PER_SECOND))?;
+        for sampled in sampler.ages().await? {
+            age.record(Duration::from_secs_f64(
+                sampled.max(0.0) / MILLIS_PER_SECOND,
+            ))?;
         }
         tokio::time::sleep(SAMPLE_EVERY).await;
     }
-    Ok(hold)
+    Ok(age)
 }
 
 #[cfg(test)]

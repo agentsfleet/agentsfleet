@@ -8,8 +8,8 @@
 use core::time::Duration;
 
 use super::{
-    CHAT_LEASES, HOLD_MAX_MS, HOLD_P95_MS, LEASES_PER_SECOND, POOL_RECOVERED, POOL_WAIT_P95_MS,
-    Window, summary,
+    CHAT_LEASES, LEASES_PER_SECOND, OPEN_TXN_AGE_MAX_MS, OPEN_TXN_AGE_P95_MS, POOL_RECOVERED,
+    POOL_WAIT_P95_MS, Window, summary,
 };
 use crate::lane::lease::saturation::invariants::{Census, DOUBLED_CHAT};
 use crate::lane::lease::saturation::probe::Watched;
@@ -42,7 +42,7 @@ fn window(wait: Latency) -> Window {
     let pool = Watched {
         wait,
         refused: 0,
-        hold: Latency::new().expect("histogram"),
+        age: Latency::new().expect("histogram"),
     };
     let mut window = Window::new(pool).expect("an empty window");
     window.tally.chat = 3;
@@ -73,7 +73,7 @@ fn test_a_window_writes_its_counts_rate_and_census() {
 fn test_a_tail_nobody_sampled_is_left_out_not_zeroed() {
     let mut written = report();
     window(Latency::new().expect("histogram")).record(&mut written, &census());
-    for key in [POOL_WAIT_P95_MS, HOLD_P95_MS, HOLD_MAX_MS] {
+    for key in [POOL_WAIT_P95_MS, OPEN_TXN_AGE_P95_MS, OPEN_TXN_AGE_MAX_MS] {
         assert!(
             !written.measurements.contains_key(key),
             "{key} was never sampled"
