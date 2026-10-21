@@ -16,14 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M229
 **Workstream:** 002
 **Date:** Oct 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — throughput and load behaviour under contention; nothing is broken at today's load
 **Categories:** API
 **Batch:** B2 — follows M229_001 on the rebuilt schema
 **Branch:** feat/m229-data-access-under-load
 **Baseline revision:** 0fa9e55356571d57df69cd3a13fb3b90930b0e49
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=9189 integration=1369
+**Baseline evidence:** playbooks/operations/acceptance/baselines/M229_002-0fa9e555.md
 **Depends on:** M229_001 — the rebuilt schema, typed row reads and connection time limits this workstream measures against
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 17, 2026), from the adversarial review of M229_001 and source reads at `7704a01ff`; §2 re-aimed at CHORE(open) (Oct 21, 2026) against `0fa9e5535`
 **Canonical architecture:** `docs/architecture/concurrency.md` (tasks, locks and shutdown order)
@@ -60,6 +60,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_authoring/src/lease/claim/**` | EDIT | Non-waiting user and draft locks (claim-only statements), skip on contention, context prepared outside the locked section |
 | `rustd/crates/afd_fleet_lifecycle/src/live_set.rs`, `rustd/crates/afd_fleet_lifecycle/src/sql/**`, `rustd/crates/afd_fleet_lifecycle/src/error/**` | EDIT | Coalesced load per workspace; weighted capacity; bounded snapshot; shared-failure error kind |
 | `rustd/crates/afd_authoring/tests/**`, `rustd/crates/afd_fleet_lifecycle/tests/**` | EDIT | Contention and coalescing tests |
+| `playbooks/operations/acceptance/baselines/M229_002-0fa9e555.md` | CREATE | Comparison-revision unit and integration counts |
+| `docs/architecture/scaling.md` | EDIT | Measured ceilings row for the saturation lane |
 | `docs/architecture/concurrency.md` | EDIT | Claim skips a locked draft; live-set load coalescing |
 
 ## Applicable Rules
@@ -91,7 +93,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.1** — DONE — the saturation profile completes or refuses every request within its budget, never issues a duplicate lease or exceeds host capacity, and the pool serves normally afterwards → Test `test_saturation_profile_holds_invariants`
 - **Dimension 1.2** — DONE — a baseline run on the M229_001 schema is recorded before §2 or §3 changes anything → Test `test_saturation_baseline_recorded` (manual)
 
-### §2 — Chat claims skip a locked draft
+### §2 — Chat claims skip a locked draft — DONE
 
 Before the existing reads, the claim takes the creator's user row and the draft row with `NOWAIT`, in the order it already locks them; a held lock makes that candidate skipped and the walk continues to the next. The shared lock statements and their other callers are unchanged. Lock order stays host, then user, then draft. Prompt context serialisation and its size check move out of the locked section and are revalidated against the committed state.
 
@@ -107,17 +109,17 @@ A miss loads through the cache's coalescing loader, so concurrent misses for one
 - **Dimension 3.1** — DONE — concurrent misses for one workspace run exactly one database read → Test `test_concurrent_misses_read_once`
 - **Dimension 3.2** — DONE — a workspace with many fleets evicts by weight before several small ones are lost → Test `test_large_workspace_weighs_more`
 
-### §5 — Chat renewal never waits holding the host
+### §5 — Chat renewal never waits holding the host — DONE
 
 Folded in on the owner's call (Discovery). A renewal locked the runner's host row and then waited on its draft, so a busy draft stalled the runner's polls for every tenant, as the claim did before §2. A renewal cannot skip its draft, so it takes the draft and attempt first and the host row last, and samples database time again after the host lock. No cycle forms: the claim is the only path that holds a host and then asks for a draft, and it takes the draft `NOWAIT`.
 
 - **Dimension 5.1** — DONE — while a renewal waits on a busy draft, the runner's host row is free, and the renewal completes once the draft is released → Test `test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free`
 
-### §4 — Keep only what the numbers support
+### §4 — Keep only what the numbers support — DONE
 
 Rerun the saturation profile after §2 and after §3. A change that regresses p95 or rate without a correctness gain is reverted, and the decision is recorded with both runs.
 
-- **Dimension 4.1** — Session Notes carry baseline and after-change numbers for each section with the keep or revert decision → Test `test_saturation_results_recorded` (manual)
+- **Dimension 4.1** — DONE — Session Notes carry baseline and after-change numbers for each section with the keep or revert decision → Test `test_saturation_results_recorded` (manual)
 
 ## Interfaces
 
