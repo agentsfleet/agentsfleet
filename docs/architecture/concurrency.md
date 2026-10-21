@@ -308,13 +308,27 @@ Integration (CI) job that runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims and both lease renewal kinds acquire the runner row before counting or extending live capacity. Sample database time after this guard; an original expired lease/affinity cannot revive. Runtime renewal uses runner → lease/affinity → wallet. A setup chat renewal is the exception to host-first: it takes draft → attempt → runner, and samples database time again after the runner lock (`afd_authoring/src/lease/renew.rs`), so a busy draft keeps the renewal waiting without holding the runner's host row. The claim, the one path that holds a host and then asks for a draft, never waits for the draft (below). Retiring a revoked runner (`afd_runner` `delete_revoked`) is the one opposite order left: the delete holds the runner row while `authoring.attempts.runner_id`'s `ON DELETE SET NULL` locks its attempts, so a renewal in flight can deadlock with it. Postgres aborts one side within `deadlock_timeout`; a revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried. Runtime reports use lease → wallet and do not acquire the runner or authoring rows. Commit dispatch intent before network I/O; release every database lock before provider calls. Unknown provider usage retains its outstanding admission bound. Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
+All claims and both lease renewal kinds acquire the runner row before counting or extending live capacity. Sample database time after this guard, so an expired lease or affinity cannot revive. Runtime renewal takes runner → lease/affinity → wallet.
 
-No setup chat path locks the wallet row: since the chat moved its money onto the Biller, the claim gate reads the balance less every open hold without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`), and the only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`). Stop and delete take draft → attempt and never later take the runner guard.
+A setup chat renewal takes draft → attempt → runner instead (`afd_authoring/src/lease/renew.rs`). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
+
+The claim is the one path that holds a host and then asks for a draft, and it never waits for the draft (below). Retiring a revoked runner (`afd_runner` `delete_revoked`) is the one opposite order left. Its delete holds the runner row while `authoring.attempts.runner_id`'s `ON DELETE SET NULL` locks that runner's attempts.
+
+So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
+
+Runtime reports take lease → wallet and never acquire the runner or authoring rows. Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage keeps its outstanding admission bound.
+
+Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
+
+No setup chat path locks the wallet row. The claim gate reads the balance less every open hold, without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`).
+
+Stop and delete take draft → attempt and never later take the runner guard.
 
 ### The setup chat claim never waits on a row
 
-A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_authoring/src/lease/claim/mod.rs`). Each locks the host row, then the creator's user row, then the draft. Every draft writer — a message sent, an edit, a revision applied, a review — takes that draft lock too, and the claim sets no `lock_timeout`. So a claim that WAITED on a busy draft held its host row the whole time, and every other tenant's message behind that draft waited with it:
+A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_authoring/src/lease/claim/mod.rs`). Each locks the host row, then the creator's user row, then the draft.
+
+Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. The claim sets no `lock_timeout`. A claim that waited on a busy draft therefore held its host row throughout, and every tenant behind that draft waited with it:
 
 ```
 BEFORE — the claim waits                      AFTER — the claim skips
@@ -329,6 +343,15 @@ BEFORE — the claim waits                      AFTER — the claim skips
    └─ every poll repeats the wait                    poll, once its writer lets go
 ```
 
-`authorize` takes the creator's row `FOR SHARE NOWAIT` and the draft's `FOR UPDATE NOWAIT`, in the order the reads after it lock them, inside a savepoint (`afd_authoring/src/lease/claim/selection.rs`, `sql/hold_user.sql`, `sql/hold_draft.sql`). A refused lock raises `55P03 lock_not_available`; rolling the savepoint back keeps the claim's own transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads that follow re-take locks the transaction already holds and never wait. The skip logs `authoring_claim_draft_skipped` at `debug` — under contention it fires on every poll of the walk. A skipped draft is passed over, not dropped: its order by age resumes on the first poll after the writer commits.
 
-Measured by `make bench-lease BENCH_SHAPE=saturation` (40 hosts on a 20-connection pool, one writer holding a tenant's drafts 1 s of every 1.25 s; medians of three runs): claim hold p95 959 → 17 ms, chat lease p95 3 006 → 707 ms, 41.7 → 62.7 leases/s, no lease doubled and no host over its workers either way — see `scaling.md` §Measured ceilings. Proofs: `tests/draft/admission/skipping.rs`; a claim can still be a deadlock victim on a lock it does wait for, the catalogue its model read shares (`tests/draft/admission/revalidation.rs`).
+`authorize` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_authoring/src/lease/claim/selection.rs`). That is the order the reads after it lock them. The statements are `sql/hold_user.sql` and `sql/hold_draft.sql`.
+
+A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the claim's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads after it never wait.
+
+The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every poll of the walk. A skipped draft is passed over, not dropped. Its order by age resumes on the first poll after the writer commits.
+
+`make bench-lease BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat lease p95 3 006 → 707 ms, 41.7 → 62.7 leases/s.
+
+No lease was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
+
+The proofs are `tests/draft/admission/skipping.rs`. A claim can still be a deadlock victim on a lock it does wait for, the catalogue its model read shares (`tests/draft/admission/revalidation.rs`).

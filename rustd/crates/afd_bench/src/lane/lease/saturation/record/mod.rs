@@ -61,11 +61,14 @@ const POOL_WAIT_MAX_MS: &str = "pool_wait_max_ms";
 /// Measurement key: probe acquires the pool refused inside its budget.
 const POOL_REFUSED: &str = "pool_refused";
 
-/// Measurement key: the tail of an open transaction's age.
-const HOLD_P95_MS: &str = "hold_p95_ms";
+/// Measurement key: the tail of the open-transaction ages the sampler read.
+///
+/// Sampled ages, not completed holds: a transaction shorter than the sampling
+/// interval can be missed, and a long one is read many times.
+const OPEN_TXN_AGE_P95_MS: &str = "open_txn_age_p95_ms";
 
 /// Measurement key: the oldest open transaction sampled.
-const HOLD_MAX_MS: &str = "hold_max_ms";
+const OPEN_TXN_AGE_MAX_MS: &str = "open_txn_age_max_ms";
 
 /// Measurement key: the tail of one live-set read.
 const LIVE_SET_P95_MS: &str = "live_set_p95_ms";
@@ -82,7 +85,7 @@ const SUMMARY_KEYS: [&str; 8] = [
     LEASE_P95_MS,
     CHAT_LEASE_P95_MS,
     POOL_WAIT_P95_MS,
-    HOLD_P95_MS,
+    OPEN_TXN_AGE_P95_MS,
     LIVE_SET_P95_MS,
     DOUBLED_CHAT,
     OVERSUBSCRIBED_HOSTS,
@@ -152,7 +155,11 @@ impl Window {
                 &self.tally.chat_latency,
             ),
             (POOL_WAIT_P95_MS, Some(POOL_WAIT_MAX_MS), &self.pool.wait),
-            (HOLD_P95_MS, Some(HOLD_MAX_MS), &self.pool.hold),
+            (
+                OPEN_TXN_AGE_P95_MS,
+                Some(OPEN_TXN_AGE_MAX_MS),
+                &self.pool.age,
+            ),
             (LIVE_SET_P95_MS, None, &self.reads.latency),
         ] {
             tail(&mut put, p95, max, measured);

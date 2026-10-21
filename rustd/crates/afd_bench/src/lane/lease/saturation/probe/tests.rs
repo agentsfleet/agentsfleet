@@ -82,7 +82,7 @@ async fn test_the_probe_times_every_acquire_until_the_window_closes() {
         .expect("a scripted window is watched");
     assert_eq!(watched.wait.count(), 3);
     assert_eq!(watched.refused, 0);
-    assert!(!watched.hold.is_empty(), "open transactions were sampled");
+    assert!(!watched.age.is_empty(), "open transactions were sampled");
 }
 
 #[tokio::test]
@@ -93,7 +93,7 @@ async fn test_an_acquire_past_its_budget_is_counted_refused() {
         .await
         .expect("refusals are counted");
     assert_eq!((watched.wait.count(), watched.refused), (0, 2));
-    assert!(watched.hold.is_empty(), "no transaction was open");
+    assert!(watched.age.is_empty(), "no transaction was open");
 }
 
 #[tokio::test]
@@ -105,8 +105,8 @@ async fn test_a_clock_skewed_negative_age_is_recorded_as_zero() {
     let watched = watch(&pool, &mut Fixed(Some(vec![-3.0])), &shared)
         .await
         .expect("a negative age is clamped, not refused");
-    assert!(!watched.hold.is_empty(), "the age was recorded");
-    assert_eq!(watched.hold.max_ms(), 0.0);
+    assert!(!watched.age.is_empty(), "the age was recorded");
+    assert_eq!(watched.age.max_ms(), 0.0);
 }
 
 #[tokio::test]

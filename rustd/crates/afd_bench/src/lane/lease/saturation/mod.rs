@@ -17,6 +17,7 @@
 //! which refuses the run.
 
 mod invariants;
+mod join;
 mod live;
 mod probe;
 mod production;
@@ -108,6 +109,11 @@ async fn measure(
     ledger: &mut FixtureLedger,
     report: &mut Report,
 ) -> Result<()> {
+    // Everything that can fail to set up happens before the first task starts,
+    // so a refusal here leaves nothing running beneath the caller's cleanup.
+    let locker = slow::named(run.stores.sampler().await?).await?;
+    let mut sampler = run.stores.sampler().await?;
+    let workspaces = workspaces_of(staged)?;
     let abort = Arc::new(Abort::new(run.profile.caps().abort_error_rate));
     let started = Instant::now();
     let shared = Arc::new(Shared {
@@ -117,18 +123,26 @@ async fn measure(
         abort: Arc::clone(&abort),
     });
     let requesters = spawn_requesters(host, &staged.runners, &shared);
-    let viewers = spawn_viewers(run.stores, staged, &shared)?;
-    let writer = spawn_writer(run.stores, staged, &shared).await?;
-    let mut sampler = run.stores.sampler().await?;
-    let pool = probe::watch(&run.stores.database, &mut sampler, &shared).await?;
-    let mut window = Window::new(pool)?;
-    for task in requesters {
-        window.tally.absorb(&joined(task.await, REQUESTER_ROLE)??)?;
+    let viewers = spawn_viewers(run.stores, &workspaces, &shared);
+    let tenant = first_tenant(staged);
+    let writer = spawn_writer(locker, tenant, &shared);
+    let watched = probe::watch(&run.stores.database, &mut sampler, &shared).await;
+    if watched.is_err() {
+        // The probe is what holds the window open; without it the tasks would
+        // run to the deadline. Stop them, then join every one.
+        abort.token().cancel();
     }
-    for task in viewers {
-        window.reads.absorb(&joined(task.await, VIEWER_ROLE)??)?;
+    let requesters = join::all(requesters, REQUESTER_ROLE).await;
+    let viewers = join::all(viewers, VIEWER_ROLE).await;
+    let writer = joined(writer.await, WRITER_ROLE).and_then(|inner| inner);
+    let mut window = Window::new(watched?)?;
+    for tally in requesters? {
+        window.tally.absorb(&tally)?;
     }
-    window.slow_holds = joined(writer.await, WRITER_ROLE)??;
+    for reads in viewers? {
+        window.reads.absorb(&reads)?;
+    }
+    window.slow_holds = writer?;
     window.length = started.elapsed();
     let recovered = run.stores.database.serves(run.stores.pool_size).await;
     let tenants: Vec<String> = staged.tenants.iter().map(|t| t.tenant.clone()).collect();
@@ -161,42 +175,46 @@ fn spawn_requesters(
         .collect()
 }
 
-/// The slow writer over the first chat tenant's drafts, on a connection of
-/// its own.
-async fn spawn_writer(
-    stores: &Datastores,
-    staged: &stage::Staged,
-    shared: &Arc<Shared>,
-) -> Result<tokio::task::JoinHandle<Result<u64>>> {
-    let mut locker = slow::named(stores.sampler().await?).await?;
-    let tenant = staged
+/// The tenant the slow writer holds: the first chat tenant's.
+fn first_tenant(staged: &stage::Staged) -> String {
+    staged
         .tenants
         .first()
         .map(|seeded| seeded.tenant.clone())
-        .unwrap_or_default();
-    let shared = Arc::clone(shared);
-    Ok(tokio::spawn(async move {
-        slow::write(&mut locker, &tenant, &shared).await
-    }))
+        .unwrap_or_default()
 }
 
-/// [`live::READERS`] wall viewers over every chat tenant's workspace.
-fn spawn_viewers(
-    stores: &Datastores,
-    staged: &stage::Staged,
+/// The slow writer over `tenant`'s drafts, on the connection it was handed.
+fn spawn_writer(
+    mut locker: sqlx::PgConnection,
+    tenant: String,
     shared: &Arc<Shared>,
-) -> Result<Vec<tokio::task::JoinHandle<Result<live::Reads>>>> {
-    let workspaces = staged
+) -> tokio::task::JoinHandle<Result<u64>> {
+    let shared = Arc::clone(shared);
+    tokio::spawn(async move { slow::write(&mut locker, &tenant, &shared).await })
+}
+
+/// Every chat tenant's workspace, which the wall viewers cycle through.
+fn workspaces_of(staged: &stage::Staged) -> Result<Arc<[Uuid7]>> {
+    Ok(staged
         .tenants
         .iter()
         .map(|tenant| Uuid7::parse(&tenant.workspace))
-        .collect::<core::result::Result<Arc<[Uuid7]>, _>>()?;
+        .collect::<core::result::Result<_, _>>()?)
+}
+
+/// [`live::READERS`] wall viewers over `workspaces`.
+fn spawn_viewers(
+    stores: &Datastores,
+    workspaces: &Arc<[Uuid7]>,
+    shared: &Arc<Shared>,
+) -> Vec<tokio::task::JoinHandle<Result<live::Reads>>> {
     let fleets = Fleets::new(stores.database.clone(), stores.queue.clone());
-    Ok((0..live::READERS)
+    (0..live::READERS)
         .map(|_| {
             let (fleets, workspaces, shared) =
-                (fleets.clone(), Arc::clone(&workspaces), Arc::clone(shared));
+                (fleets.clone(), Arc::clone(workspaces), Arc::clone(shared));
             tokio::spawn(async move { live::view(&fleets, &workspaces, &shared).await })
         })
-        .collect())
+        .collect()
 }
