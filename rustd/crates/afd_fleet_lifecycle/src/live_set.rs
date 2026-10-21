@@ -15,25 +15,24 @@
 //! every tick, against the caller's own credential. Caching the enumeration is
 //! safe precisely because the permission is never cached with it.
 //!
-//! # What this cache does NOT yet do, stated because the difference is
-//! measurable
+//! # Concurrent misses share one load
 //!
-//! It does not COALESCE concurrent misses. `get` followed by `insert` is
-//! check-then-act: when an entry expires under V viewers of one workspace, all
-//! V miss and all V run the statement, and one of them wins the `insert`. So
-//! the saving here is the steady state — V viewers ticking every few seconds
-//! cost one statement per TTL instead of V per tick — and not the expiry
-//! instant, which still costs V.
+//! When an entry expires under V viewers of one workspace, all V miss at
+//! once. The read loads through `moka`'s `try_get_with`, which runs ONE
+//! enumeration and hands every waiter its answer, so the expiry instant costs
+//! one statement as the steady state does. A load that fails reaches every
+//! waiter as the same failure behind an `Arc`, lifted into this crate's
+//! `Shared` kind, which answers the code of the failure beneath it — an
+//! outage stays an outage to each of them — and nothing is cached, so the
+//! next read tries again.
 //!
-//! Closing that needs `moka`'s `try_get_with`, whose init is shared across
-//! waiters and therefore hands every waiter the SAME failure behind an `Arc`.
-//! `std` implements `Error` for neither `Arc<T>` nor anything this crate's
-//! error shell can lift, so the honest version of that change alters this
-//! crate's error model — a caller today gets `INTERNAL_DB_UNAVAILABLE` or
-//! `INTERNAL_DB_QUERY` off the real failure, and a shared error would have to
-//! keep telling them apart. That is a deliberate follow-up rather than
-//! something to smuggle in behind a stream milestone, and the comment says so
-//! rather than claiming a coalescing the code does not perform.
+//! # Capacity counts fleets, not workspaces
+//!
+//! An entry weighs the fleets it holds, so the bound is on what is kept in
+//! memory: one workspace with thousands of fleets evicts by its weight rather
+//! than costing every small workspace its entry. A workspace with no fleets
+//! still weighs one, so empty sets are bounded too. No single set is capped
+//! yet: the product has no per-workspace fleet limit to cap it at.
 //!
 //! # The counters beside the set are NOT cached
 //!
@@ -68,11 +67,13 @@ const CONTEXT_COUNTERS: &str = "read the counters of a workspace's fleets";
 /// does not notice, long enough that a hundred tabs are one statement.
 pub(crate) const LIVE_SET_TTL: Duration = Duration::from_secs(10);
 
-/// How many workspaces' sets are held at once.
+/// How many fleet identifiers the cache holds across every workspace.
 ///
-/// A bound rather than a promise: an entry is a workspace id and a handful of
-/// fleet ids, and evicting one costs the next tick a query.
-pub(crate) const LIVE_SET_CAPACITY: u64 = 4_096;
+/// A bound on memory rather than a promise: an entry weighs its fleet count
+/// (see [`weight`]), and evicting one costs the next tick a query. Sixteen
+/// times the 4 096 workspaces the count-based bound held, at the handful of
+/// fleets a workspace carries today.
+pub(crate) const LIVE_SET_FLEETS: u64 = 65_536;
 
 /// The cache the enumeration is served from.
 pub(crate) type LiveSets = Cache<String, Arc<BTreeSet<String>>>;
@@ -80,9 +81,16 @@ pub(crate) type LiveSets = Cache<String, Arc<BTreeSet<String>>>;
 /// A cache sized and aged for the stream refresh tick.
 pub(crate) fn live_sets() -> LiveSets {
     Cache::builder()
-        .max_capacity(LIVE_SET_CAPACITY)
+        .max_capacity(LIVE_SET_FLEETS)
+        .weigher(weight)
         .time_to_live(LIVE_SET_TTL)
         .build()
+}
+
+/// What one workspace's set weighs against [`LIVE_SET_FLEETS`]: its fleet
+/// count, and never less than one.
+fn weight(_workspace: &String, set: &Arc<BTreeSet<String>>) -> u32 {
+    u32::try_from(set.len()).unwrap_or(u32::MAX).max(1)
 }
 
 impl Fleets {
@@ -102,18 +110,16 @@ impl Fleets {
     /// whose order changed between ticks would read as a set that changed.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer. A workspace holding no
-    /// fleets is an empty set, not a failure — a wall with nothing on it is a
+    /// Reports a datastore that would not answer, to every reader that waited
+    /// on the same load. A workspace holding no fleets is an empty set, not a
+    /// failure — a wall with nothing on it is a
     /// state an operator reaches by deleting their last fleet.
     pub async fn live_set(&self, workspace: &Uuid7) -> Result<Arc<BTreeSet<String>>> {
-        if let Some(held) = self.live_sets.get(workspace.as_str()).await {
-            return Ok(held);
-        }
-        let enumerated = Arc::new(self.enumerate(workspace).await?);
+        let load = async { self.enumerate(workspace).await.map(Arc::new) };
         self.live_sets
-            .insert(workspace.as_str().to_owned(), Arc::clone(&enumerated))
-            .await;
-        Ok(enumerated)
+            .try_get_with(workspace.as_str().to_owned(), load)
+            .await
+            .map_err(error::shared)
     }
 
     /// The statement behind [`Self::live_set`], run on a miss.
@@ -170,5 +176,46 @@ impl CounterRow {
             budget_used_nanos: self.budget_used_nanos,
         };
         (self.id, counters)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    use super::{LIVE_SET_FLEETS, live_sets, weight};
+
+    fn set(fleets: u64) -> Arc<BTreeSet<String>> {
+        Arc::new((0..fleets).map(|index| format!("fleet-{index}")).collect())
+    }
+
+    #[test]
+    fn test_a_set_weighs_its_fleets_and_an_empty_one_weighs_one() {
+        let key = String::from("workspace");
+        assert_eq!(weight(&key, &set(0)), 1);
+        assert_eq!(weight(&key, &set(3)), 3);
+    }
+
+    #[tokio::test]
+    async fn test_large_workspace_weighs_more() {
+        let cache = live_sets();
+        for small in ["a", "b", "c"] {
+            cache.insert(small.to_owned(), set(2)).await;
+        }
+        cache.run_pending_tasks().await;
+        // One workspace holding more fleets than the whole bound.
+        cache
+            .insert("large".to_owned(), set(LIVE_SET_FLEETS + 1))
+            .await;
+        cache.run_pending_tasks().await;
+        assert!(
+            cache.get("large").await.is_none(),
+            "the large set goes by its weight"
+        );
+        for small in ["a", "b", "c"] {
+            assert!(cache.get(small).await.is_some(), "{small} keeps its entry");
+        }
+        assert!(cache.weighted_size() <= LIVE_SET_FLEETS);
     }
 }
