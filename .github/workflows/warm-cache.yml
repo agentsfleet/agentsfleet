@@ -39,3 +39,36 @@ jobs:
 
       - name: Compile the unit shards' test binaries
         run: make build-test-unit-rustd
+
+  # The integration shards and the kernel lane restore only the cargo registry
+  # and git checkouts, which their own comments keep out of the target tree.
+  # `cargo fetch` fills them without compiling anything, and the keys match the
+  # ones test-integration-rustd.yml restores.
+  warm-rustd-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show the pinned toolchain
+        run: rustup show && cargo --version
+        working-directory: rustd
+
+      - name: Fetch the locked dependencies
+        run: cargo fetch --locked
+        working-directory: rustd
+
+      - name: Save the shards' registry cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-integration-v3-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+
+      - name: Save the kernel lane's registry cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-kernel-v1-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
