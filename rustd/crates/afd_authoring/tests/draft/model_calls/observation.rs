@@ -16,7 +16,10 @@ async fn uncertain_failure_notice_preserves_cause_and_stop_changes_only_recovery
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let mut provider = Provider::known();
-    provider.response["usage"] = Value::Null;
+    *provider
+        .response
+        .get_mut("usage")
+        .expect("known provider includes usage") = Value::Null;
     let provider = Arc::new(provider);
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
@@ -84,9 +87,11 @@ async fn assert_failure(f: &Fixture, attempt: &Attempt, action: &str) {
         .observe(f.access(), &attempt.draft.id, 0)
         .await
         .expect("authorized durable observation");
-    let Observation::Current(view) = observed else {
-        panic!("live draft was deleted");
-    };
+    let view = match observed {
+        Observation::Current(view) => Some(view),
+        Observation::Deleted => None,
+    }
+    .expect("live draft was not deleted");
     let message = view
         .notices
         .iter()

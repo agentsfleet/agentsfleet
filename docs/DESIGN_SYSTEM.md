@@ -101,8 +101,10 @@ Never reduce a readable text token through opacity to create secondary copy.
 Test both themes with axe-core in the rendered browser and the shared token contrast tests.
 Include badges with tinted backgrounds; a foreground passing on the page can still fail inside a badge.
 Inspect incomplete browser results manually when overlays or pseudo-elements prevent a background measurement.
+
 Contrast ratios measure readability, not perceived brightness on every display.
 Keep the dark canvas readable and lift working surfaces enough to distinguish content groups.
+
 Use mint light to emphasize an entrance. Chat composers keep a quiet neutral boundary while focused.
 
 Separate brand actions from status.
@@ -164,9 +166,16 @@ Keep narrow-screen reading order meaningful without relying on visual placement.
 Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
+
 Reusable visual treatments belong in `ui/packages/design-system`. App widgets combine those primitives with product behavior and data.
+
 Use Activity for the workspace feed and fleet section. Individual records remain events; existing event URLs retain their meaning.
-The fleet header places **Edit setup** before **Stop**. It opens the private setup chat at the fleet's saved version. Fleet sections are Chat, Activity, and Memory. The chat menu holds **Edit instructions**, **Save fleet** or **Save changes**, and **Rename chat**.
+
+The fleet header places **Edit setup** before **Stop**. It opens the private setup chat at the fleet's saved version.
+
+Fleet sections are Chat, Activity, and Memory. The chat menu holds **Edit instructions** and **Rename chat**.
+
+**Save fleet** sits beside the chat title. **Save changes** stays below the composer.
 
 ### Compact density
 
@@ -223,13 +232,17 @@ Activity and Approvals belong in workspace navigation. Keep Approvals available 
 
 Inputs have a visible resting boundary, a mint hover boundary, and a two-pixel focus ring.
 Pointer hover must preserve the focus ring on an already focused input.
+
 Chat composers use the shared Textarea's `composer` appearance, with a neutral outer boundary and no inner focus ring.
 Focus the composer on entry and restore typing after Send. Conversation updates must preserve focus on other controls.
+
 Dialogs use the shared panel radius, strong border, overlay, and dialog elevation tokens.
 Select and dropdown surfaces use the floating elevation token. Motion follows shared timing and respects reduced-motion preferences.
+
 The close control uses Button and reserves space beside the dialog title.
 Constrain the panel to the viewport and scroll its content so footer actions remain reachable.
 Shared buttons provide a minimum 44-pixel touch target on coarse pointers.
+
 Event details focus on the outcome, request context, and actionable failure guidance. Omit clipboard controls and empty action footers.
 
 Keep mutation errors inside their confirmation dialog, with the failed action available for retry. Prevent dismissal while a destructive request is pending.
@@ -309,21 +322,36 @@ Use native setup records throughout. Do not offer file imports, bundle exports, 
 
 ### Workspace authoring and publication
 
-The sidebar labels private New fleet conversations as Recent setup. Each compact row shows one title and a 14px status icon. Keep status text available to screen readers and in the private tooltip. It shows the chat list without a search control or a fleet recents section.
+The sidebar's Recent section lists authorized fleets and unfinished private setup chats. Each compact row shows one title and a trash control.
+
+Keep private setup status available to screen readers and in the private tooltip. Active fleet titles use the shared mint token. The list has no search control.
+
 Chat titles use the same 14px Instrument Sans as navigation, with ellipsis and the full title on hover or keyboard focus.
 
 Distinguish loading, unavailable history, and a successful empty list. Failed loading must never look like an empty history.
 
-Keep every accepted message and persisted assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
+Keep every accepted message and saved assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
+
 During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
-Keep review and correction available from the chat menu throughout a long conversation. **Edit instructions** opens a side panel on desktop and a full-screen editor on mobile. **Review and run options** holds the current task, runtime model, access, budget, readiness, publishing, and optional first run. Update edited fields before saving or publishing. Publication stores the selected candidate unchanged; the transcript stays private.
+
+Keep review and correction available from the chat menu throughout a long conversation. **Edit instructions** opens a side panel on desktop and a full-screen editor on mobile.
+
+**Review and run options** holds the current task, runtime model, access, budget, readiness, publishing, and optional first run. Update edited fields before saving or publishing. Publication stores the selected candidate unchanged; the transcript stays private.
+
 Opening the editor or review creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the panel is open.
-Show only **Saved vN** and a short explanation in the conversation after saving. Keep that summary above later messages until a new proposal replaces it. The version describes the fleet's saved setup; never append an inferred unsaved label to it. Saving changes updates the version from the server response. New runs use the saved setup, while runs already started keep their version. Accepted work can still be running.
+
+Show only **Saved vN** and a short explanation in the conversation after saving. Keep that summary above later messages until a new proposal replaces it. The version describes the fleet's saved setup; never append an inferred unsaved label to it.
+
+Saving changes updates the version from the server response. New runs use the saved setup, while runs already started keep their version. Accepted work can still be running.
+
 **Save fleet** requests no first run. Configured automatic triggers can start work once setup is ready. **Save and run now** requires a first message.
+
 Keep unfinished setup and first-run recovery, schedule registration warnings, and retry actions visible. Successful setup does not add an expandable report to the conversation.
 The saved result shares the conversation's scroll area so **Open fleet** remains reachable on narrow screens and short windows.
+
 Review dialogs use the shared viewport height limit and scroll within it.
 The current authoring context has a bounded model window. If it cannot fit, show the recorded failure and recovery action; do not silently discard earlier messages or imply that automatic compaction exists.
+
 These boundaries follow the [model instructions](../rustd/crates/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/afd_authoring/src/library/publish/persist.rs), and [resource reference](architecture/api_resources.md).
 
 ### Example playback

@@ -74,7 +74,7 @@ const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" 
 const WHITESPACE_MESSAGE = "   " as const;
 // An unresolved owner model reference must leave setup incomplete.
 const NONEXISTENT_MODEL = "accounts/fireworks/models/kimi-k2.6" as const;
-const MODEL_CHECK = {kind: "model", state: "missing", action: "account_models"} as const;
+const MODEL_CHECK = {kind: "model", state: "pending", action: "account_models"} as const;
 const NO_COLOR = "1" as const;
 
 // The SSE round-trip falls back to a ~60s poll window before declaring a

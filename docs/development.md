@@ -70,10 +70,13 @@ On macOS, it requires an explicit runner-reachable URL because Linux cannot use 
 `make acceptance-local` prepares the local services and calls `acceptance-e2e`, then `acceptance-cli`.
 Those existing targets keep their deployed-service behavior.
 For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
+
 The coordinator and local deployment files live in `deploy/local/`.
 
-This command uses macOS and a dedicated OrbStack Linux machine with a registered local runner token and a signed toolbox for the current runner version and architecture.
+This command needs macOS and a dedicated OrbStack Linux machine with a registered local runner token.
+The machine needs a signed toolbox for the current runner version and architecture.
 It reuses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
+
 The dashboard serves its ordinary production build from this checkout.
 Each invocation calls `acceptance-build`, starts the shipping runner service through `deploy/baremetal/deploy.sh`, and runs the selected acceptance targets.
 The dashboard is a child process and stops when the command exits; the development daemon, Caddy and Linux runner remain available.
@@ -90,6 +93,7 @@ Load the existing local platform settings there, including the encryption key fo
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply the existing development Clerk credentials.
 Before the first run, sign in to the local dashboard as a platform admin and open **Platform > Models**.
 Set a default model with its provider credential; the backend stores the credential in its encrypted vault.
+
 The tests select model references and make real provider calls through the backend; they do not need a provider API key.
 Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
 Startup logs live under `<WORKTREE_STATE>/acceptance/`.

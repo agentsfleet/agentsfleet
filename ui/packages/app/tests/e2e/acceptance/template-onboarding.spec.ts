@@ -29,14 +29,14 @@ test("a published recipe is inspected and pins the selected revision in a new pr
   await expect(page).toHaveURL(new RegExp(`/fleets/new\\?.*revision=${published.revision_id}`));
   // inline setup appears only once the chat holds a candidate, so the first message is what binds the pin.
   const created = page.waitForResponse((response) => response.request().method() === "POST"
-    && new URL(response.url()).pathname.endsWith("/drafts"));
+    && new URL(response.url()).pathname.endsWith("/drafts"))
+    .then(async (response) => ({ response, draft: CreatedMessageSchema.parse(await response.json()) }));
   await page.getByLabel(CHAT_PLACEHOLDER).fill(FIRST_MESSAGE);
   await page.getByRole("button", {name: "Send message", exact: true}).click();
-  const response = await created;
+  const { response, draft } = await created;
   expect(response.request().postDataJSON()).toMatchObject({
     source: {kind: "library", library_id: published.library_id, revision_id: published.revision_id}, message: FIRST_MESSAGE,
   });
   expect(response.ok()).toBe(true);
-  const draft = CreatedMessageSchema.parse(await response.json());
   expect(draft.candidate?.definition.instructions_md).toBe(INSTRUCTIONS);
 });

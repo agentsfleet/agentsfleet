@@ -54,20 +54,23 @@ Neither caller owns another provider event parser.
 The shared connection timeout is 10 seconds.
 The inactivity bound is 300 seconds after the last received event.
 `TurnControl.deadline` can end an attempt earlier.
+
 `TurnControl.cancellation` ends pending reads without another send.
 
 The physical sender remains a purpose boundary.
 Runtime retains its egress guard and existing retry policy.
 Authoring's adapter sends once after committing durable dispatch intent.
+
 The shared reader itself never retries.
 
 Runtime may reopen an eligible failure before visible output or reported usage.
 Known usage disables that reopening.
 The guard uses Rig's `Usage::is_reported`, including reasoning counts and cost metadata.
-On failure, `afr_providers` emits known usage before its error and omits `Chunk::End`.
-`afr_agent` records that usage without executing an incomplete result.
 
-Authoring records a 300-second dispatch deadline before the external call.
+On failure, `afr_providers` emits known usage before its error and omits `Chunk::End`.
+`afr_agent` records that usage without running an incomplete result.
+
+Authoring records a dispatch deadline of at most 300 seconds before the external call.
 The runner's 310-second HTTP wait allows receipt settlement after that bound.
 Replayed dispatches read their durable result and never send the provider request again.
 
@@ -76,6 +79,7 @@ Replayed dispatches read their durable result and never send the provider reques
 Cloned draft services share a Tokio mutex per cached chat before acquiring a database connection.
 Moka's configured capacity is 1,024 gate entries.
 These contain no text, authorization or receipts.
+
 Eviction can split a local queue, so the database row lock remains authoritative.
 Independent services also take that row lock.
 The receipt statement runs after the lock with a fresh database snapshot.
@@ -83,6 +87,7 @@ The receipt statement runs after the lock with a fresh database snapshot.
 Cancelling a waiter removes it from the mutex queue.
 Cancelling a holder before admission drops its guard and uncommitted transaction.
 A response lost after commit recovers through the existing idempotent receipt.
+
 Different chats have separate gates and can use spare database connections.
 The pool's existing five-second acquisition deadline remains unchanged.
 
@@ -91,21 +96,25 @@ The pool's existing five-second acquisition deadline remains unchanged.
 [`Publisher`](../../rustd/crates/afd_authoring/src/model/progress/publish.rs) consumes a bounded preview queue.
 The first answer text is flushed immediately.
 Later text is coalesced on a 50-millisecond interval.
+
 Reasoning and tool arguments never enter this queue.
 
 The queue holds at most 32 pieces, each containing at most 4,096 UTF-8 bytes.
 A full queue drops the preview piece without delaying inference or billing.
 Sequence numbers expose that loss to the browser.
+
 The browser then relies on durable recovery.
 
 Every publication checks current creator membership, lease, generation and Stop watermark.
 The transaction commits and releases its connection before the bus write.
 Publication and final drain each have a two-second bound.
+
 Cancellation drops the task and queued private buffers.
 
 The private SSE handler rechecks access before emitting each frame.
 It also checks while the channel is quiet.
 An authorized quiet stream emits the shared named heartbeat every 15 seconds.
+
 The browser recognizes this event and keeps the connection open.
 The private subject is `draft:<draft_id>:events`; fleet activity never receives setup text.
 
@@ -127,9 +136,11 @@ The draft event stream adds provisional `message.delta` events and `draft.resync
 Durable message responses also expose a bounded failure cause.
 They distinguish deadline, interrupted transport and unverified completion.
 Provider bodies and credentials never become public failure messages.
+
 Unknown usage remains unknown until reconciliation provides authoritative facts.
 Recovery owns a copy of the already validated route through `Configured::owned`.
 It fills missing usage fields and preserves reported cost, cache and reasoning counters.
+
 The received document is decoded locally through Rig without a physical send.
 
 ## Browser ownership
@@ -161,29 +172,34 @@ flowchart TD
 The setup adapter normalizes its one-based preview sequence before calling `ReplyStream`.
 Runtime frames already use the shared zero-based sequence.
 A gap stops provisional concatenation instead of displaying a corrupted answer.
+
 Each adapter repairs from its own durable reader.
 
 React creates owned resource objects without starting I/O during render.
 Effects start subscriptions and dispose them on identity changes or unmount.
 `useSyncExternalStore` reads stable immutable snapshots.
+
 Components use JSX and static top-level Hooks.
 Next.js server loading remains outside the interactive client boundary.
 
 Selected setup history loads independently of model and sidebar requests.
 `DraftCache` retains at most five chats and 1 MiB for 120 seconds.
 The mounted private identity owns the cache and clears it after lost access.
-No browser storage persists the private transcript.
+
+The private transcript stays out of browser storage.
 
 ### Setup and runtime stay together
 
 New fleet supports multiple setup messages before explicit **Save fleet**.
 Saving opens that fleet's Chat.
 **Edit setup** opens a private chat panel beside the mounted runtime conversation.
+
 Manual instructions are optional, and **Save changes** remains reachable below the editor.
 
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.
 A successful save closes the panel and refreshes server data.
+
 The mounted runtime composer retains its unsent text.
 New runs use the saved revision; existing runs keep their pinned version.
 
@@ -192,6 +208,7 @@ New runs use the saved revision; existing runs keep their pinned version.
 `model_turn_started` pairs with exactly one `model_turn_completed` or `model_turn_failed`.
 Dropping a turn emits its cancellation outcome.
 The records carry correlation identity, duration and answer byte count.
+
 `model_turn_first_text` records first-text timing at debug level.
 
 Private publication uses `draft_preview_started`, then exactly one completed or failed event.
@@ -201,17 +218,20 @@ Construction happens before spawning, so cancellation before the first poll stil
 Both use registered error codes and bounded failure words.
 Log fields are hoisted before tracing macros.
 Rig body logging is filtered at the shared logging boundary.
+
 Tests inspect captured records for private text and credential leaks.
 
 `SendRequest` erases the physical sender once per shared transport.
 `Bytes` shares immutable request storage; the adapter does not clone whole conversations for possible retries.
 Large SDK failures are boxed on internal paths to keep async state smaller.
+
 Fixed foreign trait signatures retain their required SDK error type.
 Runtime allocates its active reader once per opening and retains that allocation across chunks.
 Its two terminal chunks share a separate fixed-size allocation.
 
 Owned preview buffers, serialized private payloads, secret strings and retained scrub tails use `zeroize`.
 Unchanged safe scrub output moves without another string copy.
+
 This does not erase Rig's buffers, HTTP library storage or Aho-Corasick's compiled matcher.
 Those libraries provide no complete erasure guarantee through these interfaces.
 
@@ -220,6 +240,7 @@ Those libraries provide no complete erasure guarantee through these interfaces.
 The workspace has ten crates named `afr_*`.
 The audit covers all ten, the runner binary and five shared dependencies: sixteen crates total.
 The table records the inspected boundary and reused implementation.
+
 It does not claim that every unchanged operation has a new tracing span.
 
 | Crate | Inspected ownership and library reuse | Result |
@@ -246,8 +267,8 @@ The [Rust error standard](../RUST_ERROR_STANDARD.md) owns the crate exceptions a
 
 ## Verification evidence
 
-Rust coverage and the focused mutation checks below are complete.
-Matching-build sandbox acceptance, final repository verification and Continuous Integration (CI) results remain pending.
+Rust coverage, focused mutation checks, and the latest canonical unit and integration commands passed.
+Complete local acceptance, Indy's live visual review and hosted Continuous Integration (CI) results remain pending.
 Passing an inner-loop test does not satisfy those gates.
 
 | Proof | Observed result |
@@ -265,7 +286,13 @@ Passing an inner-loop test does not satisfy those gates.
 | Same concurrency sample | 100 known receipts; replay kept physical sends at 100; p50 546.448 ms, p95 576.749 ms, p99 582.978 ms |
 | Editor UI tests | Save v2 closes the editor, preserves unsent runtime text and refreshes server data; conflicts retain edits |
 | Recent UI tests | Authorized union, stop/delete conflict behavior and unmount cancellation |
-| `make test-coverage-all` | App 4,020 tests, website 133, CLI 1,955 and design system 499; all package coverage gates passed |
+| `make test-unit-all` | Rust runner 1,316, daemon 137 and daemon libraries 3,293; Python 25; app 3,973, website 133, command line 1,887 and design system 499 passed. The command-line suite retained 16 existing skips; all four package coverage gates passed at 100% |
+| `make test-integration-rustd` | 1,400 regular and three exclusive tests passed against isolated real Postgres and Dragonfly |
+| tsrs migration | Six existing configurations passed with both compilers; both rejected the temporary type error. All 156 emitted command-line JavaScript files were byte-identical; the built command reports version 0.64.0 |
+| `make acceptance-local` | Latest complete browser attempt: 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals; the workspace-navigation failure passed its focused rerun after the existing helper awaited navigation |
+| `make acceptance-cli` | Deterministic lane: 209 passed. Live lane: 171 passed, three failed. Two turns reached provider refusals; the missing-model setup assertion passed its focused rerun after matching setup's `pending` state |
+| Local provider prerequisite | The configured free model was absent from the live catalogue. The replacement free model is available, but a minimal live request returned HTTP 429 with `free-models-per-day`; complete acceptance requires restored account quota |
+| Guarded smoke checks | Built version and invalid-command refusal passed; a real browser rendered sign-in and redirected a synthetic private workspace URL back to sign-in without workspace controls. Authenticated exploratory flows remain blocked by the smoke browser's absent session |
 | `cargo mutants -p afd_inference --all-features` | 98 mutations: 26 caught, 72 did not compile, no survivors or timeouts |
 | Rust coverage: canonical run plus the focused hub-closure regression, graded by `scripts/rustd_coverage.py` | Overall 99.6116%; changed lines 100%; all 51 measured changed source files reach 99% |
 | Authoring mutation closure | 18 mutations: ten caught, eight did not compile, no survivors or timeouts |
@@ -278,6 +305,7 @@ Passing an inner-loop test does not satisfy those gates.
 The private-stream survivor replaces one cancellation-or-closure check with an AND expression.
 Its changed behavior requires a running message at or below the cancellation cutoff, or a running message in a closed draft.
 Production operations prevent both states under the same draft lock used by observation.
+
 See [`cancel`](../../rustd/crates/afd_authoring/src/message/cancel.rs), [`claim`](../../rustd/crates/afd_authoring/src/lease/claim/selection.rs),
 [`idle`](../../rustd/crates/afd_authoring/src/draft/patch.rs) and [`observe`](../../rustd/crates/afd_authoring/src/observe/mod.rs).
 The original defensive checks remain.

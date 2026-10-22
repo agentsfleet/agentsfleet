@@ -71,7 +71,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 | `rustd/crates/afd_authoring/Cargo.toml`, `src/model/`, `src/types/failure.rs`, `src/observe/`, `src/lease/guard/` | EDIT | Setup stream adapter, publication guard, durable deadline and failure facts |
 | `rustd/crates/afd_authoring/src/sql/message/{mod.rs,running.sql}` | EDIT/CREATE | Read the running message independently of the bounded history hints before releasing a private preview |
 | `rustd/crates/afd_authoring/tests/secret_wiping.rs` | CREATE | Observe private preview, daemon and runner secret allocations before free, including cloned text and replaced nested objects, with an unwiped negative control |
-| `rustd/crates/afd_authoring/src/model/receipt/replay/{tests.rs}` | CREATE | Check pending replay immediately before, exactly at, and after the recorded dispatch deadline |
+| `rustd/crates/afd_authoring/src/model/receipt/replay.rs` | EDIT | Keep the existing pending-deadline boundary case beside its private implementation; remove the separate test module to satisfy Rust file naming and fallible test rules |
 | `rustd/crates/afd_authoring/src/message/accept.rs`, `src/replay/mod.rs`, `src/sql/message/admit.sql` | EDIT/CREATE | Carry-over bounded admission history reads |
 | `rustd/crates/afd_authoring/src/draft/mod.rs`, `tests/draft/admission/history.rs`, `tests/draft/admission/history/latency.rs`, `tests/draft/admission/history/waiting.rs` | EDIT/CREATE | Indy approved per-chat waiting before database acquisition with existing Tokio and bounded Moka; prove independent service ordering, spare pool capacity and cancellation |
 | `rustd/crates/afd_authoring/tests/` | EDIT/CREATE | Real dispatch, usage, privacy, replay and admission regressions |
@@ -279,6 +279,12 @@ Remove the setup-only full-response collection and separate connection/viewport/
 - **Patch-vs-refactor verdict:** This is a focused refactor because the user explicitly requires one implementation for the duplicated behaviors, with existing purpose boundaries retained.
 
 ## Discovery (consult log)
+
+- Oct 22, 2026: The final `make test-unit-all` passed: Rust runner 1,316, daemon 137, daemon libraries 3,293, Python 25, app 3,973, website 133, command line 1,887 and design system 499. The command-line suite retained 16 existing skips; all four package coverage gates passed at 100%. `make test-integration-rustd` passed 1,400 regular and three exclusive tests against isolated local datastores. The focused Miri wiping test passed after the existing-test style corrections. No new files or test cases were added for these corrections.
+
+- Oct 22, 2026: The latest complete local browser attempt reported 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals. The fifth exposed an acceptance-helper race with completed workspace navigation; awaiting the new workspace URL fixed the existing operator journey, which passed its focused rerun. Command-line acceptance reported 209 deterministic passes, then 171 live passes and three failures. Two live turns reached provider refusals; the existing missing-model case now expects setup's `pending` state, retains its model/action/no-execution assertions and passed its focused rerun. Complete acceptance remains pending.
+
+- Oct 22, 2026: The configured free MiniMax model was absent from OpenRouter's live catalogue. A zero-charge, tool-capable Nvidia model replaced it through the existing local operator API. A minimal provider request then returned HTTP 429 with `free-models-per-day`, confirming exhausted daily free quota. No credits were purchased or paid model selected. The actual app remains at localhost:3100 for Indy's separate live review; no visual approval has been recorded.
 
 - Oct 22, 2026: Indy approved the four-file library-editor focus fix: "Approve the four-file fix". A delayed editor-module load reproduced focus returning to the page body after Escape; the normal loaded path returned it to Edit. Carry the original button through the existing loader and editor, and exercise the loading handoff in the existing accessibility case. Add no files or test cases.
 
