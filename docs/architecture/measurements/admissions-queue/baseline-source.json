@@ -1,8 +1,0 @@
-{
-  "revision": "0fa9e55356571d57df69cd3a13fb3b90930b0e49",
-  "command": "BENCH_FLEETS=200 BENCH_RUNNERS=8 make bench-lease PROFILE=rig",
-  "log": "/tmp/m226-bench-baseline-200-1.log",
-  "valid_completed_drain": false,
-  "reason": "The canonical command exited 0 but drain_events_processed=0, drain_failures=17 and drain_ready_depth=200. Its zero cost ratios cannot support a completed-drain comparison.",
-  "isolation": "Exact base checkout, private Cargo target and Compose project agentsfleet-m226-queue-baseline; no baseline source changes."
-}

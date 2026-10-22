@@ -150,7 +150,7 @@ It does not bound the number of active fleets examined inside Postgres.
 
 An isolated plan probe with 20,001 active fleets and no admissions performed zero fleet scans after the empty-ledger check.
 The single local samples took 19.702 ms before and 0.079 ms after; these are query-plan observations, not throughput or chat-latency measurements.
-[Probe inputs and results](./measurements/admissions-queue/idle-discovery-20000.json) retain the query fingerprints and limits.
+The real-database test is `afd_fleet/tests/integration_lease_plan/idle.rs`; its assertion requires every fleet scan to have zero actual loops.
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
 An absent or stale notification cannot strand work because every poll still queries Postgres.
@@ -311,25 +311,21 @@ The empty-ledger precheck skips fleet scans; nonempty discovery still examines e
 At 200 events the median lease and report p95 were 43.679 ms and 33.695 ms.
 The raw claim `rate_per_second` counts polls, including misses; the table uses the drain's explicit completed-event rate.
 
-[Raw samples and medians](measurements/admissions-queue/production-v065-summary.json) and
-[source provenance](measurements/admissions-queue/production-v065-source.json) identify the measured source at `ab66bb2ec`.
+The measured source was `ab66bb2ec992c87f0158470672a33bab30a58f38`, with integrated base `124c2bce303c95533745312c1ec725092bb604cb`.
 Documentation edits were pending; runtime sources matched that commit throughout all measurements.
 
 Idle Dragonfly samples include roughly 0.0024 commands per poll from the measurement window; serving discovery makes no Dragonfly command.
-The [earlier production samples](measurements/admissions-queue/production-summary.json) predate the integrated base and final coverage repairs.
+The later failed-park repair adds fenced cleanup when parking fails; successful claim and report statements remain unchanged.
+No later timing run was made for that repair.
 
 The fresh comparison checkout at `0fa9e55356571d57df69cd3a13fb3b90930b0e49` exited successfully but completed none of its 200 drain events, recorded 17 failures and left readiness depth 200.
-Its [incomplete result](measurements/admissions-queue/baseline-incomplete-200-1.json) cannot support zero-cost ratios or a completed-throughput comparison.
+That incomplete result cannot support zero-cost ratios or a completed-throughput comparison.
 
 The new benchmark refuses incomplete drains instead of publishing those ratios.
 No fresh before/after throughput improvement is established.
 
-The earlier benchmark-only selectors are retained as historical evidence:
-[stream comparison](measurements/admissions-queue/streams.json),
-[initial ledger prototype](measurements/admissions-queue/ledger-prototype.json) and
-[consolidated prototype](measurements/admissions-queue/ledger-consolidated.json).
-They used a temporary selector that has since been removed and settled admissions after the report transaction.
-Their rates and costs describe those prototypes, not the production implementation above.
+Earlier stream and ledger prototypes used a temporary selector and settled admissions after the report transaction.
+Their rates and costs describe those prototypes; the table above measures the production implementation.
 
 ## Sizing procedure (fleet- and playbook-readable)
 
