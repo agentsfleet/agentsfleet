@@ -105,17 +105,21 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   const dialog = page.getByRole("dialog", {name: CHAT_COPY.editSetup, exact: true});
   await dialog.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(IMPROVED_INSTRUCTIONS);
   const created = page.waitForResponse(response => response.request().method() === "POST"
-    && new URL(response.url()).pathname.endsWith(`/workspaces/${workspaceId}/drafts`))
-    .then(async response => DraftSchema.parse(await response.json()));
+    && new URL(response.url()).pathname.endsWith(`/workspaces/${workspaceId}/drafts`));
   await dialog.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
-  const draft = await created;
+  const response = await created;
+  expect(response.status()).toBe(201);
+  const location = await response.headerValue("location");
+  const draftId = DraftSchema.shape.id.parse(location?.split("/").at(-1));
+  expect(location).toBe(`/v1/workspaces/${workspaceId}/drafts/${draftId}`);
   await expect(dialog).toBeHidden();
   await panel.getByRole("button", {name: CHAT_COPY.apply, exact: true}).click();
   await expect(panel).toBeHidden({timeout: SETUP_TIMEOUT_MS});
   await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}$`));
   const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   expect(after.setup_revision).toBe(String(BigInt(before.setup_revision) + 1n));
-  return draft.id;
+  expect(after.definition?.instructions_md).toBe(IMPROVED_INSTRUCTIONS);
+  return draftId;
 }
 
 // A saved chat's address opens its fleet at phone width without overflow or accessibility violations.

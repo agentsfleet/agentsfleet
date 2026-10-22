@@ -1,13 +1,17 @@
 "use client";
 
 import { useContext } from "react";
+import dynamic from "next/dynamic";
 import { SectionLabel } from "@agentsfleet/design-system";
 import { useCurrentUser } from "@/lib/auth/client";
 import { DRAFT_LIST_STATUS as HISTORY_STATUS } from "@/lib/api/draft-list-types";
+import { CHAT_ACTIVITY } from "@/lib/api/draft-summary";
 import { DraftLoadMore, LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
 import { DraftChatList } from "./DraftChatList";
 import { HistoryContext, type DraftSidebarState } from "./draft-sidebar-state";
-import { RecentFleetList, StandaloneDraftHistory } from "./RecentChats";
+
+const RecentFleetList = dynamic(() => import("./RecentChats").then(module => module.RecentFleetList));
+const StandaloneDraftHistory = dynamic(() => import("./RecentChats").then(module => module.StandaloneDraftHistory));
 
 const HISTORY_COPY = {
   heading: "Recent", empty: "Your setup chats will appear here.",
@@ -28,7 +32,7 @@ export function DraftSidebarHistory({account = null, workspace, onNavigate}: {ac
 }
 
 function SidebarChats({history, onNavigate, showEmpty}: {history: DraftSidebarState; onNavigate: () => void; showEmpty: boolean}) {
-  const cards = history.cards.filter(card => !card.linkedFleet);
+  const cards = history.cards.filter(card => card.activity !== CHAT_ACTIVITY.saved);
   return <>
       <DraftChatList history={history} cards={cards} onNavigate={onNavigate} />
       {!cards.length && (showEmpty || history.status === HISTORY_STATUS.unavailable) ? <p className="px-md py-sm text-label text-muted-foreground">{history.status === HISTORY_STATUS.unavailable ? HISTORY_COPY.unavailable

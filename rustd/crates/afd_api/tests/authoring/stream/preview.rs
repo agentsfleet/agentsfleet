@@ -13,6 +13,10 @@ async fn running_private_answer_arrives_before_durable_completion() {
     let received = frame(&mut body).await;
     assert!(received.contains("event: message.delta\n"), "{received}");
     assert_eq!(data(&received), expected);
+    let escaped = "\0".repeat(4096);
+    let expected = live.delta(&escaped);
+    live.publish(&expected);
+    assert_eq!(data(&frame(&mut body).await), expected);
     let response = crate::harness::send(
         &live.router,
         http::Method::GET,
@@ -71,7 +75,7 @@ async fn running_answer_remains_visible_behind_twenty_five_queued_messages() {
 async fn malformed_unbounded_foreign_and_nonrunning_deltas_are_withheld() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    for raw in ["not-json".to_owned(), "x".repeat(8193)] {
+    for raw in ["not-json".to_owned(), "x".repeat(32769)] {
         live.server.publish(&live.channel(), &raw);
     }
     for (field, invalid) in [

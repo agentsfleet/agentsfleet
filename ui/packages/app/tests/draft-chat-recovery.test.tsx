@@ -128,7 +128,9 @@ it.each(["MiniMax M3.1 Flash (Free)", "GLM 5.3 Flash"])("displays the selected m
   expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toBe(label);
 });
 
-it("focuses New fleet ready for typing without clicking the composer", async () => {
+it("focuses New fleet ready for typing after its launcher was focused", async () => {
+  render(<Button>Open setup</Button>);
+  screen.getByRole("button", {name: "Open setup"}).focus();
   render(<Live />);
   const input = screen.getByRole("textbox", {name: CHAT_PLACEHOLDER});
   expect(document.activeElement).toBe(input);
@@ -183,7 +185,13 @@ it("leaves model selection focused when conversation updates arrive", async () =
   expect(document.activeElement).toBe(model);
 });
 
-it("leaves another control focused when a resumed composer becomes ready", async () => {
+it("leaves another control focused when a composer mounts or becomes ready", async () => {
+  const menu = render(<div role="menu"><Button role="menuitem">Create workspace</Button></div>);
+  const create = screen.getByRole("menuitem", {name: "Create workspace"});
+  create.focus();
+  const initial = render(<Live />);
+  expect(document.activeElement).toBe(create);
+  initial.unmount(); menu.unmount();
   await client.resume(DRAFT.id);
   const view = client.getSnapshot();
   const rendered = render(<DraftConversation client={client} view={{...view, busy: true}}><Button>Inspect answer</Button></DraftConversation>);

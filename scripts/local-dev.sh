@@ -126,16 +126,16 @@ dev_api_origin() {
 }
 
 dev_port_available() {
-  bun -e '
-try {
-  const probe = Bun.listen({hostname: "0.0.0.0", port: Number(Bun.argv[1]), socket: {data() {}}});
-  probe.stop();
-} catch (error) {
-  if (error.code !== "EADDRINUSE") throw error;
-  console.error("local-dev: daemon port is occupied; stop its owner or use another worktree path");
-  process.exit(1);
-}
-' "$DEV_PORT"
+  python3 - "$DEV_PORT" <<'PY'
+import errno, socket, sys
+with socket.socket() as probe:
+    try:
+        probe.bind(("0.0.0.0", int(sys.argv[1])))
+    except OSError as error:
+        if error.errno != errno.EADDRINUSE:
+            raise
+        sys.exit("local-dev: daemon port is occupied; stop its owner or use another worktree path")
+PY
 }
 
 dev_launch() {
