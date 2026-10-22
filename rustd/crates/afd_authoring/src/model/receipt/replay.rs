@@ -15,8 +15,6 @@ use crate::{
     error::{ErrorKind, raise::query},
     lease::{Status, guard::Guarded},
 };
-#[cfg(test)]
-mod tests;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -114,5 +112,37 @@ impl Receipt {
             State::Pending => return Ok(None),
         };
         Ok(Some(Decision::Refused(error.into())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Decision, Receipt};
+    use afd_core::error_code;
+    use jiff::Timestamp;
+
+    #[test]
+    fn a_pending_replay_needs_durable_uncertainty_at_the_exact_dispatch_deadline()
+    -> crate::Result<()> {
+        let deadline = Timestamp::constant(100, 0);
+        let receipt = Receipt {
+            id: String::new(),
+            sequence: 1,
+            request_digest: String::new(),
+            status: "pending".into(),
+            result: None,
+            dispatch_expires_at: deadline,
+        };
+        let before = receipt.decision(Timestamp::constant(99, 999_999_999))?;
+        assert!(
+            matches!(before, Some(Decision::Refused(error)) if error.code() == error_code::AUTHORING_STATE)
+        );
+        for now in [deadline, Timestamp::constant(100, 1)] {
+            assert!(
+                receipt.decision(now)?.is_none(),
+                "at or after expiry, record uncertainty instead of waiting or replaying"
+            );
+        }
+        Ok(())
     }
 }

@@ -88,6 +88,7 @@ Requirements are derived immutable setup, not readiness results. Review digest e
 `failure={reason,error_code,recovery_action,cause?}` is required on failed/timed_out messages and absent otherwise.
 The optional cause is `deadline|cancelled|provider_interrupted|completion_unverified`, recorded with the dispatch outcome.
 Older failures may lack a cause; clients must not infer one or display provider bodies.
+
 The daemon records terminal state atomically and returns the same bounded fields after reload.
 Reports cannot supply diagnostic text, URLs, credentials, or actions.
 
@@ -187,12 +188,14 @@ No private content enters workspace or operator streams.
 Provisional `message.delta` contains `{draft_id,sequence,stream_id,stream_seq,stream_start,text_kind:"answer",text}`.
 `sequence` is a decimal string; `stream_seq` starts at one per physical dispatch.
 Answer text is at most 4,096 UTF-8 bytes; the serialized payload is bounded at 8,192 bytes.
+
 Reasoning and tool arguments never enter the private preview.
 `draft.resync` carries `{}` after a subscription gap and requests a durable read, without another model request.
 
 Before each frame, recheck current membership, deletion generation, Stop watermark and running message state.
 Quiet streams check each second; each access read has a ten-second deadline.
 Revocation closes the stream; deletion emits only identity and closes.
+
 Already rendered text cannot be recalled.
 Final GET messages remains authoritative; previews never prove completion or usage.
 
@@ -208,7 +211,7 @@ A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{leas
  expires_at,model:{ref,provider,model,pricing},
  model_access:{token,expires_at,invocation_path},candidate?:Candidate,
  messages[],limits:{input_per_call:32768,
- output_per_turn:<saved model maximum>,max_calls:8,wall_seconds:300,provider_timeout_seconds:30}}
+ output_per_turn:<saved model maximum>,max_calls:8,wall_seconds:300,provider_timeout_seconds:300}}
 ```
 
 Authoring model access is a daemon-issued opaque capability plus the runner's existing bearer authentication. Fence, generation, and sequence are decimal strings. Internal attempt ID and capability are machine-only. The lease includes the current candidate identity/revision/definition when present, so a runner can address its first edit.
@@ -246,6 +249,7 @@ Native provider replies stay in `authoring.dispatches.native_reply`; the runner 
 Setup and runtime use `afd_inference::stream::StreamTurn` and Rig's native provider decoding.
 Purpose adapters retain their credential, authorization and tool boundaries.
 Dispatch intent records its deadline, bounded by the attempt expiry and the shared 300-second provider limit.
+
 Replay uses that recorded deadline; an unfinished intent never sends the request again.
 The runner allows 310 seconds for the HTTP response and receipt settlement.
 The [shared chat explanation](shared_chat_verification.md#backend-ownership) describes the methods and failure behavior.

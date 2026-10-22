@@ -28,14 +28,9 @@ unsafe impl GlobalAlloc for Watching {
         unsafe { System.alloc(layout) }
     }
 
-    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         if WATCHED
-            .compare_exchange(
-                pointer,
-                ptr::null_mut(),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
+            .compare_exchange(ptr, ptr::null_mut(), Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
         {
             let length = LENGTH.load(Ordering::Relaxed);
@@ -43,14 +38,14 @@ unsafe impl GlobalAlloc for Watching {
                 // SAFETY: arm records this live buffer's initialized prefix.
                 // The matching allocation is still live until System.dealloc
                 // below; no other code accesses these bytes during deallocation.
-                let bytes = unsafe { std::slice::from_raw_parts(pointer, length) };
+                let bytes = unsafe { std::slice::from_raw_parts(ptr, length) };
                 WIPED.store(bytes.iter().all(|byte| *byte == 0), Ordering::Release);
             }
             SEEN.store(true, Ordering::Release);
         }
         // SAFETY: the caller's pointer and layout came from this allocator,
         // which delegates every allocation to System with the same layout.
-        unsafe { System.dealloc(pointer, layout) }
+        unsafe { System.dealloc(ptr, layout) }
     }
 }
 
@@ -127,7 +122,7 @@ fn daemon_secret_text_during_unwinding() {
     arm(secret.expose().as_bytes());
     let outcome = std::panic::catch_unwind(move || {
         let _held = secret;
-        panic!("exercise secret cleanup on unwind");
+        std::panic::resume_unwind(Box::new("exercise secret cleanup on unwind"));
     });
     assert!(outcome.is_err(), "the owner unwound");
     assert_wiped();
@@ -162,8 +157,11 @@ fn secret_object() -> afd_crypto::secret::SecretObject {
 
 fn replaced_nested_secret() {
     let mut object = secret_object();
-    let old = object.fields()["credential"]["private-field"][0]
-        .as_str()
+    let old = object
+        .fields()
+        .get("credential")
+        .and_then(|value| value.pointer("/private-field/0"))
+        .and_then(serde_json::Value::as_str)
         .expect("nested credential");
     arm(old.as_bytes());
     object.replace_string("credential", "rotated credential");
@@ -183,8 +181,10 @@ fn dropped_secret_object() {
             .as_object()
             .expect("nested map");
         let bytes = match selected {
-            "nested-value" => nested["private-field"][0]
-                .as_str()
+            "nested-value" => nested
+                .get("private-field")
+                .and_then(|value| value.get(0))
+                .and_then(serde_json::Value::as_str)
                 .expect("secret")
                 .as_bytes(),
             "nested-key" => nested

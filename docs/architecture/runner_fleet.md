@@ -684,6 +684,7 @@ Both fleet and authoring renewal also take that runner-row guard before their le
 Authoring is creator-private work. Resolve its workspace owner, recheck creator membership, choose the oldest eligible queued message within that draft, and refuse another live attempt for the same draft. Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; Dragonfly publishes wake/progress hints, not another authoritative message copy.
 
 Additive migrations 935–942 define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts; content-free `authoring.attempts` and dispatch/activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup/Library revisions join their existing domains.
+
 The private progress channel is `draft:{draft_id}:events`.
 The publisher and HTTP reader recheck current access before sending answer previews.
 No private event joins workspace broadcast; durable message reads remain authoritative.
@@ -697,6 +698,7 @@ The daemon issues an opaque lease capability and serves the fourth machine route
 Both adapters call the shared `afd_inference::stream::StreamTurn` reader over Rig's native codecs.
 The reader owns cancellation, inactivity and finalization; known partial usage survives a failed response.
 Purpose adapters retain separate physical senders, permissions and retry eligibility.
+
 The [shared chat explanation](shared_chat_verification.md#backend-ownership) maps these methods and their callers.
 
 ### Token and time bounds

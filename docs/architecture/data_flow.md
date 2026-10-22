@@ -503,6 +503,7 @@ Already leased runs retain captured setup except live revocation and renewed bud
 In the browser, **Edit setup** opens that private draft beside the current fleet conversation.
 Multiple messages and manual instruction edits update the same candidate.
 Explicit **Save changes** applies the reviewed revision and returns focus to the fleet conversation.
+
 A stale setup tag retains the proposed edits for review.
 Initial **Save fleet** opens the same fleet Chat workspace.
 Both purposes share the [provider reader and browser chat implementation](shared_chat_verification.md).

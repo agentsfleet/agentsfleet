@@ -46,7 +46,7 @@ function uniqueName(prefix: string): string {
 }
 
 async function clickSidebarLink(page: Page, href: string, destination: RegExp): Promise<void> {
-  let link = page.locator(`aside a[href="${href}"]`);
+  let link = page.locator(`a[href="${href}"]:visible`);
   if (!await link.isVisible()) {
     await page.getByRole("button", { name: "Workspace and account menu" }).click();
     await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
@@ -74,6 +74,10 @@ async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<vo
   await dialog.getByTestId("workspace-create-submit").click();
   await expect(dialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
   await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
+  const workspaceId = await workspaceIdByName(name);
+  await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/fleets/new(?:\\?|$)`), {
+    timeout: ACTION_TIMEOUT_MS,
+  });
 }
 
 async function switchWorkspace(page: Page, name: string): Promise<void> {
