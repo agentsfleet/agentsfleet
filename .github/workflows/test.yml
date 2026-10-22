@@ -157,6 +157,11 @@ jobs:
   # The cache key matches `release.yml`'s `cargo-dist-<arch>-`, so compilation
   # work from the default branch can be reused. Release binaries are always
   # rebuilt from the tagged tree.
+  #
+  # This gate builds `fast-profile` (release with LTO off), not `dist`. LTO is
+  # link-time optimization across crates; `dist` uses fat LTO on one codegen
+  # unit, which was most of this job's 13 minutes. Static linking, and the
+  # NEEDED/INTERP check below, do not depend on LTO. Release keeps building `dist`.
   build-daemon-musl:
     strategy:
       fail-fast: false
