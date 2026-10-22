@@ -157,6 +157,11 @@ jobs:
   # The cache key matches `release.yml`'s `cargo-dist-<arch>-`, so compilation
   # work from the default branch can be reused. Release binaries are always
   # rebuilt from the tagged tree.
+  #
+  # This gate builds `fast-profile` (release with LTO off), not `dist`. LTO is
+  # link-time optimization across crates; `dist` uses fat LTO on one codegen
+  # unit, which was most of this job's 13 minutes. Static linking, and the
+  # NEEDED/INTERP check below, do not depend on LTO. Release keeps building `dist`.
   build-daemon-musl:
     strategy:
       fail-fast: false
@@ -168,14 +173,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Saves on pull requests too. deploy-dev-build's main entry holds only the
+      # daemon build; this job builds both binaries, so a branch keeps its own
+      # completed runner build for later pushes.
       - uses: actions/cache@v6
         with:
           path: |
             .cargo-cache/registry
             .cargo-cache/git
             rustd/target
-          key: cargo-dist-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: cargo-dist-${{ matrix.arch }}-
+          # Its own key: fast-profile artifacts must not share an exact hit with the
+          # `dist` entry deploy-dev-build writes, or a hit skips saving them.
+          key: cargo-fast-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: cargo-fast-${{ matrix.arch }}-
 
       # `docker run` rather than a job `container:`: JS actions cannot run
       # inside an Alpine container on an ARM64 runner, which is the constraint
@@ -200,8 +210,8 @@ jobs:
             "$BUILDER" \
             sh -c '
               set -e
-              cargo build --profile dist -p agentsfleetd --bin agentsfleetd
-              cargo build --profile dist -p agentsfleet_runner --bin agentsfleet-runner
+              cargo build --profile fast-profile -p agentsfleetd --bin agentsfleetd
+              cargo build --profile fast-profile -p agentsfleet_runner --bin agentsfleet-runner
             '
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
 
@@ -210,7 +220,7 @@ jobs:
       # there, so the assertion belongs on this side of the wall.
       - name: Verify static ELF — zero NEEDED, no INTERP
         run: |
-          for bin in rustd/target/dist/agentsfleetd rustd/target/dist/agentsfleet-runner; do
+          for bin in rustd/target/fast-profile/agentsfleetd rustd/target/fast-profile/agentsfleet-runner; do
             test -f "$bin"
             if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
               echo "FAIL: $bin has dynamic NEEDED entries"
