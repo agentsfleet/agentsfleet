@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Prototype:** v2.0.0
 **Milestone:** M230
 **Workstream:** 002
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — setup replies stall and setup editing diverges from fleet chat
 **Categories:** API | DOCS | UI
 **Batch:** B1 — one existing branch and one Pull Request (PR)
@@ -54,7 +54,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/active/M230_002_P1_API_DOCS_UI_ONE_FLEET_CHAT_ENGINE.md` | CREATE | Approved scope and proof ledger; move to done only after completion |
+| `docs/v2/done/M230_002_P1_API_DOCS_UI_ONE_FLEET_CHAT_ENGINE.md` | CREATE | Approved scope and proof ledger, closed after complete local acceptance |
 | `docs/architecture/api_resources.md` | EDIT | Private answer frames, failure facts and dispatch deadline |
 | `docs/AUTH.md` | EDIT | Keep the authoring dispatch reference valid after its shared-stream module split |
 | `docs/architecture/runner_fleet.md` | EDIT | Shared reader and private draft delivery |
@@ -170,10 +170,10 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 ### §5 — Verification and live review
 
 - **Dimension 5.1** — DONE — Validate carry-over admission/acceptance fixes and shared changed UI coverage → Test `concurrent_history_admission_releases_pool_connections`.
-- **Dimension 5.2** — IN_PROGRESS — Run declared repository gates and real local acceptance with matching build identities → Test `local_acceptance_uses_the_implemented_builds`.
+- **Dimension 5.2** — DONE — Run declared repository gates and real local acceptance on the coordinator-built stack → Test `local_acceptance_uses_the_implemented_builds`; canonical repository verification passed and complete browser plus command-line acceptance passed with Fireworks, as recorded in Discovery.
 - **Dimension 5.3** — DONE — Record Indy's visual sign-off and chosen review timing before merge → Test `indy_live_visual_signoff` remains manual; Indy signed off and prefers viewing after deployment, as quoted in Discovery.
 - **Dimension 5.4** — DONE — Enforce owned-secret zeroization and valid unsafe observation in PR CI → Test `owned_secret_buffers_are_wiped_before_free` passed on stable and Miri; four wipe-removal probes fail the intended assertion. The workflow passes lint and makes the existing required aggregate depend on stable and pinned-nightly Miri. Hosted execution remains part of the post-push checks.
-- **Dimension 5.5** — IN_PROGRESS — `acceptance-local` builds and starts the local stack, then calls the existing acceptance targets → Test `local_acceptance_runs_existing_suites`; preserve shared datastore containers and deployed target recipes, use the shipping runner deployment, and stop the owned dashboard on exit.
+- **Dimension 5.5** — DONE — `acceptance-local` builds and starts the local stack, then calls the existing acceptance targets → Test `local_acceptance_runs_existing_suites`; the whole command exited zero, deployed the shipping runner, preserved healthy shared datastore containers and stopped its dashboard on exit.
 
 ## Interfaces
 
@@ -240,15 +240,15 @@ Existing product actions remain; no new analytics funnel. Failure cause becomes 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Shared backend, private delivery and failure accounting | `make test-integration-rustd` | exit 0 | P0 | |
-| R2 | Shared UI and changed coverage | `make test-coverage-all` | exit 0 | P0 | |
-| R3 | Local browser and CLI acceptance | `make acceptance-e2e && make acceptance-cli` | exit 0 | P0 | |
-| R4 | Conform gates | `make harness-verify` | exit 0 | P0 | |
-| R5 | Lint | `make lint-all` | exit 0 | P0 | |
-| R6 | Unit lanes | `make test-unit-all` | exit 0 | P0 | |
-| R7 | Version synchronized | `make check-version` | exit 0 | P0 | |
-| R8 | Secrets absent | `gitleaks detect` | exit 0 | P0 | |
-| R9 | Actual local visual review | `manual: Indy reviews localhost:3100` | Recorded explicit approval before merge | P0 | |
+| R1 | Shared backend, private delivery and failure accounting | `make test-integration-rustd` | exit 0 | P0 | ✅ 1,400 regular and three exclusive tests passed |
+| R2 | Shared UI and changed coverage | `make test-coverage-all` | exit 0 | P0 | ✅ All four package coverage gates passed at 100% within `make test-unit-all` |
+| R3 | Local browser and CLI acceptance | `make acceptance-local` | exit 0 | P0 | ✅ Browser 113 passed, one public-webhook localhost skip; command line 209 deterministic and 174 live passed; zero failures |
+| R4 | Conform gates | `make harness-verify` | exit 0 | P0 | ✅ Earlier staged checks passed; closing commit also requires the normal pre-commit gate |
+| R5 | Lint | `make lint-all` | exit 0 | P0 | ✅ Passed in the repository PR gate at `872e96b4` |
+| R6 | Unit lanes | `make test-unit-all` | exit 0 | P0 | ✅ All unit lanes passed; measured counts and existing skips recorded in Discovery |
+| R7 | Version synchronized | `make check-version` | exit 0 | P0 | ✅ 0.64.0 synchronized |
+| R8 | Secrets absent | `gitleaks detect` | exit 0 | P0 | ✅ Published branch scan found no leaks; the closing commit requires a fresh scan |
+| R9 | Owner visual sign-off and review timing | `manual: record Indy's explicit sign-off` | Recorded explicit approval before merge | P0 | ✅ Indy signed off and prefers viewing after deployment; verbatim quote in Discovery |
 
 ## Dead Code Sweep
 
@@ -282,6 +282,12 @@ Remove the setup-only full-response collection and separate connection/viewport/
 
 ## Discovery (consult log)
 
+- Oct 22, 2026: Complete `make acceptance-local` passed on the built worktree stack with Fireworks model `accounts/fireworks/models/glm-5p3-flash`: browser 113 passed, zero failed, and one existing signup-webhook skip because localhost lacks a public webhook URL; command line 209 deterministic and 174 live passed with no failures or skips. The command exited zero, its dashboard listener stopped, and the existing Postgres, Dragonfly, QStash, Mailpit and Caddy containers remained healthy. Local evidence: `/tmp/agentsfleet-m230-fireworks-repaired-full-acceptance.log`. The first Fireworks run cleared the provider refusals and exposed a stale six-fleet label selector; its failure snapshot showed all six active cards. The existing case now scopes to its six returned fleet identifiers and retains exact count, live-state and header assertions. No files or test cases were added.
+
+- Oct 22, 2026: Indy authorized the Fireworks fallback below. The configured 1Password account has `ZMB_LOCAL_ENV`, not the supplied `ZMB_LOCAL_DEV`; item metadata and the local provisioning script identify `op://ZMB_LOCAL_ENV/fireworks-api-token/credential`. A catalogue request and an actual model answer both returned HTTP 200. The key was read in memory and stored through the existing local encrypted-vault API before activating the existing catalogue model. Evidence records metadata and response status, not credential values.
+
+> Indy (Oct 22, 2026): "it must work or use the op://ZMB_LOCAL_DEV/fireworks-api-token/credential to test the acceptance"
+
 - Oct 22, 2026: Indy approved the historical `spec.ordering` exception: the original heartbeat fix at `ab3f0f0d` predates the M230 spec. Preserve the published history and record the approved exception with `orly override spec.ordering`; complete acceptance and all other checks remain required.
 
 > Indy (Oct 22, 2026): "yes approved fo rhte spec.ordering."
@@ -294,7 +300,7 @@ Remove the setup-only full-response collection and separate connection/viewport/
 
 - Oct 22, 2026: The final `make test-unit-all` passed: Rust runner 1,316, daemon 137, daemon libraries 3,293, Python 25, app 3,973, website 133, command line 1,887 and design system 499. The command-line suite retained 16 existing skips; all four package coverage gates passed at 100%. `make test-integration-rustd` passed 1,400 regular and three exclusive tests against isolated local datastores. The focused Miri wiping test passed after the existing-test style corrections. No new files or test cases were added for these corrections.
 
-- Oct 22, 2026: The latest complete local browser attempt reported 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals. The fifth exposed an acceptance-helper race with completed workspace navigation; awaiting the new workspace URL fixed the existing operator journey, which passed its focused rerun. Command-line acceptance reported 209 deterministic passes, then 171 live passes and three failures. Two live turns reached provider refusals; the existing missing-model case now expects setup's `pending` state, retains its model/action/no-execution assertions and passed its focused rerun. Complete acceptance remains pending.
+- Oct 22, 2026: An earlier complete local browser attempt reported 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals. The fifth exposed an acceptance-helper race with completed workspace navigation; awaiting the new workspace URL fixed the existing operator journey, which passed its focused rerun. Command-line acceptance reported 209 deterministic passes, then 171 live passes and three failures. Two live turns reached provider refusals; the existing missing-model case now expects setup's `pending` state, retains its model/action/no-execution assertions and passed its focused rerun. Complete acceptance was pending at that point; the successful Fireworks run is recorded above.
 
 - Oct 22, 2026: The configured free MiniMax model was absent from OpenRouter's live catalogue. A zero-charge, tool-capable Nvidia model replaced it through the existing local operator API. A minimal provider request then returned HTTP 429 with `free-models-per-day`, confirming exhausted daily free quota. No credits were purchased or paid model selected. At that point the actual app remained at localhost:3100 for Indy's separate live review; the subsequent visual sign-off is recorded above.
 
@@ -323,5 +329,5 @@ Remove the setup-only full-response collection and separate connection/viewport/
 
 - **Consults:** Indy approved the seven-part architecture and screenshot alignment: “Signed off - approved for implementation by Indy”. Prior HTML approval is distinct from the future live visual review. Origin main was merged into the existing worktree at `a05c291ce`; provider/streaming sources were still unchanged at approval. Rig was pinned to 0.44.0 at approval; the requested dependency upgrade now uses 0.45.0. Preserve partial/failed-response usage rather than assuming error replies lack usage.
 - **Metrics review:** No new analytics funnel; retain existing events and add bounded safe failure information.
-- **Skill-chain outcomes:** Spec workflow applied; canonical unit and integration proofs passed; the in-host adversarial production review returned no findings. Browser acceptance, final review completion and post-push monitoring remain pending.
+- **Skill-chain outcomes:** Spec workflow applied; canonical unit and integration proofs passed; the in-host adversarial production review returned no findings. Whole local browser and command-line acceptance passed. Parent exploratory coverage remains limited to the recorded smoke evidence; owner visual approval is separately recorded. The final pushed-revision PR gate and hosted checks remain publication requirements.
 - **Deferrals:** None for functional acceptance. Visual review timing follows Indy's recorded sign-off; further documentation work is skipped by the recorded instruction.

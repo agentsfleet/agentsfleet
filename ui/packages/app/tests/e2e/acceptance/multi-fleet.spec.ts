@@ -7,8 +7,8 @@
  * spends per-tile connections and every live tile animates. The header
  * carries the canonical "{N} live" status text.
  *
- * Locators scope to this spec's own seed tag — parallel specs share the
- * fixture workspace, so unqualified counts see foreign fleets.
+ * Locators scope to returned fleet identifiers — parallel specs share the
+ * fixture workspace, and card labels show agent identity and purpose.
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -26,6 +26,7 @@ test.describe("multi-fleet wall", () => {
     async ({ page }) => {
       const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
       const tag = Math.random().toString(36).slice(2, 8);
+      const fleetIds: string[] = [];
 
       // Seed in series — agentsfleetd's per-tenant unique-name index can race
       // under parallel POSTs.
@@ -33,6 +34,7 @@ test.describe("multi-fleet wall", () => {
         const fleet = await seedFleet(FIXTURE_KEY.regular, ws, {
           name: `pulse-${tag}-${i}`,
         });
+        fleetIds.push(fleet.id);
         // data-state="live" requires ACTIVE; an installing fleet is not live.
         await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
       }
@@ -41,15 +43,13 @@ test.describe("multi-fleet wall", () => {
       await page.goto(workspaceHref(ws, "fleets"));
       await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
-      const hrefPrefix = workspaceHref(ws, "fleets/");
-      // Scope to this spec's own tiles: parallel specs seed into the same
-      // workspace, so unqualified counts see foreign fleets.
-      const own = `a[href^="${hrefPrefix}"][aria-label*=" — pulse-${tag}"]`;
-      const rows = page.locator(`${own}[data-state]`);
+      const ownedTiles = fleetIds.map((id) =>
+        `a[href="${workspaceHref(ws, `fleets/${id}`)}"][data-state]`).join(", ");
+      const rows = page.locator(ownedTiles);
       await expect(rows).toHaveCount(SEED_COUNT, { timeout: RENDER_TIMEOUT_MS });
 
       // Every seeded row's data-state is "live" (active status).
-      const liveRows = page.locator(`${own}[data-state="live"]`);
+      const liveRows = rows.and(page.locator('[data-state="live"]'));
       await expect(liveRows).toHaveCount(SEED_COUNT);
 
       // Every seeded tile renders live. The dot's ANIMATION (`data-live`) needs
