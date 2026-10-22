@@ -203,8 +203,8 @@ jobs:
             "$BUILDER" \
             sh -c '
               set -e
-              cargo build --profile dist -p agentsfleetd --bin agentsfleetd
-              cargo build --profile dist -p agentsfleet_runner --bin agentsfleet-runner
+              cargo build --profile fast-profile -p agentsfleetd --bin agentsfleetd
+              cargo build --profile fast-profile -p agentsfleet_runner --bin agentsfleet-runner
             '
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
 
@@ -213,7 +213,7 @@ jobs:
       # there, so the assertion belongs on this side of the wall.
       - name: Verify static ELF — zero NEEDED, no INTERP
         run: |
-          for bin in rustd/target/dist/agentsfleetd rustd/target/dist/agentsfleet-runner; do
+          for bin in rustd/target/fast-profile/agentsfleetd rustd/target/fast-profile/agentsfleet-runner; do
             test -f "$bin"
             if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
               echo "FAIL: $bin has dynamic NEEDED entries"
