@@ -65,8 +65,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The three shards share the `rustd-unit` cache key, which warm-cache.yml
-  # saves on main, so they compile the dependencies once between them.
+  # The three shards share the `rustd-unit` cache key, so they compile the
+  # dependencies once between them. Every run saves to its own branch, and main's
+  # warm-cache.yml entry is the fallback for a new branch.
   test-unit-rustd-runner:
     runs-on: ubuntu-latest
     steps:
@@ -78,7 +79,7 @@ jobs:
         with:
           workspaces: rustd
           shared-key: rustd-unit
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: true
       - name: Test the runner's crates
         run: make test-unit-rustd-runner
 
@@ -93,7 +94,7 @@ jobs:
         with:
           workspaces: rustd
           shared-key: rustd-unit
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: true
       - name: Test agentsfleetd
         run: make test-unit-rustd-daemon
 
@@ -108,7 +109,7 @@ jobs:
         with:
           workspaces: rustd
           shared-key: rustd-unit
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: true
       - name: Test the daemon's library crates
         run: make test-unit-rustd-daemon-libs
 
@@ -123,7 +124,7 @@ jobs:
         with:
           workspaces: rustd
           shared-key: rustd-lint
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: true
       - name: Lint the Rust workspace
         run: make lint-rustd
 
