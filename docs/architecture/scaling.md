@@ -104,7 +104,15 @@ An idle runner waits up to its retry interval before the next lease attempt.
 That interval is not an end-to-end latency bound: assignment, available workers, and datastore work add delay.
 Reducing `NO_WORK_RETRY_AFTER` trades more Postgres probes for shorter idle pickup waits.
 
-**Live-tail cadence.** The runner batches activity frames, one POST per batch. A batch goes when it reaches 64 KiB, or 250 ms after its first frame; no frame is posted eagerly (`rustd/crates/afr_supervisor/src/activity/mod.rs`, `MAX_BATCH_BYTES`, `FLUSH_EVERY`). The first visible token therefore waits up to 250 ms plus a round trip.
+**Live-tail cadence.** The runner attempts immediate posting for a lease's first frame and first response chunk.
+Later frames batch toward 64 KiB; partial batches flush every 250 ms.
+The first response does not wait for that timer when the posting queue has room.
+
+Four batches may be queued before backpressure delays posting.
+A single oversized frame rides alone.
+These limits do not bound browser paint time.
+
+The source is `rustd/crates/afr_supervisor/src/activity/mod.rs`: `Early`, `MAX_BATCH_BYTES`, `FLUSH_EVERY` and `MAX_BATCHES_HELD`.
 
 ---
 
