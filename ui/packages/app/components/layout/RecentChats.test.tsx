@@ -8,6 +8,7 @@ const navigation = vi.hoisted(() => ({path: "", replace: vi.fn(), refresh: vi.fn
 vi.mock("next/navigation", () => ({useRouter: () => navigation, usePathname: () => navigation.path, useSearchParams: () => new URLSearchParams()}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({deleteFleetAction: vi.fn()}));
 const SECOND_ID = "0199a801-1000-7000-8000-000000000008";
+const EDIT_ID = "0199a801-1000-7000-8000-000000000009";
 const active = {...FLEET_DETAIL, description: "Reviews incoming pull requests", status: "active"};
 const stopped = {...active, id: SECOND_ID, name: "Stopped fleet", status: "killed"};
 type Call = {path: string; init?: RequestInit};
@@ -19,7 +20,8 @@ const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) 
   calls.push({path, init});
   if (path.includes("/drafts")) return response({items: [
     {...DRAFT, updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: null, candidate_revision: 1, setup_revision: null, publication_revision: null},
-    {...DRAFT, id: SECOND_ID, title: "Saved setup must not duplicate fleet", updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: FLEET_ID, candidate_revision: 1, setup_revision: 1, publication_revision: null},
+    {...DRAFT, id: SECOND_ID, title: "Saved setup must not duplicate fleet", state: "closed", updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: FLEET_ID, candidate_revision: 1, setup_revision: 1, publication_revision: null},
+    {...DRAFT, id: EDIT_ID, title: "Unfinished fleet edit", updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: FLEET_ID, candidate_revision: 2, setup_revision: 1, publication_revision: null},
   ], next_cursor: null});
   if (path.endsWith("/fleets?limit=50")) return response({items: [active, stopped], total: null, next_cursor: null});
   if (init?.method === "PATCH") return patchStatus === 200 ? response({...active, status: "killed", etag: '"stopped-fresh"'})
@@ -49,6 +51,7 @@ it("renders a compact icon-free union with brand color only for active fleets an
   expect(within(neutral).getByText(stopped.name).classList.contains("text-pulse")).toBe(false);
   expect(await screen.findByRole("link", {name: DRAFT.title})).toBeTruthy();
   expect(screen.queryByText("Saved setup must not duplicate fleet")).toBeNull();
+  expect(screen.getByRole("link", {name: "Unfinished fleet edit"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?draft=${EDIT_ID}`);
   const trash = screen.getByRole("button", {name: `Delete fleet: ${active.name}`});
   expect(trash.classList.contains("group-focus-within:opacity-100")).toBe(true);
   expect(trash.querySelector("svg")?.getAttribute("width")).toBe("14");

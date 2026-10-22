@@ -9,6 +9,8 @@ use std::{collections::HashMap, convert::Infallible, time::Duration};
 const QUIET: Duration = Duration::from_secs(1);
 const CHECK_DEADLINE: Duration = Duration::from_secs(10);
 const FAILED: &str = "draft_stream_recheck_failed";
+// A text piece can expand sixfold when escaped, before JSON frame metadata.
+const MAX_FRAME_BYTES: usize = 32 * 1024;
 
 struct Watch {
     drafts: Drafts,
@@ -129,7 +131,7 @@ async fn receive(watch: &mut Watch) -> Option<afd_dragonfly::hub::Received> {
 
 #[derive(garde::Validate)]
 struct Payload<'a> {
-    #[garde(length(bytes, max = 8192))]
+    #[garde(length(bytes, max = MAX_FRAME_BYTES))]
     value: &'a str,
 }
 

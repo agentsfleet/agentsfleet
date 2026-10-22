@@ -12,8 +12,9 @@ beforeEach(() => {vi.useFakeTimers(); changed = vi.fn(); replies = new DraftRepl
 afterEach(() => {replies.clear(); vi.useRealTimers();});
 
 it("renders before completion, then lets a durable final clear every provisional callback", async () => {
-  expect(replies.accept(frame(), DRAFT.id, "0", [])).toBe(true);
-  expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({text: "First 🌿", gapped: false}));
+  const escaped = "\u0000".repeat(4096);
+  expect(replies.accept(frame({text: escaped}), DRAFT.id, "0", [])).toBe(true);
+  expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({text: escaped, gapped: false}));
   replies.accept(frame({stream_seq: 2, stream_start: false, text: " buffered"}), DRAFT.id, "0", []);
   const final = {...MESSAGE, role: "assistant" as const, state: "completed" as const};
   replies.reconcile([final], "0");
@@ -40,7 +41,7 @@ it("requires durable recovery after a missing frame and ignores older messages",
   replies.reconcile([], "2"); expect(changed).toHaveBeenLastCalledWith(null);
 });
 
-it.each(["not JSON", frame({draft_id: FLEET_ID}), frame({text_kind: "reasoning"}), frame({text: "🌿".repeat(1025)}), frame({sequence: "0"}), "x".repeat(8193)])("rejects private or oversized input without publishing (%#)", data => {
+it.each(["not JSON", frame({draft_id: FLEET_ID}), frame({text_kind: "reasoning"}), frame({text: "🌿".repeat(1025)}), frame({sequence: "0"}), "x".repeat(32769)])("rejects private or oversized input without publishing (%#)", data => {
   expect(replies.accept(data, DRAFT.id, "0", [])).toBe(false);
   expect(changed).not.toHaveBeenCalled();
 });
@@ -76,6 +77,6 @@ it("bounds distinct provider passes for one message and accepts a subsequent mes
 });
 
 it("rejects oversized encoded frames before parsing unrelated Unicode metadata", () => {
-  expect(replies.accept(frame({padding: "🌿".repeat(2048)}), DRAFT.id, "0", [])).toBe(false);
+  expect(replies.accept(frame({padding: "🌿".repeat(8192)}), DRAFT.id, "0", [])).toBe(false);
   expect(changed).not.toHaveBeenCalled();
 });

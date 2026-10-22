@@ -2,7 +2,8 @@ import { z } from "zod";
 import { ReplyStream } from "../streaming/reply-stream";
 import { isRunning, MESSAGE_ROLE, type Message } from "./draft-types";
 
-const MAX_FRAME_BYTES = 8192;
+// A text piece can expand sixfold when escaped, before JSON frame metadata.
+const MAX_FRAME_BYTES = 32 * 1024;
 const DELTA_BYTES = 4096;
 const MAX_ANSWER_CHARACTERS = 128 * 1024;
 const MAX_STREAMS_PER_MESSAGE = 32;

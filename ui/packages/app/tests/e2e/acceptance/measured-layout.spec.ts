@@ -174,10 +174,11 @@ test.describe("measured placement", () => {
   test("Library inspection stays inside a phone viewport", async ({ page }) => {
     await page.setViewportSize(PHONE_WINDOW);
     const workspaceId = await layoutWorkspaceId();
-    await seedLibraryEntry(workspaceId, GALLERY_TEMPLATE);
+    const name = `${GALLERY_TEMPLATE}-${crypto.randomUUID()}`;
+    await seedLibraryEntry(workspaceId, name);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, WORKSPACE_LIBRARY));
-    const row = page.getByRole("listitem").filter({hasText: GALLERY_TEMPLATE});
+    const row = page.getByRole("listitem").filter({hasText: name});
     await row.getByRole("button", {name: "Inspect", exact: true}).click();
     const start = page.getByRole("button", {name: "Start chat from this revision"});
     await expect(start).toBeVisible({ timeout: RENDER_TIMEOUT_MS });

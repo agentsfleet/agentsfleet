@@ -54,7 +54,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/done/M230_002_P1_API_DOCS_UI_ONE_FLEET_CHAT_ENGINE.md` | CREATE | Approved scope and proof ledger, closed after complete local acceptance |
+| `docs/v2/done/M230_002_P1_API_DOCS_UI_ONE_FLEET_CHAT_ENGINE.md` | EDIT | Approved scope and proof ledger, including the completed hosted-check repairs |
 | `docs/architecture/api_resources.md` | EDIT | Private answer frames, failure facts and dispatch deadline |
 | `docs/AUTH.md` | EDIT | Keep the authoring dispatch reference valid after its shared-stream module split |
 | `docs/architecture/runner_fleet.md` | EDIT | Shared reader and private draft delivery |
@@ -151,7 +151,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 
 ### §2 — Private setup answer delivery
 
-- **Dimension 2.1** — DONE — Publish bounded answer-only deltas with message/pass identity and ordering to the private draft subject → Test `draft_stream_delivers_before_completion`.
+- **Dimension 2.1** — DONE — Publish bounded answer-only deltas with message/pass identity and ordering to the private draft subject → Test `draft_stream_delivers_before_completion`; existing decoder and real-router cases accept 4,096 escaped text bytes inside the bounded encoded frame.
 - **Dimension 2.2** — DONE — Check creator, membership, deletion generation and Stop watermark before publication → Test `revocation_and_stop_withhold_private_text`.
 - **Dimension 2.3** — DONE — Persist content-free failure cause, preserve unknown usage and final durable recovery without redispatch → Test `lost_completion_recovers_without_provider_retry`.
 
@@ -165,12 +165,12 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 
 - **Dimension 4.1** — DONE — New fleet supports multiple setup turns, review and explicit Save; editing opens beside fleet Chat with visible Save changes → Test `setup_edit_saves_next_revision_without_losing_chat`.
 - **Dimension 4.2** — DONE — Manual and conversational edits share one candidate; conflicts/failures retain edits, and future runs use the newly saved version → Test `failed_save_retains_manual_and_chat_edits`.
-- **Dimension 4.3** — DONE — Remove redundant navigation/status glyphs; union authorized fleets and private drafts in compact Recent rows with aligned brand/icon/trash → Test `recent_fleets_and_drafts_keep_authorized_routes_and_status`.
+- **Dimension 4.3** — DONE — Remove redundant navigation/status glyphs; union authorized fleets and private drafts in compact Recent rows with aligned brand/icon/trash → Test `recent_fleets_and_drafts_keep_authorized_routes_and_status`; existing cases retain unfinished linked edits in both Recent sources and hide saved chats.
 
 ### §5 — Verification and live review
 
 - **Dimension 5.1** — DONE — Validate carry-over admission/acceptance fixes and shared changed UI coverage → Test `concurrent_history_admission_releases_pool_connections`.
-- **Dimension 5.2** — DONE — Run declared repository gates and real local acceptance on the coordinator-built stack → Test `local_acceptance_uses_the_implemented_builds`; canonical repository verification passed and complete browser plus command-line acceptance passed with Fireworks, as recorded in Discovery.
+- **Dimension 5.2** — DONE — Run declared repository gates and real local acceptance on the coordinator-built stack → Test `local_acceptance_uses_the_implemented_builds`; complete acceptance passed again with all source repairs, launcher cases passed and the shared bundle fits its cap. Repeat the PR gate and hosted checks on the fixing commit before publication is complete.
 - **Dimension 5.3** — DONE — Record Indy's visual sign-off and chosen review timing before merge → Test `indy_live_visual_signoff` remains manual; Indy signed off and prefers viewing after deployment, as quoted in Discovery.
 - **Dimension 5.4** — DONE — Enforce owned-secret zeroization and valid unsafe observation in PR CI → Test `owned_secret_buffers_are_wiped_before_free` passed on stable and Miri; four wipe-removal probes fail the intended assertion. The workflow passes lint and makes the existing required aggregate depend on stable and pinned-nightly Miri. Hosted execution remains part of the post-push checks.
 - **Dimension 5.5** — DONE — `acceptance-local` builds and starts the local stack, then calls the existing acceptance targets → Test `local_acceptance_runs_existing_suites`; the whole command exited zero, deployed the shipping runner, preserved healthy shared datastore containers and stopped its dashboard on exit.
@@ -242,9 +242,9 @@ Existing product actions remain; no new analytics funnel. Failure cause becomes 
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Shared backend, private delivery and failure accounting | `make test-integration-rustd` | exit 0 | P0 | ✅ 1,400 regular and three exclusive tests passed |
 | R2 | Shared UI and changed coverage | `make test-coverage-all` | exit 0 | P0 | ✅ All four package coverage gates passed at 100% within `make test-unit-all` |
-| R3 | Local browser and CLI acceptance | `make acceptance-local` | exit 0 | P0 | ✅ Browser 113 passed, one public-webhook localhost skip; command line 209 deterministic and 174 live passed; zero failures |
+| R3 | Local browser and CLI acceptance | `make acceptance-local` | exit 0 | P0 | ✅ Latest complete recheck: browser 113 passed, one public-webhook localhost skip; command line 209 deterministic and 174 live passed; zero failures |
 | R4 | Conform gates | `make harness-verify` | exit 0 | P0 | ✅ Earlier staged checks passed; closing commit also requires the normal pre-commit gate |
-| R5 | Lint | `make lint-all` | exit 0 | P0 | ✅ Passed in the repository PR gate at `872e96b4` |
+| R5 | Lint | `make lint-all` | exit 0 | P0 | ✅ Passed in the prior repository PR gate at `3b584270`; current `make lint-app` passed; the fixing commit requires a fresh full gate |
 | R6 | Unit lanes | `make test-unit-all` | exit 0 | P0 | ✅ All unit lanes passed; measured counts and existing skips recorded in Discovery |
 | R7 | Version synchronized | `make check-version` | exit 0 | P0 | ✅ 0.64.0 synchronized |
 | R8 | Secrets absent | `gitleaks detect` | exit 0 | P0 | ✅ Published branch scan found no leaks; the closing commit requires a fresh scan |
@@ -281,6 +281,16 @@ Remove the setup-only full-response collection and separate connection/viewport/
 - **Patch-vs-refactor verdict:** This is a focused refactor because the user explicitly requires one implementation for the duplicated behaviors, with existing purpose boundaries retained.
 
 ## Discovery (consult log)
+
+- Oct 22, 2026: Latest complete `make acceptance-local` exited zero after all source and existing-test repairs: 113 browser cases passed with one existing public-webhook localhost skip, 209 deterministic command-line cases passed and 174 live cases passed. Evidence: `/tmp/agentsfleet-m230-full-acceptance-recheck.log`. The owned dashboard listener stopped and the shared containers remained healthy. The immediately preceding unchanged candidate failed one history-reopen request with `net::ERR_FAILED` and no HTTP response; its evidence is retained at `/tmp/agentsfleet-m230-private-chat-transport-evidence`. No source change, assertion weakening or retry policy change was made for that failure; the complete unchanged recheck passed, without establishing its transport cause.
+
+- Oct 22, 2026: Existing regressions prove unfinished linked edits remain resumable, saved chats stay hidden, worst-case JSON escaping retains valid private deltas and an open workspace menu keeps focus while the composer mounts. Initial Edit setup autofocus remains covered. The focused decoder/sidebar cases passed 46 tests; composer and workspace-menu cases passed 18. `make lint-app` passed, including tsrs and ten source checks. The production bundle check passed at 274.87 kB gzipped shared JavaScript against its 276.48 kB cap. Existing launcher tests passed 25 cases using the Python port probe in the Rust-only environment. No files or test cases were added for these repairs.
+
+- Oct 22, 2026: Canonical `make test-integration-rustd` recheck passed 1,400 regular and three exclusive tests. An earlier run failed the unchanged global provider-default race at `afd_credential/tests/integration_rotation/registry_walk.rs:133`; its isolated diagnostic passed and the complete unchanged canonical rerun passed. Evidence: `/tmp/agentsfleet-m230-greptile-integration-recheck.log`. The final in-host adversarial snapshot retained all 167 production entries unchanged, found no supported production defect and reviewed test changes in summary mode only. Parent authenticated exploratory coverage remains incomplete; automated acceptance and Indy's visual approval are separate evidence.
+
+- Oct 22, 2026: The review's P3 reference mismatch at `docs/architecture/api_resources.md:190` remains deferred by Indy's instruction below: prose says 8,192 encoded bytes while executable guards allow 32,768; decoded text remains bounded at 4,096 bytes. No further documentation audit or edit was performed. The final pushed-revision PR gate, green hosted checks and review-thread dispositions belong in the Pull Request session notes.
+
+> Indy (Oct 22, 2026): "skip documentation" — context: defer the encoded-frame reference correction and further documentation work.
 
 - Oct 22, 2026: Complete `make acceptance-local` passed on the built worktree stack with Fireworks model `accounts/fireworks/models/glm-5p3-flash`: browser 113 passed, zero failed, and one existing signup-webhook skip because localhost lacks a public webhook URL; command line 209 deterministic and 174 live passed with no failures or skips. The command exited zero, its dashboard listener stopped, and the existing Postgres, Dragonfly, QStash, Mailpit and Caddy containers remained healthy. Local evidence: `/tmp/agentsfleet-m230-fireworks-repaired-full-acceptance.log`. The first Fireworks run cleared the provider refusals and exposed a stale six-fleet label selector; its failure snapshot showed all six active cards. The existing case now scopes to its six returned fleet identifiers and retains exact count, live-state and header assertions. No files or test cases were added.
 

@@ -8,7 +8,7 @@ import { NavItem, IconAction, Button } from "@agentsfleet/design-system";
 import { Trash2Icon } from "lucide-react";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
 import { DraftCardsSchema } from "@/lib/api/draft-types";
-import { sidebarDrafts } from "@/lib/api/draft-summary";
+import { CHAT_ACTIVITY, sidebarDrafts } from "@/lib/api/draft-summary";
 import { RecentCollection } from "@/lib/api/recent-collection";
 import { DraftChatList } from "./DraftChatList";
 import { FleetDeleteDialog } from "./FleetDeleteDialog";
@@ -64,7 +64,7 @@ export function StandaloneDraftHistory({workspace, subject, onNavigate}: {worksp
 
 function DraftItems({collection, workspace, subject, onNavigate}: {collection: RecentCollection<z.infer<typeof DraftCardsSchema>["items"][number]>; workspace: string; subject: string; onNavigate: () => void}) {
   const page = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
-  const cards = sidebarDrafts(page.items, null).filter(card => !card.linkedFleet);
+  const cards = sidebarDrafts(page.items, null).filter(card => card.activity !== CHAT_ACTIVITY.saved);
   const history = {workspace, subject, cards, fresh: null, remove: null, owner: null, locked: page.loading, current: null,
     more: null, status: page.error ? "unavailable" as const : "ready" as const};
   return <>

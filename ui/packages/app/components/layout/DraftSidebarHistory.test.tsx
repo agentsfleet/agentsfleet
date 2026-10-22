@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
-import { DRAFT, MESSAGE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET_ID, MESSAGE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DraftSidebarHistory } from "./DraftSidebarHistory";
 import { DraftSidebarItem } from "./DraftSidebarItem";
 import { useDraftSidebarBridge } from "./use-draft-sidebar-bridge";
@@ -193,9 +193,14 @@ it("removes unfinished history when leaving chat and retains completed cards wit
 
 it("deduplicates the current draft and preserves the other loaded titles", () => {
   const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
-  render(tree({...initial, cards: [card, {...card, id: "another-chat", title: "Another setup"}]}));
+  const linked = {...DRAFT, linked_fleet_id: FLEET_ID};
+  const cards = [{...card, linked_fleet_id: FLEET_ID}, {...card, id: "another-chat", title: "Another setup"}];
+  const view = render(tree({...initial, draft: linked, cards}));
   expect(screen.getAllByRole("link")).toHaveLength(2);
   expect(screen.getAllByRole("link", {name: DRAFT.title})).toHaveLength(1);
+  expect(screen.getByRole("link", {name: "Another setup"})).toBeTruthy();
+  view.rerender(tree({...initial, draft: {...linked, state: "closed"}, cards}));
+  expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull();
   expect(screen.getByRole("link", {name: "Another setup"})).toBeTruthy();
 });
 

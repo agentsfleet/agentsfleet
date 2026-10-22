@@ -43,6 +43,8 @@ function useComposerFocus(input: RefObject<HTMLTextAreaElement | null>, disabled
     if (!field || disabled) return;
     const active = field.ownerDocument.activeElement;
     const available = active === field.ownerDocument.body || field.closest("form")?.contains(active);
-    if (initial || requested || (wasDisabled && available)) field.focus({preventScroll: true});
+    const overlay = active?.closest('[role="menu"], [role="dialog"]');
+    const initialAvailable = !overlay || overlay.contains(field);
+    if ((initial && initialAvailable) || requested || (wasDisabled && available)) field.focus({preventScroll: true});
   }, [input, disabled, focusKey]);
 }
