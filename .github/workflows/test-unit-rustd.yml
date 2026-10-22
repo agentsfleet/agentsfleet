@@ -65,6 +65,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The three shards share the `rustd-unit` cache key, which warm-cache.yml
+  # saves on main, so they compile the dependencies once between them.
   test-unit-rustd-runner:
     runs-on: ubuntu-latest
     steps:
@@ -75,7 +77,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: rustd
-          shared-key: rustd-unit-runner
+          shared-key: rustd-unit
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test the runner's crates
         run: make test-unit-rustd-runner
@@ -90,7 +92,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: rustd
-          shared-key: rustd-unit-daemon
+          shared-key: rustd-unit
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test agentsfleetd
         run: make test-unit-rustd-daemon
@@ -105,7 +107,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: rustd
-          shared-key: rustd-unit-daemon-libs
+          shared-key: rustd-unit
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test the daemon's library crates
         run: make test-unit-rustd-daemon-libs
