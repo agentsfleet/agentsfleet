@@ -1,6 +1,6 @@
-//! The pass's failure and repeat arms, each driven by a real injected failure:
-//! a queue that will not acknowledge, a payer read that will not answer, an
-//! unreadable fleet offered a second time, and a claim another runner won.
+//! Failed reads and parks, repeated refusals, and claims another runner won.
+
+mod parking;
 
 use super::seed::seed_provider_resolution;
 use super::*;

@@ -29,9 +29,8 @@ struct Held {
 impl Plane {
     /// Every step after a won claim, then what becomes of the claim.
     ///
-    /// A lease keeps it. Anything else frees it, and a park also clears the
-    /// fleet's mark with the generation the poll peeked, because the answer a
-    /// person owes re-marks the fleet and nothing else will change before it.
+    /// A lease keeps it. Anything else frees it. A park stamps the admission
+    /// and frees the slot together, so later work waits for the gate answer.
     ///
     /// `began` is when the poll began on the monotonic clock, so the issued
     /// lease's queue wait can count the time the poll itself took.
@@ -63,9 +62,14 @@ impl Plane {
                 Ok(Polled::Empty(answer))
             }
             Ok(Step::Park(answer)) => {
-                self.leases
+                if let Err(fault) = self
+                    .leases
                     .park(&held.fleet_id, &held.event_id, held.fence)
-                    .await?;
+                    .await
+                {
+                    self.let_go(&held).await;
+                    return Err(fault);
+                }
                 Ok(Polled::Empty(answer))
             }
             Err(fault) => {
