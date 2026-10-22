@@ -129,6 +129,7 @@ dev_port_available() {
   python3 - "$DEV_PORT" <<'PY'
 import errno, socket, sys
 with socket.socket() as probe:
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         probe.bind(("0.0.0.0", int(sys.argv[1])))
     except OSError as error:
