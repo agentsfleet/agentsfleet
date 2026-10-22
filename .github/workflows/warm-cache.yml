@@ -53,11 +53,9 @@ jobs:
         run: rustup show && cargo --version
         working-directory: rustd
 
-      - name: Fetch the locked dependencies
-        run: cargo fetch --locked
-        working-directory: rustd
-
-      - name: Save the shards' registry cache
+      # Restore first: an exact hit means `cargo fetch` finds nothing to download.
+      # On a miss the post step saves whatever `cargo fetch` added.
+      - name: Restore the shards' registry cache
         uses: actions/cache@v6
         with:
           path: |
@@ -65,10 +63,14 @@ jobs:
             ~/.cargo/git
           key: cargo-integration-v3-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
 
-      - name: Save the kernel lane's registry cache
+      - name: Restore the kernel lane's registry cache
         uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: cargo-kernel-v1-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+
+      - name: Fetch the locked dependencies
+        run: cargo fetch --locked
+        working-directory: rustd

@@ -168,9 +168,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Restore only: deploy-dev-build saves this key on main, so pull requests
-      # never write a cache another branch could restore.
-      - uses: actions/cache/restore@v6
+      # Saves on pull requests too. deploy-dev-build's main entry holds only the
+      # daemon build; this job builds both binaries, so a branch keeps its own
+      # completed runner build for later pushes.
+      - uses: actions/cache@v6
         with:
           path: |
             .cargo-cache/registry
