@@ -1,8 +1,12 @@
 # Scenario — Two fleets, end to end: a Pull Request, a Slack thread, and a steer
 
-> Parent: [`README.md`](./README.md) · References: [`../data_flow.md`](../data_flow.md) (the canonical trigger → execute → watch sequence), [`../lease_flow.md`](../lease_flow.md) (one lease in detail), [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology" (the admissions queue and wake notifications), [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design", [`github-pr-reviewer.md`](./github-pr-reviewer.md), [`slack-incident-responder.md`](./slack-incident-responder.md).
->
-> One workspace, two fleets, three ways in. Each part is one picture of one step, with the rules it depends on linked rather than copied: when a picture and a linked section disagree, the linked section wins and this page is stale.
+> Parent: [`README.md`](./README.md).
+
+> References: [`../data_flow.md`](../data_flow.md) for trigger → run → watch; [`../lease_flow.md`](../lease_flow.md) for one lease.
+> [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology" and [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design" own queue and datastore details.
+> See also [`github-pr-reviewer.md`](./github-pr-reviewer.md) and [`slack-incident-responder.md`](./slack-incident-responder.md).
+
+> One workspace, two fleets, three ways in. Each picture shows one step and links its rules. When a picture disagrees with a linked section, the linked section wins and this page is stale.
 
 **Outcome under test:** a Pull Request (PR) opened on `agentsfleet/linkwarden` wakes fleet A, a mention in a `#ci-dev` thread wakes fleet B, and a person steers fleet A; both fleets run on two runners at once, fleet B's answer lands back in the Slack thread, and fleet A's answer is readable in the dashboard and the Command-Line Interface (CLI) only, because nothing posts to a PR today ([`../lease_flow.md`](../lease_flow.md) §"4. How AGENT BOB 01 can reply").
 
@@ -153,6 +157,7 @@ for each claim:
 ```
 
 Only one active lease can hold a fleet. The steer waits behind A's Pull Request job until settlement releases its slot.
+
 A parked or locked head cannot be skipped within that fleet. See [claim ordering](../lease_flow.md#the-poll-claims-an-admission-and-its-fleet-slot).
 
 ## 7. Execute: inside the runner
@@ -214,6 +219,7 @@ runner -> report -> one Postgres transaction
 ```
 
 A stale holder receives `UZ-RUN-005` without durable changes. A repeat committed report charges nothing again.
+
 Fleet A owes no connector delivery; fleet B's obligation names the Slack thread.
 [Report settlement](../data_flow.md#c-execute--lease--runner--report) owns the failure and retry rules.
 

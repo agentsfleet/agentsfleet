@@ -39,9 +39,11 @@ self-hosted deployment buys the data plane and owes the operations, and that
 trade is only sound while an unattended node loss is survivable.
 
 PostgreSQL records accepted work, completion and delivery obligations. Each lease poll reads the admissions queue, even when Dragonfly sends no notification.
+
 An expired slot makes its unsettled admission eligible again. Recovery needs no stream reconstruction or readiness marks.
 
 `rebuild()` (`rustd/crates/afd_runner/src/sweep/rebuild/mod.rs`) repairs outbound delivery from `fleet.obligations`.
+
 Single-use session approvals have no durable row. Losing those keys requires the user to request another approval.
 The cluster recovery test checks this distinction: `test_cluster_restart_and_stale_snapshot_preserve_obligations`.
 
@@ -156,6 +158,7 @@ look implicated **also fires at bootstrap**, when the first cluster configuratio
 is pushed, which is why it appeared before every abort.
 
 A self-hosted deployment must restart a dead process. The outbound consumer still creates its group with `MKSTREAM`.
+
 Keep non-stream values out of its stream key. The inbound queue uses PostgreSQL and creates no Dragonfly group.
 
 ## What the cluster probe showed (2026-09-12)
@@ -174,6 +177,7 @@ A four-node Dragonfly v1.40.2 cluster (two primaries, one replica each, one netw
 ## Target design
 
 `afd_dragonfly` uses redis-rs `cluster_async` over version 3 of the Redis Serialization Protocol (RESP3). Boot refuses a non-cluster seed.
+
 Ordinary commands share one cluster connection per process. Blocking outbound consumers own separate connections, so parked reads cannot stall ordinary commands.
 
 ### The admissions ledger is the queue
@@ -189,41 +193,55 @@ report -> usage + terminal event + settlement + delivery obligation
 ```
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
+
 Every poll probes PostgreSQL. The notification only prioritizes a recent fleet.
 
 The candidate query first checks whether any unsettled admission exists. An empty ledger skips fleet scans.
 When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled`.
+
 A parked head blocks later rows. The claim locks the slot and that exact head with `SKIP LOCKED`, then advances both fences together.
+
 Claims retain held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
 
 `delivered_at` records admission into runtime history. `settled_at` removes a row from the queue.
 A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.
+
 An expired slot exposes the same unsettled head to another runner. The original billing identity survives redelivery.
 
 The per-fleet budget serializes admission with a `NO KEY UPDATE` fleet lock and refuses at 10,000 unsettled admissions.
 That lock permits the foreign-key checks needed to record delivery concurrently.
+
 The deployment ceiling estimates 100,000 unsettled admissions. It refreshes every 1,000 admissions or five seconds, and every 500 milliseconds while refusing.
+
 Each process adds its own accepted admissions between samples. Concurrent replicas can overshoot this estimate; the per-fleet limit remains serialized.
 The census publishes `agentsfleet_admission_backlog` and `agentsfleet_admission_backlog_oldest_age_seconds` from PostgreSQL, withdrawing them when its query fails.
 
 ### Dragonfly notifications and outbound delivery
 
 The live tail uses sharded publish and subscribe on `fleet:<id>:activity`. A restored subscription reports a gap so viewers can reload durable history.
+
 The doorbell uses sixteen `fleet:wake:{shard}` channels and a bounded local hint buffer. Every replica subscribes through its existing hub.
 
 Outbound work stays on its stream. PostgreSQL records the obligation before append, and the rebuild pass repairs missing entries.
+
 Destination lanes preserve delivery order within a workspace. Up to eight deliveries run across independent lanes; each lane holds at most 32 jobs.
+
 Acknowledgements trim completed history while retaining pending and undelivered entries. Those stream rules apply only to outbound delivery.
 
 Boot refuses a primary in cache mode or with an eviction policy other than `noeviction`.
 The local rig has four cluster processes. A fifth process serves the Transport Layer Security (TLS) trust tests.
+
 See [Shared local development](#shared-local-development) for ownership and reset rules.
 
 ## How it behaves
 
 The evidence sequence is: prototype on the local cluster, integrate the proven shape behind the boundary, prove cluster behaviour in the lane, then the four self-hosted processes, with Dragonfly Cloud Swarm after them (§"Destination: self-hosted first, Swarm later (Indy, 2026-09-14)"). Redis parity is not a gate, because Redis is not a supported backend.
 
-Dragonfly documents disk snapshots and no append-only log, so a crash loses whatever followed the last recoverable snapshot and a restart may come back with data that is stale rather than absent. The design has to survive both: an obligation PostgreSQL still holds is recovered whatever the datastore came back with, and a stale outbound entry for completed delivery is acknowledged rather than re-run. Work accepted by the target design remains recoverable after the in-memory datastore is lost, provided the durable database survives. This includes pending inbound work and queued outbound answers. Third-party side effects retain their documented retry and idempotency limits; this page makes no exactly-once promise for external services.
+Dragonfly supports disk snapshots without an append-only log. A crash loses writes after the last recoverable snapshot. A restart can restore stale data.
+
+Recovery handles both missing and stale state. Any obligation still held in PostgreSQL is recovered regardless of Dragonfly's restored state. A stale outbound entry for completed delivery is acknowledged without another delivery.
+
+Accepted work remains recoverable after Dragonfly is lost, provided the durable database survives. This includes pending inbound work and queued outbound answers. Third-party side effects retain their documented retry and idempotency limits; this page makes no exactly-once promise for external services.
 
 Deploy implementation increments to the same application services while retaining their Dragonfly endpoint. Record an immutable revision and configuration for every comparison. Changes in instance count, database capacity, region, payload distribution, or background traffic must be disclosed and separated from code improvements.
 
