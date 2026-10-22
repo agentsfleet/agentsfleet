@@ -14,11 +14,10 @@ name and whose third is the backticked column list, under a `## <schema>`
 heading or naming its schema itself (`vault.secrets`). A parenthesised note
 after a column (`id (=1)`) is not part of its name.
 
-The schema side is every `CREATE TABLE <schema>.<table> (...)`, its columns
-being the elements that are not a table constraint. An `ALTER TABLE` that adds,
-drops or renames a column, and a `DROP TABLE`, are reported rather than
-replayed: a slot that reshapes a table after its CREATE is a layout this check
-cannot read, and a check that guesses passes the drift it exists to catch.
+The schema side reads `CREATE TABLE <schema>.<table> (...)` and forward
+`ALTER TABLE ... ADD [COLUMN]` actions in numbered-slot order. Added columns
+must also appear in the doc. Duplicate additions without `IF NOT EXISTS`,
+unknown target tables, drops and renames are reported rather than guessed.
 """
 
 from __future__ import annotations
@@ -37,6 +36,11 @@ HEADING = "## "
 CREATE = re.compile(r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_]+\.[a-z_]+)\s*\(", re.IGNORECASE)
 ALTER = re.compile(r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([a-z_]+\.[a-z_]+)\s+([^;]*)", re.IGNORECASE)
 RESHAPES = re.compile(r"\b(?:ADD\s+COLUMN|DROP\s+COLUMN|RENAME)\b|\bADD\s+(?!CONSTRAINT\b)", re.IGNORECASE)
+ADD_COLUMN = re.compile(
+    r"ADD\s+(?:COLUMN\s+)?(?P<optional>IF\s+NOT\s+EXISTS\s+)?"
+    r'(?P<column>[a-z_][a-z0-9_]*|"[a-z_][a-z0-9_]*")\s+.+',
+    re.IGNORECASE | re.DOTALL,
+)
 DROP = re.compile(r"\bDROP\s+TABLE\b", re.IGNORECASE)
 # The first word of a table element that is a constraint, never a column.
 TABLE_CONSTRAINTS = frozenset({"constraint", "primary", "unique", "check", "foreign", "exclude", "like"})
@@ -88,7 +92,7 @@ def without_comments(sql: str) -> str:
     return "".join(out)
 
 
-def top_level_elements(sql: str, open_paren: int) -> list[str]:
+def top_level_elements(sql: str, open_paren: int, strict: bool = False) -> list[str]:
     """The comma-separated elements inside the parenthesis opening at `open_paren`."""
     elements, depth, quoted, start = [], 0, False, open_paren + 1
     for index in range(open_paren, len(sql)):
@@ -102,12 +106,46 @@ def top_level_elements(sql: str, open_paren: int) -> list[str]:
         elif char == ")":
             depth -= 1
             if depth == 0:
+                if strict and sql[index + 1:].strip():
+                    raise ValueError("unexpected text after column list")
                 elements.append(sql[start:index])
                 return elements
         elif char == "," and depth == 1:
             elements.append(sql[start:index])
             start = index + 1
     raise ValueError("the column list never closes")
+
+
+def added_columns(
+    alter: re.Match[str], where: str, layout: Layout, homes: dict[str, str]
+) -> list[str]:
+    """Apply only additive column actions; retain each column's migration source."""
+    name = alter.group(1).lower()
+    try:
+        actions = top_level_elements(f"({alter.group(2)})", 0, strict=True)
+    except ValueError as fault:
+        return [f"{where}: ALTER TABLE {name}: {fault}"]
+    problems = []
+    for action in actions:
+        if not RESHAPES.search(action):
+            continue
+        addition = ADD_COLUMN.fullmatch(action.strip())
+        if addition and addition.group("column").lower() in TABLE_CONSTRAINTS:
+            continue
+        if addition is None:
+            problems.append(f"{where}: ALTER TABLE {name} reshapes columns after the CREATE")
+            continue
+        if name not in layout:
+            problems.append(f"{where}: ALTER TABLE {name} has no prior CREATE")
+            continue
+        column = addition.group("column").strip('"')
+        if column in layout[name]:
+            if addition.group("optional") is None:
+                problems.append(f"{where}: {name}.{column} already exists")
+            continue
+        layout[name].add(column)
+        homes[f"{name}.{column}"] = where
+    return problems
 
 
 def built(schema_dir: Path) -> tuple[Layout, dict[str, str], list[str]]:
@@ -130,8 +168,7 @@ def built(schema_dir: Path) -> tuple[Layout, dict[str, str], list[str]]:
             layout[name] = {column for column in columns if column.lower() not in TABLE_CONSTRAINTS}
             homes[name] = where
         for alter in ALTER.finditer(sql):
-            if RESHAPES.search(alter.group(2)):
-                problems.append(f"{where}: ALTER TABLE {alter.group(1)} reshapes columns after the CREATE")
+            problems += added_columns(alter, where, layout, homes)
         if DROP.search(sql):
             problems.append(f"{where}: DROP TABLE removes a table after its CREATE")
     return layout, homes, problems
@@ -145,7 +182,8 @@ def differences(doc_path: str, design: Layout, schema: Layout, homes: dict[str, 
         found.append(f"{name} is listed in {doc_path} but no schema slot creates it")
     for name in sorted(design.keys() & schema.keys()):
         for column in sorted(schema[name] - design[name]):
-            found.append(f"{name}.{column} is in {homes[name]} but not in {doc_path}")
+            source = homes.get(f"{name}.{column}", homes[name])
+            found.append(f"{name}.{column} is in {source} but not in {doc_path}")
         for column in sorted(design[name] - schema[name]):
             found.append(f"{name}.{column} is in {doc_path} but not in {homes[name]}")
     return found

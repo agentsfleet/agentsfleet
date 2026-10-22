@@ -30,11 +30,16 @@ impl Transport for Reasoning {
         } else {
             json!([{"type":"message","content":[{"type":"output_text","text":"Ready"}]}])
         };
-        Ok(ProviderResponse {
-            status: 200,
-            body: serde_json::to_vec(&json!({"status":"completed","output":output,
+        let (headers, body) = crate::provider_wire::body(
+            200,
+            serde_json::to_vec(&json!({"status":"completed","output":output,
                 "usage":{"input_tokens":1,"output_tokens":1}}))
             .expect("response JSON"),
+        );
+        Ok(ProviderResponse {
+            status: 200,
+            headers,
+            body,
         })
     }
 }

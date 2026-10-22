@@ -86,6 +86,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What are the exact new API inputs, outputs, and missing pieces? | [`docs/architecture/api_resources.md`](api_resources.md) |
 | How can creation retry without duplicate fleets or lost schedule fires? | [`docs/architecture/data_flow.md#fleet-creation-and-setup-recovery`](data_flow.md#fleet-creation-and-setup-recovery) |
 | How would a runner refine a private draft? | [`docs/architecture/runner_fleet.md#authoring-leases`](runner_fleet.md#authoring-leases) |
+| Which streaming code do setup and fleet chat share? | [Shared chat implementation and verification](shared_chat_verification.md) |
 | What should Claude Agent Aiwa challenge before agreement? | [`docs/reviews/workspace-setup/claude-review-prompt.md`](../reviews/workspace-setup/claude-review-prompt.md) |
 | What prompt should ChatGPT use as CTO AIWA? | [`docs/reviews/workspace-setup/chatgpt-review-prompt.md`](../reviews/workspace-setup/chatgpt-review-prompt.md) |
 | Which owner decisions and source answers govern the cutover? | [Decision ledger](../reviews/workspace-setup/decisions.md) and [source findings](../reviews/workspace-setup/source-findings.md) |
@@ -128,6 +129,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🗄️ [`datastore_scaling.md`](./datastore_scaling.md) | The Dragonfly cluster target and its status. |
 | 🗃️ [`postgres_schemas.md`](./postgres_schemas.md) | Which Postgres schema owns each table, and the naming rules. |
 | 🖥️ [`web_app.md`](./web_app.md) | The dashboard's server-client rules. |
+| [`shared_chat_verification.md`](./shared_chat_verification.md) | Shared provider reader, browser lifecycle, tracing, limits and verification evidence. |
 | [`docs/architecture/high_level.md#fleet-authoring-and-runtime`](high_level.md#fleet-authoring-and-runtime) | Common validated fleet setup and reviewed lifecycle. |
 | 🧪 [`testing.md`](./testing.md) | Test ownership, lanes and the coverage bar. |
 | 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |

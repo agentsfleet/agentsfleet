@@ -195,7 +195,13 @@ impl Telemetry {
         if finished.recv_timeout(budget).is_err() {
             let budget_ms = budget.as_millis();
             let event = EVENT_CLOSE_TIMED_OUT;
-            tracing::warn!(budget_ms, event, "some telemetry was not delivered");
+            let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            tracing::warn!(
+                budget_ms,
+                event,
+                error_code,
+                "some telemetry was not delivered"
+            );
         }
     }
 

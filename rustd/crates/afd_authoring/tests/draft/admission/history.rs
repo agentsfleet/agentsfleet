@@ -1,8 +1,11 @@
 //! Cutoff range scans and real contention retain one claim per new message.
 
+mod latency;
+mod waiting;
+
 use super::{Fixture, claim, fixture::fund, mint, now, queue, recovery::unknown};
 use afd_authoring::{
-    Claimed,
+    Claimed, Drafts,
     types::{Accepted, Draft, SendMessage},
 };
 use afd_core::id::Uuid7;
@@ -108,7 +111,7 @@ fn indexed(plan: &Value, last: i64) {
     eprintln!("retained history={last}: indexed cutoff; shared buffers={buffers}/{BUFFER_BOUND}");
 }
 
-async fn sends(f: Arc<Fixture>, id: &Uuid7) {
+async fn sends(f: Arc<Fixture>, id: &Uuid7, peer: Drafts) {
     let mut monitor = PgConnection::connect(&f.owner_url())
         .await
         .expect("independent lock monitor");
@@ -126,7 +129,9 @@ async fn sends(f: Arc<Fixture>, id: &Uuid7) {
         .execute(&mut *held)
         .await
         .expect("lock the owned draft");
-    let mut tasks = concurrent_sends(&f, id);
+    // Two independently constructed services keep the database lock, rather
+    // than a shared in-process queue, responsible for their common sequence.
+    let mut tasks = concurrent_sends(&f, id, &[f.drafts.clone(), peer]);
     wait_for_contention(&mut monitor, pid).await;
     held.commit().await.expect("release concurrent senders");
     drop(holder);
@@ -151,18 +156,22 @@ async fn sends(f: Arc<Fixture>, id: &Uuid7) {
     );
 }
 
-fn concurrent_sends(f: &Arc<Fixture>, id: &Uuid7) -> JoinSet<Accepted> {
+fn concurrent_sends(f: &Arc<Fixture>, id: &Uuid7, peers: &[Drafts; 2]) -> JoinSet<Accepted> {
     let barrier = Arc::new(Barrier::new(CALLERS));
     let mut tasks = JoinSet::new();
-    for _ in 0..CALLERS {
+    for index in 0..CALLERS {
         let (f, id, barrier) = (Arc::clone(f), id.clone(), Arc::clone(&barrier));
+        let drafts = peers
+            .get(index % peers.len())
+            .expect("service peer")
+            .clone();
         tasks.spawn(async move {
             barrier.wait().await;
             let input = SendMessage {
                 message: "A concurrent follow-up".into(),
                 operation_id: mint(),
             };
-            f.drafts
+            drafts
                 .send(f.access(), &id, input, now())
                 .await
                 .expect("concurrent Send")
@@ -234,7 +243,12 @@ async fn stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_se
         .await
         .expect("Stop old work");
     history(&f, &draft, &lease).await;
-    sends(Arc::clone(&f), &draft.id).await;
+    let peer = Drafts::new(
+        f.db.clone(),
+        Entropy::new(),
+        crate::draft::fixture::ledger(&f.db),
+    );
+    sends(Arc::clone(&f), &draft.id, peer).await;
     claims(Arc::clone(&f), &draft).await;
     Arc::try_unwrap(f)
         .ok()

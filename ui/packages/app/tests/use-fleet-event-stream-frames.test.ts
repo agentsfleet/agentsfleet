@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, waitFor } from "@testing-library/react";
 import { CONNECTION_STATUS } from "../components/domain/useFleetEventStream";
-import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
+import { __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
 import { OUTCOME } from "@/lib/events/event-summary";
 import type { LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";

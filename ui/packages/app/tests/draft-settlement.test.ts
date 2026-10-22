@@ -39,7 +39,7 @@ it("should unblock Send when accounting settles without a second finish event", 
   expect(fixture.mutations().at(-1)?.path).toContain(`/drafts/${DRAFT_ID}/messages`);
 });
 
-it("should stop following an unresolved receipt at the existing watch deadline", async () => {
+it("should stop accounting polling without saying failed work is still pending", async () => {
   const deadline = new AbortController();
   const timeout = AbortSignal.timeout.bind(AbortSignal);
   vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => ms === FOLLOW_LIMIT_MS ? deadline.signal : timeout(ms));
@@ -48,7 +48,8 @@ it("should stop following an unresolved receipt at the existing watch deadline",
   FakeEventSource.instances[0]?.open();
   await vi.advanceTimersByTimeAsync(0);
   deadline.abort(); await vi.advanceTimersByTimeAsync(0);
-  expect(client.getSnapshot().notice).toContain("Work is still pending");
+  expect(client.getSnapshot().notice).toBeNull();
+  expect(client.getSnapshot().messages[0]?.failure?.reason).toBe(UNKNOWN_USAGE_REASON);
   expect(FakeEventSource.instances[0]?.closed).toBe(true);
   const reads = fixture.calls.length;
   await vi.advanceTimersByTimeAsync(POLL_WINDOW_MS);
@@ -110,7 +111,7 @@ it("should give a new Send its own watch deadline after Stop", async () => {
   expect(client.getSnapshot().notice).toBeNull();
   deadlines[1]?.abort(); await vi.advanceTimersByTimeAsync(0);
   expect(replacement?.closed).toBe(true);
-  expect(client.getSnapshot().notice).toContain("Work is still pending");
+  expect(client.getSnapshot().notice).toBe("Still waiting for a result.");
 });
 
 it("should follow concurrent work above Stop's observed cutoff", async () => {

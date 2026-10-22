@@ -8,6 +8,7 @@ import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
 import { BREADCRUMB_LABEL, FLEETS_CRUMB_LABEL } from "./console-copy";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
+import { EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
 
 const LIFECYCLE_ACTION_STATUSES = new Set<string>([
   AGENTSFLEET_STATUS.ACTIVE,
@@ -61,6 +62,8 @@ export function FleetHeader({
         {exhaustedAt !== undefined ? (
           <ExhaustionBadge exhaustedAt={exhaustedAt} />
         ) : null}
+        {fleet.needs_re_review ? <Badge variant="amber">Access needs attention before resuming</Badge> : null}
+        <EditSetupButton />
         {fleet.status === AGENTSFLEET_STATUS.INSTALLING ? (
           <Badge variant="cyan" aria-label="Fleet status: installing">
             Installing

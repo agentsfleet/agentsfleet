@@ -16,7 +16,7 @@ import { applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecover
 import type { Entry } from "./fleet-stream-entry";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { closedAnyAtSettle } from "./fleet-stream-tool-trace";
-import { ReplyStreamDecoder } from "./reply-stream-decoder";
+import { ReplyStream } from "./reply-stream";
 import { STREAM_SILENCE_TIMEOUT_MS } from "./stream-recovery-window";
 
 type ChunkFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>;
@@ -76,27 +76,18 @@ function endWatch(entry: Entry, eventId: string): void {
 function writeChunk(entry: Entry, frame: ChunkFrame, apply: ApplyEvents, isCurrent: () => boolean): void {
   if (entry.replyGaps.has(frame.event_id)) return;
   let decoder = entry.replyStreams.get(frame.event_id);
-  const seq = frame.stream_seq;
-  const textKind = frame.text_kind;
-  const expected = entry.replyNextSeq.get(frame.event_id);
-  if (!["answer", "reasoning"].includes(textKind)
-    || !Number.isSafeInteger(seq) || seq === undefined || seq < 0
-    || frame.stream_contiguous !== true
-    || (decoder !== undefined && (frame.stream_start === true || seq !== expected))
-    || (decoder === undefined && (frame.stream_start !== true || seq !== 0))) {
-    decoder?.markGap();
-    entry.replyGaps.add(frame.event_id);
-    apply((prev) => applyReplyRecovery(prev, frame.event_id, frame.stream_start === true && decoder !== undefined), {});
-    return;
-  }
+  const alreadyOpen = decoder !== undefined;
   if (decoder === undefined) {
-    decoder = new ReplyStreamDecoder((delta) => {
+    decoder = new ReplyStream((delta) => {
       if (isCurrent()) apply((prev) => applyReplyDelta(prev, frame.event_id, delta), {});
     });
     entry.replyStreams.set(frame.event_id, decoder);
   }
-  entry.replyNextSeq.set(frame.event_id, seq + 1);
-  decoder.write(frame.text, textKind);
+  if (!decoder.write({sequence: frame.stream_seq, start: frame.stream_start === true,
+    contiguous: frame.stream_contiguous === true, kind: frame.text_kind, text: frame.text})) {
+    entry.replyGaps.add(frame.event_id);
+    apply((prev) => applyReplyRecovery(prev, frame.event_id, frame.stream_start === true && alreadyOpen), {});
+  }
 }
 
 // A completion settles its row: at once when no live pass is open, else once
@@ -137,7 +128,6 @@ function completeReply(
     return;
   }
   entry.replyStreams.delete(frame.event_id);
-  entry.replyNextSeq.delete(frame.event_id);
   // Completion can overtake queued activity. Close this live pass before the
   // decoder's asynchronous finish so a late chunk cannot open another one.
   entry.replyGaps.add(frame.event_id);
@@ -177,7 +167,6 @@ export function settleRepliesFromBackfill(
       continue;
     }
     entry.replyStreams.delete(row.event_id);
-    entry.replyNextSeq.delete(row.event_id);
     void decoder.finish().then(() => {
       if (!isCurrent()) return;
       entry.replyGaps.add(row.event_id);
@@ -190,7 +179,6 @@ export function settleRepliesFromBackfill(
 export function disposeReplyStreams(entry: Entry): void {
   for (const decoder of entry.replyStreams.values()) decoder.dispose();
   entry.replyStreams.clear();
-  entry.replyNextSeq.clear();
   entry.replyGaps.clear();
   entry.replyRecoveries.clear();
   entry.replyHeard.clear();

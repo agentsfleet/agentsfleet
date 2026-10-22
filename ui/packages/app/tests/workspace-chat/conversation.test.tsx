@@ -71,14 +71,22 @@ it("stops authoring at the durable watermark and replaces Working with the termi
 });
 
 it.each([
-  ["owner_billing", "Ask the account owner to add funds"],
-  ["new-recovery-action", "Refresh the durable status before continuing"],
-])("shows a recovery explanation for failed replies (%s)", (recovery_action, copy) => {
+  ["insufficient_balance", "The account balance could not cover this setup turn."],
+  ["model_unavailable", "The selected setup model is no longer available."],
+  ["context_too_large", "The conversation and instructions exceed the model’s context limit."],
+  ["provider_failed", "The setup turn failed after model usage was recorded. No detailed cause was recorded."],
+  ["provider_usage_unknown", "The model request ended without confirmed usage."],
+  ["attempt_timed_out", "The setup turn exceeded its time limit."],
+  ["policy_changed", "The setup or its access policy changed during this turn."],
+  ["new-failure-reason", "The setup turn failed. No detailed cause was recorded."],
+])("explains the recorded failure without asking for another message (%s)", (reason, copy) => {
   const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",
-    text: undefined, failure: {reason: "Authoring failed", error_code: "UZ-TEST-001", recovery_action}}]};
+    text: undefined, failure: {reason, error_code: "UZ-TEST-001", recovery_action: "retry_message"}}]};
   render(<DraftConversation client={client} view={view} />);
   expect(screen.getByRole("log").textContent).toContain(copy);
   expect(screen.getByRole("log").textContent).toContain("UZ-TEST-001");
+  expect(screen.getByRole("log").textContent).not.toContain("Send a new message to try again");
+  expect(screen.queryByRole("button", {name: /Retry request/})).toBeNull();
   expect(screen.getByText(/Showing the latest conversation messages/)).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
 });

@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use rig_core::completion::{
-    CacheRetention, CompletionRequest, ProviderToolDefinition, ToolDefinition,
+    CacheRetention, CompletionRequest, ProviderToolDefinition, ToolAnnotations, ToolDefinition,
 };
 use rig_core::message::{
     AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolName,
@@ -47,6 +47,7 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
                     .map_err(|source| raise::unnamed(spec.name, source))?,
                 description: spec.description.to_owned(),
                 parameters: spec.parameters.clone(),
+                annotations: ToolAnnotations::default(),
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -56,7 +57,7 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         .copied()
         .filter_map(|tool| hosted(wire, tool));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
-    built.chat_history = history;
+    built.chat_history = history.into_iter().map(std::sync::Arc::new).collect();
     match wire {
         // Messages keeps the top-level breakpoint the provider moves along the
         // conversation, beside the markers on its static prefix.

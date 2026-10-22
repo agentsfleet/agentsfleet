@@ -19,6 +19,7 @@ struct Watch {
     seen: HashMap<String, String>,
     delay: Duration,
     done: bool,
+    subscription: Option<afd_dragonfly::Subscription>,
     _slot: afd_sse::Slot,
 }
 
@@ -29,6 +30,7 @@ pub(super) fn frames(
     draft: Uuid7,
     generation: i64,
     slot: afd_sse::Slot,
+    subscription: Option<afd_dragonfly::Subscription>,
 ) -> impl Stream<Item = Result<Event, Infallible>> + Send + 'static {
     stream::unfold(
         Watch {
@@ -40,6 +42,7 @@ pub(super) fn frames(
             seen: HashMap::new(),
             delay: Duration::ZERO,
             done: false,
+            subscription,
             _slot: slot,
         },
         step,
@@ -47,8 +50,9 @@ pub(super) fn frames(
 }
 
 async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
+    let heartbeat_at = tokio::time::Instant::now() + afd_sse::HEARTBEAT_INTERVAL;
     while !watch.done {
-        tokio::time::sleep(watch.delay).await;
+        let pending = receive(&mut watch).await;
         let access = Access {
             workspace: &watch.workspace,
             subject: &watch.subject,
@@ -61,14 +65,16 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
         match observed {
             Ok(Ok(Observation::Deleted)) => {
                 watch.done = true;
-                let event = Event::default()
-                    .event("draft.deleted")
-                    .json_data(serde_json::json!({"draft_id":watch.draft}))
-                    .ok()?;
-                return Some((Ok(event), watch));
+                return Some((Ok(deleted(&watch.draft)?), watch));
             }
             Ok(Ok(Observation::Current(view))) => {
                 watch.generation = Some(view.generation);
+                if let Some(pending) = pending
+                    && let Some(event) = preview(&watch.draft, &view, pending)
+                {
+                    watch.delay = QUIET;
+                    return Some((Ok(event), watch));
+                }
                 if let Some(event) = changed(&mut watch, view.notices) {
                     return Some((Ok(event), watch));
                 }
@@ -76,19 +82,93 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
                     return None;
                 }
                 watch.delay = QUIET;
+                if tokio::time::Instant::now() >= heartbeat_at {
+                    let heartbeat = Event::default()
+                        .event(afd_sse::HEARTBEAT_EVENT)
+                        .data(afd_sse::HEARTBEAT_DATA);
+                    return Some((Ok(heartbeat), watch));
+                }
             }
             Ok(Err(error)) => {
-                tracing::info!(
-                    event = FAILED,
-                    error_code = error.code().as_str(),
-                    "private stream access ended"
-                );
+                let error_code = error.code().as_str();
+                tracing::info!(event = FAILED, error_code, "private stream access ended");
                 return None;
             }
             Err(_) => return None,
         }
     }
     None
+}
+
+fn deleted(draft: &Uuid7) -> Option<Event> {
+    Event::default()
+        .event("draft.deleted")
+        .json_data(serde_json::json!({"draft_id": draft}))
+        .ok()
+}
+
+/// All paths return to the authorization read before they emit anything.
+async fn receive(watch: &mut Watch) -> Option<afd_dragonfly::hub::Received> {
+    if watch.delay.is_zero() {
+        return None;
+    }
+    let Some(subscription) = watch.subscription.as_mut() else {
+        tokio::time::sleep(watch.delay).await;
+        return None;
+    };
+    tokio::select! {
+        () = tokio::time::sleep(watch.delay) => None,
+        received = subscription.recv() => if let Ok(received) = received {
+            Some(received)
+        } else {
+            watch.subscription = None;
+            None
+        },
+    }
+}
+
+#[derive(garde::Validate)]
+struct Payload<'a> {
+    #[garde(length(bytes, max = 8192))]
+    value: &'a str,
+}
+
+fn preview(
+    draft: &Uuid7,
+    view: &afd_authoring::View,
+    received: afd_dragonfly::hub::Received,
+) -> Option<Event> {
+    use afd_dragonfly::hub::Received;
+    match received {
+        Received::Gap | Received::Lagged(_) => {
+            Some(Event::default().event("draft.resync").data("{}"))
+        }
+        Received::Message(message) => {
+            let bounded = garde::Unvalidated::new(Payload {
+                value: &message.payload,
+            })
+            .validate()
+            .ok()?;
+            let frame: afd_authoring::Delta = serde_json::from_str(bounded.value).ok()?;
+            let frame = garde::Unvalidated::new(frame).validate().ok()?;
+            let sequence = frame.sequence.parse::<i64>().ok()?;
+            let running = view.notices.iter().any(|notice| {
+                notice.sequence.as_deref() == Some(frame.sequence.as_str())
+                    && notice.state == Some(afd_authoring::types::MessageState::Running)
+            });
+            if &frame.draft_id != draft
+                || view.closed
+                || sequence <= view.cancelled_through_sequence
+                || !running
+            {
+                return None;
+            }
+            Event::default()
+                .event(afd_authoring::DELTA_EVENT)
+                .json_data(&*frame)
+                .ok()
+        }
+    }
 }
 
 fn changed(watch: &mut Watch, notices: Vec<afd_authoring::Notice>) -> Option<Event> {

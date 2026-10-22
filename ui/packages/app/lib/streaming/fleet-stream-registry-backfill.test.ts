@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "./fleet-stream-registry";
+import { CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { setupRegistryTests, row, WS, Z_A, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, RECONNECT_ADVANCE_MS, SEED_AT_MS, MISSED_AT_MS, SEED_SINCE_PARAM, MISSED_SINCE_PARAM, fetchSpy, pageWith, queryOf, flushBackfill, reconnect } from "@/tests/helpers/fleet-stream-backfill-fixtures";
 

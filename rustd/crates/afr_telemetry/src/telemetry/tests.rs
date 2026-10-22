@@ -242,6 +242,10 @@ fn closing_against_a_silent_collector_stops_at_its_budget() {
         capture.only(EVENT_CLOSE_TIMED_OUT).field("budget_ms"),
         Some("200")
     );
+    assert_eq!(
+        capture.only(EVENT_CLOSE_TIMED_OUT).field("error_code"),
+        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
 }
 
 /// Closing against a collector that refuses at once finishes inside the

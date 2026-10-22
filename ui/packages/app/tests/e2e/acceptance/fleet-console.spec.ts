@@ -1,6 +1,6 @@
 /**
  * fleet-console.spec.ts — the operator lives on the fleet console: a local
- * navigation rail (Chat, Activity, Memory, Setup) beside one
+ * navigation rail (Chat, Activity, Memory) beside one
  * working surface at a time, with Chat as the action surface.
  *
  * The walk proves the two things a console must get right before anything
@@ -11,7 +11,7 @@
  *
  * Requires the full acceptance stack (seeded fleet + SSR auth). A regression
  * lands as a composer below the fold, a message that never leaves the field,
- * or a clipped Setup view.
+ * or a clipped Memory view.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -21,11 +21,10 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const RENDER_TIMEOUT_MS = 15_000;
-// `seedFleet` saves `fixtureDefinition`, whose default instructions are this line.
-const SEEDED_INSTRUCTIONS = "Acknowledge the request.";
 const SEND_TIMEOUT_MS = 10_000;
 // An idle fleet first flushes through the proxy on the daemon's 15s heartbeat.
 const STREAM_OPEN_TIMEOUT_MS = 30_000;
+const FOLLOW_UP = "And report build errors";
 
 test.describe("fleet console", () => {
   test("test_e2e_operator_lives_on_the_console — reach the composer, send, navigate", async ({
@@ -43,11 +42,11 @@ test.describe("fleet console", () => {
     // The console's local rail — one working surface at a time.
     const rail = page.getByRole("navigation", { name: "Fleet sections" });
     await expect(rail).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    // Five destinations — lifecycle actions moved to the detail header, so
-    // Settings is no longer a rail view.
-    for (const section of ["Chat", "Activity", "Memory", "Setup"]) {
+    for (const section of ["Chat", "Activity", "Memory"]) {
       await expect(rail.getByRole("link", { name: section })).toBeVisible();
     }
+    await expect(rail.getByRole("link", {name: "Setup", exact: true})).toHaveCount(0);
+    await expect(page.getByRole("button", {name: "Edit setup", exact: true})).toBeVisible();
 
     const thread = page.getByLabel("Fleet chat");
     await expect(thread).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
@@ -77,21 +76,20 @@ test.describe("fleet console", () => {
     // A message leaves the composer and lands in the conversation.
     const textarea = composer.getByPlaceholder(/message this fleet/i);
     await expect(textarea).toBeEnabled();
+    await expect(textarea).toBeFocused();
     await textarea.fill("console acceptance steer");
     await composer.getByRole("button", { name: /^Send/ }).click();
     await expect(thread.getByText("console acceptance steer")).toBeVisible({
       timeout: SEND_TIMEOUT_MS,
     });
     await expect(textarea).toHaveValue("");
+    await expect(textarea).toBeFocused();
+    await page.keyboard.type(FOLLOW_UP);
+    await expect(textarea).toHaveValue(FOLLOW_UP);
 
-    // test_non_chat_console_views_scroll_normally — the Setup view is ordinary
-    // page content: it is reachable and its seeded instructions are not clipped away.
-    await rail.getByRole("link", { name: "Setup" }).click();
-    await expect(page.getByRole("heading", { name: "Saved instructions", exact: true })).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(page.getByText(SEEDED_INSTRUCTIONS).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Advanced settings", exact: true })).toHaveCount(0);
-    await expect(page.getByLabel("Schedule")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Edit fleet" })).toBeVisible();
+    await rail.getByRole("link", { name: "Memory", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`fleets/${fleet.id}\\?view=memory$`));
+    await expect(page.getByRole("button", {name: "Edit setup", exact: true})).toBeVisible();
 
     // The way back to the wall — the breadcrumb's first crumb, scoped to its
     // own landmark so it is not confused with the sidebar destination.

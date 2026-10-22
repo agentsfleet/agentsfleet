@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
+import { CONNECTION_STATUS } from "@/tests/helpers/fleet-streams";
 import type { Fleet } from "@/lib/api/fleets";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 

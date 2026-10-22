@@ -183,6 +183,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("2050_billing_holds.sql"),
     // 21xx memory
     migration!("2100_memory_entries.sql"),
+    migration!("2130_authoring_dispatch_deadline.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

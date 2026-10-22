@@ -4,11 +4,12 @@ import { useEffect, useId, useMemo, useRef, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
-import { Alert, Button, DashboardPanel, List, ListItem, Textarea, cn } from "@agentsfleet/design-system";
+import { Alert, Button, List, ListItem } from "@agentsfleet/design-system";
 import { ArrowUpIcon } from "lucide-react";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
+import { ChatComposerFrame } from "./chat/ChatComposerFrame";
 
 const PLACEHOLDER = "Message this fleet…";
 const SEND_LABEL = "Send";
@@ -57,56 +58,13 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   // notification — every reply flush — so the count is kept for its draft.
   const draftBytes = useMemo(() => lastDraftBytes(), []);
   return (
-    <DashboardPanel
-      asChild
-      padding="none"
-      // `min-h-0` lets a capped chat footer shrink this box, never scroll it:
-      // a scrolling composer anchored its draft and pushed the failure notice
-      // out of view. Hover and focus follow the shared input boundary; the ring
-      // tracks the draft field, so Send's own focus ring never doubles it.
-      className="min-h-0 rounded-xl bg-card p-md hover:border-ring has-[textarea:focus-visible]:border-border-strong has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring"
-    >
-      <ComposerPrimitive.Root
-        id="fleet-steer-composer"
-        className="flex flex-col gap-sm"
-        aria-label={COMPOSER_LABEL}
-      >
+    <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef}
+      actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftSize draftBytes={draftBytes} />
         <DraftReporter onDraft={onDraft} />
 
-        {/* Stretch, not end-alignment: when the footer is capped this row
-            shrinks, and a stretched textarea shrinks with it and scrolls its
-            own text. End-aligned, it kept its height and overflowed upward,
-            out of view. Send keeps `self-end`. On touch, Send grows to 44 px,
-            so the row floor and the textarea padding grow with it to keep one
-            line level with the arrow. */}
-        <div
-          className={cn(
-            "flex min-h-9 flex-row items-stretch gap-sm pointer-coarse:min-h-11",
-            "sm:gap-md",
-          )}
-        >
-          {/* The draft stops growing at 12rem or 30% of the window, whichever
-              is lower, so on a short screen it yields height before the
-              conversation above it disappears. */}
-          <ComposerPrimitive.Input asChild placeholder={PLACEHOLDER} submitMode="enter">
-            <Textarea
-              ref={draftRef}
-              aria-label={PLACEHOLDER}
-              rows={1}
-              className={cn(
-                "field-sizing-content min-h-9 max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-sm py-xs pointer-coarse:py-md",
-                "text-reading leading-reading text-foreground",
-                "placeholder:text-muted-foreground",
-                "focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0",
-              )}
-            />
-          </ComposerPrimitive.Input>
-          <SendButton draftBytes={draftBytes} />
-        </div>
-      </ComposerPrimitive.Root>
-    </DashboardPanel>
+    </ChatComposerFrame>
   );
 }
 
@@ -149,7 +107,7 @@ function useRestoreRefusedTextOnMount(
  * prop is passed only then: the primitive's slot lets a child's `disabled`
  * override its own, and `false` would enable Send on an empty draft.
  */
-function SendButton({ draftBytes }: { draftBytes: DraftBytes }) {
+function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef: RefObject<HTMLTextAreaElement | null> }) {
   const tooLong = useAuiState((s) => overSteerLimit(draftBytes(s.composer.text)));
   return (
     <ComposerPrimitive.Send asChild>
@@ -159,6 +117,7 @@ function SendButton({ draftBytes }: { draftBytes: DraftBytes }) {
         size="icon"
         aria-label={SEND_LABEL}
         className="shrink-0 self-end rounded-full"
+        onClick={() => draftRef.current?.focus({preventScroll: true})}
         {...(tooLong ? { disabled: true } : {})}
       >
         <ArrowUpIcon size={16} aria-hidden="true" />

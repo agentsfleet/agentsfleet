@@ -10,6 +10,11 @@ afd_core::error_shell!(
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("the provider document cannot be decoded")]
+    Document {
+        #[source]
+        source: serde_json::Error,
+    },
     #[error("inference request cannot be encoded")]
     Encode {
         #[source]
@@ -38,6 +43,14 @@ pub(crate) enum ErrorKind {
     Body,
     #[error("model output limit exceeds its context window")]
     OutputLimit,
+    #[error("the model provider response exceeds its byte bound")]
+    ReplyTooLarge,
+    #[error("the model provider response deadline expired")]
+    StreamDeadline,
+    #[error("the model turn was cancelled")]
+    StreamCancelled,
+    #[error("the model transport does not upload multipart bodies")]
+    Multipart,
     #[error("complete inference input exhausts the model context window")]
     ContextLimit,
     #[error("the model API key is not a valid header value")]
@@ -58,6 +71,7 @@ pub(crate) enum ErrorKind {
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
+    serde_json::Error => Document,
     rig_core::error::EncodeError => Encode,
     rig_core::ProviderError => Request,
     garde::Report => Bounds,
@@ -68,10 +82,21 @@ afd_core::error_lifts!(Error, ErrorKind:
 );
 
 impl Error {
+    /// Whether the shared transport stopped an oversized response.
+    #[must_use]
+    pub fn is_oversize(&self) -> bool {
+        matches!(self.kind(), ErrorKind::ReplyTooLarge)
+    }
+
     /// Invalid configuration is a caller error, independent of provider availability.
     #[must_use]
-    pub const fn code(&self) -> afd_core::error_code::ErrorCode {
-        afd_core::error_code::INVALID_REQUEST
+    pub fn code(&self) -> afd_core::error_code::ErrorCode {
+        match self.kind() {
+            ErrorKind::ReplyTooLarge | ErrorKind::StreamDeadline | ErrorKind::StreamCancelled => {
+                afd_core::error_code::INTERNAL_OPERATION_FAILED
+            }
+            _ => afd_core::error_code::INVALID_REQUEST,
+        }
     }
 }
 

@@ -22,7 +22,7 @@ import { createFixtureDraft, createImprovementDraft, deleteFixtureDraft, readFix
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, historyEntry, openDraft, saveSetupButton, setupSummary, savedSetup,
+  CHAT_COPY, NEW_FLEET, draftHref, historyEntry, openDraft, saveSetupButton, setupAction, setupSummary, savedSetup,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -34,8 +34,6 @@ const SETUP_TIMEOUT_MS = 60_000;
 const NAME_PREFIX = "private-chat-";
 const IMPROVED_INSTRUCTIONS = "Acknowledge the request, then name the next step.";
 const PHONE = { width: 390, height: 844 } as const;
-const FLEET_SECTIONS = "Fleet sections";
-const SETUP_SECTION = "Setup";
 const FLEET_PAGE = /\/w\/[^/]+\/fleets\/(?!new)[a-z0-9-]+(\?|$)/;
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
@@ -52,10 +50,10 @@ test.describe("a private fleet setup chat", () => {
       drafts.push(draft.id);
       await signInAs(page, FIXTURE_KEY.regular);
       await recoverFromHistoryAndReload(page, workspaceId, draft.id);
-      await saveFromTheKeyboard(page, name);
-      const fleetId = await openTheSavedFleet(page, name);
+      await saveFromTheKeyboard(page);
+      const fleetId = await openTheSavedFleet(page, workspaceId, name);
       drafts.push(await improveTheSavedFleet(page, workspaceId, fleetId));
-      await rereadAtPhoneWidth(browser, workspaceId, draft.id, name);
+      await rereadAtPhoneWidth(browser, workspaceId, draft.id);
       await teammateRecoversTheirOwnChat(browser);
     } finally {
       await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, NAME_PREFIX);
@@ -75,42 +73,43 @@ async function recoverFromHistoryAndReload(page: Page, workspaceId: string, draf
   await expect(setupSummary(page)).toBeVisible();
 }
 
-// Save is reachable from the keyboard directly in the setup summary.
-async function saveFromTheKeyboard(page: Page, name: string): Promise<void> {
+// Save is reachable from the keyboard in the chat menu.
+async function saveFromTheKeyboard(page: Page): Promise<void> {
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  const save = saveSetupButton(page);
+  const save = await saveSetupButton(page);
   await expect(save).toBeEnabled();
   await save.focus();
   await save.press("Enter");
-  await expect(savedSetup(page)).toContainText(name, {timeout: SETUP_TIMEOUT_MS});
+  await expect(savedSetup(page).getByRole("heading", {name: /^Saved v/})).toBeVisible({timeout: SETUP_TIMEOUT_MS});
 }
 
 // A reload rebuilds the saved result from the server, and its link opens the fleet it saved.
-async function openTheSavedFleet(page: Page, name: string): Promise<string> {
+async function openTheSavedFleet(page: Page, workspaceId: string, name: string): Promise<string> {
   await page.reload();
   const result = savedSetup(page);
-  await expect(result).toContainText(name);
+  await expect(result.getByRole("heading", {name: /^Saved v/})).toBeVisible();
   await result.getByRole("link", { name: CHAT_COPY.openFleet }).click();
   await expect(page).toHaveURL(FLEET_PAGE, { timeout: SETUP_TIMEOUT_MS });
   const fleetId = new URL(page.url()).pathname.split("/").pop();
   if (!fleetId) throw new Error("Open fleet led to no fleet");
+  expect((await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId)).name).toBe(name);
   return fleetId;
 }
 
-// Improve starts from the fleet's Setup section; Apply moves the fleet to its next setup revision.
+// Edit setup starts from the fleet header; saving moves the fleet to its next setup revision.
 async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: string): Promise<string> {
   const before = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
-  await page.getByRole("navigation", { name: FLEET_SECTIONS }).getByRole("link", { name: SETUP_SECTION }).click();
   await page.getByRole("link", { name: CHAT_COPY.improve }).click();
   await expect(page).toHaveURL(new RegExp(`fleet=${fleetId}&setup_revision=${before.setup_revision}`));
   await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
   const draft = await createImprovementDraft(FIXTURE_KEY.regular, workspaceId, before);
   await openDraft(page, workspaceId, draft.id);
-  const dialog = setupSummary(page);
-  await dialog.getByRole("button", { name: CHAT_COPY.editSetup, exact: true }).click();
+  await (await setupAction(page, CHAT_COPY.editSetup)).click();
+  const dialog = page.getByRole("dialog", {name: CHAT_COPY.editSetup, exact: true});
   await dialog.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(IMPROVED_INSTRUCTIONS);
   await dialog.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
-  await dialog.getByRole("button", { name: CHAT_COPY.apply }).click();
+  await expect(dialog).toBeHidden();
+  await (await setupAction(page, CHAT_COPY.apply)).click();
   await expect(page.getByText(CHAT_COPY.applied)).toBeVisible({ timeout: SETUP_TIMEOUT_MS });
   const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   expect(after.setup_revision).toBe(String(BigInt(before.setup_revision) + 1n));
@@ -118,7 +117,7 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
 }
 
 // The saved chat at phone width: still reachable, no sideways scroll, no accessibility violations.
-async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId: string, name: string): Promise<void> {
+async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId: string): Promise<void> {
   const context = await browser.newContext({
     viewport: PHONE, isMobile: true, hasTouch: true,
     storageState: path.join(process.cwd(), VERCEL_BYPASS_STATE_FILENAME),
@@ -127,7 +126,7 @@ async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId
     const page = await context.newPage();
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(draftHref(workspaceId, draftId));
-    await expect(savedSetup(page)).toContainText(name);
+    await expect(savedSetup(page).getByRole("heading", {name: /^Saved v/})).toBeVisible();
     await expectNoPageOverflow(page);
     await expectAccessible(page, "saved private chat at phone width");
   } finally {

@@ -11,7 +11,6 @@ use rig_core::ProviderError;
 use rig_core::http_client as rig_http;
 
 use super::{Error, raise};
-use crate::transport::Oversize;
 
 #[test]
 fn should_name_a_refusals_status_in_its_detail_with_no_class() {
@@ -25,7 +24,7 @@ fn should_name_a_refusals_status_in_its_detail_with_no_class() {
 #[test]
 fn should_class_a_lost_connection_and_an_early_end_as_transport_loss() {
     let lost = Error::lost(std::io::Error::other("reset"));
-    let ended = raise::ended("overloaded_error");
+    let ended = raise::ended("overloaded_error", ProviderError::Truncated);
 
     assert_eq!(lost.failure_class(), Some(FailureClass::TransportLoss));
     assert_eq!(ended.failure_class(), Some(FailureClass::TransportLoss));
@@ -73,6 +72,12 @@ fn should_refuse_an_answered_status_under_the_providers_own_code() {
     );
     assert_eq!(named.failure_class(), None);
     assert_eq!(named.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert!(
+        std::error::Error::source(&named)
+            .unwrap()
+            .downcast_ref::<ProviderError>()
+            .is_some()
+    );
 }
 
 // A code is a name; a provider that puts a sentence there may be quoting the
@@ -104,6 +109,12 @@ fn should_class_a_cut_reply_and_a_provider_error_mid_turn_as_transport_loss() {
 
     for lost in [&cut, &overloaded, &unnamed] {
         assert_eq!(lost.failure_class(), Some(FailureClass::TransportLoss));
+        assert!(
+            std::error::Error::source(lost)
+                .unwrap()
+                .downcast_ref::<ProviderError>()
+                .is_some()
+        );
     }
     assert!(
         overloaded.detail().ends_with("overloaded_error"),
@@ -128,20 +139,47 @@ fn should_name_a_reply_the_wire_could_not_read_the_fleets_error_with_its_cause()
     );
 }
 
-#[test]
-fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it() {
-    let failure = || ProviderError::from_transport_error(rig_http::Error::instance(Oversize));
+#[tokio::test]
+async fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it() {
+    use afd_inference::transport::{HttpTransport, REPLY_MAX_BYTES, SendRequest};
+    use bytes::Bytes;
+    use futures_util::future::BoxFuture;
+    use rig_http::HttpClientExt as _;
+    #[derive(Debug)]
+    struct Oversized;
+    impl SendRequest for Oversized {
+        fn send(
+            &self,
+            _: http::Request<Bytes>,
+        ) -> BoxFuture<'static, rig_http::Result<rig_http::StreamingResponse>> {
+            Box::pin(async {
+                Ok(http::Response::new(
+                    Box::pin(futures_util::stream::iter([Ok(Bytes::from(vec![
+                        b'x';
+                        REPLY_MAX_BYTES
+                            + 1
+                    ]))])) as rig_http::BoxedStream,
+                ))
+            })
+        }
+    }
+    let response = HttpTransport::new(std::sync::Arc::new(Oversized))
+        .send::<_, Bytes>(http::Request::new(Bytes::new()))
+        .await
+        .unwrap();
+    let source = response.into_body().await.unwrap_err();
+    let failure = ProviderError::from_transport_error(source);
     let reset = ProviderError::from_transport_error(rig_http::Error::instance(
         std::io::Error::other("reset"),
     ));
 
-    let oversized = raise::provider(failure());
-
-    assert!(raise::oversize(&failure()));
+    assert!(raise::oversize(&failure));
+    let oversized = raise::provider(failure);
     assert!(!raise::oversize(&reset), "a reset is lost, not oversized");
     assert_eq!(oversized.failure_class(), None);
     assert_eq!(oversized.code(), error_code::INTERNAL_OPERATION_FAILED);
-    assert_eq!(oversized.detail(), Oversize.to_string());
+    assert!(oversized.detail().contains("byte bound"));
+    assert!(std::error::Error::source(&oversized).is_some());
     assert_eq!(
         raise::provider(reset).failure_class(),
         Some(FailureClass::TransportLoss)

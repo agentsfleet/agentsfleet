@@ -34,9 +34,14 @@ struct Provider {
 impl Transport for Provider {
     async fn send(&self, _request: ProviderRequest) -> afd_authoring::Result<ProviderResponse> {
         self.count.fetch_add(1, Ordering::Relaxed);
+        let (headers, body) = crate::provider_wire::body(
+            self.status,
+            serde_json::to_vec(&self.body).expect("provider JSON"),
+        );
         Ok(ProviderResponse {
             status: self.status,
-            body: serde_json::to_vec(&self.body).expect("provider JSON"),
+            headers,
+            body,
         })
     }
 }

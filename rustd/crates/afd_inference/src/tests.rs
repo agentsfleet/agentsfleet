@@ -1,6 +1,7 @@
 #![expect(clippy::unwrap_used, reason = "fixtures fail loudly on invalid setup")]
 
 use super::*;
+mod codecs;
 use bytes::Bytes;
 use rig_core::http_client::{
     self as http, LazyBody, MultipartForm, Request, Response, StreamingResponse,

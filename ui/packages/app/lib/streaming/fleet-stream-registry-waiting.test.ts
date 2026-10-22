@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { ACTOR } from "@/lib/events/event-summary";
-import { getSnapshot, subscribe } from "./fleet-stream-registry";
+import { getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { row, setupRegistryTests, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import {

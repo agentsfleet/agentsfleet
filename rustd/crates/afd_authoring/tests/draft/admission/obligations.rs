@@ -167,14 +167,19 @@ struct OneTokenProvider;
 #[async_trait::async_trait]
 impl Transport for OneTokenProvider {
     async fn send(&self, _request: ProviderRequest) -> afd_authoring::Result<ProviderResponse> {
-        Ok(ProviderResponse {
-            status: 200,
-            body: serde_json::to_vec(
+        let (headers, body) = crate::provider_wire::body(
+            200,
+            serde_json::to_vec(
                 &serde_json::json!({"status":"completed","output":[{"type":"message",
                 "content":[{"type":"output_text","text":"private answer"}]}],
                 "usage":{"input_tokens":1,"output_tokens":1}}),
             )
             .expect("provider response JSON"),
+        );
+        Ok(ProviderResponse {
+            status: 200,
+            headers,
+            body,
         })
     }
 }

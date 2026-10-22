@@ -213,11 +213,10 @@ async fn a_stream_cut_before_its_turn_ended_is_opened_again_then_a_lost_connecti
         let Reply::Stream(mut events) = wire.answer(ANSWER) else {
             panic!("an answer streams");
         };
-        // Messages and Responses open on a frame that shows nothing; a chat
-        // stream's first chunk is already its text.
+        // Responses opens on an empty frame; the other wires start with text.
         let silent = match wire {
-            Wire::Messages | Wire::Responses => 1,
-            Wire::Chat => 0,
+            Wire::Responses => 1,
+            Wire::Messages | Wire::Chat => 0,
         };
         events.truncate(silent);
         let cut = Reply::Stream(events);
@@ -254,7 +253,12 @@ async fn a_stream_cut_after_its_text_showed_is_lost_without_opening_again() {
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a cut turn is no answer");
     };
-    assert_eq!(failure.class, Some(FailureClass::TransportLoss));
+    assert_eq!(
+        failure.class,
+        Some(FailureClass::TransportLoss),
+        "{}",
+        failure.detail
+    );
     assert_eq!(fake.seen().len(), 1);
 }
 
@@ -264,7 +268,7 @@ async fn a_cut_turn_that_ends_whole_on_its_second_opening_answers() {
     let Reply::Stream(mut cut) = wire.answer(ANSWER) else {
         panic!("an answer streams");
     };
-    cut.truncate(1);
+    cut.clear();
     let mut fake = Fake::serve(vec![Reply::Stream(cut), wire.answer(ANSWER)]).await;
     let leased = lease(&wire.provider(), &[], "hello");
 
@@ -285,7 +289,12 @@ async fn a_provider_error_mid_stream_ends_the_turn_as_a_transport_loss() {
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("an ended turn is no answer");
     };
-    assert_eq!(failure.class, Some(FailureClass::TransportLoss));
+    assert_eq!(
+        failure.class,
+        Some(FailureClass::TransportLoss),
+        "{}",
+        failure.detail
+    );
     assert!(
         failure.detail.ends_with("overloaded_error"),
         "{}",

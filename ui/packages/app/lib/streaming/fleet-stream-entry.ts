@@ -14,21 +14,12 @@ import {
 } from "@/lib/events/run-summary";
 import { maxServerCreatedAt, mergeBackfill } from "./fleet-stream-frames";
 import type { FleetEvent } from "./fleet-stream-row";
-import type { ReplyStreamDecoder } from "./reply-stream-decoder";
-import { StreamRecoveryWindow } from "./stream-recovery-window";
+import type { ReplyStream } from "./reply-stream";
+import { CHAT_CONNECTION_STATUS, type ChatConnection, type ChatConnectionStatus } from "./chat-connection";
 import { HeldTurns } from "./fleet-stream-held";
 
-export const CONNECTION_STATUS = {
-  CONNECTING: "connecting",
-  LIVE: "live",
-  RECONNECTING: "reconnecting",
-  OFFLINE: "offline",
-  // Terminal: the daemon ended the stream with `access_revoked`, and nothing
-  // reconnects after it.
-  REVOKED: "revoked",
-} as const;
-export type ConnectionStatus =
-  (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
+export const CONNECTION_STATUS = CHAT_CONNECTION_STATUS;
+export type ConnectionStatus = ChatConnectionStatus;
 
 export type FleetStreamSnapshot = {
   events: FleetEvent[];
@@ -55,8 +46,7 @@ export type Listener = () => void;
 export type Entry = {
   workspaceId: string;
   snapshot: FleetStreamSnapshot;
-  replyStreams: Map<string, ReplyStreamDecoder>;
-  replyNextSeq: Map<string, number>;
+  replyStreams: Map<string, ReplyStream>;
   replyGaps: Set<string>;
   replyRecoveries: Set<string>;
   /** Per running event, when this tab last heard a frame for it. */
@@ -73,18 +63,8 @@ export type Entry = {
   traceReads: Set<string>;
   listeners: Set<Listener>;
   refCount: number;
-  eventSource: EventSource | null;
-  reconnectTimer: ReturnType<typeof setTimeout> | null;
-  reconnectAttempts: number;
-  recoveryWindow: StreamRecoveryWindow;
+  eventSource: ChatConnection | null;
   idleTimer: ReturnType<typeof setTimeout> | null;
-  // Whether this entry's EventSource has ever reached onopen. Distinguishes
-  // the initial (SSR-seeded) connect from a reconnect — only the latter
-  // backfills. Lives on the mutable Entry, never a passed primitive.
-  hasConnectedOnce: boolean;
-  // An outage before the first successful open still creates a history gap.
-  // The next open backfills even though `hasConnectedOnce` is still false.
-  hadConnectionError: boolean;
   // Newest server-confirmed created_at (epoch ms) — advanced only by the SSR
   // seed and successful backfill pages, never by client-clock-stamped live or
   // optimistic rows, and never by a failed backfill (so a failure cannot seal
@@ -93,9 +73,6 @@ export type Entry = {
   backfillInFlight: boolean;
   // A recovery asked for while a walk was in flight: one more walk runs after it.
   backfillQueued: boolean;
-  // Detaches the tab-visible / network-online recovery listeners. Held on the
-  // entry so teardown can remove exactly what subscribe attached.
-  detachRecovery: (() => void) | null;
   // A steer's frames waiting on a send's 202 to say which tab sent it.
   held: HeldTurns;
 };
@@ -122,7 +99,6 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
       latest: latestFigures(events),
     },
     replyStreams: new Map(),
-    replyNextSeq: new Map(),
     replyGaps: new Set(),
     replyRecoveries: new Set(),
     replyHeard: new Map(),
@@ -132,16 +108,10 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     listeners: new Set(),
     refCount: 0,
     eventSource: null,
-    reconnectTimer: null,
-    reconnectAttempts: 0,
-    recoveryWindow: new StreamRecoveryWindow(),
     idleTimer: null,
-    hasConnectedOnce: false,
-    hadConnectionError: false,
     serverSinceMs: maxServerCreatedAt(null, initial),
     backfillInFlight: false,
     backfillQueued: false,
-    detachRecovery: null,
     held: new HeldTurns(),
   };
 }

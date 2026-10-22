@@ -6,7 +6,11 @@ use afr_providers::{Call, Chunk, Replay, Usage};
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 
+use crate::engine::Meter;
 use crate::events::Live;
+
+#[cfg(test)]
+mod tests;
 
 /// What one turn produced.
 #[derive(Debug, Default)]
@@ -28,6 +32,7 @@ pub(crate) struct Turn {
 pub(crate) async fn take(
     mut stream: BoxStream<'_, afr_providers::Result<Chunk>>,
     live: &mut Live<'_>,
+    meter: &Meter,
 ) -> afr_providers::Result<Turn> {
     let mut turn = Turn::default();
     while let Some(chunk) = stream.next().await {
@@ -39,7 +44,10 @@ pub(crate) async fn take(
                 }
             }
             Chunk::Call(call) => turn.calls.push(call),
-            Chunk::Usage(usage) => turn.usage += usage,
+            Chunk::Usage(usage) => {
+                turn.usage += usage;
+                meter.add(usage);
+            }
             Chunk::End(end) => {
                 turn.replay = end.replay;
                 turn.cut = end.cut;

@@ -332,6 +332,8 @@ test_arch_doc_published_links_resolve
 test_arch_doc_only_link_targets_are_checked
 test_arch_doc_every_clickable_link_form_is_checked
 test_arch_schema_layout_matches_doc
+test_arch_schema_forward_columns
+test_arch_schema_unsupported_changes
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

@@ -3,8 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Alert } from "@agentsfleet/design-system";
 import { DraftClient } from "@/lib/api/drafts";
+import { DraftChatHeading } from "@/components/domain/chat/DraftChatHeading";
 import { FleetSetup } from "@/components/domain/chat/FleetSetup";
-import { ChatFixture, CHAT_PROPS } from "./fixture";
+import { DraftSaveBar } from "@/components/domain/chat/DraftSaveBar";
+import { ChatFixture, CHAT_PROPS, chooseSetupAction, openSetupReview, setupAction } from "./fixture";
 import { DRAFT, FLEET, FLEET_ID, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
@@ -19,18 +21,19 @@ afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 function LiveSetup() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   return <>{view.error ? <Alert variant="destructive">{view.error}</Alert> : null}{view.notice ? <Alert>{view.notice}</Alert> : null}
-    <FleetSetup client={client} view={view} workspace={WORKSPACE} /></>;
+    <DraftChatHeading client={client} view={view} /><FleetSetup client={client} view={view} workspace={WORKSPACE} /><DraftSaveBar client={client} view={view} /></>;
 }
 
-it("shows the task and saves directly without a review button or dialog", async () => {
+it("keeps the task review in the editor and saves directly from the header", async () => {
   render(<LiveSetup />);
-  expect(screen.getByText("Investigate failures")).toBeTruthy();
+  await openSetupReview();
+  expect(screen.getByText("Investigate failures.")).toBeTruthy();
   expect(screen.getByText(/No automatic triggers/)).toBeTruthy();
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByRole("button", {name: /Review setup/i})).toBeNull();
+  expect(screen.getByRole("dialog", {name: "Edit instructions"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Cancel editing"}));
   expect(fixture.writes()).toHaveLength(0);
-  fireEvent.click(screen.getByRole("button", {name: "Save fleet"}));
-  await screen.findByRole("heading", {name: "Fleet saved"});
+  await chooseSetupAction("Save fleet");
+  await screen.findByRole("heading", {name: "Saved v1"});
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
   expect(fixture.writes()).toHaveLength(1);
   expect(fixture.writes()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
@@ -38,6 +41,7 @@ it("shows the task and saves directly without a review button or dialog", async 
 
 it("starts a run only with an explicit message and action", async () => {
   render(<LiveSetup />);
+  await openSetupReview();
   expect(screen.getByRole("button", {name: "Save and run now"})).toHaveProperty("disabled", true);
   fireEvent.change(screen.getByLabelText("Optional first run"), {target: {value: "   "}});
   expect(screen.getByRole("button", {name: "Save and run now"})).toHaveProperty("disabled", true);
@@ -49,25 +53,26 @@ it("starts a run only with an explicit message and action", async () => {
 
 it("keeps publishing explicit and separate from saving a fleet", async () => {
   render(<LiveSetup />);
+  await openSetupReview();
   expect(screen.queryByRole("button", {name: "Publish new entry"})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Publish to Fleet library"}));
   fireEvent.change(await screen.findByLabelText("Library name"), {target: {value: "Checked recipe"}});
   fireEvent.click(screen.getByRole("button", {name: "Publish new entry"}));
-  await screen.findByText(/Published Library revision/);
+  await screen.findAllByText(/Published Library revision/);
   expect(fixture.writes()[0]?.body).toMatchObject({label: "Checked recipe"});
   fireEvent.click(screen.getByRole("button", {name: "Stage platform entry"}));
-  await screen.findByText(/is staged/);
+  await screen.findAllByText(/is staged/);
   expect(stage).toHaveBeenCalledWith({workspace_id: WORKSPACE, draft_candidate_id: DRAFT.candidate?.id, label: "Checked recipe"}, expect.any(String));
   expect(fixture.saveAttempts).toBe(0);
 });
 
 it("lets editing be cancelled and updates the instructions before saving", async () => {
   render(<LiveSetup />);
-  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
+  await chooseSetupAction("Edit instructions");
   expect(screen.getByLabelText("Instructions")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "Cancel editing"}));
   expect(screen.queryByLabelText("Instructions")).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
+  await chooseSetupAction("Edit instructions");
   fireEvent.change(screen.getByLabelText("Instructions"), {target: {value: "Changed instructions"}});
   fireEvent.click(screen.getByRole("button", {name: "Update instructions"}));
   await waitFor(() => expect(screen.queryByLabelText("Instructions")).toBeNull());
@@ -79,8 +84,9 @@ it("refreshes a changed candidate and refuses to save instructions the person ha
   render(<LiveSetup />);
   fixture.draft = {...DRAFT, review: {...REVIEW, review_digest: "changed", effective: {...REVIEW.effective,
     definition: {...REVIEW.effective.definition, description: "Changed purpose"}}}};
-  fireEvent.click(screen.getByRole("button", {name: "Save fleet"}));
+  await chooseSetupAction("Save fleet");
   await screen.findByText(/The setup changed/);
+  await openSetupReview();
   expect(screen.getByText("Changed purpose")).toBeTruthy();
   expect(fixture.saveAttempts).toBe(0);
   expect(fixture.writes()).toHaveLength(0);
@@ -89,19 +95,20 @@ it("refreshes a changed candidate and refuses to save instructions the person ha
 it("keeps failed validation visible and does not create a fleet", async () => {
   render(<LiveSetup />);
   fixture.fetch.mockResolvedValueOnce(response({user_message: "Budget must be configured"}, 422));
-  fireEvent.click(screen.getByRole("button", {name: "Save fleet"}));
+  await chooseSetupAction("Save fleet");
   await screen.findByText("Budget must be configured");
   expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
   expect(fixture.saveAttempts).toBe(0);
 });
 
-it("shows unfinished candidate state and blocks controls during authoring", () => {
+it("shows unfinished candidate state and blocks controls during authoring", async () => {
   const view = render(<FleetSetup client={client} view={{...client.getSnapshot(), draft: {...DRAFT, review: undefined}}} workspace={WORKSPACE} />);
   expect(screen.getByText(/Continue chatting to finish/)).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
-  view.rerender(<FleetSetup client={client} view={{...client.getSnapshot(), pending: true}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("button", {name: "Save fleet"})).toHaveProperty("disabled", true);
-  expect(screen.getByRole("button", {name: "Edit instructions"})).toHaveProperty("disabled", true);
+  view.rerender(<DraftChatHeading client={client} view={{...client.getSnapshot(), pending: true}} />);
+  expect(await setupAction("Save fleet")).toHaveProperty("disabled", true);
+  await setupAction("Edit instructions");
+  expect(screen.getByRole("menuitem", {name: "Edit instructions"}).getAttribute("aria-disabled")).toBe("true");
 });
 
 it("saves an improvement against the current setup tag and publishes another revision", async () => {
@@ -119,12 +126,15 @@ it("saves an improvement against the current setup tag and publishes another rev
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<LiveSetup />);
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+  await chooseSetupAction("Save changes");
   await screen.findByText(/Fleet setup updated/);
+  expect(screen.getByRole("heading", {name: "Saved v2"})).toBeTruthy();
+  expect(screen.getByText(/New runs use v2/)).toBeTruthy();
+  await openSetupReview();
   expect(fixture.writes()[0]?.headers.get("If-Match")).toBe(FLEET.setup_etag);
   fireEvent.click(screen.getByRole("button", {name: "Publish to Fleet library"}));
   fireEvent.click(await screen.findByRole("button", {name: "Publish next revision"}));
-  await screen.findByText(/Published Library revision/);
+  await screen.findAllByText(/Published Library revision/);
 });
 
 it("keeps an unsaved improvement editable when its validated Apply is refused", async () => {
@@ -139,9 +149,31 @@ it("keeps an unsaved improvement editable when its validated Apply is refused", 
       ? response({user_message: "The saved fleet changed"}, 409) : base(input, init);
   });
   render(<LiveSetup />);
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+  await chooseSetupAction("Save changes");
   await screen.findByText("The saved fleet changed");
-  expect(screen.queryByRole("heading", {name: "Fleet saved"})).toBeNull();
-  expect(screen.getByRole("button", {name: "Save changes"})).toHaveProperty("disabled", false);
-  expect(screen.getByRole("button", {name: "Edit instructions"})).toHaveProperty("disabled", false);
+  expect(screen.queryByRole("heading", {name: "Saved v2"})).toBeNull();
+  expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
+  expect(await setupAction("Save changes")).toHaveProperty("disabled", false);
+  await setupAction("Edit instructions");
+  expect(screen.getByRole("menuitem", {name: "Edit instructions"}).getAttribute("aria-disabled")).not.toBe("true");
+});
+
+it.each(["Instructions", "Instance name", "Runtime config"])("requires updating edited %s before running or publishing", async (field) => {
+  render(<LiveSetup />);
+  await openSetupReview();
+  const input = screen.getByLabelText(field) as HTMLInputElement | HTMLTextAreaElement;
+  const original = input.value;
+  fireEvent.change(input, {target: {value: field === "Runtime config" ? `${original} ` : `${original} revised`}});
+  fireEvent.change(screen.getByLabelText("Optional first run"), {target: {value: "Check the revised setup"}});
+  expect(screen.getByText(/Update instructions before saving or publishing/)).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Save and run now"})).toHaveProperty("disabled", true);
+  fireEvent.click(screen.getByRole("button", {name: "Publish to Fleet library"}));
+  expect(screen.getByRole("button", {name: "Publish new entry"})).toHaveProperty("disabled", true);
+  expect(screen.getByRole("button", {name: "Stage platform entry"})).toHaveProperty("disabled", true);
+  fireEvent.click(screen.getByRole("button", {name: "Save and run now"}));
+  fireEvent.click(screen.getByRole("button", {name: "Publish new entry"}));
+  expect(fixture.writes()).toHaveLength(0);
+  fireEvent.change(input, {target: {value: original}});
+  expect(screen.getByRole("button", {name: "Save and run now"})).toHaveProperty("disabled", false);
+  expect(screen.getByRole("button", {name: "Publish new entry"})).toHaveProperty("disabled", false);
 });

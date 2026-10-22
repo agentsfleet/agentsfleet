@@ -21,9 +21,8 @@ export const CHAT_COPY = {
   save: "Save fleet",
   apply: "Save changes",
   applied: "Fleet setup updated. New work uses this setup revision.",
-  savedSetup: "Saved fleet setup",
   openFleet: "Open fleet",
-  improve: "Edit fleet",
+  improve: "Edit setup",
   composer: "Private chat composer",
   composerInput: "Describe the work you want this fleet to do…",
   send: "Send message",
@@ -40,8 +39,13 @@ export function historyEntry(page: Page, draftId: string): Locator {
   return page.locator(`a[href$="?draft=${encodeURIComponent(draftId)}"]`);
 }
 
-export function saveSetupButton(page: Page): Locator {
-  return setupSummary(page).getByRole("button", {name: CHAT_COPY.save, exact: true});
+export async function setupAction(page: Page, name: string): Promise<Locator> {
+  await page.getByRole("button", {name: "Setup chat actions", exact: true}).click();
+  return page.getByRole("menuitem", {name, exact: true});
+}
+
+export async function saveSetupButton(page: Page): Promise<Locator> {
+  return setupAction(page, CHAT_COPY.save);
 }
 
 export function setupSummary(page: Page): Locator {
@@ -50,7 +54,8 @@ export function setupSummary(page: Page): Locator {
 
 /** The saved-fleet result remains in the conversation and survives a reload. */
 export function savedSetup(scope: Page | Locator): Locator {
-  return scope.getByLabel(CHAT_COPY.savedSetup, { exact: true });
+  return scope.getByRole("region", {name: CHAT_COPY.setup, exact: true})
+    .filter({has: scope.getByRole("heading", {name: /^Saved v[0-9]+/})});
 }
 
 export function chatUnavailable(page: Page): Locator {

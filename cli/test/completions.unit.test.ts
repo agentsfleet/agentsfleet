@@ -11,7 +11,7 @@ import { runCli } from "../src/cli.ts";
 import { bufferStream, cliEnv } from "./helpers-cli-state.ts";
 import { commandPresent } from "./helpers-external-commands.ts";
 
-const SHELLS = ["bash", "zsh", "fish", "sh"] as const;
+const SHELLS = ["bash", "zsh", "fish", "powershell", "sh", "pwsh"] as const;
 // The two whose own parser can grade what we emit — where the box carries it.
 // `zsh` is the standard shell on macOS and absent from GitHub's
 // `ubuntu-latest`, so spawning it unconditionally fails the lane with
@@ -71,10 +71,10 @@ describe("completions emit a script each shell parses", () => {
     expect(PARSEABLE.filter(commandPresent).length).toBeGreaterThan(0);
   });
 
-  test("a shell we do not offer is refused, naming the four we do", async () => {
+  test("an unsupported shell is refused, naming every supported spelling", async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const code = await runCli(["--completions", "powershell"], {
+    const code = await runCli(["--completions", "elvish"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({}),
