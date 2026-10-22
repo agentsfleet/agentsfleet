@@ -16,11 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — one existing branch and one Pull Request (PR)
 **Branch:** fix/dev-acceptance-heartbeat
 **Baseline revision:** 124c2bce303c95533745312c1ec725092bb604cb
-**Test Baseline:** 11,280 unit tests on Linux; 1,378 datastore integration tests; 61 separate Linux kernel checks
-**Baseline evidence:** PR #780's Continuous Integration (CI) runs [Rust unit](https://github.com/agentsfleet/agentsfleet/actions/runs/39586239759), [UI unit](https://github.com/agentsfleet/agentsfleet/actions/runs/39586239902), and [integration coverage](https://github.com/agentsfleet/agentsfleet/actions/runs/39586239885). Its head `95f0df1d06a8483e88877a13c6eb385243aa1e92` and comparison revision have the same tree, `470797d5afabd18368ef416a42b55ec80ad65437`. Unit counts are Rust 4,808, app 3,889, website 133, CLI 1,952 and design system 498. The mixed coverage run includes unit tests; its 6,080 total is not an integration-only count. Matching named ignored datastore tests yields 1,378; benchmark and documentation examples are excluded.
+**Test Baseline:** unit=11280 integration=1378 kernel=61 (Linux)
+**Baseline evidence:** https://github.com/agentsfleet/agentsfleet/actions/runs/39586239759
 **Depends on:** M230_001 — stopped setup recovery and retained usage accounting
 **Provenance:** LLM-drafted (GPT-6), based on Indy's approved seven-part proposal
 **Canonical architecture:** `docs/architecture/api_resources.md`, `docs/architecture/runner_fleet.md`, `docs/architecture/web_app.md`
+
+PR #780's Continuous Integration (CI) runs [Rust unit](https://github.com/agentsfleet/agentsfleet/actions/runs/39586239759), [UI unit](https://github.com/agentsfleet/agentsfleet/actions/runs/39586239902), and [integration coverage](https://github.com/agentsfleet/agentsfleet/actions/runs/39586239885). Its head `95f0df1d06a8483e88877a13c6eb385243aa1e92` and comparison revision have the same tree, `470797d5afabd18368ef416a42b55ec80ad65437`. Unit counts are Rust 4,808, app 3,889, website 133, CLI 1,952 and design system 498. The mixed coverage run includes unit tests; its 6,080 total is not an integration-only count. Matching named ignored datastore tests yields 1,378; benchmark and documentation examples are excluded.
 
 ## Overview
 
@@ -143,35 +145,35 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 
 ### §1 — Shared backend provider reader
 
-- **Dimension 1.1** — DONE: Both adapters use one `afd_inference` stream reader over Rig → Test `setup_and_runtime_read_the_same_stream`.
-- **Dimension 1.2** — DONE: Bounded shared HTTP adapter preserves status, partial response and known usage on failures → Test `failed_stream_preserves_authoritative_usage`.
-- **Dimension 1.3** — DONE: One physical attempt, shared inactivity bound and caller deadline; record dispatch deadline and align runner wait/replay → Test `pending_dispatch_uses_its_recorded_deadline`.
+- **Dimension 1.1** — DONE — Both adapters use one `afd_inference` stream reader over Rig → Test `setup_and_runtime_read_the_same_stream`.
+- **Dimension 1.2** — DONE — Bounded shared HTTP adapter preserves status, partial response and known usage on failures → Test `failed_stream_preserves_authoritative_usage`.
+- **Dimension 1.3** — DONE — One physical attempt, shared inactivity bound and caller deadline; record dispatch deadline and align runner wait/replay → Test `pending_dispatch_uses_its_recorded_deadline`.
 
 ### §2 — Private setup answer delivery
 
-- **Dimension 2.1** — DONE: Publish bounded answer-only deltas with message/pass identity and ordering to the private draft subject → Test `draft_stream_delivers_before_completion`.
-- **Dimension 2.2** — DONE: Check creator, membership, deletion generation and Stop watermark before publication → Test `revocation_and_stop_withhold_private_text`.
-- **Dimension 2.3** — DONE: Persist content-free failure cause, preserve unknown usage and final durable recovery without redispatch → Test `lost_completion_recovers_without_provider_retry`.
+- **Dimension 2.1** — DONE — Publish bounded answer-only deltas with message/pass identity and ordering to the private draft subject → Test `draft_stream_delivers_before_completion`.
+- **Dimension 2.2** — DONE — Check creator, membership, deletion generation and Stop watermark before publication → Test `revocation_and_stop_withhold_private_text`.
+- **Dimension 2.3** — DONE — Persist content-free failure cause, preserve unknown usage and final durable recovery without redispatch → Test `lost_completion_recovers_without_provider_retry`.
 
 ### §3 — Shared browser chat implementation
 
-- **Dimension 3.1** — DONE: Extract shared connection lifecycle and reply ordering using the existing decoder → Test `both_chat_adapters_handle_the_same_stream_failures`.
-- **Dimension 3.2** — DONE: Share viewport, avatar rows and composer while preserving fleet pending sends and setup controls → Test `both_chat_purposes_keep_composer_focus_and_single_scroll`.
-- **Dimension 3.3** — DONE: Selected private history loads independently of model/sidebar requests; bounded in-memory state and scope cleanup prevent stale conversation disclosure → Test `selected_history_does_not_wait_for_models`.
+- **Dimension 3.1** — DONE — Extract shared connection lifecycle and reply ordering using the existing decoder → Test `both_chat_adapters_handle_the_same_stream_failures`.
+- **Dimension 3.2** — DONE — Share viewport, avatar rows and composer while preserving fleet pending sends and setup controls → Test `both_chat_purposes_keep_composer_focus_and_single_scroll`.
+- **Dimension 3.3** — DONE — Selected private history loads independently of model/sidebar requests; bounded in-memory state and scope cleanup prevent stale conversation disclosure → Test `selected_history_does_not_wait_for_models`.
 
 ### §4 — One fleet workspace and approved presentation
 
-- **Dimension 4.1** — DONE: New fleet supports multiple setup turns, review and explicit Save; editing opens beside fleet Chat with visible Save changes → Test `setup_edit_saves_next_revision_without_losing_chat`.
-- **Dimension 4.2** — DONE: Manual and conversational edits share one candidate; conflicts/failures retain edits, and future runs use the newly saved version → Test `failed_save_retains_manual_and_chat_edits`.
-- **Dimension 4.3** — DONE: Remove redundant navigation/status glyphs; union authorized fleets and private drafts in compact Recent rows with aligned brand/icon/trash → Test `recent_fleets_and_drafts_keep_authorized_routes_and_status`.
+- **Dimension 4.1** — DONE — New fleet supports multiple setup turns, review and explicit Save; editing opens beside fleet Chat with visible Save changes → Test `setup_edit_saves_next_revision_without_losing_chat`.
+- **Dimension 4.2** — DONE — Manual and conversational edits share one candidate; conflicts/failures retain edits, and future runs use the newly saved version → Test `failed_save_retains_manual_and_chat_edits`.
+- **Dimension 4.3** — DONE — Remove redundant navigation/status glyphs; union authorized fleets and private drafts in compact Recent rows with aligned brand/icon/trash → Test `recent_fleets_and_drafts_keep_authorized_routes_and_status`.
 
 ### §5 — Verification and live review
 
-- **Dimension 5.1** — DONE: Validate carry-over admission/acceptance fixes and shared changed UI coverage → Test `concurrent_history_admission_releases_pool_connections`.
-- **Dimension 5.2** — IN_PROGRESS: Run declared repository gates and real local acceptance with matching build identities → Test `local_acceptance_uses_the_implemented_builds`.
-- **Dimension 5.3** — IN_PROGRESS: Keep the actual local implementation running for Indy's visual sign-off before merge → Test `indy_live_visual_signoff` remains manual.
-- **Dimension 5.4** — DONE: Enforce owned-secret zeroization and valid unsafe observation in PR CI → Test `owned_secret_buffers_are_wiped_before_free` passed on stable and Miri; four wipe-removal probes fail the intended assertion. The workflow passes lint and makes the existing required aggregate depend on stable and pinned-nightly Miri. Hosted execution remains part of the post-push checks.
-- **Dimension 5.5** — IN_PROGRESS: `acceptance-local` builds and starts the local stack, then calls the existing acceptance targets → Test `local_acceptance_runs_existing_suites`; preserve shared datastore containers and deployed target recipes, use the shipping runner deployment, and stop the owned dashboard on exit.
+- **Dimension 5.1** — DONE — Validate carry-over admission/acceptance fixes and shared changed UI coverage → Test `concurrent_history_admission_releases_pool_connections`.
+- **Dimension 5.2** — IN_PROGRESS — Run declared repository gates and real local acceptance with matching build identities → Test `local_acceptance_uses_the_implemented_builds`.
+- **Dimension 5.3** — DONE — Record Indy's visual sign-off and chosen review timing before merge → Test `indy_live_visual_signoff` remains manual; Indy signed off and prefers viewing after deployment, as quoted in Discovery.
+- **Dimension 5.4** — DONE — Enforce owned-secret zeroization and valid unsafe observation in PR CI → Test `owned_secret_buffers_are_wiped_before_free` passed on stable and Miri; four wipe-removal probes fail the intended assertion. The workflow passes lint and makes the existing required aggregate depend on stable and pinned-nightly Miri. Hosted execution remains part of the post-push checks.
+- **Dimension 5.5** — IN_PROGRESS — `acceptance-local` builds and starts the local stack, then calls the existing acceptance targets → Test `local_acceptance_runs_existing_suites`; preserve shared datastore containers and deployed target recipes, use the shipping runner deployment, and stop the owned dashboard on exit.
 
 ## Interfaces
 
@@ -230,7 +232,7 @@ Existing product actions remain; no new analytics funnel. Failure cause becomes 
 | 4.3 | unit | `recent_fleets_and_drafts_keep_authorized_routes_and_status` | Active/stopped fleets and unfinished drafts → compact titles, correct links and delete action |
 | 5.1 | integration | `concurrent_history_admission_releases_pool_connections` | Concurrent admission with history → bounded pool occupancy and all accepted |
 | 5.2 | e2e | `local_acceptance_uses_the_implemented_builds` | Build and start the local UI/API/runner → acceptance-e2e and acceptance-cli pass |
-| 5.3 | manual | `indy_live_visual_signoff` | Indy opens local app and approves actual layout/flows; record real response |
+| 5.3 | manual | `indy_live_visual_signoff` | Record Indy's own visual sign-off and review timing without claiming a browser inspection |
 | 5.4 | unit | `owned_secret_buffers_are_wiped_before_free` | Preview, daemon secret text/bytes/object and runner token allocations are wiped before free, including clones and nested replacements; an unwiped control stays nonzero; Miri checks the observer's raw-memory accesses |
 | 5.5 | unit + e2e | `local_acceptance_runs_existing_suites` | The local command calls existing build and acceptance targets with the shipping runner deployment; shared datastore containers survive startup; prerequisite or build failures stop before suite execution; the owned dashboard stops on exit |
 
@@ -280,11 +282,21 @@ Remove the setup-only full-response collection and separate connection/viewport/
 
 ## Discovery (consult log)
 
+- Oct 22, 2026: Indy approved the historical `spec.ordering` exception: the original heartbeat fix at `ab3f0f0d` predates the M230 spec. Preserve the published history and record the approved exception with `orly override spec.ordering`; complete acceptance and all other checks remain required.
+
+> Indy (Oct 22, 2026): "yes approved fo rhte spec.ordering."
+
+- Oct 22, 2026: Indy requested finishing complete acceptance, signed off the visual requirement and chose viewing after deployment. This records owner approval, not an authenticated browser inspection. Further documentation work is skipped by instruction; complete browser and command-line acceptance remains required.
+
+> Indy (Oct 22, 2026): "visual check - signed off i prefer to check when deployed."
+
+> Indy (Oct 22, 2026): "skip documentation"
+
 - Oct 22, 2026: The final `make test-unit-all` passed: Rust runner 1,316, daemon 137, daemon libraries 3,293, Python 25, app 3,973, website 133, command line 1,887 and design system 499. The command-line suite retained 16 existing skips; all four package coverage gates passed at 100%. `make test-integration-rustd` passed 1,400 regular and three exclusive tests against isolated local datastores. The focused Miri wiping test passed after the existing-test style corrections. No new files or test cases were added for these corrections.
 
 - Oct 22, 2026: The latest complete local browser attempt reported 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals. The fifth exposed an acceptance-helper race with completed workspace navigation; awaiting the new workspace URL fixed the existing operator journey, which passed its focused rerun. Command-line acceptance reported 209 deterministic passes, then 171 live passes and three failures. Two live turns reached provider refusals; the existing missing-model case now expects setup's `pending` state, retains its model/action/no-execution assertions and passed its focused rerun. Complete acceptance remains pending.
 
-- Oct 22, 2026: The configured free MiniMax model was absent from OpenRouter's live catalogue. A zero-charge, tool-capable Nvidia model replaced it through the existing local operator API. A minimal provider request then returned HTTP 429 with `free-models-per-day`, confirming exhausted daily free quota. No credits were purchased or paid model selected. The actual app remains at localhost:3100 for Indy's separate live review; no visual approval has been recorded.
+- Oct 22, 2026: The configured free MiniMax model was absent from OpenRouter's live catalogue. A zero-charge, tool-capable Nvidia model replaced it through the existing local operator API. A minimal provider request then returned HTTP 429 with `free-models-per-day`, confirming exhausted daily free quota. No credits were purchased or paid model selected. At that point the actual app remained at localhost:3100 for Indy's separate live review; the subsequent visual sign-off is recorded above.
 
 - Oct 22, 2026: Indy approved the four-file library-editor focus fix: "Approve the four-file fix". A delayed editor-module load reproduced focus returning to the page body after Escape; the normal loaded path returned it to Edit. Carry the original button through the existing loader and editor, and exercise the loading handoff in the existing accessibility case. Add no files or test cases.
 
@@ -312,4 +324,4 @@ Remove the setup-only full-response collection and separate connection/viewport/
 - **Consults:** Indy approved the seven-part architecture and screenshot alignment: “Signed off - approved for implementation by Indy”. Prior HTML approval is distinct from the future live visual review. Origin main was merged into the existing worktree at `a05c291ce`; provider/streaming sources were still unchanged at approval. Rig was pinned to 0.44.0 at approval; the requested dependency upgrade now uses 0.45.0. Preserve partial/failed-response usage rather than assuming error replies lack usage.
 - **Metrics review:** No new analytics funnel; retain existing events and add bounded safe failure information.
 - **Skill-chain outcomes:** Spec workflow applied; canonical unit and integration proofs passed; the in-host adversarial production review returned no findings. Browser acceptance, final review completion and post-push monitoring remain pending.
-- **Deferrals:** None. Live visual acceptance remains required and cannot be supplied by the implementing agent.
+- **Deferrals:** None for functional acceptance. Visual review timing follows Indy's recorded sign-off; further documentation work is skipped by the recorded instruction.
