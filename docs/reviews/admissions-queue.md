@@ -36,6 +36,7 @@ The replacement must preserve ordering, lease fencing, report billing, gate reco
 | An expired slot requalifies its admission without a repair job | `afd_fleet/tests/integration_ledger_queue/reclaim.rs` |
 | A gate answer during a park lock wait prevents a stale park | `afd_fleet/tests/integration_ledger_queue/parking.rs` |
 | A superseded park cannot release or park the current holder | `afd_fleet/tests/integration_ledger_queue/parking.rs` |
+| Failed approval parking releases the claim, preserves the original error and retries the same event with a newer fence | `afd_fleet/tests/integration_lease_gates/faults/parking.rs` |
 | Stale terminal settlement leaves the current admission claim intact | `afd_fleet/tests/integration_terminal_redelivery.rs` |
 | An unreadable redelivery preserves an existing terminal ending | `afd_fleet/tests/integration_lease_gates/faults.rs` |
 | An answer or expiry waits for an uncommitted park, then clears it | `afd_fleet/tests/integration_ledger_queue/parking_commit.rs` |
@@ -66,6 +67,7 @@ Database faults use private migrated databases; they cannot change another test'
 | Report: admission settlement inside the transaction | Trigger raises during `settled_at` update | No billing, history, lease ending or admission settlement commits | One settlement; repeat returns the stored outcome |
 | Report: admission fence changed | Change the admission fence before reporting | No report side effects; admission remains unsettled | Current fence can settle |
 | Park: answer commits while fleet slot lock is held | Observe the blocked backend before answering | Delayed park sees the committed answer | Same admission leases on the next poll |
+| Park: admission stamp or slot release fails | Private trigger raises at either write | Original database error survives; transaction rolls back and fenced cleanup frees the slot | Approval permits the same event with a newer fence |
 | Gate answer or expiry: uncommitted park write | Private trigger pauses the park after its write | Resolver waits for the admission and clears its park | Same head leases on the next poll |
 | Delivery: narrative written before delivery stamp fails | Private trigger raises on `delivered_at` update | No narrative, stamp or counter change commits | Retry delivers once; repeat adds nothing |
 | Delivery: optional counter read fails | Revoke the private database runtime role's counter read grant | Narrative, stamp and triggered counter increment stay committed; returned figures are absent | Retry is a repeat with no extra event |
@@ -93,12 +95,12 @@ Package commands establish the narrower behavior named above.
 | --- | --- |
 | Comparison revision, full unit suite | Failed: 10,668 passed, one failed, 1,390 skipped/ignored; `/tmp/m226-baseline-unit-4.log` |
 | Comparison revision, full integration suite | Failed after 608 passed: one cron deadline assertion failed; `/tmp/m226-baseline-integration-2.log` |
-| Implementation, full unit suite | `0.65.0`: 11,114 passed, 1,349 skipped/ignored; `/tmp/m226-unit-all-65-2.log`. All four TypeScript package coverage gates passed at 100% |
-| Implementation, full integration suite | `0.65.0`: 1,328 passed, zero failures (1,325 normal and three exclusive); `/tmp/m226-integration-all-65.log` |
+| Implementation before the failed-park repair, full unit suite | `0.65.0`: 11,114 passed, 1,349 skipped/ignored; `/tmp/m226-unit-all-65-2.log`. All four TypeScript package coverage gates passed at 100% |
+| Implementation before the failed-park repair, full integration suite | `0.65.0`: 1,328 passed, zero failures (1,325 normal and three exclusive); `/tmp/m226-integration-all-65.log` |
 | Focused review regressions | Ledger 12 and lease plans 4 passed after the metering repair; `/tmp/m226-ledger-green-4.log`, `/tmp/m226-plans-green-4.log`. Queued history 6 passed before that unrelated repair; `/tmp/m226-history-green-1.log` |
 | Lint | Full `make lint-all` passed; `/tmp/m226-lint-all-65-3.log`, including both shipping binaries without test features and the production-statement test import |
 | Conformance | `make harness-verify` passed for the staged release documentation; `/tmp/m226-harness-65-closure.log`. Runtime source commits also passed their conformance hooks |
-| Rust coverage | Final `0.65.0` lane passed 5,777 tests: 99.5435% overall, 397/397 changed lines, all 72 measured changed files ≥99%; `/tmp/m226-coverage-all-65-2.log` |
+| Rust coverage | After the failed-park repair: 5,779 tests passed, 99.5522% overall, 401/401 changed lines, all 72 measured changed files ≥99%; `/tmp/m226-coverage-park-fix-retry.log` |
 | Version | `make check-version` passed: all versions match `0.65.0` |
 | OpenAPI | Regenerated from the all-feature `0.65.0` daemon and byte-matched `public/openapi.json`; only the fleet-create description changes |
 | Secrets | Full-history `gitleaks detect --redact --no-banner` passed: 7,430 commits, no leaks found; `/tmp/m226-gitleaks-full-65.log` |
@@ -117,19 +119,30 @@ Both historical runs remain failed; they do not permit failures in the implement
 The checks include `main` at `124c2bce303c95533745312c1ec725092bb604cb`, retaining Pull Request 780's authoring claim and renewal fixes.
 Pull Request Session Notes retain the final uncached `orly gate pr` output for the clean, pushed candidate.
 
-The final Rust coverage run measures `868b6119112955d63c41f9c3019ea993f09bebae` against that integrated base.
-It covers 68,465 of 68,779 instrumented lines and every one of the 397 measured changed lines.
+The latest Rust coverage run measures `589a2eaefc9e88e0274c3f4f1ca47454bbcf0881` against that integrated base.
+It covers 68,475 of 68,783 instrumented lines and every one of the 401 measured changed lines.
 The lowest whole-file result is 99.2308% across the 72 measured changed files.
 
-[Per-file counts](../architecture/measurements/admissions-queue/coverage-v065.json) retain each denominator and missed line.
+The [hosted coverage check](https://github.com/agentsfleet/agentsfleet/actions/runs/39707230551/job/119593318416) covers the same source tree, including Linux-only paths.
+It reports 70,629 of 70,924 lines covered, 401/401 changed lines, and all 72 measured changed files above 99%.
+The workflow retains the four raw coverage reports as downloadable files.
 
 The run adds no exclusions and keeps the repository's existing test-helper and benchmark exclusions.
 Test targets and uninstrumented lines do not enter those source-coverage denominators.
-Linux-only runner checks remain a separate Continuous Integration requirement.
+Linux-only runner checks use the hosted Continuous Integration lane.
 
-The final source review read 190 source paths and summarized 240 test and fixture paths.
+The failed-park regression tests first failed both cases, then passed both after fenced cleanup was added.
+Related tests passed 30 cases; a later affected-suite recheck passed 69.
+The repair preserves the original typed database error and adds no query to successful claim or park paths.
+
+The first full coverage attempt failed 12 tests with recorded differences between host and database timestamps.
+After those clocks agreed, the unchanged affected tests and full coverage run passed.
+The cause of the clock disagreement remains unproven; no timeout, assertion or coverage floor changed.
+
+The source review read 190 source paths and summarized 240 earlier test and fixture paths.
+The bounded failed-park review also read the two-case regression fixture in full.
 One specialist reader assessed performance, migrations and failure isolation; another completed the native adversarial read.
-The gate helper emitted 42 of 553 eligible hunks; all 42 were inspected, leaving 511 outside that bounded review.
+At `589a2ea`, the gate helper emitted 43 of 554 eligible hunks; all 43 were inspected, leaving 511 outside that bounded review.
 
 The archived exploratory report remains inconclusive because several recorded commands name superseded binaries.
 Later native tests do not rewrite that historical result.
@@ -151,9 +164,8 @@ Ten consecutive abort-fixture runs passed in `/tmp/m226-abort-repeat.log`.
 
 ### Measurements
 
-The raw stream, prototype and consolidated-prototype measurements live under `docs/architecture/measurements/admissions-queue/`.
-Each drained 200 events with no failures.
-Those runs measured the proposed claim before the production settlement change was complete.
+Earlier stream and ledger prototypes each drained 200 events with no failures.
+Those runs preceded the production settlement change; their timings do not describe the final queue.
 
 The final `0.65.0` queue path completed all 15 canonical samples: three each at 20, 40, 80, 160 and 200 events.
 Each had zero failures, zero unsettled admissions, and equal created/swept fixture counts.
@@ -164,18 +176,17 @@ The median completed-event rate was 142.37/s; lease and report p95 were 43.679 m
 Idle discovery cost one statement per poll.
 
 The tenfold population increase required 8.28 times the drain statements, a client-work measurement rather than a server CPU bound.
-[Raw samples and medians](../architecture/measurements/admissions-queue/production-v065-summary.json) retain every run.
-[Source provenance](../architecture/measurements/admissions-queue/production-v065-source.json) identifies `ab66bb2ec`, including the integrated base and final coverage repairs.
+The [scaling table](../architecture/scaling.md#admissions-ledger-measurements) retains all five population medians and the benchmark command.
+The measured source was `ab66bb2ec992c87f0158470672a33bab30a58f38`, including the integrated base and coverage repairs.
 
 Runtime sources stayed unchanged throughout; documentation edits were pending.
-The later claim-statement export, documentation spacing and test import change no SQL bytes or runtime behavior.
-The [earlier production measurements](../architecture/measurements/admissions-queue/production-summary.json) retain their separate pre-integration provenance.
+The later failed-park repair changes error cleanup; no new latency benchmark was run for that repair.
 
 The empty-ledger discovery probe seeded 20,001 active fleets in a private migrated database.
 Before the precheck, discovery visited all fleets and made 20,001 admission probes; afterward, no fleet scan ran.
 The single query-plan samples took 19.702 ms and 0.079 ms respectively.
 
-[Probe evidence](../architecture/measurements/admissions-queue/idle-discovery-20000.json) records the query fingerprints and limits.
+The probe command was `fleet_suite --ignored integration_lease_plan --test-threads=1 --nocapture`.
 This measures an empty queue, with no claim about chat latency or nonempty discovery cost.
 
 The prepared metering plan compares native admission identifiers after casting the event identifier to a Universally Unique Identifier (UUID).
@@ -211,7 +222,7 @@ The notification module's mutation audit caught all ten compilable mutants; one 
 No mutant survived or timed out.
 The audit removed ring, take, listen, answer and publish bodies, changed the capacity comparison and shard arithmetic, and replaced the channel name.
 
-[Mutation evidence](../architecture/measurements/admissions-queue/doorbell-mutations.json) records the exact command and restored source hash.
+The audit used `cargo-mutants 27.1.0` on `afd_dragonfly/src/doorbell/mod.rs`; `/tmp/m226-mutations-3.log` retains its output.
 The generated-mutant build capped lints so newly unused names could not substitute for behavioral failures; shipping lint settings were unchanged.
 This proves the notification tests reject those defects, without claiming SQL mutation coverage.
 
