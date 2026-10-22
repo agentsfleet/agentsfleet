@@ -127,6 +127,7 @@ Reading the row makes cordon, drain, revoke and delete effective across replicas
 ([runner token](../AUTH.md#runner-token)).
 
 For 20 runners polling once per second, the fleet scheduler makes 72,000 discovery statements per hour.
+
 An empty ledger skips fleet scans. When unsettled admissions exist, server work grows with eligible active fleet population, including when all heads are parked.
 Measure that cost separately from the number of statements.
 
@@ -135,16 +136,18 @@ Measure that cost separately from the number of statements.
 Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers
 ([assignment](../../rustd/crates/afd_fleet/src/lease/assign/mod.rs)).
 The query first checks for any unsettled admission, then checks placement labels and the oldest unsettled admission of each eligible fleet before applying that limit.
+
 The partial admission index serves each head lookup; the limit bounds returned candidates and subsequent claim attempts.
 It does not bound the number of active fleets examined inside Postgres.
 
-An isolated plan probe with 20,001 active fleets and no admissions executed zero fleet scans after the empty-ledger check.
-The single local samples took 19.702 ms before and 0.079 ms after; these are execution-plan observations, not throughput or chat-latency measurements.
+An isolated plan probe with 20,001 active fleets and no admissions performed zero fleet scans after the empty-ledger check.
+The single local samples took 19.702 ms before and 0.079 ms after; these are query-plan observations, not throughput or chat-latency measurements.
 [Probe inputs and results](./measurements/admissions-queue/idle-discovery-20000.json) retain the query fingerprints and limits.
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
 An absent or stale notification cannot strand work because every poll still queries Postgres.
 A parked oldest admission blocks that fleet's later admissions.
+
 The claim locks the slot and exact head, stamps their fence, and commits before returning it.
 An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.
 
@@ -281,6 +284,7 @@ which is a floor and not a capacity plan.
 The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1`.
 The canonical coverage run reset the owned rig before measurement; benchmarks reused those migrated services and swept their own fixtures.
 Each row is the median of three runs on the shared development machine, with pool size 20.
+
 All 15 runs completed: 1,500 drain events, zero failures, zero unsettled admissions and 9,240 of 9,240 fixture records swept.
 These are production claim and report transactions, including admission settlement.
 
@@ -295,17 +299,20 @@ These are production claim and report transactions, including admission settleme
 The 20-to-200 event increase used 8.28 times as many drain statements for ten times the completed work.
 This measures client statement volume; it does not establish a bound on database rows examined or server CPU.
 The empty-ledger precheck skips fleet scans; nonempty discovery still examines eligible fleets.
+
 At 200 events the median lease and report p95 were 43.679 ms and 33.695 ms.
 The raw claim `rate_per_second` counts polls, including misses; the table uses the drain's explicit completed-event rate.
 
 [Raw samples and medians](measurements/admissions-queue/production-v065-summary.json) and
 [source provenance](measurements/admissions-queue/production-v065-source.json) identify the measured source at `ab66bb2ec`.
 Documentation edits were pending; runtime sources matched that commit throughout all measurements.
+
 Idle Dragonfly samples include roughly 0.0024 commands per poll from the measurement window; serving discovery makes no Dragonfly command.
 The [earlier production samples](measurements/admissions-queue/production-summary.json) predate the integrated base and final coverage repairs.
 
 The fresh comparison checkout at `0fa9e55356571d57df69cd3a13fb3b90930b0e49` exited successfully but completed none of its 200 drain events, recorded 17 failures and left readiness depth 200.
 Its [incomplete result](measurements/admissions-queue/baseline-incomplete-200-1.json) cannot support zero-cost ratios or a completed-throughput comparison.
+
 The new benchmark refuses incomplete drains instead of publishing those ratios.
 No fresh before/after throughput improvement is established.
 

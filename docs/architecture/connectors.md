@@ -271,7 +271,9 @@ active fleets in that workspace
 fleet.admissions row (body digest + fleet) → XADD fleet:{id}:events
 ```
 
-Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are admitted on redelivery. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app/mod.rs`).
+Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only.
+
+If one fan-out leg fails before its admission commits, redelivery retries that leg. Fleets already admitted answer `replayed`; redelivery admits only the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app/mod.rs`).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries": a delivery fails when the receiver is down or takes longer than **ten seconds** to answer, and recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries. This page previously credited the recovery to "GitHub's retry", which does not exist, and the correction matters because it moves the boundary of what is recoverable:
 

@@ -192,17 +192,17 @@ identifier, that identifier is minted per test. `Lane::isolated` is the shape:
 mint the workspace and fleet, seed them, scope every read. Cost is a few
 statements; it removes the whole row-collision class.
 
-**ISO-2 — Placement reads a deployment-wide set.** A lease poll can choose any eligible fleet in its database.
+**ISO-2: placement reads a deployment-wide set.**
+
+A lease poll can choose any eligible fleet in its database.
 A test that asserts absence or exact placement needs a private database or uniquely required runner labels.
 A minted fleet identity alone cannot isolate a global candidate scan.
 
-**ISO-3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
-`UPDATE … WHERE status = pending AND timeout_at <= $5`: no workspace, no fleet,
-correctly, because a sweeper is system-wide. Nothing namespaces that. Those
-tests take a named lock — and BOTH sides take it, the actor and the test whose
-premise is the actor's input, since a lock one side ignores separates nothing.
-Hold it for the test body; prefer a guard the fixture owns (`Scenario` holds the
-placement guard as its last field) over a line every test must remember.
+**ISO-3. Exclude global work by design.** `Inbox::expire` uses
+`UPDATE … WHERE status = pending AND timeout_at <= $5` without a workspace or fleet filter because the sweeper is system-wide.
+
+The actor and tests that depend on its input must both take the same named lock.
+Hold the lock for the entire test body. Prefer a fixture-owned guard; `Scenario` holds the placement guard as its last field.
 
 **Which tier applies.** Ask what the assertion reads. One row by its own minted
 id is ISO-1. A SET — a count, a listing, a queue depth — is ISO-1, and ISO-2 as well if

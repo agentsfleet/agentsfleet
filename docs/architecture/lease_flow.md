@@ -52,7 +52,9 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
 
 Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `fleet.fleets` row as `installing` with the reviewed Definition as its first `fleet.revisions` row (`afd_authoring/src/creation/reserve.rs`). Nothing touches a queue or an approval before that commit. Setup then advances in bounded steps (`afd_authoring/src/creation/activate.rs`).
 
-A grant check that reads `missing` raises a pending approval card for that credential (`afd_approval/src/request/setup.rs`), and a person approves it. Once setup checks pass, a locked recheck activates the fleet. A requested initial admission commits in that same transaction. With start `none` (`afd_authoring/src/types/creation.rs`), Save writes no admission, event, lease or affinity row.
+A grant check that reads `missing` raises a pending approval card for that credential (`afd_approval/src/request/setup.rs`), and a person approves it. Once setup checks pass, a locked recheck activates the fleet. A requested initial admission commits in that same transaction.
+
+With start `none` (`afd_authoring/src/types/creation.rs`), Save writes no admission, event, lease or affinity row.
 
 The fleet's display name ("AGENT BOB 01") is `fleet.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
 
@@ -71,6 +73,7 @@ The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler
 ### Admission commits the queue row
 
 Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
+
 Repeated producer identities return the existing admission. After commit, a bounded wake publish can prioritize its fleet on the next poll.
 
 ### The poll claims an admission and its fleet slot
@@ -84,6 +87,7 @@ Repeated producer identities return the existing admission. After commit, a boun
 7. Assemble credentials and policy, then issue `runner.leases` under the claimed fence.
 
 An expired slot exposes the same unsettled row. Redelivery preserves its event identity, original time and prior billing identity.
+
 A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.
 See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, notifications and recovery limits.
 
@@ -213,7 +217,11 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 **Instructions are prose and cannot widen anything.** The lease marks `instructions` as "soft reasoning input, hard tool and secret policy stays in `policy`" (`afd_wire/src/lease/payload.rs`). The egress rules are compiled by the daemon from the binding alone (`afd_gate/src/policy/build/mod.rs`; `afd_gate/src/policy/egress/mod.rs`) and evaluated by the runner as written (`afr_egress/src/admission/mod.rs`). So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the admission.
 
-**A chat steer is the same.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` is admitted as its own `chat` event through the same ledger (`afd_events/src/steer/mod.rs`), waits behind the running lease for the fleet's one affinity slot (`queue::CLAIM_HEAD`, `afd_fleet/src/lease/sql/queue.rs`), and runs with the same policy. The instructions tell the fleet to treat a steer with no PR as chat and to save operator facts with `memory_store` (`definition.json`). A steer cannot add an egress rule.
+**A chat steer uses the same admission path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` admission (`afd_events/src/steer/mod.rs`). It waits behind the fleet's running lease for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet/src/lease/sql/queue.rs`).
+
+The steer runs with the same policy. The instructions tell the fleet to treat a steer with no PR as chat. They also require saving operator facts with `memory_store` (`definition.json`).
+
+A steer cannot add an egress rule.
 
 **What the code admits today for this fleet (write binding on one repository):** reads under `/repos/agentsfleet/linkwarden/` (`read.rs`), and the five writes above. In principle the fleet could create blobs, trees and commits, create one ref `refs/heads/agentsfleet-repair/<event>`, and open one draft PR from it against `main`. What is refused: a review (`/pulls/{n}/reviews`), an issue comment, a PR comment, approve, request changes, any other ref, a non-draft PR. The write rules admit a fix on the repair branch and one draft PR, and no comment (`afd_gate/src/policy/egress/write.rs`).
 
@@ -241,9 +249,15 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
    NOT carried: the previous answer, and for this fleet no sandbox and no clone
 ```
 
-**Same fleet, new event, new lease.** The dedupe key is the body digest (`afd_ingress/src/app/mod.rs`), and a `synchronize` body differs, so it is a new admission in the ledger. Every pull-request action wakes the fleet under `Policy::AppIngress`, so `labeled`, `edited` and friends each queue a run too; nothing coalesces or supersedes per PR. The affinity slot allows one active lease per fleet, and on the runner `FleetTurns` allows one run per fleet ([Runner execution](./runner_execution.md) §"One lease, end to end"). So the second event waits until the first reports and the settle transaction frees the slot.
+**Same fleet, new event, new lease.** The body digest is the dedupe key (`afd_ingress/src/app/mod.rs`). A `synchronize` body differs and creates a new admission.
 
-**Same runner?** Preferred, not promised: the candidate scan sorts the last runner first, and the claim records the hint (`afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`). Any eligible runner can win. A runner that holds a sandbox for the fleet looks at it first, and others skip it while the hold lasts ([Runner Fleet](./runner_fleet.md) §"Cold and warm execution").
+Every pull-request action wakes the fleet under `Policy::AppIngress`. Actions such as `labeled` and `edited` each queue a run. Actions neither coalesce nor supersede other events for the same PR.
+
+The affinity slot allows one active lease per fleet. On the runner, `FleetTurns` allows one run per fleet ([Runner loop](./runner_execution.md) §"One lease, end to end"). The second event waits until the first reports and the settle transaction frees the slot.
+
+**Same runner?** The candidate scan prefers the last runner, and the claim records the hint (`afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`). Any eligible runner can win.
+
+A runner with a held sandbox checks that fleet first. Other runners skip the fleet while the hold lasts ([Runner fleet holds](./runner_fleet.md#cold-and-warm-execution)).
 
 **What carries over.** Fleet memory: the hydrate window is `HYDRATE_WINDOW_BYTES = 256 KiB` with every `core` entry pinned first, plus up to `RECALL_LIMIT_MAX = 50` per recall past the window (`afd_wire/src/memory.rs`; [Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane"). Memory belongs to the fleet, not the PR, so the second review knows the first only if its instructions have it read the existing reviews or recall what it stored. A chat lease also carries the thread's last eight finished turns; a webhook lease like this one carries none (`afd_fleet/src/lease/answer/mod.rs`). A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches; this fleet has no sandbox, so it never holds one.
 

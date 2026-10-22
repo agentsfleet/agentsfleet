@@ -296,7 +296,9 @@ Only the per-lease event tags are eligible — `PER_LEASE_EVENT_TYPES`, meaning 
 
 Live rows can never age into the sweep. The predicate excludes them, and a compile-time assertion keeps `MAX_RUNTIME` below the window (`afd_runner/src/sweep/retention/tests.rs`). Every renewal stamps `updated_at`, so a lease anything still holds is at most twelve hours stale against a thirty-day cutoff.
 
-**The sweeper is also the lease status column's only clock-driven writer.** Three writers move a lease out of `active`: the runner's report, the fleet's *next* claim through `queue::CLAIM_HEAD`, and the fleet's deletion. None of the three is time-based.
+**The sweeper is also the lease status column's only clock-driven writer.**
+
+The runner's report, the fleet's next claim through `queue::CLAIM_HEAD`, and fleet deletion can also move a lease out of `active`. Those three changes are not time-based.
 
 That leaves a gap. A run whose runner died, whose event was settled terminally elsewhere, on a fleet nobody messages again, would stay `active` forever — an immortal row whose per-work records the age-keyed event sweep prunes anyway, leaving an eternal "running" lease with no history behind it. The sweep flips such rows to `expired` past the same cutoff, with the `expired` tally riding the flip exactly as reclaim does, then lets them age out through their own window.
 
@@ -373,6 +375,7 @@ report → agentsfleetd: one transaction (settle + terminal state + checkpoint
 
 The admission settlement, usage, terminal event, checkpoint, slot release and outbound obligation commit together.
 A failed transaction leaves the lease active and unsettled. A lost response is retried against the stored outcome without another charge.
+
 Activity publication and outbound dispatch follow the commit. See [`data_flow.md`](./data_flow.md) §"C. EXECUTE".
 
 The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). On the runner, each lease is one task that owns its sandbox: a sandbox is held or destroyed exactly once, and the engine's boot sweep removes what a crashed runner left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
@@ -519,7 +522,19 @@ A lease runs in a fresh sandbox or its fleet's held sandbox. A lease that fails,
 
 The Rust runner's per-lease sandbox, its measured cold start and where its bytes live are in [Runner execution](./runner_execution.md) §"A lease's sandbox today"; a lease whose tools all run in the supervisor starts no sandbox at all.
 
-A lease that ends **processed** leaves its sandbox **held** for the same fleet: frozen, its workspace files kept for an idle window of ten minutes ([Runner Execution](./runner_execution.md) §"Workspace between leases"). The fleet's next lease continues in it. Two guards keep that safe. First, every lease still carries fresh config and secrets (config is never cached, see below), and a hold whose limits or policy changed is destroyed rather than reused. Second, sticky routing stays a *hint*. The report writes `runner.fleet_slots.hold_expires_at` in its fencing-guarded release, clamped to the window; every heartbeat names the fleets the runner still holds, which clears the rest, except a hold reported within the last beat interval unless the beat says `closing` (the runner holds and parks nothing more, so its list is final), and answers the ones no longer active or leased elsewhere since; a beat whose list is unreadable, out of bounds or empty holds nothing. The lease poll carries the same list, and the holder looks at those fleets before its ledger candidate scan. The candidate scan and the claim skip a fleet another runner holds while `hold_expires_at` is ahead, that runner's `last_seen_at` is within `RUNNER_OFFLINE_AFTER`, and it can lease (active and not degraded); another runner's claim clears `held_until`, the holder's own keeps it. The lease tells its runner whether to resume the hold (`resume_hold`): only when the slot's last lease ran there, its hold had not lapsed and the event is not a reclaim, because any other hold may predate another runner's run or this event's own first attempt. Otherwise any eligible runner takes the event in a fresh sandbox. A Fleet is never stuck waiting for one runner.
+A lease that ends **processed** leaves its sandbox **held** for the same fleet. The frozen sandbox keeps its workspace files for ten idle minutes ([Workspace between leases](./runner_execution.md#workspace-between-leases)). The fleet's next lease can continue in it.
+
+Every lease carries fresh config and secrets; config is never cached. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
+
+The report writes `runner.fleet_slots.hold_expires_at` during its fencing-guarded release, clamped to that window. Every heartbeat lists the fleets the runner still holds. It clears holds missing from the list, except those reported within the last beat interval.
+
+A `closing` heartbeat also clears those recently reported holds because the runner's list is final. The heartbeat response names holds whose fleet became inactive or was leased elsewhere. An unreadable, out-of-bounds or empty list holds nothing.
+
+The lease poll carries the same list. The holder checks those fleets before its ledger candidate scan. Both the candidate scan and claim skip a fleet held by another eligible runner with an unexpired hold.
+
+Eligibility requires that holder to be active, not degraded, and seen within `RUNNER_OFFLINE_AFTER`. Another runner's claim clears `hold_expires_at`; the holder's own claim keeps it.
+
+`resume_hold` requires the slot's last lease to have run on that runner, an unexpired hold, and an event that is not a reclaim. Other holds may predate another runner's run or this event's first attempt. Otherwise any eligible runner takes the event in a fresh sandbox, without waiting for a particular runner.
 
 ## Config
 
@@ -537,6 +552,7 @@ PostgreSQL owns the inbound admissions queue. Dragonfly carries activity, wake n
 The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
 
 A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in one transaction.
+
 Locked or parked heads cannot expose later admissions. A gate answer clears the park stamp and publishes a best-effort wake.
 
 The candidate query prefers held fleets and a recent wake hint, then the runner's previous fleet, with random ordering for the rest.

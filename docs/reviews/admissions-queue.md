@@ -107,8 +107,10 @@ Package commands establish the narrower behavior named above.
 The baseline uses an archive of the exact comparison revision and an independent Cargo target directory.
 Its integration services use a separate Compose project and ports.
 The baseline unit command stopped at `cli/test/dev-dashboard.test.ts:108`: its 100 ms child-process deadline elapsed before the fixture wrote its startup trace.
+
 The design-system target was run separately afterward: 498 tests passed in 62 files (`/tmp/m226-baseline-design-system.log`).
 Those supplemental results are not added to the canonical baseline total.
+
 The baseline integration command stopped at `afd_cron/tests/integration_expiry_lock.rs:101`, whose 500 ms lease expired before the guard queued.
 Both historical runs remain failed; they do not permit failures in the implementation's final lanes.
 
@@ -118,6 +120,7 @@ Pull Request Session Notes retain the final uncached `orly gate pr` output for t
 The final Rust coverage run measures `868b6119112955d63c41f9c3019ea993f09bebae` against that integrated base.
 It covers 68,465 of 68,779 instrumented lines and every one of the 397 measured changed lines.
 The lowest whole-file result is 99.2308% across the 72 measured changed files.
+
 [Per-file counts](../architecture/measurements/admissions-queue/coverage-v065.json) retain each denominator and missed line.
 
 The run adds no exclusions and keeps the repository's existing test-helper and benchmark exclusions.
@@ -135,12 +138,14 @@ After those limits were explained, the owner instructed: “Well run the test an
 The baseline Rust unit selection passed 4,669 tests: runner 1,314, daemon 137 and libraries 3,218.
 Python passed 25; app passed 3,889; website passed 133; command-line interface passed 1,952 with one failure and 16 skips.
 Rust reported 1,374 ignored tests, reserved for integration.
+
 Compare package selections individually: the baseline canonical command never reached the design-system package.
 Do not calculate an integration delta from a baseline that stopped before later packages.
 
 The abort fixture previously allowed five seconds for each failed database acquire.
 That prevented ten failures from reaching the monitor within its 30-second run.
 The existing 50 ms unreachable-database fixture preserves the monitor assertions and passes in 1.06 seconds.
+
 The red and green logs are `/tmp/m226-unit-all-6.log` and `/tmp/m226-abort-fixture.log`.
 Ten consecutive abort-fixture runs passed in `/tmp/m226-abort-repeat.log`.
 
@@ -149,9 +154,11 @@ Ten consecutive abort-fixture runs passed in `/tmp/m226-abort-repeat.log`.
 The raw stream, prototype and consolidated-prototype measurements live under `docs/architecture/measurements/admissions-queue/`.
 Each drained 200 events with no failures.
 Those runs measured the proposed claim before the production settlement change was complete.
+
 The final `0.65.0` queue path completed all 15 canonical samples: three each at 20, 40, 80, 160 and 200 events.
 Each had zero failures, zero unsettled admissions, and equal created/swept fixture counts.
 Together they completed 1,500 drain events and swept 9,240 fixture records.
+
 At 200 events the medians were 52.725 statements, 22.535 commits and 3.045 Dragonfly calls per completed event.
 The median completed-event rate was 142.37/s; lease and report p95 were 43.679 ms and 33.695 ms.
 Idle discovery cost one statement per poll.
@@ -159,30 +166,35 @@ Idle discovery cost one statement per poll.
 The tenfold population increase required 8.28 times the drain statements, a client-work measurement rather than a server CPU bound.
 [Raw samples and medians](../architecture/measurements/admissions-queue/production-v065-summary.json) retain every run.
 [Source provenance](../architecture/measurements/admissions-queue/production-v065-source.json) identifies `ab66bb2ec`, including the integrated base and final coverage repairs.
+
 Runtime sources stayed unchanged throughout; documentation edits were pending.
-The later claim-statement export, documentation spacing and test import change no SQL bytes or runtime execution.
+The later claim-statement export, documentation spacing and test import change no SQL bytes or runtime behavior.
 The [earlier production measurements](../architecture/measurements/admissions-queue/production-summary.json) retain their separate pre-integration provenance.
 
 The empty-ledger discovery probe seeded 20,001 active fleets in a private migrated database.
-Before the precheck, discovery visited all fleets and executed 20,001 admission probes; afterward, no fleet scan executed.
-The single execution-plan samples took 19.702 ms and 0.079 ms respectively.
+Before the precheck, discovery visited all fleets and made 20,001 admission probes; afterward, no fleet scan ran.
+The single query-plan samples took 19.702 ms and 0.079 ms respectively.
+
 [Probe evidence](../architecture/measurements/admissions-queue/idle-discovery-20000.json) records the query fingerprints and limits.
 This measures an empty queue, with no claim about chat latency or nonempty discovery cost.
 
 The prepared metering plan compares native admission identifiers after casting the event identifier to a Universally Unique Identifier (UUID).
 Before the repair, the settlement scan at 1,250 admissions rejected 1,249 rows (`/tmp/m226-meter-red-3.log`).
-The existing lease-plan test now also executes renewal and settlement at 1,250, 2,500, 5,000 and 10,000 admissions.
-Each executed admission lookup must use the primary key and return at most one row; settlement state is checked before rollback.
+The existing lease-plan test now also runs renewal and settlement at 1,250, 2,500, 5,000 and 10,000 admissions.
+
+Each tested admission lookup must use the primary key and return at most one row; settlement state is checked before rollback.
 The isolated fixture uses its owner connection to collect planner statistics; API-role behavior remains covered separately by the ledger suite.
 This proves bounded lookup work in the fixture, without a chat-latency or general throughput claim.
 
 The fresh canonical stream comparison completed no drain events and recorded 17 failures while exiting successfully.
 Its zero ratios are invalid for a completed-work comparison; no new throughput improvement is claimed.
 The new benchmark refuses incomplete drains.
+
 `test_ledger_claim_lane_reports_round_trips` passed its real 200-event drain and injected event-write refusal in 35.45 seconds (`/tmp/m226-production-bench-proof.log`).
 The refusal occurs after staging; prefixed fixtures are swept on both outcomes.
 
-The live notification proof passed: two independent hubs received the same 24 published fleet identifiers across the sharded channels, ignored malformed payloads and returned every channel to zero subscribers after their owners were dropped (`/tmp/m226-doorbell-live-3.log`).
+Two independent hubs received the same 24 published fleet identifiers across the sharded channels and ignored malformed payloads.
+Every channel returned to zero subscribers after its owners were dropped (`/tmp/m226-doorbell-live-3.log`).
 
 ### HTTP resource ownership
 
@@ -198,6 +210,7 @@ They do not prove allocator-failure recovery or long-running reachable-heap boun
 The notification module's mutation audit caught all ten compilable mutants; one could not compile because `Uuid7` has no `Default` implementation.
 No mutant survived or timed out.
 The audit removed ring, take, listen, answer and publish bodies, changed the capacity comparison and shard arithmetic, and replaced the channel name.
+
 [Mutation evidence](../architecture/measurements/admissions-queue/doorbell-mutations.json) records the exact command and restored source hash.
 The generated-mutant build capped lints so newly unused names could not substitute for behavioral failures; shipping lint settings were unchanged.
 This proves the notification tests reject those defects, without claiming SQL mutation coverage.
@@ -205,6 +218,7 @@ This proves the notification tests reject those defects, without claiming SQL mu
 The owned development reset was exercised with a seeded draft and fleet plus an inbound stream and readiness key.
 The canonical `make test-integration-rustd` reset removed both rows and both keys before its test readers started.
 All three queue columns existed afterward, and all four approved obsolete columns were absent.
+
 The setup and verification logs are `/tmp/m226-cutover-seed.log` and `/tmp/m226-cutover-verify.log`.
 This checks the disposable local cutover, not a deployed upgrade or populated-history backfill.
 

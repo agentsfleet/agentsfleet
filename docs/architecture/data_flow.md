@@ -9,9 +9,10 @@ executable: false
 # Data Flow — how an event moves through the system
 
 > Parent: [`README.md`](./README.md) · Sibling: [`runner_fleet.md`](./runner_fleet.md) (the structural split this flow runs on). · User-facing: [docs.agentsfleet.net/fleets/webhooks](https://docs.agentsfleet.net/fleets/webhooks) (sending an event) and [docs.agentsfleet.net/fleets/running](https://docs.agentsfleet.net/fleets/running) (watching one).
->
+
 > **Scope:** `agentsfleetd` owns admission, assignment and settlement. `agentsfleet-runner` runs the agent loop and tools, then reports over HTTPS.
-> See [runner execution](./runner_execution.md#process-model) for the supervisor and sandbox boundary.
+
+> See [runner processes](./runner_execution.md#process-model) for the supervisor and sandbox boundary.
 
 Read this when you need to know where a webhook, a steer, or a cron fire ends up. Many specs reference this file as the canonical picture of the runtime.
 
@@ -65,7 +66,7 @@ Each trap is enforced in its owner section; this list is the index.
 The diagrams live with their flows — each is the section's proof, so none is duplicated here:
 
 - coding fleet vs Fleet runtime — §The coding fleet and the Fleet runtime
-- the admission, claim and settlement boundaries — §Steer flow end-to-end
+- the admission, claim and settlement boundaries in §Steer flow end-to-end
 - the Dragonfly connection topology — §Connection topology
 - save, trigger envelope, execute, watch — §"End-to-end sequence" — A through D
 - the setup failure window — §The install failure scenario, visually
@@ -207,7 +208,7 @@ One event's life across all four:
 
 The two ledgers are not symmetric, and the asymmetry is **who can retry**. A producer holds its own `producer_key` and repeats it, so an admission deduplicates on the PRODUCER's identity. A destination has no such key — a chat provider cannot tell us "this is the same message" — so an obligation deduplicates on the event that produced the answer, the only stable identity this side owns.
 
-That decides the direction of error, too. An admission failure remains visible to its producer, which can retry the same identity. An uncertain obligation is RE-SENT, because the path is at-least-once and a duplicate message in a thread is visible and recoverable by a person, while an answer never sent is neither.
+An admission failure remains visible to its producer, which can retry the same identity. Uncertain obligations are sent again because delivery is at-least-once. People can recognize and recover from duplicate replies; a missing answer leaves no visible record.
 
 `fleet.events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow: an event has a genuine vocabulary — `received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest — where a delivery has exactly two facts. The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
 
@@ -224,7 +225,7 @@ Why a narrative table and a usage table (`fleet.events` + `billing.usage_lines`)
 - `fleet.events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
 - `billing.usage_lines` holds numeric audit columns — small, priced once and never repriced, retained for billing reconciliation independent of whether the conversation row is purged; it has no foreign keys, so a line outlives the fleet, workspace and price row it names.
 
-The durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `runner` schema and never carries user strings.
+Durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth concern. It records ownership: which runner holds an event, its fencing token, and its expiry. This bookkeeping lives in the `runner` schema and never carries user strings.
 
 ### The list read and the detail read are different reads
 
@@ -344,7 +345,9 @@ person -> private draft/messages -> validated Definition -> reviewed candidate
                                           B. TRIGGER -> C. EXECUTE -> D. WATCH
 ```
 
-Messages are durable recovery; progress streams are hints. Private draft access requires its creator and current membership. Runtime history remains fleet-scoped. An unchanged Library install uses a pinned revision directly. Improve applies a reviewed setup revision without publishing it. An accepted initial admission survives reload with the same event identity.
+Messages are durable recovery; progress streams are hints. Private draft access requires its creator and current membership. Runtime history remains fleet-scoped.
+
+An unchanged Library install uses a pinned revision directly. Improve applies a reviewed setup revision without publishing it. An accepted initial admission survives reload with the same event identity.
 
 ### A. SAVE  (a reviewed private candidate or a pinned Library revision)
 
@@ -563,6 +566,7 @@ A superseded report answers `UZ-RUN-005` and changes no durable state.
 A failed report transaction leaves the admission unsettled and its other writes rolled back.
 
 A runner that disappears leaves an unsettled admission. Once its slot expires, another claimant can reissue that event under a higher fence.
+
 The admission retains its original time and billing identities. The previous holder cannot settle through the newer fence.
 
 Approval resolution or expiry unparks eligible heads and attempts a wake notification.
@@ -570,7 +574,7 @@ Every subsequent idle poll probes Postgres, so notification loss cannot leave th
 
 See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, polling costs and recovery limits.
 See [provider key boundaries](./billing_and_provider_keys.md#82-the-api_key-visibility-boundary) for plaintext ownership.
-The [runner sequence](./runner_execution.md#one-lease-end-to-end) owns sandbox startup, execution and teardown.
+The [runner sequence](./runner_execution.md#one-lease-end-to-end) owns sandbox startup, agent runs and teardown.
 
 A recorded reply destination creates an outbound obligation with the report.
 The outbound worker posts that answer to its connector thread; [the Slack flow](./scenarios/slack-incident-responder.md#6-how-the-answer-comes-back) shows the destination.

@@ -4,9 +4,9 @@
 verifies.
 **Scope:** exactly one of development or production per run.
 
-The teardown empties every member of the environment's Dragonfly cluster:
-it sends `FLUSHALL` to each primary and then proves `DBSIZE` is 0 on every
-member, primaries and replicas alike. It removes every stored key, including:
+The teardown sends `FLUSHALL` to each primary in the environment's Dragonfly cluster.
+It then proves `DBSIZE` is 0 on every primary and replica.
+It removes every stored key, including:
 
 - the `connector:outbound` delivery stream
 - authentication session, approval, and deduplication keys
@@ -98,6 +98,7 @@ before any flush.
 
 Restart or redeploy every `agentsfleetd` machine before restoring traffic.
 Startup recreates the shared `connector:outbound` group. Normal writes recreate authentication sessions and deduplication keys.
+
 Lease polls continue reading the admissions ledger; outbound rebuild retries undelivered obligations.
 
 To remove the cluster entirely rather than empty it, delete the environment's
