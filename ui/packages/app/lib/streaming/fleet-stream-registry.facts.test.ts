@@ -10,7 +10,7 @@ import {
   reconcileServerFacts,
   reconcileServerRows,
   subscribe,
-} from "./fleet-stream-registry";
+} from "@/tests/helpers/fleet-streams";
 
 // The registry as the strip's store: the fleet facts the tail carries, and
 // the newest row's figures. Split from the registry suite by concern.

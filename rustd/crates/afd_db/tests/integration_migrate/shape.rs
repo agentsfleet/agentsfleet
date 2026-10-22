@@ -3,7 +3,7 @@
 //!
 //! The expected layout is [`LAYOUT`], held here. That
 //! `docs/architecture/postgres_schemas.md` lists the same tables and columns as
-//! the slots' `CREATE TABLE` statements is the architecture-doc lint's row
+//! the registered migrations is the architecture-doc lint's row
 //! `test_arch_schema_layout_matches_doc` (`make check-architecture-doc`), so the
 //! doc, the slots and this list cannot drift apart without one of them failing.
 
@@ -60,7 +60,7 @@ authoring.attempts: id, lease_id, runner_id, workspace_id, tenant_id, user_id, d
     expires_at, reserved_nanos, usage_unknown, call_count, output_token_count, \
     reported_runtime_ms, last_activity_sequence, failure_reason, outcome, created_at, updated_at
 authoring.dispatches: id, attempt_id, sequence, request_digest, status, result, usage, \
-    native_reply, private_expires_at, created_at, updated_at
+    native_reply, private_expires_at, dispatch_expires_at, failure_cause, created_at, updated_at
 authoring.activity_receipts: id, attempt_id, sequence, request_digest, candidate_id, created_at
 authoring.answer_receipts: id, draft_id, attempt_id, report_id, answer_digest, expires_at, \
     created_at

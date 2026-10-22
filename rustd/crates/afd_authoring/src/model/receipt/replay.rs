@@ -5,7 +5,7 @@ use serde::Deserialize;
 use sqlx::PgConnection;
 
 use super::super::{
-    ModelCallInput, budget,
+    ModelCallInput,
     dispatch::{CONTEXT, Decision},
     dispatch_status, sql,
 };
@@ -34,7 +34,7 @@ struct Receipt {
     status: String,
     result: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    created_at: Timestamp,
+    dispatch_expires_at: Timestamp,
 }
 
 pub(in crate::model) async fn prior(
@@ -85,14 +85,9 @@ async fn existing(
         }
         State::Failed => ErrorKind::Provider,
         State::Unknown => ErrorKind::Unknown,
-        State::Pending
-            if guarded.now
-                < afd_core::clock::after(receipt.created_at, budget::PROVIDER_TIMEOUT) =>
-        {
-            ErrorKind::State {
-                current: "dispatching",
-            }
-        }
+        State::Pending if guarded.now < receipt.dispatch_expires_at => ErrorKind::State {
+            current: "dispatching",
+        },
         State::Pending => {
             sqlx::query(sql::UNKNOWN)
                 .bind(&receipt.id)

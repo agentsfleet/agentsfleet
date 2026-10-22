@@ -56,8 +56,10 @@ impl std::fmt::Debug for ProviderRequest {
 pub struct ProviderResponse {
     /// Provider HTTP status; response bodies are never error detail.
     pub status: u16,
-    /// At most the protocol envelope ceiling.
-    pub body: Vec<u8>,
+    /// The real provider headers; the SDK checks the declared stream framing.
+    pub headers: http::HeaderMap,
+    /// Incremental bytes; the shared inference adapter enforces the wire bound.
+    pub body: rig_core::http_client::BoxedStream,
 }
 
 impl std::fmt::Debug for ProviderResponse {
@@ -71,7 +73,7 @@ impl std::fmt::Debug for ProviderResponse {
 /// Sends once. Retries and redirects are forbidden; the destination comes from the persisted model.
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync + std::fmt::Debug {
-    /// Performs one physical request and returns its bounded response.
+    /// Performs one physical request and returns its response before collecting the body.
     ///
     /// # Errors
     /// No authoritative response arrived; accounting must remain unknown.

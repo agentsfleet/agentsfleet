@@ -89,6 +89,11 @@ pub(crate) enum ErrorKind {
         #[source]
         source: Option<afd_dragonfly::Error>,
     },
+    #[error("the private preview could not be published")]
+    Preview {
+        #[source]
+        source: afd_dragonfly::Error,
+    },
     #[error("the private setup cursor does not match its query")]
     Cursor,
     #[error("the setup request is invalid")]
@@ -196,9 +201,9 @@ impl Error {
             ErrorKind::Admission { source } => source.code(),
             ErrorKind::Approval { source } => source.code(),
             ErrorKind::Billing { source } => source.code(),
-            ErrorKind::Identifier { .. } | ErrorKind::Entropy { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Preview { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 

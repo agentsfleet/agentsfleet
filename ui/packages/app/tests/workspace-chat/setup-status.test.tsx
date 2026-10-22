@@ -50,6 +50,12 @@ it("keeps Continue available until a requested first run is durably accepted", (
   expect(screen.getByText(/Accepted work can still be running/)).toBeTruthy();
 });
 
+it("omits saved readiness disclosure when the fleet has no recorded checks", () => {
+  render(<SetupProgress fleet={{...FLEET, setup: {state: "ready", checks: []}}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={vi.fn()} busy={false} />);
+  expect(screen.queryByRole("button", {name: "What needs attention"})).toBeNull();
+  expect(screen.getByRole("link", {name: "Open fleet"})).toBeTruthy();
+});
+
 it("calls an active fleet ready only when every schedule is registered, and retries the rest", () => {
   const retry = vi.fn();
   const synced = {schedule_id: "sched-ok", fleet_id: FLEET.id, sync: "synced"};

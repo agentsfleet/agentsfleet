@@ -25,6 +25,7 @@ export function matchSetupRoute(workspace: string, parts: readonly string[], met
   if (resource === RESOURCE.drafts) return draft(parts, method);
   if (resource === RESOURCE.libraries) return library(parts, method);
   if (resource !== RESOURCE.fleets) return undefined;
+  if (parts.length === 1 && method === SETUP_METHOD.get) return PAGED;
   if (parts.length === 1 && method === SETUP_METHOD.post) return ORDINARY;
   if (!uuid.safeParse(id).success) return undefined;
   if (parts.length === 2 && [SETUP_METHOD.get, SETUP_METHOD.patch].some((allowed) => allowed === method)) return ORDINARY;

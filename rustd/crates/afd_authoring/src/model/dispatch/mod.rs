@@ -3,6 +3,7 @@
 use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,6 +21,8 @@ use crate::{
     replay,
 };
 
+mod invoke;
+
 pub(super) const CONTEXT: &str = "reserve authoring model dispatch";
 
 /// The daemon's scoped model invocation service, with a physical transport seam.
@@ -28,6 +31,7 @@ pub struct ModelCalls {
     drafts: Drafts,
     providers: Providers,
     transport: Arc<dyn Transport>,
+    streams: Option<afd_dragonfly::FleetStreams>,
 }
 
 pub(super) struct Intent {
@@ -42,6 +46,7 @@ impl Intent {
         attempt: guard::Attempt,
         key: afd_crypto::secret::SecretString,
         prepared: prepare::Prepared,
+        dispatch_id: &str,
         now: Timestamp,
         authorized_at: Instant,
     ) -> Self {
@@ -51,12 +56,14 @@ impl Intent {
             .try_into()
             .unwrap_or(Duration::ZERO);
         let outbound = provider::Outbound {
+            dispatch_id: dispatch_id.into(),
             key,
             body: prepared.body,
             timeout: remaining.min(budget::PROVIDER_TIMEOUT),
             inference: prepared.inference,
             model: attempt.model_snapshot.model.clone(),
             context_tokens: prepared.context_tokens,
+            progress: None,
         };
         Self {
             outbound,
@@ -81,7 +88,15 @@ impl ModelCalls {
             drafts,
             providers,
             transport,
+            streams: None,
         }
+    }
+
+    /// Enables creator-private previews through the existing shared pub/sub bus.
+    #[must_use]
+    pub fn with_progress(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+        self.streams = Some(streams);
+        self
     }
 
     /// Dispatches once or returns an authorized saved receipt.
@@ -97,45 +112,15 @@ impl ModelCalls {
     ) -> Result<ModelCallResult> {
         let request = prepare::request(request)?;
         let _attempt = Uuid7::parse(&request.attempt_id)?;
-        let _dispatch = Uuid7::parse(&request.dispatch_id)?;
+        let dispatch = Uuid7::parse(&request.dispatch_id)?;
         let counters = guard::Counters::model_call(&request)?;
         let intent = match self.reserve(runner, lease, &request, &counters).await? {
             Decision::Replay(result) => return Ok(result),
             Decision::Refused(error) => return Err(error),
             Decision::Send(intent) => intent,
         };
-        let Intent {
-            attempt,
-            mut outbound,
-            authorized_at,
-            output_limit,
-        } = *intent;
-        outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
-        let decoded = if outbound.timeout.is_zero() {
-            Err(ErrorKind::Unknown.into())
-        } else {
-            provider::complete(outbound, Arc::clone(&self.transport))
-                .await
-                .and_then(|(status, response)| {
-                    provider::decode(
-                        status,
-                        &response,
-                        &request,
-                        &attempt.model_snapshot,
-                        output_limit,
-                    )
-                })
-        };
-        receipt::finish(
-            &self.drafts,
-            runner,
-            lease,
-            &request,
-            &counters,
-            &attempt,
-            decoded,
-        )
-        .await
+        self.invoke(runner, lease, &request, &counters, *intent, dispatch)
+            .await
     }
 
     async fn reserve(
@@ -227,6 +212,7 @@ impl ModelCalls {
             guarded.attempt,
             key,
             prepared,
+            &request.dispatch_id,
             now,
             authorized_at,
         ))))
@@ -246,6 +232,7 @@ async fn insert(
         .bind(digest)
         .bind(dispatch_status::PENDING)
         .bind(budget::PRIVATE_TTL)
+        .bind(attempt.expires_at.to_sqlx())
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

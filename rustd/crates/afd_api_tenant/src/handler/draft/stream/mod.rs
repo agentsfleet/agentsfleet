@@ -10,7 +10,7 @@ use crate::{
 use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{
     extract::{Path, State},
-    response::{IntoResponse as _, Response, Sse, sse::KeepAlive},
+    response::{IntoResponse as _, Response, Sse},
 };
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ use std::sync::Arc;
     get, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/events/stream",
     operation_id = "stream_workspace_draft", tag = afd_http::openapi::tag::DRAFTS,
     summary = "Stream your private setup progress",
-    description = "Metadata hints only. Reconcile the draft and messages on reconnect. Last-Event-ID is an ephemeral hint. Access is checked before every frame and at least every ten seconds while quiet.",
+    description = "Private progress and provisional answer text. Reconcile the draft and messages on reconnect. Last-Event-ID is an ephemeral hint. Access is checked before every frame and at least every ten seconds while quiet.",
     params(afd_http::openapi::path::Draft),
     responses((status=200, body=String, content_type="text/event-stream", description="Private progress"),
         (status=400, description="Invalid draft identifier"), (status=401, description=afd_http::openapi::UNAUTHORIZED),
@@ -50,6 +50,9 @@ pub(crate) async fn open<D: Services>(
         afd_observability::producers::http::stream_shed();
         Refusal::at_stream_ceiling(live.carrying(), live.capacity())
     })?;
+    let subscription = live
+        .hub()
+        .map(|hub| hub.subscribe(&afd_authoring::draft_channel(&draft)));
     let stream = body::frames(
         services.authoring().clone(),
         owned.workspace,
@@ -57,8 +60,7 @@ pub(crate) async fn open<D: Services>(
         draft,
         view.generation,
         slot,
+        subscription,
     );
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
+    Ok(Sse::new(stream).into_response())
 }

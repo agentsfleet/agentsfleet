@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { CONNECTION_STATUS, useFleetEventStream } from "../components/domain/useFleetEventStream";
-import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
+import { __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { FakeEventSource } from "./helpers/fake-event-source";
 import { row, mount, WS, ZID } from "./helpers/fleet-stream-hook-fixtures";
+import { streamWrapper } from "./helpers/fleet-streams";
 
 describe("useFleetEventStream", () => {
   beforeEach(() => {
@@ -87,7 +88,7 @@ describe("useFleetEventStream", () => {
     const received = row({ status: "received", response_text: null });
     const view = renderHook(
       ({ initial }) => useFleetEventStream(WS, ZID, initial),
-      { initialProps: { initial: [received] } },
+      { initialProps: { initial: [received] }, wrapper: streamWrapper },
     );
     await waitFor(() => expect(view.result.current.events).toHaveLength(1));
     const source = FakeEventSource.instances[0];

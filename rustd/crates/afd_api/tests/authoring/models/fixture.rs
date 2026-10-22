@@ -32,9 +32,21 @@ impl Transport for Provider {
         assert_eq!(body.get("parallel_tool_calls"), Some(&Value::Bool(false)));
         assert!(body.get("capability_token").is_none());
         self.effects.fetch_add(1, Ordering::SeqCst);
+        let body = format!(
+            "data: {}\n\n",
+            json!({"type":"response.completed","response":self.response})
+        );
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
         Ok(ProviderResponse {
             status: 200,
-            body: serde_json::to_vec(&self.response).expect("bounded response"),
+            headers,
+            body: Box::pin(futures_util::stream::once(std::future::ready(Ok(
+                body.into()
+            )))),
         })
     }
 }

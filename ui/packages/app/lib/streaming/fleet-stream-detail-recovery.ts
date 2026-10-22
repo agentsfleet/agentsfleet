@@ -148,5 +148,4 @@ export function applyDetail(prev: FleetEvent[], detail: EventDetail): FleetEvent
 export function closeLivePass(entry: Entry, eventId: string): void {
   entry.replyStreams.get(eventId)?.dispose();
   entry.replyStreams.delete(eventId);
-  entry.replyNextSeq.delete(eventId);
 }

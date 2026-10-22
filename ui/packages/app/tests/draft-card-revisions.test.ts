@@ -27,5 +27,5 @@ it("explains proposed, saved and published versions without equating their count
   expect(sidebarDrafts(parse({...CARD, candidate_revision: 3}), null)[0]?.detail).toBe("Setup ready · Proposed v3");
   expect(sidebarDrafts(parse({...CARD, state: "closed", linked_fleet_id: FLEET_ID,
     candidate_revision: 3, setup_revision: 2, publication_revision: 7}), null)[0]?.detail)
-    .toBe("Fleet saved · Saved v2 · Published v7");
+    .toBe("Saved v2 · Published v7");
 });

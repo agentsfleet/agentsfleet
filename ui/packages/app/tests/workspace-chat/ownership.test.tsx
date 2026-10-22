@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
-import {ChatFixture, CHAT_PROPS} from "./fixture";
+import {ChatFixture, CHAT_PROPS, chooseSetupAction, openSetupReview} from "./fixture";
 import {WorkspaceChat} from "@/components/domain/chat/WorkspaceChat";
 import {stagePlatformLibraryAction} from "@/app/(dashboard)/admin/fleet-libraries/actions";
 import {DRAFT, FLEET, FLEET_ID, PUBLICATION, REVIEW, response} from "@/tests/helpers/draft-fixtures";
@@ -28,12 +28,13 @@ it.each([200, 403, undefined])("retains the platform staging outcome in the owni
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} canPublishPlatform
     source={{kind: "definition", definition: REVIEW.effective.definition}} />);
   await screen.findByText("Your setup is ready.");
-  const dialog = await screen.findByRole("region", {name: "Fleet setup"});
+  await openSetupReview();
+  const dialog = screen.getByRole("dialog", {name: "Edit instructions"});
   fireEvent.click(within(dialog).getByRole("button", {name: "Publish to Fleet library"}));
   fireEvent.click(await within(dialog).findByRole("button", {name: "Stage platform entry"}));
   if (status === 200) {
     await screen.findAllByText(/is staged/);
-    expect(screen.getByRole("status").textContent).toContain("Publish it explicitly");
+    expect(within(dialog).getByRole("status").textContent).toContain("Publish it explicitly");
   } else if (status === 403) {
     await screen.findAllByText(/doesn’t have access here/);
     expect(screen.getByRole("button", {name: "Reload"})).toBeTruthy();
@@ -67,7 +68,7 @@ it("recovers a failed setup continuation from the conversation without reopening
   expect(continued).toBe(false);
   fireEvent.click(retry);
   await waitFor(() => expect(screen.queryByRole("button", {name: "Continue setup"})).toBeNull());
-  expect(screen.getByText("repairer is ready")).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
   expect(continued).toBe(true);
 });
 
@@ -91,7 +92,7 @@ it.each(["saved", "updated"])("recovers failed schedule registration from the ow
     return base(input, init);
   });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
-  if (source === "updated") fireEvent.click(await screen.findByRole("button", {name: "Save changes"}));
+  if (source === "updated") await chooseSetupAction("Save changes");
   fireEvent.click(await screen.findByRole("button", {name: "Retry registration"}));
   await screen.findByText("Registration retry unavailable");
   const retry = screen.getByRole("button", {name: "Retry registration"});

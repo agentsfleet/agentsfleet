@@ -1,19 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { EventRow } from "@/lib/api/events";
-import {
-  appendOptimistic as registryAppendOptimistic,
-  CONNECTION_STATUS,
-  discardOptimistic as registryDiscardOptimistic,
-  getSnapshot,
-  reconcileOptimistic as registryReconcileOptimistic,
-  reconcileServerRows,
-  retryConnection as registryRetryConnection,
-  subscribe,
-  type ConnectionStatus,
-} from "@/lib/streaming/fleet-stream-registry";
+import { CONNECTION_STATUS, type ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
+import { useFleetStreams } from "./FleetStreamProvider";
 import {
   AGENTSFLEET_EVENT_STATUS,
   type FleetEvent,
@@ -68,36 +59,37 @@ export function useFleetEventStream(
   // registry ignores `initial` while subscribing to an existing entry; the
   // reconciliation effect below handles later authoritative snapshots.
   const initialRef = useRef(initial);
-  initialRef.current = initial;
+  useLayoutEffect(() => { initialRef.current = initial; }, [initial]);
+  const streams = useFleetStreams();
   const subscribeFn = useCallback(
     (listener: () => void) =>
-      subscribe(workspaceId, fleetId, initialRef.current, listener),
-    [workspaceId, fleetId],
+      streams.subscribe(workspaceId, fleetId, initialRef.current, listener),
+    [streams, workspaceId, fleetId],
   );
-  const snapshotFn = useCallback(() => getSnapshot(fleetId), [fleetId]);
+  const snapshotFn = useCallback(() => streams.getSnapshot(fleetId), [streams, fleetId]);
   const snapshot = useSyncExternalStore(subscribeFn, snapshotFn, snapshotFn);
 
   useEffect(() => {
-    reconcileServerRows(fleetId, initial);
-  }, [fleetId, initial]);
+    streams.reconcileServerRows(fleetId, initial);
+  }, [streams, fleetId, initial]);
 
   const appendOptimistic = useCallback(
     (text: string, actor: string, sentAs?: string) =>
-      registryAppendOptimistic(fleetId, text, actor, sentAs),
-    [fleetId],
+      streams.appendOptimistic(fleetId, text, actor, sentAs),
+    [streams, fleetId],
   );
   const reconcileOptimistic = useCallback(
     (tempId: string, realEventId: string, replayed: boolean) =>
-      registryReconcileOptimistic(fleetId, tempId, realEventId, replayed),
-    [fleetId],
+      streams.reconcileOptimistic(fleetId, tempId, realEventId, replayed),
+    [streams, fleetId],
   );
   const discardOptimistic = useCallback(
-    (tempId: string) => registryDiscardOptimistic(fleetId, tempId),
-    [fleetId],
+    (tempId: string) => streams.discardOptimistic(fleetId, tempId),
+    [streams, fleetId],
   );
   const retryConnection = useCallback(
-    () => registryRetryConnection(fleetId),
-    [fleetId],
+    () => streams.retryConnection(fleetId),
+    [streams, fleetId],
   );
 
   // There is deliberately no aggregate "the fleet is working" flag. The one

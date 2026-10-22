@@ -41,6 +41,7 @@ hex.workspace = true
 # jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true
+moka.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -48,10 +49,13 @@ reqwest.workspace = true
 rig-core.workspace = true
 http.workspace = true
 futures-util.workspace = true
+bytes.workspace = true
 subtle.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["net", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

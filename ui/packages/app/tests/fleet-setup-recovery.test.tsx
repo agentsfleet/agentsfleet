@@ -1,13 +1,15 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { FleetRecovery } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecovery";
-import { SetupPanel } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/SetupPanel";
+import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader";
 import { FLEET, FLEET_DETAIL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
+import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
 
 const {resume, refresh} = vi.hoisted(() => ({resume: vi.fn(), refresh: vi.fn()}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({setFleetStatusAction: resume}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "creator", isLoaded: true})}));
 afterEach(() => {cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals();});
 
 it.each([200, 403, 412])("reconciles setup continuation status %i without hiding the fleet", async (status) => {
@@ -41,23 +43,22 @@ it("shows recovery only for unfinished setup or first-run admission", async () =
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("pins improvement to the displayed revision and requires renewed access review", () => {
-  render(<SetupPanel fleet={FleetDetailSchema.parse({...FLEET_DETAIL, needs_re_review: true})} workspaceId={WORKSPACE} />);
+it("keeps setup editing available while renewed access review is required", () => {
+  render(<FleetHeader fleet={FleetDetailSchema.parse({...FLEET_DETAIL, needs_re_review: true})} workspaceId={WORKSPACE} />);
   expect(screen.getByText("Access needs attention before resuming")).toBeTruthy();
-  const href = screen.getByRole("link", {name: "Edit fleet"}).getAttribute("href");
-  expect(href).toContain(`fleet=${FLEET.id}&setup_revision=${FLEET.setup_revision}`);
+  expect(screen.getByRole("button", {name: "Edit setup"}).getAttribute("aria-expanded")).toBe("false");
 });
 
-it("shows the saved purpose, instructions, version, and schedule together", () => {
-  const fleet = FleetDetailSchema.parse(FLEET_DETAIL);
-  render(<SetupPanel fleet={fleet} workspaceId={WORKSPACE} />);
-  expect(screen.getByText(fleet.definition.description)).toBeTruthy();
-  expect(screen.getByText(new RegExp(`Saved version ${fleet.setup_revision}`))).toBeTruthy();
-  expect(screen.getByRole("region", {name: "Saved instructions"})).toBeTruthy();
-  expect(screen.getByRole("region", {name: "Schedule"})).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Advanced settings"})).toBeNull();
-  expect(screen.queryByLabelText("Saved configuration")).toBeNull();
-  expect(screen.queryByRole("link", {name: "Open setup"})).toBeNull();
+it("keeps Edit setup before Stop in the existing fleet workspace", () => {
+  const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
+  render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision}
+    header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
+  const edit = screen.getByRole("button", {name: "Edit setup"});
+  const stop = screen.getByRole("button", {name: "Stop"});
+  expect(edit).toHaveProperty("disabled", false);
+  expect(edit.getAttribute("aria-expanded")).toBe("false");
+  expect(edit.compareDocumentPosition(stop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Saved instructions"})).toBeNull();
 });
 
 it.each(["installing", "active", "stopped"] as const)("retries an unregistered schedule while %s and reports a refusal", async (status) => {

@@ -24,17 +24,17 @@ pub(in crate::model) async fn finish(
     request: &garde::Valid<ModelCallInput>,
     counters: &guard::Counters,
     attempt: &guard::Attempt,
-    decoded: Result<Decoded>,
+    received: super::Received,
 ) -> Result<ModelCallResult> {
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
     let mut owed = Owed::default();
     let denied = authorization(&mut tx, runner, lease, counters, attempt, &mut owed).await?;
-    let (decoded, rejection) = rejection(decoded);
+    let (decoded, rejection) = rejection(received.decoded);
     let decoded = match decoded {
         Ok(known) => known,
         Err(error) => {
-            write(&mut tx, attempt, request, None, None).await?;
+            write(&mut tx, attempt, request, None, None, received.cause).await?;
             tx.commit().await.map_err(query(CONTEXT))?;
             owed.settle(&drafts.analytics);
             return Err(denied.unwrap_or_else(|| {
@@ -47,7 +47,15 @@ pub(in crate::model) async fn finish(
         }
     };
     let private = decoded.result.as_ref().filter(|_| denied.is_none());
-    write(&mut tx, attempt, request, private, Some(&decoded)).await?;
+    write(
+        &mut tx,
+        attempt,
+        request,
+        private,
+        Some(&decoded),
+        received.cause,
+    )
+    .await?;
     if let Some(error) = &rejection {
         failure::record(&mut tx, attempt, error, &mut owed).await?;
     }
@@ -110,6 +118,7 @@ async fn write(
     request: &garde::Valid<ModelCallInput>,
     result: Option<&ModelCallResult>,
     decoded: Option<&Decoded>,
+    cause: Option<crate::types::FailureCause>,
 ) -> Result<()> {
     let status = match decoded {
         Some(decoded) if decoded.result.is_some() => dispatch_status::COMPLETED,
@@ -136,6 +145,7 @@ async fn write(
         } else {
             None
         })
+        .bind(cause.map(crate::types::FailureCause::as_str))
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

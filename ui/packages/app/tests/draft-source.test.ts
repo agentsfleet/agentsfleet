@@ -16,7 +16,7 @@ describe("read-only setup inspection before draft creation", () => {
   });
   it("Improving a fleet first reads exactly its pinned setup and instance name", async () => {
     const fetch = vi.fn().mockResolvedValue(response(FLEET_DETAIL)); vi.stubGlobal("fetch", fetch);
-    expect(await sourcePreview(BASE, {kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}, signal())).toEqual({definition: FLEET_DETAIL.definition, instanceName: FLEET_DETAIL.name, revision: "1"});
+    expect(await sourcePreview(BASE, {kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}, signal())).toEqual({definition: FLEET_DETAIL.definition, instanceName: FLEET_DETAIL.name, revision: "1", setupRevision: "1"});
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({method: "GET"});
   });
   it.each([{...FLEET_DETAIL, setup_revision: "2"}, {...FLEET_DETAIL, id: REVISION_ID}])("refuses a changed Improve source", async (answer) => {

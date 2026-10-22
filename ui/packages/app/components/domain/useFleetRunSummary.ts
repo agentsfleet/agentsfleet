@@ -1,14 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import type { EventRow } from "@/lib/api/events";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
-import {
-  getSnapshot,
-  reconcileServerFacts,
-  subscribe,
-} from "@/lib/streaming/fleet-stream-registry";
+import { useFleetStreams } from "./FleetStreamProvider";
 
 /**
  * The chat's run summary as a view over the fleet stream: the newest server
@@ -41,20 +37,21 @@ export function useFleetRunSummary(
   // ignores it when the entry already exists; the thread's own hook merges
   // later snapshots.
   const initialRef = useRef(initial);
-  initialRef.current = initial;
+  useLayoutEffect(() => { initialRef.current = initial; }, [initial]);
+  const streams = useFleetStreams();
   const subscribeFn = useCallback(
-    (listener: () => void) => subscribe(workspaceId, fleetId, initialRef.current, listener),
-    [workspaceId, fleetId],
+    (listener: () => void) => streams.subscribe(workspaceId, fleetId, initialRef.current, listener),
+    [streams, workspaceId, fleetId],
   );
   // Three selectors rather than the whole snapshot. Each is kept by identity
   // across frames that changed nothing it holds, so a chunk of a streaming
   // reply — which rebuilds the snapshot's rows — re-renders nothing here.
-  const fleetFn = useCallback(() => getSnapshot(fleetId).fleet, [fleetId]);
-  const latestFn = useCallback(() => getSnapshot(fleetId).latest, [fleetId]);
+  const fleetFn = useCallback(() => streams.getSnapshot(fleetId).fleet, [streams, fleetId]);
+  const latestFn = useCallback(() => streams.getSnapshot(fleetId).latest, [streams, fleetId]);
   const fleet = useSyncExternalStore(subscribeFn, fleetFn, fleetFn);
   const latest = useSyncExternalStore(subscribeFn, latestFn, latestFn);
 
-  const seqFn = useCallback(() => getSnapshot(fleetId).factsSeq, [fleetId]);
+  const seqFn = useCallback(() => streams.getSnapshot(fleetId).factsSeq, [streams, fleetId]);
   const factsSeq = useSyncExternalStore(subscribeFn, seqFn, seqFn);
 
   const summary = useMemo(
@@ -80,16 +77,16 @@ export function useFleetRunSummary(
   useEffect(() => {
     const asked = askedAt.current;
     askedAt.current = null;
-    const spoken = getSnapshot(fleetId).factsSeq;
+    const spoken = streams.getSnapshot(fleetId).factsSeq;
     const overtaken = asked !== null && spoken > asked;
     if (!overtaken) {
-      reconcileServerFacts(fleetId, {
+      streams.reconcileServerFacts(fleetId, {
         status: initialSummary.status,
         pendingApprovals: initialSummary.pendingApprovals,
       });
     }
     accountedFor.current = overtaken ? asked : spoken;
-  }, [fleetId, initialSummary]);
+  }, [streams, fleetId, initialSummary]);
 
   // The status the server tree was last refreshed for. Only a frame that
   // spoke after the server's facts landed can owe a refresh, which is what

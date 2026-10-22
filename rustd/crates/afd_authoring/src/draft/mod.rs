@@ -14,6 +14,11 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::Analytics;
+use moka::future::Cache;
+use tokio::sync::Mutex;
+
+/// Eviction may split a local queue; the database lock still orders every write.
+const MAX_CACHED_SEND_GATES: u64 = 1024;
 
 /// Native private setup service, shared by browser and terminal chat.
 #[derive(Debug, Clone)]
@@ -21,6 +26,9 @@ pub struct Drafts {
     pub(crate) database: Db,
     pub(crate) entropy: Entropy,
     pub(crate) analytics: Analytics,
+    /// Clones share these content-free queues, so hot chats wait outside the
+    /// pool. They cache neither authorization nor a database ordering decision.
+    pub(crate) senders: Cache<Uuid7, Arc<Mutex<()>>>,
     /// Moves a setup chat's money: the same biller fleet leases bill through
     /// (billing §11), built once where the daemon is assembled.
     pub(crate) biller: Arc<dyn Biller>,
@@ -37,6 +45,7 @@ impl Drafts {
             database,
             entropy,
             analytics: Analytics::silent(),
+            senders: Cache::new(MAX_CACHED_SEND_GATES),
             biller,
         }
     }

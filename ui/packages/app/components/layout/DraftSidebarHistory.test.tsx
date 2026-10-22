@@ -13,7 +13,7 @@ import { Button } from "@agentsfleet/design-system";
 
 const { identity, replace } = vi.hoisted(() => ({ identity: { userId: "reader" }, replace: vi.fn() }));
 vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => identity }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({replace}) }));
+vi.mock("next/navigation", () => ({ usePathname: () => `/w/${WORKSPACE}/fleets/new`, useSearchParams: () => new URLSearchParams(), useRouter: () => ({replace}) }));
 const client = new DraftClient({ account: "account", workspace: WORKSPACE, subject: "reader" });
 const fresh = vi.spyOn(client, "fresh").mockImplementation(() => {});
 const initial: DraftView = { ...client.getSnapshot(), draft: DRAFT, listStatus: "ready" };
@@ -23,13 +23,16 @@ const NEXT_DRAFT_ID = "0199a801-1000-7000-8000-00000000000a";
 it.each([false, true])("draft_sidebar_title_and_delete retain navigation typography and ellipsis (%s)", (active) => {
   const title = "A long private setup request with emoji 🦉 and enough detail to overflow the sidebar";
   const remove = vi.fn();
-  render(<DraftSidebarItem card={{id: DRAFT.id, title, detail: "In progress"}} workspace={WORKSPACE}
+  render(<DraftSidebarItem card={{id: DRAFT.id, title, detail: "In progress", activity: "draft" as const}} workspace={WORKSPACE}
     active={active} disabled={false} onNavigate={() => {}} onDelete={remove} />);
   const link = screen.getByRole("link", {name: title});
   expect(link.getAttribute("title")).toBe(title);
   expect(link.classList.contains("font-sans")).toBe(true);
   expect(link.classList.contains("text-body-sm")).toBe(true);
   expect(link.querySelector("svg")).toBeNull();
+  expect(screen.getByRole("button", {name: `Delete chat: ${title}`}).querySelector("svg")?.getAttribute("width")).toBe("14");
+  expect(screen.getByText("In progress").classList.contains("sr-only")).toBe(true);
+  expect(link.classList.contains("items-center")).toBe(true);
   const text = screen.getByText(title);
   expect(text.classList.contains("truncate")).toBe(true);
   expect(text.classList.contains("font-medium")).toBe(false);
@@ -76,6 +79,17 @@ function tree(view: DraftView, running = false) {
 }
 afterEach(() => { cleanup(); vi.clearAllMocks(); identity.userId = "reader"; });
 
+it("keeps an empty private draft list quiet beside the account fleet list", async () => {
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async () => response({items: [], total: null, next_cursor: null}));
+  try {
+    render(<DraftSidebarProvider><Bridge view={{...initial, draft: null}} />
+      <DraftSidebarHistory account="account" workspace={WORKSPACE} onNavigate={() => {}} /></DraftSidebarProvider>);
+    await waitFor(() => expect(fetcher).toHaveBeenCalled());
+    expect(screen.queryByText("Your setup chats will appear here.")).toBeNull();
+    expect(screen.getByText("Recent")).toBeTruthy();
+  } finally {fetcher.mockRestore();}
+});
+
 it("does not commit sidebar changes for reply chunks or unchanged history snapshots", () => {
   const view = render(tree(initial, true));
   const count = commits.mock.calls.length;
@@ -86,9 +100,9 @@ it("does not commit sidebar changes for reply chunks or unchanged history snapsh
   expect(screen.getByRole("link", { name: DRAFT.title }).getAttribute("href")).toContain(`draft=${DRAFT.id}`);
 });
 
-it("shows Recent setup without search or fleet recents", () => {
+it("shows Recent without a duplicate setup heading or search", () => {
   render(tree(initial));
-  expect(screen.getByText("Recent setup")).toBeTruthy();
+  expect(screen.getByText("Recent")).toBeTruthy();
   expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByText("Fleet setup chats")).toBeNull();
@@ -127,6 +141,22 @@ it("does not clear a running conversation and permits a fresh one when idle", ()
   view.rerender(tree(initial));
   fireEvent.click(screen.getByRole("button", { name: "New fleet" }));
   expect(fresh).toHaveBeenCalledOnce();
+});
+
+it("keeps pending and failed states accessible without visible status icons", () => {
+  const view = render(tree(initial));
+  const link = screen.getByRole("link", {name: DRAFT.title});
+  expect(link.querySelector("svg")).toBeNull();
+  view.rerender(tree({...initial, messages: [{...MESSAGE, state: "running"}]}));
+  expect(screen.getByText("Waiting for a result").classList.contains("sr-only")).toBe(true);
+  expect(link.querySelector("svg")).toBeNull();
+  view.rerender(tree({...initial, messages: [{...MESSAGE, role: "assistant", state: "failed",
+    failure: {reason: "provider_usage_unknown", error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}]}));
+  expect(screen.getByText("Setup message failed")).toBeTruthy();
+  expect(link.querySelector("svg")).toBeNull();
+  fireEvent.focus(link);
+  expect(screen.getByRole("tooltip").textContent).toContain(DRAFT.title);
+  expect(screen.getByRole("tooltip").closest("[data-side]")?.className).toContain("ph-no-record");
 });
 
 it("does not expose another subject's history", () => {
@@ -262,7 +292,7 @@ it("retains the newer chat owner's history when an older bridge unmounts", () =>
 
 it("removes a private card only from its owning scope and clears only the selected chat", () => {
   const scope = {workspace: WORKSPACE, subject: "reader"};
-  const value: DraftSidebarState = {...scope, cards: [{id: DRAFT.id, title: DRAFT.title, detail: "Setup ready"}, {id: "other", title: "Other chat", detail: "In progress"}],
+  const value: DraftSidebarState = {...scope, cards: [{id: DRAFT.id, title: DRAFT.title, detail: "Setup ready", activity: "draft" as const}, {id: "other", title: "Other chat", detail: "In progress", activity: "draft" as const}],
     fresh: null, remove: null, owner: null, locked: false, current: DRAFT.id, more: null, status: "ready"};
   expect(removeSidebarDraft(null, scope, DRAFT.id)).toBeNull();
   expect(removeSidebarDraft(value, {...scope, workspace: "other"}, DRAFT.id)).toBe(value);

@@ -3,11 +3,13 @@
 mod arithmetic;
 mod authorization;
 mod bounds;
+mod concurrency;
 mod fixture;
 mod lapse;
 mod late_results;
 mod output_bounds;
 mod preamble;
+mod progress;
 mod provider_failures;
 mod reasoning;
 mod reasoning_safety;

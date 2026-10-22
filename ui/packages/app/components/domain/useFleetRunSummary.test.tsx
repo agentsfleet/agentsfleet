@@ -4,7 +4,7 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
-import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
+import { streamWrapper, __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { useFleetRunSummary } from "./useFleetRunSummary";
 
@@ -83,7 +83,7 @@ afterEach(() => {
 
 describe("useFleetRunSummary — what a streaming reply costs the strip", () => {
   it.each(WORKLOADS)("%i chunks cost zero strip renders and one completion costs one", async (chunks) => {
-    render(React.createElement(Harness));
+    render(React.createElement(Harness), {wrapper: streamWrapper});
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*", created_at: new Date(SEED_AT + 1).toISOString() });
     const settled = renders;
 
@@ -109,7 +109,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
   });
 
   it.each(WORKLOADS)("%i ordinary completions share one stream and need no HTTP refresh", (completions) => {
-    render(React.createElement(Harness));
+    render(React.createElement(Harness), {wrapper: streamWrapper});
     const settled = renders;
     for (let i = 0; i < completions; i += 1) {
       emit({
@@ -131,7 +131,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
   });
 
   it("a render the strip asked for does not roll back a frame that landed during it", () => {
-    const view = render(React.createElement(Harness));
+    const view = render(React.createElement(Harness), {wrapper: streamWrapper});
     emit({
       kind: FRAME_KIND.EVENT_COMPLETE,
       ...row(),
@@ -160,7 +160,7 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
   });
 
   it("a gate frame that restates the count re-renders nothing", () => {
-    render(React.createElement(Harness));
+    render(React.createElement(Harness), {wrapper: streamWrapper});
     emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "evt_seed", pending_approvals: 1 });
     const settled = renders;
     emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g2", event_id: "evt_seed", pending_approvals: 1 });

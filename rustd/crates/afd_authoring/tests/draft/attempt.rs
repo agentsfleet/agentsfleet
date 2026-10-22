@@ -35,6 +35,15 @@ pub(super) struct Attempt {
 
 impl Attempt {
     pub(super) async fn start(f: &Fixture, access: Access<'_>, source: Source) -> Self {
+        RunnerSeed::new(f.runner.as_str(), "active", POLICY)
+            .insert(&mut *f.connection().await)
+            .await
+            .expect("isolated authoring runner");
+        Self::admit(f, access, source).await
+    }
+
+    /// Another native draft using the fixture's already registered runner.
+    pub(super) async fn admit(f: &Fixture, access: Access<'_>, source: Source) -> Self {
         let mut request = f.request(mint(), Some("Investigate"));
         request.source = source;
         let created = f
@@ -49,10 +58,6 @@ impl Attempt {
             sequence: created.accepted.expect("first message accepted").sequence,
         };
         let mut connection = f.connection().await;
-        RunnerSeed::new(f.runner.as_str(), "active", POLICY)
-            .insert(&mut *connection)
-            .await
-            .expect("isolated authoring runner");
         let model = afd_credential::provider::registered_model(
             &mut connection,
             &f.tenant,

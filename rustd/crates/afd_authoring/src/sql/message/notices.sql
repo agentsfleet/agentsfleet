@@ -2,6 +2,11 @@ SELECT m.sequence,
        m.status,
        m.candidate_id::text AS candidate_id,
        m.failure_reason,
+       (SELECT d.failure_cause FROM authoring.attempts a
+          JOIN authoring.dispatches d ON d.attempt_id = a.id
+         WHERE a.draft_id = m.draft_id AND a.message_sequence = m.sequence
+           AND d.failure_cause IS NOT NULL
+         ORDER BY d.sequence DESC LIMIT 1) AS failure_cause,
        u.reported_runtime_ms,
        u.input_tokens,
        u.output_tokens,

@@ -78,6 +78,7 @@ struct Stored {
     status: String,
     candidate_id: Option<String>,
     failure_reason: Option<String>,
+    failure_cause: Option<String>,
     #[sqlx(flatten)]
     metered: Metered,
 }
@@ -99,6 +100,11 @@ pub(super) async fn messages(
     rows.into_iter()
         .rev()
         .map(|stored| {
+            let cause = stored
+                .failure_cause
+                .as_deref()
+                .map(word::<crate::types::FailureCause>)
+                .transpose()?;
             let state: MessageState = word(&stored.status)?;
             let event = match state {
                 MessageState::Queued => "message.accepted",
@@ -121,7 +127,9 @@ pub(super) async fn messages(
                     .as_deref()
                     .map(word::<FailureReason>)
                     .transpose()?
-                    .map(|reason| Failure::for_message(reason, stored.sequence, cancelled_through)),
+                    .map(|reason| {
+                        Failure::for_message(reason, stored.sequence, cancelled_through, cause)
+                    }),
             })
         })
         .collect()

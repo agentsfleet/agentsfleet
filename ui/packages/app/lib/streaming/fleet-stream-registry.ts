@@ -5,13 +5,7 @@ import { landFrames, onFrame, recoverGap, type LiveEntry } from "./fleet-stream-
 import { mergeFacts } from "./fleet-stream-facts";
 import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
 import { patchSnapshot, setEvents } from "./fleet-stream-snapshot";
-import {
-  FAST_RECONNECT_ATTEMPTS,
-  OFFLINE_RETRY_MS,
-  attachRecoveryListeners,
-  cancelPendingReconnect,
-  fastBackoffMs,
-} from "./fleet-stream-reconnect";
+import { ChatConnection } from "./chat-connection";
 import { mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
 import {
   disposeReplyStreams,
@@ -20,7 +14,6 @@ import {
   watchReply,
   watchRunningRows,
 } from "./fleet-stream-reply-registry";
-import { HEARTBEAT_EVENT } from "./stream-recovery-window";
 import {
   CONNECTION_STATUS,
   EMPTY_SNAPSHOT,
@@ -35,7 +28,7 @@ export {
   type FleetStreamSnapshot,
 } from "./fleet-stream-entry";
 
-// Module-level subscription registry. One Entry per fleetId; multiple
+// Identity-owned subscription registry. One Entry per fleetId; multiple
 // React hook instances share it via refcounted subscribe/release. The
 // EventSource survives a /dashboard ↔ /fleets/[id] round-trip up to
 // IDLE_RELEASE_MS after the last consumer detaches — anything longer
@@ -48,7 +41,6 @@ export {
 // frames published during the outage via the same-origin events proxy,
 // merged through the id-deduping mergeBackfill.
 
-const REGISTRY = new Map<string, LiveEntry>();
 
 const IDLE_RELEASE_MS = 30_000;
 
@@ -59,167 +51,78 @@ const IDLE_RELEASE_MS = 30_000;
 // then remove the operator's newest pending message.
 let tempCounter = 0;
 
-function adopt(workspaceId: string, fleetId: string, initial: EventRow[]): LiveEntry {
+/** One mounted account, workspace and subject own this registry. */
+export class FleetStreams {
+  readonly #entries = new Map<string, LiveEntry>();
+
+private adopt(workspaceId: string, fleetId: string, initial: EventRow[]): LiveEntry {
   const entry: LiveEntry = {
     ...createEntry(workspaceId, initial),
     apply: (next, facts) => setEvents(entry, next, facts),
-    isCurrent: () => REGISTRY.get(fleetId) === entry,
+    isCurrent: () => this.#entries.get(fleetId) === entry,
   };
   watchRunningRows(entry, initial);
-  REGISTRY.set(fleetId, entry);
+  this.#entries.set(fleetId, entry);
   return entry;
 }
 
-function startEventSource(entry: LiveEntry, fleetId: string): void {
-  const url = streamFleetEventsUrl(entry.workspaceId, fleetId);
-  const es = new EventSource(url);
-  entry.eventSource = es;
-  const onTimeout = () => { if (entry.eventSource === es) onEventSourceError(entry, fleetId); };
-  const received = () => {
-    entry.recoveryWindow.received(onTimeout);
-    if (entry.recoveryWindow.isStable()) entry.reconnectAttempts = 0;
-    if (entry.snapshot.connectionStatus !== CONNECTION_STATUS.LIVE) {
-      patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
-    }
-  };
-  // After the frame is recorded, so the frame that ends a long silence counts
-  // as heard and its own event is not read back.
-  const sweep = () => readStalledReplies(entry, fleetId, entry.apply, entry.isCurrent);
-  es.onopen = () => {
-    if (entry.eventSource !== es) return;
-    entry.recoveryWindow.opened(onTimeout);
-    const needsBackfill = entry.hasConnectedOnce || entry.hadConnectionError;
-    entry.hasConnectedOnce = true;
-    entry.hadConnectionError = false;
-    // An open alone does not reset failure history: accept-close loops back off.
-    if (needsBackfill) recoverGap(entry, fleetId);
-  };
-  const handleFrame = (e: MessageEvent) => {
-    if (entry.eventSource !== es) return;
-    const frame = parseLiveFrame(e.data);
-    if (!frame) return;
-    received();
-    onFrame(entry, fleetId, frame);
-    sweep();
-  };
-  // Named frames dispatch only to their matching listener, never onmessage.
-  // Keep both paths: the daemon uses message for its no-kind fallback.
-  for (const name of ROUTED_FRAME_KINDS) {
-    es.addEventListener(name, handleFrame as (e: Event) => void);
-  }
-  es.addEventListener(FRAME_KIND.ACCESS_REVOKED, () => onAccessRevoked(entry, es));
-  es.onmessage = handleFrame;
-  es.addEventListener(HEARTBEAT_EVENT, () => {
-    if (entry.eventSource !== es) return;
-    received();
-    sweep();
-  });
-  es.onerror = onTimeout;
-  entry.recoveryWindow.connecting(onTimeout);
-}
-
-// A lost connection is a transient state, never a terminal one. The fast
-// attempts run first; after them the connection is reported as not live but
-// the client keeps retrying on an unhurried cadence, so an outage that ends
-// while the operator is reading recovers without them doing anything.
-function onEventSourceError(entry: LiveEntry, fleetId: string): void {
-  markReplyGap(entry);
-  entry.eventSource?.close();
-  entry.eventSource = null;
-  entry.hadConnectionError = true;
-  if (entry.recoveryWindow.isStable()) entry.reconnectAttempts = 0;
-  entry.reconnectAttempts += 1;
-  const exhausted = entry.reconnectAttempts > FAST_RECONNECT_ATTEMPTS;
-  entry.recoveryWindow.reportLoss(() => patchSnapshot(entry, {
-    connectionStatus: entry.reconnectAttempts > FAST_RECONNECT_ATTEMPTS
-      ? CONNECTION_STATUS.OFFLINE
-      : CONNECTION_STATUS.RECONNECTING,
-  }));
-  entry.reconnectTimer = setTimeout(
-    () => {
-      entry.reconnectTimer = null;
-      startEventSource(entry, fleetId);
+private connect(entry: LiveEntry, fleetId: string): void {
+  const sweep = (): void => readStalledReplies(entry, fleetId, entry.apply, entry.isCurrent);
+  const connection = new ChatConnection({
+    url: streamFleetEventsUrl(entry.workspaceId, fleetId),
+    events: [...ROUTED_FRAME_KINDS, FRAME_KIND.ACCESS_REVOKED],
+    onOpen: (recovered) => { if (recovered) recoverGap(entry, fleetId); },
+    onInterrupted: () => markReplyGap(entry),
+    onHeartbeat: sweep,
+    onStatus: (connectionStatus) => {
+      if (entry.snapshot.connectionStatus !== connectionStatus) patchSnapshot(entry, {connectionStatus});
     },
-    exhausted ? OFFLINE_RETRY_MS : fastBackoffMs(entry.reconnectAttempts),
-  );
-}
-
-// The daemon's last frame to a caller who lost access. It closes the stream and
-// refuses the next request the same way, so every way back is shut here: the
-// pending retry, the silence timer, the tab-visible and network-online signals,
-// and the operator's retry, which reads the terminal status. Only a new mount
-// asks again (`subscribe`).
-function onAccessRevoked(entry: LiveEntry, es: EventSource): void {
-  if (entry.eventSource !== es) return;
-  cancelPendingReconnect(entry);
-  entry.recoveryWindow.dispose();
-  entry.detachRecovery?.();
-  entry.detachRecovery = null;
-  es.close();
-  entry.eventSource = null;
-  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.REVOKED });
-}
-
-export function retryConnection(fleetId: string): void {
-  const entry = REGISTRY.get(fleetId);
-  if (!entry || entry.snapshot.connectionStatus === CONNECTION_STATUS.REVOKED) return;
-  cancelPendingReconnect(entry);
-  entry.recoveryWindow.dispose();
-  entry.eventSource?.close();
-  entry.eventSource = null;
-  entry.reconnectAttempts = 0;
-  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
-  startEventSource(entry, fleetId);
-}
-
-function teardown(entry: Entry, fleetId: string): void {
-  disposeReplyStreams(entry);
-  cancelPendingReconnect(entry);
-  entry.recoveryWindow.dispose();
-  if (entry.idleTimer) clearTimeout(entry.idleTimer);
-  entry.detachRecovery?.();
-  entry.detachRecovery = null;
-  entry.eventSource?.close();
-  entry.eventSource = null;
-  REGISTRY.delete(fleetId);
-}
-
-// Opens the entry's stream and the tab-visible and network-online signals that
-// restart it. An entry gets these once per life: on creation, and again on a
-// mount after `access_revoked` shut them.
-function connect(entry: LiveEntry, fleetId: string): void {
-  entry.detachRecovery = attachRecoveryListeners({
-    hasConnection: () => entry.eventSource !== null && !entry.recoveryWindow.isStale(),
-    recover: () => {
-      if (entry.eventSource) onEventSourceError(entry, fleetId);
-      cancelPendingReconnect(entry);
-      entry.reconnectAttempts = 0;
-      if (entry.snapshot.connectionStatus !== CONNECTION_STATUS.LIVE) {
-        patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+    onFrame: (name, data) => {
+      if (name === FRAME_KIND.ACCESS_REVOKED) {
+        connection.close(); entry.eventSource = null;
+        disposeReplyStreams(entry);
+        patchSnapshot(entry, {connectionStatus: CONNECTION_STATUS.REVOKED});
+        return false;
       }
-      startEventSource(entry, fleetId);
+      const frame = parseLiveFrame(data);
+      if (!frame) return false;
+      onFrame(entry, fleetId, frame); sweep();
+      return true;
     },
   });
-  startEventSource(entry, fleetId);
+  entry.eventSource = connection;
+  connection.start();
 }
 
-export function subscribe(
+retryConnection(fleetId: string): void {
+  const entry = this.#entries.get(fleetId);
+  if (!entry || entry.snapshot.connectionStatus === CONNECTION_STATUS.REVOKED) return;
+  entry.eventSource?.retry();
+}
+
+private teardown(entry: Entry, fleetId: string): void {
+  disposeReplyStreams(entry);
+  if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  entry.eventSource?.close(); entry.eventSource = null;
+  this.#entries.delete(fleetId);
+}
+
+subscribe(
   workspaceId: string,
   fleetId: string,
   initial: EventRow[],
   listener: Listener,
 ): () => void {
-  let entry = REGISTRY.get(fleetId);
+  let entry = this.#entries.get(fleetId);
   if (!entry) {
-    entry = adopt(workspaceId, fleetId, initial);
-    connect(entry, fleetId);
+    entry = this.adopt(workspaceId, fleetId, initial);
+    this.connect(entry, fleetId);
   } else if (entry.snapshot.connectionStatus === CONNECTION_STATUS.REVOKED) {
     // A new mount is a new request: access may have come back since the stream
     // ended, by a fresh invite. A caller still removed is refused once more
     // with `access_revoked`, so this costs one request per mount, never a loop.
-    entry.reconnectAttempts = 0;
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
-    connect(entry, fleetId);
+    this.connect(entry, fleetId);
   }
   if (entry.idleTimer) {
     clearTimeout(entry.idleTimer);
@@ -227,11 +130,12 @@ export function subscribe(
   }
   entry.refCount += 1;
   entry.listeners.add(listener);
-  return () => releaseSubscriber(fleetId, listener);
+  const subscribed = entry;
+  return () => {if (subscribed.isCurrent()) this.releaseSubscriber(subscribed, fleetId, listener);};
 }
 
-export function reconcileServerRows(fleetId: string, rows: EventRow[]): void {
-  const entry = REGISTRY.get(fleetId);
+reconcileServerRows(fleetId: string, rows: EventRow[]): void {
+  const entry = this.#entries.get(fleetId);
   if (!entry || rows.length === 0) return;
   setEvents(entry, (prev) => mergeBackfill(prev, rows));
   watchRunningRows(entry, rows);
@@ -242,33 +146,31 @@ export function reconcileServerRows(fleetId: string, rows: EventRow[]): void {
 // since no frame announces a PATCH — and the next frame overwrites it back.
 // Whether a render is older than a frame that landed while it was in flight
 // is the caller's to decide, from `factsSeq`; `factsSeq` never moves here.
-export function reconcileServerFacts(fleetId: string, facts: FleetFacts): void {
-  const entry = REGISTRY.get(fleetId);
+reconcileServerFacts(fleetId: string, facts: FleetFacts): void {
+  const entry = this.#entries.get(fleetId);
   if (!entry) return;
   const fleet = mergeFacts(entry.snapshot.fleet, facts);
   if (fleet !== entry.snapshot.fleet) patchSnapshot(entry, { fleet });
 }
 
-function releaseSubscriber(fleetId: string, listener: Listener): void {
-  const entry = REGISTRY.get(fleetId);
-  if (!entry) return;
+private releaseSubscriber(entry: LiveEntry, fleetId: string, listener: Listener): void {
   entry.listeners.delete(listener);
   entry.refCount -= 1;
   if (entry.refCount > 0) return;
-  entry.idleTimer = setTimeout(() => teardown(entry, fleetId), IDLE_RELEASE_MS);
+  entry.idleTimer = setTimeout(() => this.teardown(entry, fleetId), IDLE_RELEASE_MS);
 }
 
-export function getSnapshot(fleetId: string): FleetStreamSnapshot {
-  return REGISTRY.get(fleetId)?.snapshot ?? EMPTY_SNAPSHOT;
+getSnapshot(fleetId: string): FleetStreamSnapshot {
+  return this.#entries.get(fleetId)?.snapshot ?? EMPTY_SNAPSHOT;
 }
 
-export function appendOptimistic(
+appendOptimistic(
   fleetId: string,
   text: string,
   actor: string,
   sentAs?: string,
 ): string {
-  const entry = REGISTRY.get(fleetId);
+  const entry = this.#entries.get(fleetId);
   if (!entry) return "";
   tempCounter += 1;
   const tempId = `optim-${tempCounter}`;
@@ -276,13 +178,13 @@ export function appendOptimistic(
   return tempId;
 }
 
-export function reconcileOptimistic(
+reconcileOptimistic(
   fleetId: string,
   tempId: string,
   realEventId: string,
   replayed: boolean,
 ): boolean {
-  const entry = REGISTRY.get(fleetId);
+  const entry = this.#entries.get(fleetId);
   if (!entry) return false;
   const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realEventId);
   setEvents(entry, () => events);
@@ -295,16 +197,15 @@ export function reconcileOptimistic(
 
 // A refused send leaves the thread here. Its text goes back to the composer,
 // so the row would only duplicate what the operator is about to resend.
-export function discardOptimistic(fleetId: string, tempId: string): void {
-  const entry = REGISTRY.get(fleetId);
+discardOptimistic(fleetId: string, tempId: string): void {
+  const entry = this.#entries.get(fleetId);
   if (!entry) return;
   setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
   landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
 }
 
-// Test surface — vitest must reset between tests; nothing in production
-// should call this.
-export function __resetRegistryForTests(): void {
-  for (const [id, e] of REGISTRY.entries()) teardown(e, id);
-  tempCounter = 0;
+/** Closes streams and clears every cached reply on identity change or logout. */
+close(): void {
+  for (const [id, e] of this.#entries.entries()) this.teardown(e, id);
+}
 }

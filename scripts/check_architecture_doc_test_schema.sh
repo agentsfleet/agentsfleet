@@ -13,13 +13,13 @@ readonly LAYOUT_CHECK="test_arch_schema_layout_matches_doc"
 # A design page listing `identity.tenants` and `vault.secrets`, with one
 # column carrying a parenthesised note the check must drop.
 write_layout_doc() {
-  local dir="$1" tenant_columns="$2"
+  local dir="$1" tenant_columns="$2" secret_columns="${3:-id, key_name}"
   mkdir -p "$dir"
   printf '%s\n' '# Fixture' '' '## identity' '' \
     '| Table | Purpose | Columns |' '|---|---|---|' \
     "| \`tenants\` | Root | \`$tenant_columns\` |" '' '## vault and memory' '' \
     '| Table | Purpose | Columns |' '|---|---|---|' \
-    '| `vault.secrets` | One secret | `id, key_name` |' >"$dir/postgres_schemas.md"
+    "| \`vault.secrets\` | One secret | \`$secret_columns\` |" >"$dir/postgres_schemas.md"
 }
 
 # Two slots matching the page above: a table constraint, a commented-out
@@ -85,14 +85,66 @@ test_arch_schema_layout_matches_doc() {
   expect_layout_refusal "$name" "$root/arch" "$root/one_table" \
     "vault.secrets is listed in $root/arch/postgres_schemas.md" || return
 
-  write_layout_schema "$root/reshaped" ''
-  printf '%s\n' 'ALTER TABLE vault.secrets ADD COLUMN label TEXT;' >>"$root/reshaped/1200_vault_secrets.sql"
-  expect_layout_refusal "$name" "$root/arch" "$root/reshaped" \
-    "$root/reshaped/1200_vault_secrets.sql: ALTER TABLE vault.secrets reshapes columns" || return
-
   mkdir -p "$root/no_rows"
   printf '# Fixture\n\nThe layout moved elsewhere.\n' >"$root/no_rows/postgres_schemas.md"
   expect_layout_refusal "$name" "$root/no_rows" "$root/schema" \
     "$root/no_rows/postgres_schemas.md lists no table" || return
+  ok "$name"
+}
+
+test_arch_schema_forward_columns() {
+  local name="test_arch_schema_forward_columns" root="$WORK_DIR/forward_layout" output
+  write_layout_doc "$root/arch" 'id, name, created_at' 'id, key_name, label, score'
+  write_layout_schema "$root/schema" ''
+  printf '%s\n' 'ALTER TABLE vault.secrets' \
+    '  ADD label TEXT, ADD COLUMN score NUMERIC(8, 2);' \
+    'ALTER TABLE vault.secrets ADD COLUMN IF NOT EXISTS label TEXT;' \
+    'ALTER TABLE vault.secrets ALTER COLUMN label SET NOT NULL;' \
+    >"$root/schema/1300_secret_columns.sql"
+  if ! output="$(run_layout_gate "$root/arch" "$root/schema")"; then
+    bad "$name" "documented forward additions were rejected: $output"
+    return
+  fi
+  if [[ "$output" != *"$LAYOUT_CHECK: 2 tables and 7 columns match"* ]]; then
+    bad "$name" "added columns were not counted: $output"
+    return
+  fi
+  write_layout_doc "$root/missing_column" 'id, name, created_at' 'id, key_name, score'
+  expect_layout_refusal "$name" "$root/missing_column" "$root/schema" \
+    "vault.secrets.label is in $root/schema/1300_secret_columns.sql" || return
+  write_layout_doc "$root/extra_column" 'id, name, created_at' 'id, key_name, label, score, absent'
+  expect_layout_refusal "$name" "$root/extra_column" "$root/schema" \
+    "vault.secrets.absent is in $root/extra_column/postgres_schemas.md" || return
+  ok "$name"
+}
+
+test_arch_schema_unsupported_changes() {
+  local name="test_arch_schema_unsupported_changes" root="$WORK_DIR/unsupported_layout"
+  local action index=0 schema
+  write_layout_doc "$root/arch" 'id, name, created_at'
+  for action in 'DROP COLUMN key_name' 'RENAME COLUMN key_name TO other_name' \
+    'RENAME TO other_table'; do
+    schema="$root/schema_$index"
+    write_layout_schema "$schema" ''
+    printf 'ALTER TABLE vault.secrets %s;\n' "$action" >"$schema/1300_change.sql"
+    expect_layout_refusal "$name" "$root/arch" "$schema" \
+      "$schema/1300_change.sql: ALTER TABLE vault.secrets reshapes columns" || return
+    index=$((index + 1))
+  done
+  write_layout_schema "$root/duplicate" ''
+  printf '%s\n' 'ALTER TABLE vault.secrets ADD COLUMN key_name TEXT;' \
+    >"$root/duplicate/1300_change.sql"
+  expect_layout_refusal "$name" "$root/arch" "$root/duplicate" \
+    "$root/duplicate/1300_change.sql: vault.secrets.key_name already exists" || return
+  write_layout_schema "$root/unknown" ''
+  printf '%s\n' 'ALTER TABLE vault.missing ADD COLUMN label TEXT;' \
+    >"$root/unknown/1300_change.sql"
+  expect_layout_refusal "$name" "$root/arch" "$root/unknown" \
+    "$root/unknown/1300_change.sql: ALTER TABLE vault.missing has no prior CREATE" || return
+  write_layout_schema "$root/malformed" ''
+  printf '%s\n' 'ALTER TABLE vault.secrets ADD COLUMN score NUMERIC(8, 2;' \
+    >"$root/malformed/1300_change.sql"
+  expect_layout_refusal "$name" "$root/arch" "$root/malformed" \
+    "$root/malformed/1300_change.sql: ALTER TABLE vault.secrets: the column list never closes" || return
   ok "$name"
 }

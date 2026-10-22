@@ -15,7 +15,6 @@ export const FLEET_VIEW = {
   chat: "chat",
   events: "events",
   memory: "memory",
-  setup: "setup",
 } as const;
 
 export type FleetView = (typeof FLEET_VIEW)[keyof typeof FLEET_VIEW];
@@ -24,7 +23,6 @@ const FLEET_NAV_ITEMS: { view: FleetView; label: string }[] = [
   { view: FLEET_VIEW.chat, label: "Chat" },
   { view: FLEET_VIEW.events, label: "Activity" },
   { view: FLEET_VIEW.memory, label: "Memory" },
-  { view: FLEET_VIEW.setup, label: "Setup" },
 ];
 
 const NAV_LABEL = "Fleet sections";
@@ -36,7 +34,6 @@ export function resolveFleetView(value: string | undefined): FleetView | null {
       return FLEET_VIEW.chat;
     case FLEET_VIEW.events:
     case FLEET_VIEW.memory:
-    case FLEET_VIEW.setup:
       return value;
     default:
       return null;
