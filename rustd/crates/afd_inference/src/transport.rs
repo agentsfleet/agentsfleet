@@ -19,7 +19,7 @@ use crate::{Error, Result, error::ErrorKind};
 pub const REPLY_MAX_BYTES: usize = 32 * 1024 * 1024;
 
 /// A guarded physical sender. One invocation sends once unless its explicit runtime policy retries.
-pub trait SendRequest: Send + Sync + Debug {
+pub trait SendRequest: Send + Sync {
     /// Sends bytes and returns the response body without collecting it.
     fn send(
         &self,

@@ -344,6 +344,7 @@ dependencies = [
  "afd_validate",
  "afd_vault",
  "afd_wire",
+ "afr_secrets",
  "async-trait",
  "base64 0.23.1",
  "bytes",

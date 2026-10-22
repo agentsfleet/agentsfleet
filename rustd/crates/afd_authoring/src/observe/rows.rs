@@ -83,6 +83,18 @@ struct Stored {
     metered: Metered,
 }
 
+pub(super) async fn running_sequence(
+    connection: &mut PgConnection,
+    draft: &Uuid7,
+) -> Result<Option<i64>> {
+    sqlx::query_scalar(sql::message::RUNNING)
+        .bind(draft.as_str())
+        .bind(MessageState::Running.as_str())
+        .fetch_optional(connection)
+        .await
+        .map_err(query(super::CONTEXT))
+}
+
 pub(super) async fn messages(
     connection: &mut PgConnection,
     draft: &Uuid7,

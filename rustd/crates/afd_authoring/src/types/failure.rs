@@ -107,3 +107,28 @@ impl From<FailureReason> for Failure {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FailureCause;
+    use afd_inference::stream::FailureCause as StreamCause;
+
+    #[test]
+    fn stream_failures_keep_their_exact_durable_and_public_spelling() {
+        for (cause, expected) in [
+            (StreamCause::Deadline, "deadline"),
+            (StreamCause::Cancelled, "cancelled"),
+            (StreamCause::Provider, "provider_interrupted"),
+        ] {
+            let projected = FailureCause::from(cause);
+            assert_eq!(projected.as_str(), expected);
+            assert_eq!(serde_json::to_value(projected).ok(), Some(expected.into()));
+        }
+        let unverified = FailureCause::CompletionUnverified;
+        assert_eq!(unverified.as_str(), "completion_unverified");
+        assert_eq!(
+            serde_json::to_value(unverified).ok(),
+            Some("completion_unverified".into())
+        );
+    }
+}

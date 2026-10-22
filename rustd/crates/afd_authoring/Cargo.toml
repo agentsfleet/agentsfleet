@@ -59,6 +59,8 @@ zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# One isolated allocator observer also checks the runner's public secret owner.
+afr_secrets.workspace = true
 afd_runner = { workspace = true, features = ["test-util"] }
 afd_approval = { workspace = true, features = ["test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }
@@ -71,7 +73,7 @@ afd_crypto = { workspace = true, features = ["test-util"] }
 # The fleet purge, so the deletion-matrix test (Dimension 4.1) drives both
 # erasure roots from one fixture. Already in the tree through afd_approval.
 afd_fleet_lifecycle.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "test-util"] }
 
 [features]
 test-util = ["afd_db/test-util"]
@@ -82,3 +84,7 @@ workspace = true
 [[test]]
 name = "authoring_suite"
 path = "tests/authoring_suite.rs"
+
+[[test]]
+name = "secret_wiping"
+path = "tests/secret_wiping.rs"

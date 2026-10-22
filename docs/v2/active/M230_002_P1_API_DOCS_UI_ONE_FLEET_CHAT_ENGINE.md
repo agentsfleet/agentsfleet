@@ -61,6 +61,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 | `docs/architecture/postgres_schemas.md` | EDIT | Register dispatch deadline and content-free failure columns from the forward migration |
 | `scripts/check_architecture_doc_schema.py`, `scripts/check_architecture_doc_test_schema.sh`, `scripts/check_architecture_doc_test.sh` | EDIT | Indy approved validating additive migrations against the documented layout while retaining unsupported-change refusals |
 | `docs/architecture/README.md` | EDIT | Index the shared chat explanation and verification evidence |
+| `.github/workflows/test-unit-rustd.yml` | EDIT | Require the focused pinned-nightly Miri proof alongside stable unit tests in the existing required PR check |
 | `docs/DESIGN_SYSTEM.md` | EDIT | Approved spacing, alignment, compact receipts and recent rows |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | Latest stable shared chat dependencies, declared once in the workspace |
 | `rustd/crates/afd_inference/Cargo.toml`, `src/lib.rs`, `src/error.rs`, `src/tests.rs`, `src/tests/`, `src/stream.rs`, `src/stream/`, `src/transport.rs`, `src/transport/`, `src/document.rs`, `src/logs/` | EDIT/CREATE | Shared provider stream, bounded byte transport, failure, deadline and correlated trace ownership |
@@ -68,12 +69,18 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 | `rustd/crates/afr_providers/tests/`, `rustd/crates/afr_agent/src/turn.rs`, `src/turn/`, `src/loop/mod.rs`, `src/loop/model_turn.rs` | EDIT/CREATE | Preserve partial usage through a failed runtime turn and prove no executable completion follows |
 | `rustd/crates/afd_api_tenant/src/handler/draft/render.rs`, `rustd/crates/afd_authoring/src/lib.rs`, `src/message/read.rs` | EDIT | Carry safe recorded failure causes through durable private message reads |
 | `rustd/crates/afd_authoring/Cargo.toml`, `src/model/`, `src/types/failure.rs`, `src/observe/`, `src/lease/guard/` | EDIT | Setup stream adapter, publication guard, durable deadline and failure facts |
+| `rustd/crates/afd_authoring/src/sql/message/{mod.rs,running.sql}` | EDIT/CREATE | Read the running message independently of the bounded history hints before releasing a private preview |
+| `rustd/crates/afd_authoring/tests/secret_wiping.rs` | CREATE | Observe private preview, daemon and runner secret allocations before free, including cloned text and replaced nested objects, with an unwiped negative control |
+| `rustd/crates/afd_authoring/src/model/receipt/replay/{tests.rs}` | CREATE | Check pending replay immediately before, exactly at, and after the recorded dispatch deadline |
 | `rustd/crates/afd_authoring/src/message/accept.rs`, `src/replay/mod.rs`, `src/sql/message/admit.sql` | EDIT/CREATE | Carry-over bounded admission history reads |
 | `rustd/crates/afd_authoring/src/draft/mod.rs`, `tests/draft/admission/history.rs`, `tests/draft/admission/history/latency.rs`, `tests/draft/admission/history/waiting.rs` | EDIT/CREATE | Indy approved per-chat waiting before database acquisition with existing Tokio and bounded Moka; prove independent service ordering, spare pool capacity and cancellation |
 | `rustd/crates/afd_authoring/tests/` | EDIT/CREATE | Real dispatch, usage, privacy, replay and admission regressions |
+| `rustd/crates/afd_authoring/tests/draft/model_calls/deadline.rs`, `tests/draft/model_calls/progress/deadline.rs` | CREATE | Prove elapsed authorization prevents physical sends and a blocked preview cannot stall durable completion |
 | `rustd/crates/afd_authoring/tests/draft/fixture/upgrade.rs`, `tests/draft/fixture.rs` | CREATE/EDIT | Prove dispatch deadline backfill and an older daemon's inserts across the additive migration |
 | `rustd/crates/afd_api/tests/authoring/models/` | EDIT | Keep the router's external-provider fixture on the shared incremental transport |
 | `rustd/crates/afd_api/tests/authoring/stream/privacy.rs` | EDIT | Prove idle named heartbeat bytes and access revocation on an already open private stream |
+| `rustd/crates/afd_api/tests/authoring/stream/{mod,live,preview,recovery}.rs` | EDIT/CREATE | Exercise private frame filters, real hub gaps/lag, stream capacity and durable closure through the full authenticated router |
+| `rustd/crates/afd_api/tests/integration_workspace_approvals.rs` | EDIT | Isolate two concurrently seeded identities whose collision blocked the canonical coverage run |
 | `rustd/crates/afd_api_tenant/src/handler/draft/stream/` | EDIT | Authorized private live frames with durable recovery |
 | `rustd/crates/afd_api_wire/src/authoring/output.rs` | EDIT | Safe structured failure information |
 | `rustd/crates/afd_sse/src/`, `rustd/crates/afd_dragonfly/src/streams/`, `rustd/crates/agentsfleetd/src/plane/surfaces.rs` | EDIT | Reuse bounded subscriptions for private draft subjects and wire their production publisher |
@@ -95,6 +102,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 | `cli/test/completions.unit.test.ts`, `cli/test/golden/help-no-color.txt` | EDIT | Match Effect's supported completion shells after the requested dependency upgrade |
 | `docs/architecture/shared_chat_verification.md`, `rustd/crates/afr_*/src/`, `rustd/crates/agentsfleet_runner/src/` | AUDIT/EDIT | Indy requested a logging and standard-library reuse audit across at least fifteen runner-related crates; record exact inventory and fix evidenced gaps |
 | `rustd/crates/afd_dragonfly/src/outbound/reader.rs` | EDIT | Preserve the actual acknowledgement error code during the requested runner dependency logging audit |
+| `rustd/crates/afd_dragonfly/tests/{datastore_suite,outbound_faults}.rs` | EDIT/CREATE | Prove malformed pending-entry acknowledgement failure and recovery over the real protocol client |
 
 ## Applicable Rules
 
@@ -152,6 +160,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 - **Dimension 5.1** — DONE: Validate carry-over admission/acceptance fixes and shared changed UI coverage → Test `concurrent_history_admission_releases_pool_connections`.
 - **Dimension 5.2** — IN_PROGRESS: Run declared repository gates and real local acceptance with matching build identities → Test `local_acceptance_uses_the_implemented_builds`.
 - **Dimension 5.3** — IN_PROGRESS: Keep the actual local implementation running for Indy's visual sign-off before merge → Test `indy_live_visual_signoff` remains manual.
+- **Dimension 5.4** — DONE: Enforce owned-secret zeroization and valid unsafe observation in PR CI → Test `owned_secret_buffers_are_wiped_before_free` passed on stable and Miri; four wipe-removal probes fail the intended assertion. The workflow passes lint and makes the existing required aggregate depend on stable and pinned-nightly Miri. Hosted execution remains part of the post-push checks.
 
 ## Interfaces
 
@@ -211,6 +220,7 @@ Existing product actions remain; no new analytics funnel. Failure cause becomes 
 | 5.1 | integration | `concurrent_history_admission_releases_pool_connections` | Concurrent admission with history → bounded pool occupancy and all accepted |
 | 5.2 | e2e | `local_acceptance_uses_the_implemented_builds` | Matching local UI/API/runner builds → acceptance-e2e and acceptance-cli pass |
 | 5.3 | manual | `indy_live_visual_signoff` | Indy opens local app and approves actual layout/flows; record real response |
+| 5.4 | unit | `owned_secret_buffers_are_wiped_before_free` | Preview, daemon secret text/bytes/object and runner token allocations are wiped before free, including clones and nested replacements; an unwiped control stays nonzero; Miri checks the observer's raw-memory accesses |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -257,6 +267,9 @@ Remove the setup-only full-response collection and separate connection/viewport/
 - **Patch-vs-refactor verdict:** This is a focused refactor because the user explicitly requires one implementation for the duplicated behaviors, with existing purpose boundaries retained.
 
 ## Discovery (consult log)
+
+- Oct 22, 2026: Indy requested PR enforcement for zeroization and unsafe-memory checks. The stable wiping regression belongs to the existing daemon-library unit shard. Add a focused Miri job that installs pinned nightly `2026-10-22`; include its result in the existing required `test-unit-rustd` aggregate.
+- Oct 22, 2026: Indy asked why the Miri check covered only authoring. Extend the isolated observer through public daemon and runner secret owners, retaining one allocator implementation. This checks selected owned buffers; it does not certify external serializer or network scratch storage.
 
 - Oct 22, 2026: The new cancellation probe failed before cancellation while observing waiters. Its lock-holding transaction reused a cached `pg_stat_activity` session list, hiding connections opened after the first census. A separate local probe observed zero cached waiters against one live waiter; clearing the snapshot revealed that waiter. Priming the census before opening the sender makes all three waiting probes fail deterministically with the old observer. Reusing the existing independent autocommit monitor pattern makes all seven admission cases pass, with the five-second deadline and pool-capacity assertions unchanged. Canonical `make test-unit-all` passed 11,348 tests on macOS, with 16 existing CLI skips. The fresh `make test-integration-rustd` run passed 1,386 normal and three exclusive tests. `make lint-all`, `make harness-verify` and `make check-version` also passed. Matching-build acceptance, final per-file coverage and the remaining mutations are still required.
 

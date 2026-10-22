@@ -20,6 +20,9 @@ pub(crate) const SUBJECT: &str = "user_live_approval_inbox";
 /// loser reports a duplicate key rather than the behaviour under test.
 pub(crate) const LISTING_SUBJECT: &str = "user_live_approval_listing";
 
+/// The unknown-resource proof also runs beside the inbox proof.
+const UNKNOWN_SUBJECT: &str = "user_live_approval_unknown";
+
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn approval_inbox_reads_and_resolves_a_live_gate() {
@@ -48,12 +51,12 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
-    let fixture = Fixture::create().await;
+    let fixture = Fixture::create_as(UNKNOWN_SUBJECT).await;
     fixture.seed().await;
     let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
-        SUBJECT,
+        UNKNOWN_SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())

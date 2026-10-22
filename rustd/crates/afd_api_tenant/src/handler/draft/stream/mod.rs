@@ -34,17 +34,11 @@ pub(crate) async fn open<D: Services>(
     Path(path): Path<DraftPath>,
 ) -> Result<Response, Refusal> {
     let draft = id(&path)?;
-    let observation = services
+    let view = services
         .authoring()
-        .observe(access(&owned, &person), &draft, None)
+        .initial_view(access(&owned, &person), &draft)
         .await
         .map_err(authoring_refusal)?;
-    let afd_authoring::Observation::Current(view) = observation else {
-        return Err(Refusal::coded(
-            afd_core::error_code::AUTHORING_NOT_FOUND,
-            super::DRAFT_UNAVAILABLE,
-        ));
-    };
     let live = services.live();
     let slot = live.admit().ok_or_else(|| {
         afd_observability::producers::http::stream_shed();
