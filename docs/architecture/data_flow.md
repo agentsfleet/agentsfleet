@@ -714,12 +714,14 @@ One PR through one lease: its records and timers in [lease_flow.md §1](./lease_
 
 ```text
 record key + normalized body + retained installing fleet -> commit
-ensure stream/checks/grants fails -> installing + missing checks
+checks or grants incomplete -> installing + missing checks
 same key + same body -> resume same fleet and setup revision
 Kill wins activation guard -> killed fleet; linked draft returns to editing
-activation + initial admission commits -> Pending
-activation + initial admission commit -> Accepted; register schedules independently
-wake notification fails -> Accepted; the next idle poll reads the ledger
+activation + initial admission -> commit together
+read back the same initial event -> Accepted
+read-back unavailable -> Pending; retry confirms the same event
+register schedules independently
+lost wake -> the next idle poll still reads the ledger
 ```
 
 Do not delete the retained fleet on setup failure, claim activation after a zero-row update, or submit another initial event on retry. Undelivered, unsettled steer admissions participate in ordinary message history alongside delivered events in one statement snapshot, with stable event identity and pagination (`afd_events/src/history/statement/select_thread_page.sql`). No creation worker is introduced.

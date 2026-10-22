@@ -23,8 +23,12 @@ sequenceDiagram
   Lead->>Slack: @agentsfleet what's our prod called? (thread A)
   Slack->>API: POST /v1/connectors/slack/events (v0 Hash-based Message Authentication Code (HMAC)) ✅
   API->>PG: resolve team→workspace; materialise the channel fleet as native system setup (resident.md instructions) ✅
-  API->>API: admit producer slack_mention, key <team_id>:<event_id>, actor=slack:<user> → XADD fleet:{channel_fleet_id}:events ✅
-  Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ♻️
+  API->>PG: commit slack_mention admission for channel_fleet_id ✅
+  Note over API,PG: key <team_id>:<event_id>, actor=slack:<user>
+  API->>API: attempt best-effort wake notification
+  Runner->>API: poll for a lease
+  API->>PG: claim ledger head and fleet slot atomically
+  Runner->>API: run; GET /me/memory/{channel_fleet_id} (empty) ♻️
   Runner->>API: report "don't know yet — tell me?"
   API->>Slack: chat.postMessage thread_ts=A (outbound poster) ✅
   Lead->>Slack: it's "aurora" (thread A)
