@@ -74,8 +74,10 @@ jobs:
       - name: Show the pinned toolchain
         run: rustup show && cargo --version
         working-directory: rustd
+      # Restore only. warm-cache.yml saves this key from main, so pull requests read
+      # a complete registry rather than writing their own.
       - name: Cache cargo registry
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
@@ -141,8 +143,10 @@ jobs:
       - name: Show the pinned toolchain
         run: rustup show && cargo --version
         working-directory: rustd
+      # Restore only. warm-cache.yml saves this key from main, so pull requests read
+      # a complete registry rather than writing their own.
       - name: Cache cargo registry
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
