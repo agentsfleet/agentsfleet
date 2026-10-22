@@ -1,0 +1,41 @@
+name: warm-cache
+
+# Pull requests restore Rust caches from the default branch, and the unit
+# shards save only on it. No workflow ran a pull request's selections on main,
+# so a new branch started every Rust lane from a cold cache. This job runs on
+# main and compiles the unit shards' test binaries without executing them, so
+# the shared `rustd-unit` cache is saved there for pull requests to restore.
+#
+# It compiles and never runs a test: a second test run on main buys nothing.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warm-rustd-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show the pinned toolchain
+        run: rustup show && rustc --version && cargo --version
+        working-directory: rustd
+
+      # The key must match test-unit-rustd.yml's shards, and save-if is always
+      # true here: this job exists to save it.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: rustd
+          shared-key: rustd-unit
+          save-if: true
+
+      - name: Compile the unit shards' test binaries
+        run: make build-test-unit-rustd
