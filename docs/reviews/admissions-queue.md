@@ -141,6 +141,7 @@ The cause of the clock disagreement remains unproven; no timeout, assertion or c
 
 The source review read 190 source paths and summarized 240 earlier test and fixture paths.
 The bounded failed-park review also read the two-case regression fixture in full.
+
 One specialist reader assessed performance, migrations and failure isolation; another completed the native adversarial read.
 At `589a2ea`, the gate helper emitted 43 of 554 eligible hunks; all 43 were inspected, leaving 511 outside that bounded review.
 
