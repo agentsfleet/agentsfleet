@@ -65,9 +65,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The three shards share the `rustd-unit` cache key, so they compile the
-  # dependencies once between them. Every run saves to its own branch, and main's
-  # warm-cache.yml entry is the fallback for a new branch.
+  # The three shards restore the `rustd-unit` key that warm-cache.yml saves whole
+  # from main. They never save: a shard that saved first would write a partial
+  # dependency set under the shared key, and the others could not add theirs.
   test-unit-rustd-runner:
     runs-on: ubuntu-latest
     steps:
@@ -79,7 +79,7 @@ jobs:
         with:
           workspaces: rustd
           shared-key: rustd-unit
-          save-if: true
+          save-if: false
       - name: Test the runner's crates
         run: make test-unit-rustd-runner
 
@@ -94,7 +94,7 @@ jobs:
         with:
           workspaces: rustd
           shared-key: rustd-unit
-          save-if: true
+          save-if: false
       - name: Test agentsfleetd
         run: make test-unit-rustd-daemon
 
@@ -109,7 +109,7 @@ jobs:
         with:
           workspaces: rustd
           shared-key: rustd-unit
-          save-if: true
+          save-if: false
       - name: Test the daemon's library crates
         run: make test-unit-rustd-daemon-libs
 
