@@ -134,7 +134,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_dragonfly/tests/integration_doorbell.rs`, `rustd/crates/afd_dragonfly/tests/datastore_suite.rs` | CREATE / EDIT | prove cross-process sharded notification delivery and release every subscription at shutdown |
 | `rustd/crates/afd_fleet/tests/integration_lease_plan.rs`, `integration_lease_plan/` | EDIT / CREATE | prove composite prior-event lookup, bounded head reads, indexed renewal/settlement and skipped fleet scans on an empty ledger with 20,001 active fleets |
 | `rustd/crates/afd_events/tests/queued/{mod.rs,snapshot.rs}` | EDIT / CREATE | count actual public history statements before and after delivery; one statement supplies one snapshot |
-| `rustd/crates/afd_authoring/tests/draft/creation/{mod,confirmation}.rs`, `rustd/crates/afd_fleet/tests/integration_lease_gates/faults.rs`, `integration_terminal_redelivery.rs` | EDIT / CREATE | prove durable initial-event confirmation, preservation of terminal refusals and stale terminal-settlement fencing |
+| `rustd/crates/afd_authoring/tests/draft/creation/{mod,confirmation}.rs`, `rustd/crates/afd_fleet/tests/integration_lease_gates/faults{.rs,/}`, `integration_terminal_redelivery.rs` | EDIT / CREATE | prove durable initial-event confirmation, preservation of terminal refusals, failed-park claim release and stale terminal-settlement fencing |
 
 ## Applicable Rules
 
@@ -191,7 +191,7 @@ Admission commits the ledger row, then rings the doorbell; no append, no mark. A
 
 - **Dimension 4.1** — DONE — settle stamps the row in the report transaction; a rollback leaves it unsettled → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once`
 - **Dimension 4.2** — DONE — an expired lease is re-leased and the dead holder's late report is refused → Test `test_reclaimed_row_is_leased_as_redelivered`; superseded-report proof is also listed below
-- **Dimension 4.3** — DONE — park holds later work, and gate resolution and expiry durably unpark → Test `test_approval_resolution_leases_next_poll`; ordering, expiry and lock-wait proofs are also listed below
+- **Dimension 4.3** — DONE — park holds later work, and gate resolution and expiry durably unpark → Test `test_approval_resolution_leases_next_poll`; `a_failed_park_stamp_releases_the_claim_and_retries_after_approval` and `a_failed_park_release_rolls_back_the_stamp_and_retries_after_approval` cover failed parks; ordering, expiry and lock-wait proofs are also listed below
 - **Dimension 4.4** — DONE — a lost doorbell still leases on the next probe → Test `test_a_fleet_is_discovered_without_any_notification`; stale-hint proof is also listed below
 
 ### §5 — DONE — Delete the Dragonfly queue and its repairers
