@@ -74,3 +74,41 @@ jobs:
       - name: Fetch the locked dependencies
         run: cargo fetch --locked
         working-directory: rustd
+
+  # The musl gate's fast-profile build, saved under the key test.yml restores.
+  # It builds the same two binaries and stops there: the static check belongs to
+  # the gate, and a second run of it on main buys nothing.
+  warm-musl-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore and save the fast-profile musl cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          key: cargo-fast-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: cargo-fast-amd64-
+
+      - name: Build both binaries in the pinned builder (musl-native)
+        run: |
+          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
+          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
+          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
+          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
+          docker run --rm \
+            -v "$PWD:/w" \
+            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -e GIT_COMMIT="${GITHUB_SHA::7}" \
+            -w /w/rustd \
+            "$BUILDER" \
+            sh -c '
+              set -e
+              cargo build --profile fast-profile -p agentsfleetd --bin agentsfleetd
+              cargo build --profile fast-profile -p agentsfleet_runner --bin agentsfleet-runner
+            '
+          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
