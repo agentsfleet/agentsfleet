@@ -168,7 +168,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/cache@v6
+      # Restore only: deploy-dev-build saves this key on main, so pull requests
+      # never write a cache another branch could restore.
+      - uses: actions/cache/restore@v6
         with:
           path: |
             .cargo-cache/registry
