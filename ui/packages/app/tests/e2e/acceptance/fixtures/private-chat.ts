@@ -45,17 +45,11 @@ export async function setupAction(page: Page, name: string): Promise<Locator> {
 }
 
 export async function saveSetupButton(page: Page): Promise<Locator> {
-  return setupAction(page, CHAT_COPY.save);
+  return page.getByRole("button", {name: CHAT_COPY.save, exact: true});
 }
 
 export function setupSummary(page: Page): Locator {
   return page.getByRole("region", {name: CHAT_COPY.setup, exact: true});
-}
-
-/** The saved-fleet result remains in the conversation and survives a reload. */
-export function savedSetup(scope: Page | Locator): Locator {
-  return scope.getByRole("region", {name: CHAT_COPY.setup, exact: true})
-    .filter({has: scope.getByRole("heading", {name: /^Saved v[0-9]+/})});
 }
 
 export function chatUnavailable(page: Page): Locator {

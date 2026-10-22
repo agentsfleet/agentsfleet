@@ -13,16 +13,18 @@ import { FleetStreamProvider } from "../FleetStreamProvider";
 type Editor = {open: () => void; close: () => void; enabled: boolean; editing: boolean; trigger: RefObject<HTMLButtonElement | null>};
 const SetupContext = createContext<Editor | null>(null);
 const SetupChat = nextDynamic(() => import("./WorkspaceChat").then(module => module.WorkspaceChat), {
-  ssr: false, loading: () => <Skeleton className="min-h-0 flex-1" aria-label="Opening setup chat" />,
+  ssr: false, loading: () => <output className="contents" aria-label="Opening setup chat"><Skeleton className="min-h-0 flex-1" /></output>,
 });
 
 /** Server-rendered fleet content stays mounted while its private editor opens. */
-export function FleetSetupWorkspace({account, workspace, fleet, revision, header, children}: {
-  account: string | null; workspace: string; fleet: string; revision: string; header: ReactNode; children: ReactNode;
+export function FleetSetupWorkspace({account, workspace, fleet, revision, viewer, header, children}: {
+  account: string | null; workspace: string; fleet: string; revision: string; viewer: string | null; header: ReactNode; children: ReactNode;
 }) {
   const {userId, isLoaded} = useCurrentUser();
   if (isLoaded && !userId) return null;
-  return <FleetStreamProvider key={`${account}:${workspace}:${userId}`}>
+  // Verified server identity keeps hydration from resetting an already open editor.
+  const subject = isLoaded ? userId : viewer;
+  return <FleetStreamProvider key={`${account}:${workspace}:${subject}`}>
     <FleetWorkspace account={account} workspace={workspace} fleet={fleet} revision={revision} header={header}>{children}</FleetWorkspace>
   </FleetStreamProvider>;
 }

@@ -49,7 +49,7 @@ export function FleetHeader({
   exhaustedAt?: string | null;
 }) {
   return (
-    <div className="mb-xl flex flex-col gap-lg sm:flex-row sm:items-center sm:justify-between">
+    <div className="mb-md flex flex-col gap-lg sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <FleetBreadcrumb workspaceId={workspaceId} fleetName={agentDisplayName(fleet.id)} />
         <PageTitle className="break-words">{agentDisplayName(fleet.id)}</PageTitle>

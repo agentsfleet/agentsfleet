@@ -3,14 +3,14 @@
 import type { ReactNode } from "react";
 import { ThreadPrimitive } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
-import { Button, cn } from "@agentsfleet/design-system";
+import { Button, Section, cn } from "@agentsfleet/design-system";
 
 /** The viewport owns scrolling; its capped footer keeps the composer reachable. */
 export function ChatThread({children, footer, after, label, centered, testId}: {
   children: ReactNode; footer: ReactNode; after?: ReactNode; label: string; centered?: boolean; testId?: string;
 }) {
-  return <ThreadPrimitive.Root data-testid={testId} aria-label={label}
-    className="relative flex min-h-0 flex-1 flex-col overflow-clip bg-background">
+  return <ThreadPrimitive.Root asChild data-testid={testId}>
+    <Section aria-label={label} className="relative flex min-h-0 flex-1 flex-col overflow-clip bg-background">
     <ThreadPrimitive.Viewport turnAnchor="top" autoScroll role="presentation"
       className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto px-lg sm:px-xl", centered && "justify-center")}>
       {children}
@@ -26,5 +26,6 @@ export function ChatThread({children, footer, after, label, centered, testId}: {
       </ThreadPrimitive.ViewportFooter>
       {after}
     </ThreadPrimitive.Viewport>
+    </Section>
   </ThreadPrimitive.Root>;
 }

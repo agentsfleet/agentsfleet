@@ -18,7 +18,7 @@ const COMPOSER_LABEL = "Chat composer";
 const SEND_LABEL = "Send";
 const JUMP_TO_LATEST = "Jump to latest";
 const THOUGHT = /^Thought · /;
-// Long enough that the thought opens (FleetThought opens after 400 ms live).
+// Several live reasoning chunks let the reader open Thought before completion.
 const REASONING_CHUNKS = 12;
 const REASONING_EVERY_MS = 80;
 const ANSWER = "Checked every signature; nothing to change.";
@@ -63,9 +63,10 @@ test("test_settle_holds_view", async ({ page }) => {
   await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor, sendOwn }) => {
     await sendOwn(OWN_TURN, EVENT_ID);
     await stream.send(liveReply(Date.now(), ownActor));
-    await expect(chat.getByRole("button", { name: /^Thinking/ })).toHaveAttribute("aria-expanded", "true");
-    // The reply's own row, under the operator's bubble: the Thought folds
-    // inside it, below its top.
+    const thought = chat.getByRole("button", { name: /^Thinking/ });
+    await thought.click();
+    await expect(thought).toHaveAttribute("aria-expanded", "true");
+    // The reply's own row stays anchored while the open Thought settles.
     const replyRow = chat.locator('[data-role="assistant"]').last();
     const tops = await sampleTop(replyRow, SAMPLE_MS, () => stream.send([answer(), complete(ownActor)]));
     expectHeld(tops);

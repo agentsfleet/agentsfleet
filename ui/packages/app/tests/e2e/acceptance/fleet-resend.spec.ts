@@ -6,6 +6,7 @@
 import type { Page, Request, Route } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { v7 } from "uuid";
+import { z } from "zod";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
@@ -23,9 +24,8 @@ const SEND_LABEL = "Send";
 const RESEND_LABEL = "Resend";
 const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
 const POST = "POST";
-const UUID_V7 = /[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/;
-// A logical event id as the daemon spells it: `<millis>-<seq>`.
-const EVENT_ID = /\d{13}-\d+/;
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const AcceptedSchema = z.object({ event_id: z.uuidv7() });
 const STORAGE_KEY_PREFIX = "agentsfleet:pending-sends";
 const KEY_SEPARATOR = ":";
 const STATE_SENDING = "sending";
@@ -68,7 +68,7 @@ async function withResendPage(
 
 async function answerThrough(route: Route, steers: Steers, loseFirstAnswer: boolean): Promise<void> {
   const response = await route.fetch();
-  steers.eventIds.push((await response.text()).match(EVENT_ID)?.[0] ?? "");
+  steers.eventIds.push(AcceptedSchema.parse(await response.json()).event_id);
   if (loseFirstAnswer && steers.lostAnswers === 0) {
     steers.lostAnswers += 1;
     return route.abort("failed");
@@ -127,7 +127,7 @@ test("test_failed_send_resend_journey", async ({ page }) => {
     expect(firstOperation).toMatch(UUID_V7);
     expect(resentOperation).toBe(firstOperation);
     const [admitted, answered] = steers.eventIds;
-    expect(admitted).toMatch(EVENT_ID);
+    expect(admitted).toMatch(UUID_V7);
     expect(answered).toBe(admitted);
   });
 });

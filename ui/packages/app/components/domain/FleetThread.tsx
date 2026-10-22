@@ -134,7 +134,6 @@ export function FleetThread({
           <SenderNamesProvider names={names}>
             <DashboardPanel
               id="fleet-chat-transcript"
-              aria-label="Fleet chat"
               padding="none"
               className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
             >

@@ -68,7 +68,7 @@ test("changing Search during Next keeps Models on the new search's first page", 
   await withModels(workspace, async (prefix) => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspace, "settings/models"));
-    const search = page.getByRole("searchbox", {name: "Search loaded models"});
+    const search = page.getByRole("searchbox", {name: "Search models"});
     await search.fill(prefix);
     const next = page.getByRole("button", {name: "Next page"});
     const previous = page.getByRole("button", {name: "Previous page"});
@@ -82,7 +82,7 @@ test("changing Search during Next keeps Models on the new search's first page", 
       await search.fill(`${prefix}-`);
       await expect(previous).toBeDisabled();
       held.release();
-      await expect(page.getByText(new RegExp(`^${MODEL_COUNT} of .* loaded models$`))).toBeVisible();
+      await expect(page.getByText(new RegExp(`^${MODEL_COUNT} of .* models$`))).toBeVisible();
       await expect(previous).toBeDisabled();
       await expect(table.locator("tbody tr")).toHaveCount(DISPLAY_PAGE_SIZE);
     } finally { await held.dispose(); }

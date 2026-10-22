@@ -93,16 +93,26 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 | `ui/packages/app/components/domain/FleetThread.tsx`, `FleetThreadViewport.tsx`, `FleetMessageRow.tsx`, `SteerComposer.tsx` | EDIT | Shared chat shell and purpose adapters |
 | `ui/packages/app/components/domain/FleetStreamProvider.tsx`, `useFleetEventStream.ts`, `useFleetRunSummary.ts` | EDIT/CREATE | Own shared connections within the mounted account/workspace/subject and keep render pure |
 | `ui/packages/app/components/domain/chat/` | EDIT/CREATE | Chat-first setup editor, shared composer and save flow |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/{platform-columns,PlatformCatalogTable,EditFleetDialog}.tsx`, `ui/packages/app/components/domain/island-dynamic/EditFleetDialogDynamic.tsx` | EDIT | Indy approved preserving the original Edit button through the loading handoff so closing the editor restores keyboard focus; use the existing accessibility case |
 | `ui/packages/app/components/layout/` | EDIT | One Recent list, compact aligned navigation and hover trash |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/page.tsx`, `secrets/components/SecretsList.tsx` | EDIT | Indy approved the two existing layout wrappers filling their available height, using the existing acceptance case |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/` | EDIT/DELETE | Fleet workspace editor and removal of redundant Setup/Your fleets navigation |
 | `ui/packages/app/tests/`, colocated component tests | EDIT/CREATE | Shared UI, lifecycle, privacy, saves and acceptance proofs |
 | `ui/packages/design-system/src/design-system/Textarea.tsx`, `Textarea.test.tsx` | EDIT | Carry-over quiet focused caret behavior |
 | `VERSION`, workspace version manifests, `docs/RUST_ERROR_STANDARD.md` | EDIT | Requested release version and shared typed response-bound failure |
-| Root, CLI, scripts and UI `package.json` manifests, Bun lockfiles, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | Indy requested current stable Rust and Bun dependencies, including Next.js; migrate affected call sites within this PR |
+| Root, CLI, scripts and UI `package.json` manifests, Bun lockfiles, `rustd/Cargo.toml`, `rustd/Cargo.lock`, `make/quality.mk` | EDIT | Requested dependency upgrades and pinned tsrs migration; run explicit checks and command-line emission through Bun, retaining TypeScript for Next.js internals |
 | `cli/test/completions.unit.test.ts`, `cli/test/golden/help-no-color.txt` | EDIT | Match Effect's supported completion shells after the requested dependency upgrade |
 | `docs/architecture/shared_chat_verification.md`, `rustd/crates/afr_*/src/`, `rustd/crates/agentsfleet_runner/src/` | AUDIT/EDIT | Indy requested a logging and standard-library reuse audit across at least fifteen runner-related crates; record exact inventory and fix evidenced gaps |
 | `rustd/crates/afd_dragonfly/src/outbound/reader.rs` | EDIT | Preserve the actual acknowledgement error code during the requested runner dependency logging audit |
 | `rustd/crates/afd_dragonfly/tests/{datastore_suite,outbound_faults}.rs` | EDIT/CREATE | Prove malformed pending-entry acknowledgement failure and recovery over the real protocol client |
+| `deploy/local/`, `make/acceptance.mk`, `make/dev.mk`, `Makefile`, `scripts/local-dev.sh`, `docs/development.md` | EDIT/CREATE | Approved local deployment directory and one coordinator calling existing Make targets; Compose owns Caddy, existing development containers supply datastores, and the shipping deployment script owns Linux runner installation; remove the draft UI, runner-build and runner helpers |
+| `scripts/build-acceptance.ts` | EDIT | Build the four components in order, optionally building the runner on the prepared Linux machine; remove source hashes, receipts and manifests |
+| `scripts/{acceptance-artifacts,build-manifest,build-component,build-source,inspect-acceptance-build,observe-acceptance-runner,deploy-dev-dashboard,dev-dashboard}.ts`, `scripts/{observe-dev-runner,acceptance_build_binding_test}.sh` | DELETE | Approved removal of acceptance build tracking and remote process observation; direct compiler and Vercel commands take over building and deployment |
+| `cli/test/{acceptance-artifacts,build-source,observe-acceptance-runner,dev-dashboard,build-acceptance}.test.ts`, `cli/test/build-fixture.ts`, `ui/packages/app/tests/build-binding*.test.ts`, `ui/packages/app/tests/e2e/acceptance/fixtures/build-binding*.ts`, `deploy/local/deployment{,.test}.ts` | DELETE | Remove tests and private dashboard copying required only by the deleted tracking checks |
+| `.github/actions/acceptance-inputs/action.yml` | DELETE | Remove build downloads and remote process observation before functional acceptance |
+| `.github/workflows/deploy-dev-{build,dashboard,acceptance}.yml`, `cli/test/acceptance/global-setup.ts`, `ui/packages/app/tests/e2e/acceptance/global-setup.ts` | EDIT | Remove tracking callers; retain authentication, fixture setup, deployed acceptance commands, signed toolbox checks and the development dashboard destination |
+| `cli/test/acceptance/fixtures/{cli.js,cli.d.ts,browser.ts}` | EDIT | Run worktree acceptance with Bun as requested; forward the local public certificate authority to child processes without inheriting operator credentials |
+| `cli/test/acceptance/{grant-approval-live,steer-live}.spec.ts`, `cli/test/acceptance/fixtures/{grant-ops,seed}.ts` | EDIT | Update existing grant and missing-model journeys for partial setup; assert the actual missing-model observation instead of accepting a timeout; retain real CLI execution and billing assertions |
 
 ## Applicable Rules
 
@@ -161,6 +171,7 @@ Existing dirty files belong to this stream and are preserved. This table scopes 
 - **Dimension 5.2** — IN_PROGRESS: Run declared repository gates and real local acceptance with matching build identities → Test `local_acceptance_uses_the_implemented_builds`.
 - **Dimension 5.3** — IN_PROGRESS: Keep the actual local implementation running for Indy's visual sign-off before merge → Test `indy_live_visual_signoff` remains manual.
 - **Dimension 5.4** — DONE: Enforce owned-secret zeroization and valid unsafe observation in PR CI → Test `owned_secret_buffers_are_wiped_before_free` passed on stable and Miri; four wipe-removal probes fail the intended assertion. The workflow passes lint and makes the existing required aggregate depend on stable and pinned-nightly Miri. Hosted execution remains part of the post-push checks.
+- **Dimension 5.5** — IN_PROGRESS: `acceptance-local` builds and starts the local stack, then calls the existing acceptance targets → Test `local_acceptance_runs_existing_suites`; preserve shared datastore containers and deployed target recipes, use the shipping runner deployment, and stop the owned dashboard on exit.
 
 ## Interfaces
 
@@ -218,9 +229,10 @@ Existing product actions remain; no new analytics funnel. Failure cause becomes 
 | 4.2 | unit | `failed_save_retains_manual_and_chat_edits` | Manual/chat edits + conflict → same candidate/text retained and no version advance |
 | 4.3 | unit | `recent_fleets_and_drafts_keep_authorized_routes_and_status` | Active/stopped fleets and unfinished drafts → compact titles, correct links and delete action |
 | 5.1 | integration | `concurrent_history_admission_releases_pool_connections` | Concurrent admission with history → bounded pool occupancy and all accepted |
-| 5.2 | e2e | `local_acceptance_uses_the_implemented_builds` | Matching local UI/API/runner builds → acceptance-e2e and acceptance-cli pass |
+| 5.2 | e2e | `local_acceptance_uses_the_implemented_builds` | Build and start the local UI/API/runner → acceptance-e2e and acceptance-cli pass |
 | 5.3 | manual | `indy_live_visual_signoff` | Indy opens local app and approves actual layout/flows; record real response |
 | 5.4 | unit | `owned_secret_buffers_are_wiped_before_free` | Preview, daemon secret text/bytes/object and runner token allocations are wiped before free, including clones and nested replacements; an unwiped control stays nonzero; Miri checks the observer's raw-memory accesses |
+| 5.5 | unit + e2e | `local_acceptance_runs_existing_suites` | The local command calls existing build and acceptance targets with the shipping runner deployment; shared datastore containers survive startup; prerequisite or build failures stop before suite execution; the owned dashboard stops on exit |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -267,6 +279,12 @@ Remove the setup-only full-response collection and separate connection/viewport/
 - **Patch-vs-refactor verdict:** This is a focused refactor because the user explicitly requires one implementation for the duplicated behaviors, with existing purpose boundaries retained.
 
 ## Discovery (consult log)
+
+- Oct 22, 2026: Indy approved the four-file library-editor focus fix: "Approve the four-file fix". A delayed editor-module load reproduced focus returning to the page body after Escape; the normal loaded path returned it to Edit. Carry the original button through the existing loader and editor, and exercise the loading handoff in the existing accessibility case. Add no files or test cases.
+
+- Oct 22, 2026: Indy approved migrating to tsrs, compiling and pushing the Pull Request: "You can migrate and compile and push the PR with tsrc" and "i suggest you migrate." The earlier compilation stop applied to context-save only. Pin published tsrs `0.18.0-ts7.1.0-dev.20260929` in existing manifests and lockfiles; compare the existing configurations, rejection of a temporary type error and isolated command-line emission. Next.js calls TypeScript's `--showConfig`, which tsrs does not support, so retain its TypeScript dependency. Add no repository files or test cases for this migration.
+
+- Oct 22, 2026: Indy approved the final file table after requesting simple local acceptance without build hashes or receipts: "Signed off approved". Delete the listed tracking files and their tests. Keep one local coordinator and Caddy Compose file, build through the existing Make target, and serve the ordinary dashboard build. Use direct development workflow commands for building and Vercel deployment. Functional acceptance, authentication and signed toolbox verification remain required. Indy subsequently requested Bun for local runtime and said: "Ask Indhy for approval on any new files you add in this acceptance work". Add no further acceptance files without that approval.
 
 - Oct 22, 2026: Indy requested PR enforcement for zeroization and unsafe-memory checks. The stable wiping regression belongs to the existing daemon-library unit shard. Add a focused Miri job that installs pinned nightly `2026-10-22`; include its result in the existing required `test-unit-rustd` aggregate.
 - Oct 22, 2026: Indy asked why the Miri check covered only authoring. Extend the isolated observer through public daemon and runner secret owners, retaining one allocator implementation. This checks selected owned buffers; it does not certify external serializer or network scratch storage.

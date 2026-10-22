@@ -194,7 +194,7 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, secondaryWorkspaceName);
 
     await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
-    await page.getByRole("link", { name: /create a fleet/i }).first().click();
+    await page.getByRole("main").getByRole("link", { name: "New fleet", exact: true }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
     const fleetId = await saveFleetViaUI(page, JOURNEY_FLEET_PREFIX, {
       handle: FIXTURE_KEY.admin,
@@ -239,6 +239,7 @@ test.describe("operator journey", () => {
     const commandEnv = cliEnv({
       AGENTSFLEET_STATE_DIR: stateDir,
       AGENTSFLEET_API_URL: apiUrl,
+      AGENTSFLEET_API_KEY: rawApiKey,
     });
     const cli = await spawnAgentsfleet(["--json", "list", "--workspace", wsId, "--limit", "10"], commandEnv);
     if (cli.code !== 0) {

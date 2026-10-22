@@ -28,17 +28,23 @@ beforeEach(() => {
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
 function workspace(account: string | null = CHAT_PROPS.account) {
-  return <FleetSetupWorkspace {...CHAT_PROPS} account={account} fleet={FLEET_ID} revision="1" header={<EditSetupButton />}>
+  return <FleetSetupWorkspace {...CHAT_PROPS} account={account} fleet={FLEET_ID} revision="1" viewer="creator" header={<EditSetupButton />}>
     <Input aria-label="Fleet message" defaultValue="Runtime conversation stays here" />
   </FleetSetupWorkspace>;
 }
 
 async function edit() {
-  render(workspace());
+  fixture.auth.isLoaded = false;
+  fixture.auth.userId = "";
+  const view = render(workspace());
   const runtime = screen.getByLabelText("Fleet message");
   fireEvent.change(runtime, {target: {value: "Unsent runtime message"}});
   fireEvent.click(screen.getByRole("button", {name: "Edit setup"}));
   const panel = screen.getByRole("complementary", {name: "Edit fleet setup"});
+  fixture.auth.isLoaded = true;
+  fixture.auth.userId = "creator";
+  view.rerender(workspace());
+  expect(screen.getByRole("complementary", {name: "Edit fleet setup"})).toBe(panel);
   const composer = await within(panel).findByLabelText(CHAT_PLACEHOLDER);
   await waitFor(() => expect(composer).toHaveProperty("disabled", false));
   return {panel, composer, runtime};

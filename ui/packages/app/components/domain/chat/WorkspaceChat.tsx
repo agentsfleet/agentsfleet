@@ -21,14 +21,16 @@ import { DraftChatHeading } from "./DraftChatHeading";
 
 type Props = {account: string; workspace: string; draft?: string; source?: Source; canPublishPlatform?: boolean; canManagePlatformModels?: boolean; onSaved?: () => void};
 const ignore = (): void => undefined;
+const LOADING_ROLE = "status";
+const LOADING_SETUP_CHAT = "Loading setup chat";
 const DraftConversation = nextDynamic(() => import("./DraftConversation").then((module) => module.DraftConversation), {
   ssr: false,
-  loading: () => <Skeleton className="min-h-0 w-full flex-1" aria-label="Loading conversation" />,
+  loading: () => <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label="Loading conversation" />,
 });
 
 export function WorkspaceChat(props: Props) {
   const {isLoaded, isSignedIn, userId} = useCurrentUser();
-  if (!isLoaded) return <Skeleton className="h-80 w-full" aria-label="Loading your private chat" />;
+  if (!isLoaded) return <Skeleton className="h-80 w-full" role={LOADING_ROLE} aria-label="Loading your private chat" />;
   if (!isSignedIn || !userId) return <Alert variant="warning">Sign in again to open private fleet chat.</Alert>;
   const identity = {account: props.account, workspace: props.workspace, subject: userId};
   return <ChatSession key={JSON.stringify(identity)} {...props} identity={identity} />;
@@ -71,7 +73,7 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
     void open().catch(ignore);
     return () => {disposed = true; unsubscribe(); cache.remember(current.getSnapshot()); current.dispose();};
   }, [selection, cache]);
-  return client && reload ? <ChatSurface onSaved={onSaved} canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="min-h-0 w-full flex-1" aria-label="Loading setup chat" />;
+  return client && reload ? <ChatSurface onSaved={onSaved} canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />;
 }
 
 function ChatSurface({client, workspace, subject, opening, selected, reload, canManagePlatformModels, onSaved}: {canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>; onSaved?: () => void}) {
@@ -88,7 +90,7 @@ function ChatSurface({client, workspace, subject, opening, selected, reload, can
   return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col gap-md" data-fleet-authoring>
     {view.error ? <ChatError client={client} view={view} workspace={workspace} reload={reload} /> : null}
     {view.notice ? <Alert>{view.notice}</Alert> : null}
-    {opening ? <Skeleton className="min-h-0 w-full flex-1" aria-label="Loading setup chat" /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
+    {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} />
     <ScheduleSync schedules={view.schedules} busy={view.busy} onRetry={retrySchedule} />
     <ChatModelAvailability canManagePlatformModels={canManagePlatformModels} client={client} view={view} workspace={workspace} />

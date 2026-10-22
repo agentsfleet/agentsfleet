@@ -29,7 +29,7 @@ describe("BalanceLink", () => {
     expect(screen.getByText(BALANCE_LABEL)).toBeTruthy();
     expect(figure().textContent).toBe("$4.81");
     expect(link().getAttribute("href")).toBe(BALANCE_HREF);
-    expect(link().getAttribute("aria-label")).toBe(BALANCE_ARIA_LABEL);
+    expect(link().getAttribute("aria-label")).toBe(`${BALANCE_LABEL} $4.81: ${BALANCE_ARIA_LABEL}`);
   });
 
   it.each([["0", "$0.00"], ["-50000000", "-$0.05"], ["-50", ">-$0.0001"]])(
@@ -44,7 +44,7 @@ describe("BalanceLink", () => {
     expect(link().className).toContain("bg-destructive/10");
     expect(link().className).not.toContain("border-info/40");
     expect(link().dataset.exhausted).toBe("true");
-    expect(link().getAttribute("aria-label")).toBe(BALANCE_EXHAUSTED_ARIA_LABEL);
+    expect(link().getAttribute("aria-label")).toBe(`${BALANCE_LABEL} ${expected}: ${BALANCE_EXHAUSTED_ARIA_LABEL}`);
   });
 
   it("distinguishes the available balance with information blue", () => {
