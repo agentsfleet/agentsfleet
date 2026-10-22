@@ -182,8 +182,10 @@ jobs:
             .cargo-cache/registry
             .cargo-cache/git
             rustd/target
-          key: cargo-dist-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: cargo-dist-${{ matrix.arch }}-
+          # Its own key: fast-profile artifacts must not share an exact hit with the
+          # `dist` entry deploy-dev-build writes, or a hit skips saving them.
+          key: cargo-fast-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: cargo-fast-${{ matrix.arch }}-
 
       # `docker run` rather than a job `container:`: JS actions cannot run
       # inside an Alpine container on an ARM64 runner, which is the constraint
