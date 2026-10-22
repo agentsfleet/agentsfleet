@@ -134,6 +134,8 @@ mod integration_tls_trust;
 mod keys_and_config;
 #[path = "misbehaving_server.rs"]
 mod misbehaving_server;
+#[path = "outbound_faults.rs"]
+mod outbound_faults;
 #[path = "preflight_refusals.rs"]
 mod preflight_refusals;
 #[path = "ready_wake_deadline.rs"]

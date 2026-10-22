@@ -1,6 +1,6 @@
 name: test-unit-rustd
 
-# The Rust workspace's lint and unit tests, as four jobs that run at once.
+# The Rust workspace's lint, unit shards and focused Miri proof run at once.
 #
 # It was one job in `test.yml` that ran `make lint-rustd` and then the whole
 # unit suite back to back. Here the unit suite runs as three shards, one runner
@@ -16,7 +16,7 @@ name: test-unit-rustd
 # `test-unit-rustd` is a required check on `main`, so the name stays the lane's
 # verdict: the last job below, green only when every job before it was.
 #
-# Every job restores `rust-cache` under its own key. `rust-cache` replaced a
+# Stable jobs restore `rust-cache` under their own keys. `rust-cache` replaced a
 # hand-rolled `actions/cache` over `~/.cargo` + `rustd/target`, which never
 # re-saved on a hit and so froze `target/` at whatever the first run under a
 # `Cargo.lock` left, partial trees from failed jobs included. Prior art checked
@@ -42,8 +42,8 @@ name: test-unit-rustd
 # checkout and the build cache, with no diff here to review. The trailing
 # comment is what a reader and Dependabot both bump.
 #
-# No toolchain input anywhere: rustd/rust-toolchain.toml is the single pin, and
-# rustup installs it on first use inside that directory.
+# Stable jobs use rustd/rust-toolchain.toml. The focused unsafe-memory proof
+# installs its own pinned nightly because Miri is unavailable on stable.
 #
 # No coverage measurement here. These jobs run the unit tier only — the
 # integration tests are `#[ignore]`d and need Postgres and Dragonfly, which this
@@ -110,6 +110,18 @@ jobs:
       - name: Test the daemon's library crates
         run: make test-unit-rustd-daemon-libs
 
+  test-miri-secret-wiping:
+    runs-on: ubuntu-latest
+    env:
+      MIRI_TOOLCHAIN: nightly-2026-10-22
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the pinned Miri toolchain
+        run: rustup toolchain install "$MIRI_TOOLCHAIN" --profile minimal --component miri
+      - name: Check preview, daemon and runner secret wiping under Miri
+        run: cargo +"$MIRI_TOOLCHAIN" miri test --locked -p afd_authoring --test secret_wiping
+        working-directory: rustd
+
   lint-rustd:
     runs-on: ubuntu-latest
     steps:
@@ -131,7 +143,7 @@ jobs:
   # skipped required check as passing. Every job above still reports when one
   # fails, because nothing above depends on another.
   test-unit-rustd:
-    needs: [test-unit-rustd-runner, test-unit-rustd-daemon, test-unit-rustd-daemon-libs, lint-rustd]
+    needs: [test-unit-rustd-runner, test-unit-rustd-daemon, test-unit-rustd-daemon-libs, test-miri-secret-wiping, lint-rustd]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -142,4 +154,4 @@ jobs:
           for result in $results; do
             [ "$result" = "success" ] || { echo "✗ a needed job finished '$result'"; exit 1; }
           done
-          echo "Rust lint and every unit shard passed"
+          echo "Rust lint, every unit shard and the Miri proof passed"

@@ -15,7 +15,7 @@ struct Watch {
     workspace: Uuid7,
     subject: String,
     draft: Uuid7,
-    generation: Option<i64>,
+    generation: i64,
     seen: HashMap<String, String>,
     delay: Duration,
     done: bool,
@@ -38,7 +38,7 @@ pub(super) fn frames(
             workspace,
             subject,
             draft,
-            generation: Some(generation),
+            generation,
             seen: HashMap::new(),
             delay: Duration::ZERO,
             done: false,
@@ -68,7 +68,7 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
                 return Some((Ok(deleted(&watch.draft)?), watch));
             }
             Ok(Ok(Observation::Current(view))) => {
-                watch.generation = Some(view.generation);
+                watch.generation = view.generation;
                 if let Some(pending) = pending
                     && let Some(event) = preview(&watch.draft, &view, pending)
                 {
@@ -152,14 +152,10 @@ fn preview(
             let frame: afd_authoring::Delta = serde_json::from_str(bounded.value).ok()?;
             let frame = garde::Unvalidated::new(frame).validate().ok()?;
             let sequence = frame.sequence.parse::<i64>().ok()?;
-            let running = view.notices.iter().any(|notice| {
-                notice.sequence.as_deref() == Some(frame.sequence.as_str())
-                    && notice.state == Some(afd_authoring::types::MessageState::Running)
-            });
             if &frame.draft_id != draft
                 || view.closed
                 || sequence <= view.cancelled_through_sequence
-                || !running
+                || view.running_sequence != Some(sequence)
             {
                 return None;
             }

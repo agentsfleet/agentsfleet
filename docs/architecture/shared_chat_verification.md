@@ -246,8 +246,8 @@ The [Rust error standard](../RUST_ERROR_STANDARD.md) owns the crate exceptions a
 
 ## Verification evidence
 
-The production code is still undergoing repository verification.
-Coverage, mutation, local acceptance and CI results must be recorded before shipping.
+Rust coverage and the focused mutation checks below are complete.
+Matching-build sandbox acceptance, final repository verification and Continuous Integration (CI) results remain pending.
 Passing an inner-loop test does not satisfy those gates.
 
 | Proof | Observed result |
@@ -267,6 +267,24 @@ Passing an inner-loop test does not satisfy those gates.
 | Recent UI tests | Authorized union, stop/delete conflict behavior and unmount cancellation |
 | `make test-coverage-all` | App 4,020 tests, website 133, CLI 1,955 and design system 499; all package coverage gates passed |
 | `cargo mutants -p afd_inference --all-features` | 98 mutations: 26 caught, 72 did not compile, no survivors or timeouts |
+| Rust coverage: canonical run plus the focused hub-closure regression, graded by `scripts/rustd_coverage.py` | Overall 99.6116%; changed lines 100%; all 51 measured changed source files reach 99% |
+| Authoring mutation closure | 18 mutations: ten caught, eight did not compile, no survivors or timeouts |
+| Private-stream mutation closure | 26 mutations: eight caught, seventeen did not compile, one equivalent survivor, no timeouts |
+| Removing the local admission turn | Six focused cases passed; independent-chat admission failed at the unchanged five-second pool deadline |
+| `owned_secret_buffers_are_wiped_before_free` | One test passed on stable and under Miri, checking private preview, daemon and runner allocations before free |
+| Removing each secret owner's wipe | All four controlled changes failed the wiping assertion: daemon text, bytes, nested string values and runner tokens |
+| Required secret-wiping checks | Stable daemon-library shard and a focused `nightly-2026-10-22` Miri job feed the required aggregate; workflow lint passed; hosted CI has not run |
+
+The private-stream survivor replaces one cancellation-or-closure check with an AND expression.
+Its changed behavior requires a running message at or below the cancellation cutoff, or a running message in a closed draft.
+Production operations prevent both states under the same draft lock used by observation.
+See [`cancel`](../../rustd/crates/afd_authoring/src/message/cancel.rs), [`claim`](../../rustd/crates/afd_authoring/src/lease/claim/selection.rs),
+[`idle`](../../rustd/crates/afd_authoring/src/draft/patch.rs) and [`observe`](../../rustd/crates/afd_authoring/src/observe/mod.rs).
+The original defensive checks remain.
+
+The Miri run used nightly commit `1a2c4797ef2570bd76ca5dee34449169bc7dc457`, matching the workflow's dated pin.
+The observer checks selected owned buffers, including cloned text, unwinding and replaced nested values.
+It does not prove erasure of serializer, provider-library or network scratch storage.
 
 The usage-recovery regression checks that complete folded counts cannot gain an inconsistent raw total.
 A paused-clock test bounds deadline finalization independently of the provider reader.

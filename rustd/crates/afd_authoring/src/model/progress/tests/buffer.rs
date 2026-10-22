@@ -55,6 +55,31 @@ fn multibyte_text_remains_complete_and_every_frame_fits_the_wire_bound() {
 }
 
 #[test]
+fn unicode_frames_fill_the_byte_ceiling_without_splitting_a_character() {
+    for (text, lengths) in [
+        ("🦉".repeat(DELTA_BYTES / 4), vec![DELTA_BYTES]),
+        (
+            format!("{}🦉", "a".repeat(DELTA_BYTES - 1)),
+            vec![DELTA_BYTES - 1, 4],
+        ),
+    ] {
+        let (sender, mut reader) = mpsc::channel(CAPACITY);
+        let mut preview = Preview::new(sender);
+        preview.push(&text);
+        preview.flush();
+        let mut received = String::new();
+        for (index, length) in lengths.into_iter().enumerate() {
+            let piece = reader.try_recv().expect("complete bounded frame");
+            assert_eq!(piece.sequence, index as u64 + 1);
+            assert_eq!(piece.text.len(), length);
+            received.push_str(&piece.text);
+        }
+        assert!(reader.try_recv().is_err());
+        assert_eq!(received, text);
+    }
+}
+
+#[test]
 fn saturated_preview_never_blocks_and_the_next_frame_reveals_the_gap() {
     let (sender, mut reader) = mpsc::channel(CAPACITY);
     let mut preview = Preview::new(sender);

@@ -6,12 +6,6 @@ use std::{error::Error as _, sync::Mutex};
 
 struct Physical(Mutex<Option<rig_http::BoxedStream>>);
 
-impl Debug for Physical {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Physical").finish_non_exhaustive()
-    }
-}
-
 impl SendRequest for Physical {
     fn send(&self, _: Request<Bytes>) -> BoxFuture<'static, rig_http::Result<StreamingResponse>> {
         let body = self.0.lock().unwrap().take().unwrap();

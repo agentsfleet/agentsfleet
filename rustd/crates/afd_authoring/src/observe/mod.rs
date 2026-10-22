@@ -33,9 +33,21 @@ pub struct View {
     pub closed: bool,
     /// Messages at or below this watermark cannot publish further preview text.
     pub cancelled_through_sequence: i64,
+    /// Running state is authoritative even outside the recent notice window.
+    pub running_sequence: Option<i64>,
 }
 
 impl Drafts {
+    /// Authorizes an initial private read; missing drafts remain ordinary errors.
+    ///
+    /// # Errors
+    /// Foreign, deleted, expired or revoked resources are hidden.
+    pub async fn initial_view(&self, access: Access<'_>, id: &Uuid7) -> Result<View> {
+        self.current_view(access, id)
+            .await?
+            .ok_or_else(|| crate::error::ErrorKind::Hidden.into())
+    }
+
     /// Rechecks membership, creator and generation before reading private hints.
     ///
     /// # Errors
@@ -44,24 +56,27 @@ impl Drafts {
         &self,
         access: Access<'_>,
         id: &Uuid7,
-        generation: Option<i64>,
+        generation: i64,
     ) -> Result<Observation> {
+        Ok(match self.current_view(access, id).await? {
+            Some(view) if view.generation == generation => Observation::Current(view),
+            Some(_) | None => Observation::Deleted,
+        })
+    }
+
+    async fn current_view(&self, access: Access<'_>, id: &Uuid7) -> Result<Option<View>> {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let locked = match read::lock(&mut tx, access, &person, id).await {
             Ok(locked) => locked,
-            Err(error)
-                if generation.is_some() && error.code() == error_code::AUTHORING_NOT_FOUND =>
-            {
-                return Ok(Observation::Deleted);
+            Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => {
+                return Ok(None);
             }
             Err(error) => return Err(error),
         };
-        if generation.is_some_and(|generation| generation != DELETION_GENERATION) {
-            return Ok(Observation::Deleted);
-        }
         let mut notices = rows::messages(&mut tx, id, locked.cancelled_through_sequence).await?;
+        let running_sequence = rows::running_sequence(&mut tx, id).await?;
         if let Some(candidate) = &locked.head_candidate_id {
             notices.push(Notice::candidate(id, candidate, locked.candidate_revision));
         }
@@ -70,11 +85,12 @@ impl Drafts {
             notices.push(Notice::closed(id));
         }
         tx.commit().await.map_err(query(CONTEXT))?;
-        Ok(Observation::Current(View {
+        Ok(Some(View {
             generation: DELETION_GENERATION,
             notices,
             closed,
             cancelled_through_sequence: locked.cancelled_through_sequence,
+            running_sequence,
         }))
     }
 }

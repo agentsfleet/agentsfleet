@@ -15,6 +15,8 @@ use crate::{
     error::{ErrorKind, raise::query},
     lease::{Status, guard::Guarded},
 };
+#[cfg(test)]
+mod tests;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -76,33 +78,41 @@ async fn existing(
     guarded: &Guarded,
     receipt: Receipt,
 ) -> Result<Decision> {
-    let error = match word::<State>(&receipt.status)? {
-        State::Completed => {
-            let mut result: super::super::ModelCallResult =
-                value(&receipt.result.ok_or(ErrorKind::Gone)?)?;
-            result.replayed = true;
-            return Ok(Decision::Replay(result));
-        }
-        State::Failed => ErrorKind::Provider,
-        State::Unknown => ErrorKind::Unknown,
-        State::Pending if guarded.now < receipt.dispatch_expires_at => ErrorKind::State {
-            current: "dispatching",
-        },
-        State::Pending => {
-            sqlx::query(sql::UNKNOWN)
-                .bind(&receipt.id)
-                .bind(dispatch_status::UNKNOWN)
-                .execute(&mut *connection)
-                .await
-                .map_err(query(CONTEXT))?;
-            sqlx::query(sql::UNCERTAIN)
-                .bind(guarded.attempt.id.as_str())
-                .bind(Status::AwaitingAccounting.as_str())
-                .execute(connection)
-                .await
-                .map_err(query(CONTEXT))?;
-            ErrorKind::Unknown
-        }
-    };
-    Ok(Decision::Refused(error.into()))
+    if let Some(decision) = receipt.decision(guarded.now)? {
+        return Ok(decision);
+    }
+    sqlx::query(sql::UNKNOWN)
+        .bind(&receipt.id)
+        .bind(dispatch_status::UNKNOWN)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    sqlx::query(sql::UNCERTAIN)
+        .bind(guarded.attempt.id.as_str())
+        .bind(Status::AwaitingAccounting.as_str())
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(Decision::Refused(ErrorKind::Unknown.into()))
+}
+
+impl Receipt {
+    /// An expired pending intent needs durable uncertainty recording first.
+    fn decision(&self, now: Timestamp) -> Result<Option<Decision>> {
+        let error = match word::<State>(&self.status)? {
+            State::Completed => {
+                let mut result: super::super::ModelCallResult =
+                    value(self.result.as_deref().ok_or(ErrorKind::Gone)?)?;
+                result.replayed = true;
+                return Ok(Some(Decision::Replay(result)));
+            }
+            State::Failed => ErrorKind::Provider,
+            State::Unknown => ErrorKind::Unknown,
+            State::Pending if now < self.dispatch_expires_at => ErrorKind::State {
+                current: "dispatching",
+            },
+            State::Pending => return Ok(None),
+        };
+        Ok(Some(Decision::Refused(error.into())))
+    }
 }
