@@ -21,16 +21,18 @@ import {
   LEASES_EMPTY_TITLE,
   OPEN_RUNNER_LABEL,
   REVIEW_LEASE_TITLE,
+  VIEW_LEASE_LABEL,
   WORKSPACE_FILTER_PARAM,
   WORKSPACE_LABEL,
 } from "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy";
 import { failureSentenceFor } from "@/lib/events/event-summary";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { fixtureDefinition, fixtureConfig } from "./fixtures/definition";
 import { saveFixtureFleet } from "./fixtures/native-setup";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { agentCellFor, expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
+import { expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
 import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
@@ -91,6 +93,7 @@ const UNOWNED_WORKSPACE_ID = "01890a5d-ac96-774b-bcce-b302099a8057";
 // drag a "use client" module — React and next/navigation with it — into the
 // Playwright process; the sibling unit test pins the two against each other.
 const WORKSPACE_ID_DISPLAY_CHARS = 8;
+const WORKSPACE_COLUMN_INDEX = 1;
 function shortWorkspaceId(workspaceId: string): string {
   return workspaceId.length > WORKSPACE_ID_DISPLAY_CHARS
     ? `${workspaceId.slice(0, WORKSPACE_ID_DISPLAY_CHARS)}…`
@@ -101,11 +104,12 @@ function shortWorkspaceId(workspaceId: string): string {
 // rows disagree with the filter is exactly the bug this dimension exists to
 // catch — the chip rendering is not, on its own, proof the READ narrowed.
 async function expectEveryRowInWorkspace(table: Locator, workspaceId: string): Promise<void> {
-  const workspaceLinks = table.getByRole("link");
-  const count = await workspaceLinks.count();
+  const rows = table.locator("tbody").getByRole("row");
+  const count = await rows.count();
   expect(count).toBeGreaterThan(0);
   for (let index = 0; index < count; index += 1) {
-    await expect(workspaceLinks.nth(index)).toHaveAttribute("title", workspaceId);
+    const workspaceCell = rows.nth(index).getByRole("cell").nth(WORKSPACE_COLUMN_INDEX);
+    await expect(workspaceCell.locator("[title]")).toHaveAttribute("title", workspaceId);
   }
 }
 
@@ -180,8 +184,7 @@ test.describe("runner detail", () => {
     await expectAgentLabel(failedRow, fleetId);
     await expect(page.getByText(EXPECTED_FAILURE_TAG)).toHaveCount(0);
 
-    // The workspace link stops row activation; target the agent cell to review.
-    await agentCellFor(failedRow, fleetId).click();
+    await failedRow.getByRole("button", { name: `${VIEW_LEASE_LABEL} for ${agentDisplayName(fleetId)}`, exact: true }).click();
     const review = page.getByRole("dialog", { name: REVIEW_LEASE_TITLE });
     await expect(review).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await review.getByRole("button", { name: "Technical details" }).click();

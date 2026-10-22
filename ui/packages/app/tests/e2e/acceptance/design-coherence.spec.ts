@@ -19,16 +19,16 @@ async function textStart(locator: Locator, text: string) {
   }, text);
 }
 
-async function checkCreatedColumn(page: Page, name: string) {
+async function checkCreatedColumn(page: Page, name: string, trailingColumns: string[] = []) {
   const table = page.getByRole("table");
   await expect(table).toBeVisible();
   const row = table.getByRole("row").filter({ hasText: name });
   await expect(row).toBeVisible();
   if (page.viewportSize()!.width < 640) {
-    await expect(table.getByRole("columnheader")).toHaveText(["Name", "Actions"]);
+    await expect(table.getByRole("columnheader")).toHaveText(["Name", ...trailingColumns, "Actions"]);
     await expect(row.getByRole("cell").first().locator("time").first()).toBeVisible();
   } else {
-    await expect(table.getByRole("columnheader")).toHaveText(["Name", "Created", "Actions"]);
+    await expect(table.getByRole("columnheader")).toHaveText(["Name", "Created", ...trailingColumns, "Actions"]);
     const created = row.getByRole("cell").nth(1).locator("time").first();
     const heading = table.getByRole("columnheader", { name: "Created" });
     await created.scrollIntoViewIfNeeded();
@@ -43,7 +43,8 @@ async function checkCreatedColumn(page: Page, name: string) {
   await expect(row).toBeVisible();
   await row.getByRole("cell").last().scrollIntoViewIfNeeded();
   await expect(row.getByRole("button").last()).toBeInViewport();
-  const account = await page.getByRole("button", { name: "Open user menu" }).boundingBox();
+  const account = await page.getByRole("button", { name: "Workspace and account menu" })
+    .or(page.getByRole("button", {name: "Open navigation", exact: true})).filter({visible: true}).boundingBox();
   expect(account!.x + account!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 }
 
@@ -86,7 +87,7 @@ test("API Keys keeps Created aligned before Actions at desktop and mobile widths
     for (const width of VIEWPORTS) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/settings/api-keys");
-      await checkCreatedColumn(page, name);
+      await checkCreatedColumn(page, name, ["Status"]);
       await expectAccessible(page, "Populated API keys table");
     }
   } finally {

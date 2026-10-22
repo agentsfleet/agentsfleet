@@ -6,7 +6,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { fixtureDefinition } from "./fixtures/definition";
 import { publishFixtureLibrary } from "./fixtures/native-setup";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
-import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const INSTRUCTIONS = "Acknowledge the request.";
 const FIRST_MESSAGE = "Use this recipe as written.";
@@ -18,7 +18,7 @@ test("a published recipe is inspected and pins the selected revision in a new pr
   await signInAs(page, FIXTURE_KEY.regular);
   await page.goto(workspaceHref(workspace, "fleets/new"));
   await expect(page.getByLabel("Private fleet setup conversation")).toBeVisible();
-  await page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Fleet library", exact: true}).click();
+  await openSettingsDestination(page, "Fleet library");
   await expect(page).toHaveURL(workspaceUrlPattern("library"));
   const inspected = page.waitForResponse((response) => response.url().includes(`revision_id=${published.revision_id}`));
   await page.getByRole("listitem").filter({hasText: name}).getByRole("button", {name: "Inspect", exact: true}).click();

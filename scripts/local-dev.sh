@@ -84,6 +84,11 @@ dev_load_environment() {
     source "$env_file"
     set +a
   fi
+  if [ -n "${LOCAL_DEV_ENV_FILE:-}" ]; then
+    set -a
+    source "$LOCAL_DEV_ENV_FILE"
+    set +a
+  fi
   # Pin addresses back to the shared snapshot after loading machine settings.
   set -a
   source "$DEV_INFRA/ports.env"
@@ -121,14 +126,16 @@ dev_api_origin() {
 }
 
 dev_port_available() {
-  python3 - "$DEV_PORT" <<'PY'
-import socket, sys
-with socket.socket() as probe:
-    try:
-        probe.bind(("0.0.0.0", int(sys.argv[1])))
-    except OSError:
-        sys.exit("local-dev: daemon port is occupied; stop its owner or use another worktree path")
-PY
+  bun -e '
+try {
+  const probe = Bun.listen({hostname: "0.0.0.0", port: Number(Bun.argv[1]), socket: {data() {}}});
+  probe.stop();
+} catch (error) {
+  if (error.code !== "EADDRINUSE") throw error;
+  console.error("local-dev: daemon port is occupied; stop its owner or use another worktree path");
+  process.exit(1);
+}
+' "$DEV_PORT"
 }
 
 dev_launch() {
@@ -170,6 +177,20 @@ dev_up() {
   dev_launch
 }
 
+# Acceptance supplies the executable built by acceptance-build.
+dev_ensure() {
+  [ -n "${LOCAL_DEV_BINARY:-}" ] && [ -x "$LOCAL_DEV_BINARY" ] || dev_fail 'LOCAL_DEV_BINARY must name a built executable'
+  dev_infrastructure database
+  dev_load_environment
+  "$LOCAL_DEV_BINARY" migrate
+  dev_stop
+  dev_port_available
+  mkdir -p "$(dirname "$DEV_BINARY")"
+  cp "$LOCAL_DEV_BINARY" "$DEV_BINARY.new"
+  mv "$DEV_BINARY.new" "$DEV_BINARY"
+  dev_launch
+}
+
 dev_runner_environment() {
   local url="${AGENTSFLEET_API_URL:-$DEV_URL}"
   if [ "$(uname -s)" != Linux ] && [ -z "${AGENTSFLEET_API_URL:-}" ]; then
@@ -195,14 +216,14 @@ case "${1:-up}" in
   identity) printf '%s\n' "$DEV_ID" ;;
   runner-env) dev_runner_environment ;;
   infra-up) dev_infrastructure up ;;
-  up|down)
+  up|down|ensure)
     dev_state
     dev_lock "$DEV_STATE/process.lock"
-    if [ "${1:-up}" = up ]; then dev_up; else dev_stop; fi
+    case "${1:-up}" in up) dev_up ;; ensure) dev_ensure ;; down) dev_stop ;; esac
     ;;
   logs)
     [ -f "$DEV_LOG" ] || dev_fail 'no daemon log exists; run make up first'
     tail -f "$DEV_LOG"
     ;;
-  *) dev_fail 'expected up, down, infra-up, infra-down, url, identity, runner-env, status or logs' ;;
+  *) dev_fail 'expected up, ensure, down, infra-up, infra-down, url, identity, runner-env, status or logs' ;;
 esac

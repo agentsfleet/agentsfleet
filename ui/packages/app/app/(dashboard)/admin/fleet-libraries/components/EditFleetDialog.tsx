@@ -9,13 +9,19 @@ import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
 import { patchPlatformLibraryAction } from "../actions";
 import { EDIT_DESCRIPTION, EDIT_DESCRIPTION_LABEL, EDIT_NAME_LABEL, EDIT_REASON_LABEL, EDIT_REASON_MISSING, EDIT_TITLE, PATCH_ACTION } from "../library-copy";
 
-type Props = {entry: PlatformEntry; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (entry: PlatformEntry) => void};
+type Props = {entry: PlatformEntry; returnFocusTo?: HTMLElement; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (entry: PlatformEntry) => void};
 const CredentialsSchema = z.object({credentials: z.array(z.string())});
 
 export default function EditFleetDialog(props: Props) {
   const state = useEditor(props);
   return <Dialog open={props.open} onOpenChange={(open) => { if (!state.pending) props.onOpenChange(open); }}>
-    <DialogContent className="max-h-svh overflow-y-auto">
+    <DialogContent className="max-h-svh overflow-y-auto" onCloseAutoFocus={(event) => {
+      // The loading dialog may have held focus when this editor mounted.
+      if (props.returnFocusTo?.isConnected) {
+        event.preventDefault();
+        props.returnFocusTo.focus();
+      }
+    }}>
       <DialogHeader><DialogTitle>{EDIT_TITLE}</DialogTitle><DialogDescription>{EDIT_DESCRIPTION}</DialogDescription></DialogHeader>
       <ActionForm onSubmit={(event) => { event.preventDefault(); void state.save(); }}>
         <EditorFields state={state} />

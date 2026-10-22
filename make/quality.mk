@@ -12,13 +12,13 @@ check-documentation-rules:  ## Check public API and command help text
 
 ACTIONLINT ?= actionlint
 
-lint-website:  ## Lint website only (Oxlint + tsc)
+lint-website:  ## Lint website only (Oxlint + tsrs)
 	@echo "→ [website] Running Oxlint + TypeScript check..."
 	@cd ui/packages/website && bun run lint
 	@cd ui/packages/website && bun run typecheck
 	@echo "✓ [website] Lint passed"
 
-lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
+lint-app:  ## Lint ui/packages/app only (Oxlint + tsrs)
 	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
@@ -27,7 +27,7 @@ lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source.py
 	@echo "✓ [app] Lint passed"
 
-lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsc)
+lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsrs)
 	@echo "→ [design-system] Running Oxlint + TypeScript check..."
 	@cd ui/packages/design-system && bun run lint
 	@echo "→ [design-system] Source rules: mapped tokens, text contrast on every surface, one cn..."
@@ -36,7 +36,7 @@ lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsc)
 	@echo "✓ [design-system] Lint passed"
 
 lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
-	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsc..."
+	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsrs..."
 	@cd cli && bun run lint
 	@echo "→ [agentsfleet] Source rules: one env spelling, escapes in the palette, detail tables, live citations..."
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source_test.py
@@ -49,7 +49,7 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 # rather than adding another near-duplicate wrapper.
 _model_allowlist_check:
 	@echo "→ [models] Checking curated identities, context evidence and exact sourced prices..."
-	@bun run tsc --project scripts/model-catalogue/tsconfig.json
+	@bun run --bun tsrs --project scripts/model-catalogue/tsconfig.json
 	@bun test scripts/model-catalogue
 	@bun scripts/model-catalogue/check.mjs
 

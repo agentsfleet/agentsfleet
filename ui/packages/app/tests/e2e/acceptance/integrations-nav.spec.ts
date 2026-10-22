@@ -11,7 +11,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { workspaceUrlPattern } from "./fixtures/nav";
+import { openSettingsDestination, workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 test.describe("settings navigation — Models + Integrations", () => {
@@ -21,13 +21,14 @@ test.describe("settings navigation — Models + Integrations", () => {
     await page.goto("/");
 
     // Integrations — nav click lands on /w/<id>/integrations and renders connectors.
-    await page.getByRole("link", { name: "Integrations" }).first().click();
+    await page.getByRole("button", { name: "Workspace and account menu" }).click();
+    await page.getByRole("menuitem", { name: "Connect apps", exact: true }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("integrations"));
-    await expect(page.getByRole("heading", { name: /^integrations$/i })).toBeVisible();
-    await expect(page.getByTestId("integrations-page")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^connect apps$/i })).toBeVisible();
+    await expect(page.getByTestId("integrations-connectors")).toBeVisible();
 
     // Models — sibling nav item lands on /w/<id>/settings/models and renders the registry.
-    await page.getByRole("link", { name: "Models" }).first().click();
+    await openSettingsDestination(page, "Models");
     await expect(page).toHaveURL(workspaceUrlPattern("settings/models"));
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
     await expect(page.getByRole("table", { name: "Models" })).toBeVisible();

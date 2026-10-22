@@ -51,7 +51,7 @@ it("keeps setup editing available while renewed access review is required", () =
 
 it("keeps Edit setup before Stop in the existing fleet workspace", () => {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
-  render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision}
+  render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
     header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
   const edit = screen.getByRole("button", {name: "Edit setup"});
   const stop = screen.getByRole("button", {name: "Stop"});

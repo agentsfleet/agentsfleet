@@ -8,8 +8,8 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const RUNNERS = "/v1/fleets/runners";
-const CORDONED = "cordoned";
-const REGISTERED = "registered";
+const CORDONED = "New work paused";
+const REGISTERED = "Runner registered";
 
 test("Refresh replaces the mounted Runner activity with the new lifecycle record", async ({page}) => {
   // A fresh, never-started host cannot take work from the acceptance runner.

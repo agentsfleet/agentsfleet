@@ -22,16 +22,16 @@
   },
   "scripts": {
     "test": "bun run build && bun ./scripts/enforce-coverage.mjs",
-    "test:acceptance": "npm run build && bun run test:acceptance:deterministic:run && bun run test:acceptance:live:run",
-    "test:acceptance:deterministic": "npm run build && bun run test:acceptance:deterministic:run",
+    "test:acceptance": "bun run build && bun run test:acceptance:deterministic:run && bun run test:acceptance:live:run",
+    "test:acceptance:deterministic": "bun run build && bun run test:acceptance:deterministic:run",
     "test:acceptance:deterministic:run": "bun test/acceptance/run-lane.ts deterministic",
-    "test:acceptance:live": "npm run build && bun run test:acceptance:live:run",
+    "test:acceptance:live": "bun run build && bun run test:acceptance:live:run",
     "test:acceptance:live:run": "bun test/acceptance/run-lane.ts live",
-    "typecheck": "tsc --noEmit",
-    "lint": "oxlint src test scripts && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
-    "lint:fix": "oxlint src test scripts --fix && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json && bun scripts/stamp-build.ts",
-    "prepublishOnly": "npm run build"
+    "typecheck": "bun run --bun tsrs --noEmit",
+    "lint": "oxlint src test scripts && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
+    "lint:fix": "oxlint src test scripts --fix && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
+    "build": "bun run --bun tsrs -p tsconfig.build.json && bun scripts/stamp-build.ts",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@effect/platform-bun": "4.0.5",
@@ -49,6 +49,7 @@
     "bun-types": "^1.4.3",
     "oxlint": "^1.89.0",
     "playwright": "^1.64.1",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "7.0.2"
   }
 }

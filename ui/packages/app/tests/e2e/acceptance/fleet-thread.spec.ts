@@ -50,7 +50,6 @@ const LONG_REPLY_ID = "9100000000000-1";
 const FUTURE_RUN_OFFSET_MS = 60_000;
 // Below this much chat above the composer there is no room to show history.
 const HISTORY_ROOM_PX = 48;
-// The round-trip runs well inside the stream registry's 30s idle grace.
 const ROUND_TRIP_TIMEOUT_MS = 10_000;
 const ONE_OPEN_STREAM = { created: 1, open: 1 };
 
@@ -214,12 +213,9 @@ test.describe("fleet thread surface", () => {
     }
   });
 
-  test("fleet thread survives a client-side round-trip without remounting", async ({ page }) => {
-    // A sidebar click away and a tile click back stay inside one document, and
-    // the fleet's stream outlives the visit: the registry holds it through its
-    // idle grace, so the return reuses the open EventSource. A full page load
-    // drops the document mark; a layout that tore the stream down on every
-    // navigation would open a second one.
+  test("fleet thread releases its owned stream on navigation and opens one on return", async ({ page }) => {
+    // The private owner disposes its buffers on exit. Returning stays within
+    // the document and opens one fresh stream, without leaving an old one live.
     await signInAs(page, FIXTURE_KEY.regular);
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
@@ -234,26 +230,23 @@ test.describe("fleet thread surface", () => {
     await expect.poll(() => streamCount(page), { timeout: ROUND_TRIP_TIMEOUT_MS }).toEqual(ONE_OPEN_STREAM);
     await markDocument(page);
 
-    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Fleets" }).click();
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Your fleets" }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
-    await page.getByRole("main").getByRole("link", { name: fleet.name }).click();
+    await expect.poll(() => streamCount(page)).toEqual({created: 1, open: 0});
+    await page.getByRole("main").locator(`a[href="${workspaceHref(workspaceId, `fleets/${fleet.id}`)}"]`).click();
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
     await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
     await expect(page.getByLabel(COMPOSER_LABEL)).toBeVisible();
     expect(await documentIsMarked(page)).toBe(true);
-    expect(await streamCount(page)).toEqual(ONE_OPEN_STREAM);
+    await expect.poll(() => streamCount(page)).toEqual({created: 2, open: 1});
   });
 
-  test("steer submits via a Server Action and no same-origin request carries a client Authorization header", async ({
+  test("steer submits through the authenticated proxy without a client Authorization header", async ({
     page,
   }) => {
-    // Dimension 1.1 — the security invariant of this milestone. Steering
-    // rides a Server Action (POST with a `Next-Action` header), not a
-    // client fetch to /backend; and no same-origin request (the page
-    // route, the /backend SSE proxy, any app fetch) ever carries a
-    // browser-set bearer token. The SSE route handler injects the token
-    // server-side, so its request is cookie-only here too.
+    // Cookie authentication stays on the same-origin proxy; the server owns
+    // the upstream credential for both message writes and live updates.
     await signInAs(page, FIXTURE_KEY.regular);
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
@@ -262,14 +255,13 @@ test.describe("fleet thread surface", () => {
     });
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
-    const seen: { method: string; url: string; auth: boolean; serverAction: boolean }[] = [];
+    const seen: { method: string; url: string; auth: boolean }[] = [];
     page.on("request", (req) => {
       const h = req.headers();
       seen.push({
         method: req.method(),
         url: req.url(),
         auth: Boolean(h["authorization"]),
-        serverAction: Boolean(h["next-action"]),
       });
     });
 
@@ -290,9 +282,11 @@ test.describe("fleet thread surface", () => {
       timeout: 5_000,
     });
 
-    // A Server Action POST carried the steer (not a client /backend fetch).
+    // The write uses the fleet's message route and carries only cookie auth.
+    const messagesPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/messages`;
     await expect
-      .poll(() => seen.filter((r) => r.method === "POST" && r.serverAction).length, {
+      .poll(() => seen.filter((r) => r.method === "POST" && new URL(r.url).origin === appOrigin
+        && new URL(r.url).pathname === messagesPath).length, {
         timeout: 10_000,
       })
       .toBeGreaterThan(0);

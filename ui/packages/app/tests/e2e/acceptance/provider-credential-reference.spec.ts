@@ -23,14 +23,17 @@ import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { gotoWorkspace } from "./fixtures/nav";
+import { tenantModelPageSchema } from "@/lib/api/tenant-model-schemas";
 
 const ACTION_TIMEOUT_MS = 15_000;
 // The typed credential Name — free-form in the unified form, and the identity
 // cleanup keys off. Named for the provider it holds, by convention.
-const CREDENTIAL_NAME = "anthropic";
+const CREDENTIAL_NAME = `e2e-provider-${crypto.randomUUID()}`;
 const PROVIDER = "anthropic";
 const ANTHROPIC_KEY = "sk-ant-e2e-xxxxxxxx";
 const MODEL_FALLBACK = "claude-sonnet-4-6";
+const MODELS = "/v1/tenants/me/models";
+const MODEL_PAGE_MAX = 100;
 
 async function resetProviderDirect(): Promise<void> {
   await clientFor(FIXTURE_KEY.regular).delete("/v1/tenants/me/provider").catch(() => undefined);
@@ -41,6 +44,21 @@ async function deleteCredentialDirect(name: string): Promise<void> {
   await clientFor(FIXTURE_KEY.regular)
     .delete(`/v1/workspaces/${ws}/secrets/${encodeURIComponent(name)}`)
     .catch(() => undefined);
+}
+
+async function deleteFixtureModels(): Promise<void> {
+  const client = clientFor(FIXTURE_KEY.regular);
+  let cursor: string | null = null;
+  const ids: string[] = [];
+  for (let page = 0; page < MODEL_PAGE_MAX; page++) {
+    const query = new URLSearchParams({limit: "100"});
+    if (cursor) query.set("starting_after", cursor);
+    const result = tenantModelPageSchema.parse(await client.get<unknown>(`${MODELS}?${query}`));
+    ids.push(...result.models.filter(model => model.secret_ref === CREDENTIAL_NAME).map(model => model.id));
+    if (!result.next_cursor || result.next_cursor === cursor) break;
+    cursor = result.next_cursor;
+  }
+  await Promise.all(ids.map(id => client.delete(`${MODELS}/${encodeURIComponent(id)}`)));
 }
 
 // The Provider field is a catalogue-backed <Select> when the fixture catalogue
@@ -75,6 +93,7 @@ async function pickModel(page: Page): Promise<void> {
 test.describe("provider credential reference guard", () => {
   test.afterEach(async () => {
     await resetProviderDirect();
+    await deleteFixtureModels();
     await deleteCredentialDirect(CREDENTIAL_NAME);
   });
 

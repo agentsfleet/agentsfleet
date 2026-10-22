@@ -22,12 +22,6 @@ jobs:
             (cd "$package" && bun install --frozen-lockfile)
           done
 
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: '*-binary'
-          path: dist
-          merge-multiple: true
-
       - name: Load Vercel deployment credential
         uses: 1password/load-secrets-action@v5
         with:
@@ -37,28 +31,28 @@ jobs:
           VERCEL_TOKEN: op://${{ vars.VAULT_PROD }}/vercel-api-token/credential
 
       - name: Prepare the existing development dashboard project
-        run: bun scripts/deploy-dev-dashboard.ts prepare
+        run: |
+          mkdir -p .vercel
+          curl --silent --show-error --fail --max-time 15 --max-filesize 1048576 \
+            --header "Authorization: Bearer $VERCEL_TOKEN" \
+            https://api.vercel.com/v9/projects/agentsfleet-app \
+            | jq -e 'select(.rootDirectory == "ui/packages/app") | {projectId: .id, orgId: .accountId} | select((.projectId | type == "string" and length > 0) and (.orgId | type == "string" and length > 0))' \
+            > .vercel/project.json
+          node_modules/.bin/vercel pull --yes --environment=development-agentsfleet
+          # Dependencies were installed before credentials were loaded.
+          jq '.settings.installCommand = "true"' .vercel/project.json > .vercel/project.tmp
+          mv .vercel/project.tmp .vercel/project.json
 
       - name: Build the candidate command-line application
-        run: bun scripts/build-component.ts cli bash -euo pipefail -c 'cd cli && bun run build'
+        run: bun run build
+        working-directory: cli
 
       - name: Build the candidate dashboard
-        run: bun scripts/build-component.ts app node_modules/.bin/vercel build --target=development-agentsfleet
-
-      - name: Assemble evidence from the four component builds
-        run: make acceptance-assemble
-        env:
-          ACCEPTANCE_ENVIRONMENT: dev
+        run: node_modules/.bin/vercel build --target=development-agentsfleet
 
       - name: Deploy the prebuilt candidate dashboard
-        run: bun scripts/deploy-dev-dashboard.ts deploy
-
-      # Preserve executable modes, and exclude pulled Vercel environment files.
-      - name: Archive the deployed candidate for acceptance
-        run: tar -cf .tmp/acceptance-build.tar dist cli/dist ui/packages/app/.next .tmp/acceptance-build.json
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: acceptance-build-${{ github.sha }}
-          path: .tmp/acceptance-build.tar
-          retention-days: 7
+        run: |
+          deployment_url="$(node_modules/.bin/vercel deploy --prebuilt --yes --target=development-agentsfleet \
+            --meta "githubCommitSha=$GITHUB_SHA" --meta githubCommitRef=main)"
+          printf '%s' "$deployment_url" | jq -Rer 'select(test("^https://[a-zA-Z0-9-]+[.]vercel[.]app/?$"))'
+          node_modules/.bin/vercel alias set "$deployment_url" app-dev.agentsfleet.net

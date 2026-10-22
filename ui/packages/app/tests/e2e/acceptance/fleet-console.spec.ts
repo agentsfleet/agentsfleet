@@ -48,7 +48,7 @@ test.describe("fleet console", () => {
     await expect(rail.getByRole("link", {name: "Setup", exact: true})).toHaveCount(0);
     await expect(page.getByRole("button", {name: "Edit setup", exact: true})).toBeVisible();
 
-    const thread = page.getByLabel("Fleet chat");
+    const thread = page.getByTestId("fleet-thread-root");
     await expect(thread).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
 
     // test_console_composer_is_reachable_without_page_scroll — the defect this

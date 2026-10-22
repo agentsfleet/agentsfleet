@@ -1,4 +1,5 @@
 import { executionInstructions } from "./fixtures/definition";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 /**
  * fleet-execution.spec.ts — one fleet, from a reviewed chat setup to a finished job,
  * against the Rust daemon serving this environment.
@@ -49,7 +50,7 @@ import {
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import { expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { getDefaultWorkspaceId, readFleetName, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 // One stable template for the fleet that executes — the server suffixes a
@@ -123,9 +124,9 @@ function countStreams(page: Page, workspaceId: string): StreamCounts {
 // an aria-labelled `absolute inset-0` sheet with no text of its own — the feed
 // line and the counters are its siblings — so the card is what carries the
 // words a person reads, and the link is only how the card is found.
-function tileFor(page: Page, fleetName: string) {
+function tileFor(page: Page, fleetId: string) {
   const overlay = page.getByRole("link", {
-    name: new RegExp(`^${MANAGE_FLEET_LABEL}: ${fleetName} `),
+    name: new RegExp(`^${MANAGE_FLEET_LABEL}: ${agentDisplayName(fleetId)} — `),
   });
   return page.locator(TILE_CARD).filter({ has: overlay });
 }
@@ -182,12 +183,6 @@ test.describe("fleet execution", () => {
     await observed(JOURNEY_LEG.install, () =>
       waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleetId),
     );
-    // The server may have suffixed the template's name; the tile carries
-    // whatever it chose, so read it rather than assume it.
-    const name = await observed(JOURNEY_LEG.install, () =>
-      readFleetName(FIXTURE_KEY.regular, workspaceId, fleetId),
-    );
-
     // The control fleet: installed the same way a sibling would be, never
     // messaged. Its tile is the negative half of 1.4.
     const control = await observed(JOURNEY_LEG.install, () =>
@@ -204,9 +199,9 @@ test.describe("fleet execution", () => {
     const wall = await context.newPage();
     const streams = countStreams(wall, workspaceId);
     await wall.goto(workspaceHref(workspaceId, "fleets"));
-    await expect(tileFor(wall, name)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(tileFor(wall, controlName)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(tileFor(wall, name)).toContainText(TILE_EMPTY_COPY, {
+    await expect(tileFor(wall, fleetId)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(tileFor(wall, control.id)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await expect(tileFor(wall, fleetId)).toContainText(TILE_EMPTY_COPY, {
       timeout: RENDER_TIMEOUT_MS,
     });
 
@@ -280,10 +275,10 @@ test.describe("fleet execution", () => {
     });
 
     // ── 1.4, second half: the activity reached one tile over one stream ──
-    await expect(tileFor(wall, name)).not.toContainText(TILE_EMPTY_COPY, {
+    await expect(tileFor(wall, fleetId)).not.toContainText(TILE_EMPTY_COPY, {
       timeout: RENDER_TIMEOUT_MS,
     });
-    await expect(tileFor(wall, controlName)).toContainText(TILE_EMPTY_COPY);
+    await expect(tileFor(wall, control.id)).toContainText(TILE_EMPTY_COPY);
     expect(streams.workspace, "the wall opens the workspace stream once").toBe(1);
     expect(streams.fleet, "the wall opens no per-fleet stream").toBe(0);
     await wall.close();

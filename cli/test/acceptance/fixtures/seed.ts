@@ -79,8 +79,3 @@ export async function saveSteerProbeFleet(opts: SaveOptions): Promise<SavedFleet
   await waitForFleetActive(opts.env, fleet.id, deadline);
   return fleet;
 }
-
-export async function saveConnectorProbeFleet(opts: SaveOptions, credential: string): Promise<SavedFleet> {
-  const name = uniqueName(opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX, "connector-probe");
-  return saveNativeFleet(opts.env, fixtureDefinition(name, credential));
-}
