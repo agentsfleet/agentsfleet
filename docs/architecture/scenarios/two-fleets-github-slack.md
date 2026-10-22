@@ -286,21 +286,24 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
 
 ## 11. Both fleets on one timeline
 
-```
- time ─────────────────────────────────────────────────────────────────────────────►
+```text
+ time -------------------------------------------------------------------->
 
- GitHub   PR opened
-            │ admit A#1, mark shelf 3, ring 3
- Slack            mention in #ci-dev
-                    │ admit B#1 (reply = thread), mark shelf 9, ring 9
- You                    steer A "check migration"
-                          │ admit A#2 (no reply), event_admitted frame
- R1  poll ─► takes ring 3 ─► lease A#1 ──── run (GET diff ✔, review POST ✗) ──► report A#1
- R2      poll ─► takes ring 9 ─► lease B#1 ── run (logs, Loki) ── interim line ─► report B#1
-                                                                                │
- outbound                                                       post into thread ◄┘
- R?  poll … poll (A's slot held, A#2 waits) ……………… slot freed ─► lease A#2 ─► run ─► report
- You  ◄─── the live tail shows every frame; A#2's answer arrives on the CLI's stream
+ GitHub  PR opened -> commit A#1 to fleet.admissions
+ Slack   mention   -> commit B#1 (reply = thread)
+ You     steer A   -> commit A#2 (no reply); event_admitted frame
+                       |
+                       +-> each admission attempts a wake notification
+
+ R1  poll -> Postgres -> claim A#1 + A's slot -> run -> report A#1
+ R2  poll -> Postgres -> claim B#1 + B's slot -> run -> report B#1
+             |                                           |
+             |       both fleets can run concurrently    +-> thread reply
+             v
+ A#2 waits while A's slot is held
+     -> slot freed -> next poll claims A#2 -> run -> report A#2
+
+ You  <--- live activity frames; A#2's answer reaches the CLI stream
 ```
 
 **A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").
