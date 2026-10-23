@@ -254,7 +254,7 @@ async fn a_park_whose_reference_cannot_be_written_fails_closed_after_the_row() {
     assert_eq!(
         fixture.card_count().await,
         1,
-        "the row went down first; the next poll finds no reference and parks again"
+        "the durable row survives the failed reference write"
     );
     fixture.cleanup().await;
 }

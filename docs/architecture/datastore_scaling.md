@@ -197,9 +197,17 @@ A producer commits its identity and payload before reporting acceptance. A faile
 Every poll probes PostgreSQL. The notification only prioritizes a recent fleet.
 
 The candidate query first checks whether any unsettled admission exists. An empty ledger skips fleet scans.
-When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled`.
+When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.
+Admission holds the fleet row lock before allocating its sequence and through commit. A transaction that inserts later therefore stays behind unfinished work.
 
-A parked head blocks later rows. The claim locks the slot and that exact head with `SKIP LOCKED`, then advances both fences together.
+A parked head blocks later rows while standing access awaits an answer or an unresolved event approval has a future deadline.
+Both discovery and claim probe these two scopes through `idx_approval_gates_pending_scope_deadline`.
+One `NOT EXISTS` over `UNION ALL` keeps the probes correlated to the chosen head. Each branch limits its search to one blocker, including when many approvals match.
+Expired event approvals remain answerable; the resumed gate evaluation decides whether to proceed or refuse.
+A missing cached gate reference falls back to the durable event association, so a long polling outage cannot erase that decision.
+
+The claim locks the slot and exact head with `SKIP LOCKED`, then checks whether that head can run and advances both fences together.
+A blocked or unavailable head returns no work, and the caller rolls back the slot claim.
 
 Claims retain held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
 

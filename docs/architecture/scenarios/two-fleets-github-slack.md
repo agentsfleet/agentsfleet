@@ -126,7 +126,7 @@ All six producers use the same ledger shape. Actor and event type describe the j
 ## 5. The waiting room: inboxes, shelves and doorbells
 
 Fleet A has two unsettled admissions and fleet B has one.
-Postgres orders each fleet's queue by `(created_at, sequence)`.
+Postgres orders each fleet's queue by admission `sequence`.
 
 ```text
 Postgres fleet.admissions

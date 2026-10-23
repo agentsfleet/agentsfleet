@@ -13,10 +13,14 @@ use crate::support::Fixtures;
 
 #[path = "integration_lease_plan/claim.rs"]
 mod claim;
+#[path = "integration_lease_plan/gates.rs"]
+mod gates;
 #[path = "integration_lease_plan/idle.rs"]
 mod idle;
 #[path = "integration_lease_plan/meter.rs"]
 mod meter;
+#[path = "integration_lease_plan/prepared.rs"]
+mod prepared;
 
 /// Plans every prepared statement once for all binds, as a cached plan does.
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";

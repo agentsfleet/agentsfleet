@@ -10,6 +10,8 @@ use afd_db::{Migrator, config::DbRole, test_util::TestDatabase};
 const QUEUE_MIGRATION: i64 = 2110;
 const RECEIPT_DROP_MIGRATION: i64 = 2120;
 const DISPATCH_DEADLINE_MIGRATION: i64 = 2130;
+const CLAIM_ORDER_MIGRATION: i64 = 2140;
+const GATE_DEADLINE_MIGRATION: i64 = 2150;
 
 // M230 can land before M226: its higher slot must not hide the queue upgrade.
 static DISPATCH_ONLY: std::sync::LazyLock<Vec<afd_db::migration::Migration>> =
@@ -18,7 +20,13 @@ static DISPATCH_ONLY: std::sync::LazyLock<Vec<afd_db::migration::Migration>> =
             .iter()
             .copied()
             .filter(|migration| {
-                ![QUEUE_MIGRATION, RECEIPT_DROP_MIGRATION].contains(&migration.version())
+                ![
+                    QUEUE_MIGRATION,
+                    RECEIPT_DROP_MIGRATION,
+                    CLAIM_ORDER_MIGRATION,
+                    GATE_DEADLINE_MIGRATION,
+                ]
+                .contains(&migration.version())
             })
             .collect()
     });
@@ -83,7 +91,7 @@ async fn test_admissions_queue_migration_bootstraps() {
         .await
         .expect("partial queue index");
     assert!(
-        index.contains("(fleet_id, created_at, sequence) WHERE (settled_at IS NULL)"),
+        index.contains("(fleet_id, sequence) WHERE (settled_at IS NULL)"),
         "{index}"
     );
     sqlx::query(UPDATE)
@@ -118,7 +126,12 @@ async fn test_receipt_drop_migration_applies_populated() {
     let outcome = Migrator::new().run(&db).await.expect("populated upgrade");
     assert_eq!(
         outcome.applied,
-        [RECEIPT_DROP_MIGRATION, DISPATCH_DEADLINE_MIGRATION]
+        [
+            RECEIPT_DROP_MIGRATION,
+            DISPATCH_DEADLINE_MIGRATION,
+            CLAIM_ORDER_MIGRATION,
+            GATE_DEADLINE_MIGRATION,
+        ]
     );
     let mut connection = db.acquire().await.expect("database");
     let old_columns: i64 = sqlx::query_scalar("SELECT count(*) FROM information_schema.columns WHERE (table_schema='fleet' AND table_name='admissions' AND column_name=ANY($1)) OR (table_schema='runner' AND table_name='leases' AND column_name='receipt')")
@@ -153,7 +166,15 @@ async fn test_queue_upgrade_after_dispatch_deadline_preserves_admission() {
     assert!(installed.applied.contains(&DISPATCH_DEADLINE_MIGRATION));
     let (_, admission) = populate_before_drop(&db).await;
     let outcome = Migrator::new().run(&db).await.expect("M226 after M230");
-    assert_eq!(outcome.applied, [QUEUE_MIGRATION, RECEIPT_DROP_MIGRATION]);
+    assert_eq!(
+        outcome.applied,
+        [
+            QUEUE_MIGRATION,
+            RECEIPT_DROP_MIGRATION,
+            CLAIM_ORDER_MIGRATION,
+            GATE_DEADLINE_MIGRATION
+        ]
+    );
     assert!(outcome.skipped.contains(&DISPATCH_DEADLINE_MIGRATION));
     let mut connection = db.acquire().await.expect("database");
     let fence: i64 = sqlx::query_scalar(

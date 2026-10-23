@@ -15,7 +15,9 @@ use sqlx::Connection as _;
 use crate::{seed::seeded_parts, support::Fixtures};
 
 mod contention;
+mod deadlines;
 mod delivery;
+mod ordering;
 mod parking;
 mod parking_commit;
 mod reclaim;
@@ -87,6 +89,7 @@ async fn test_fleet_rows_lease_in_order_behind_a_park() {
         events.push(enqueue(&fixtures, &fleet, &workspace).await);
     }
     let head = events.first().expect("three admissions");
+    parking::seed_gate(&fixtures, &fleet, &workspace).await;
     let mut connection = fixtures
         .database
         .acquire()
