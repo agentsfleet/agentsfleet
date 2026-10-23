@@ -218,7 +218,9 @@ New fleet keeps the private setup conversation open across multiple messages.
 The header exposes **Save fleet** when the reviewed candidate can be saved.
 Successful Save opens that fleet's Chat.
 
-The sidebar's **Fleets** list shows authorized saved fleets. Private drafts appear under **Unfinished setups** on **New fleet**.
+The sidebar's **Fleets** list shows authorized saved fleets.
+Private drafts appear under **Unfinished setups** on **New fleet**.
+
 Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
 
 Fleet **Edit setup** opens a private chat panel alongside the mounted runtime conversation. **Stop** and permanent **Kill** live in **Fleet actions**.
