@@ -226,7 +226,7 @@ The shared teardown also preserves the `continuity-` fleet prefix.
 
 Identifier attachments record the workspace, fleet, and private draft identifiers before history reads.
 Successful runs clean up only after every history and isolation check and every evidence capture succeeds.
-These retention tests do not establish that the full live journeys passed.
+These retention tests do not establish that the full live acceptance checks passed.
 
 Cleanup deletes the supplied fleet and drafts, including their saved messages.
 Use the identifier attachment against the same development backend with a current fixture session:
