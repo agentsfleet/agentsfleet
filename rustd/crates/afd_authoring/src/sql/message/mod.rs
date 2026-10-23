@@ -30,6 +30,11 @@ pub(crate) const PAGE: &str = include_str!("page.sql");
 /// unresolved dispatch statuses.
 pub(crate) const NOTICES: &str = include_str!("notices.sql");
 
+/// The running message, independently of the bounded notice tail.
+///
+/// `$1` draft, `$2` running status.
+pub(crate) const RUNNING: &str = include_str!("running.sql");
+
 /// The sequence a replayed message was accepted at.
 ///
 /// `$1` message, `$2` draft.

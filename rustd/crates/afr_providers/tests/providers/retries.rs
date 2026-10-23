@@ -72,8 +72,8 @@ async fn each_reopened_stream_is_one_retry() {
             unreachable!("an answer streams");
         };
         let silent = match wire {
-            Wire::Messages | Wire::Responses => 1,
-            Wire::Chat => 0,
+            Wire::Responses => 1,
+            Wire::Messages | Wire::Chat => 0,
         };
         events.truncate(silent);
         let fake = Fake::serve(vec![Reply::Stream(events); ATTEMPTS]).await;

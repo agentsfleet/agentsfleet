@@ -273,7 +273,7 @@ describe("shell intent controls", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Retry account menu" }),
+      screen.getByRole("button", { name: /^Retry account menu\b/ }),
     );
     expect(loader.retry).toHaveBeenCalledOnce();
 

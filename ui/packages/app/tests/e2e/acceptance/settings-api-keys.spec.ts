@@ -29,9 +29,9 @@ test.describe("settings api-keys page", () => {
     // Keys page's own heading now, not a shared "Settings" area heading, and
     // the sidebar (not a tab strip) marks the active destination.
     await expect(page.getByRole("heading", { name: /^api keys$/i })).toBeVisible();
-    await expect(
-      page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^api keys$/i }),
-    ).toHaveAttribute("data-active", "true");
+    await page.getByRole("button", {name: "Workspace and account menu"}).click();
+    await expect(page.getByRole("menuitem", {name: "Get API keys", exact: true})).toHaveAttribute("aria-current", "page");
+    await page.keyboard.press("Escape");
 
     const name = `e2e-${Date.now()}`;
 

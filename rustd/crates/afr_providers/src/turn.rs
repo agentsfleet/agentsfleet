@@ -18,6 +18,7 @@
 use std::fmt;
 use std::ops::ControlFlow;
 
+use afd_inference::stream::{StreamTurn, TurnControl};
 use afd_wire::activity::StreamTextKind;
 use afr_telemetry::labels::{Provider as ProviderLabel, RetryReason};
 use afr_telemetry::record;
@@ -28,7 +29,7 @@ use rig_core::completion::{CompletionResponse, FinishReason};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, CallId};
 use rig_core::operation::Completion;
-use rig_core::streaming::{CompletionStream, Item, StreamEvent};
+use rig_core::streaming::StreamEvent;
 
 use crate::error::{Error, Result, raise};
 use crate::provider::{Call, Chunk, End, Provider, Replay, Request};
@@ -101,16 +102,19 @@ impl Turns {
     ///
     /// # Errors
     /// The conversation cannot be sent, or rig could not start the reply.
-    fn open(&self, request: &Request<'_>) -> Result<CompletionStream> {
+    fn open(&self, request: &Request<'_>) -> Result<StreamTurn> {
         let built = request::request(self.settings.api, request)?;
         let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
             .map_err(raise::configuration)?;
         let built = route
             .bound_output(request.model, built)
             .map_err(raise::configuration)?;
-        self.model
-            .stream(built)
-            .map_err(|failure| self.failed(failure))
+        let control = TurnControl {
+            correlation_id: self.lease_id.clone().into(),
+            ..Default::default()
+        };
+        StreamTurn::open(&route, &self.model, built, control)
+            .map_err(|failure| self.failed(*failure))
     }
 
     /// Logs and counts a turn opened again after `failure`.
@@ -122,7 +126,8 @@ impl Turns {
         let lease_id = &*self.lease_id;
         let reason = raise::code(failure);
         let event = EVENT_REOPENED;
-        tracing::warn!(lease_id, attempt, reason, event);
+        let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::warn!(lease_id, attempt, reason, event, error_code);
     }
 }
 
@@ -138,7 +143,7 @@ impl Provider for Turns {
 
 /// The chunks a turn that ended still has to send: what it spent, then its
 /// end.
-type Ending = std::array::IntoIter<Chunk, 2>;
+type Ending = std::array::IntoIter<Result<Chunk>, 2>;
 
 /// Where a turn's stream is.
 enum Pass {
@@ -146,10 +151,10 @@ enum Pass {
     /// opening from the borrowed conversation, so the common turn, opened
     /// once, holds no second copy of it for a reopening that never comes.
     Opening(usize),
-    /// Reading it.
-    Reading(Reading),
+    /// Allocated once per opening; chunks retain the same reader allocation.
+    Reading(Box<Reading>),
     /// What it spent and how it ended, still to go out.
-    Ending(Ending),
+    Ending(Box<Ending>),
     /// Nothing more.
     Done,
 }
@@ -165,16 +170,16 @@ impl Pass {
         loop {
             let step = match pass {
                 Self::Opening(attempt) => match turns.open(&request) {
-                    Ok(stream) => Step::Continue(Self::Reading(Reading {
+                    Ok(stream) => Step::Continue(Self::Reading(Box::new(Reading {
                         attempt,
                         stream,
                         shown: false,
-                    })),
+                    }))),
                     Err(failure) => Step::Break((Err(failure), Self::Done)),
                 },
                 Self::Reading(reading) => reading.step(turns).await,
                 Self::Ending(mut rest) => match rest.next() {
-                    Some(chunk) => Step::Break((Ok(chunk), Self::Ending(rest))),
+                    Some(chunk) => Step::Break((chunk, Self::Ending(rest))),
                     None => return None,
                 },
                 Self::Done => return None,
@@ -191,31 +196,52 @@ impl Pass {
 /// went out yet.
 struct Reading {
     attempt: usize,
-    stream: CompletionStream,
+    stream: StreamTurn,
     shown: bool,
 }
 
 impl Reading {
     /// Reads the stream's next item.
-    async fn step(mut self, turns: &Turns) -> Step {
+    async fn step(mut self: Box<Self>, turns: &Turns) -> Step {
         match self.stream.next().await {
-            Some(Ok(Item::Event(event))) => match chunk(event) {
+            Some(Ok(event)) => match chunk(event) {
                 Some(chunk) => {
                     self.shown = true;
                     Step::Break((Ok(chunk), Pass::Reading(self)))
                 }
                 None => Step::Continue(Pass::Reading(self)),
             },
-            Some(Ok(Item::Unknown(_))) => Step::Continue(Pass::Reading(self)),
-            Some(Err(failure)) if !self.shown && self.attempt < ATTEMPTS && reopens(&failure) => {
+            Some(Err(_)) | None => self.finished(turns).await,
+        }
+    }
+
+    /// Known spend leaves before the failure, and prevents reopening a paid attempt.
+    async fn finished(self: Box<Self>, turns: &Turns) -> Step {
+        let result = self.stream.finish().await;
+        let reported = &result.response.usage;
+        let known = reported.is_reported();
+        match result.failure {
+            None => Step::Continue(Pass::Ending(Box::new(ending(
+                turns.settings.api,
+                result.response,
+            )))),
+            Some(failure)
+                if !known && !self.shown && self.attempt < ATTEMPTS && reopens(&failure) =>
+            {
                 turns.reopened(self.attempt, &failure);
                 Step::Continue(Pass::Opening(self.attempt + 1))
             }
-            Some(Err(failure)) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
-            None => match self.stream.finish().await {
-                Ok(response) => Step::Continue(Pass::Ending(ending(turns.settings.api, response))),
-                Err(failure) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
-            },
+            Some(failure) => {
+                let spent = usage::spent(turns.settings.api, reported, &result.response.raw);
+                let failure = Err(turns.failed(*failure));
+                if known {
+                    Step::Continue(Pass::Ending(Box::new(
+                        [Ok(Chunk::Usage(spent)), failure].into_iter(),
+                    )))
+                } else {
+                    Step::Break((failure, Pass::Done))
+                }
+            }
         }
     }
 }
@@ -254,7 +280,7 @@ fn chunk(event: StreamEvent) -> Option<Chunk> {
 /// the transport ended at its cap is not one: the next would be as long. Nor
 /// is an endpoint the guard refused: its name resolves the same way again.
 fn reopens(failure: &ProviderError) -> bool {
-    failure.provider_response_status().is_none()
+    failure.provider_response().is_none()
         && failure.is_retryable()
         && !raise::oversize(failure)
         && !raise::blocked(failure)
@@ -266,5 +292,5 @@ fn ending(api: InferenceApi, response: CompletionResponse) -> Ending {
     let spent = usage::spent(api, &response.usage, &response.raw);
     let replay = Replay(response.head().with_content(response.choice));
     let end = End { replay, cut };
-    [Chunk::Usage(spent), Chunk::End(end)].into_iter()
+    [Ok(Chunk::Usage(spent)), Ok(Chunk::End(end))].into_iter()
 }

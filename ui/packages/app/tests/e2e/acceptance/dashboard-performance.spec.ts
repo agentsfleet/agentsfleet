@@ -18,6 +18,7 @@ import {
 } from "./fixtures/blank-frame-audit";
 
 const ROUTE_TIMEOUT_MS = 10_000;
+const CHAT_ENTRANCE = "What should your fleet do?";
 // The staged platform entry whose Edit dialog loads on intent.
 const INTENT_ENTRY = "e2e-intent-loading";
 const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex")}`;
@@ -26,11 +27,10 @@ const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex"
 // own Suspense boundary resolves: on a slow read the canvas is still the
 // route's text-free skeleton, and an audit installed then counts the server's
 // latency as blank shell frames. Gate on content only the loaded route
-// carries — the Fleets region, present even with an empty wall — so the audit
+// carries — the chat entrance heading — so the audit
 // measures navigation, not the first read.
 async function expectFleetsRouteLoaded(page: Page): Promise<void> {
-  const wall = page.getByRole("region", { name: "Fleets", exact: true });
-  await expect(wall).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
+  await expect(page.getByRole("heading", { name: CHAT_ENTRANCE, exact: true })).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
 }
 
 async function installBlankFrameAudit(page: Page): Promise<void> {
@@ -109,7 +109,7 @@ test.describe("authenticated dashboard fluidity", () => {
       page.on("pageerror", (error) => pageErrors.push(error.message));
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-      await expect(page.locator('[data-surface="dashboard"]')).toBeVisible();
+      await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
       await installBlankFrameAudit(page);
 
       await openSettingsDestination(page, "Activity");
@@ -168,7 +168,7 @@ test.describe("authenticated dashboard fluidity", () => {
 
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-      await expect(page.locator('[data-surface="dashboard"]')).toBeVisible();
+      await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
       await page.getByRole("button", { name: "Workspace and account menu" }).click();
       await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
       await page.getByRole("menuitem", { name: "Activity", exact: true }).hover();
@@ -178,6 +178,7 @@ test.describe("authenticated dashboard fluidity", () => {
         { timeout: ROUTE_TIMEOUT_MS },
       ).toBe(true);
       await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toBeHidden();
       await installBlankFrameAudit(page);
 
       await openSettingsDestination(page, "Approvals");

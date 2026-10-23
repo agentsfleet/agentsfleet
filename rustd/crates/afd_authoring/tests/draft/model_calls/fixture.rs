@@ -70,9 +70,14 @@ impl Transport for Provider {
                 .expect("test releases provider")
                 .forget();
         }
+        let (headers, body) = crate::provider_wire::body(
+            self.status,
+            serde_json::to_vec(&self.response).expect("provider response JSON"),
+        );
         Ok(ProviderResponse {
             status: self.status,
-            body: serde_json::to_vec(&self.response).expect("provider response JSON"),
+            headers,
+            body,
         })
     }
 }

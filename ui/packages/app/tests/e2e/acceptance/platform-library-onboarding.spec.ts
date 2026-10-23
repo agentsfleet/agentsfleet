@@ -20,12 +20,14 @@ test("a stale deletion leaves its error inside the confirmation and retains the 
   const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.operator);
   const name = `platform-delete-${crypto.randomUUID().slice(0, 8)}`;
   const path = "/v1/admin/fleet-libraries";
-  const rows = z.object({entries: z.array(z.object({card: z.object({id: z.uuid(), etag: z.string()})}))});
+  const rows = z.object({entries: z.array(z.object({card: z.object({id: z.string(), etag: z.string()})}))});
   await withStagedPlatformEntry(workspace, name, async (id) => {
     const client = clientFor(FIXTURE_KEY.operator);
     await signInAs(page, FIXTURE_KEY.operator);
     await page.goto(ADMIN_FLEET_LIBRARIES_PATH);
-    const row = page.getByRole("row").filter({hasText: name});
+    // The confirmation hides the background from assistive technology;
+    // retain its row locator while proving the failed delete kept it visible.
+    const row = page.getByRole("row", {includeHidden: true}).filter({hasText: name});
     await row.getByRole("button", {name: DELETE, exact: true}).click();
     const dialog = page.getByRole("alertdialog", {name: DELETE_CONFIRM_TITLE});
     await expect(dialog).toBeVisible();

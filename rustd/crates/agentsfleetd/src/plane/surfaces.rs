@@ -49,7 +49,8 @@ pub(super) fn authoring(
 ) -> Authoring {
     let setup = afd_authoring::Setup::new(drafts.clone(), Arc::clone(kek));
     let models =
-        afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport));
+        afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
+            .with_progress(afd_dragonfly::FleetStreams::new(queue.clone()));
     let creations = afd_authoring::Creations::new(setup.clone(), queue.clone(), admissions.clone());
     Authoring {
         drafts,

@@ -169,6 +169,9 @@ pub struct Failure {
     pub error_code: String,
     /// Stable recovery action for the authorized client to render.
     pub recovery_action: String,
+    /// Content-free cause observed by the daemon's model stream.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cause: Option<String>,
 }
 
 /// A bounded keyset page; unavailable totals and final cursors are null.

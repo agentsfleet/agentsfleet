@@ -1,6 +1,7 @@
 // Browser-native framing and reconnects; durable reads own visible text.
 
 import { z } from "zod";
+import { ChatConnection } from "../streaming/chat-connection";
 import { fastBackoffMs, FAST_RECONNECT_ATTEMPTS, OFFLINE_RETRY_MS } from "../streaming/fleet-stream-reconnect";
 import { losesAccess, SetupUnavailable } from "./draft-request";
 
@@ -13,14 +14,17 @@ const MAX_HINT_CHARACTERS = 64 * 1024;
 const ACCOUNTING_POLL_MS = 5_000;
 const ACCOUNTING_POLL_JITTER_MS = 1_000;
 const HintSchema = z.object({draft_id: z.uuidv7()});
+export const DRAFT_DELTA_EVENT = "message.delta";
+export const DRAFT_RESYNC_EVENT = "draft.resync";
+type Progress = {readonly delta: (data: string) => boolean; readonly gap: () => void};
 
-export async function followDraft(path: string, draft: string, owner: AbortSignal, reconcile: () => Promise<boolean>, needsPolling: () => boolean = () => false): Promise<void> {
+export async function followDraft(path: string, draft: string, owner: AbortSignal, reconcile: () => Promise<boolean>, needsPolling: () => boolean = () => false, progress?: Progress): Promise<void> {
   owner.throwIfAborted();
-  await new DraftProgress(path, draft, reconcile, needsPolling).follow(owner);
+  await new DraftProgress(path, draft, reconcile, needsPolling, progress).follow(owner);
 }
 
 class DraftProgress {
-  readonly #source: EventSource;
+  readonly #source: ChatConnection;
   readonly #draft: string;
   readonly #reconcile: () => Promise<boolean>;
   readonly #needsPolling: () => boolean;
@@ -32,15 +36,23 @@ class DraftProgress {
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
   #pollTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(path: string, draft: string, reconcile: () => Promise<boolean>, needsPolling: () => boolean) {
+  constructor(path: string, draft: string, reconcile: () => Promise<boolean>, needsPolling: () => boolean, progress?: Progress) {
     this.#draft = draft; this.#reconcile = reconcile; this.#needsPolling = needsPolling;
-    this.#source = new EventSource(`${path}/events/stream`);
-    this.#source.onopen = () => {
-      clearTimeout(this.#retryTimer); this.#retryTimer = undefined;
-      void this.#refresh();
-    };
-    this.#source.onerror = () => { void this.#refresh(); };
-    for (const name of Object.values(DRAFT_EVENT)) this.#source.addEventListener(name, (event: MessageEvent<string>) => this.#hint(name, event.data));
+    this.#source = new ChatConnection({
+      url: `${path}/events/stream`,
+      events: [...Object.values(DRAFT_EVENT), DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT],
+      onOpen: () => {
+        clearTimeout(this.#retryTimer); this.#retryTimer = undefined;
+        void this.#refresh();
+      },
+      onInterrupted: () => { progress?.gap(); void this.#refresh(); },
+      onFrame: (name, data) => {
+        if (name === DRAFT_DELTA_EVENT) return progress?.delta(data) ?? false;
+        if (name === DRAFT_RESYNC_EVENT) { progress?.gap(); void this.#refresh(); return true; }
+        return this.#hint(name, data);
+      },
+    });
+    this.#source.start();
   }
 
   async follow(owner: AbortSignal): Promise<void> {
@@ -89,13 +101,14 @@ class DraftProgress {
     this.#retryTimer = setTimeout(() => { this.#retryTimer = undefined; void this.#refresh(); }, delay);
   }
 
-  #hint(name: string, data: string): void {
-    if (this.#closed || data.length > MAX_HINT_CHARACTERS) return;
+  #hint(name: string, data: string): boolean {
+    if (this.#closed || data.length > MAX_HINT_CHARACTERS || !Object.values<string>(DRAFT_EVENT).includes(name)) return false;
     let value: unknown;
-    try { value = JSON.parse(data); } catch { return; }
+    try { value = JSON.parse(data); } catch { return false; }
     const hint = HintSchema.safeParse(value);
-    if (!hint.success || hint.data.draft_id !== this.#draft) return;
+    if (!hint.success || hint.data.draft_id !== this.#draft) return false;
     if (name === DRAFT_EVENT.deleted) this.#stop(new SetupUnavailable("This private draft was deleted", 404));
     else void this.#refresh();
+    return true;
   }
 }

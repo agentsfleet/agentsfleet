@@ -27,7 +27,7 @@ function uniqueEmail(): string {
 }
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-const isLocal = !process.env.BASE_URL;
+const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.BASE_URL ?? "http://localhost").hostname);
 const isProdApi = apiUrl.includes("api.agentsfleet.net");
 const prodWebhookEnabled = process.env[PROD_WEBHOOK_FLAG] === "1";
 

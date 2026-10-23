@@ -2,13 +2,17 @@
 
 mod budget;
 mod credential;
+mod document;
 mod error;
 mod header_key;
 mod json;
 mod logs;
+pub mod stream;
+pub mod transport;
 
 pub use budget::input_tokens;
 pub use credential::validate_key;
+pub use document::decode_failed_response;
 pub use json::json_request;
 pub use logs::log_filter;
 
@@ -25,19 +29,20 @@ use rig_core::{
 
 use error::ErrorKind;
 pub use error::{Error, Result};
+use std::borrow::Cow;
 
 static GATEWAY: openai::wire::Dialect = openai::wire::Dialect::gateway("gateway", "", "");
 
 /// A validated, borrowed model route. No provider-name or model-name routing heuristics.
 #[derive(Debug)]
 pub struct Configured<'a> {
-    settings: &'a ModelInference,
+    settings: Cow<'a, ModelInference>,
     host: Box<str>,
     dialect: Dialect,
     context_tokens: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Dialect {
     Chat(&'static openai::wire::Dialect),
     Responses(&'static openai::wire::Dialect),
@@ -106,7 +111,7 @@ impl<'a> Configured<'a> {
             InferenceApi::Ollama => Dialect::Ollama,
         };
         Ok(Self {
-            settings,
+            settings: Cow::Borrowed(settings),
             host: host.into(),
             dialect,
             context_tokens,
@@ -117,6 +122,15 @@ impl<'a> Configured<'a> {
     #[must_use]
     pub fn into_host(self) -> Box<str> {
         self.host
+    }
+
+    pub(crate) fn owned(&self) -> Configured<'static> {
+        Configured {
+            settings: Cow::Owned(self.settings.as_ref().clone()),
+            host: self.host.clone(),
+            dialect: self.dialect.clone(),
+            context_tokens: self.context_tokens,
+        }
     }
 
     /// Creates a rig model using the caller's guarded transport and secret.
@@ -183,6 +197,14 @@ impl<'a> Configured<'a> {
         self.encode_mode(model, request, Mode::Unary)
     }
 
+    /// Encodes the exact streaming request before the caller commits dispatch intent.
+    ///
+    /// # Errors
+    /// Preserves SDK request-shape and encoding failures.
+    pub fn encode_stream(&self, model: &str, request: CompletionRequest) -> Result<Encoded> {
+        self.encode_mode(model, request, Mode::Streaming)
+    }
+
     fn encode_mode(&self, model: &str, request: CompletionRequest, mode: Mode) -> Result<Encoded> {
         match self.dialect {
             Dialect::Chat(dialect) | Dialect::Responses(dialect) => {
@@ -238,6 +260,7 @@ impl<'a> Configured<'a> {
             static_prefix_cache_ttl: None,
             strict_tools: false,
             tool_input_streaming: dialect.quirks.tool_input_streaming,
+            facts: rig_core::catalog::ModelFacts::default(),
         }
     }
 }

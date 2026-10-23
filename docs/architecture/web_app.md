@@ -204,5 +204,29 @@ A shared Definition powers drawer edits, model proposals and review. Save retain
 
 Review explains the proposed task, run triggers, access, and spending limits before save. Opening review requests no run and creates no fleet.
 The saved view separates setup readiness from first-run admission; an accepted run can still be running.
-The inline saved result shares the assistant conversation viewport, keeping its actions inside the scroll area on narrow or short windows.
+
+The inline receipt shows `Saved vN` and explains which runs use that version.
 The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.
+
+### One fleet workspace
+
+New fleet keeps the private setup conversation open across multiple messages.
+The header exposes **Save fleet** when the reviewed candidate can be saved.
+Successful Save opens that fleet's Chat.
+
+The sidebar's Recent list combines authorized fleets with unfinished private drafts.
+Active fleet titles use the brand color; hover or keyboard focus reveals Trash.
+
+Fleet **Edit setup**, before **Stop**, opens a private chat panel alongside the mounted runtime conversation.
+The panel exposes **Save changes** below its composer and optional manual instructions through the chat menu.
+Saving a revision closes the panel, refreshes server data and preserves unsent runtime text.
+
+Existing runs keep their pinned revision; new runs use the saved version.
+The Setup tab and Your fleets navigation item are removed.
+
+Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
+Effects own connections and cleanup; render stays pure and Hooks remain static.
+Private history loading does not wait for model or sidebar lists.
+
+An identity-owned cache retains at most five conversations and 1 MiB for 120 seconds, with access loss clearing its contents.
+See [shared chat implementation and verification](shared_chat_verification.md#browser-ownership) for the call graph and recovery rules.

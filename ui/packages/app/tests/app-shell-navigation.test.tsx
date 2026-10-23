@@ -20,7 +20,7 @@ it("keeps explicit navigation analytics stable and derives a fallback for other 
   expect(navSource(BOTTOM_NAV[0]!)).toBe("app_sidebar_docs");
   expect(navSource({ ...BOTTOM_NAV[0]!, label: "Reference", analyticsSource: undefined })).toBe("app_sidebar_reference");
 });
-const MENU = "Workspace and account menu";
+const MENU = /Workspace and account menu/;
 function mount(scopes: string[] = []) { render(<ShellFrame workspaces={[WORKSPACE]} operatorScopes={scopes}>Page content</ShellFrame>); }
 beforeEach(() => { mocks.pathname.mockReturnValue("/w/ws_1/fleets"); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });

@@ -40,8 +40,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Schema } from "effect";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
+import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV, AGENTSFLEET_STATUS } from "./fixtures/constants.ts";
+import { FleetSchema } from "../../src/commands/chat/protocol.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
@@ -52,7 +54,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveSteerProbeFleet } from "./fixtures/seed.ts";
+import { saveProbeFleet, saveSteerProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { trailingJsonText } from "./fixtures/steer-envelope.ts";
 
@@ -70,13 +72,9 @@ const STATUS_PROCESSED = "processed" as const;
 const STATE_DIR_PREFIX = "agentsfleet-steer-" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const WHITESPACE_MESSAGE = "   " as const;
-// An id no provider serves. Deliberately shaped like a real Fireworks path so
-// the fleet installs and reaches its first model call — a malformed string
-// could be rejected earlier by validation and would prove nothing about the
-// dial. `k2.6` is the exact mistype this negative exists for: Fireworks writes
-// the decimal as `p` (`kimi-k2p6`), and the dotted spelling sat in this suite's
-// own fixtures for months.
+// An unresolved owner model reference must leave setup incomplete.
 const NONEXISTENT_MODEL = "accounts/fireworks/models/kimi-k2.6" as const;
+const MODEL_CHECK = {kind: "model", state: "pending", action: "account_models"} as const;
 const NO_COLOR = "1" as const;
 
 // The SSE round-trip falls back to a ~60s poll window before declaring a
@@ -180,7 +178,16 @@ if (!isLive) {
     });
 
     it("a missing runtime model blocks setup before any execution", async () => {
-      await assert.rejects(saveSteerProbeFleet({env, seedFixtureSecrets: false, model: NONEXISTENT_MODEL}));
+      const blocked = Schema.decodeUnknownSync(FleetSchema)(await saveProbeFleet({
+        env, seedFixtureSecrets: false, model: NONEXISTENT_MODEL,
+      }));
+      assert.equal(blocked.status, AGENTSFLEET_STATUS.installing);
+      const check = blocked.setup.checks.find((entry) => entry.kind === MODEL_CHECK.kind);
+      assert.ok(check, "Save must report the missing runtime model");
+      assert.equal(check.subject, NONEXISTENT_MODEL);
+      assert.equal(check.state, MODEL_CHECK.state);
+      assert.equal(check.next_action?.kind, MODEL_CHECK.action);
+      assert.equal(blocked.start.event_id, undefined, "incomplete setup must not start an execution");
     }, STEER_TIMEOUT_MS);
 
     it("steer with no <fleet_id> exits non-zero with a usage stem", async () => {

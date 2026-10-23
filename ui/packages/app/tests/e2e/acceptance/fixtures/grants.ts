@@ -1,29 +1,14 @@
 /**
  * grants.ts — the wire side of the integration-grant walk.
  *
- * An install grants access to credentials the fleet setup declares and the
- * workspace holds as CONNECTOR handles. "Connector handle"
- * is the whole trick: the daemon classifies a stored secret as mintable only
- * when its body is an object carrying `integration: "<connector>"`
- * (`afd_credential/src/secrets/connector.rs::mintable`). A static token stored
- * under the same name declares nothing and raises no card — which is why the
- * platform-ops fixture's `github` secret, a `{webhook_secret, api_token}` pair,
- * has never produced one.
- *
- * So this module seeds a handle the classifier will accept, under a name no
- * other fixture claims, and hands the walk the native setup that declares it.
- * Everything else here is a read: any pending gate, the
- * grant row behind it, and the tenant's credit balance and ledger.
- *
- * The grant is never MINTED against. The walk's fleets call no tool, so the
- * handle is only ever classified — the credential a real connect would store is
- * not needed to prove that a standing grant permits delivery.
+ * The name-bound Linear handle requires explicit integration approval.
+ * These fleets have no tools, so its placeholder refresh value is never sent
+ * upstream. The journey proves approval, delivery and billing, not OAuth refresh.
  */
 import { clientFor, type ClientHandle } from "./api-client";
 import type { ApprovalGate, ApprovalsListResponse } from "@/lib/api/approvals";
 import { APPROVAL_STATUS } from "@/lib/api/approvals-types";
 import { NANOS_PER_USD, type TenantBilling, type TenantBillingChargesResponse } from "@/lib/types";
-import { HTTP_REQUEST } from "./constants";
 
 /**
  * The gate kind the daemon raises for a mintable credential.
@@ -32,33 +17,21 @@ import { HTTP_REQUEST } from "./constants";
  */
 export const KIND_INTEGRATION_GRANT = "integration_grant";
 
-/**
- * The connector the walk asks for, as `Connector::name()` spells it in
- * `afd_credential`'s `DECLARED` registry. GitHub's exchange is a GitHub App
- * JWT, which makes its supply on-demand — the one property `mintable()` filters
- * on, and therefore the reason this connector and not an inline one.
- */
-export const CONNECTOR_SERVICE_GITHUB = "github";
+export const CONNECTOR_SERVICE_LINEAR = "linear";
 
 /** The vault-handle field that names the connector. Mirrors
  * `afd_credential::secrets::connector::FIELD_INTEGRATION`. */
 const FIELD_INTEGRATION = "integration";
+const FIELD_REFRESH_TOKEN = "refresh_token";
 
 /** The card's `evidence` key naming the third party it is about. Mirrors
  * `afd_approval::request::EVIDENCE_SERVICE`, which is also what
  * `RESOLVE_GATE` joins the grant row on. */
 const EVIDENCE_SERVICE = "service";
 
-/**
- * The credential name the walk's setups declare, and the vault name the
- * handle is stored under.
- *
- * Deliberately NOT `github`. The CLI acceptance lane seeds a static `github`
- * secret into the SAME fixture tenant on api-dev (`platform-secrets.ts`), and
- * the two lanes run as separate Continuous Integration (CI) jobs against one deployment — a shared name
- * means whichever ran last decides whether any card is raised at all.
- */
-export const GRANT_CREDENTIAL_NAME = "grant_walk_github";
+// Vault admission requires the handle's name to match its connector.
+// The CLI journey stores this same body, so parallel suites agree.
+export const GRANT_CREDENTIAL_NAME = CONNECTOR_SERVICE_LINEAR;
 
 const SECRETS_PATH = (workspaceId: string) => `/v1/workspaces/${workspaceId}/secrets`;
 const APPROVALS_PATH = (workspaceId: string) => `/v1/workspaces/${workspaceId}/approvals`;
@@ -93,7 +66,7 @@ export async function ensureConnectorHandle(
   try {
     await client.post(SECRETS_PATH(workspaceId), {
       name: GRANT_CREDENTIAL_NAME,
-      data: { [FIELD_INTEGRATION]: CONNECTOR_SERVICE_GITHUB },
+      data: { [FIELD_INTEGRATION]: CONNECTOR_SERVICE_LINEAR, [FIELD_REFRESH_TOKEN]: CONNECTOR_SERVICE_LINEAR },
     });
     return;
   } catch (refused) {
@@ -106,7 +79,7 @@ export async function ensureConnectorHandle(
  * Native setup with one workspace credential requirement for the grant journey.
  */
 export function connectorConfig(name: string) {
-  return { name, "x-agentsfleet": { triggers: [], tools: [HTTP_REQUEST],
+  return { name, "x-agentsfleet": { triggers: [], tools: [],
     credentials: [GRANT_CREDENTIAL_NAME], budget: { daily_nanos: String(NANOS_PER_USD) } } };
 }
 
@@ -197,11 +170,11 @@ export async function connectorGrantFor(
   fleetId: string,
 ): Promise<IntegrationGrant | null> {
   const mine = (await listGrantsForFleet(handle, workspaceId, fleetId)).filter(
-    (grant) => grant.service === CONNECTOR_SERVICE_GITHUB,
+    (grant) => grant.service === CONNECTOR_SERVICE_LINEAR,
   );
   if (mine.length > 1) {
     throw new Error(
-      `fleet ${fleetId} holds ${mine.length} ${CONNECTOR_SERVICE_GITHUB} grants; ` +
+      `fleet ${fleetId} holds ${mine.length} ${CONNECTOR_SERVICE_LINEAR} grants; ` +
         "uq_integration_grants_fleet_id_service permits one",
     );
   }

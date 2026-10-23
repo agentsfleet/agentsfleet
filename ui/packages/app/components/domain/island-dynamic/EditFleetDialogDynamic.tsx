@@ -21,11 +21,13 @@ export function preloadEditFleetDialog() {
 
 export default function EditFleetDialogDynamic({
   entry,
+  returnFocusTo,
   open,
   onOpenChange,
   onSaved,
 }: {
   entry: PlatformEntry;
+  returnFocusTo?: HTMLElement;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: (entry: PlatformEntry) => void;
@@ -41,6 +43,7 @@ export default function EditFleetDialogDynamic({
     return (
       <EditFleetDialog
         entry={entry}
+        returnFocusTo={returnFocusTo}
         open={open}
         onOpenChange={onOpenChange}
         onSaved={onSaved}

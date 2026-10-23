@@ -334,7 +334,7 @@ describe("private browser chat", () => {
       ? response({items: [{...MESSAGE, state: MESSAGE_STATE.running}], next_cursor: null}) : undefined;
     const instance = await ready(true);
     limit.abort();
-    await vi.waitFor(() => expect(instance.getSnapshot().notice).toContain("Work is still pending"));
+    await vi.waitFor(() => expect(instance.getSnapshot().notice).toBe("Still waiting for a result."));
     expect(instance.getSnapshot().messages[0]?.state).toBe(MESSAGE_STATE.running);
     expect(FakeEventSource.instances[0]?.closed).toBe(true);
   });

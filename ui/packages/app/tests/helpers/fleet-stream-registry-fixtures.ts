@@ -1,6 +1,6 @@
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import { afterEach, beforeEach, vi } from "vitest";
-import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
+import { __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "./fake-event-source";
 
 export function row(over: Partial<EventDetail> = {}): EventDetail {

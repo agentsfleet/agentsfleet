@@ -8,7 +8,7 @@ use crate::{
         ErrorKind,
         raise::{invalid, query},
     },
-    lease::pending::{self, Pending},
+    lease::Status,
     model, replay, sql,
     types::{Accepted, DraftState, QUEUED, SendMessage},
 };
@@ -16,9 +16,54 @@ use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 const CONTEXT: &str = "accept private draft message";
 const SEQUENCE_EXHAUSTED: &str = "message sequence is exhausted";
+
+/// Runs after the draft lock, so its snapshot sees the
+/// preceding sender's committed receipt, sequence and Stop watermark.
+/// `$1` draft, `$2` next sequence, `$3` message, `$4` operation, `$5` status,
+/// `$6` model, `$7` text, `$8` receipt, `$9` workspace, `$10` actor, `$11` scope,
+/// `$12` digest, `$13` replay window, `$14` Stop watermark, `$15` settled status.
+const ADMIT: &str = include_str!("../sql/message/admit.sql");
+
+#[derive(sqlx::FromRow)]
+struct Admission {
+    prior: Option<sqlx::types::Json<replay::Receipt>>,
+    prior_sequence: Option<i64>,
+    usage_unknown: bool,
+    sequence: Option<i64>,
+}
+
+impl Admission {
+    fn accepted(
+        self,
+        person: &Uuid7,
+        digest: &str,
+        next: Option<i64>,
+        identifiers: Result<(Uuid7, Uuid7)>,
+    ) -> Result<Accepted> {
+        if replay::decide(self.prior.map(|prior| prior.0), person, digest)?.is_some() {
+            return Ok(Accepted {
+                status: super::ACCEPTED,
+                sequence: self.prior_sequence.ok_or(ErrorKind::Gone)?.to_string(),
+                replayed: true,
+            });
+        }
+        if self.usage_unknown {
+            return Err(ErrorKind::Unknown.into());
+        }
+        next.ok_or_else(|| invalid(SEQUENCE_EXHAUSTED))?;
+        identifiers?;
+        Ok(Accepted {
+            status: super::ACCEPTED,
+            sequence: self.sequence.ok_or(ErrorKind::Replay)?.to_string(),
+            replayed: false,
+        })
+    }
+}
 
 /// The receipt scope a draft's message retry keys are filed under.
 pub(crate) fn scope(workspace: &Uuid7, draft: &Uuid7) -> String {
@@ -40,26 +85,34 @@ impl Drafts {
     ) -> Result<Accepted> {
         let request = garde::Unvalidated::new(request).validate()?;
         let text = super::normalize(&request.message);
-        let digest = replay::digest(&text)?;
+        // Keep local row-lock waiters out of the pool. Eviction or another
+        // daemon can use a different gate; the transaction still locks the row.
+        let gate = self
+            .senders
+            .get_with(id.clone(), async { Arc::new(Mutex::new(())) })
+            .await;
+        let _turn = gate.lock_owned().await;
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let draft = read::lock(&mut tx, access, &person, id).await?;
-        let scope = scope(access.workspace, id);
-        let prior = replayed(
-            &mut tx,
-            &scope,
-            &request.operation_id,
-            &person.id,
-            &digest,
-            id,
-        )
-        .await?;
-        let accepted = if let Some(accepted) = prior {
-            accepted
-        } else {
-            self.accept_fresh(&mut tx, &person, &draft, &request, &text, now)
+        let accepted = if draft.status == DraftState::Editing {
+            self.admit_message(&mut tx, &person, &draft, &request, &text, now)
                 .await?
+        } else {
+            // Closed drafts only answer an existing receipt; they never admit work.
+            replayed(
+                &mut tx,
+                &scope(access.workspace, id),
+                &request.operation_id,
+                &person.id,
+                &replay::digest(&text)?,
+                id,
+            )
+            .await?
+            .ok_or(ErrorKind::State {
+                current: draft.status.as_str(),
+            })?
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         if !accepted.replayed {
@@ -70,7 +123,7 @@ impl Drafts {
         Ok(accepted)
     }
 
-    async fn accept_fresh(
+    async fn admit_message(
         &self,
         connection: &mut PgConnection,
         person: &Person,
@@ -79,39 +132,34 @@ impl Drafts {
         text: &str,
         now: Timestamp,
     ) -> Result<Accepted> {
-        if draft.status != DraftState::Editing {
-            return Err(ErrorKind::State {
-                current: draft.status.as_str(),
-            }
-            .into());
-        }
-        if pending::current(connection, draft).await? == Some(Pending::UsageUnknown) {
-            return Err(ErrorKind::Unknown.into());
-        }
-        let sequence = draft
-            .last_message_sequence
-            .checked_add(1)
-            .ok_or_else(|| invalid(SEQUENCE_EXHAUSTED))?;
-        insert(
-            connection,
-            Insertion {
-                id: &self.mint(now)?,
-                receipt: &self.mint(now)?,
-                workspace: &draft.workspace_id,
-                person,
-                draft: &draft.id,
-                sequence,
-                operation: &request.operation_id,
-                text,
-                model: &draft.authoring_model_ref,
-            },
-        )
-        .await?;
-        Ok(Accepted {
-            status: super::ACCEPTED,
-            sequence: sequence.to_string(),
-            replayed: false,
-        })
+        let sequence = draft.last_message_sequence.checked_add(1);
+        // A replay or refusal still wins over an entropy failure. Missing IDs
+        // make the SQL read-only; only a fresh, otherwise valid Send returns it.
+        let identifiers = self
+            .mint(now)
+            .and_then(|message| self.mint(now).map(|receipt| (message, receipt)));
+        let ids = identifiers.as_ref().ok();
+        let digest = replay::digest(&text)?;
+        let admitted: Admission = sqlx::query_as(ADMIT)
+            .bind(draft.id.as_str())
+            .bind(sequence)
+            .bind(ids.map(|(message, _)| message.as_str()))
+            .bind(request.operation_id.as_str())
+            .bind(QUEUED)
+            .bind(model::tenant_model(&draft.authoring_model_ref))
+            .bind(text)
+            .bind(ids.map(|(_, receipt)| receipt.as_str()))
+            .bind(draft.workspace_id.as_str())
+            .bind(person.id.as_str())
+            .bind(scope(&draft.workspace_id, &draft.id))
+            .bind(&digest)
+            .bind(replay::REPLAY_WINDOW)
+            .bind(draft.cancelled_through_sequence)
+            .bind(Status::Settled.as_str())
+            .fetch_one(connection)
+            .await
+            .map_err(query(CONTEXT))?;
+        admitted.accepted(&person.id, &digest, sequence, identifiers)
     }
 }
 

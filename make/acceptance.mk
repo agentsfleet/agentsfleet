@@ -2,7 +2,11 @@
 # ACCEPTANCE — dashboard + CLI live-API acceptance e2e (local twins of CI)
 # =============================================================================
 
-.PHONY: acceptance-build acceptance-assemble acceptance-e2e acceptance-execution acceptance-cli
+.PHONY: acceptance-build acceptance-e2e acceptance-execution acceptance-cli
+.PHONY: acceptance-local
+
+acceptance-local:  ## Build and start local services, then run acceptance (SUITE=e2e|cli|execution; default: both).
+	@bash deploy/local/acceptance.sh "$(SUITE)"
 
 # Local twins of the pipeline acceptance jobs — same command, env-driven target
 # (local / vercel.app / api-dev / api), so a developer runs exactly what CI runs.
@@ -10,11 +14,8 @@
 # `acceptance-execution` is one journey out of acceptance-e2e — the fleet that
 # executes to a real result — for the inner loop while that walk is being fixed.
 
-acceptance-build:  ## Build the four acceptance components from one source digest; no service or fixture mutation.
+acceptance-build:  ## Build the daemon, runner, CLI and dashboard for acceptance.
 	@bun scripts/build-acceptance.ts
-
-acceptance-assemble:  ## Bind four successful deployment builds without rebuilding them.
-	@bun scripts/build-acceptance.ts --assemble
 
 acceptance-e2e:  ## Dashboard auth acceptance — Clerk sign-in + install + lifecycle (Playwright vs live API). Mirrors CI acceptance-e2e.
 	@echo "→ [app] Running dashboard acceptance e2e (Clerk sign-in + lifecycle)..."

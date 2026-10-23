@@ -52,9 +52,8 @@ describe("FleetMessageRow", () => {
     expect(row.querySelector(".justify-end")).toBeTruthy();
     expect(row.querySelector("[data-chip]")).toBeNull();
     expect(row.querySelector("time")).toBeNull();
-    expect(bubble.className).toMatch(/rounded-lg/);
-    expect(bubble.className).toMatch(/rounded-br-sm/);
-    expect(bubble.className).toMatch(/bg-accent/);
+    expect(bubble.className).toMatch(/rounded-xl/);
+    expect(bubble.className).toMatch(/bg-muted/);
     expect(
       screen.getByText("Operator:", { selector: ".sr-only" }),
     ).toBeTruthy();

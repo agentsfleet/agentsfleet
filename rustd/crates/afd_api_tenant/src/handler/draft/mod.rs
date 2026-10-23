@@ -23,6 +23,7 @@ use std::sync::Arc;
 
 /// The 404 every draft-member route answers: a missing, foreign or
 /// creator-private draft is one answer, so none of them is disclosed.
+#[cfg(feature = "openapi")]
 const DRAFT_UNAVAILABLE: &str = "Private draft unavailable";
 
 #[derive(Deserialize)]

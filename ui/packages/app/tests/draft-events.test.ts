@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { DRAFT_EVENT, followDraft } from "@/lib/api/draft-events";
+import { DRAFT_EVENT, DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT, followDraft } from "@/lib/api/draft-events";
 import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DRAFT_ID, FLEET_ID } from "./helpers/draft-fixtures";
 import { FakeEventSource } from "./helpers/fake-event-source";
@@ -26,6 +26,24 @@ function follow(reconcile = vi.fn(async () => true), needsPolling?: () => boolea
   if (!source) throw new Error("Private connection was not opened");
   return {owner, pending, source, reconcile};
 }
+
+it.each([false, true])("keeps preview gaps separate from authoritative reads (preview=%s)", async (enabled) => {
+  const owner = new AbortController(); owners.push(owner);
+  const progress = {delta: vi.fn(() => true), gap: vi.fn()};
+  const reconcile = vi.fn(async () => true);
+  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile, undefined, enabled ? progress : undefined);
+  const source = FakeEventSource.instances.at(-1);
+  if (!source) throw new Error("Private connection was not opened");
+  source.emitNamed(DRAFT_DELTA_EVENT, "private preview");
+  expect(progress.delta).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  expect(reconcile).not.toHaveBeenCalled();
+  source.emitNamed(DRAFT_RESYNC_EVENT, "{}");
+  await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());
+  expect(progress.gap).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  source.fail();
+  expect(progress.gap).toHaveBeenCalledTimes(enabled ? 2 : 0);
+  owner.abort(); await pending;
+});
 
 it("keeps one quiet connection without repeated reads or two-second reconnects", async () => {
   vi.useFakeTimers();
@@ -71,13 +89,23 @@ it("ignores malformed, oversized, unknown and foreign-draft hints", async () => 
   current.owner.abort(); await current.pending;
 });
 
-it("reconciles after transport recovery using the same native connection", async () => {
+it("uses the fleet reconnect policy and ignores callbacks from the replaced connection", async () => {
+  vi.useFakeTimers();
   const current = follow(); current.source.open();
-  await vi.waitFor(() => expect(current.reconcile).toHaveBeenCalledTimes(1));
-  current.source.fail(); await vi.waitFor(() => expect(current.reconcile).toHaveBeenCalledTimes(2));
-  current.source.open(); await vi.waitFor(() => expect(current.reconcile).toHaveBeenCalledTimes(3));
-  expect(FakeEventSource.instances).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(current.reconcile).toHaveBeenCalledTimes(1);
+  current.source.fail(); await vi.advanceTimersByTimeAsync(RECOVERY_WINDOW_MS);
+  expect(current.reconcile).toHaveBeenCalledTimes(2);
+  expect(current.source.closed).toBe(true);
+  const replacement = FakeEventSource.instances.at(-1)!;
+  expect(replacement).not.toBe(current.source);
+  current.source.open(); hint(current.source);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(current.reconcile).toHaveBeenCalledTimes(2);
+  replacement.open(); await vi.advanceTimersByTimeAsync(0);
+  expect(current.reconcile).toHaveBeenCalledTimes(3);
   current.owner.abort(); await current.pending;
+  expect(replacement.closed).toBe(true); expect(vi.getTimerCount()).toBe(0);
 });
 
 it("recovers a failed durable read with shared backoff and no extra stream", async () => {
@@ -149,7 +177,8 @@ it("should cancel accounting polling when the owner leaves", async () => {
   vi.useFakeTimers();
   const current = follow(vi.fn(async () => true), () => true);
   current.source.open(); await vi.advanceTimersByTimeAsync(0);
-  expect(vi.getTimerCount()).toBe(1);
+  // Accounting poll plus the shared silence watchdog.
+  expect(vi.getTimerCount()).toBe(2);
   current.owner.abort(); await current.pending;
   await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
   expect(current.reconcile).toHaveBeenCalledTimes(1);
@@ -166,7 +195,8 @@ it("should share one durable read when an event arrives during an accounting pol
   current.source.open(); await vi.advanceTimersByTimeAsync(0);
   await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
   expect(reconcile).toHaveBeenCalledTimes(2);
-  expect(vi.getTimerCount()).toBe(0);
+  // The connection watchdog stays armed while the accounting read is in flight.
+  expect(vi.getTimerCount()).toBe(1);
   hint(current.source); hint(current.source, DRAFT_EVENT.candidate);
   expect(reconcile).toHaveBeenCalledTimes(2);
   polling.resolve(true); await current.pending;

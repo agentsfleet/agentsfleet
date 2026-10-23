@@ -20,8 +20,6 @@ use afd_wire::report::FailureClass;
 use rig_core::ProviderError;
 use rig_core::message::EmptyToolName;
 
-use crate::transport::Oversize;
-
 pub(crate) mod raise;
 
 afd_core::error_shell!(
@@ -40,6 +38,9 @@ pub(crate) enum ErrorKind {
         /// The provider's own name for the refusal, such as
         /// `context_length_exceeded`, never its message.
         code: Option<String>,
+        /// The original library failure when the provider answered.
+        #[source]
+        source: Option<ProviderError>,
     },
 
     /// The connection was lost before the turn ended.
@@ -55,12 +56,19 @@ pub(crate) enum ErrorKind {
     Ended {
         /// The provider's own name for the error, never its message.
         reason: String,
+        /// The provider's typed failure, retained for the diagnostic chain.
+        #[source]
+        source: ProviderError,
     },
 
     /// The provider's reply passed the bytes one turn may carry; the read
     /// ended there.
-    #[error(transparent)]
-    Oversize(Oversize),
+    #[error("the model provider response exceeds its byte bound of {limit} bytes")]
+    Oversize {
+        limit: usize,
+        #[source]
+        source: ProviderError,
+    },
 
     /// A request or a streamed event was not the JSON its wire defines.
     #[error("the model provider's turn could not be written or read")]
@@ -135,7 +143,11 @@ impl Error {
     /// A refusal with `status`, which no retry changes.
     #[must_use]
     pub fn refused(status: u16) -> Self {
-        Self::from(ErrorKind::Refused { status, code: None })
+        Self::from(ErrorKind::Refused {
+            status,
+            code: None,
+            source: None,
+        })
     }
 
     /// A connection lost mid-turn, for `source`.
@@ -163,7 +175,7 @@ impl Error {
             ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
-            | ErrorKind::Oversize(_)
+            | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unsendable { .. }
             | ErrorKind::Unnamed { .. }
@@ -180,7 +192,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Lost { .. } | ErrorKind::Ended { .. } => Some(FailureClass::TransportLoss),
             ErrorKind::Refused { .. }
-            | ErrorKind::Oversize(_)
+            | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
@@ -201,7 +213,7 @@ impl Error {
             | ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
-            | ErrorKind::Oversize(_)
+            | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Configuration { .. }
             | ErrorKind::Unsendable { .. }
