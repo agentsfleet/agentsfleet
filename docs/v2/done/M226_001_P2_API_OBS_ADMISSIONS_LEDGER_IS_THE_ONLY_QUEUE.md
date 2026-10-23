@@ -63,8 +63,9 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `VERSION`, `cli/package.json`, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | synchronize the owner-approved minor release, `0.65.0`, across the CLI and Rust workspace |
 | `schema/2110_fleet_admissions_queue.sql` | CREATE | additive lease, park and settle stamps, the unsettled partial index and runtime grants |
 | `schema/2120_fleet_admissions_drop_receipt.sql` | CREATE | drops admission `receipt`, `replay_count`, `replay_claim_expires_at`, their dependent indexes and lease `receipt` after their readers are removed (owner approval, Discovery Q3); prepare for review before registration |
+| `schema/2140_fleet_admissions_claim_order.sql`, `schema/2150_fleet_approval_gate_deadlines.sql` | CREATE | preserve serialized admission order and index live approval checks for parked heads |
 | `scripts/check_architecture_doc_schema.py`, `scripts/check_architecture_doc_test_schema.sh` | EDIT | owner-approved schema-checker update applies ordered column additions and removals while retaining drift refusal and testing unsupported changes |
-| `rustd/crates/afd_db/src/migration.rs` | EDIT | registers both migrations |
+| `rustd/crates/afd_db/src/migration.rs` | EDIT | registers the queue, receipt removal, claim order and approval deadline migrations |
 | `rustd/crates/afd_admission/src/{admit,budget/mod,lib,sql}.rs`, `budget/ceiling/mod.rs` | EDIT | admit commits the row and rings the doorbell; both backlog budgets count unsettled rows |
 | `rustd/crates/afd_admission/src/{admit_receipt,replay,cursor,reconcile/mod}.rs`, `reconcile/` | DELETE | stream append, receipt write-back and the three repairers of it |
 | `rustd/crates/afd_dragonfly/src/ready/mod.rs`, `ready/` | DELETE | the readiness index and partitions; the doorbell moves to its own module |
@@ -93,6 +94,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_bench/src/lane/lease/drain/{mod,runner,settled,stage,platform,summary,window,tests}.rs`, `drain/sql/` | EDIT / CREATE | measure the production ledger claim and settlement, count residual admissions, and refuse incomplete drains |
 | `rustd/crates/afd_db/tests/integration_migrate/shape.rs`, `docs/architecture/postgres_schemas.md` | EDIT | keep the existing complete schema inventory aligned with the additive columns |
 | `rustd/crates/afd_fleet/src/lease/sql/{mod,queue}.rs` | EDIT / CREATE | typed statement registry for the production ledger claim |
+| `rustd/crates/afd_gate/src/gate/{store/mod.rs,sql/}`, `rustd/crates/afd_gate/tests/integration_gate_reference.rs` | EDIT / CREATE | recover durable event approval references after cache expiry; preserve deadlines and late answers |
 | `rustd/crates/agentsfleetd/src/plane/{mod,tests}.rs`, `src/serve/optional.rs` | EDIT | composition-root references to the independent doorbell |
 | `docs/architecture/{README,testing}.md`, `docs/architecture/scenarios/{two-fleets-github-slack,github-pr-reviewer}.md`, `playbooks/operations/teardown/dragonfly/{001_playbook.md,03_verify.sh}` | EDIT | live queue references and the GitHub scenario's renamed admission heading |
 | tests under `rustd/crates/{afd_dragonfly,afd_fleet,afd_runner,afd_approval,afd_events,afd_admission,agentsfleetd}/tests/` that the discovery grep names | EDIT / DELETE | readiness and stream suites go; lease, reclaim and approval suites assert ledger state |
@@ -134,6 +136,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_fleet/tests/integration_lease_plan.rs`, `integration_lease_plan/` | EDIT / CREATE | prove composite prior-event lookup, bounded head reads, indexed renewal/settlement and skipped fleet scans on an empty ledger with 20,001 active fleets |
 | `rustd/crates/afd_events/tests/queued/{mod.rs,snapshot.rs}` | EDIT / CREATE | count actual public history statements before and after delivery; one statement supplies one snapshot |
 | `rustd/crates/afd_authoring/tests/draft/creation/{mod,confirmation}.rs`, `rustd/crates/afd_fleet/tests/integration_lease_gates/faults{.rs,/}`, `integration_terminal_redelivery.rs` | EDIT / CREATE | prove durable initial-event confirmation, preservation of terminal refusals, failed-park claim release and stale terminal-settlement fencing |
+| `rustd/crates/afd_authoring/tests/draft/fixture/upgrade.rs` | EDIT | retain the old-writer deadline proof while applying every migration after its starting schema, including the admission and approval indexes |
 
 ## Applicable Rules
 
@@ -169,28 +172,28 @@ A bench variant of `make bench-lease` runs the §3 claim against a seeded ledger
 
 ### §2 — DONE — The ledger carries queue state
 
-A forward migration adds three nullable stamps to `fleet.admissions`: the fence of the lease holding the row, when it parked on a gate, and when its report settled it. A partial index on `(fleet_id, created_at, sequence)` covers unsettled rows. The owner confirmed this is a development deployment with disposable authored drafts and fleets. The cutover stops old readers and admission, resets that development data, applies the forward migrations and starts only ledger readers. No populated-history backfill is required.
+A forward migration adds three nullable stamps to `fleet.admissions`: the fence of the lease holding the row, when it parked on a gate, and when its report settled it. A partial index on `(fleet_id, sequence)` covers unsettled rows. The owner confirmed this is a development deployment with disposable authored drafts and fleets. The cutover stops old readers and admission, resets that development data, applies the forward migrations and starts only ledger readers. No populated-history backfill is required.
 
 - **Dimension 2.1** — DONE — fresh bootstrap creates the stamps, index and grants → Test `test_admissions_queue_migration_bootstraps`
 - **Dimension 2.2** — DONE — the development reset removes old fleet queue state before ledger readers start → Test `manual_development_cutover_reset`
 
 ### §3 — DONE — The claim takes the work
 
-Admission commits the ledger row, then rings the doorbell; no append, no mark. A poll's candidate scan reads eligible fleets from the unsettled index (fleet `active`, slot free or expired, oldest unsettled row not parked). The claim then, in one transaction, wins the slot, bumps `fencing_token`, locks that fleet's oldest unsettled row with `FOR UPDATE SKIP LOCKED` and stamps the fence on it. `Acquired` is built from the row; `redelivered` is `delivered_at IS NOT NULL`. Gates and issue keep today's order after the claim and stay fence-guarded. Both backlog budgets count unsettled rows, the per-fleet one bounded by `LIMIT 10001`.
+Admission commits the ledger row, then rings the doorbell; no append, no mark. A poll's candidate scan reads eligible fleets from the unsettled index (fleet `active`, slot free or expired, oldest unsettled row unparked or without a live matching approval). The claim then, in one transaction, wins the slot, bumps `fencing_token`, locks that fleet's oldest unsettled row with `FOR UPDATE SKIP LOCKED` and stamps the fence on it. `Acquired` is built from the row; `redelivered` is `delivered_at IS NOT NULL`. Gates and issue keep today's order after the claim and stay fence-guarded. Both backlog budgets count unsettled rows, the per-fleet one bounded by `LIMIT 10001`.
 
 - **Dimension 3.1** — DONE — an admitted event is leased from the ledger → Test `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows`
 - **Dimension 3.2** — DONE — two replicas claiming the same fleet: one lease, one empty answer → Test `test_concurrent_claims_lease_one_row`
-- **Dimension 3.3** — DONE — a fleet's rows lease in `(created_at, sequence)` order, and a parked oldest row holds the rows behind it → Test `test_fleet_rows_lease_in_order_behind_a_park`
+- **Dimension 3.3** — DONE — a fleet's rows lease in serialized admission `sequence` order, and a parked oldest row holds the rows behind it → Test `test_fleet_rows_lease_in_order_behind_a_park`
 - **Dimension 3.4** — DONE — a re-claimed row is marked redelivered → Test `test_reclaimed_row_is_leased_as_redelivered`
 - **Dimension 3.5** — DONE — the fleet budget refuses at 10,000 unsettled rows → Test `test_fleet_budget_counts_unsettled_rows`
 
 ### §4 — DONE — Report, park, answer and expiry move the row
 
-`METER_LEASE` stamps `settled_at` in the report transaction, under its fence guard. A terminal refusal or block settles through the same admission fence. A park stamps the row and frees the slot; a gate answer clears the stamp and rings the doorbell. An expired lease needs no queue sweeper: the expired slot and unsettled row requalify by the §3 predicate. Every poll probes Postgres, so a lost doorbell leaves the event available on the next retry after `NO_WORK_RETRY_AFTER`.
+`METER_LEASE` stamps `settled_at` in the report transaction, under its fence guard. A terminal refusal or block settles through the same admission fence. A park stamps the row and frees the slot; a gate answer clears the stamp and rings the doorbell. A parked head requalifies when no standing access request awaits an answer and no unresolved approval for that event has a future deadline. This check keeps approval cards answerable and leaves the outcome to gate evaluation. A missing cached event reference falls back to its durable gate. An expired lease needs no queue sweeper: the expired slot and unsettled row requalify by the §3 predicate. Every poll probes Postgres, so a lost doorbell leaves the event available on the next retry after `NO_WORK_RETRY_AFTER`.
 
 - **Dimension 4.1** — DONE — settle stamps the row in the report transaction; a rollback leaves it unsettled → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once`
 - **Dimension 4.2** — DONE — an expired lease is re-leased and the dead holder's late report is refused → Test `test_reclaimed_row_is_leased_as_redelivered`; superseded-report proof is also listed below
-- **Dimension 4.3** — DONE — park holds later work, and gate resolution and expiry durably unpark → Test `test_approval_resolution_leases_next_poll`; `a_failed_park_stamp_releases_the_claim_and_retries_after_approval` and `a_failed_park_release_rolls_back_the_stamp_and_retries_after_approval` cover failed parks; ordering, expiry and lock-wait proofs are also listed below
+- **Dimension 4.3** — DONE — park holds later work, and gate resolution clears the park and deadlines allow reconsideration → Test `test_approval_resolution_leases_next_poll`; `a_failed_park_stamp_releases_the_claim_and_retries_after_approval` and `a_failed_park_release_rolls_back_the_stamp_and_retries_after_approval` cover failed parks; ordering, expiry and lock-wait proofs are also listed below
 - **Dimension 4.4** — DONE — a lost doorbell still leases on the next probe → Test `test_a_fleet_is_discovered_without_any_notification`; stale-hint proof is also listed below
 
 ### §5 — DONE — Delete the Dragonfly queue and its repairers
@@ -228,7 +231,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 | Dead holder | runner dies mid-lease | slot expiry re-qualifies the row; the new claim bumps the fence; the late report is refused by the existing guard |
 | Lost doorbell | publish dropped, hub reconnecting | the parked poll's probe finds the row within one retry interval |
 | Report rollback | report transaction aborts | `settled_at` stays null; the row is re-leased after expiry; billing stays single because the settle and the charge share the transaction |
-| Park without answer | a person never answers | row stays parked and holds its fleet, as today; the inbox expiry sweep answers it |
+| Park without answer | a person never answers | event approvals requalify after their deadlines for gate evaluation; standing access waits for a human answer; cards remain answerable |
 | Mixed queue readers at cutover | old stream readers remain active when ledger readers start | stop old readers and admissions, reset disposable development drafts and fleets, apply migrations, then start only ledger readers; overlapping readers and populated-history upgrades are unsupported |
 | Postgres unavailable | database outage | admission already fails closed on the ledger insert; polls answer an error instead of a stale Dragonfly offer |
 
@@ -260,6 +263,7 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 | 3.1 | integration | `backlog_growth_does_not_expand_each_fleets_head_probe` | 2,000 through 16,000 admissions → one indexed head row read for the eligible fleet |
 | 3.2 | integration | `test_concurrent_claims_lease_one_row` | 100 barrier-started callers across two bounded pools; at least four SQL claims reach the contention barrier together → one lease and one fence bump |
 | 3.3 | integration | `test_fleet_rows_lease_in_order_behind_a_park` | rows A, B, C with A parked → no lease; answer A → A, then B, then C |
+| 3.3 | integration | `a_late_committing_admission_does_not_displace_the_claimed_head` | older transaction inserts after a newer admission is issued; expiry reclaims the unfinished run with its original billing |
 | 3.4 | integration | `test_reclaimed_row_is_leased_as_redelivered` | lease A, expire the slot, poll → A again with `redelivered = true` |
 | 3.5 | integration | `test_fleet_budget_counts_unsettled_rows` | 10,000 unsettled rows → the next admit is refused `over_budget`; settle one → admitted |
 | 3.5 | integration | `first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock` | an uncommitted public admission holds the fleet budget lock → first delivery commits before that producer releases it |
@@ -268,6 +272,11 @@ doorbell               M225_001's sharded publish, rung after the admission comm
 | 4.1 | integration | `a_report_cannot_settle_an_admission_with_a_different_fence` | superseded admission fence → no report charge or settlement |
 | 4.2 | integration | `test_reclaimed_row_is_leased_as_redelivered` | expired slot → higher fence and original event with redelivery set |
 | 4.2 | integration | `test_a_superseded_report_commits_nothing` | displaced holder → no report or billing effects |
+| 4.3 | integration | `parked_heads_wait_for_all_matching_deadlines_without_expiring_the_cards` | event gates expire in either order; the last live matching gate blocks discovery and direct claim; late approval still commits |
+| 4.3 | integration | `standing_access_waits_for_an_answer_after_its_card_deadline` | standing access remains parked past its deadline; an answer makes the head available |
+| 4.3 | integration | `an_expired_approval_settles_its_parked_head_and_releases_the_next_event` | expired event approval and lost cache reference → runner settles the head, preserves the answerable card and exposes the tail |
+| 4.3 | integration | `missing_and_corrupt_references_preserve_deadlines_and_late_answers` | durable event association survives absent or corrupt cache, policy edits and late approval without duplicate cards |
+| 4.3 | integration | `parked_head_probes_skip_unrelated_and_expired_approval_history` | 2,000 through 16,000 gates; discovery and claim use indexed existence probes without filtering approval history |
 | 4.3 | integration | `test_approval_resolution_leases_next_poll` | answer a parked gate → its admission leases on the next poll |
 | 4.3 | integration | `test_fleet_rows_lease_in_order_behind_a_park` | parked head blocks its fleet; after resolution the original event leases before its continuation |
 | 4.3 | integration | `an_expired_gate_wakes_its_fleet` | expired gate → durable park clears and the fleet is available |

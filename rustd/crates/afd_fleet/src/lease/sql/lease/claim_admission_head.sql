@@ -34,19 +34,28 @@ WITH locked_slot AS MATERIALIZED (
 ), head AS MATERIALIZED (
   SELECT a.id FROM fleet.admissions a
   WHERE a.fleet_id = $1::uuid AND a.settled_at IS NULL
-  ORDER BY a.created_at, a.sequence
+  ORDER BY a.sequence
   LIMIT 1
 ), locked AS (
   SELECT a.id FROM fleet.admissions a
   JOIN head h ON h.id = a.id
   CROSS JOIN slot
-  WHERE a.settled_at IS NULL AND a.parked_at IS NULL
+  WHERE a.settled_at IS NULL
   FOR UPDATE OF a SKIP LOCKED
 ), stamped AS (
   UPDATE fleet.admissions a
   SET lease_fence = slot.fencing_token, updated_at = now()
   FROM locked l, slot
-  WHERE a.id = l.id AND a.settled_at IS NULL AND a.parked_at IS NULL
+  WHERE a.id = l.id AND a.settled_at IS NULL
+    AND (a.parked_at IS NULL OR NOT EXISTS (
+      (SELECT 1 FROM fleet.approval_gates g
+      WHERE g.fleet_id = a.fleet_id AND g.resolved_at IS NULL
+        AND g.event_id IS NULL LIMIT 1)
+      UNION ALL
+      (SELECT 1 FROM fleet.approval_gates g
+      WHERE g.fleet_id = a.fleet_id AND g.resolved_at IS NULL
+        AND g.event_id = a.id::text
+        AND g.expires_at > (SELECT checked_at FROM instant) LIMIT 1)))
   RETURNING a.id, a.workspace_id, a.actor, a.event_type, a.request_json,
             a.event_created_at, a.delivered_at
 ), prior_lease AS MATERIALIZED (

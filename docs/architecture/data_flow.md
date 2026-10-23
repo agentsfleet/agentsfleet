@@ -247,7 +247,7 @@ The admissions queue lives in Postgres. Dragonfly carries outbound delivery, liv
 
 | Surface | Kind | Owner | Purpose |
 |---|---|---|---|
-| `fleet.admissions` | Postgres ledger | Admission and lease/report paths | Durable inbound queue, ordered by `(created_at, sequence)` within a fleet. |
+| `fleet.admissions` | Postgres ledger | Admission and lease/report paths | Durable inbound queue, ordered by admission `sequence` within a fleet. |
 | `connector:outbound` | Stream and consumer group | Outbound worker | Delivers replies backed by `fleet.obligations`. |
 | `fleet:{id}:activity` | Sharded publish/subscribe channel | Activity hub | Live frames; reconnect recovers durable history through the events list. |
 | `fleet:wake:{shard}` | Sixteen sharded publish/subscribe channels | Doorbell listeners | Prioritizes fleets on subsequent polls. The local hint buffer holds at most 64 distinct fleets. |

@@ -53,7 +53,7 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     fixtures.cleanup().await;
 }
 
-async fn issue(
+pub(super) async fn issue(
     fixtures: &Fixtures,
     leases: &Leases,
     acquired: &Acquired,

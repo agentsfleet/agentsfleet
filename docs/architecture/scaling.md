@@ -145,7 +145,7 @@ Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers
 ([assignment](../../rustd/crates/afd_fleet/src/lease/assign/mod.rs)).
 The query first checks for any unsettled admission, then checks placement labels and the oldest unsettled admission of each eligible fleet before applying that limit.
 
-The partial admission index serves each head lookup; the limit bounds returned candidates and subsequent claim attempts.
+The partial `(fleet_id, sequence)` admission index serves each head lookup; the limit bounds returned candidates and subsequent claim attempts.
 It does not bound the number of active fleets examined inside Postgres.
 
 An isolated plan probe with 20,001 active fleets and no admissions performed zero fleet scans after the empty-ledger check.
@@ -154,7 +154,10 @@ The real-database test is `afd_fleet/tests/integration_lease_plan/idle.rs`; its 
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
 An absent or stale notification cannot strand work because every poll still queries Postgres.
-A parked oldest admission blocks that fleet's later admissions.
+A parked oldest admission blocks later admissions while standing access awaits an answer or an event approval remains within its deadline.
+The partial `(fleet_id, event_id, expires_at)` gate index serves both probes over unresolved rows.
+The approval-history plan test grows resolved, expired and unrelated gates from 2,000 to 16,000 rows and runs both statements through `EXPLAIN (ANALYZE, BUFFERS)` with custom and generic prepared plans.
+It checks fleet and event index bounds, deadline bounds for event approvals, and early stopping when many gates match. Total discovery still grows with the eligible fleet population.
 
 The claim locks the slot and exact head, stamps their fence, and commits before returning it.
 An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.

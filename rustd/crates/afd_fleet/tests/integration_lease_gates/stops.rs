@@ -124,6 +124,53 @@ async fn test_approval_resolution_leases_next_poll() {
     fixtures.cleanup().await;
 }
 
+// Value: protects=an unanswered approval cannot strand the queue;
+// fails_when=deadline reconsideration cannot reach gate evaluation and settlement;
+// why_new=claim-only tests cannot prove tail progress; seam=Postgres and Dragonfly.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let seeded = ready(&fixtures).await;
+    set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let action = seed_gate(&fixtures, &seeded, afd_api_wire::approval::status::PENDING).await;
+    let claimed = claim(&fixtures, &seeded).await;
+    assert!(drive(&fixtures, &seeded, claimed).await.contains(NO_LEASE));
+    assert!(parked(&fixtures, &seeded.event_id).await);
+    let workspace = super::seed::workspace_of(&fixtures, &seeded.fleet).await;
+    let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
+    fixtures
+        .queue()
+        .spend_key(&afd_gate::gate::key::event_ref(
+            &seeded.fleet,
+            &seeded.event_id,
+        ))
+        .await
+        .expect("simulate the reference expiring before recovery");
+    sqlx::query("UPDATE fleet.approval_gates SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1")
+        .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("deadline"))
+        .await.expect("elapsed approval deadline");
+    let resumed = claim(&fixtures, &seeded).await;
+    assert_eq!(resumed.event_id, seeded.event_id);
+    assert!(drive(&fixtures, &seeded, resumed).await.contains(NO_LEASE));
+    assert_expired_settlement(&fixtures, &seeded.event_id, &action).await;
+    let next = claim(&fixtures, &seeded).await;
+    assert_eq!(
+        next.event_id, later,
+        "expiry released the tail without a sweeper"
+    );
+    fixtures.cleanup().await;
+}
+
+async fn assert_expired_settlement(fixtures: &Fixtures, event: &str, action: &str) {
+    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM fleet.admissions a JOIN fleet.approval_gates g ON g.fleet_id=a.fleet_id WHERE a.id=$1::uuid AND g.action_id=$2")
+        .bind(event).bind(action)
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("settlement observer"))
+        .await.expect("settled admission and answerable approval");
+    assert_eq!(state, (true, true));
+}
+
 /// Ingress for one event of `event_type`, marking the fleet as ingress does.
 async fn send(fixtures: &Fixtures, fleet: &str, workspace: &str, event_type: &str) -> String {
     crate::queue::enqueue(

@@ -1,12 +1,13 @@
 //! Ledger discovery and fenced transitions. Lock order is slot, admission, lease.
 
-/// Eligible fleets with an unparked oldest admission, preferring held fleets and recent hints.
+/// Eligible fleets whose oldest admission is unparked or has no live approval blocker.
 pub const SELECT_CANDIDATES: &str = include_str!("lease/select_ledger_candidates.sql");
 
 /// Claim the slot, stamp its exact oldest admission and expire any prior lease.
 ///
 /// Selecting the head before SKIP LOCKED prevents exposing a later row. The
-/// caller rolls the transaction back when no admission is returned.
+/// runnable check follows that lock; the caller rolls the slot and admission
+/// back together when the head is blocked or gone.
 pub const CLAIM_HEAD: &str = include_str!("lease/claim_admission_head.sql");
 
 /// Lock the current slot before its admission; false means the claim was superseded.

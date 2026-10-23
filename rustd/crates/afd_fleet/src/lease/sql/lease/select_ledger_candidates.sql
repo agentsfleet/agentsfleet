@@ -1,7 +1,7 @@
 WITH instant AS MATERIALIZED (
   SELECT statement_timestamp() AS read_at
 ), eligible AS MATERIALIZED (
-  SELECT z.id, s.last_runner_id
+  SELECT z.id, s.last_runner_id, instant.read_at
   FROM fleet.fleets z
   CROSS JOIN instant
   LEFT JOIN runner.fleet_slots s ON s.fleet_id = z.id
@@ -25,10 +25,18 @@ WITH instant AS MATERIALIZED (
 SELECT z.id::text
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.parked_at FROM fleet.admissions a
+  SELECT a.id, a.parked_at
+  FROM fleet.admissions a
   WHERE a.fleet_id = z.id AND a.settled_at IS NULL
-  ORDER BY a.created_at, a.sequence LIMIT 1
-) head ON head.parked_at IS NULL
+  ORDER BY a.sequence LIMIT 1
+) head ON head.parked_at IS NULL OR NOT EXISTS (
+  (SELECT 1 FROM fleet.approval_gates g
+  WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
+    AND g.event_id IS NULL LIMIT 1)
+  UNION ALL
+  (SELECT 1 FROM fleet.approval_gates g
+  WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
+    AND g.event_id = head.id::text AND g.expires_at > z.read_at LIMIT 1))
 ORDER BY z.id = ANY((SELECT ($6::text[])::uuid[])::uuid[]) DESC,
          (z.id = $7::uuid) DESC NULLS LAST,
          (z.last_runner_id = $2::uuid) DESC NULLS LAST,
