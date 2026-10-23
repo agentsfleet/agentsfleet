@@ -110,25 +110,18 @@ mod integration_capacity;
 mod integration_client;
 #[path = "integration_cluster_prototypes.rs"]
 mod integration_cluster_prototypes;
-#[path = "integration_cluster_readiness.rs"]
-mod integration_cluster_readiness;
 #[path = "integration_cluster_recovery.rs"]
 mod integration_cluster_recovery;
 mod integration_cluster_semantics;
+mod integration_doorbell;
 #[path = "integration_hub.rs"]
 mod integration_hub;
 #[path = "integration_hub_exclusive.rs"]
 mod integration_hub_exclusive;
 mod integration_namespace;
-#[path = "integration_partitioned_ready.rs"]
-mod integration_partitioned_ready;
-#[path = "integration_ready.rs"]
-mod integration_ready;
 mod integration_retention;
 #[path = "integration_session.rs"]
 mod integration_session;
-#[path = "integration_streams.rs"]
-mod integration_streams;
 #[path = "integration_tls_trust.rs"]
 mod integration_tls_trust;
 mod keys_and_config;
@@ -138,8 +131,6 @@ mod misbehaving_server;
 mod outbound_faults;
 #[path = "preflight_refusals.rs"]
 mod preflight_refusals;
-#[path = "ready_wake_deadline.rs"]
-mod ready_wake_deadline;
 #[path = "retention_faults.rs"]
 mod retention_faults;
 #[path = "verify_outcomes.rs"]

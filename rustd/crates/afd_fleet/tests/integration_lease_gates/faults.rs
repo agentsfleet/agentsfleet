@@ -1,15 +1,13 @@
-//! The pass's failure and repeat arms, each driven by a real injected failure:
-//! a queue that will not acknowledge, a payer read that will not answer, an
-//! unreadable fleet offered a second time, and a claim another runner won.
+//! Failed reads and parks, repeated refusals, and claims another runner won.
+
+mod parking;
 
 use super::seed::seed_provider_resolution;
 use super::*;
 
 use afd_billing::Accounts;
 use afd_core::test_util::trace::Capture;
-use afd_dragonfly::FleetStreams;
 use afd_fleet::lease::Plane;
-use afd_fleet::lease::admit::Refusal;
 
 use crate::rows::{LAPSE, Row};
 
@@ -18,80 +16,6 @@ const STATUS_RECEIVED_ROW: &str = "received";
 
 /// A stored document the runtime parser cannot read: no triggers, no runtime.
 const UNREADABLE_CONFIG: &str = "{}";
-
-/// A consumer that only inspects what is still owed.
-const INSPECTOR: &str = "agentsfleetd-fault-inspector";
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn should_answer_no_work_and_keep_the_entry_when_a_finished_event_cannot_be_acknowledged() {
-    // The event already ran: its row is terminal. The acknowledgement that
-    // would end its redelivery fails, and the pass must still answer no work
-    // — the entry stays owed and the next poll acknowledges it instead.
-    let fixtures = Fixtures::create_with_queue().await;
-    let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
-    let claimed = claim(&fixtures, &seeded).await;
-    let now = fixtures.enrolled_at();
-    end_the_event(&fixtures, &claimed).await;
-
-    let log = Capture::install();
-    let answer = fixtures
-        .plane_with_dead_queue()
-        .lease_claimed(claimed.clone(), &seeded.runner, now)
-        .await
-        .expect("a lost acknowledgement is not the runner's fault");
-    let failed = log.only("terminal_redelivery_ack_failed").fields;
-    let suppressed = log.only("terminal_redelivery_suppressed").fields;
-    drop(log);
-
-    assert!(
-        answer.contains(NO_LEASE),
-        "a finished event issued a lease: {answer}"
-    );
-    assert!(
-        failed
-            .get("error_code")
-            .is_some_and(|code| !code.is_empty())
-    );
-    assert_eq!(failed.get("agentsfleet_event_id"), Some(&seeded.event_id));
-    assert_eq!(
-        suppressed.get("agentsfleet_event_id"),
-        Some(&seeded.event_id)
-    );
-    assert_still_owed(&fixtures, &seeded, &claimed).await;
-
-    fixtures.cleanup().await;
-}
-
-/// Opens `claimed`'s event row and ends it, as a run that already finished
-/// would have left it.
-async fn end_the_event(fixtures: &Fixtures, claimed: &Acquired) {
-    let leases = fixtures.leases();
-    leases
-        .record_received(claimed)
-        .await
-        .expect("the row opens");
-    let label = afd_core::event::label::EVENT_TYPE_UNSUPPORTED;
-    leases
-        .block(
-            &claimed.fleet_id,
-            &claimed.event_id,
-            Refusal::labelled(label),
-        )
-        .await
-        .expect("the row ends");
-}
-
-/// Asserts the stream still owes `claimed`'s entry: nobody acknowledged it.
-async fn assert_still_owed(fixtures: &Fixtures, seeded: &Ready, claimed: &Acquired) {
-    let owed = FleetStreams::new(fixtures.queue().clone())
-        .take_over_oldest(&seeded.fleet, INSPECTOR)
-        .await
-        .expect("the stream answers")
-        .expect("the unacknowledged entry is still owed");
-    assert_eq!(owed.receipt, claimed.receipt);
-}
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -191,20 +115,64 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recorded() {
-    // The fleet's document will not parse, so the pass ends its event — but
-    // the entry names a workspace no row carries, and the event row cannot be
-    // written. The runner is still answered no work rather than an error: the
-    // fault is another fleet's, and the entry stays owed for a later poll.
+async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    fixtures
-        .corrupt_native_config(&fleet, UNREADABLE_CONFIG)
-        .await;
-    let nowhere = crate::seed::unique_ids().1;
-    let seeded = ready_in(&fixtures, &nowhere, runner, fleet, tenant).await;
+    let seeded = ready(&fixtures).await;
     let claimed = claim(&fixtures, &seeded).await;
+    fixtures
+        .leases()
+        .record_received(&claimed)
+        .await
+        .expect("first delivery");
+    fixtures
+        .end_event(
+            &seeded.fleet,
+            &seeded.event_id,
+            afd_core::event::status::PROCESSED,
+        )
+        .await;
+    let before = afd_events::fleet_counters(&fixtures.database, &seeded.fleet)
+        .await
+        .expect("counters");
+    fixtures
+        .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
+        .await;
+    let answer = drive(&fixtures, &seeded, claimed).await;
+    assert!(answer.contains(NO_LEASE));
+    assert_eq!(
+        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        Some((afd_core::event::status::PROCESSED.to_owned(), String::new()))
+    );
+    assert!(fixtures.admission_settled(&seeded.event_id).await);
+    assert_eq!(
+        afd_events::fleet_counters(&fixtures.database, &seeded.fleet)
+            .await
+            .expect("unchanged counters"),
+        before
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE event_id=$1")
+        .bind(&seeded.event_id)
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
+        .await
+        .expect("one narrative");
+    assert_eq!(rows, 1);
+    fixtures.cleanup().await;
+}
 
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recorded() {
+    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let seeded = ready(&fixtures).await;
+    fixtures
+        .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
+        .await;
+    let claimed = claim(&fixtures, &seeded).await;
+    let owner = fixtures.open(afd_db::config::DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("owner");
+    sqlx::raw_sql("CREATE FUNCTION fleet.refuse_narrative() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected narrative failure'; END $$; CREATE TRIGGER refuse_narrative BEFORE INSERT ON fleet.events FOR EACH ROW EXECUTE FUNCTION fleet.refuse_narrative()")
+        .execute(&mut *connection).await.expect("inject narrative failure");
+    drop(connection);
     let log = Capture::install();
     let answer = drive(&fixtures, &seeded, claimed).await;
     let line = log.only("config_refusal_unrecorded").fields;
@@ -222,6 +190,7 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
         "no row was written for an event whose refusal could not be recorded"
     );
 
+    owner.close().await;
     fixtures.cleanup().await;
 }
 
@@ -274,7 +243,7 @@ async fn ready_in(
     tenant: String,
 ) -> Ready {
     let event_id = crate::queue::enqueue(
-        fixtures.queue(),
+        &fixtures.database,
         &fleet,
         workspace,
         ACTOR,

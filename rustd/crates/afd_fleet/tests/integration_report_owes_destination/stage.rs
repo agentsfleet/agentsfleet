@@ -6,12 +6,11 @@
 
 use afd_admission::{Admission, Key, Producer, Reply};
 use afd_core::id::Uuid7;
-use afd_dragonfly::EventId;
 use afd_fleet::lease::{Billed, Committed, Leases, Owing, Reported};
 use jiff::Timestamp;
 use sqlx::Row as _;
 
-use crate::integration_admission_recovery::{admission, ledger, producer_key};
+use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::{DEEP_POOL, SLICE_MS};
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
@@ -104,10 +103,9 @@ impl Stage {
     /// Leases this fleet's next event at `now` and loads the lease a report
     /// addresses.
     pub(crate) async fn lease_next(&self, now: Timestamp) -> (String, Reported) {
-        let acquired =
-            crate::seed::select_fleet_within_rotations(&self.leases, &self.runner, &self.fleet)
-                .await
-                .expect("one rotation of polls must reach the fleet holding admitted work");
+        let acquired = crate::seed::select_fleet(&self.leases, &self.runner, &self.fleet)
+            .await
+            .expect("one rotation of polls must reach the fleet holding admitted work");
         self.leases
             .record_received(&acquired)
             .await
@@ -164,11 +162,7 @@ impl Stage {
             .await
     }
 
-    /// Leases and reports this fleet's next event, answering what was owed.
-    ///
-    /// Acknowledges the entry afterwards, as the plane's report does once the
-    /// commit lands: `commit_report` alone leaves it pending, and the next poll
-    /// would hand the same event back instead of the next one.
+    /// Reports and settles the next admission, answering what was owed.
     pub(crate) async fn run_next(&self, run: i64) -> Committed {
         let now = afd_core::clock::after(
             self.fixtures.enrolled_at(),
@@ -177,15 +171,9 @@ impl Stage {
             ),
         );
         let (lease_id, lease) = self.lease_next(now).await;
-        let committed = self
-            .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
+        self.report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
             .await
-            .expect("the report must reach the datastore");
-        self.leases
-            .acknowledge(&lease.fleet_id, &EventId::of(&lease.receipt))
-            .await
-            .expect("the settled entry is acknowledged");
-        committed
+            .expect("the report must reach the datastore")
     }
 }
 

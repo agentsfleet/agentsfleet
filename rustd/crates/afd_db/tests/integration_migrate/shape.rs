@@ -83,8 +83,9 @@ fleet.events: id, fleet_id, workspace_id, event_id, actor, event_type, status, r
     response_text, tool_calls, token_count, wall_ms, failure_reason, failure_detail, \
     resumes_event_id, created_at, updated_at
 fleet.admissions: id, sequence, fleet_id, workspace_id, producer, producer_key, payload_digest, \
-    actor, event_type, request_json, event_created_at, reply_provider, reply_address, receipt, \
-    delivered_at, replay_count, replay_claim_expires_at, created_at, updated_at
+    actor, event_type, request_json, event_created_at, reply_provider, reply_address, \
+    delivered_at, created_at, updated_at, lease_fence, \
+    parked_at, settled_at
 fleet.approval_gates: id, fleet_id, workspace_id, event_id, active_grant_id, action_id, \
     tool_name, action_name, gate_type, proposed_action, evidence, stated_binding, blast_radius, \
     spend_count, spend_ceiling, expires_at, status, resolved_at, resolved_by, resolved_by_name, \
@@ -102,7 +103,7 @@ runner.runners: id, host_id, token_hash, sandbox_tier, status, labels, network_p
     selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, \
     updated_at
 runner.leases: id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, \
-    event_created_at, receipt, posture, provider, model, last_metered_at, fencing_token, \
+    event_created_at, posture, provider, model, last_metered_at, fencing_token, \
     lease_expires_at, status, posted_message_count, created_at, updated_at
 runner.fleet_slots: fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at, \
     created_at, updated_at

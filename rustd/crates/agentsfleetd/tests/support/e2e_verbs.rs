@@ -29,7 +29,6 @@ use tokio::task::JoinHandle;
 
 use crate::definition_install::seal;
 use crate::e2e::{ACTOR, REQUEST_JSON, Scenario};
-use crate::e2e_event::ensure_group;
 
 /// The bot token a scenario's Slack grant carries.
 pub(crate) const BOT_TOKEN: &str = "xoxb-fixture-interim-bot";
@@ -177,7 +176,6 @@ pub(crate) async fn seal_slack_grant(run: &Scenario) {
 /// Admits an event on the scenario's fleet from a Slack thread, so an answer
 /// or a line said before it is owed there.
 pub(crate) async fn enqueue_from_thread(run: &Scenario) -> String {
-    ensure_group(&run.booted, &run.fleet).await;
     let address = json!({"team_id": "T0FIXTURE", "channel_id": CHANNEL, "thread_ts": THREAD});
     let address = address.to_string();
     let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone())

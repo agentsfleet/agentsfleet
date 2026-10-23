@@ -10,16 +10,7 @@ use crate::lease::envelope::Acquired;
 /// The single stable reason logged by both waiting-for-approval paths.
 const AWAITING_APPROVAL: &str = "a human owes an answer";
 
-/// Either the pass continues, or it already has its answer.
-///
-/// Every ending has the same serialized shape. Carrying that shape as a value
-/// keeps each decision local and prevents a caller from forgetting which stop
-/// already wrote a terminal row.
-///
-/// The two endings differ in what they leave the fleet's readiness mark. Both
-/// free the claim. A stop keeps the mark, so the next poll comes back; a park
-/// clears it, because a person owes an answer and the answer re-marks the
-/// fleet — polling it every second meanwhile would re-ask the same question.
+/// Continue, stop for a later poll, or park the admission until a gate answer.
 pub(in crate::lease) enum Step<T> {
     /// Carry on, with this.
     Go(T),
@@ -71,7 +62,7 @@ const EVENT_CLAIM_LOST: &str = "lease_claim_lost";
 /// A stop, so the fleet keeps its mark and whoever holds the slot now serves
 /// the entry. The release the stop owes is fenced on this pass's token, so it
 /// cannot free the slot the new holder won.
-pub(in crate::lease) fn claim_lost(runner_id: &Uuid7, acquired: &Acquired) -> Result<Step<Leased>> {
+pub(in crate::lease) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> Result<Step<T>> {
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let runner = runner_id.as_str();
@@ -129,7 +120,7 @@ mod tests {
     }
 
     /// A pass whose lease insert lost its fence answers no-work, as a stop:
-    /// the fleet keeps its mark for whoever holds the slot now.
+    /// the newer holder keeps its claim.
     #[cfg(feature = "test-util")]
     #[test]
     fn a_lost_claim_answers_no_work_as_a_stop() {
@@ -137,7 +128,8 @@ mod tests {
         use crate::lease::test_dead;
 
         let runner = runner();
-        let step = super::claim_lost(&runner, &test_dead::acquired()).expect("the answer renders");
+        let step =
+            super::claim_lost::<()>(&runner, &test_dead::acquired()).expect("the answer renders");
         let expected = no_work(&runner, super::CLAIM_LOST_REASON).expect("the answer renders");
         assert!(
             matches!(step, Step::Stop(answer) if answer == expected),

@@ -17,8 +17,8 @@
 use std::time::Duration;
 
 use afd_dragonfly::Dragonfly;
+use afd_dragonfly::OutboundQueue;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::streams::FleetStreams;
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 
@@ -31,7 +31,7 @@ const PAST_THE_SLACK: &str = ":1200\r\n";
 
 /// The fleet group, three entries pending, delivered up to `1000-0`.
 const ONE_GROUP: &str = "*1\r\n%4\r\n\
-    $4\r\nname\r\n$11\r\nfleet_lease\r\n\
+    $4\r\nname\r\n$17\r\nconnector_workers\r\n\
     $7\r\npending\r\n:3\r\n\
     $9\r\nconsumers\r\n:1\r\n\
     $17\r\nlast-delivered-id\r\n$6\r\n1000-0\r\n";
@@ -64,7 +64,7 @@ async fn trim_against(summary: &'static str) -> (afd_dragonfly::Error, Vec<Strin
         .expect("the fake answers PING, so connect must not hang")
         .expect("a fake that answers PONG must be accepted");
 
-    let refused = tokio::time::timeout(BUDGET, FleetStreams::new(redis).trim("fleet-1"))
+    let refused = tokio::time::timeout(BUDGET, OutboundQueue::new(redis).trim())
         .await
         .expect("the fake answers, so the trim must not hang")
         .expect_err("a pending summary the trim cannot read must be refused");

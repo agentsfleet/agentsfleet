@@ -1,7 +1,7 @@
 //! The statements a raised gate is written and read through.
 //!
-//! The lease path reads one statement here, [`SELECT_GATE_STATUS`]: the gate
-//! ROW is written by the park, and the resolve is the tenant plane's.
+//! The lease path recovers an event's reference and reads its gate status.
+//! The row is written by the park, and the resolve is the tenant plane's.
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
 //! (`schema/1730_fleet_approval_gates.sql`) — and every instant on it is the
@@ -35,6 +35,11 @@ use crate::gate::{Claim, Stated};
 ///
 /// `$1` action.
 pub const SELECT_GATE_STATUS: &str = include_str!("select_gate_status.sql");
+
+/// Recover the newest gate for an event after its cached reference expires.
+/// Answered rows stay eligible: a human's decision outranks the deadline and
+/// subsequent policy edits. `$1` fleet, `$2` event.
+pub const SELECT_EVENT_GATE: &str = include_str!("select_event_gate.sql");
 
 /// Raise one approval gate, in the `pending` state a human answers out of,
 /// and answer how many of the fleet's gates now wait — this one included.

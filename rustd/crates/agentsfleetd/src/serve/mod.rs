@@ -202,7 +202,7 @@ async fn serve_plane(
     // after the socket would leave a window where the plane serves while
     // nothing is noticing dead runners. They take the analytics because the
     // authoring sweeper finishes interrupted chat messages, a funnel step.
-    crate::sweepers::spawn(supervisor, &runtime.database, &runtime.queue, &analytics);
+    crate::sweepers::spawn(supervisor, &runtime.database, &analytics);
     spawn_background(
         supervisor,
         config,

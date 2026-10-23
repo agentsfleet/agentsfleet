@@ -16,7 +16,6 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
                            instructions_md, config (selected)                 Postgres
                          connector.integration_grants (fleet, "github") pending,
                            then approved by a person                          Postgres
-                         stream fleet:{id}:events + consumer group            Dragonfly
                          locked recheck, all checks ready ⇒ active            Postgres
                          start none: no admission, no event, no lease row
 
@@ -30,23 +29,14 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
                          5 per matched fleet:
                              INSERT fleet.admissions (producer=webhook_app,
                                  key = "{fleet}:{sha256(body)}")           Postgres  ← the acceptance
-                             XADD fleet:{id}:events  (receipt)             Dragonfly ← a receipt
-                             UPDATE admissions SET receipt                 Postgres
-                             HSET fleet:ready:{p}  (mark, 16 partitions)   Dragonfly
-                             SPUBLISH fleet:ready:{p}:wake  (doorbell)     Dragonfly
+                             SPUBLISH fleet:wake:{shard} (best effort)    Dragonfly
                          6 202 {matched, enqueued}
 
  RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
-                         0 fleets whose sandbox this runner holds: their marks read first
-   (every ~1 s)          a peek the rotation's partition ∥ the first partition the doorbell
-                           rang at or after the cursor, its bit cleared, the rung peek
-                           under 100 ms; rotation's fleets first; zero Postgres if both
-                           empty; when the bit is set again: runner_fleet.md,
-                           the doorbell row of its Datastore topology table
-                         b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
-                         c CLAIM_AFFINITY_SLOT  runner.fleet_slots: fencing_token+1,
-                             lease_expires_at = now+30 s            ← THE FENCE IS MINTED HERE
-                         d reclaim a dead holder's active lease? else XAUTOCLAIM/XREADGROUP 1
+                         a Postgres: oldest unsettled head per eligible fleet
+                         b prefer held fleets, wake hints and previous placement; ≤64
+                         c lock slot and exact head with SKIP LOCKED
+                         d advance slot + admission fences; decode before commit
                          e INSERT fleet.events status=received (+ stamp admission delivered)
                          f SPUBLISH event_received bracket on fleet:{id}:activity
                          g gates: payer → balance → budget → approval (nothing charged)
@@ -62,7 +52,9 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
 
 Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `fleet.fleets` row as `installing` with the reviewed Definition as its first `fleet.revisions` row (`afd_authoring/src/creation/reserve.rs`). Nothing touches a queue or an approval before that commit. Setup then advances in bounded steps (`afd_authoring/src/creation/activate.rs`).
 
-A grant check that reads `missing` raises a pending approval card for that credential (`afd_approval/src/request/setup.rs`), and a person approves it. Once every readiness check passes, `ensure_group` creates the per-fleet stream and its consumer group, and a locked recheck flips the fleet to `active`. With start `none` (`afd_authoring/src/types/creation.rs`), Save writes no admission, event, lease or affinity row.
+A grant check that reads `missing` raises a pending approval card for that credential (`afd_approval/src/request/setup.rs`), and a person approves it. Once setup checks pass, a locked recheck activates the fleet. A requested initial admission commits in that same transaction.
+
+With start `none` (`afd_authoring/src/types/creation.rs`), Save writes no admission, event, lease or affinity row.
 
 The fleet's display name ("AGENT BOB 01") is `fleet.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
 
@@ -78,30 +70,26 @@ So "the fleet slug AGENT BOB 01 receives the request" is really: the installatio
 
 The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler/webhook/github/mod.rs`: action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha, received_at). Under `Policy::AppIngress` every `pull_request` action wakes the fleet except one on a repair branch (`is_repair_branch`, `github/mod.rs`); the manual per-fleet route narrows to opened/reopened/synchronize/ready_for_review.
 
-### Admission: the row is the acceptance, the stream entry is a receipt
+### Admission commits the queue row
 
-`fan_out` (`app_route.rs`) calls `deliver` once per fleet, sequentially. `afd_ingress/src/deliver.rs` keys the admission `"{fleet}:{replay_id}"` where `replay_id = sha256(body)` (`afd_ingress/src/app/mod.rs`; the unsigned `X-GitHub-Delivery` header is deliberately not used), producer `webhook_app`, actor `github-app` (`app_route.rs`), and `Reply::None` (`deliver.rs`), which matters in section 4.
+Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
 
-`Admissions::admit` (`afd_admission/src/admit.rs`): fleet backlog budget first, then `INSERT_ADMISSION` (`afd_admission/src/sql/insert_admission.sql`) into `fleet.admissions` (`schema/1720_fleet_admissions.sql`) with `ON CONFLICT (producer, producer_key) DO UPDATE ... RETURNING (xmax = 0) AS inserted, id, payload_digest, fleet_id, created_at, receipt`. The logical event id is the admission row's UUIDv7 `id` (`afd_admission/src/admit.rs`). A fresh row then goes to `queue_entry` (`afd_admission/src/admit_receipt.rs`): `XADD fleet:{id}:events` with the five envelope fields plus `event_id`, `RECORD_RECEIPT` writes the stream entry id back (`sql/record_receipt.sql`), and `mark_ready` sets the fleet's readiness mark through `ReadyIndex::mark` in one of 16 partitions (`afd_dragonfly/src/ready/partition/mod.rs`). A replay (same key) answers the first row with `replayed = true` and re-marks (`admit.rs`). No `fleet.events` row is written at ingress (`deliver.rs`).
+Repeated producer identities return the existing admission. After commit, a bounded wake publish can prioritize its fleet on the next poll.
 
-GitHub gives this whole path ten seconds and never auto-redelivers (`docs/architecture/connectors.md`).
+### The poll claims an admission and its fleet slot
 
-### The poll: ready index → claim → event → row
+1. Read the oldest unsettled admission for each eligible fleet through `idx_admissions_unsettled`.
+2. Prefer held fleets and recent hints, then try a bounded candidate set.
+3. Lock a candidate's slot and exact oldest admission with `SKIP LOCKED`. A locked or parked head blocks later rows.
+4. Advance the slot and admission fences together. Decode the envelope before committing, so malformed stored data rolls back both fences.
+5. Open runtime history and stamp `delivered_at` under the same current fences.
+6. Read installed configuration, resolve billing and check approval gates. Parked work frees the slot and retains its place in the queue.
+7. Assemble credentials and policy, then issue `runner.leases` under the claimed fence.
 
-`POST /v1/runners/me/leases` (`afd_api_runner/src/handler/runner/lease/mod.rs`; the body must name the lease kinds the runner accepts and may name up to 64 fleets whose sandboxes it holds; a body missing the kinds or naming a hold that is not a fleet identity is refused as malformed, `rustd/crates/afd_api_runner/src/handler/runner/lease/input.rs`) calls `Plane::lease` (`afd_fleet/src/lease/pull/mod.rs`). A degraded runner gets no work. Then `Leases::select` (`afd_fleet/src/lease/assign/mod.rs`):
+An expired slot exposes the same unsettled row. Redelivery preserves its event identity, original time and prior billing identity.
 
-1. read the readiness marks of the fleets whose sandboxes the runner holds, and try those first (`held_first`, `afd_fleet/src/lease/assign/offer.rs`); then advance a process-wide cursor to the next of 16 partitions and `peek` at most `MAX_READY_CANDIDATES_PER_POLL = 64` fleets from it, plus at most 64 from the partition the readiness doorbell rang, if it rang another (`afd_fleet/src/lease/assign/wake/mod.rs`; when a rung partition is rung again: [`runner_fleet.md`](./runner_fleet.md) §"Datastore topology"); empty peeks answer no-work with zero Postgres reads;
-2. `SELECT_READY_CANDIDATES` (`afd_fleet/src/lease/sql/lease/mod.rs`): `status = active`, id in the peeked set, `lease_expires_at IS NULL OR < now`, no live sandbox hold by another runner (`hold_expires_at`), `required_tags <@ runner labels`, ordered `id in the cursor's partition DESC, last_runner_id = this runner DESC, random()` (sticky is a hint), at most 64 of the two peeks' fleets;
-3. per candidate, `try_candidate`: `claim` → `CLAIM_AFFINITY_SLOT` (`sql/lease/mod.rs`), a conditional upsert on `runner.fleet_slots` (`schema/1820_runner_fleet_slots.sql`) that wins only if `lease_expires_at < now`, bumps `fencing_token + 1`, sets `lease_expires_at = now + LEASE_TTL` (30 s, `afd_core/src/timing.rs`) and returns the new `fencing_token`. That returned number is the `Fence` (`afd_fleet/src/lease/affinity.rs`), the only source of a fencing token in the system;
-4. `take_claimed` (`afd_fleet/src/lease/assign/claim.rs`): if the fleet still has an `active` lease row (a holder that stopped renewing), `RECLAIM_PRIOR_ACTIVE` (`sql/lease/mod.rs`) flips it to `expired` and re-reads the body from `fleet.events` in one statement (`afd_fleet/src/lease/reclaim.rs`); otherwise `acquire_fresh` takes the group's oldest pending entry then a new one (`docs/architecture/data_flow.md`), and an empty fleet releases the claim and clears its mark. `from_fresh` refuses an entry missing any of the six fields (`afd_fleet/src/lease/envelope.rs`).
-
-`run_claimed` (`afd_fleet/src/lease/pull/held.rs`) then runs `admit_claimed` (`pull/mod.rs`): read the installed fleet (`afd_fleet/src/lease/installed.rs`: the selected immutable Definition, refused as `SetupUnavailable` when its policy marker differs; `config` from its configuration, `instructions` from its `instructions_md`, and the session row); `record_received` inserts `fleet.events` with `status = received` (`afd_fleet/src/lease/event.rs`; table `schema/1700_fleet_events.sql`) and stamps `fleet.admissions.delivered_at` on the same connection (`afd_admission::sql::MARK_DELIVERED`, `event.rs`); a first delivery publishes the `event_received` bracket (`pull/mod.rs`); then `billed` parses the event type, reads the payer once, resolves the provider, runs the money gates and the approval gate. Every refusal frees the claim (`held.rs`) and writes a `gate_blocked` terminal row (`pull/refuse.rs`).
-
-`deliver` (`afd_fleet/src/lease/deliver/mod.rs`): open the vault for the declared credentials, derive the repair branch for a write binding (→ `agentsfleet-repair/<base64url(event_id)>`, `afd_gate/src/policy/repair.rs`), read approved grants, and `build::assemble` (`afd_gate/src/policy/build/mod.rs`): `tools` straight from the config, `secrets_map`, `mintable`, provider and api key, `repository_binding`, and `http_origin_policies` from `egress::build`. A mintable credential with no grant parks the lease (`deliver.rs`).
-
-`issue_ready` (`afd_fleet/src/lease/deliver/mod.rs`) → `Leases::issue` (`afd_fleet/src/lease/issue.rs`) writes the `runner.leases` row (`schema/1810_runner_leases.sql`): `status = active`, `fencing_token`, `lease_expires_at` = the slot's `lease_expires_at`, the stream `receipt`, and resets the meter cursor on a fresh lease. Zero rows affected means the claim lapsed under it and no lease is answered. `render` (`afd_fleet/src/lease/answer/mod.rs`) builds the `LeasePayload` (`afd_wire/src/lease/payload.rs`): `lease_id`, `fencing_token`, `lease_expires_at`, `event` (the digest as `request_json`), `policy`, `instructions`.
-
-**Who creates what, in order:** `fleet.fleets` + setup revision + stream group (Save) → `fleet.admissions` (ingress) → stream entry + receipt + ready mark (ingress) → `runner.fleet_slots` claim, fence minted (poll) → `fleet.events` received + `admissions.delivered_at` (poll) → `runner.leases` active (poll). Reclaim re-uses the admission and event rows and only writes a new lease row under a higher fence.
+A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.
+See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, notifications and recovery limits.
 
 ---
 
@@ -146,11 +134,11 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
  │ 8 wait ≤5 s for activity to drain                                                   │
  └─────────────────────────────────────────────────────────────────────────────────────┘
                                                daemon report: ONE transaction
-                                               CLAIM_AND_SETTLE (fence ≥ seq, active→reported, charge)
+                                               METER_LEASE (current fences, active→reported, measured usage)
                                                → fleet.events processed/fleet_error + tool_calls
-                                               → fleet.sessions checkpoint → affinity released
+                                               → fleet.sessions checkpoint → admission settled → affinity released
                                                → obligation if a reply destination; COMMIT
-                                               → XACK receipt → SPUBLISH event_complete
+                                               → SPUBLISH event_complete
 ```
 
 **Boot and composition.** `afr_supervisor::boot` reads three variables and opens `<home>/{sandboxes,spool,git,toolbox}` (`afr_supervisor/src/config/mod.rs`, `afr_supervisor/src/storage_home/mod.rs`). The binary then builds the host's engine, refusing to start on a host that lacks a mechanism every sandbox needs, and runs `afr_supervisor::run` with it (`agentsfleet_runner/src/main.rs`). Building the engine sweeps what a crashed run left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
@@ -181,7 +169,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
    │                      fleets in W: active ∩ github grant approved
    │                        ∩ setup repositories ∋ agentsfleet/linkwarden
    │                        ∩ events ∋ pull_request          ⇒ AGENT BOB 01 (and any twin)
-   │                      admission + XADD + ready mark
+   │                      commit admission + best-effort wake
    │◄──── 202 ────────────┤
    │                      │◄──── POST /v1/runners/me/leases ──────────────────────────────┤
    │                      claim slot, fleet.events received, gates, vault, policy:
@@ -210,7 +198,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
    │                      │                                  model turn 3 → final answer text
    │                      │◄──── tool-calls, memory push, POST reports ──────────────────┤
    │                      settle: fleet.events processed, response_text = the answer
-   │                      XACK, event_complete frame → dashboard thread
+   │                      admission settled, event_complete frame → dashboard thread
 ```
 
 **What the lease carries for this fleet.** The setup's configuration names three tools, one credential, one network host, a write binding on `agentsfleet/linkwarden` with base `main`, and a daily budget of `2000000000` nanos, two dollars (`tests/fixtures/fleets/github-pr-reviewer/definition.json`). All three tools are `Runtime::Supervisor` (`afr_tools/src/catalog/mod.rs`), so `needs_sandbox` is false and the lease starts no sandbox at all ([Runner execution](./runner_execution.md) §"A lease's sandbox today"). No repository is cloned either: only a lease offered a sandbox tool gets its bound repositories checked out (`afr_supervisor/src/lease_loop/checkout.rs`).
@@ -229,7 +217,11 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 **Instructions are prose and cannot widen anything.** The lease marks `instructions` as "soft reasoning input, hard tool and secret policy stays in `policy`" (`afd_wire/src/lease/payload.rs`). The egress rules are compiled by the daemon from the binding alone (`afd_gate/src/policy/build/mod.rs`; `afd_gate/src/policy/egress/mod.rs`) and evaluated by the runner as written (`afr_egress/src/admission/mod.rs`). So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the admission.
 
-**A chat steer is the same.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` is admitted as its own `chat` event through the same ledger (`afd_events/src/steer/mod.rs`), waits behind the running lease for the fleet's one affinity slot (`CLAIM_AFFINITY_SLOT`, `afd_fleet/src/lease/sql/lease/mod.rs`), and runs with the same policy. The instructions tell the fleet to treat a steer with no PR as chat and to save operator facts with `memory_store` (`definition.json`). A steer cannot add an egress rule.
+**A chat steer uses the same admission path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` admission (`afd_events/src/steer/mod.rs`). It waits behind the fleet's running lease for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet/src/lease/sql/queue.rs`).
+
+The steer runs with the same policy. The instructions tell the fleet to treat a steer with no PR as chat. They also require saving operator facts with `memory_store` (`definition.json`).
+
+A steer cannot add an egress rule.
 
 **What the code admits today for this fleet (write binding on one repository):** reads under `/repos/agentsfleet/linkwarden/` (`read.rs`), and the five writes above. In principle the fleet could create blobs, trees and commits, create one ref `refs/heads/agentsfleet-repair/<event>`, and open one draft PR from it against `main`. What is refused: a review (`/pulls/{n}/reviews`), an issue comment, a PR comment, approve, request changes, any other ref, a non-draft PR. The write rules admit a fix on the repair branch and one draft PR, and no comment (`afd_gate/src/policy/egress/write.rs`).
 
@@ -247,8 +239,8 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 ```text
  push ──► pull_request "synchronize" ──► new signed body ──► new sha256 ──► new admission row
-                                                                           new XADD, same stream
- fleet:{id}:events   [opened: running]  [synchronize: waiting]  [labeled]  [edited] ...
+                                                                           new unsettled queue row
+ fleet.admissions    [opened: running]  [synchronize: waiting]  [labeled]  [edited] ...
                        one active lease per fleet (affinity slot) ⇒ strictly one at a time
  next poll after the report frees the slot:
    claim fence+1 (sticky: last_runner_id sorts first, random tie-break)
@@ -257,9 +249,15 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
    NOT carried: the previous answer, and for this fleet no sandbox and no clone
 ```
 
-**Same fleet, new event, new lease.** The dedupe key is the body digest (`afd_ingress/src/app/mod.rs`), and a `synchronize` body differs, so it is a new admission and a new stream entry. Every pull-request action wakes the fleet under `Policy::AppIngress`, so `labeled`, `edited` and friends each queue a run too; nothing coalesces or supersedes per PR. The affinity slot allows one active lease per fleet, and on the runner `FleetTurns` allows one run per fleet ([Runner execution](./runner_execution.md) §"One lease, end to end"). So the second event waits until the first reports and the settle transaction frees the slot.
+**Same fleet, new event, new lease.** The body digest is the dedupe key (`afd_ingress/src/app/mod.rs`). A `synchronize` body differs and creates a new admission.
 
-**Same runner?** Preferred, not promised: the candidate scan sorts the last runner first, and the claim records the hint (`afd_fleet/src/lease/sql/lease/mod.rs`). Any eligible runner can win. A runner that holds a sandbox for the fleet looks at it first, and others skip it while the hold lasts ([Runner Fleet](./runner_fleet.md) §"Cold and warm execution").
+Every pull-request action wakes the fleet under `Policy::AppIngress`. Actions such as `labeled` and `edited` each queue a run. Actions neither coalesce nor supersede other events for the same PR.
+
+The affinity slot allows one active lease per fleet. On the runner, `FleetTurns` allows one run per fleet ([Runner loop](./runner_execution.md) §"One lease, end to end"). The second event waits until the first reports and the settle transaction frees the slot.
+
+**Same runner?** The candidate scan prefers the last runner, and the claim records the hint (`afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`). Any eligible runner can win.
+
+A runner with a held sandbox checks that fleet first. Other runners skip the fleet while the hold lasts ([Runner fleet holds](./runner_fleet.md#cold-and-warm-execution)).
 
 **What carries over.** Fleet memory: the hydrate window is `HYDRATE_WINDOW_BYTES = 256 KiB` with every `core` entry pinned first, plus up to `RECALL_LIMIT_MAX = 50` per recall past the window (`afd_wire/src/memory.rs`; [Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane"). Memory belongs to the fleet, not the PR, so the second review knows the first only if its instructions have it read the existing reviews or recall what it stored. A chat lease also carries the thread's last eight finished turns; a webhook lease like this one carries none (`afd_fleet/src/lease/answer/mod.rs`). A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches; this fleet has no sandbox, so it never holds one.
 
@@ -282,7 +280,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 - Workers per host: default 1, between 1 and 64 (`afd_core/src/limits.rs`).
 - Activity: 64 KiB batches, 4 held (`afr_supervisor/src/activity/mod.rs`). Memory: a 256 KiB hydrate window (`afd_wire/src/memory.rs`).
 - Timers: lease TTL 30 s, renew every 5 s, max runtime 12 h, runner offline after 90 s, heartbeat 10 s, empty-poll hint 1 s, sandbox hold 10 min (`afd_core/src/timing.rs`).
-- Poll and admission: `MAX_READY_CANDIDATES_PER_POLL` = 64 fleets sampled per peek, at most two peeks a poll, and 64 candidates per scan (`afd_fleet/src/lease/assign/mod.rs`); `FLEET_BACKLOG_BUDGET` = 10,000 outstanding stream entries per fleet before its producers are refused (`afd_admission/src/budget/mod.rs`).
+- Poll and admission: at most 64 candidate fleets per poll; 10,000 unsettled admissions per fleet. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
 
 ---
 

@@ -6,18 +6,9 @@ mod capacity;
 mod integration_census;
 #[path = "integration_hold_plans.rs"]
 mod integration_hold_plans;
-#[path = "integration_reclaim.rs"]
-mod integration_reclaim;
-#[path = "integration_reclaim_faults.rs"]
-mod integration_reclaim_faults;
-#[path = "integration_reclaim_paging.rs"]
-mod integration_reclaim_paging;
-#[path = "integration_replay_pacing.rs"]
-mod integration_replay_pacing;
 mod integration_runner_plane;
 mod integration_sweeps;
 mod rows;
-mod support;
 
 #[path = "error_surface.rs"]
 mod error_surface;

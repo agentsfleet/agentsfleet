@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::queue;
 use crate::seed;
 use crate::support;
 use afd_core::id::Uuid7;
@@ -44,7 +43,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     let leases = fixtures.leases();
     let now = fixtures.enrolled_at();
 
-    let held = crate::seed::select_fleet_within_rotations(&leases, &first, &fleet)
+    let held = crate::seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     // Hot-path write ONE, which the gate pass will own and which does not
@@ -90,7 +89,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed = crate::seed::select_fleet_within_rotations(&leases, &second, &fleet)
+    let reclaimed = crate::seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 
@@ -124,7 +123,6 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         "the reclaim expires the row it took the work from, in the same statement"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -152,7 +150,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
         model: MODEL,
     };
 
-    let held = crate::seed::select_fleet_within_rotations(&leases, &first, &fleet)
+    let held = crate::seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     leases
@@ -169,7 +167,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed = crate::seed::select_fleet_within_rotations(&leases, &second, &fleet)
+    let reclaimed = crate::seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
     assert_eq!(reclaimed.kind, Kind::Reclaim);
@@ -183,7 +181,6 @@ async fn test_every_lease_meters_from_its_own_issue() {
         "a reclaim meters from its own issue, never the dead holder's cursor"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -212,7 +209,7 @@ async fn test_a_stale_claim_writes_no_lease() {
         provider: PROVIDER,
         model: MODEL,
     };
-    let held = crate::seed::select_fleet_within_rotations(&leases, &first, &fleet)
+    let held = crate::seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     // The slot's deadline passes by the database clock, which the fenced
@@ -240,15 +237,16 @@ async fn test_a_stale_claim_writes_no_lease() {
         .await
         .expect("the fenced insert answers");
     assert!(superseded.is_none(), "a superseded fence writes no lease");
-    assert!(
-        leases
-            .reclaim_prior_active(&held.fleet_id)
-            .await
-            .expect("the reclaim statement answers")
-            .is_none(),
-        "no active lease row exists for the fleet"
-    );
+    let mut connection = fixtures.database.acquire().await.expect("database");
+    let active: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM runner.leases WHERE fleet_id = $1::uuid AND status = 'active'",
+    )
+    .bind(&fleet)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("active leases");
+    assert_eq!(active, 0, "a lost claim wrote no active lease");
+    drop(connection);
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }

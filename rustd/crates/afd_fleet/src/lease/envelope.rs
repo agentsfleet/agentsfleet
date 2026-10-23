@@ -1,49 +1,13 @@
-//! What a runner is handed: the envelope, and the two things it can be built
-//! from.
-//!
-//! [`super::assign`] decides WHICH fleet and event a runner gets; this module
-//! is what that answer looks like once it exists. The split is by concern
-//! rather than by length — the selection pass is about ordering and claims,
-//! and this is about a producer's contract, which is the part that changes
-//! when the wire changes.
-//!
-//! # Two sources, one shape
-//!
-//! Work arrives either off the stream (fresh) or out of a dead holder's lease
-//! row (reclaim), and the runner must not be able to tell which. That is why
-//! both build the SAME [`Acquired`]: a lease payload that differed by
-//! provenance would leak a control-plane detail into the execution plane, and
-//! the runner has no use for it — [`Kind`] exists for the audit row, not for
-//! the runner.
+//! Work read from the admissions ledger under the fleet's current fence.
 
+use crate::lease::{affinity::Fence, reclaim::Reused};
 use afd_core::id::Uuid7;
-use afd_dragonfly::{EventId, FleetEvent, ReadyToken};
 use jiff::Timestamp;
-
-use crate::error::{Result, envelope_field, envelope_malformed, row_malformed};
-use crate::lease::affinity::{Claimed, Fence};
-use crate::lease::reclaim::{Reclaimed, Reused};
-
-/// The stream fields this reader requires, taken from the ONE place they are
-/// declared.
-///
-/// Private copies lived here once, and they drifted: the producers moved to
-/// `event_type`/`request_json` and stopped writing `created_at` while these
-/// still read `type`/`request`/`created_at`, so every appended event was
-/// durable, delivered, and undecodable. Importing the same constants the
-/// producers write is what makes that class of drift a compile-time concern
-/// instead of a silent one. `event_id` is among them: the entry id is a
-/// RECEIPT and the field carries the admission ledger's logical id, so an
-/// entry without it was appended by something that did not admit it first.
-use afd_wire::event::field::{
-    ACTOR as FIELD_ACTOR, CREATED_AT as FIELD_CREATED_AT, EVENT_ID as FIELD_EVENT_ID,
-    EVENT_TYPE as FIELD_TYPE, REQUEST_JSON as FIELD_REQUEST, WORKSPACE_ID as FIELD_WORKSPACE,
-};
 
 /// Whether the work was pulled fresh or taken back from a dead holder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// A new entry off the stream. The caller bills it.
+    /// A previously unissued admission. The caller bills it.
     Fresh,
     /// A dead holder's event, re-leased. Its billing is carried, never
     /// re-charged.
@@ -75,10 +39,6 @@ pub struct Acquired {
     /// The event to execute — the admission ledger's LOGICAL id, which the
     /// row, the lease, the ledger and every read address.
     pub event_id: String,
-    /// The stream entry this delivery arrived on, and the only thing `XACK`
-    /// takes. Distinct from [`Self::event_id`] because a replayed admission
-    /// puts one logical event on two entries.
-    pub receipt: EventId,
     /// Who raised it.
     pub actor: String,
     /// Its type.
@@ -100,246 +60,11 @@ pub struct Acquired {
     /// The billing a reclaim carries forward. `None` on a fresh pull, which the
     /// caller bills itself.
     pub reused: Option<Reused>,
-    /// The readiness generation the poll peeked for this fleet.
-    ///
-    /// A park clears the mark with it, so a mark ingress writes while the
-    /// pass runs is a newer generation and survives.
-    pub ready: ReadyToken,
     /// Whether the runner runs this event in the sandbox it holds for the
     /// fleet. Only a fresh event whose claim found this runner's hold live: a
     /// reclaimed event's first attempt may have run in that sandbox, so it
     /// starts clean.
     pub resume_hold: bool,
-    /// Taken over from the group's pending list rather than read new: a
-    /// re-poll, a parked event or a dead replica's strand, whose admission
-    /// stamp says nothing about how long a runner took to pick it up.
+    /// Whether this admission was delivered on an earlier attempt.
     pub redelivered: bool,
-}
-
-/// Build the acquired envelope from a reclaimed lease.
-///
-/// Fallible for one reason: the workspace comes back out of a `uuid` column,
-/// so a value that will not parse means the row was written by something that
-/// is not this daemon. Worth refusing rather than carrying forward.
-pub(crate) fn from_reclaim(
-    fleet_id: &Uuid7,
-    claimed: &Claimed,
-    ready: &ReadyToken,
-    prior: Reclaimed,
-) -> Result<Acquired> {
-    Ok(Acquired {
-        fleet_id: fleet_id.clone(),
-        fence: claimed.fence,
-        leased_until: claimed.leased_until,
-        kind: Kind::Reclaim,
-        event_id: prior.event_id,
-        receipt: EventId::of(&prior.receipt),
-        actor: prior.actor,
-        event_type: prior.event_type,
-        request_json: prior.request_json,
-        workspace_id: Uuid7::parse(&prior.workspace_id)
-            .map_err(row_malformed("runner.leases", "workspace_id"))?,
-        event_created_at: prior.event_created_at,
-        reused: Some(prior.reused),
-        ready: ready.clone(),
-        resume_hold: false,
-        redelivered: false,
-    })
-}
-
-/// Build the acquired envelope from a stream entry.
-///
-/// Every field the producer's contract names is REQUIRED, and a missing one
-/// refuses the lease. An earlier revision defaulted them to empty strings,
-/// which is exactly the sentinel RULE FN-RS bans: an empty `event_type` does
-/// not fail here, it fails later — inside the runner, mid-execution, with
-/// nothing left to say where the value went missing. Refusing at the boundary
-/// names the field while the fleet and the entry are both still in hand.
-pub(crate) fn from_fresh(
-    fleet_id: &Uuid7,
-    claimed: &Claimed,
-    ready: &ReadyToken,
-    event: &FleetEvent,
-    redelivered: bool,
-) -> Result<Acquired> {
-    let field = |name: &'static str| {
-        event
-            .field(name)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .ok_or_else(|| envelope_field(name))
-    };
-    Ok(Acquired {
-        fleet_id: fleet_id.clone(),
-        fence: claimed.fence,
-        leased_until: claimed.leased_until,
-        kind: Kind::Fresh,
-        // The LEDGER's id, not the entry's. An entry with no `event_id` was
-        // appended by something that did not admit it, and is refused here
-        // rather than run under an identity nothing else knows.
-        event_id: field(FIELD_EVENT_ID)?,
-        receipt: event.receipt.clone(),
-        actor: field(FIELD_ACTOR)?,
-        event_type: field(FIELD_TYPE)?,
-        request_json: field(FIELD_REQUEST)?,
-        workspace_id: Uuid7::parse(&field(FIELD_WORKSPACE)?)
-            .map_err(row_malformed("fleet.events", FIELD_WORKSPACE))?,
-        event_created_at: field(FIELD_CREATED_AT)?
-            .parse::<Timestamp>()
-            .map_err(|_unparseable| envelope_malformed(FIELD_CREATED_AT))?,
-        reused: None,
-        ready: ready.clone(),
-        resume_hold: claimed.resume_hold,
-        redelivered,
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking; the restriction set is for the daemon"
-    )]
-    use super::Kind;
-    use afd_core::id::{ENTROPY_LEN, Uuid7};
-    use jiff::Timestamp;
-
-    /// The producer's instant, as the stream entry spells it.
-    const CREATED_AT: &str = "2026-09-04T19:27:14.853Z";
-    /// [`CREATED_AT`] as the reader decodes it.
-    const AT: Timestamp = Timestamp::constant(1_788_550_034, 853_000_000);
-
-    /// A Dragonfly stream entry id: milliseconds and a sequence, as Dragonfly mints it.
-    const ENTRY_ID: &str = "1788550034853-0";
-
-    /// The LEDGER's logical id, distinct from the entry's by construction.
-    ///
-    /// Deliberately a different string from [`ENTRY_ID`]: a reader that
-    /// confused the receipt for the identity would still pass if the two
-    /// fixtures agreed, which is the whole condition this module exists to
-    /// keep apart.
-    const EVENT_ID: &str = "1788550034853-7";
-
-    /// A workspace the reader will parse as a version-7 UUID.
-    const WORKSPACE: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0120";
-
-    /// The fleet the entry belongs to. Minted rather than parsed from a literal:
-    /// `encode` is the only constructor that cannot drift from the type's own
-    /// shape rules.
-    fn fleet_id() -> Uuid7 {
-        Uuid7::encode(Timestamp::constant(1_767_225_600, 0), [7u8; ENTROPY_LEN])
-            .expect("a fixed timestamp and entropy encode to a Uuid7")
-    }
-
-    /// A won claim. Its values are irrelevant to decoding and are carried
-    /// through unread, which is why one shape serves every case here.
-    fn claimed() -> super::Claimed {
-        super::Claimed {
-            fence: super::Fence::from_i64(1),
-            leased_until: afd_core::clock::after(AT, afd_core::timing::LEASE_TTL),
-            resume_hold: false,
-        }
-    }
-
-    /// The generation a poll peeked, carried through unread like the claim.
-    fn ready() -> super::ReadyToken {
-        super::ReadyToken::mint(&afd_crypto::entropy::Entropy::new(), AT)
-            .expect("the host has entropy")
-    }
-
-    /// Both kinds spell themselves, and differently.
-    ///
-    /// The value lands in the lease audit row, and it is the only record of
-    /// HOW a runner came to hold a slot — freshly claimed, or swept from an
-    /// instance that stopped renewing. One spelling for both would erase the
-    /// distinction an operator uses to tell a healthy fleet from one whose
-    /// runners keep dying.
-    #[test]
-    fn every_acquisition_kind_records_its_own_spelling() {
-        assert_eq!(Kind::Fresh.as_str(), "fresh");
-        assert_eq!(Kind::Reclaim.as_str(), "reclaim");
-        assert_ne!(Kind::Fresh.as_str(), Kind::Reclaim.as_str());
-    }
-
-    /// What a producer writes is what this reader can read.
-    ///
-    /// The regression this exists for shipped and was invisible for a fortnight:
-    /// the producers wrote `event_type`/`request_json` and no `created_at` while
-    /// this reader asked for `type`/`request`/`created_at`, so every appended
-    /// event was durable, delivered to a consumer, and undecodable — no lease,
-    /// no error a person saw, no event row. Asserting the two sides against each
-    /// other is the only check that catches a rename on either.
-    #[test]
-    fn a_producers_entry_is_readable_by_this_reader() {
-        let entry = afd_wire::event::Entry {
-            actor: "steer:user_1",
-            event_type: afd_wire::event::EventType::Chat.as_str(),
-            workspace_id: WORKSPACE,
-            request_json: r#"{"message":"hello"}"#,
-            created_at: CREATED_AT,
-        };
-        let event = afd_dragonfly::FleetEvent {
-            receipt: afd_dragonfly::EventId::of(ENTRY_ID),
-            fields: entry
-                .queued_pairs(EVENT_ID)
-                .into_iter()
-                .map(|(name, value)| ((*name).to_owned(), value.to_owned()))
-                .collect(),
-        };
-
-        let ready = ready();
-        let acquired = super::from_fresh(&fleet_id(), &claimed(), &ready, &event, false)
-            .expect("a producer's own entry must be readable by the reader");
-
-        assert_eq!(acquired.actor, "steer:user_1");
-        assert_eq!(acquired.event_type, "chat");
-        assert_eq!(acquired.request_json, r#"{"message":"hello"}"#);
-        assert_eq!(acquired.workspace_id.as_str(), WORKSPACE);
-        assert_eq!(acquired.event_created_at, AT);
-        assert_eq!(acquired.event_id, EVENT_ID);
-        assert_eq!(acquired.receipt.as_str(), ENTRY_ID);
-        assert_eq!(acquired.ready, ready, "the peeked generation rides along");
-    }
-
-    /// An entry missing any single field is refused, naming that field.
-    ///
-    /// The other half of the pair above: the reader must not paper over a
-    /// partial entry with a default, because an empty actor or a zero instant
-    /// fails later — inside a runner, mid-execution, with nothing left to say
-    /// where the value went.
-    #[test]
-    fn an_entry_missing_any_field_is_refused() {
-        let entry = afd_wire::event::Entry {
-            actor: "steer:user_1",
-            event_type: afd_wire::event::EventType::Chat.as_str(),
-            workspace_id: WORKSPACE,
-            request_json: r#"{"message":"hello"}"#,
-            created_at: CREATED_AT,
-        };
-        // The QUEUED six, not the producer's five: with only five present the
-        // reader refuses every case for the missing `event_id`, so each drop
-        // would pass without proving anything about the field it dropped.
-        let pairs = entry.queued_pairs(EVENT_ID);
-        for dropped in 0..pairs.len() {
-            let fields = pairs
-                .iter()
-                .enumerate()
-                .filter(|(index, _)| *index != dropped)
-                .map(|(_, (name, value))| ((*name).to_owned(), (*value).to_owned()))
-                .collect();
-            let event = afd_dragonfly::FleetEvent {
-                receipt: afd_dragonfly::EventId::of(ENTRY_ID),
-                fields,
-            };
-            let refused = super::from_fresh(&fleet_id(), &claimed(), &ready(), &event, false);
-            let name = pairs.get(dropped).map_or("?", |(name, _)| name);
-            assert!(refused.is_err(), "dropping {name} must refuse the entry");
-            // And refused FOR that field: a reader naming the wrong one sends
-            // an operator to a value that is present.
-            assert!(
-                refused.is_err_and(|refusal| refusal.to_string().contains(name)),
-                "dropping {name} must refuse naming {name}"
-            );
-        }
-    }
 }

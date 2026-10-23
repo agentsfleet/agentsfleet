@@ -1,42 +1,9 @@
-//! What steer ingress accepts under concurrency, and where a steer costs.
-//!
-//! # A steer is a Postgres row, then three Dragonfly commands
-//!
-//! `afd_events::Steer::append` admits the message — an insert-returning and
-//! an update on `fleet.admissions` — and then issues an `XADD` onto the
-//! fleet's stream, an `HSET` marking the fleet ready in its partition, and an
-//! `SPUBLISH` ringing that partition's readiness doorbell. The narrative row a
-//! reader pages over still appears when a runner LEASES it, and that cost
-//! still belongs to the lease lane.
-//!
-//! So the Postgres number this lane reports is the ACCEPTANCE cost, which is
-//! what the admission ledger traded queue-only acceptance for. It is read from
-//! Postgres's own statement and commit tallies (`statements.rs`) rather than
-//! assumed, because a number nobody measured is indistinguishable from a
-//! measurement nobody took. Those tallies are flushed before they are read:
-//! the plain `pg_stat_database` reading this lane took before lagged by up to
-//! ten seconds per connection and under-counted a window's commits.
-//!
-//! # The readiness index is the interesting part
-//!
-//! Every steer, for every fleet, writes a field into one of sixteen partition
-//! hashes at `fleet:ready:{p}`. That is the first structure a million fleets contend on, and
-//! the depth series this lane records is how growth outrunning drain becomes a
-//! number rather than a stall somebody notices later.
-//!
-//! # The window is the submitters' window
-//!
-//! Its length is taken the moment the last submitter returns — before the
-//! depth sampler is joined, before any histogram work. Under an abort the
-//! submitters stop early and the window is that short; the first version
-//! took the length after the sampler, which runs to the deadline, and would
-//! have reported an aborted run's rate over a window it never used.
+//! Measure admission latency, database cost and unsettled backlog under concurrent producers.
 
 use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
-use afd_dragonfly::{Dragonfly, ReadyIndex};
 use afd_events::Steer;
 use tokio_util::sync::CancellationToken;
 
@@ -70,12 +37,7 @@ const ERROR_RATE: &str = "error_rate";
 /// Measurement key: Dragonfly commands each accepted steer cost.
 const DRAGONFLY_CALLS_PER_STEER: &str = "dragonfly_calls_per_steer";
 
-/// Measurement key: Postgres transactions each accepted steer cost.
-///
-/// Two per fresh steer — the admission insert and the receipt write — plus a
-/// residue that is not per steer at all: each pooled connection prepares a
-/// statement once, and the admission ceiling samples the backlog once per
-/// thousand admissions. The counter subtracts its own readings.
+/// Measurement key: Postgres commits per accepted steer, including amortized sampling.
 const POSTGRES_TRANSACTIONS_PER_STEER: &str = "postgres_transactions_per_steer";
 
 /// Measurement key: Postgres statements each accepted steer executed,
@@ -83,12 +45,12 @@ const POSTGRES_TRANSACTIONS_PER_STEER: &str = "postgres_transactions_per_steer";
 const POSTGRES_STATEMENTS_PER_STEER: &str = "postgres_statements_per_steer";
 
 /// The task role a lost depth sampler is reported under.
-const SAMPLER_ROLE: &str = "readiness sampler";
+const SAMPLER_ROLE: &str = "backlog sampler";
 
-/// Series key: readiness-index depth, sampled through the run.
-const READY_DEPTH: &str = "ready_depth";
+/// Series key: unsettled admission count, sampled through the run.
+const BACKLOG_DEPTH: &str = "admission_backlog";
 
-/// How often the readiness index is sampled.
+/// How often the admission backlog is sampled.
 const DEPTH_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
 
 /// What the caller asked this lane to measure.
@@ -134,17 +96,7 @@ pub async fn run(
 
     let mut fleets = Vec::new();
     for index in 0..parameters.fleets {
-        fleets.push(
-            seed::empty_fleet(
-                &stores.database,
-                &stores.queue,
-                prefix,
-                &tag,
-                index,
-                SEEDED_AT,
-            )
-            .await?,
-        );
+        fleets.push(seed::empty_fleet(&stores.database, prefix, &tag, index, SEEDED_AT).await?);
         ledger.created(ROWS_PER_FLEET);
     }
     statements::install(&stores.database).await?;
@@ -186,7 +138,14 @@ async fn submit(
     // the same instant rather than as its slice finishes.
     let slices = partition(fleets, parameters.concurrency);
     let stop = CancellationToken::new();
-    let sampler = tokio::spawn(sample_depth(stores.queue.clone(), stop.clone()));
+    let sampler = tokio::spawn(sample_depth(
+        Admissions::new(
+            stores.database.clone(),
+            stores.queue.clone(),
+            Entropy::new(),
+        ),
+        stop.clone(),
+    ));
     let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let postgres_before = statements::read(&stores.database).await?;
     let started = Instant::now();
@@ -287,19 +246,18 @@ async fn append_until(
     Ok(outcomes)
 }
 
-/// Sample the readiness index until told to stop.
+/// Sample the admission backlog until told to stop.
 ///
 /// A separate task rather than a reading taken by each submitter: the depth is
 /// a property of the index over TIME, and a sample taken inside an append loop
 /// would be a sample taken at whatever rate that loop happened to run. It
 /// stops on the lane's signal, not on the deadline, so an aborted window does
 /// not leave it running alone.
-async fn sample_depth(queue: Dragonfly, stop: CancellationToken) -> Vec<f64> {
-    let index = ReadyIndex::new(queue);
+async fn sample_depth(admissions: Admissions, stop: CancellationToken) -> Vec<f64> {
     let mut series = Vec::new();
     while !stop.is_cancelled() {
-        if let Ok(depth) = index.len().await {
-            series.push(count(depth));
+        if let Ok(backlog) = admissions.backlog().await {
+            series.push(count(backlog.rows));
         }
         tokio::select! {
             () = stop.cancelled() => break,
@@ -330,7 +288,7 @@ impl Submitted {
         );
         report
             .series
-            .insert(READY_DEPTH.to_owned(), self.depth.clone());
+            .insert(BACKLOG_DEPTH.to_owned(), self.depth.clone());
         report.datastores = DatastoreCosts {
             dragonfly: DatastoreCost {
                 operations: self.dragonfly_calls,

@@ -16,17 +16,16 @@ impl Inbox {
     ///
     /// A retry is the one caller left to notice the first answer's wake or
     /// continuation never landed, so it redoes whichever the stored answer
-    /// owes: the wake for a delivery left parked, and the continuation for an
-    /// approved run. Both are idempotent — a mark mints a fresh token, and the
-    /// continuation is keyed on the gate's action.
+    /// owes: a wake for the original delivery, or a continuation for an
+    /// approved run. The continuation is keyed on the gate's action, and a
+    /// repeated wake changes no durable queue state.
     ///
     /// # Errors
     /// Reports a ledger that would not answer, and a continuation that would
     /// not land.
     pub(super) async fn stood(&self, mut resolved: Resolved) -> Result<Resolved> {
         if leaves_delivery_parked(&resolved.status, resolved.event_id.as_deref()) {
-            self.wake_parked_delivery(&resolved.fleet_id, &resolved.gate_id)
-                .await;
+            self.wake_parked_delivery(&resolved.fleet_id).await;
         } else if resolved.status == status::APPROVED
             && let Some(event_id) = resolved.event_id.clone()
         {
@@ -61,10 +60,8 @@ impl Inbox {
     }
 }
 
-/// Whether a gate answered `answer` leaves its delivery parked on the stream
-/// for the next poll to read: a gate that held no run, and a run the answer
-/// ended. Only an approval of a run moves on without one, through the
-/// continuation it lands.
+/// Whether the next poll reads the original delivery: a gate that held no
+/// run, or a run the answer ended. An approved run lands a continuation.
 pub(super) fn leaves_delivery_parked(answer: &str, event_id: Option<&str>) -> bool {
     event_id.is_none() || answer == status::DENIED || answer == status::TIMED_OUT
 }

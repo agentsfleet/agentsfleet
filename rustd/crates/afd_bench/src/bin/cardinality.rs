@@ -42,6 +42,6 @@ async fn measure() -> Result<String> {
     // the lane's failure first when both failed.
     let measured =
         cardinality::run(profile, provenance, &target, parameters, &stores, &prefix).await;
-    let swept = sweep::everything(&stores.database, &stores.queue, &prefix).await;
+    let swept = sweep::everything(&stores.database, &prefix).await;
     cli::finish(Lane::Cardinality, profile, measured, swept)
 }

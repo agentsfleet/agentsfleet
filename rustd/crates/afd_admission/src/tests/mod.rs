@@ -7,8 +7,8 @@ use std::collections::BTreeSet;
 use afd_wire::event::EventType;
 
 use super::admit::ReplyBinds;
-use super::budget::{FLEET_BACKLOG_BUDGET, REPLAY_BACKLOG_BUDGET};
-use super::{Admission, BudgetScope, Budgets, Key, Producer, Replayed, Reply};
+use super::budget::{DEPLOYMENT_BACKLOG_BUDGET, FLEET_BACKLOG_BUDGET};
+use super::{Admission, BudgetScope, Budgets, Key, Producer, Reply};
 
 /// Every producer, so a test cannot silently cover five of six.
 ///
@@ -138,43 +138,13 @@ fn a_digest_is_sixty_four_hex_characters() {
     );
 }
 
-/// A pass that appended everything it scanned is clean; one that did not is
-/// not — including the pass that scanned rows and appended none.
-#[test]
-fn a_replay_pass_is_clean_only_when_it_appended_everything_it_scanned() {
-    assert!(Replayed::default().is_clean(), "an empty pass is clean");
-    assert!(
-        Replayed {
-            scanned: 4,
-            appended: 4
-        }
-        .is_clean()
-    );
-    assert!(
-        !Replayed {
-            scanned: 4,
-            appended: 3
-        }
-        .is_clean(),
-        "a pass the queue refused partway is not clean"
-    );
-    assert!(
-        !Replayed {
-            scanned: 4,
-            appended: 0
-        }
-        .is_clean(),
-        "a pass that appended nothing is not clean"
-    );
-}
-
 /// The production budgets are the declared constants, and a suite that wants
 /// others has to name them.
 #[test]
 fn the_default_budgets_are_the_declared_constants() {
     let budgets = Budgets::default();
     assert_eq!(budgets.fleet_backlog, FLEET_BACKLOG_BUDGET);
-    assert_eq!(budgets.replay_backlog, REPLAY_BACKLOG_BUDGET);
+    assert_eq!(budgets.deployment_backlog, DEPLOYMENT_BACKLOG_BUDGET);
 }
 
 /// The two scopes spell themselves apart, and the sentence a refusal renders

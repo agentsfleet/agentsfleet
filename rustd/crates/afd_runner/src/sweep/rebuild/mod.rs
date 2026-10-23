@@ -1,37 +1,5 @@
-//! Every recovery pass, run a stated number of rounds, for a rebuild.
-//!
-//! # What a rebuild is
-//!
-//! PostgreSQL is the forge and Dragonfly a cache of it, and the claim is
-//! only true if the cache can be thrown away and refilled from the ledger.
-//! The refilling is not new code: admission replay re-appends what was
-//! accepted and never queued, admission reconcile forgets receipts the
-//! stream cannot produce, the outbound producer re-appends answers still
-//! owed, and reclaim re-marks fleets that hold work. Each already runs as a
-//! sweeper on its own interval. A rebuild is those same passes, run to a
-//! bounded end in one place — the routine the flush proof runs, and the tool
-//! an operator reaches for after tearing the cluster down.
-//!
-//! # Why rounds and not "until nothing changed"
-//!
-//! The obvious loop has no fixed point here. Reclaim re-marks a fleet on
-//! every pass for as long as its stream holds deliverable work, and that is
-//! correct — the mark is a hint the poll path consumes, and re-issuing it
-//! costs nothing — so its tally never reaches zero while work is queued, and a
-//! rebuild waiting for that would wait until runners drained the very queue
-//! it was refilling. So a rebuild runs the rounds it is given and reports what
-//! they did. The proof that it was COMPLETE belongs to the caller: the flush
-//! test asserts every seeded job reaches terminal, and an operator reads the
-//! capacity report. Neither takes this module's tally as the verdict.
-//!
-//! # Why the order within a round is the caller's
-//!
-//! Reconcile voids a receipt the stream lost, which returns the row to the
-//! set replay re-appends, so replay belongs after reconcile in a round and
-//! the next round's replay catches what this one's reconcile voided; reclaim
-//! belongs last, so it marks fleets whose streams the earlier passes just
-//! refilled. That order is knowledge about the sweepers, not about the loop,
-//! and it is written where the sweepers are composed.
+//! Rebuild outbound delivery from durable obligations in a bounded number of passes.
+//! Inbound admissions remain directly discoverable in PostgreSQL.
 
 use std::pin::Pin;
 

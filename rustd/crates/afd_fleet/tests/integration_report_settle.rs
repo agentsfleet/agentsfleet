@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::queue;
 use crate::report_seed;
 use afd_fleet::lease::Settled;
 use afd_fleet::lease::sql;
@@ -108,7 +107,6 @@ async fn test_report_writes_row_parity() {
         "the tally picks ONE column; both moving would mean the CASE arms disagree"
     );
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -130,10 +128,9 @@ async fn test_report_stale_fence_rejected() {
     held.fixtures
         .age(Row::Slot(&held.fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed =
-        crate::seed::select_fleet_within_rotations(&held.leases, &held.spare, &held.fleet)
-            .await
-            .expect("a lapsed claim is winnable");
+    let reclaimed = crate::seed::select_fleet(&held.leases, &held.spare, &held.fleet)
+        .await
+        .expect("a lapsed claim is winnable");
     assert!(
         reclaimed.fence > held.fence,
         "the reclaim must outrank the holder it displaced, or this test proves nothing"
@@ -185,7 +182,6 @@ async fn test_report_stale_fence_rejected() {
         "and it counts nothing on the failure arm either, not merely the one this report named"
     );
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -245,6 +241,5 @@ async fn test_report_dedup_idempotent() {
         "and charges nothing the second time"
     );
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }

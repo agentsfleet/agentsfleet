@@ -37,13 +37,9 @@ impl Replica {
 
     /// B's poll: win the lapsed claim, take the dead holder's event, write a lease.
     pub(super) async fn readmit(&self, running: &Running) -> (String, Uuid7) {
-        let acquired = crate::seed::select_fleet_within_rotations(
-            &self.leases,
-            &running.runner,
-            &running.fleet,
-        )
-        .await
-        .expect("the lapsed fleet is offered to the second replica");
+        let acquired = crate::seed::select_fleet(&self.leases, &running.runner, &running.fleet)
+            .await
+            .expect("the lapsed fleet is offered to the second replica");
         assert_eq!(
             acquired.kind,
             Kind::Reclaim,

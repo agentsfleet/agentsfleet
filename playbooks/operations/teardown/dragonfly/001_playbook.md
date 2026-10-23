@@ -4,18 +4,15 @@
 verifies.
 **Scope:** exactly one of development or production per run.
 
-The teardown empties every member of the environment's Dragonfly cluster:
-it sends `FLUSHALL` to each primary and then proves `DBSIZE` is 0 on every
-member, primaries and replicas alike. It loses queued work and every stored key,
-including:
+The teardown sends `FLUSHALL` to each primary in the environment's Dragonfly cluster.
+It then proves `DBSIZE` is 0 on every primary and replica.
+It removes every stored key, including:
 
-- `fleet:{fleet_id}:events` streams and their `fleet_lease` consumer groups
-- the sixteen `fleet:ready:{p}` readiness partitions
 - the `connector:outbound` delivery stream
 - authentication session, approval, and deduplication keys
 
-The `fleet:{fleet_id}:activity` name is an ephemeral publish/subscribe
-(Pub/Sub) channel, not a stored key.
+Accepted inbound work remains in Postgres. Undelivered outbound obligations also remain there for the rebuild pass.
+Activity and wake channels are ephemeral; flushing stored keys does not remove their durable history.
 
 ## Where it runs, and why
 
@@ -100,9 +97,9 @@ before any flush.
 ## After the empty-cache check
 
 Restart or redeploy every `agentsfleetd` machine before restoring traffic.
-Startup recreates the shared `connector:outbound` group. Fleet event streams,
-the `fleet_lease` group, readiness entries, sessions, and deduplication keys
-are recreated by their normal write paths.
+Startup recreates the shared `connector:outbound` group. Normal writes recreate authentication sessions and deduplication keys.
+
+Lease polls continue reading the admissions ledger; outbound rebuild retries undelivered obligations.
 
 To remove the cluster entirely rather than empty it, delete the environment's
 Dragonfly Fly app; the next deploy recreates it from

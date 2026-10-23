@@ -99,7 +99,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     // as `integration_lease_issue` does them.
     // Narrowed to THIS fleet: the readiness cursor is process-global, and the
     // issue below charges this tenant's wallet for whatever was acquired.
-    let held = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
+    let held = crate::seed::select_fleet(&fixtures.leases(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
     // The lease row references the event's row, which the narrative log opens.

@@ -15,7 +15,6 @@ use tokio::sync::Semaphore;
 use crate::Dragonfly;
 use crate::config::DragonflyConfig;
 use crate::error::{ErrorKind, Result};
-use crate::streams::{EventId, FleetEvent};
 
 /// How long the subscription hub lets a lost node socket go unexplained
 /// before it redials whole. The hub's own value, so a fault test derives its
@@ -108,41 +107,6 @@ pub fn cluster_shards_reply(port: u16) -> Vec<u8> {
     .into_bytes()
 }
 
-/// Every entry one fleet's stream holds, oldest first.
-///
-/// `XRANGE` over the whole stream, NOT a group read: `XREADGROUP` moves
-/// `last-delivered-id`, which moves the retention floor, so a suite that
-/// inspected its stream that way would change the thing it was about to assert
-/// on. Nothing in production reads a stream this way — history is
-/// `fleet.events` — which is why it lives here and not on
-/// [`FleetStreams`](crate::FleetStreams).
-///
-/// Each [`FleetEvent`] carries the receipt and the entry's fields, so a caller
-/// reads the logical id with `event.field(afd_wire::event::field::EVENT_ID)`
-/// rather than spelling the field name here. After a replay one logical id
-/// legitimately appears on two entries, and both are returned.
-///
-/// # Errors
-/// Returns a command error when the stream cannot be read.
-pub async fn fleet_entries(redis: &Dragonfly, fleet_id: &str) -> Result<Vec<FleetEvent>> {
-    let key = redis.physical_key(&crate::streams::fleet_stream_key(fleet_id));
-    let mut cmd = redis::cmd(CMD_XRANGE);
-    cmd.arg(&key).arg(RANGE_OLDEST).arg(RANGE_NEWEST);
-    let reply: redis::streams::StreamRangeReply = redis.command(CMD_XRANGE, &key, &cmd).await?;
-    Ok(reply
-        .ids
-        .iter()
-        .map(|entry| FleetEvent {
-            receipt: EventId::of(&entry.id),
-            fields: entry
-                .map
-                .iter()
-                .map(|(name, value)| (name.clone(), crate::streams::render::stringify(value)))
-                .collect(),
-        })
-        .collect())
-}
-
 /// Active sharded subscription channels matching a physical pattern, per primary.
 ///
 /// # Errors
@@ -168,28 +132,5 @@ pub async fn shard_channels(redis: &Dragonfly, pattern: &str) -> Result<Vec<Stri
     Ok(channels)
 }
 
-/// The consumer groups one fleet's stream carries, by name.
-///
-/// `XINFO GROUPS` is a read: it creates nothing and moves no cursor, so a
-/// proof that a lost acknowledgement still left exactly one group can look
-/// without changing what it asserts.
-///
-/// # Errors
-/// Returns a command error when the stream cannot be read, including when the
-/// stream does not exist.
-pub async fn fleet_groups(redis: &Dragonfly, fleet_id: &str) -> Result<Vec<String>> {
-    let key = redis.physical_key(&crate::streams::fleet_stream_key(fleet_id));
-    let mut cmd = redis::cmd(CMD_XINFO);
-    cmd.arg(XINFO_GROUPS).arg(&key);
-    let reply: redis::streams::StreamInfoGroupsReply = redis.command(CMD_XINFO, &key, &cmd).await?;
-    Ok(reply.groups.into_iter().map(|group| group.name).collect())
-}
-
-/// The command [`fleet_entries`] issues, and its bounds.
-const CMD_XRANGE: &str = "XRANGE";
-const RANGE_OLDEST: &str = "-";
-const RANGE_NEWEST: &str = "+";
 const CMD_PUBSUB: &str = "PUBSUB";
 const SHARD_CHANNELS: &str = "SHARDCHANNELS";
-const CMD_XINFO: &str = "XINFO";
-const XINFO_GROUPS: &str = "GROUPS";

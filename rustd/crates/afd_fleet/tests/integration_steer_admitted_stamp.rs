@@ -17,14 +17,12 @@
 
 use afd_core::event::status;
 use afd_core::id::Uuid7;
-use afd_dragonfly::FleetStreams;
 use afd_events::{Cursor, History, Steer};
 use afd_fleet::lease::Delivery;
 
-use crate::integration_admission_recovery::{admission, ledger, producer_key};
-use crate::queue;
+use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::rows::Row;
-use crate::seed::{seeded_parts, select_fleet_within_rotations};
+use crate::seed::{seeded_parts, select_fleet};
 use crate::support::Fixtures;
 
 /// A person's actor, as a steer records it.
@@ -88,7 +86,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
     let cursor = Cursor::after(last.row.created_at, &last.row.event_id);
 
     let leases = fixtures.leases();
-    let acquired = select_fleet_within_rotations(&leases, &runner, &fleet)
+    let acquired = select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet holding the steers is leasable");
     assert_eq!(
@@ -121,11 +119,6 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
         "as the history row the lease wrote"
     );
 
-    FleetStreams::new(fixtures.queue().clone())
-        .forget(&fleet)
-        .await
-        .expect("purging the stream");
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -142,7 +135,7 @@ async fn test_webhook_row_keeps_the_lease_instant() {
         .expect("a live queue admits the webhook");
 
     let leases = fixtures.leases();
-    let acquired = select_fleet_within_rotations(&leases, &runner, &fleet)
+    let acquired = select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet holding the webhook is leasable");
     let (received, lease_window) = fixtures
@@ -156,10 +149,5 @@ async fn test_webhook_row_keeps_the_lease_instant() {
         received.opened_at
     );
 
-    FleetStreams::new(fixtures.queue().clone())
-        .forget(&fleet)
-        .await
-        .expect("purging the stream");
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }

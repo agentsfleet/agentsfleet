@@ -30,7 +30,6 @@ use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::{Committed, Renewed};
 use sqlx::Connection as _;
 
-use crate::queue;
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::{Held, held};
 
@@ -146,7 +145,6 @@ async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
 
     drop(connection);
     owner.close().await;
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 

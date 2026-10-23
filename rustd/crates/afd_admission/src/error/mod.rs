@@ -7,26 +7,8 @@
 //! raise site. The hull is `afd_core::error_shell!`, so nothing here repeats
 //! what fifteen sibling crates already share.
 //!
-//! # Capacity is an outage to the caller and a class to the operator
-//!
-//! A spent budget, a queue answering `OOM` and a Postgres answering an
-//! insufficient-resources SQLSTATE are one thing to a producer: the datastore
-//! cannot take this write now, retry later — the same 503 an outage earns,
-//! because the client behaviour wanted is the same. They are a different thing
-//! to whoever is on call, so [`Error::is_over_capacity`] keeps the class
-//! separable and the counters and log lines name it (RULE ECL). A dedicated
-//! wire code would be a public-contract change with a docs branch of its own,
-//! and is deliberately not made here.
-//!
-//! # What is deliberately NOT an error
-//!
-//! A queue that would not take an admission's append. The row is committed by
-//! then, the caller is answered, and the replay sweeper appends when the queue
-//! is back — see the crate header. [`ErrorKind::Queue`] exists for the replay
-//! path, where a queue failure is the pass's outcome and not something a
-//! producer is waiting on. Nor is a producer key reused with a different
-//! payload: the key is the identity, the first payload stands, and the drift
-//! is logged.
+//! A failed durable write is returned to the producer. Notification failure
+//! happens after acceptance and never changes that answer.
 
 use afd_core::error::{
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_OPERATION_FAILED,
@@ -74,13 +56,6 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    /// The queue would not take a replayed entry.
-    #[error("the fleet's stream could not be reached")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     /// A budget is spent, and the producer is told to come back later.
     #[error("the {scope} admission budget of {limit} is spent")]
     OverBudget {
@@ -115,23 +90,14 @@ impl Error {
                 error_code::AUTHORING_POLICY,
                 afd_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
             ),
-            // A queue that is GONE is the same outage a caller retries
-            // against, so it answers the unavailable code rather than a
-            // generic 500; so does one that is FULL, and so do the two
-            // capacity refusals, because the caller's move is the same. A
-            // queue that answered and refused is this process's problem.
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
-            ErrorKind::Queue { source } if source.is_unavailable() || source.is_full() => (
-                error_code::INTERNAL_DB_UNAVAILABLE,
-                DETAIL_DATABASE_UNAVAILABLE,
-            ),
             ErrorKind::Query { .. } => (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR),
-            ErrorKind::Queue { .. } | ErrorKind::Entropy { .. } => (
+            ErrorKind::Entropy { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,
             ),
@@ -164,7 +130,6 @@ impl Error {
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. } => true,
-            ErrorKind::Queue { source } => source.is_unavailable() || source.is_full(),
             _reachable => false,
         }
     }
@@ -175,7 +140,6 @@ impl Error {
     pub fn is_over_capacity(&self) -> bool {
         match self.kind() {
             ErrorKind::OverBudget { .. } | ErrorKind::Exhausted { .. } => true,
-            ErrorKind::Queue { source } => source.is_full(),
             _reachable => false,
         }
     }

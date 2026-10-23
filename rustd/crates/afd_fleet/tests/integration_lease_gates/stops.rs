@@ -1,5 +1,4 @@
-//! What a pass that issues no lease leaves behind: a freed claim, and — when
-//! it parks on a person — a cleared mark that the answer puts back.
+//! A refusal frees the claim; a gate parks its admission until the answer.
 
 use super::seed::{seed_gate, seed_provider_resolution};
 use super::*;
@@ -7,7 +6,6 @@ use super::*;
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_crypto::entropy::Entropy;
-use afd_dragonfly::ReadyIndex;
 
 use crate::lease_reads::COLUMN_LAST_RUNNER;
 use crate::rows::Row;
@@ -56,25 +54,19 @@ async fn test_stop_releases_the_claim() {
 
     // One millisecond on is the next poll; a held claim would refuse it.
     let next = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
-    let leased = crate::seed::select_fleet_within_rotations(
-        &fixtures.leases(),
-        &seeded.runner,
-        &seeded.fleet,
-    )
-    .await
-    .expect("the fleet's next event leases on the next poll");
+    let leased = crate::seed::select_fleet(&fixtures.leases(), &seeded.runner, &seeded.fleet)
+        .await
+        .expect("the fleet's next event leases on the next poll");
     assert_eq!(leased.event_id, next);
 
-    crate::queue::clear_ready(fixtures.queue(), &seeded.fleet).await;
     fixtures.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_approval_resolution_leases_next_poll() {
-    // A park frees the claim and clears the fleet's mark, because a person owes
-    // the answer and polling meanwhile would re-ask the same question. The
-    // answer is what puts the mark back, so the next poll leases the delivery.
+    // A park frees the slot. Resolution un-parks the same admission before
+    // landing its continuation, so the original delivery leases first.
     crate::support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
     let seeded = ready(&fixtures).await;
@@ -93,8 +85,8 @@ async fn test_approval_resolution_leases_next_poll() {
         "the park freed the claim"
     );
     assert!(
-        !marked(&fixtures, &seeded.fleet).await,
-        "the park cleared the mark"
+        parked(&fixtures, &seeded.event_id).await,
+        "the admission is durably parked"
     );
 
     let resolved = Inbox::new(
@@ -117,30 +109,72 @@ async fn test_approval_resolution_leases_next_poll() {
     .expect("the resolve must not fault");
     assert!(matches!(resolved, Resolution::Resolved(_)), "{resolved:?}");
     assert!(
-        marked(&fixtures, &seeded.fleet).await,
-        "the answer re-marked the fleet"
+        !parked(&fixtures, &seeded.event_id).await,
+        "the answer durably unparked the admission"
     );
 
-    let leased = crate::seed::select_fleet_within_rotations(
-        &fixtures.leases(),
-        &seeded.runner,
-        &seeded.fleet,
-    )
-    .await
-    .expect("the answered delivery leases on the next poll");
+    let leased = crate::seed::select_fleet(&fixtures.leases(), &seeded.runner, &seeded.fleet)
+        .await
+        .expect("the answered delivery leases on the next poll");
     assert_eq!(
         leased.event_id, seeded.event_id,
         "the parked delivery comes back first, ahead of its continuation"
     );
 
-    crate::queue::clear_ready(fixtures.queue(), &seeded.fleet).await;
     fixtures.cleanup().await;
+}
+
+// Value: protects=an unanswered approval cannot strand the queue;
+// fails_when=deadline reconsideration cannot reach gate evaluation and settlement;
+// why_new=claim-only tests cannot prove tail progress; seam=Postgres and Dragonfly.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let seeded = ready(&fixtures).await;
+    set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let action = seed_gate(&fixtures, &seeded, afd_api_wire::approval::status::PENDING).await;
+    let claimed = claim(&fixtures, &seeded).await;
+    assert!(drive(&fixtures, &seeded, claimed).await.contains(NO_LEASE));
+    assert!(parked(&fixtures, &seeded.event_id).await);
+    let workspace = super::seed::workspace_of(&fixtures, &seeded.fleet).await;
+    let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
+    fixtures
+        .queue()
+        .spend_key(&afd_gate::gate::key::event_ref(
+            &seeded.fleet,
+            &seeded.event_id,
+        ))
+        .await
+        .expect("simulate the reference expiring before recovery");
+    sqlx::query("UPDATE fleet.approval_gates SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1")
+        .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("deadline"))
+        .await.expect("elapsed approval deadline");
+    let resumed = claim(&fixtures, &seeded).await;
+    assert_eq!(resumed.event_id, seeded.event_id);
+    assert!(drive(&fixtures, &seeded, resumed).await.contains(NO_LEASE));
+    assert_expired_settlement(&fixtures, &seeded.event_id, &action).await;
+    let next = claim(&fixtures, &seeded).await;
+    assert_eq!(
+        next.event_id, later,
+        "expiry released the tail without a sweeper"
+    );
+    fixtures.cleanup().await;
+}
+
+async fn assert_expired_settlement(fixtures: &Fixtures, event: &str, action: &str) {
+    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM fleet.admissions a JOIN fleet.approval_gates g ON g.fleet_id=a.fleet_id WHERE a.id=$1::uuid AND g.action_id=$2")
+        .bind(event).bind(action)
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("settlement observer"))
+        .await.expect("settled admission and answerable approval");
+    assert_eq!(state, (true, true));
 }
 
 /// Ingress for one event of `event_type`, marking the fleet as ingress does.
 async fn send(fixtures: &Fixtures, fleet: &str, workspace: &str, event_type: &str) -> String {
     crate::queue::enqueue(
-        fixtures.queue(),
+        &fixtures.database,
         fleet,
         workspace,
         ACTOR,
@@ -151,11 +185,11 @@ async fn send(fixtures: &Fixtures, fleet: &str, workspace: &str, event_type: &st
     .await
 }
 
-/// Whether `fleet` holds a readiness mark.
-async fn marked(fixtures: &Fixtures, fleet: &str) -> bool {
-    ReadyIndex::new(fixtures.queue().clone())
-        .token_for(fleet)
+async fn parked(fixtures: &Fixtures, event: &str) -> bool {
+    let mut connection = fixtures.database.acquire().await.expect("database");
+    sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id = $1::uuid")
+        .bind(event)
+        .fetch_one(&mut *connection)
         .await
-        .expect("the ready index is readable")
-        .is_some()
+        .expect("park state")
 }

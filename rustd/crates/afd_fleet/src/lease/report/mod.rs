@@ -161,7 +161,7 @@ impl Plane {
         match self.leases.commit_report(report).await? {
             Committed::Fenced => Err(stale_fence()),
             Committed::AlreadySettled => {
-                self.acknowledge_again(&lease, lease_id).await;
+                Self::record_repeat(&lease, lease_id);
                 Ok(reconciled(lease, Nanos::ZERO, true, RunTokens::default()))
             }
             Committed::Settled {

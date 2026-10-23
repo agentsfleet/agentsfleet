@@ -8,6 +8,7 @@
 mod activation;
 mod admission_faults;
 mod cancellation;
+mod confirmation;
 mod contention;
 mod deletion_matrix;
 mod fixture;

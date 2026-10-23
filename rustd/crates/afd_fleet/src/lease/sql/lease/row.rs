@@ -44,7 +44,7 @@ pub const INSERT_LEASE_WITH_EVENT: &str = include_str!("insert_lease_with_event.
 
 /// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
 ///
-/// Twenty-one positional parameters, several of them same-typed text that a
+/// Twenty positional parameters, several of them same-typed text that a
 /// transposition would compile straight through, and this workspace disables
 /// sqlx's `macros` feature deliberately, so there is no compile-time query
 /// checking to catch it. Naming the fields is what replaces
@@ -64,10 +64,6 @@ pub struct LeaseRow<'a> {
     /// The event being leased, as the admission ledger names it. The statement
     /// resolves it to the `fleet.events` row the lease references.
     pub event_id: &'a str,
-    /// The stream entry this lease was handed, which is what its
-    /// acknowledgement addresses. Distinct from [`Self::event_id`] because a
-    /// replayed admission puts one logical event on two entries.
-    pub receipt: &'a str,
     /// When the event was raised, by the producer's clock; what the lease bills
     /// against.
     pub event_created_at: Timestamp,
@@ -101,7 +97,6 @@ impl<'a> LeaseRow<'a> {
             .bind(self.workspace_id.as_str())
             .bind(self.tenant_id.as_str())
             .bind(self.event_id)
-            .bind(self.receipt)
             .bind(self.posture)
             .bind(self.provider)
             .bind(self.model)

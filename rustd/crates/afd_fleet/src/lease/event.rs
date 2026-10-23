@@ -23,6 +23,7 @@
 //! its own, and the gate pass calls it first.
 
 use jiff::Timestamp;
+use sqlx::Connection as _;
 
 use afd_api_wire::tail::FleetCounters;
 use afd_core::id::Uuid7;
@@ -31,6 +32,7 @@ use afd_events::Closed;
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
 use crate::lease::envelope::Acquired;
+use crate::lease::sql::queue;
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
@@ -106,7 +108,7 @@ impl Leases {
     /// Answers [`Delivery::Repeat`] when the row was already there — the
     /// `ON CONFLICT` arm — which is how a re-leased or re-polled event is told
     /// apart from a new one without a second read. A first delivery also
-    /// answers the fleet's counters, read right after the insert on the same
+    /// answers the fleet's counters, read after commit on the same
     /// connection.
     ///
     /// # Errors
@@ -115,6 +117,18 @@ impl Leases {
     /// parsed it — so there is nothing left here to validate.
     pub async fn record_received(&self, acquired: &Acquired) -> Result<Received> {
         let mut connection = self.pool().acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_RECEIVED))?;
+        if !self
+            .lock_admission_on(
+                &mut transaction,
+                &acquired.fleet_id,
+                &acquired.event_id,
+                acquired.fence,
+            )
+            .await?
+        {
+            return Err(crate::error::stale_fence());
+        }
         let admission = Uuid7::parse(&acquired.event_id).ok();
         let landed: Landed = sqlx::query_as(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
             .bind(acquired.fleet_id.as_str())
@@ -127,7 +141,7 @@ impl Leases {
             .bind(afd_core::event::status::RECEIVED)
             .bind(admission.as_ref().map(Uuid7::as_str))
             .bind(afd_admission::Producer::Steer.as_str())
-            .fetch_one(&mut *connection)
+            .fetch_one(&mut *transaction)
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
         let Landed {
@@ -135,29 +149,37 @@ impl Leases {
             created_at: opened_at,
         } = landed;
 
-        // Stamped on BOTH arms, before the arms diverge. A first delivery that
-        // wrote the narrative row and then failed to stamp has committed the
-        // row already — these are separate statements on an autocommit
-        // connection — and its redelivery takes the conflict arm. Stamping only
-        // on the first arm would leave that row unstamped forever.
-        stamp_admission_delivered(&mut connection, admission.as_ref(), acquired).await?;
+        sqlx::query(queue::STAMP_DELIVERY)
+            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.event_id)
+            .bind(acquired.fence.as_i64())
+            .execute(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_DELIVERED))?;
 
         // A false flag is the conflict arm: the row was already there, so
         // somebody has already paid for this event. `rows_affected` cannot say
         // that any more — the arm converges to keep a continuation's
         // predecessor, so it reports one row written either way.
-        if !inserted {
-            return Ok(Received {
-                delivery: self.redelivery_of(&mut connection, acquired).await?,
-                counters: None,
-                opened_at,
-            });
-        }
-        let counters =
+        let delivery = if inserted {
+            Delivery::First
+        } else {
+            self.redelivery_of(&mut transaction, acquired).await?
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(query(CONTEXT_RECEIVED))?;
+        // Read optional tail figures after commit so a refused SELECT cannot
+        // abort the durable delivery.
+        let counters = if inserted {
             afd_events::fleet_counters_best_effort_on(&mut connection, acquired.fleet_id.as_str())
-                .await;
+                .await
+        } else {
+            None
+        };
         Ok(Received {
-            delivery: Delivery::First,
+            delivery,
             counters,
             opened_at,
         })
@@ -196,46 +218,6 @@ impl Leases {
     }
 }
 
-/// Stamp this event's admission row as delivered, on the connection that just
-/// opened the narrative log.
-///
-/// The second half of the same fact. `fleet.events` records that a runner
-/// was handed this event; `fleet.admissions.delivered_at` records it where
-/// the recovery pass can find it under one partial index, instead of behind a
-/// join no index can bound. Attempted on every delivery, first or repeat: see
-/// the call site for the unstamped row that costs.
-///
-/// `admitted` is the logical id parsed by the ledger's own
-/// [`logical_parts`](afd_admission::logical_parts), once, for this and the
-/// insert's admission lookup. `None` is an ordinary
-/// answer: an id this ledger never minted — an approval's continuation, an
-/// event predating the table — has no row to stamp. A zero row count is
-/// ordinary for the same reason, and so is a row this delivery's predecessor
-/// already stamped, so neither is reported.
-///
-/// # Errors
-/// Reports a database that would not answer. It is raised rather than
-/// swallowed: an unstamped row is one the reconcile pass can later read as
-/// accepted work whose entry is gone, and re-append an event that already ran.
-/// The caller's redelivery runs this again, which is why it is attempted on
-/// every delivery rather than only the first.
-async fn stamp_admission_delivered(
-    connection: &mut sqlx::PgConnection,
-    admission: Option<&Uuid7>,
-    acquired: &Acquired,
-) -> Result<()> {
-    let Some(admission) = admission else {
-        return Ok(());
-    };
-    sqlx::query(afd_admission::sql::MARK_DELIVERED)
-        .bind(acquired.fleet_id.as_str())
-        .bind(admission.as_str())
-        .execute(&mut *connection)
-        .await
-        .map_err(query(CONTEXT_DELIVERED))?;
-    Ok(())
-}
-
 /// Whether the refusal moved a row, and the row it moved.
 ///
 /// A named type for the reason [`Delivery`] is one: the answer looks like
@@ -268,11 +250,23 @@ impl Leases {
     /// Reports a datastore that would not answer, and a closing this daemon
     /// cannot read. A row that has already ended is [`Ended::Already`], not
     /// an error — see that type.
-    pub async fn block(&self, fleet_id: &Uuid7, event_id: &str, refusal: Refusal) -> Result<Ended> {
+    pub async fn block(&self, acquired: &Acquired, refusal: Refusal) -> Result<Ended> {
         let mut connection = self.pool().acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_BLOCKED))?;
+        if !self
+            .lock_admission_on(
+                &mut transaction,
+                &acquired.fleet_id,
+                &acquired.event_id,
+                acquired.fence,
+            )
+            .await?
+        {
+            return Err(crate::error::stale_fence());
+        }
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
-            .bind(fleet_id.as_str())
-            .bind(event_id)
+            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.event_id)
             .bind(afd_core::event::status::GATE_BLOCKED)
             .bind(refusal.label)
             .bind(afd_core::event::status::RECEIVED)
@@ -281,13 +275,16 @@ impl Leases {
             // carry no operator-readable instruction.
             .bind(refusal.detail)
             .bind(afd_api_wire::approval::status::PENDING)
-            .fetch_optional(&mut *connection)
+            .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_BLOCKED))?;
 
-        Ok(match closed {
+        self.settle_terminal_on(&mut transaction, acquired).await?;
+        let ended = match closed {
             Some(row) => Ended::Now(Box::new(Closed::read(&row)?)),
             None => Ended::Already,
-        })
+        };
+        transaction.commit().await.map_err(query(CONTEXT_BLOCKED))?;
+        Ok(ended)
     }
 }

@@ -24,10 +24,7 @@
 //! cousins, and live in `e2e_seed_keys.rs`: they change when the vault's
 //! envelope does, not when the pull path does.
 //!
-//! The event itself is NOT here. It is a Dragonfly append and a readiness mark, and
-//! `Scenario::cleanup` is what clears that mark, so both halves of the queue's
-//! lifetime live together in `e2e.rs` instead of one being written here and
-//! undone there.
+//! `e2e_event` commits the admission after these fleet dependencies exist.
 #![allow(
     dead_code,
     reason = "test support: shared by several test binaries, each using a subset"

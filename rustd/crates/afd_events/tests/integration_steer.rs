@@ -1,79 +1,28 @@
-//! Dimension 5.3 — the id a steer answers with IS the id the runner leases.
-//!
-//! The refusal matrix in front of this append is proven without a datastore —
-//! thirty-four cases across `afd_api`'s message suites decide who may steer,
-//! what bodies are taken, and which fleet states refuse. None of them can prove
-//! the one claim the surface actually makes to a client, because it is a claim
-//! about Dragonfly: the `event_id` returned in the 202 is the stream entry id, and
-//! it is therefore the id the CLI filters SSE frames by and the id the runner
-//! sees when it leases the work.
-//!
-//! Proving that needs BOTH ends of the same append — the value the caller was
-//! handed, and the entry a consumer reads back — so it needs a live stream.
-//!
-//! # The idempotency clause, and why this file does not assert it
-//!
-//! Dimension 5.3 was written as "duplicate → idempotent per the documented
-//! dedup". There is no such dedup, in the daemon or in the published API:
-//!
-//! - `public/openapi/paths/fleet-messages.yaml` documents a 202 carrying a
-//!   `<MILLISECONDS>-<SEQUENCE>` `event_id` and defines no idempotency key,
-//!   request or header;
-//! - `FleetStreams::append_once` — the workspace's ONE deduplicating append —
-//!   exists for the repair path's crash-shaped retries and is not on this
-//!   route.
-//!
-//! So the honest reading is that two identical steers are two messages a person
-//! sent twice, and the daemon delivers both. That is asserted here POSITIVELY
-//! rather than left unsaid: a future dedup would break this test, which is
-//! exactly the notice such a change should get. The divergence from the
-//! dimension's wording is recorded in the spec's Declared divergences.
-//!
-//! Marked `#[ignore]` so `make test-unit-all` still COMPILES and lints this
-//! without a datastore, and `make test-integration-rustd` — which runs
-//! `--ignored` and nothing else — is the only lane that executes it.
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
+//! Steers preserve their identity and envelope in the serving queue.
+#![expect(clippy::expect_used, reason = "test assertions")]
 
-use afd_dragonfly::ReadyIndex;
-use afd_dragonfly::ready::Partition;
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
-use afd_wire::event::{EventType, field};
+use afd_wire::event::EventType;
 
+use crate::integration_steer_retry::{REQUEST_JSON, append_with, queued_ids};
 use crate::support::EventsLane;
 
-/// The consumer name the test reads the stream back under.
-///
-/// Any name works — the group is what orders delivery — but a distinctive one
-/// makes a stuck pending entry legible in `XPENDING` when a run goes wrong.
-const CONSUMER: &str = "steer-integration-reader";
+#[derive(Debug, sqlx::FromRow)]
+struct Envelope {
+    id: String,
+    actor: String,
+    event_type: String,
+    workspace: String,
+    request_json: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: jiff::Timestamp,
+}
 
-/// The payload a caller's steer carries, already serialized by the handler.
-const REQUEST_JSON: &str = r#"{"message":"redeploy staging"}"#;
-
-/// Dimension 5.3 — a steer's answer is the stream entry's own id, and the
-/// fleet is marked ready so the message is leasable now rather than at the next
-/// poll.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn test_steer_append_event_id() {
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
-    let steer = Steer::new(lane.admissions());
-
-    // The group has to exist before the append, because `read_new` delivers
-    // through it. A consumer created afterwards with `$` would see nothing and
-    // this test would report "the entry is missing" for a reason that is the
-    // test's own.
-    streams
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("the consumer group is created");
-
-    let answered = steer
+    let accepted = Steer::new(lane.admissions())
         .append(
             &lane.fleet,
             &lane.workspace,
@@ -82,176 +31,35 @@ async fn test_steer_append_event_id() {
             None,
         )
         .await
-        .expect("the append reaches the queue");
-
-    let leased = streams
-        .read_new(&lane.fleet, CONSUMER)
-        .await
-        .expect("the read reaches the queue")
-        .expect("the append left an entry to lease");
-
-    assert_eq!(
-        leased.field(field::EVENT_ID),
-        Some(answered.event_id.as_str()),
-        "the id answered to the client must BE the id the runner sees — a \
-         client filters its SSE frames by this value and the lease path reads \
-         it back off the entry, so two spellings would be two events. It is \
-         the ledger's LOGICAL id, carried as a field: since the admission \
-         ledger took ownership of identity, `receipt` names the physical copy, \
-         and one logical event legitimately sits on two of those after a replay"
-    );
-
-    // The envelope the runner reads is the one the handler wrote. Asserted
-    // field by field rather than as a blob: a producer that dropped
-    // `workspace_id` would still lease and still run, against no workspace.
-    assert_eq!(leased.field(field::ACTOR), Some(ACTOR_MACHINE));
-    assert_eq!(
-        leased.field(field::EVENT_TYPE),
-        Some(EventType::Chat.as_str())
-    );
-    assert_eq!(
-        leased.field(field::WORKSPACE_ID),
-        Some(lane.workspace.as_str())
-    );
-    assert_eq!(leased.field(field::REQUEST_JSON), Some(REQUEST_JSON));
-    // The instant the reader bills against. Absent for the whole life of the
-    // cutover, which made every appended event undecodable and unleasable; the
-    // value is not asserted, only its presence and that it reads as an RFC 3339
-    // instant.
-    let created_at = leased
-        .field(field::CREATED_AT)
-        .expect("a producer writes the instant the lease path bills against");
-    assert!(
-        created_at.parse::<jiff::Timestamp>().is_ok(),
-        "created_at must be an RFC 3339 instant, got {created_at:?}"
-    );
-
-    // The readiness mark is what makes the message PROMPTLY leasable rather
-    // than waiting for the next poll. It is written after the append and its
-    // failure is logged rather than raised, so a test that only checked the
-    // append would never notice the mark going missing.
-    //
-    // Read by exact field rather than through `ReadyIndex::peek`: that samples
-    // with `HRANDFIELD`, and the index is shared by every suite in the lane, so
-    // a window smaller than the marked set would drop this fleet at random.
-    // `HGET` also lets the TOKEN be asserted, which `peek` would have made
-    // incidental — and the token is load-bearing. The index mints a fresh
-    // version-7 identifier for every mark, so the poll-site clear compares
-    // generations; a mark under the fleet id would make every generation one
-    // value, and a stale clear would erase newer work.
-    let token = ready_mark(&lane, &lane.fleet)
-        .await
-        .expect("the steered fleet must be marked ready; without the mark the message waits for a poll it was appended to skip");
-    assert!(
-        afd_core::id::Uuid7::parse(&token).is_ok(),
-        "the mark carries a minted generation, not a caller's value: {token:?}"
-    );
-
-    ReadyIndex::new(lane.queue.clone())
-        .force_clear(&lane.fleet)
-        .await
-        .expect("the readiness mark is cleared");
-    streams
-        .forget(&lane.fleet)
-        .await
-        .expect("the fixture stream is removed");
+        .expect("admitted");
+    let mut connection = lane.connection().await;
+    let row = sqlx::query_as::<_, Envelope>(
+        "SELECT id::text, actor, event_type, workspace_id::text AS workspace,
+                request_json, event_created_at AS created_at
+           FROM fleet.admissions WHERE fleet_id = $1::uuid AND settled_at IS NULL",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("one serving queue row");
+    assert_eq!(row.id, accepted.event_id);
+    assert_eq!(row.actor, ACTOR_MACHINE);
+    assert_eq!(row.event_type, EventType::Chat.as_str());
+    assert_eq!(row.workspace, lane.workspace);
+    assert_eq!(row.request_json, REQUEST_JSON);
+    assert_eq!(Some(row.created_at), accepted.admitted_at);
+    drop(connection);
     lane.cleanup().await;
 }
 
-/// Dimension 5.3's second half — two identical steers are two messages.
-///
-/// The positive assertion of the absence documented in this file's header. A
-/// person who sends the same sentence twice meant it twice, and the daemon has
-/// no key with which to decide otherwise; both appends therefore mint their own
-/// entry and both are leasable. Should a dedup ever be introduced, this is the
-/// test that fails and says so.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn test_steer_repeats_are_two_messages_not_one() {
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_two_keyless_sends_of_equal_text_are_two_queued_messages() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
     let steer = Steer::new(lane.admissions());
-
-    streams
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("the consumer group is created");
-
-    let first = steer
-        .append(
-            &lane.fleet,
-            &lane.workspace,
-            ACTOR_MACHINE,
-            REQUEST_JSON,
-            None,
-        )
-        .await
-        .expect("the first append reaches the queue");
-    let second = steer
-        .append(
-            &lane.fleet,
-            &lane.workspace,
-            ACTOR_MACHINE,
-            REQUEST_JSON,
-            None,
-        )
-        .await
-        .expect("the second append reaches the queue");
-
-    assert_ne!(
-        first, second,
-        "each steer mints its own entry: there is no idempotency key on this \
-         route in either daemon, and the OpenAPI defines none"
-    );
-
-    // And both are really there — distinct ids could otherwise be two names for
-    // one entry, which is what an assertion on the answers alone would allow.
-    let leased_first = streams
-        .read_new(&lane.fleet, CONSUMER)
-        .await
-        .expect("the read reaches the queue")
-        .expect("the first entry is deliverable");
-    let leased_second = streams
-        .read_new(&lane.fleet, CONSUMER)
-        .await
-        .expect("the read reaches the queue")
-        .expect("the second entry is deliverable");
-
-    assert_eq!(
-        leased_first.field(field::EVENT_ID),
-        Some(first.event_id.as_str())
-    );
-    assert_eq!(
-        leased_second.field(field::EVENT_ID),
-        Some(second.event_id.as_str())
-    );
-
-    ReadyIndex::new(lane.queue.clone())
-        .force_clear(&lane.fleet)
-        .await
-        .expect("the readiness mark is cleared");
-    streams
-        .forget(&lane.fleet)
-        .await
-        .expect("the fixture stream is removed");
+    let first = append_with(&steer, &lane, None).await;
+    let second = append_with(&steer, &lane, None).await;
+    assert_ne!(first, second);
+    assert_eq!(queued_ids(&lane).await, [first, second]);
     lane.cleanup().await;
-}
-
-/// The readiness mark held for one fleet, or `None` when it carries none.
-///
-/// Straight `HGET` against the fleet's own partition, because the crate's own
-/// reader samples at random by design and this assertion needs the one field.
-///
-/// The partition, not `READY_INDEX_KEY` itself: since §4 sharded readiness the
-/// bare key is only the PREFIX every partition hangs off (`fleet:ready`), and
-/// the marks live in `fleet:ready:{n}`. Reading the prefix answered `None` for
-/// a fleet that was correctly marked, which reads as the mark going missing.
-async fn ready_mark(lane: &EventsLane, fleet: &str) -> Option<String> {
-    let key = Partition::of(fleet).key();
-    let mut cmd = redis::cmd("HGET");
-    cmd.arg(&key).arg(fleet);
-    lane.queue
-        .command("HGET", &key, &cmd)
-        .await
-        .expect("the readiness index answers")
 }

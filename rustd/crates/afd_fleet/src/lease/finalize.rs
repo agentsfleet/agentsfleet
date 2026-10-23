@@ -35,9 +35,7 @@
 //! text that is not UTF-8. [`str::floor_char_boundary`] backs off to the last
 //! character boundary at or below the cap.
 
-use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_dragonfly::EventId;
 use afd_events::Closed;
 use jiff::Timestamp;
 
@@ -166,68 +164,6 @@ impl Leases {
         Ok(())
     }
 
-    /// Acknowledge the stream entry this lease executed.
-    ///
-    /// Takes the RECEIPT, never the logical event id: `XACK` addresses the
-    /// entry, and a replayed admission puts one logical event on two of them.
-    /// Passing the logical id would acknowledge nothing and leave the entry
-    /// pending forever.
-    ///
-    /// # Errors
-    /// Reports a queue that would not answer.
-    pub async fn acknowledge(&self, fleet_id: &Uuid7, receipt: &EventId) -> Result<()> {
-        let fleet = fleet_id.as_str();
-        let acknowledged = self.streams().ack(fleet, receipt).await?;
-        if !acknowledged {
-            let entry = receipt.as_str();
-            tracing::warn!(
-                fleet_id = fleet,
-                receipt = entry,
-                event = "xack_no_entry",
-                "the stream entry was already acknowledged or trimmed"
-            );
-        }
-        self.trim_history(fleet).await;
-        Ok(())
-    }
-
-    /// Trims the fleet's acknowledged history, now that it has grown by one.
-    ///
-    /// Best-effort like every write in this module: the acknowledgement
-    /// already landed, and a trim that did not is retried by the next one.
-    /// Per-acknowledgement, so at `debug`; a trim that fails is `warn`,
-    /// because a stream that is never trimmed grows until the admission
-    /// budget refuses its producers.
-    async fn trim_history(&self, fleet: &str) {
-        match self.streams().trim(fleet).await {
-            Ok(trimmed) if trimmed.removed > 0 => {
-                let removed = trimmed.removed;
-                let retained = trimmed.retained;
-                tracing::debug!(
-                    fleet_id = fleet,
-                    removed,
-                    retained,
-                    event = "stream_history_trimmed"
-                );
-            }
-            Ok(_nothing_above_the_floor) => {}
-            Err(failure) => {
-                let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                let Logged {
-                    error_code: cause_error_code,
-                    reason,
-                } = failure.logged();
-                tracing::warn!(
-                    error_code = code,
-                    cause_error_code,
-                    fleet_id = fleet,
-                    reason,
-                    event = "stream_trim_failed"
-                );
-            }
-        }
-    }
-
     /// Close the lease's history with the row that pairs its acquisition.
     ///
     /// # Errors
@@ -259,35 +195,5 @@ impl Leases {
             .await
             .map_err(crate::error::query(CONTEXT_RELEASED))?;
         Ok(())
-    }
-}
-
-#[cfg(all(test, feature = "test-util"))]
-mod tests {
-    use crate::lease::test_dead;
-
-    /// A trim the queue refused is logged under its constant code, and the
-    /// reason is the failure's sentence alone.
-    #[tokio::test]
-    async fn a_failed_trim_reason_carries_no_code_prefix() {
-        let log = afd_core::test_util::trace::Capture::install();
-
-        test_dead::leases().trim_history("fleet-fixture").await;
-
-        let line = log.only("stream_trim_failed");
-        let reason = line.field("reason").unwrap_or_default();
-        assert_eq!(
-            line.field("error_code"),
-            Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
-        );
-        assert_eq!(
-            line.field("cause_error_code"),
-            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
-            "the unavailable datastore's own code rides `cause_error_code`"
-        );
-        assert!(
-            !reason.is_empty() && !reason.contains("[UZ-"),
-            "the code is the line's `error_code`, never the reason's prefix: {reason}"
-        );
     }
 }

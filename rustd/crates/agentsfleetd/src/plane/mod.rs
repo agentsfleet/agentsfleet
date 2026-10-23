@@ -27,7 +27,7 @@ use afd_credential::provider::Providers;
 use afd_credential::vault::Vault;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
-use afd_dragonfly::{Doorbell, ReadyPrefix};
+use afd_dragonfly::Doorbell;
 use afd_events::History;
 use afd_fleet::lease::{Leases, Plane};
 use afd_gate::gate::Gates;
@@ -145,7 +145,7 @@ impl ServingPlane {
         );
         let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
-        let tenant = stores::tenant(&database, &queue, &kek, &providers);
+        let tenant = stores::tenant(&database, &kek, &providers);
         let activity = stores::activity(&database, &queue, &kek, &admissions);
         let outbound = surfaces::outbound(
             &database,
@@ -227,7 +227,7 @@ fn lease_plane(
 fn listening_doorbell(live: &Live) -> Doorbell {
     let doorbell = Doorbell::new();
     if let Some(hub) = live.hub() {
-        doorbell.listen(hub, &ReadyPrefix::production());
+        doorbell.listen(hub);
     }
     doorbell
 }

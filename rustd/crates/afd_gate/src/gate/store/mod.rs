@@ -12,7 +12,7 @@ use afd_core::id::Uuid7;
 use afd_core::spelling::from_spelling;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, ReadyIndex};
+use afd_dragonfly::Dragonfly;
 
 use super::sql;
 use crate::error::{DETAIL_GATE_REFERENCE_UNWRITABLE, Result, encoded, query};
@@ -21,6 +21,9 @@ use crate::gate::pending::{Evaluation, GateRef, evaluate};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_STATUS: &str = "approval gate status";
+
+/// An event's durable reference when its cached reference has expired.
+const CONTEXT_REFERENCE: &str = "approval gate event reference";
 
 /// The durable fallback answered where the mirror did not.
 const EVENT_DB_FALLBACK: &str = "approval_decision_db_fallback_used";
@@ -119,36 +122,33 @@ impl Gates {
         &self.entropy
     }
 
-    /// The readiness index a paused fleet is dropped from.
-    ///
-    /// Built per call rather than held: it is a thin binding over the same
-    /// connection this store already owns, and storing a second handle to one
-    /// connection would suggest there were two.
-    pub(super) fn ready(&self) -> ReadyIndex {
-        ReadyIndex::new(self.queue.clone())
-    }
-
     /// The gate `event_id` is already waiting on, if any.
     ///
-    /// A reference that does not parse answers `Ok(None)` — the same as one
-    /// that was never written. Both mean this poll has no recorded gate to
-    /// honour, and a reference nobody can read is better replaced by a fresh
-    /// question than half-honoured.
+    /// A missing or corrupt cached reference falls back to the durable event
+    /// association. A poll can resume after the cache lifetime has ended; the
+    /// recorded question still decides that event, even after a policy edit.
     ///
     /// # Errors
-    /// Reports a queue that would not answer. The caller must NOT collapse that
-    /// into `None`: absent means never parked, and unreadable means we cannot
-    /// tell — raising a second card for an event that may already hold one is
-    /// worse than waiting a poll.
+    /// Reports an unreadable queue, database or stored identifier. The caller
+    /// must not treat an unreadable reference as an event with no prior gate.
     pub async fn recorded(&self, fleet_id: &Uuid7, event_id: &str) -> Result<Option<GateRef>> {
         let stored = self
             .queue
             .get_string(&key::event_ref(fleet_id.as_str(), event_id))
             .await?;
-        // `ok()` rather than `?`: a reference that will not deserialize means
-        // this poll has no recorded gate to honour, which is the same answer as
-        // one that was never written. See the doc note above.
-        Ok(stored.and_then(|raw| serde_json::from_str(&raw).ok()))
+        if let Some(reference) = stored.and_then(|raw| serde_json::from_str(&raw).ok()) {
+            return Ok(Some(reference));
+        }
+        let mut connection = self.database.acquire().await?;
+        let action: Option<String> = sqlx::query_scalar(sql::SELECT_EVENT_GATE)
+            .bind(fleet_id.as_str())
+            .bind(event_id)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_REFERENCE))?;
+        action
+            .map(|id| Uuid7::parse(&id).map(GateRef::new).map_err(Into::into))
+            .transpose()
     }
 
     /// Record that `event_id` is waiting on `reference`, for long enough to

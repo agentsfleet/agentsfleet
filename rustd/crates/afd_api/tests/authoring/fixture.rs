@@ -78,13 +78,12 @@ impl Fixture {
         .with_owned_workspace(self.workspace.clone())
     }
 
-    /// The lane owner's URL, which a fault fixture installs its trigger as.
-    pub(super) fn owner_url(&self) -> String {
-        self.lane.url()
-    }
-
     pub(super) fn router(&self) -> Router {
         self.services(&Scope::ALL).router()
+    }
+
+    pub(super) fn owner_url(&self) -> String {
+        self.lane.url()
     }
 
     pub(super) fn own_runner(&mut self, id: &Uuid7) {

@@ -145,43 +145,17 @@ async fn test_boot_to_ready_on_compose() {
     drop(booted);
 }
 
-/// Every task the daemon spawns, in spawn order: the pub/sub pump the live
-/// streams read through, the sweepers put under the supervisor, the two
-/// the admission ledger added with it, both halves of outbound delivery, the
-/// accept loop, and the analytics flush that drains queued product events
-/// before the process exits. Asserted as the WHOLE inventory rather than as
-/// a `contains`, because the claim this test makes is C2 — nothing runs
-/// outside the supervisor — and a subset check would pass for a sweeper that
-/// had quietly gone back to a bare `tokio::spawn` and so would never be
-/// cancelled at shutdown.
-///
-/// The three most recent are here for that reason and not as bookkeeping.
-/// `REPLAY` and `RECONCILE` are the admission ledger's recovery: the
-/// dispatcher that re-appends an admitted row the queue never receipted,
-/// and the pass that settles one the stream can no longer account for.
-/// `OUTBOUND_PRODUCER` is the owed-answer producer, and it is the reason
-/// outbound delivery has a production path at all — before it, nothing in
-/// the daemon called `OutboundQueue::enqueue` and the delivery half was
-/// proven only against a fake. A daemon that dropped any of the three would
-/// still answer `/readyz`, which is exactly why the inventory is asserted
-/// whole.
-///
-/// `inventory::OTLP_EXPORT` is in `BACKGROUND_TASKS` and deliberately not
-/// here: the exporter's flush loop is spawned only where a span endpoint is
-/// configured, and the lane configures none. Listing it would make this
-/// assertion fail on the very environment it exists to describe.
+/// The complete task inventory proves all long-lived workers are supervised.
+/// The telemetry exporter is absent because this fixture has no span endpoint.
 fn assert_supervises_every_task(supervisor: &Supervisor) {
     assert_eq!(
         supervisor.inventory(),
         vec![
             agentsfleetd::sweepers::LIVENESS,
-            agentsfleetd::sweepers::RECLAIM,
             agentsfleetd::sweepers::RETENTION,
             agentsfleetd::sweepers::FLEET_CENSUS,
-            agentsfleetd::sweepers::RECONCILE,
             agentsfleetd::sweepers::AUTHORING,
             agentsfleetd::sweepers::BILLING,
-            agentsfleetd::sweepers::REPLAY,
             agentsfleetd::inventory::HUB_PUMP,
             agentsfleetd::inventory::OUTBOUND_WORKER,
             agentsfleetd::outbound::OUTBOUND_PRODUCER,

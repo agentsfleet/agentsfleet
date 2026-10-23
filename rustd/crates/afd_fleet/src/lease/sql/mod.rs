@@ -15,6 +15,8 @@ pub mod session;
 pub mod standing;
 pub mod tool_detail;
 
+pub mod queue;
+
 pub use afd_state::sql::{
     FLEET_STATUS_ACTIVE, LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
     RUNNER_STATUS_ACTIVE, RUNNER_STATUS_DRAINED, RUNNER_STATUS_DRAINING,

@@ -20,17 +20,12 @@
 use afd_admission::Budgets;
 use afd_core::error_code;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer, Steered};
 use tracing::Level;
 
-use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with, clean};
+use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with};
 use crate::support::EventsLane;
 use afd_core::test_util::trace::Capture;
-
-/// The consumer name the test reads the stream back under; distinct from the
-/// sibling suites' so no read consumes another suite's entry.
-const CONSUMER: &str = "steer-replay-integration-reader";
 
 /// One operation id, used on two fleets and against a changed message.
 pub(crate) const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a01";
@@ -70,9 +65,6 @@ async fn test_operation_ids_are_scoped_to_the_fleet() {
     );
     assert_eq!(admissions_for(&first, OPERATION).await, 1);
     assert_eq!(admissions_for(&second, OPERATION).await, 1);
-
-    clean(&first, &FleetStreams::new(first.queue.clone())).await;
-    clean(&second, &FleetStreams::new(second.queue.clone())).await;
 }
 
 /// A repeat is answered despite a spent fleet budget; new work is still refused.
@@ -80,14 +72,9 @@ async fn test_operation_ids_are_scoped_to_the_fleet() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replay_bypasses_fleet_budget() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
-    streams
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("the consumer group is created");
     let steer = Steer::new(lane.admissions().with_budgets(Budgets {
         fleet_backlog: ONE_ENTRY,
-        replay_backlog: u64::MAX,
+        deployment_backlog: u64::MAX,
     }));
 
     let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
@@ -170,8 +157,6 @@ async fn test_replay_bypasses_fleet_budget() {
             .is_none(),
         "an id never admitted replays nothing"
     );
-
-    clean(&lane, &streams).await;
 }
 
 /// Under a spent budget, the same id with a changed message is still a
@@ -181,14 +166,9 @@ async fn test_replay_bypasses_fleet_budget() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_drift_under_spent_budget_is_a_conflict() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
-    streams
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("the consumer group is created");
     let steer = Steer::new(lane.admissions().with_budgets(Budgets {
         fleet_backlog: ONE_ENTRY,
-        replay_backlog: u64::MAX,
+        deployment_backlog: u64::MAX,
     }));
 
     append_with(&steer, &lane, Some(OPERATION)).await;
@@ -204,8 +184,6 @@ async fn test_drift_under_spent_budget_is_a_conflict() {
         .expect_err("a changed message under a reused id is refused");
     assert!(refused.is_operation_conflict(), "{refused}");
     assert_eq!(admissions_for(&lane, OPERATION).await, 1);
-
-    clean(&lane, &streams).await;
 }
 
 /// A row the ledger will not take is the caller's error: neither a capacity
@@ -214,7 +192,6 @@ async fn test_drift_under_spent_budget_is_a_conflict() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_admission_the_ledger_refuses_is_an_error() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
     let steer = Steer::new(lane.admissions());
 
     // No fleet row holds this id, so the admission's foreign key refuses it.
@@ -228,8 +205,6 @@ async fn test_an_admission_the_ledger_refuses_is_an_error() {
         !refused.is_datastore_unavailable(),
         "not a retryable capacity refusal: {refused}"
     );
-
-    clean(&lane, &streams).await;
 }
 
 /// The same id with a changed message is refused and admits nothing.
@@ -237,11 +212,6 @@ async fn test_an_admission_the_ledger_refuses_is_an_error() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_payload_drift_is_refused() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
-    streams
-        .ensure_group(&lane.fleet)
-        .await
-        .expect("the consumer group is created");
     let steer = Steer::new(lane.admissions());
 
     let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
@@ -310,23 +280,8 @@ async fn test_payload_drift_is_refused() {
         "the refusal admits nothing: one row, the first message's"
     );
 
-    let leased = streams
-        .read_new(&lane.fleet, CONSUMER)
-        .await
-        .expect("the read reaches the queue")
-        .expect("the first message left an entry");
     assert_eq!(
-        leased.field(afd_wire::event::field::EVENT_ID),
-        Some(admitted.as_str())
+        crate::integration_steer_retry::queued_ids(&lane).await,
+        [admitted]
     );
-    assert!(
-        streams
-            .read_new(&lane.fleet, CONSUMER)
-            .await
-            .expect("the read reaches the queue")
-            .is_none(),
-        "the changed message appended no second entry"
-    );
-
-    clean(&lane, &streams).await;
 }

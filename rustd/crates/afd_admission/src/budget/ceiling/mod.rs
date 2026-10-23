@@ -1,45 +1,19 @@
-//! The deployment ceiling's sampled figure, and when it is resampled.
-//!
-//! # Why the figure is sampled and not counted
-//!
-//! The deployment budget asks how many admitted rows await a receipt. Counted
-//! per admission, that question costs a walk of every waiting row — the
-//! partial index on `receipt IS NULL` keeps the walk off the table but not off
-//! the rows, so the cost rises with the backlog and peaks when the deployment
-//! is already behind. A valve that gets heavier the harder it is pressed is
-//! the wrong shape for the hot path every producer takes.
-//!
-//! So the figure is read occasionally and held here, and the hot path adds
-//! what this process has admitted since. Two atomic loads and an add.
-//!
-//! # The estimate is deliberately high, never low
-//!
-//! [`Ceiling::estimate`] is the last sample plus every admission this process
-//! committed after it. A row leaves the counted state only when a receipt is
-//! recorded, so the sum can exceed what the table holds and cannot fall short
-//! of it on this process's own traffic. The refusal therefore arrives early
-//! rather than late, which is the direction a safety valve should err in.
-//!
-//! Two gaps remain, both bounded and both closed by the next sample: receipts
-//! recorded since the sample are not yet subtracted, so a drained backlog
-//! refuses for up to [`REFUSING_INTERVAL`]; and a sibling replica's
-//! admissions are in no local counter, so the estimate trails that replica's
-//! rate for up to [`SAMPLE_INTERVAL`]. The ledger's own `receipt IS NULL`
-//! count stays the authority — `docs/architecture/datastore_scaling.md`
-//! records the figure this replaces and the bound above.
+//! Sample the deployment backlog without walking it on every admission.
+//! The estimate adds this process's admissions to the last sample.
+//! Settlements can make it overstate the backlog; sibling admissions can make it understate it until the next sample.
 
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::Duration;
 
 use jiff::Timestamp;
 
-use crate::budget::REPLAY_BACKLOG_BUDGET;
+use crate::budget::DEPLOYMENT_BACKLOG_BUDGET;
 
 /// How many admissions pass between samples.
 ///
 /// The sample's cost is one walk of the waiting rows, so this is the divisor
 /// that turns it into a per-admission cost: at the ceiling, a walk of
-/// [`REPLAY_BACKLOG_BUDGET`] rows spread over this many admissions.
+/// [`DEPLOYMENT_BACKLOG_BUDGET`] rows spread over this many admissions.
 const SAMPLE_EVERY: u64 = 1_000;
 
 /// How stale the figure may be while the estimate is within budget.
@@ -72,7 +46,7 @@ const _: () = {
         "a zero divisor samples on every admission, which is the cost this exists to remove"
     );
     assert!(
-        SAMPLE_EVERY <= REPLAY_BACKLOG_BUDGET,
+        SAMPLE_EVERY <= DEPLOYMENT_BACKLOG_BUDGET,
         "sampling less often than the ceiling is deep admits a whole budget between samples"
     );
     // The refusal cannot clear without a sample, so the refusing figure is the
@@ -84,14 +58,14 @@ const _: () = {
     );
 };
 
-/// The sampled `receipt IS NULL` figure, and the admissions counted onto it.
+/// The sampled unsettled backlog, and the admissions counted onto it.
 ///
 /// One per ledger, shared by every clone of it, so the figure a sample
 /// publishes is the figure the next admission reads. Held behind
 /// [`crate::Admissions`]; `budget.rs` owns the refresh that writes it.
 #[derive(Debug)]
 pub(crate) struct Ceiling {
-    /// Rows awaiting a receipt when the figure was last read.
+    /// Unsettled admissions at the last sample.
     sampled: AtomicU64,
     /// Admissions this process has committed since that read.
     since: AtomicU64,
@@ -113,7 +87,7 @@ impl Default for Ceiling {
 }
 
 impl Ceiling {
-    /// What this process believes awaits a receipt deployment-wide.
+    /// The last sample plus this process's subsequent admissions.
     ///
     /// Saturating, so a counter that has outrun the figure it rides on cannot
     /// wrap into a small number and admit a deployment that should refuse.

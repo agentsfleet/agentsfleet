@@ -1,19 +1,4 @@
-//! Every accessor, code, sentence, rendering and source on the error type.
-//!
-//! These paths are what a human reads at three in the morning, and they are the
-//! easiest to leave untested because the happy path never touches them. A
-//! `Display` that panics, or a predicate that answers for the wrong kind, only
-//! shows up while something else is already going wrong.
-//!
-//! # What this crate has that the others do not
-//!
-//! `is_datastore_unavailable` and `is_over_capacity` deliberately OVERLAP — both
-//! answer 503 — and `is_over_capacity` is how an operator tells a full queue from
-//! a dead one. The overlap is the invariant, so it is pinned here by count.
-//!
-//! Every count below was MEASURED against the sample set, not chosen. Each is a
-//! pin: a lift swapped for a `to_string()` fails here instead of reaching an
-//! operator as a broken chain.
+//! Admission errors keep their registry codes, caller sentences, and source chains.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -29,9 +14,9 @@ use std::error::Error as _;
 use afd_admission::error::one_of_each_kind;
 
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 7;
+const WITH_SOURCE: usize = 4;
 /// How many distinct registry codes the kinds report between them.
-const DISTINCT_CODES: usize = 3;
+const DISTINCT_CODES: usize = 4;
 
 /// Everything every error surface owes, graded once by
 /// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
@@ -47,7 +32,7 @@ fn the_error_surface_holds() {
     );
 }
 
-/// The caller-facing vocabulary: present, uncoded, and exactly 3 sentences.
+/// The caller-facing vocabulary: present, uncoded, and exactly 4 sentences.
 #[test]
 fn the_caller_facing_sentences_hold() {
     let samples = one_of_each_kind();
@@ -55,7 +40,7 @@ fn the_caller_facing_sentences_hold() {
         samples
             .iter()
             .map(|(label, error)| (*label, error.detail())),
-        3,
+        4,
     );
 }
 
@@ -73,8 +58,8 @@ fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
         .collect();
     assert_eq!(
         is_datastore_unavailable.len(),
-        5,
-        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 5 kinds"
+        3,
+        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 3 kinds"
     );
 
     let is_over_capacity: Vec<&str> = one_of_each_kind()
@@ -84,8 +69,8 @@ fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
         .collect();
     assert_eq!(
         is_over_capacity.len(),
-        3,
-        "`is_over_capacity` now answers for {is_over_capacity:?}, not 3 kinds"
+        2,
+        "`is_over_capacity` now answers for {is_over_capacity:?}, not 2 kinds"
     );
 }
 

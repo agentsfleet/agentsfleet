@@ -1,13 +1,4 @@
-//! A resend of an admitted key marks its fleet again.
-//!
-//! The first call's readiness mark is best-effort: a mark that does not land
-//! is logged and the producer is answered anyway. The producer's resend under
-//! the same key is the one caller left to notice, so a replay whose entry is
-//! receipted marks the fleet again rather than leaving the entry stranded
-//! until the reclaim sweep reaches it.
-//!
-//! Marked `#[ignore]` so the unit lane compiles and lints these without a
-//! datastore; `make test-integration-rustd` runs them.
+//! Retrying an admitted key republishes its hint without adding queue state.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -46,20 +37,9 @@ const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 /// The status that keeps every lease path off the fixture fleet.
 const FLEET_STOPPED: &str = "stopped";
 
-/// The entry id the fake's `XADD` hands back.
-const FAKE_RECEIPT: &str = "1790000000000-0";
-
-/// A hash write the index refuses.
-const HSET_REFUSED: &str = "-ERR the index refused the write\r\n";
-
-/// A hash write the index takes: one new field.
-const HSET_TAKEN: &str = ":1\r\n";
-
-/// The write a readiness mark is.
-const CMD_HSET: &str = "HSET";
-
-/// The ring a mark that lands sends after it, and a refused one never does.
 const CMD_SPUBLISH: &str = "SPUBLISH";
+const PUBLISH_REFUSED: &str = "-ERR notification refused\r\n";
+const PUBLISH_TAKEN: &str = ":0\r\n";
 
 /// A stopped fleet and the rows above it, removed by [`Seeded::cleanup`].
 struct Seeded {
@@ -156,11 +136,6 @@ impl Seeded {
     }
 }
 
-/// How many readiness marks the fake was sent.
-fn marks(server: &FakeRedis) -> usize {
-    sent(server, CMD_HSET)
-}
-
 fn rings(server: &FakeRedis) -> usize {
     sent(server, CMD_SPUBLISH)
 }
@@ -173,17 +148,14 @@ fn sent(server: &FakeRedis, verb: &str) -> usize {
         .count()
 }
 
-/// The first call's mark is refused; the resend replays the key and marks the
-/// fleet, and this time the mark lands.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_resend_marks_the_fleet_its_first_call_could_not() {
+async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
     install_subscriber();
     let fleet = Seeded::seed().await;
     let server = FakeRedis::spawn(&[
         ("PING", Reply::Raw("+PONG\r\n")),
-        ("XADD", Reply::Bulk(FAKE_RECEIPT)),
-        (CMD_HSET, Reply::Raw(HSET_REFUSED)),
+        (CMD_SPUBLISH, Reply::Raw(PUBLISH_REFUSED)),
     ])
     .await;
     let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
@@ -196,17 +168,20 @@ async fn a_resend_marks_the_fleet_its_first_call_could_not() {
 
     let first = fleet.admit(&admissions, &key).await;
     assert!(!first.replayed, "the first call inserts the row");
-    assert_eq!(marks(&server), 1, "the first call tried to mark");
-    assert_eq!(rings(&server), 0, "a refused mark rings nothing");
-
-    server.set_reply(CMD_HSET, Reply::Raw(HSET_TAKEN));
+    assert_eq!(rings(&server), 1, "the first notification was attempted");
+    server.set_reply(CMD_SPUBLISH, Reply::Raw(PUBLISH_TAKEN));
     let resent = fleet.admit(&admissions, &key).await;
     assert!(resent.replayed, "the resend replays the key");
     assert_eq!(
         resent.stored.id, first.stored.id,
         "the first call's id stands"
     );
-    assert_eq!(marks(&server), 2, "the replay marked the fleet again");
-    assert_eq!(rings(&server), 1, "and rang its partition once it landed");
+    assert_eq!(rings(&server), 2, "the retry publishes again");
+    assert!(
+        !server
+            .seen()
+            .iter()
+            .any(|s| s.starts_with("XADD") || s.starts_with("HSET"))
+    );
     fleet.cleanup().await;
 }

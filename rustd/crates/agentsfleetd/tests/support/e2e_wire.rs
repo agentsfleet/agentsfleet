@@ -14,14 +14,11 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_dragonfly::ready::READY_PARTITIONS;
 use serde_json::{Value, json};
 
 use crate::e2e::Scenario;
 
-/// How many rotations of the readiness index a poll is given to reach a
-/// specific fleet. See [`poll_for_seeded_lease`].
-const ROTATIONS: u16 = 8;
+const POLL_LIMIT: usize = 8;
 
 /// A runner credential belonging to no row: well-formed, sixty-four hex
 /// characters after the marker, so the refusal comes from the DIRECTORY rather
@@ -85,23 +82,7 @@ pub(crate) fn claim(lease: &Value) -> (String, u64) {
     )
 }
 
-/// Polls until the seeded event is handed over, and claims it.
-///
-/// # Why one poll is not enough
-///
-/// Readiness is sixteen partitions and a poll reads ONE of them, the next in a
-/// rotation the process keeps. A single request therefore reaches a given
-/// fleet about one time in sixteen, so every suite that polled once and
-/// expected work was a lottery it usually lost — and it failed with
-/// `lease: null`, which is a documented, entirely valid answer, so the
-/// failures read as "the fleet was not leasable" rather than "the poll never
-/// looked there".
-///
-/// # Why it also checks WHICH event came back
-///
-/// Even with the index swept, the assertion is on this scenario's own event
-/// rather than on whatever arrives: a fixture that appended twice has two
-/// entries owed, and the oldest is the one these suites are written against.
+/// Poll until the daemon offers this scenario's event, checking its identity.
 pub(crate) async fn poll_for_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
     poll_for_lease(http, run, &run.event_id).await
 }
@@ -117,7 +98,7 @@ pub(crate) async fn poll_for_lease(
     event_id: &str,
 ) -> (String, u64) {
     let mut elsewhere = Vec::new();
-    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
+    for _poll in 0..POLL_LIMIT {
         let response = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
         // Asserted on EVERY turn, not once before the loop: a caller that
         // polled separately to check the status would consume the lease this
@@ -143,8 +124,7 @@ pub(crate) async fn poll_for_lease(
         );
     }
     panic!(
-        "the event {event_id} was never offered in {ROTATIONS} rotations of the \
-         readiness index.\n\n{}",
+        "the event {event_id} was never offered in {POLL_LIMIT} polls.\n\n{}",
         never_offered(&elsewhere)
     )
 }
@@ -155,22 +135,7 @@ const NAMED_ELSEWHERE: usize = 8;
 /// Why [`poll_for_lease`] came back empty-handed, from what it was handed.
 fn never_offered(elsewhere: &[String]) -> String {
     if elsewhere.is_empty() {
-        return format!(
-            "Every poll answered 200 with `lease: null`, so the daemon did not \
-             fail: it found nothing it would hand this runner. Read the daemon's \
-             own log before theorising — `AFD_TEST_LOG=1` is the switch; \
-             `RUST_LOG` alone writes to a sink — and find the poll that DID reach \
-             the fleet's partition, one in {READY_PARTITIONS}: the reason it \
-             declined is on that line. The last time this fired, the line was \
-             `assign_entry_undecodable_dropped`: the seed had appended the \
-             pre-ledger field set, the reader refused the entry for want of \
-             `event_id`, dropped it so the fleet stayed leasable, and every later \
-             poll correctly found the stream empty. The seed now admits through \
-             the ledger (`e2e_event.rs`).\n\n\
-             Also worth ruling out: a fleet in the lane database whose \
-             head revision `config` will not parse — the pull path resolves one and \
-             refuses the runner with UZ-INTERNAL-003."
-        );
+        return "Every poll returned no work. Enable AFD_TEST_LOG=1 to inspect the fleet's gate and placement decisions.".to_owned();
     }
     let named = elsewhere
         .iter()
@@ -179,38 +144,18 @@ fn never_offered(elsewhere: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{} of the polls were answered with a lease for ANOTHER event, on fleets \
-         [{named}{}]. The daemon was handing out work, just not this work: every \
-         such lease spent one of this partition's visits. A fleet that is not \
-         this scenario's is a leftover an earlier scenario or suite left \
-         leasable — `Scenario::cleanup` retires its fleet so the reclaim sweeper \
-         cannot re-mark it (`e2e_retire.rs`); find the suite that skipped it. A \
-         lease on THIS scenario's fleet for another event means the fixture \
-         appended twice and the oldest entry is the one owed.",
-        elsewhere.len(),
-        if elsewhere.len() > NAMED_ELSEWHERE {
-            ", among others"
-        } else {
-            ""
-        },
+        "{} polls offered other events on fleets [{named}]; check scenario isolation and retirement",
+        elsewhere.len()
     )
 }
 
-/// Polls a full rotation budget while `ended` says the work under test is
-/// still open, and answers whether it closed.
-///
-/// For the arms where the RIGHT answer is no work — an unsupported type the
-/// daemon must end, a gate that must block — and where that answer is also
-/// what a poll that never reached the fleet's partition says. The poll's
-/// answer cannot tell the two apart, so the exit condition is the caller's
-/// own row read, and every answer on the way is still checked: a 200 carrying
-/// a lease would mean the daemon handed out the very work it must refuse.
+/// For a refusal, wait for the caller's durable condition and check every response.
 pub(crate) async fn poll_until<F, Fut>(http: &reqwest::Client, run: &Scenario, mut ended: F) -> bool
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
+    for _poll in 0..POLL_LIMIT {
         let response = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
         assert_eq!(
             response.status().as_u16(),

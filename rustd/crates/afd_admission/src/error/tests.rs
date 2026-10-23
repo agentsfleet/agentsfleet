@@ -36,11 +36,11 @@ use super::one_of_each_kind;
 /// asked the type which kinds are outages and then asserted the answer would
 /// agree with any answer. This is the list a person maintains, so a variant
 /// that changes sides has to be moved by hand.
-const UNREACHABLE: &[&str] = &["datastore", "queue unreachable"];
+const UNREACHABLE: &[&str] = &["datastore"];
 
 /// The labels the sample gives capacity, which a caller retries like an
 /// outage and an operator reads as a different incident.
-const CAPACITY: &[&str] = &["over budget", "exhausted", "queue full"];
+const CAPACITY: &[&str] = &["over budget", "exhausted"];
 
 /// Everything a caller retries: the datastore that will not answer and the
 /// datastore that answers "not now".
@@ -147,19 +147,19 @@ fn a_statement_that_would_not_run_names_its_operation_to_the_operator_only() {
 
 #[test]
 fn no_sentence_names_which_internal_failure_it_was() {
-    // Two internal failures share one sentence on purpose. Naming which of
+    // Internal failures use the workspace's generic sentence. Naming which of
     // them it was would tell whoever provoked it something about this
     // deployment's state, and an ingress caller is exactly who must not learn
     // it — the webhook endpoint is public until the signature passes.
     let opaque: Vec<&'static str> = one_of_each_kind()
         .into_iter()
-        .filter(|(label, _error)| ["queue answered", "entropy"].contains(label))
+        .filter(|(label, _error)| ["entropy"].contains(label))
         .map(|(_label, error)| error.detail())
         .collect();
 
     assert_eq!(
         opaque.len(),
-        2,
+        1,
         "the sample lost one of the opaque failures"
     );
     let distinct: BTreeSet<&&str> = opaque.iter().collect();
@@ -184,6 +184,7 @@ fn every_sentence_is_one_the_workspace_declares() {
         DETAIL_DATABASE_UNAVAILABLE,
         DETAIL_DATABASE_ERROR,
         DETAIL_OPERATION_FAILED,
+        afd_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
     ];
     for (label, error) in one_of_each_kind() {
         assert!(

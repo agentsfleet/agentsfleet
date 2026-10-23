@@ -1,34 +1,5 @@
-//! Building the precondition a lease poll needs, once per fleet.
-//!
-//! # Three rows, a group, and a mark
-//!
-//! A fleet is leasable only when all of these hold, and any one missing makes
-//! the assignment pass look broken when it is the fixture that is:
-//!
-//! 1. `identity.tenants`, `identity.workspaces` and `fleet.fleets` exist AND
-//!    AGREE, and the fleet carries the setup revision Save selects.
-//! 2. The fleet's stream has a consumer group, created before any read.
-//! 3. The readiness index carries a mark, or the poll returns before Postgres.
-//!
-//! No store verb creates a fleet: that is the tenant plane's job, so the rows
-//! are written through `afd_db`'s shared seeds, the ones `afd_fleet`'s own
-//! lease suites seed with. A schema change reaches the bench with them.
-//!
-//! # Why the run prefix is in the NAME and not the identifier
-//!
-//! Every table here CHECKs the UUID version nibble, so an identifier cannot
-//! carry a text prefix and still be accepted. The prefix therefore lives in the
-//! `name` column of all three rows, and `sweep` deletes by name. The
-//! identifiers stay schema-legal and the sweep still recognises only its own
-//! work.
-//!
-//! # Placement tags keep concurrent runs apart
-//!
-//! `Leases::select` has no workspace or tenant in it — it peeks the GLOBAL
-//! readiness set and filters candidates by `required_tags <@ labels`. A fleet
-//! seeded with no tag is placeable by every other poller on the same datastore,
-//! including another bench run. One tag per run costs one array element and
-//! leaves the assignment pass under test rather than around it.
+//! Seed funded fleets and capable runners with matching placement tags.
+//! All work is admitted through the production ledger before measurement.
 
 use std::borrow::Cow;
 
@@ -37,7 +8,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
-use afd_dragonfly::{Dragonfly, FleetStreams};
+use afd_dragonfly::Dragonfly;
 use afd_runner::Runners;
 use afd_runner::heartbeat::holds::prove;
 use afd_wire::event::EventType;
@@ -133,18 +104,13 @@ pub fn placement_tag(prefix: &RunPrefix) -> String {
     prefix.name("tag")
 }
 
-/// Seed a fleet's rows and its consumer group, with NOTHING on the stream.
-///
-/// What the steer lane wants: the fleet has to exist and its group has to
-/// exist before a read, but the appends are the thing being measured and must
-/// happen inside the window rather than during setup.
+/// Seed the fleet before the steer lane measures admission.
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Dragonfly refused.
+/// Whatever Postgres refused.
 pub async fn empty_fleet(
     database: &Db,
-    queue: &Dragonfly,
     prefix: &RunPrefix,
     tag: &str,
     index: u64,
@@ -152,13 +118,10 @@ pub async fn empty_fleet(
 ) -> Result<SeededFleet> {
     let seeded = identities(index);
     rows(database, prefix, &seeded, tag, now).await?;
-    FleetStreams::new(queue.clone())
-        .ensure_group(&seeded.fleet)
-        .await?;
     Ok(seeded)
 }
 
-/// Seed one ready fleet: three rows, a consumer group, an event, a mark.
+/// Seed a fleet with one unsettled admission.
 ///
 /// # Errors
 ///
@@ -247,9 +210,6 @@ pub(crate) async fn enqueue(
     seeded: &SeededFleet,
     event_type: EventType,
 ) -> Result<String> {
-    FleetStreams::new(queue.clone())
-        .ensure_group(&seeded.fleet)
-        .await?;
     let admitted = Admissions::new(database.clone(), queue.clone(), Entropy::new())
         .admit(Admission {
             producer: Producer::Steer,

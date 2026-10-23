@@ -14,7 +14,6 @@ use afd_fleet::lease::sql::RUNNER_STATUS_DRAINED;
 use jiff::Timestamp;
 
 use super::{hold, live, slot};
-use crate::queue;
 use crate::seed::{self, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -73,10 +72,9 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<String>),
     .await;
     unfit.apply(&fixtures, &holder).await;
 
-    let found = seed::select_fleet_within_rotations(&leases, &other, &fleet).await;
+    let found = seed::select_fleet(&leases, &other, &fleet).await;
     let after = slot(&fixtures, &fleet).await;
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
     (found.is_some(), after, other.as_str().to_owned())
 }

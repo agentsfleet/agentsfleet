@@ -1,5 +1,4 @@
-//! The admit half: commit the row, then hand a fresh one to the receipt half
-//! (`admit_receipt`), which appends the entry and records the receipt.
+//! Commit acceptance, then publish a bounded best-effort notification.
 
 use afd_core::clock;
 use afd_core::error_code::{self, Coded as _, Logged};
@@ -53,8 +52,6 @@ pub(crate) struct Ledger {
     pub(crate) stored: Repeated,
     /// Whether THIS statement created the row.
     pub(crate) inserted: bool,
-    /// The receipt already recorded, if any.
-    pub(crate) receipt: Option<String>,
 }
 
 impl Admissions {
@@ -66,9 +63,8 @@ impl Admissions {
     ///
     /// # Errors
     /// Reports a database that would not commit the row, and a budget that
-    /// is spent — both the retryable refusal, with no acceptance recorded. A
-    /// queue that would not take the append is NOT an error: the row is
-    /// committed, and the replay sweeper appends it.
+    /// is spent — both the retryable refusal, with no acceptance recorded. A lost
+    /// wake notification leaves the committed admission available to every poll.
     pub async fn admit(&self, admission: Admission<'_>) -> Result<Admitted> {
         let now = clock::now();
         let row_id = self.entropy.uuid7(now)?;
@@ -103,45 +99,27 @@ impl Admissions {
                 event = "admission_payload_drifted",
             );
         }
-        if ledger.receipt.is_some() || !ledger.inserted {
-            return Ok(self.replayed(ledger, &admission).await);
-        }
-
-        self.queue_entry(&row_id, ledger.stored, &admission).await
-    }
-
-    /// Answers a key an earlier call admitted, or one another daemon is
-    /// inserting and owns the append of. Either way the first call's id
-    /// stands.
-    ///
-    /// A receipted entry is marked again. The first call's mark is
-    /// best-effort, and a producer resending is the one caller left who can
-    /// notice it never landed: without this, a lost mark strands the entry
-    /// until the reclaim sweep reaches its fleet. The index mints a fresh
-    /// token, so a repeat is harmless. An entry with no receipt is not marked
-    /// — its append is still owed, and whoever appends it marks it.
-    async fn replayed(&self, ledger: Ledger, admission: &Admission<'_>) -> Admitted {
-        metrics::admitted(AdmissionOutcome::Replayed);
-        let producer = admission.producer.as_str();
-        let event_id = ledger.stored.id.as_str();
+        self.wake(&ledger.stored.fleet).await;
+        metrics::admitted(if ledger.inserted {
+            AdmissionOutcome::Accepted
+        } else {
+            AdmissionOutcome::Replayed
+        });
+        let replayed = !ledger.inserted;
         tracing::debug!(
             producer,
             fleet_id = admission.fleet,
             event_id,
-            event = "admission_replayed",
+            event = "admission_committed",
+            replayed
         );
-        if ledger.receipt.is_some() {
-            self.mark_ready(&ledger.stored.fleet).await;
-        }
-        Admitted {
-            replayed: true,
+        Ok(Admitted {
+            replayed,
             stored: ledger.stored,
-        }
+        })
     }
 
-    /// The fleet budget, then the row: the queue is asked first because a
-    /// refusal must leave nothing behind, and the row's own statement carries
-    /// the deployment budget.
+    /// Commit acceptance under the fleet and deployment backlog budgets.
     ///
     /// `now` is the instant the row id was minted at, and the one the
     /// deployment ceiling's sampling cadence is read against; the row's own
@@ -154,22 +132,7 @@ impl Admissions {
         digest: &str,
         now: Timestamp,
     ) -> Result<Ledger> {
-        self.refuse_over_fleet_budget(admission.fleet).await?;
-        self.record(row_id, admission, key, digest, now).await
-    }
-
-    /// Commits the row, or finds the one an earlier call committed, or
-    /// answers the deployment budget's refusal when the statement inserted
-    /// nothing.
-    async fn record(
-        &self,
-        row_id: &Uuid7,
-        admission: &Admission<'_>,
-        key: &str,
-        digest: &str,
-        now: Timestamp,
-    ) -> Result<Ledger> {
-        let estimate = self.deployment_estimate(now).await?;
+        let estimate = self.deployment_estimate(now).await;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection
             .begin()

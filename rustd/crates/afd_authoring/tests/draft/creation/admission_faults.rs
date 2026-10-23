@@ -23,7 +23,7 @@ async fn an_admission_whose_identity_cannot_be_drawn_fails_the_activation() {
     let c = Case::create().await;
     let (entropy, control) = Entropy::new_mocked();
     let admissions = Admissions::new(c.base.db.clone(), c.queue.clone(), entropy);
-    let creations = Creations::new(c.setup.clone(), c.queue.clone(), admissions);
+    let creations = Creations::new(c.setup.clone(), admissions);
     let (_, request) = c.request("entropy-fault", run_now()).await;
     let key = mint();
     let first = c.save(&key, request.clone()).await;

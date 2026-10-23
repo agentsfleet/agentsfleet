@@ -7,7 +7,6 @@ use afd_core::id::Uuid7;
 use sqlx::PgConnection;
 
 const CONTEXT_ADMIT: &str = "record staged admission";
-const NO_REPLAYS: i64 = 0;
 
 impl Admissions {
     pub(crate) async fn insert_on(
@@ -20,6 +19,7 @@ impl Admissions {
         estimate: u64,
     ) -> Result<Ledger> {
         super::policy::check(connection, admission, key).await?;
+        self.check_fleet_budget(connection, admission, key).await?;
         let reply = ReplyBinds::from(admission.reply);
         sqlx::query_as::<_, Ledger>(sql::INSERT_ADMISSION)
             .bind(row_id.as_str())
@@ -31,8 +31,7 @@ impl Admissions {
             .bind(admission.actor)
             .bind(admission.event_type.as_str())
             .bind(admission.request_json)
-            .bind(NO_REPLAYS)
-            .bind(i64::try_from(self.budgets.replay_backlog).unwrap_or(i64::MAX))
+            .bind(i64::try_from(self.budgets.deployment_backlog).unwrap_or(i64::MAX))
             .bind(i64::try_from(estimate).unwrap_or(i64::MAX))
             .bind(reply.connector)
             .bind(reply.address)
@@ -43,7 +42,7 @@ impl Admissions {
             .ok_or_else(|| {
                 Error::from(ErrorKind::OverBudget {
                     scope: BudgetScope::Deployment,
-                    limit: self.budgets.replay_backlog,
+                    limit: self.budgets.deployment_backlog,
                 })
             })
     }

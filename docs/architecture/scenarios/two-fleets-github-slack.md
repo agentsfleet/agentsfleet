@@ -1,8 +1,12 @@
 # Scenario — Two fleets, end to end: a Pull Request, a Slack thread, and a steer
 
-> Parent: [`README.md`](./README.md) · References: [`../data_flow.md`](../data_flow.md) (the canonical trigger → execute → watch sequence), [`../lease_flow.md`](../lease_flow.md) (one lease in detail), [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology" (the readiness index and the doorbell), [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design", [`github-pr-reviewer.md`](./github-pr-reviewer.md), [`slack-incident-responder.md`](./slack-incident-responder.md).
->
-> One workspace, two fleets, three ways in. Each part is one picture of one step, with the rules it depends on linked rather than copied: when a picture and a linked section disagree, the linked section wins and this page is stale.
+> Parent: [`README.md`](./README.md).
+
+> References: [`../data_flow.md`](../data_flow.md) for trigger → run → watch; [`../lease_flow.md`](../lease_flow.md) for one lease.
+> [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology" and [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design" own queue and datastore details.
+> See also [`github-pr-reviewer.md`](./github-pr-reviewer.md) and [`slack-incident-responder.md`](./slack-incident-responder.md).
+
+> One workspace, two fleets, three ways in. Each picture shows one step and links its rules. When a picture disagrees with a linked section, the linked section wins and this page is stale.
 
 **Outcome under test:** a Pull Request (PR) opened on `agentsfleet/linkwarden` wakes fleet A, a mention in a `#ci-dev` thread wakes fleet B, and a person steers fleet A; both fleets run on two runners at once, fleet B's answer lands back in the Slack thread, and fleet A's answer is readable in the dashboard and the Command-Line Interface (CLI) only, because nothing posts to a PR today ([`../lease_flow.md`](../lease_flow.md) §"4. How AGENT BOB 01 can reply").
 
@@ -17,9 +21,8 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
 | **`agentsfleetd`** | The control plane. Owns Postgres, Dragonfly, the vault and the HTTP API; never runs the model. |
 | **`agentsfleet-runner`** | The worker on a host. Asks for work, runs the agent loop, reports back; holds no datastore credential. |
 | **Admission** | "We accepted this job", a `fleet.admissions` row committed **before** the sender hears yes. |
-| **Stream** | A fleet's inbox, `fleet:{id}:events`; its jobs wait there oldest first. |
-| **Ready mark** | A note on one of sixteen shelves, `fleet:ready:{p}`, saying "this fleet has work". |
-| **Doorbell** | A ring on a shelf's channel, `fleet:ready:{p}:wake`, so the next poll also peeks that shelf instead of waiting for the rotation to reach it. Each replica keeps what it heard as one bit per shelf (`afd_dragonfly::Doorbell`). |
+| **Queue** | Unsettled `fleet.admissions` rows, oldest first within each fleet. |
+| **Doorbell** | Best-effort fleet hints on sixteen `fleet:wake:{shard}` channels. Every idle poll also probes Postgres. |
 | **Lease** | A time-limited permission to run one job for one fleet, carrying a **fencing token** that only goes up, so a stale worker cannot overwrite a newer one. |
 | **Report** | The worker handing the answer back; settles money, history and the bookmark in one transaction. |
 | **Obligation** | "We still owe someone this answer", a `fleet.obligations` row, written only when the job came from somewhere a reply can go. |
@@ -53,246 +56,109 @@ Slack is connected once per workspace through Open Authorization (OAuth); the Gi
 
 ## 1. Save: "start a fleet"
 
-Saving with start `none` runs nothing. It writes the fleet and its setup down, asks for its grants and builds its empty inbox; a fleet stays still until something sends it a job. Canonical: [`../data_flow.md`](../data_flow.md) §"A. SAVE" and C1 in [`../api_resources.md`](../api_resources.md).
+Saving with start `none` creates the fleet and its reviewed setup without admitting work.
+Setup checks the model, wallet, named credentials, connections and grants before guarded activation.
+See [setup recovery](../data_flow.md#fleet-creation-and-setup-recovery).
 
+```text
+reviewed setup -> retained installing fleet -> setup checks and approvals
+                                                     |
+                                                     v
+                                            guarded active update
+                                                     |
+                                      no initial admission for start=none
 ```
-  you: agentsfleet chat --library github-pr-reviewer --revision <id>
-       review the setup, then save it                 (and again for fleet B)
-   │
-   │  POST /v1/workspaces/{ws}/fleets  {draft candidate, review_digest, start: none}
-   ▼
-  ┌──────────────────────────── agentsfleetd ────────────────────────────┐
-  │                                                                      │
-  │  1. refuse a stale review: the digest must match the setup now       │
-  │  2. Postgres  INSERT fleet.fleets status=installing                  │
-  │               + setup revision 1 (description, instructions, config) │
-  │               (tenant comes from the workspace row, never the caller)│
-  │  3. readiness: model, wallet, credentials by NAME only, connections, │
-  │     grants; a missing grant is requested:                            │
-  │     Postgres  INSERT connector.integration_grants (fleet, "github")  │
-  │               pending  ← a person approves it on the setup check     │
-  │  4. Dragonfly XGROUP CREATE MKSTREAM fleet:{id}:events fleet_lease   │
-  │               ← the inbox and its "lease" reader group, once every   │
-  │               check is ready (bounded at 5 s; failing, it waits)     │
-  │  5. Postgres  locked recheck: installing → active                    │
-  │               a pending check keeps it installing; the same Save,    │
-  │               or PATCH status active, retries the checks             │
-  │                                                                      │
-  └──────────────────────────────┬───────────────────────────────────────┘
-                                 ▼
-                    201 Created  (status active or installing)
-```
-  Postgres                                   Dragonfly
-  ────────                                   ─────────
-  fleet.fleets  (active)    ✔                 fleet:{A}:events  (empty) + group ✔
-  fleet.revisions (revision 1) ✔              fleet:{B}:events  (empty) + group ✔
-  connector.integration_grants  ✔ approved before the fleet went active
-  fleet.admissions    ✗  (no work yet)
-  fleet.events        ✗                 fleet:{id}:activity  ✗ (exists from
-  runner.leases      ✗                                       its first PUBLISH)
-  fleet.sessions      ✗  (the first report writes it)
-```
+
+Fleet A and fleet B each own a setup revision and approved grants.
+Their first trigger creates an admission; their first report creates a session checkpoint.
 
 ## 2. Trigger one: a Pull Request wakes fleet A
 
-Canonical: [`../lease_flow.md`](../lease_flow.md) §"Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet" and §"Admission: the row is the acceptance, the stream entry is a receipt"; [`../connectors.md`](../connectors.md) §"Repository and event subscriptions belong to fleets".
+The GitHub App route verifies the signed request, resolves its installation and finds active fleets with matching subscriptions and approved grants.
+It admits one normalized event for each match. See [repository routing](../connectors.md#repository-and-event-subscriptions-belong-to-fleets).
 
-```
-  GitHub  ── "pull_request opened" (signed body) ──►  POST /v1/ingress/github
-                                                          │
-  ┌───────────────────────────── agentsfleetd ────────────▼──────────────────┐
-  │                                                                          │
-  │  a. check the Hash-based Message Authentication Code (HMAC) against      │
-  │     the vault's "github-app".webhook_secret BEFORE reading the body.     │
-  │     Bad → UZ-WH-010.  No Bearer fallback, ever.                          │
-  │                                                                          │
-  │  b. installation.id ──► connector.installs ──► workspace "indy-ws"       │
-  │                                                                          │
-  │  c. shrink GitHub's payload into a 12-field digest:                      │
-  │     action, repo, number, title, url, state, draft, author,              │
-  │     head_ref, base_ref, head_sha, received_at                            │
-  │                                                                          │
-  │  d. who listens?  every fleet in the workspace that is                   │
-  │       active  ∩  holds an approved github grant                          │
-  │               ∩  TRIGGER repositories ∋ agentsfleet/linkwarden           │
-  │               ∩  TRIGGER events ∋ pull_request                           │
-  │     ──► fleet A   (fleet B listens to Slack, so it does not match)       │
-  │     (no `repositories` list = listens to NOTHING; fail-closed)           │
-  │                                                                          │
-  │  e. per matching fleet, ADMIT:                                           │
-  │       INSERT fleet.admissions                                            │
-  │         producer = webhook_app                                           │
-  │         key      = "{fleetA}:{sha256(body)}"   ← one body, one job       │
-  │         reply    = NONE   ← nowhere to answer back to (part 9)           │
-  │       XADD fleet:{A}:events *  actor=github-app  type=webhook  ...       │
-  │       UPDATE admission SET receipt = <stream entry id>                   │
-  │       HSET fleet:ready:{pA}           ← the note on A's shelf            │
-  │       SPUBLISH fleet:ready:{pA}:wake  ← ring A's shelf                   │
-  │                                                                          │
-  └──────────────────────────────────────────────────────────────┬───────────┘
-                                                                 ▼
-                                      202 { matched: 1, enqueued: 1 }  (to GitHub)
+```text
+GitHub pull_request -> verified App delivery -> matching fleet A
+                                                    |
+                                                    v
+                                   commit fleet.admissions
+                                   producer=webhook_app
+                                   stable delivery key and event identity
+                                                    |
+                                      attempt fleet:wake:{shard}
+                                                    |
+                                      202 {matched: 1, enqueued: 1}
 ```
 
-GitHub gives this path ten seconds and never retries on its own, which is why the row comes first and everything after it is a receipt.
+The admission is the queued job. A lost notification leaves it available to the next idle poll.
 
 ## 3. Trigger two: a Slack mention wakes fleet B
 
-Under GitHub's "run 123 failed" announcement in `#ci-dev`, someone types `@agentsfleet-dev why did this fail?`. Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"4. Routing a mention" and §"5. What the fleet is told".
+The Slack route verifies the provider signature and maps the team and channel to fleet B.
+Its admission records the thread as a reply destination. Provider retries reuse the original event identity.
 
-```
-  Slack ── signed app_mention ──► POST /v1/connectors/slack/events
-                                     │
-  ┌──────────────────────────────────▼───────────────────────────────────────┐
-  │ 1. FILTER   app_mention only; drop bots, edits, and the bot's own posts  │
-  │                                                                          │
-  │ 2. ROUTE    team_id ──► connector.installs ──► workspace "indy-ws"       │
-  │             who subscribes to THIS channel?                              │
-  │                                                                          │
-  │       ┌─────────────┬──────────────────┬─────────────────────────┐       │
-  │       │ nobody      │ exactly one      │ several                 │       │
-  │       ▼             ▼                  ▼                         │       │
-  │   the channel's   that fleet       "@agentsfleet-dev <name> …"   │       │
-  │   resident        ──► fleet B       → the named one              │       │
-  │   (no tools)                        no name → ONE notice listing │       │
-  │                                     the names, no model runs     │       │
-  │                                                                          │
-  │ 3. READ THE THREAD  conversations.replies: the parent (GitHub's          │
-  │    announcement, carrying the run link) + the latest replies,            │
-  │    ≤ 20 messages, each capped, 1.5 s deadline, packed into ONE           │
-  │    `message` under a heading that marks it UNTRUSTED data.               │
-  │    A failed read → the mention alone, and the message says so.           │
-  │                                                                          │
-  │ 4. ADMIT                                                                 │
-  │      INSERT fleet.admissions                                             │
-  │        producer = slack_mention                                          │
-  │        key      = "{team_id}:{slack event_id}"  ← a Slack retry is the   │
-  │                                                   same job               │
-  │        reply    = slack {team_id, channel_id, thread_ts}  ★ remembered   │
-  │      XADD fleet:{B}:events *  actor=slack:<user>  ...                    │
-  │      receipt, HSET fleet:ready:{pB}, SPUBLISH fleet:ready:{pB}:wake      │
-  └──────────────────────────────────────────────────────────────────────────┘
+```text
+signed mention -> workspace and fleet B -> commit fleet.admissions
+                                         producer=slack_mention
+                                         reply=Slack channel and thread
+                                                  |
+                                    attempt fleet:wake:{shard}
 ```
 
-The ★ is the difference from part 2: the admission remembers where the answer must go, and that address travels with the job to part 9.
+That destination is what makes fleet B's report owe an outbound reply.
+See [the Slack flow](./slack-incident-responder.md).
 
 ## 4. Trigger three: a person steers a fleet
 
-A steer is you typing to a fleet. It enters through the same door as every other trigger. Canonical: [`../data_flow.md`](../data_flow.md) §"Steer flow end-to-end" and §"B. TRIGGER".
+A person sends a fleet message after the Pull Request event arrives.
+Admission records it under producer `steer`; the request's operation identity deduplicates retries.
 
-```
-  you: agentsfleet steer <fleetA> "also check the migration file"
-   │
-   │  (the CLI first opens the live tail, GET …/events/stream, and waits ≤2 s,
-   │   so early frames are not missed)
-   │  POST /v1/workspaces/{ws}/fleets/{A}/messages
-   ▼
-  ┌──────────────────────────── agentsfleetd ────────────────────────────┐
-  │  INSERT fleet.admissions      producer=steer                         │
-  │  XADD fleet:{A}:events *           actor=steer:kishore  type=chat    │
-  │  receipt, ready mark + doorbell ring                                 │
-  │  SPUBLISH fleet:{A}:activity       {kind:"event_admitted", message}  │
-  │                                    ← every open screen shows the     │
-  │                                      message as waiting at once      │
-  └──────────────────────────────┬───────────────────────────────────────┘
-                                 ▼
-          202 { status, event_id, replayed }   ← the CLI filters frames by event_id
+```text
+person -> POST fleet messages -> commit a second admission for fleet A
+                                          |
+                              attempt fleet:wake:{shard}
+                                          |
+                                   202 {event_id}
 ```
 
-Six producers (`afd_admission::Producer`: steer, webhook, webhook_app, schedule_fire, gate_continuation, slack_mention) write one envelope into one stream:
-
-```
-  ┌──────────────────────── the envelope, every job ───────────────────────┐
-  │ actor         steer:<user> | github-app | slack:<user> | cron:<id> |   │
-  │               continuation:<original>                                  │
-  │ type          chat | webhook | cron | continuation                     │
-  │ workspace_id  <uuid>                                                   │
-  │ request       <the message or the digest JSON>                         │
-  │ created_at    <RFC 3339>                                               │
-  │ event_id      <admission id>       ← minted by the ADMISSION ROW       │
-  └────────────────────────────────────────────────────────────────────────┘
-       The agent never branches on actor; it is metadata for the instructions and history.
-```
+All six producers use the same ledger shape. Actor and event type describe the job; the admission row owns its stable identity.
 
 ## 5. The waiting room: inboxes, shelves and doorbells
 
-Fleet A now holds two jobs (the PR and the steer) and fleet B one. A fleet's shelf is its id's Cyclic Redundancy Check (CRC16) modulo sixteen. Canonical: [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology"; the scale limits of this picture are in [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design" ("Time order, the doorbell's bits, and scale").
+Fleet A has two unsettled admissions and fleet B has one.
+Postgres orders each fleet's queue by admission `sequence`.
 
-```
-                      DRAGONFLY  (four-node cluster)
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │                                                                        │
-  │  INBOXES (one per fleet, durable, oldest first)                        │
-  │    fleet:{A}:events   [ PR opened ] [ steer "check migration" ]        │
-  │    fleet:{B}:events   [ slack mention ]                                │
-  │                                                                        │
-  │  SHELVES (readiness index: 16 hashes; a fleet's shelf = CRC16(id) mod  │
-  │  16; one field per fleet, no order between fields)                     │
-  │    fleet:ready:{3}  { A: token }        ← say fleet A hashes to 3      │
-  │    fleet:ready:{9}  { B: token }        ← and fleet B to 9             │
-  │                                                                        │
-  │  DOORBELLS (16 sharded pub/sub channels, one per shelf)                │
-  │    fleet:ready:{3}:wake  ── ring ──┐                                   │
-  │    fleet:ready:{9}:wake  ── ring ──┤                                   │
-  └────────────────────────────────────┼───────────────────────────────────┘
-                                       │  every agentsfleetd replica listens
-                                       ▼  to all sixteen on its hub connection
-        ┌───────────────── each agentsfleetd replica ─────────────────┐
-        │  Doorbell::listen: sixteen tasks, one per channel           │
-        │  a message on channel p → fetch_or(1 << p)                  │
-        │  a gap or a lag         → counted kind="gap", sets nothing  │
-        │                                                             │
-        │  AtomicU16:  bit  0 1 2 3 4 5 6 7 8 9 A B C D E F           │
-        │                   . . . 1 . . . . . 1 . . . . . .           │
-        └─────────────────────────────────────────────────────────────┘
+```text
+Postgres fleet.admissions
+  fleet A: [PR opened] [steer: check migration]
+  fleet B: [Slack mention]
+
+Dragonfly fleet:wake:{shard}
+  sixteen channels -> each daemon's buffer of at most 64 distinct fleet hints
 ```
 
-The inbox holds the jobs. The note says where to look. The ring says look there too, on the next poll; the rotation's own shelf still comes first. A lost ring costs the fleet the rotation's speed, never its work.
+Hints prioritize candidate selection. Every idle poll probes the ledger even if all notifications are lost.
+[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and polling costs.
 
 ## 6. Pickup: two runners, two leases
 
-Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll: ready index → claim → event → row"; [`../data_flow.md`](../data_flow.md) §"C. EXECUTE".
+Each runner polls for work. Eligible fleets must be active, match runner labels and have an available slot.
 
-```
-  runner R1 ── POST /v1/runners/me/leases (Bearer agt_r) ──►┐
-  runner R2 ── POST /v1/runners/me/leases ─────────────────►┤
-                                                            ▼
-  ┌──────────────────── agentsfleetd: Leases::select ──────────────────────┐
-  │                                                                        │
-  │ R1's poll:  rotation → shelf 2 (empty)  ∥  doorbell → first rung ≥2 = 3│
-  │             take bit 3 ── peek shelf 3 (≤100 ms) → [A]                 │
-  │                                                                        │
-  │ R2's poll:  rotation → shelf 3          ∥  doorbell → first rung ≥3 = 9│
-  │             take bit 9 ── peek shelf 9 → [B]                           │
-  │             (consecutive polls take DIFFERENT rung shelves)            │
-  │                                                                        │
-  │ then, in Postgres, for each:                                           │
-  │  a. (checked before the peeks above) a fleet whose held sandbox the    │
-  │     runner names goes first, any shelf; neither runner holds one here  │
-  │  b. SELECT_READY_CANDIDATES ≤64: active, slot free, runner has the     │
-  │     labels; rotation's shelf first, then the last runner, then random  │
-  │  c. CLAIM runner.fleet_slots    ← ONE active lease per fleet           │
-  │       fencing_token + 1, lease_expires_at = now + 30 s                 │
-  │  d. the fleet's oldest job: pending first (XAUTOCLAIM), else new       │
-  │     (XREADGROUP >). A gets "PR opened"; the steer waits behind it      │
-  │  1. INSERT fleet.events  status=received  + stamp delivered_at         │
-  │  2. SPUBLISH fleet:{id}:activity {event_received}                      │
-  │  3. GATES: payer → balance → budget → approval (nothing is charged)    │
-  │     refused → status=gate_blocked, terminal, never reopened            │
-  │  4. vault: secrets_map; the provider key apart (never in secrets_map); │
-  │     ExecutionPolicy: tools, network.allow, per-host rules              │
-  │  5. INSERT runner.leases  status=active, fencing_token, expiry         │
-  │                                                                        │
-  │ settle the rung shelf: rung again or left clear, by the rule in        │
-  │ runner_fleet.md, its Datastore topology table                          │
-  └────────────────────────┬─────────────────────────────┬─────────────────┘
-                           ▼                             ▼
-             R1 ◄── 200 { lease A }          R2 ◄── 200 { lease B }
-                 lease_id, fencing_token, event{digest}, policy,
-                 instructions = the setup's instructions_md
+```text
+runner R1 -> poll -> fleet A's oldest admission (PR opened)
+runner R2 -> poll -> fleet B's oldest admission (Slack mention)
+
+for each claim:
+  lock slot and exact oldest head with SKIP LOCKED
+  advance slot and admission fences; decode before commit
+  open history and stamp delivery under current fences
+  check gates, billing and installed policy
+  issue runner.leases under that fence
 ```
 
-**One active lease per fleet.** The steer cannot run beside the PR job: the affinity slot is held. It waits in A's inbox until A's report frees the slot, and the next poll takes it.
+Only one active lease can hold a fleet. The steer waits behind A's Pull Request job until settlement releases its slot.
+
+A parked or locked head cannot be skipped within that fleet. See [claim ordering](../lease_flow.md#the-poll-claims-an-admission-and-its-fleet-slot).
 
 ## 7. Execute: inside the runner
 
@@ -337,33 +203,25 @@ Fleet B runs the same way on R2, with read-only rules (GitHub job logs, Grafana 
 
 ## 8. Report: one transaction settles it
 
-Canonical: [`../data_flow.md`](../data_flow.md) §"Steer flow end-to-end" (writes 7–15 and why they share a transaction).
+A terminal report commits all durable results together under the current slot, lease and admission fences.
 
-```
-  runner ── POST /v1/runners/me/reports { lease_id, fencing_token, outcome, … } ──►
-  ┌─────────────────────────────── agentsfleetd ───────────────────────────────┐
-  │                                                                            │
-  │  ╔═════════════════ ONE Postgres transaction ═════════════════╗            │
-  │  ║  claim_and_settle: lease active AND token ≥ fencing_token? ║            │
-  │  ║     no  → UZ-RUN-005 (a stale runner), nothing changes     ║            │
-  │  ║     yes → lease status = reported                          ║            │
-  │  ║  7.  fleet.events  status=processed, response_text         ║ ← history  │
-  │  ║  9.  billing.usage_lines  the final slice, priced          ║ ← money    │
-  │  ║  10. fleet.sessions  UPSERT context_json                   ║ ← bookmark │
-  │  ║  12. release the affinity slot (token-guarded)             ║ ← next job │
-  │  ║  13. fleet.obligations INSERT (receipt and delivered_at    ║ ← ONLY when│
-  │  ║      NULL)  "we owe this answer"                           ║   a reply  │
-  │  ╚════════════════════════════════════════════════════════════╝   was      │
-  │                                                                 remembered │
-  │  after the commit (no transaction spans Postgres and Dragonfly):           │
-  │   8.  SPUBLISH fleet:{id}:activity {event_complete}                        │
-  │   11. XACK fleet:{id}:events          ← the job leaves the inbox           │
-  │   14. XADD connector:outbound          (only with an obligation)           │
-  │   15. obligation.receipt = <entry id>                                      │
-  └────────────────────────────────────────────────────────────────────────────┘
+```text
+runner -> report -> one Postgres transaction
+                     usage and reported lease
+                     terminal event history
+                     session checkpoint
+                     admission settled_at
+                     slot released
+                     outbound obligation when a reply is owed
+                            | commit
+                            +-> publish terminal activity
+                            +-> append connector:outbound and record its receipt
 ```
 
-Fleet A skips write 13: its admission said `reply = NONE`. Fleet B's writes the obligation, addressed to the thread.
+A stale holder receives `UZ-RUN-005` without durable changes. A repeat committed report charges nothing again.
+
+Fleet A owes no connector delivery; fleet B's obligation names the Slack thread.
+[Report settlement](../data_flow.md#c-execute--lease--runner--report) owns the failure and retry rules.
 
 ## 9. The answer comes back
 
@@ -390,7 +248,7 @@ Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"6. 
 ```
 
 ```
-   receipt IS NULL             → committed, never queued    (a crash between 13 and 14)
+   receipt IS NULL             → committed, never queued    (a crash before the outbound append)
    receipt set, delivered NULL → queued, nobody received it (a lost stream or host)
    delivered_at set            → a person has it
 
@@ -428,21 +286,24 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
 
 ## 11. Both fleets on one timeline
 
-```
- time ─────────────────────────────────────────────────────────────────────────────►
+```text
+ time -------------------------------------------------------------------->
 
- GitHub   PR opened
-            │ admit A#1, mark shelf 3, ring 3
- Slack            mention in #ci-dev
-                    │ admit B#1 (reply = thread), mark shelf 9, ring 9
- You                    steer A "check migration"
-                          │ admit A#2 (no reply), event_admitted frame
- R1  poll ─► takes ring 3 ─► lease A#1 ──── run (GET diff ✔, review POST ✗) ──► report A#1
- R2      poll ─► takes ring 9 ─► lease B#1 ── run (logs, Loki) ── interim line ─► report B#1
-                                                                                │
- outbound                                                       post into thread ◄┘
- R?  poll … poll (A's slot held, A#2 waits) ……………… slot freed ─► lease A#2 ─► run ─► report
- You  ◄─── the live tail shows every frame; A#2's answer arrives on the CLI's stream
+ GitHub  PR opened -> commit A#1 to fleet.admissions
+ Slack   mention   -> commit B#1 (reply = thread)
+ You     steer A   -> commit A#2 (no reply); event_admitted frame
+                       |
+                       +-> each admission attempts a wake notification
+
+ R1  poll -> Postgres -> claim A#1 + A's slot -> run -> report A#1
+ R2  poll -> Postgres -> claim B#1 + B's slot -> run -> report B#1
+             |                                           |
+             |       both fleets can run concurrently    +-> thread reply
+             v
+ A#2 waits while A's slot is held
+     -> slot freed -> next poll claims A#2 -> run -> report A#2
+
+ You  <--- live activity frames; A#2's answer reaches the CLI stream
 ```
 
 **A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").

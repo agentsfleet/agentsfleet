@@ -1,11 +1,7 @@
 //! Seeding one fleet that holds one event, with runners enrolled against it.
 //!
-//! Shared by the lease suites because they all need the same precondition and
-//! it is fiddly: a fleet needs its workspace and tenant to exist and to AGREE
-//! (the schema ties them with a composite key), the stream needs a consumer
-//! group before a read, and the readiness index needs a mark or the poll never
-//! looks. Any one of those missing makes the assignment pass look broken when
-//! it is the fixture that is.
+//! The composite keys require matching fleet, workspace and tenant rows.
+//! Each runner carries its fleet's placement tag to isolate parallel tests.
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
@@ -18,7 +14,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use afd_core::id::Uuid7;
-use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_fleet::lease::{Acquired, Leases};
 use afd_runner::heartbeat::holds::prove;
 use afd_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
@@ -31,13 +26,7 @@ static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 /// A fleet, workspace and tenant nothing else in the lane will name.
 ///
-/// Fresh per test rather than constant, and that is not tidiness. The database
-/// is per-test, but REDIS IS NOT: the readiness index is one hash at a fixed
-/// key and a fleet's stream is keyed by its id, so a constant fleet id makes
-/// every run inherit the previous run's stream entries. The first version of
-/// this suite did exactly that and failed asserting a stale entry id — the
-/// stream already held earlier runs' events and the pass correctly returned
-/// the oldest.
+/// Fresh identifiers isolate rows in the shared test database.
 ///
 /// Shaped so the schema's `uuidv7` CHECK passes: the character after the
 /// second dash must be `7`.
@@ -75,11 +64,7 @@ pub(crate) struct Seeded<const N: usize> {
     pub(crate) runners: [Uuid7; N],
     /// The LOGICAL event id the fixture admitted under.
     ///
-    /// Not the entry id: the two are different things now that the admission
-    /// ledger owns identity, and it is this
-    /// one that `Acquired::event_id`, `fleet.events` and `billing.usage_lines`
-    /// all address. A test comparing against the receipt would be comparing
-    /// against the wrong half.
+    /// `Acquired::event_id`, `fleet.events` and `billing.usage_lines` share it.
     pub(crate) event_id: String,
     /// The fleet holding the event.
     pub(crate) fleet: String,
@@ -87,11 +72,11 @@ pub(crate) struct Seeded<const N: usize> {
     pub(crate) tenant: String,
 }
 
-/// A fleet with one event on its stream, and `N` enrolled runners.
+/// A fleet with one admission and `N` enrolled runners.
 pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
     let (fleet, workspace, tenant, runners) = seeded_parts::<N>(fixtures).await;
     let event_id = crate::queue::enqueue(
-        fixtures.queue(),
+        &fixtures.database,
         &fleet,
         &workspace,
         ACTOR,
@@ -129,10 +114,10 @@ async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
         .expect("the first beat lands");
 }
 
-/// The fleet and its runners, with NOTHING on the stream yet.
+/// The fleet and its runners, before any admission.
 ///
-/// Split out of [`seeded`] because a test about which entry a poll meets first
-/// has to choose the order entries are appended in, and [`seeded`] appends one
+/// Split out of [`seeded`] because an ordering test chooses when to admit rows,
+/// and [`seeded`] admits one
 /// before it returns.
 pub(crate) async fn seeded_parts<const N: usize>(
     fixtures: &Fixtures,
@@ -168,62 +153,20 @@ pub(crate) async fn seeded_parts<const N: usize>(
     )
 }
 
-/// One rotation of assignment polls, answering the first work any of them took.
-///
-/// **A single `select` is not a poll of the deployment, it is a poll of one
-/// PARTITION.** Readiness is spread over [`READY_PARTITIONS`] hashes
-/// and each pass rotates the cursor by one, so a fixture holding one fleet is
-/// visited by one poll in sixteen. Every suite here that called `select` once
-/// and unwrapped it was passing on a one-in-sixteen draw, which is how thirty
-/// four integration tests failed the first time this lane ran after readiness
-/// was partitioned.
-///
-/// One rotation is the bound the partition count was measured against: every marked fleet is discoverable within it. A loop without that
-/// bound would hang on a fixture whose fleet is genuinely not leasable, which
-/// is a thing several suites deliberately assert.
-///
-/// `None` therefore means what the old single call was trying to mean: no
-/// partition holds leasable work for this runner.
-/// `runner`'s poll for ONE fleet's work: the poll names the fleet among its
-/// holds, which reads that fleet's readiness mark directly.
-///
-/// The partitions' marks are sampled (`HRANDFIELD`), and the readiness index
-/// is shared with every other test and run on the lane. A sampled poll can
-/// meet a sibling's leftover marks and miss this fleet at random, so a suite
-/// asserting on its own admission names it. Several polls rather than one,
-/// because a mark written a moment ago can race the first.
-pub(crate) async fn select_fleet_within_rotations(
-    leases: &Leases,
-    runner: &Uuid7,
-    fleet: &str,
-) -> Option<Acquired> {
-    const POLLS: u16 = 8;
-    let named = [Uuid7::parse(fleet).expect("a seeded fleet id")];
-    for _poll in 0..POLLS {
-        if let Some(acquired) = leases
-            .select(runner, &named)
-            .await
-            .expect("the assignment pass must not fault")
-            && acquired.fleet_id.as_str() == fleet
-        {
-            return Some(acquired);
-        }
+/// One serving poll, prioritizing this fixture's fleet among held fleets.
+pub(crate) async fn select_fleet(leases: &Leases, runner: &Uuid7, fleet: &str) -> Option<Acquired> {
+    let named = [Uuid7::parse(fleet).expect("seeded fleet")];
+    let acquired = leases
+        .select(runner, &named)
+        .await
+        .expect("serving selection");
+    if let Some(acquired) = &acquired {
+        assert_eq!(acquired.fleet_id.as_str(), fleet);
     }
-    None
+    acquired
 }
 
-pub(crate) async fn select_within_one_rotation(
-    leases: &Leases,
-    runner: &Uuid7,
-) -> Option<Acquired> {
-    for _poll in 0..READY_PARTITIONS {
-        if let Some(acquired) = leases
-            .select(runner, &[])
-            .await
-            .expect("the assignment pass must not fault")
-        {
-            return Some(acquired);
-        }
-    }
-    None
+/// One serving discovery pass, including its unconditional Postgres probe.
+pub(crate) async fn select_once(leases: &Leases, runner: &Uuid7) -> Option<Acquired> {
+    leases.select(runner, &[]).await.expect("serving selection")
 }

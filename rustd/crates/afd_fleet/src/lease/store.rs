@@ -10,45 +10,17 @@
 //! file — [`super::affinity`] is the claim and the fence, and the modules
 //! beside it add the gates and the row.
 
-use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::{
-    Doorbell, Dragonfly, FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix,
-};
+use afd_dragonfly::{Doorbell, Dragonfly, FleetStreams, OutboundQueue};
 
-/// Lease-plane reads and writes, over the api-role pool and the queue.
-///
-/// Both datastores, because a lease is the one verb that cannot be served from
-/// either alone: the claim and the row are Postgres, the readiness index and
-/// the event stream are Dragonfly, and the ordering between them is the whole
-/// design. Splitting them across two stores would let a caller take a claim
-/// without being able to read the event it is claiming FOR.
-///
-/// Cheap to clone: `Db` is a handle over an `Arc`-backed pool and `Dragonfly` is a
-/// cloneable connection manager, so every clone shares one connection set
-/// rather than opening a second.
-///
-/// The entropy source is the third: issuing a lease mints two identifiers, and
-/// they are drawn through the workspace's one entropy surface rather than a
-/// second call to the operating system.
-///
-/// The cursor is the fourth, and the reason every clone shares it: the
-/// readiness index is partitioned, a poll reads the partition the cursor
-/// names, and a cursor per handle would let every handle start at the same
-/// partition and leave the rest to luck. One counter per process is what
-/// makes a rotation of polls reach every partition.
-///
-/// The doorbell is the fifth, shared for the same reason: the hub's listener
-/// rings it and every poll takes from it, so a clone with a doorbell of its
-/// own would never hear a ring.
+/// Queue selection and lease writes use Postgres. Dragonfly carries the live
+/// tail, outbound delivery and disposable recent-work notifications.
 #[derive(Debug, Clone)]
 pub struct Leases {
     database: Db,
     queue: Dragonfly,
     entropy: Entropy,
-    cursor: ReadyCursor,
-    ready_prefix: ReadyPrefix,
     doorbell: Doorbell,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
 }
@@ -61,8 +33,6 @@ impl Leases {
             database,
             queue,
             entropy,
-            cursor: ReadyCursor::new(),
-            ready_prefix: ReadyPrefix::production(),
             doorbell: Doorbell::new(),
             ticket: None,
         }
@@ -80,27 +50,13 @@ impl Leases {
         self.ticket
     }
 
-    /// The same store, taking rung partitions from `doorbell`.
+    /// The same store, taking recent fleet hints from `doorbell`.
     ///
     /// Without one nothing rings, and polls find fresh work through the
-    /// rotation alone. The daemon hands in the doorbell its hub listens for.
+    /// Postgres probe alone. The daemon hands in the doorbell its hub listens for.
     #[must_use]
     pub fn with_doorbell(mut self, doorbell: Doorbell) -> Self {
         self.doorbell = doorbell;
-        self
-    }
-
-    /// The same store, polling the readiness index `prefix` names.
-    ///
-    /// A test seam, and one the suites cannot do without: the empty-poll
-    /// property — that a partition holding nothing costs no Postgres round
-    /// trip — is unobservable on the index every other writer shares, because
-    /// on a lane that has seeded hundreds of fleets no partition is ever
-    /// empty. [`ReadyPrefix`] is what gates the minting; this only chooses.
-    #[cfg(feature = "test-util")]
-    #[must_use]
-    pub fn with_ready_prefix(mut self, prefix: ReadyPrefix) -> Self {
-        self.ready_prefix = prefix;
         self
     }
 
@@ -110,20 +66,6 @@ impl Leases {
     /// `pub(crate)` for the same reason [`Leases::pool`] is.
     pub(crate) const fn entropy(&self) -> &Entropy {
         &self.entropy
-    }
-
-    /// The readiness index, bound to this store's connection.
-    ///
-    /// Built per call rather than held: it is a zero-cost view over the same
-    /// handle, and constructing it here keeps [`Leases::queue`] private for the
-    /// same reason [`Leases::pool`] is.
-    pub(crate) fn ready(&self) -> ReadyIndex {
-        ReadyIndex::under(self.queue.clone(), self.ready_prefix.clone())
-    }
-
-    /// The partition cursor every poll through this store turns.
-    pub(crate) const fn cursor(&self) -> &ReadyCursor {
-        &self.cursor
     }
 
     /// The doorbell every poll through this store takes rung partitions from.
@@ -143,19 +85,6 @@ impl Leases {
     /// means no caller can reach past the verbs this store exposes.
     pub(crate) fn outbound(&self) -> OutboundQueue {
         OutboundQueue::new(self.queue.clone())
-    }
-
-    /// The admission ledger, over the same pool, queue and entropy.
-    ///
-    /// Built per call like the two views above: the ledger is three handles
-    /// this store already holds, and a second copy kept beside them would be
-    /// a second thing that could disagree about which pool it reads.
-    pub(crate) fn admissions(&self) -> Admissions {
-        Admissions::new(
-            self.database.clone(),
-            self.queue.clone(),
-            self.entropy.clone(),
-        )
     }
 
     /// The pool this store reads through, for the sibling modules that add

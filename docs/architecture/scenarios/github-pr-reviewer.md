@@ -42,13 +42,13 @@ sequenceDiagram
   API->>PG: INSERT fleet.fleets (installing) + setup revision 1
   API-->>CLI: { fleet, setup checks: github grant pending }
   Op->>API: approve the github grant on the setup check
-  API->>PG: stream + group ready; locked recheck ⇒ active
+  API->>PG: locked setup recheck ⇒ active
   Note over Op,Runner: …a PR is opened…
   GH->>API: POST /v1/ingress/github
   API->>API: verify App signature before payload routing
   API->>PG: installation → workspace → repository/event/grant fleets
   API->>PG: INSERT fleet.admissions (webhook_app, fleet:body digest)
-  API->>API: XADD fleet:{id}:events ✅
+  API->>API: best-effort sharded wake
   Runner->>API: lease → { instructions, event, policy } (no sandbox: every tool runs in the supervisor)
   Runner->>GH: GET /pulls/{n} (Accept: vnd.github.diff, Bearer ${secrets.github.token})
   Note over Runner,GH: POST /pulls/{n}/reviews refused at egress, never sent ❌
@@ -69,7 +69,9 @@ The fleet runs the instructions and policy of its selected setup revision in `fl
 
 1. **Platform setup and workspace connection.** The shared App's setup and John's user-authorization flow are in [`../connectors.md`](../connectors.md) §"GitHub App: platform setup to fleet execution". The App must already be installed on `acme/payments`; an installation already owned by another workspace returns 403 without changing either workspace.
 2. **Fleet subscription.** The saved fleet's webhook trigger declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in its reviewed setup. The App installation is the widest set of repositories; this list picks the ones this fleet hears. A fleet with no `repositories` list receives no App traffic (`serves_repository` in `rustd/crates/afd_ingress/src/binding/mod.rs:250-256`).
-3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, writes one `fleet.admissions` row per fleet keyed by fleet and body digest, and appends the event to that fleet's stream ([`../lease_flow.md`](../lease_flow.md) §"Admission: the row is the acceptance, the stream entry is a receipt").
+3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, then resolves the installation.
+
+   It selects only active and approved fleets matching `acme/payments` plus `pull_request`. Each fleet's `fleet.admissions` row is keyed by fleet and body digest. A best-effort notification prioritizes pickup; every poll also queries Postgres ([`../lease_flow.md`](../lease_flow.md#admission-commits-the-queue-row)).
 
 4. **The authorisation, once, at Save.** The setup's `github` credential shows as a grant check. Save raises a pending approval card for `(fleet_id, "github")`, John approves it, and the fleet activates only after a locked recheck sees every check ready (`rustd/crates/afd_authoring/src/creation/activate.rs`, `rustd/crates/afd_approval/src/request/setup.rs`). How the mint still narrows the token, and how `agentsfleet grant delete` stops it: [`../connectors.md`](../connectors.md) §"Trust anchors", item 6. A grant covers one fleet and one service, so deleting it stops every repository that fleet reaches through GitHub. To narrow reach, apply a reviewed improvement with a shorter `repositories` list instead.
 

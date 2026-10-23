@@ -16,15 +16,14 @@
 mod paging;
 mod plans;
 mod read;
-mod receipt_recovery;
+mod retry;
+mod snapshot;
 
 use afd_core::event::status;
 use afd_core::id::Uuid7;
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{Cursor, History, QUEUED_READ_TEXTS, Steer};
 
 use crate::integration_list_plans::{explain_generic, private_database};
-use crate::integration_steer_retry::clean;
 use crate::support::EventsLane;
 
 /// A person's actor, as a steer records it.
@@ -42,10 +41,7 @@ const MARK_DELIVERED: &str = "UPDATE fleet.admissions SET delivered_at = now() \
 
 /// The two indexes that hold only undelivered admissions, keyed on the fleet
 /// and the admission order (`schema/1720_fleet_admissions.sql`).
-const IN_FLIGHT_INDEXES: [&str; 2] = [
-    "idx_admissions_undelivered",
-    "idx_admissions_delivery_lookup",
-];
+const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_admissions_delivery_lookup"];
 
 /// Ledger history, most of it delivered, across many fleets of one workspace:
 /// `$1` tenant, `$2` instant, `$3` fleets, `$4` admissions per fleet. Each
@@ -67,14 +63,15 @@ WITH workspace AS (
 )
 INSERT INTO fleet.admissions
   (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor,
-   event_type, request_json, event_created_at, receipt, delivered_at,
-   replay_count, created_at, updated_at)
+   event_type, request_json, event_created_at, delivered_at,
+   settled_at, created_at, updated_at)
 SELECT uuidv7(), fleets.id, fleets.workspace_id, 'steer', fleets.id || ':' || a,
        'digest', 'steer:api', 'chat', '{}',
-       $2::timestamptz + a * interval '1 millisecond', a || '-0',
+       $2::timestamptz + a * interval '1 millisecond',
        CASE WHEN a % 50 = 0 THEN NULL
             ELSE $2::timestamptz + a * interval '1 millisecond' END,
-       0,
+       CASE WHEN a % 50 = 0 THEN NULL
+            ELSE $2::timestamptz + a * interval '1 millisecond' END,
        $2::timestamptz + a * interval '1 millisecond',
        $2::timestamptz + a * interval '1 millisecond'
   FROM fleets, generate_series(1, $4) a";

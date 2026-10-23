@@ -114,13 +114,23 @@ impl Fixtures {
             .expect("the ledger count must run")
     }
 
+    /// Whether the admission can still be claimed after a report attempt.
+    pub(crate) async fn admission_settled(&self, event: &str) -> bool {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query_scalar(
+            "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1::uuid",
+        )
+        .bind(event)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the admission settlement read must run")
+    }
+
     /// Ends an event out of band, as an earlier delivery of the same logical
     /// event already did.
     ///
-    /// One logical event can sit on two stream entries — a replayed admission
-    /// puts it there — so a lease can legitimately be `active` over an event
-    /// whose row is already terminal. The terminal write is guarded on
-    /// `received` precisely for that case.
+    /// Exercises a report whose narrative row ended before the report arrived.
+    /// The terminal write must preserve that earlier outcome.
     pub(crate) async fn end_event(&self, fleet: &str, event: &str, status: &str) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(

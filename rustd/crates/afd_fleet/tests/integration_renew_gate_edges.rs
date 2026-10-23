@@ -20,7 +20,6 @@ use afd_core::test_util::trace::Capture;
 use afd_db::config::DbRole;
 use afd_wire::report::RenewRequest;
 
-use crate::queue;
 use crate::report_seed::{Held, held, held_in};
 use crate::support::Fixtures;
 
@@ -77,7 +76,6 @@ async fn renew(held: &Held) -> afd_fleet::Result<(jiff::Timestamp, afd_billing::
 }
 
 async fn close(held: Held) {
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 

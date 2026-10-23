@@ -155,11 +155,11 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
     sqlx::query(
         "INSERT INTO runner.leases
            (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
-            receipt, posture, provider, model, last_metered_at,
+            posture, provider, model, last_metered_at,
             fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at)
          SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5::uuid, now(),
-                $6, 'platform', 'anthropic', 'claude-fixture', now(),
-                $7, now() + $8::interval, $9, 0, now(), now()
+                'platform', 'anthropic', 'claude-fixture', now(),
+                $6, now() + $7::interval, $8, 0, now(), now()
          FROM fleet.fleets f WHERE f.id = $3::uuid",
     )
     .bind(lease)
@@ -167,7 +167,6 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
     .bind(fleet)
     .bind(workspace)
     .bind(event)
-    .bind(EVENT_ID)
     .bind(FIXTURE_FENCE)
     .bind(LEASE_WINDOW)
     .bind(afd_state::sql::LEASE_STATUS_ACTIVE)

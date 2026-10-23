@@ -10,7 +10,6 @@
 use std::time::Instant;
 
 use afd_core::id::Uuid7;
-use afd_dragonfly::ReadyToken;
 use jiff::Timestamp;
 
 use super::Plane;
@@ -24,15 +23,14 @@ use crate::lease::envelope::Acquired;
 struct Held {
     fleet_id: Uuid7,
     fence: Fence,
-    ready: ReadyToken,
+    event_id: String,
 }
 
 impl Plane {
     /// Every step after a won claim, then what becomes of the claim.
     ///
-    /// A lease keeps it. Anything else frees it, and a park also clears the
-    /// fleet's mark with the generation the poll peeked, because the answer a
-    /// person owes re-marks the fleet and nothing else will change before it.
+    /// A lease keeps it. Anything else frees it. A park stamps the admission
+    /// and frees the slot together, so later work waits for the gate answer.
     ///
     /// `began` is when the poll began on the monotonic clock, so the issued
     /// lease's queue wait can count the time the poll itself took.
@@ -46,7 +44,7 @@ impl Plane {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
             fence: acquired.fence,
-            ready: acquired.ready.clone(),
+            event_id: acquired.event_id.clone(),
         };
         let pass = match self
             .admit_claimed(acquired, runner_id, now)
@@ -64,8 +62,14 @@ impl Plane {
                 Ok(Polled::Empty(answer))
             }
             Ok(Step::Park(answer)) => {
-                self.let_go(&held).await;
-                self.leases.clear_mark(&held.fleet_id, &held.ready).await;
+                if let Err(fault) = self
+                    .leases
+                    .park(&held.fleet_id, &held.event_id, held.fence)
+                    .await
+                {
+                    self.let_go(&held).await;
+                    return Err(fault);
+                }
                 Ok(Polled::Empty(answer))
             }
             Err(fault) => {

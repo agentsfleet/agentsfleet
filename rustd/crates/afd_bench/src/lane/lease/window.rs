@@ -114,7 +114,7 @@ async fn drive_all(
         let runner = runner.clone();
         let shared = Arc::clone(shared);
         // Per runner, because the thing under measurement is what happens when
-        // R of them reach the same readiness index at the same instant.
+        // R of them reach the same admissions queue at the same instant.
         tasks.push(tokio::spawn(async move {
             drive::poll_until(&leases, &runner, &shared).await
         }));

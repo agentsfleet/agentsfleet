@@ -167,7 +167,8 @@ async fn production_plane_hands_each_route_its_deployment_facts() {
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_the_daemon_doorbell_hears_its_hub() {
-    use afd_dragonfly::{Partition, ReadyPrefix, SubscriptionHub};
+    use afd_core::id::Uuid7;
+    use afd_dragonfly::SubscriptionHub;
 
     /// Long enough for the listener task to hear a frame the server pushed.
     const HEARD_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
@@ -175,18 +176,13 @@ async fn test_the_daemon_doorbell_hears_its_hub() {
     let (hub, server) = SubscriptionHub::detached();
     let live = Live::new(hub, Ceiling::new(1));
     let doorbell = super::listening_doorbell(&live);
-    let rung = Partition::new(6).expect("a partition below sixteen");
-    let cursor = Partition::new(0).expect("a partition below sixteen");
-
-    server.publish(
-        &rung.wake_channel_under(&ReadyPrefix::production()),
-        "token",
-    );
+    let rung = Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").expect("fleet");
+    server.publish("fleet:wake:{6}", rung.as_str());
 
     let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
     let mut taken = None;
     while taken.is_none() && tokio::time::Instant::now() < deadline {
-        taken = doorbell.take(cursor);
+        taken = doorbell.take();
         tokio::task::yield_now().await;
     }
     assert_eq!(

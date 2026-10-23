@@ -26,7 +26,6 @@ use sqlx::Connection as _;
 
 use crate::faulty_biller::{Faults, Faulty};
 use crate::integration_billing_sweep::{abandon, orphan};
-use crate::queue;
 use crate::report_seed::{Held, held_in};
 use crate::support::Fixtures;
 
@@ -53,7 +52,6 @@ async fn isolated() -> Held {
 }
 
 async fn close(held: Held) {
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 

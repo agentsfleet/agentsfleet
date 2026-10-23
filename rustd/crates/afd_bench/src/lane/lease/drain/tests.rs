@@ -1,4 +1,4 @@
-use super::{IDLE_COMMITS_PER_POLL, IDLE_STATEMENTS_PER_POLL, READY_DEPTH, summary};
+use super::{IDLE_COMMITS_PER_POLL, IDLE_STATEMENTS_PER_POLL, UNSETTLED_ROWS, summary};
 use crate::profile::Profile;
 use crate::report::{Lane, Provenance, Report};
 
@@ -12,11 +12,11 @@ fn the_summary_prints_each_measured_key_as_the_rubric_greps_it() {
     let mut report = report();
     report.measurement(IDLE_STATEMENTS_PER_POLL, 14.5);
     report.measurement(IDLE_COMMITS_PER_POLL, 3.0);
-    report.measurement(READY_DEPTH, 200.0);
+    report.measurement(UNSETTLED_ROWS, 200.0);
 
     assert_eq!(
         summary(&report),
-        "idle_statements_per_poll=14.5 idle_commits_per_poll=3 drain_ready_depth=200"
+        "idle_statements_per_poll=14.5 idle_commits_per_poll=3 drain_unsettled_rows=200"
     );
 }
 
