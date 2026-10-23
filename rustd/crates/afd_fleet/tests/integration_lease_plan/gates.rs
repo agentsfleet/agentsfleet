@@ -79,9 +79,11 @@ async fn probe_plans(connection: &mut sqlx::PgConnection, fleet: &str, runner: &
             }
             eprintln!(
                 "{name}: mode={mode}, gates={size}, ms={}, shared_hits={}, shared_reads={}",
-                plan[0]["Execution Time"],
-                plan[0]["Plan"]["Shared Hit Blocks"],
-                plan[0]["Plan"]["Shared Read Blocks"]
+                plan.pointer("/0/Execution Time").expect("execution time"),
+                plan.pointer("/0/Plan/Shared Hit Blocks")
+                    .expect("shared hits"),
+                plan.pointer("/0/Plan/Shared Read Blocks")
+                    .expect("shared reads")
             );
         }
     }
@@ -184,7 +186,9 @@ async fn assert_other_fleet_history(
         assert_dense_work(&plan);
         eprintln!(
             "dense cross-fleet probe: ms={}, shared_hits={}",
-            plan[0]["Execution Time"], plan[0]["Plan"]["Shared Hit Blocks"]
+            plan.pointer("/0/Execution Time").expect("execution time"),
+            plan.pointer("/0/Plan/Shared Hit Blocks")
+                .expect("shared hits")
         );
     }
 }
