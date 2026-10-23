@@ -37,6 +37,7 @@ async fn a_blocked_authorization_read_closes_at_its_deadline_and_releases_capaci
         next.is_none(),
         "blocked authorization cannot emit buffered text"
     );
+    // gstack-timing-ok: checks the real access timeout after observing Postgres row-lock contention.
     assert!(started.elapsed() >= Duration::from_secs(10));
     held.rollback().await.expect("release draft");
     drop(body);
