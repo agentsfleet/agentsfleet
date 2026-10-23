@@ -3,10 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderWithoutProviders,
   screen,
   waitFor,
 } from "@testing-library/react";
+
+import { TooltipProvider } from "@agentsfleet/design-system";
+const render = (element: React.ReactNode) => renderWithoutProviders(element, {wrapper: TooltipProvider});
 
 vi.mock("lucide-react", () => ({
   ActivityIcon: () =>
@@ -78,7 +81,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       initialCursor: null, pageSize: 25,
     }));
     expect(screen.getByText("Setup chat")).toBeTruthy();
-    expect(screen.getByText("Setup chat · 1,860 tokens · 820 in · 1,040 out")).toBeTruthy();
+    expect(screen.getByText("820 input · 1,040 output")).toBeTruthy();
     expect(screen.getByText("−$0.001")).toBeTruthy();
     expect(screen.queryByText("DELETED AGENT")).toBeNull();
   });
@@ -119,13 +122,13 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     expect(screen.getByText("−$0.001")).toBeTruthy();
     // fleet identity and model make the debit attributable
     expect(screen.getByText(chargeAgentLabel(charge()))).toBeTruthy();
-    expect(screen.getByText("kimi k2.6")).toBeTruthy();
+    expect(screen.getByText("kimi-k2.6")).toBeTruthy();
     // activity makes the token counts legible
     expect(
-      screen.getByText("Run · 1,860 tokens · 820 in · 1,040 out"),
+      screen.getByText("820 input · 1,040 output"),
     ).toBeTruthy();
     // date column renders the formatted timestamp
-    expect(screen.getByText(/\d{4} · \d{2}:\d{2}/, { selector: "td > time" })).toBeTruthy();
+    expect(document.querySelector("td time")?.getAttribute("datetime")).toBe("2023-11-14T22:13:20.000Z");
   });
 
   it("renders a zero debit without a negative sign", () => {
@@ -171,7 +174,7 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       }),
     );
 
-    for (const name of ["Fleet", "Model", "Activity", "Created", "Amount"]) {
+    for (const name of ["Fleet", "Model", "Usage", "Occurred", "Amount"]) {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(
         screen.getByRole("columnheader", { name }).getAttribute("aria-sort"),

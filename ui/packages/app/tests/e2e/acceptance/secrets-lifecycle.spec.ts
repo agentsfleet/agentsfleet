@@ -50,17 +50,7 @@ test.describe("secrets lifecycle", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "secrets");
     await expect(page.getByRole("heading", { name: /^secrets$/i })).toBeVisible();
 
-    const search = page.getByRole("searchbox", {name: "Search secrets"});
-    await search.click();
-    await search.fill("a");
-    await expect(search).toBeFocused();
-    await expect(search).toHaveCSS("box-shadow", /inset/);
-    await expect.poll(() => search.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return style.borderLeftColor === style.borderRightColor;
-    })).toBe(true);
-    await search.clear();
-    await expect(page.getByText("Encrypted", {exact: true})).toBeVisible();
+    await expect(page.getByRole("paragraph").getByText("Encrypted", {exact: true})).toBeVisible();
     await expect(page.getByText("Encrypted and hidden.", {exact: true})).toHaveCount(0);
 
     // Add via the field/value builder, opened in a dialog.
@@ -76,6 +66,17 @@ test.describe("secrets lifecycle", () => {
     await expect(addDialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
     const row = page.getByText(name, { exact: true }).first();
     await expect(row).toBeVisible({ timeout: ACTION_TIMEOUT_MS });
+
+    const search = page.getByRole("searchbox", {name: "Search secrets"});
+    await search.click();
+    await search.fill("a");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveCSS("box-shadow", /inset/);
+    await expect.poll(() => search.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return style.borderLeftColor === style.borderRightColor;
+    })).toBe(true);
+    await search.clear();
 
     // Rotate (overwrite in place) through the Edit dialog.
     await page.getByRole("button", { name: `Edit secret ${name}` }).click();

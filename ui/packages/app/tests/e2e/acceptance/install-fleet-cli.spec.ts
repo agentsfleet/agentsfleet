@@ -9,7 +9,6 @@ import { purgeFixtureFleet } from "./fixtures/teardown";
 import { FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { cliEnv, deleteCliKey, makeCliStateDir, mintCliKey, spawnAgentsfleet, writeCliState } from "./fixtures/cli-runner";
-import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { workspaceHref } from "./fixtures/nav";
 import { clientFor } from "./fixtures/api-client";
 import { authoringModelRef } from "./fixtures/native-setup";
@@ -59,7 +58,7 @@ test("terminal chat creates a private draft and explicitly saves a fleet visible
     expect(FleetSchema.parse(await client.get<unknown>(`${base}/fleets/${saved}`)).name).toBe(name);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspace, `fleets/${saved}`));
-    await expect(page.getByRole("heading", {name: agentDisplayName(saved), exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name, exact: true})).toBeVisible();
   } finally {
     if (saved) await purgeFixtureFleet({sessionJwt: key.key}, workspace, saved);
     await deleteCliKey(api, jwt, key.id);

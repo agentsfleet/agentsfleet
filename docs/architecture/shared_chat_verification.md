@@ -1,8 +1,8 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-10-22
-product_version: 0.64.0
+verified: 2026-10-24
+product_version: 0.65.0
 executable: false
 ---
 
@@ -188,13 +188,25 @@ The mounted private identity owns the cache and clears it after lost access.
 
 The private transcript stays out of browser storage.
 
+The sidebar reads saved fleets only. Creator-private drafts remain in **Unfinished setups** on **New fleet**.
+Both lists remain scoped to the account, workspace, and signed-in person.
+
+Draft projection indexes original requests by sequence once per snapshot.
+A conversation-owned weak cache preserves unchanged message objects while the latest reply streams.
+Settled rows receive message data without scanning the transcript again.
+
+Setup retry reads current client state, stops uncertain work when required, then submits the original request.
+Saved-chat retry uses the normal delivery queue and requires the original request's actor to match the signed-in person.
+Partial answers and unknown usage remain visible after failure.
+
 ### Setup and runtime stay together
 
 New fleet supports multiple setup messages before explicit **Save fleet**.
 Saving opens that fleet's Chat.
 **Edit setup** opens a private chat panel beside the mounted runtime conversation.
 
-Manual instructions are optional, and **Save changes** remains reachable below the editor.
+Manual instructions are optional, and **Save changes** remains reachable in the setup footer, above its composer.
+Unapplied manual edits disable that save action. Folding or closing the editor retains the local text until it is applied or the owner changes.
 
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.
@@ -202,6 +214,33 @@ A successful save closes the panel and refreshes server data.
 
 The mounted runtime composer retains its unsent text.
 New runs use the saved revision; existing runs keep their pinned version.
+
+Fleet Activity keeps server rendering through `FleetActivity` while its table loads at the selected-view boundary.
+Setup constants and schedule-status checks do not initialize setup schemas.
+
+### Retaining long acceptance evidence
+
+The final continuity checks send 181 messages through one fleet and repeat those steps across ten concurrent fleets.
+A failed check or evidence read preserves every related fleet and private draft.
+The shared teardown also preserves the `continuity-` fleet prefix.
+
+Identifier attachments record the workspace, fleet, and private draft identifiers before history reads.
+Successful runs clean up only after every history and isolation check and every evidence capture succeeds.
+These retention tests do not establish that the full live acceptance checks passed.
+
+Cleanup deletes the supplied fleet and drafts, including their saved messages.
+Use the identifier attachment against the same development backend with a current fixture session:
+
+```sh
+cd ui/packages/app
+bun tests/e2e/acceptance/fixtures/continuity-cleanup.ts /path/to/single-identifiers.json
+```
+
+Successful cleanup exits with status 0 and no output.
+The command refuses production hosts and invalid attachments.
+
+It checks the live fleet name and deletes only the supplied fleet and drafts.
+Failed deletions remain errors; they never count as successful cleanup.
 
 ## Tracing and memory
 

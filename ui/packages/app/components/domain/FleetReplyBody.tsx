@@ -5,7 +5,8 @@ import { CopyButton } from "@agentsfleet/design-system";
 import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant-ui/react";
 
 import { truncate } from "@/lib/utils";
-import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
+import { FLEET_OUTCOME_CLASS } from "./FleetFailedOutcome";
+import { FleetReplyFailure } from "./FleetReplyFailure";
 import { FleetReplyMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetExplored } from "./FleetExplored";
@@ -96,11 +97,10 @@ export function FleetReply({
         })}
       </MessagePrimitive.GroupedParts>
       <OmittedCalls count={readOmittedCallCount(message)} />
-      {answer.length === 0 && !running ? (
-        errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p>
-      ) : null}
+      {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
+      {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
-      {running || recovering ? null : <FleetReplyFigures figures={readReplyFigures(message)} />}
+      {running || recovering || errored ? null : <FleetReplyFigures figures={readReplyFigures(message)} />}
       <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
     </FleetMessageRow>
   );
@@ -156,7 +156,7 @@ export function renderReplyPart(
         />
       );
     case "text":
-      return <ReplyText text={part.text} errored={reply.errored} streaming={reply.running} />;
+      return <ReplyText text={part.text} streaming={reply.running} />;
     case "indicator":
       return <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
     default:
@@ -181,10 +181,10 @@ function reasoningText(message: MessageState): string {
  * is parsed whole, once. `streaming` is deferred with the text, so the settled
  * parse reads the final answer rather than the flush before it.
  */
-function ReplyText({ text, errored, streaming }: { text: string; errored: boolean; streaming: boolean }) {
+function ReplyText({ text, streaming }: { text: string; streaming: boolean }) {
   return (
     <>
-      {errored ? <FleetFailedOutcome>{text}</FleetFailedOutcome> : <FleetReplyMarkdown text={text} streaming={streaming} />}
+      <FleetReplyMarkdown text={text} streaming={streaming} />
       {streaming ? (
         <span className="sr-only" aria-label="streaming">Receiving reply</span>
       ) : null}

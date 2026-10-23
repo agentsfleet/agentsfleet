@@ -11,8 +11,8 @@
  *
  * A paginating table fills the page it sits on only when two halves agree: the
  * page gives it a definite height and the table claims it. Events once shipped
- * a min-height shell that left its table short, so Secrets and Events are
- * measured against their page. The platform Fleet library table ends at its
+ * a min-height shell that left its table short, so Events is measured against
+ * its page. Secrets and the platform Fleet library table end at their
  * rows by design, so it is measured for that instead: no empty band inside the
  * table, in a window that holds a full page of rows.
  */
@@ -80,7 +80,7 @@ async function expectTableFillsPage(page: Page, path: string): Promise<void> {
 // `clientHeight`, so it cannot see an empty band under the last row.
 async function expectTableEndsAtRows(page: Page, path: string): Promise<void> {
   await page.goto(path);
-  const layout = page.locator(FULL_HEIGHT_PAGE);
+  const layout = page.getByRole("main");
   await expect(layout.locator(DATA_TABLE).first()).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
   const measured = await layout.evaluate((element, viewportSelector) => {
     const viewport = element.querySelector(viewportSelector);
@@ -193,7 +193,7 @@ test.describe("a paginating table fills the page it sits on", () => {
     await page.setViewportSize(TALL_WINDOW);
   });
 
-  test("Secrets and Events fill their pages", async ({ page }) => {
+  test("Secrets ends at its rows while Events fills its page", async ({ page }) => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const client = clientFor(FIXTURE_KEY.regular);
     // Secrets shows an empty state instead of a table until it holds a row.
@@ -208,9 +208,8 @@ test.describe("a paginating table fills the page it sits on", () => {
         operation_id: v7(),
       });
       await signInAs(page, FIXTURE_KEY.regular);
-      for (const surface of ["secrets", "events"]) {
-        await expectTableFillsPage(page, workspaceHref(workspaceId, surface));
-      }
+      await expectTableEndsAtRows(page, workspaceHref(workspaceId, "secrets"));
+      await expectTableFillsPage(page, workspaceHref(workspaceId, "events"));
     } finally {
       await client.delete(`${secrets}/${encodeURIComponent(secret)}`);
       await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, TABLE_FILL_FLEET_PREFIX);

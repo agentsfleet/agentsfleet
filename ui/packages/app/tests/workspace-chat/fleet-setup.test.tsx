@@ -103,7 +103,7 @@ it("keeps failed validation visible and does not create a fleet", async () => {
 
 it("shows unfinished candidate state and blocks controls during authoring", async () => {
   const view = render(<FleetSetup client={client} view={{...client.getSnapshot(), draft: {...DRAFT, review: undefined}}} workspace={WORKSPACE} />);
-  expect(screen.getByText(/Continue chatting to finish/)).toBeTruthy();
+  expect(screen.getByText(/Keep chatting to work out/)).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
   view.rerender(<DraftChatHeading client={client} view={{...client.getSnapshot(), pending: true}} />);
   expect(await setupAction("Save fleet")).toHaveProperty("disabled", true);
@@ -129,7 +129,7 @@ it("saves an improvement against the current setup tag and publishes another rev
   await chooseSetupAction("Save changes");
   await screen.findByText(/Fleet setup updated/);
   expect(screen.getByRole("heading", {name: "Saved v2"})).toBeTruthy();
-  expect(screen.getByText(/New runs use v2/)).toBeTruthy();
+  expect(screen.getByText(/New runs use this setup/)).toBeTruthy();
   await openSetupReview();
   expect(fixture.writes()[0]?.headers.get("If-Match")).toBe(FLEET.setup_etag);
   fireEvent.click(screen.getByRole("button", {name: "Publish to Fleet library"}));
@@ -152,15 +152,16 @@ it("keeps an unsaved improvement editable when its validated Apply is refused", 
   await chooseSetupAction("Save changes");
   await screen.findByText("The saved fleet changed");
   expect(screen.queryByRole("heading", {name: "Saved v2"})).toBeNull();
-  expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Based on v1"})).toBeTruthy();
   expect(await setupAction("Save changes")).toHaveProperty("disabled", false);
   await setupAction("Edit instructions");
   expect(screen.getByRole("menuitem", {name: "Edit instructions"}).getAttribute("aria-disabled")).not.toBe("true");
 });
 
-it.each(["Instructions", "Instance name", "Runtime config"])("requires updating edited %s before running or publishing", async (field) => {
+it.each(["Instructions", "Fleet name", "Runtime config"])("requires updating edited %s before running or publishing", async (field) => {
   render(<LiveSetup />);
   await openSetupReview();
+  if (field === "Runtime config") fireEvent.click(screen.getByRole("button", {name: "Advanced settings"}));
   const input = screen.getByLabelText(field) as HTMLInputElement | HTMLTextAreaElement;
   const original = input.value;
   fireEvent.change(input, {target: {value: field === "Runtime config" ? `${original} ` : `${original} revised`}});

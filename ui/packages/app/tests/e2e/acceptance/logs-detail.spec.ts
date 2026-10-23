@@ -33,7 +33,7 @@ test.describe("fleet detail logs", () => {
     const composer = page.getByLabel("Chat composer");
     await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     const message = `inspect-${tag}`;
-    await composer.getByPlaceholder(/message this fleet/i).fill(message);
+    await composer.getByPlaceholder(/message your fleet/i).fill(message);
     const persisted = page.waitForResponse((response) => {
       const request = response.request();
       return request.method() === "POST"
@@ -63,9 +63,8 @@ test.describe("fleet detail logs", () => {
     );
     expect(detail.request_json ?? "").toContain(message);
 
-    // The chat-first console: the summary strip carries status/outcome/cost
-    // figures and the chat card carries the conversation.
-    await expect(page.getByLabel("Fleet summary")).toBeVisible();
+    // The approved chat keeps routine run details in Activity.
+    await expect(page.getByRole("heading", {name: seeded.name, exact: true})).toBeVisible();
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
     // Scope to the fleet rail: the workspace sidebar carries its own Events
     // link, so the bare role query is ambiguous on the detail page.

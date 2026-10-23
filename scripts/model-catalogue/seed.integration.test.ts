@@ -27,7 +27,7 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
 
   test("the complete curated document seeds every proved context on an empty database", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
-    expect(catalogue.models).toHaveLength(19);
+    expect(catalogue.models).toHaveLength(20);
     expect(catalogue.models.every((model) => model.context !== null)).toBe(true);
     const wanted = catalogue.models.map((model) => `${model.provider}/${model.model_name}`).toSorted();
     const initial = await snapshot(database);

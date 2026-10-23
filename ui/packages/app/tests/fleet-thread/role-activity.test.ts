@@ -139,15 +139,9 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     ]);
     renderThread();
     expect(screen.queryByText("Details")).toBeNull();
-    // The ink sits on the failure line, beside its mark, not on the words' span.
-    const failure = screen
-      .getByText(RUNNER_REFUSAL_SENTENCE, { exact: false })
-      .closest("[data-failed-outcome]") as HTMLElement;
-    expect(failure.className).toMatch(/text-label/);
-    expect(failure.className).toMatch(/font-medium/);
-    expect(failure.className).toMatch(/leading-label/);
-    expect(failure.className).toMatch(/text-foreground/);
-    expect(failure.className).not.toMatch(/text-warning/);
+    expect(screen.getByText(RUNNER_REFUSAL_SENTENCE, {exact: false})).toBeTruthy();
+    expect(screen.getByText("Couldn’t complete this request").className).toContain("text-destructive");
+    expect(screen.getByRole("button", {name: "View details"})).toBeTruthy();
     expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
 

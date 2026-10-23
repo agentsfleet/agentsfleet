@@ -82,7 +82,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     await page.goto(href, { waitUntil: "domcontentloaded" });
     const summary = page.getByLabel("Fleet summary");
     const chat = page.getByLabel("Fleet chat");
-    await expect(summary).toBeVisible();
+    await expect(chat).toBeVisible();
     await connected.promise;
     recordRefreshes(page, href, counts);
     mounted.resolve();
@@ -90,6 +90,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     // The completion inlines LIVE_MARKER, so it could paint on its own. This
     // run never completes: only the live chunk path can put its text on screen.
     await expect(chat.getByText(STREAMING_MARKER, { exact: true })).toHaveCount(1);
+    await expect(summary).toBeVisible();
     // Pin test: these literals are the completion's user-visible figures.
     await expect(summary.getByText("12,345", { exact: true })).toBeVisible();
     await expect(summary.getByRole("link", { name: /^1 approval waiting/ })).toBeVisible();

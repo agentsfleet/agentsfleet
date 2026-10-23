@@ -69,6 +69,7 @@ const OPERATOR_JOURNEY_SPEC = "**/operator-journey.spec.ts";
 const LIVE_COUNTER_SPEC = "**/fleet-count.spec.ts";
 const PULSE_WALL_SPEC = "**/multi-fleet.spec.ts";
 const FETCH_AUDIT_SPEC = "**/workspace-fetch-dedupe.spec.ts";
+const CONTINUITY_SPEC = "**/fleet-continuity-final.spec.ts";
 
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
@@ -78,6 +79,7 @@ const PROJECT_LIVE_COUNTER = "live-counter";
 const PROJECT_PULSE_WALL = "pulse-wall";
 const PROJECT_FRAME_BUDGET = "frame-budget";
 const PROJECT_FETCH_AUDIT = "fetch-audit";
+const PROJECT_CONTINUITY = "final-continuity";
 const FRAME_BUDGET = new RegExp(FRAME_BUDGET_TAG);
 
 const CHROMIUM = { ...devices["Desktop Chrome"] };
@@ -130,6 +132,7 @@ export default defineConfig({
         LIVE_COUNTER_SPEC,
         PULSE_WALL_SPEC,
         FETCH_AUDIT_SPEC,
+        CONTINUITY_SPEC,
       ],
       grepInvert: FRAME_BUDGET,
       dependencies: [PROJECT_PREFLIGHT],
@@ -172,6 +175,12 @@ export default defineConfig({
       // Strictly last: the audit reset touches an app-global counter, so it
       // must outlast BOTH the wall chain and the operator chain.
       dependencies: [PROJECT_FRAME_BUDGET],
+      use: CHROMIUM,
+    },
+    {
+      name: PROJECT_CONTINUITY,
+      testMatch: CONTINUITY_SPEC,
+      dependencies: [PROJECT_FETCH_AUDIT],
       use: CHROMIUM,
     },
   ],

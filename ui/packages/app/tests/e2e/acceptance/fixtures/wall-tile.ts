@@ -78,7 +78,7 @@ function figure(rendered: string, pattern: RegExp): string | undefined {
  */
 export function tileForAgent(page: Page, callsign: string): Locator {
   const overlay = page.getByRole("link", {
-    name: new RegExp(`^${MANAGE_FLEET_LABEL}: ${AGENT_PREFIX} ${callsign.toUpperCase()} — `),
+    name: new RegExp(`^${MANAGE_FLEET_LABEL}: .+ — ${AGENT_PREFIX} ${callsign.toUpperCase()} — `),
   });
   return page.locator(TILE_CARD).filter({ has: overlay });
 }

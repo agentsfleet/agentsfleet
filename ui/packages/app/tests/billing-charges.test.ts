@@ -67,19 +67,21 @@ describe("describeCharge", () => {
   });
 
   it("describes a run with explicit input and output token counts", () => {
-    expect(describeCharge(charge())).toBe("Run · 1,860 tokens · 820 in · 1,040 out");
+    expect(describeCharge(charge())).toBe("1,860 tokens · 820 input · 1,040 output");
   });
 
   it("explains when a run recorded no token usage", () => {
     expect(
       describeCharge(charge({ token_count_input: null, token_count_output: null })),
-    ).toBe("Run · No token usage recorded");
+    ).toBe("Token usage unavailable");
   });
 
-  it("explains when a run records explicit zero token counts", () => {
+  it("distinguishes measured runtime from zero and unavailable token usage", () => {
     expect(describeCharge(charge({ token_count_input: 0, token_count_output: 0 }))).toBe(
-      "Run · No token usage recorded",
+      "Runtime · 3 seconds",
     );
+    expect(describeCharge(charge({ token_count_input: 0, token_count_output: 0, wall_ms: null }))).toBe("0 tokens");
+    expect(describeCharge(charge({ token_count_input: null, token_count_output: 0 }))).toBe("Token usage unavailable");
   });
 });
 
@@ -87,20 +89,19 @@ describe("charge identity", () => {
   it("names setup costs before a fleet exists without marking them deleted", () => {
     const row = charge({ fleet_id: null, event_id: null, charge_type: CHARGE_TYPE.authoring });
     expect(chargeAgentLabel(row)).toBe("Setup chat");
-    expect(describeCharge(row)).toBe("Setup chat · 1,860 tokens · 820 in · 1,040 out");
-    expect(describeCharge({ ...row, token_count_input: null })).toBe("Setup chat · No token usage recorded");
+    expect(describeCharge(row)).toBe("1,860 tokens · 820 input · 1,040 output");
+    expect(describeCharge({ ...row, token_count_input: null })).toBe("Token usage unavailable");
   });
 
-  it("uses the fleet sigil and a readable model label", () => {
+  it("uses catalogue model names and preserves unknown identifiers exactly", () => {
     expect(chargeAgentLabel(charge())).toMatch(/^AGENT [A-Z]+-[0-9A-F]{4}$/);
-    expect(displayModelName("deepseek-ai/DeepSeek-V4-Pro")).toBe("DeepSeek V4 Pro");
-    expect(displayModelName("kimi-k2.6")).toBe("kimi k2.6");
+    expect(displayModelName("deepseek-ai/DeepSeek-V4-Pro")).toBe("deepseek-ai/DeepSeek-V4-Pro");
+    expect(displayModelName("minimax-m3p1-flash", "MiniMax M3.1 Flash")).toBe("MiniMax M3.1 Flash");
+    expect(displayModelName("kimi-k2.6")).toBe("kimi-k2.6");
   });
 
-  it("uses only the callsign even when the charge retains the fleet name", () => {
-    expect(chargeAgentLabel(charge({ fleet_name: "deploy-bot" }))).toMatch(
-      /^AGENT [A-Z]+-[0-9A-F]{4}$/,
-    );
+  it("retains the chosen fleet name after deletion", () => {
+    expect(chargeAgentLabel(charge({ fleet_name: "deploy-bot" }))).toBe("deploy-bot");
   });
 
   // A fleet purged before its charge landed: the server stores the fleet's own

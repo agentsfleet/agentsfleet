@@ -40,12 +40,12 @@ export function ModelCell({
   row: RegistryRow;
   platformDefault: TenantPlatformDefault | null;
 }) {
-  if (row.kind === "entry") return <ModelName modelId={row.entry.model_id} displayName={row.entry.display_name} />;
+  if (row.kind === "entry") return <ModelName modelId={row.entry.model_id} displayName={row.entry.display_name} copyable={false} />;
   // The lock is the whole statement: this row is the platform default and a
   // tenant admin cannot edit it. With no default configured the lock stands
   // alone; the actions column says why.
   if (!platformDefault) return <PlatformManagedMark />;
-  return <ModelName modelId={platformDefault.model} displayName={platformDefault.display_name} managedByPlatform />;
+  return <ModelName modelId={platformDefault.model} displayName={platformDefault.display_name} managedByPlatform copyable={false} />;
 }
 
 export function ProviderCell({

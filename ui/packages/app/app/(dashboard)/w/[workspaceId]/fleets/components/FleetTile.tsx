@@ -212,7 +212,8 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, activity, 
       <span className="flex items-center gap-sm text-label text-muted-foreground" data-fleet-status>{children}{statusLabel(fleet.status)}</span>
     </div>
     <div className="min-w-0 space-y-sm">
-      <CardTitle className="truncate" data-agent-name={agentDisplayName(fleet.id)}>{agentDisplayName(fleet.id)}</CardTitle>
+      <CardTitle className="truncate">{fleet.name}</CardTitle>
+      <p className="text-eyebrow text-muted-foreground" data-agent-name={agentDisplayName(fleet.id)}>{agentDisplayName(fleet.id)}</p>
       {fleet.description !== null ? <p className="truncate text-body-sm text-muted-foreground" data-fleet-purpose title={fleet.description}>{fleet.description}</p> : null}
       <p className="truncate text-body-sm text-muted-foreground" data-tile-activity>{activity}</p>
       <TileEyebrow eyebrow={eyebrow} title={eyebrowTitle} />
@@ -250,7 +251,7 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
       <Link
         href={workspacePath(workspaceId, `fleets/${fleet.id}`)}
         className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${MANAGE_FLEET_LABEL}: ${agentDisplayName(fleet.id)}${fleet.description !== null ? ` — ${fleet.description}` : ""} — ${fleet.status}`}
+        aria-label={`${MANAGE_FLEET_LABEL}: ${fleet.name} — ${agentDisplayName(fleet.id)}${fleet.description !== null ? ` — ${fleet.description}` : ""} — ${fleet.status}`}
         data-state={fleetRowState(fleet.status)}
       />
       <div className="pointer-events-none flex h-full flex-col gap-lg">

@@ -4,6 +4,7 @@ const listFleetEventsMock = vi.hoisted(() => vi.fn());
 const listFleetMessagesMock = vi.hoisted(() => vi.fn());
 const listAllMemoriesMock = vi.hoisted(() => vi.fn());
 const listWorkspaceMembersMock = vi.hoisted(() => vi.fn());
+const requestMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api/events", () => ({
   listFleetEvents: listFleetEventsMock,
@@ -11,8 +12,10 @@ vi.mock("@/lib/api/events", () => ({
 }));
 vi.mock("@/lib/api/memory", () => ({ listAllMemories: listAllMemoriesMock }));
 vi.mock("@/lib/api/tenant-members", () => ({ listWorkspaceMembers: listWorkspaceMembersMock }));
+vi.mock("@/lib/api/client", () => ({request: requestMock}));
 
-import { CHAT_TURNS, startViewData, type ChatViewData } from "./view-data";
+import { CHAT_TURNS, runtimeModelLabel, startViewData, type ChatViewData } from "./view-data";
+import { MODEL } from "@/tests/helpers/draft-fixtures";
 import { FLEET_VIEW } from "./FleetSubnavigation";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
@@ -42,6 +45,7 @@ function resetMocks() {
     listFleetMessagesMock,
     listAllMemoriesMock,
     listWorkspaceMembersMock,
+    requestMock,
   ]) {
     mock.mockReset();
     mock.mockResolvedValue(EMPTY_PAGE);
@@ -49,6 +53,18 @@ function resetMocks() {
 }
 
 describe("startViewData", () => {
+  it("loads model labels once beside history and preserves the selected model on failed lookup", async () => {
+    resetMocks();
+    requestMock.mockResolvedValue({items: [{...MODEL, ref: "platform-default", label: "MiniMax M3.1 Flash"}], next_cursor: null});
+    const data = startChat();
+    const models = await data.models;
+    expect(requestMock).toHaveBeenCalledExactlyOnceWith("/v1/workspaces/ws_1/models?limit=100", {method: "GET"}, ARGS.token);
+    expect(runtimeModelLabel(models, undefined)).toBe("MiniMax M3.1 Flash");
+    expect(runtimeModelLabel(models, "my-model")).toBe("my-model");
+    requestMock.mockRejectedValue(new Error(UPSTREAM_DOWN));
+    expect(runtimeModelLabel(await startChat().models, undefined)).toBe("Platform default model");
+  });
+
   it("test_chat_single_thread_fetch: chat starts ONE thread read and no event fan-out", () => {
     resetMocks();
     const data = startViewData(FLEET_VIEW.chat, ARGS);

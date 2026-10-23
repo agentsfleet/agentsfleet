@@ -11,6 +11,9 @@ export type { ClassValue };
 // Registering the scale under font-size fixes the classification.
 const twMerge = extendTailwindMerge({
   extend: {
+    theme: {
+      spacing: ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl", "6xl", "chat-input", "chat-inset", "table-inline", "table-block"],
+    },
     classGroups: {
       "font-size": [
         "text-display-xl",
@@ -24,6 +27,8 @@ const twMerge = extendTailwindMerge({
         "text-body-sm",
         "text-label",
         "text-mono",
+        "text-conversation",
+        "text-chat-title",
         "text-fluid-hero",
         "text-fluid-display-lg",
         "text-fluid-display-md",

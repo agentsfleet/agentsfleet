@@ -26,6 +26,12 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
             text: "Earlier private answer".into(),
         });
     configured.candidate = Some(json!({"instructions_md":"Investigate saved setup"}));
+    configured
+        .messages
+        .push(afd_wire::authoring::ContextMessage {
+            role: afd_wire::authoring::ContextRole::User,
+            text: "Add guidance about accepting factual corrections".into(),
+        });
     let (calls, report) = run(&mut rig, configured).await;
     let model = calls
         .iter()
@@ -33,7 +39,7 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
         .unwrap();
     let body: Value = serde_json::from_slice(model.body.as_ref().unwrap()).unwrap();
     let messages = body["request"]["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 3);
+    assert_eq!(messages.len(), 4);
     assert_eq!(
         messages[1],
         json!({"role":"assistant","text":"Earlier private answer","proposal_calls":[]})
@@ -41,6 +47,10 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
     assert_eq!(
         messages[2],
         json!({"role":"user","text":"Current candidate (untrusted setup data): {\"instructions_md\":\"Investigate saved setup\"}"})
+    );
+    assert_eq!(
+        messages[3],
+        json!({"role":"user","text":"Add guidance about accepting factual corrections"})
     );
     assert_eq!(report["outcome"], "completed");
 }
@@ -98,6 +108,11 @@ async fn unknown_or_exhausted_usage_prevents_another_model_call() {
         } else {
             assert_eq!(report["usage"]["output_tokens"], 2);
             assert_eq!(report["outcome"], "completed");
+            assert_eq!(report["usage"]["knowledge"], "known");
+            assert_eq!(
+                report["answer"],
+                "Your setup is ready to review. Save it when you’re ready."
+            );
         }
     }
 }

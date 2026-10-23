@@ -19,16 +19,16 @@ export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = f
   const displayLabel = name || "Your workspace";
   const subtitle = failed ? "Retry account menu" : activeLabel;
   return <Button type="button" variant="ghost" size="lg" title={activeLabel}
-    className={cn("h-auto min-h-12 w-full min-w-0 gap-md py-sm", collapsed ? "justify-center px-0" : "justify-start px-md")}
+    className={cn("group h-auto min-h-12 w-full min-w-0 gap-2.5 py-sm", collapsed ? "justify-center px-0" : "justify-start px-lg")}
     {...props}>
     {menuLabel ? <span className="sr-only">{menuLabel}</span> : null}
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-pulse/15 text-pulse">
+    <span className="flex size-7.5 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors duration-snap group-hover:bg-primary group-hover:text-primary-foreground">
       {busy ? <Spinner size="sm" srLabel="Loading workspace menu" /> : initials
-        ? <span aria-hidden="true" className="text-label font-medium">{initials}</span> : <UserRoundIcon size={18} aria-hidden="true" />}
+        ? <span aria-hidden="true" className="text-eyebrow font-normal">{initials}</span> : <UserRoundIcon size={18} aria-hidden="true" />}
     </span>
     {!collapsed ? <>
       <span className="flex min-w-0 flex-1 flex-col items-start">
-        <span className="w-full truncate text-left text-body-sm font-medium leading-body-sm" title={name}>{displayLabel}</span>
+        <span className="w-full truncate text-left text-body-sm font-semibold leading-body-sm text-foreground" title={name}>{displayLabel}</span>
         <span className="w-full truncate text-left text-label font-normal leading-label text-muted-foreground" title={activeLabel}>{subtitle}</span>
       </span>
       <ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />

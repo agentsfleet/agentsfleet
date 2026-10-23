@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GITLEAKS_BIN="${GITLEAKS_BIN:-gitleaks}"
 LOWER_DIGEST="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 UPPER_DIGEST="0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"

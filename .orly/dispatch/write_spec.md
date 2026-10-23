@@ -20,9 +20,12 @@ and who may decide it. A required human sign-off remains a human dependency.
 
 ## Mechanical checks
 
-`.orly/audits/spec-template.sh` is the entry point; its Bun helper
-`.orly/audits/spec-template.ts` reads headings, lists, and tables from the runtime's
-parsed Markdown tree. Code examples and quoted headings cannot supply sections.
+`orly gate pr` calls the native validator in `.orly/audits/spec-template.ts` through
+`spec.gate`. The validator reads headings, lists, and tables from Bun's parsed
+Markdown tree. Code examples and quoted headings cannot supply sections.
+
+`.orly/audits/spec-template.sh` selects files and snapshots staged content before
+calling the same validator.
 
 - Prohibited authoring estimates, ownership labels, and completion percentages.
 - Required sections with content, known placeholder residue, and the spec length cap.
@@ -38,9 +41,11 @@ parsed Markdown tree. Code examples and quoted headings cannot supply sections.
 ## Scope
 
 `--staged` reads spec contents, configuration, and local references from the Git
-index. `--file <path>` checks the working copy. Missing runtime or configuration
-fails these readiness checks. Bulk `--all` and `--include-done` scans retain
-prohibited-pattern checks only; they do not retrofit historical documents.
+index. `--file <path>` checks the working copy. All script modes require Bun;
+staged and file checks also require repository configuration.
+
+Bulk `--all` and `--include-done` scans retain prohibited-pattern checks only;
+they do not retrofit historical documents.
 
 ## Author review
 
@@ -90,4 +95,5 @@ Incident-derived rules the deterministic half can't check — apply while writin
 
 - `.orly/docs/TEMPLATE.md` — canonical Prohibited section + required sections.
 - `orly-spec-new` skill — creates specs from the template; inserts the banner.
-- `.orly/audits/spec-template.sh` — structural and prohibited-section checks; `orly gate pr` invokes it through `spec.gate`.
+- `.orly/audits/spec-template.ts` — native structural and prohibited-section validator, called directly by `spec.gate`.
+- `.orly/audits/spec-template.sh` — file selection and staged snapshots for script callers of the same validator.

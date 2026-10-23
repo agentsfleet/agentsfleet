@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT, FLEET_ID, MESSAGE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { UnfinishedSetups } from "@/components/domain/chat/UnfinishedSetups";
 import { DraftSidebarHistory } from "./DraftSidebarHistory";
 import { DraftSidebarItem } from "./DraftSidebarItem";
 import { useDraftSidebarBridge } from "./use-draft-sidebar-bridge";
@@ -29,7 +30,7 @@ it.each([false, true])("draft_sidebar_title_and_delete retain navigation typogra
   expect(link.getAttribute("title")).toBe(title);
   expect(link.classList.contains("font-sans")).toBe(true);
   expect(link.classList.contains("text-body-sm")).toBe(true);
-  expect(link.querySelector("svg")).toBeNull();
+  expect(link.querySelector("svg")).toBeTruthy();
   expect(screen.getByRole("button", {name: `Delete chat: ${title}`}).querySelector("svg")?.getAttribute("width")).toBe("14");
   expect(screen.getByText("In progress").classList.contains("sr-only")).toBe(true);
   expect(link.classList.contains("items-center")).toBe(true);
@@ -72,7 +73,7 @@ function NewChat() {
   return <Button onClick={start}>New fleet</Button>;
 }
 const sidebar = <Profiler id="history" onRender={commits}>
-  <DraftSidebarHistory workspace={WORKSPACE} onNavigate={() => {}} /><NewChat />
+  <UnfinishedSetups workspace={WORKSPACE} onReload={() => client.initialize()} /><NewChat />
 </Profiler>;
 function tree(view: DraftView, running = false) {
   return <DraftSidebarProvider><Bridge view={view} running={running} />{sidebar}</DraftSidebarProvider>;
@@ -86,8 +87,16 @@ it("keeps an empty private draft list quiet beside the account fleet list", asyn
       <DraftSidebarHistory account="account" workspace={WORKSPACE} onNavigate={() => {}} /></DraftSidebarProvider>);
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(screen.queryByText("Your setup chats will appear here.")).toBeNull();
-    expect(screen.getByText("Recent")).toBeTruthy();
+    expect(screen.getByText("Fleets")).toBeTruthy();
   } finally {fetcher.mockRestore();}
+});
+
+it("keeps the fleet list private when no account is supplied", () => {
+  const fetcher = vi.spyOn(globalThis, "fetch");
+  render(<DraftSidebarHistory workspace={WORKSPACE} onNavigate={vi.fn()} />);
+  expect(screen.queryByText("Fleets")).toBeNull();
+  expect(fetcher).not.toHaveBeenCalled();
+  fetcher.mockRestore();
 });
 
 it("does not commit sidebar changes for reply chunks or unchanged history snapshots", () => {
@@ -100,9 +109,9 @@ it("does not commit sidebar changes for reply chunks or unchanged history snapsh
   expect(screen.getByRole("link", { name: DRAFT.title }).getAttribute("href")).toContain(`draft=${DRAFT.id}`);
 });
 
-it("shows Recent without a duplicate setup heading or search", () => {
+it("shows resumable unfinished setups in their own section without search", () => {
   render(tree(initial));
-  expect(screen.getByText("Recent")).toBeTruthy();
+  expect(screen.getByText("Unfinished setups")).toBeTruthy();
   expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByText("Fleet setup chats")).toBeNull();
@@ -116,7 +125,7 @@ it("exposes unavailable history after access loss", () => {
   view.rerender(tree({ ...initial, inaccessible: true, listStatus: "unavailable" }));
   expect(screen.queryByRole("link", { name: DRAFT.title })).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
-  expect(screen.getByText("Chat history is unavailable.")).toBeTruthy();
+  expect(screen.getByText(/Unfinished setups could not be loaded/)).toBeTruthy();
   expect(fetcher).not.toHaveBeenCalled();
   fetcher.mockRestore();
 });
@@ -124,13 +133,13 @@ it("exposes unavailable history after access loss", () => {
 it("distinguishes failed, loading, and empty history", () => {
   const empty = client.getSnapshot();
   const view = render(tree({...empty, busy: true}));
-  expect(screen.getByText("Loading setup chats…")).toBeTruthy();
+  expect(screen.getByLabelText("Loading unfinished setups")).toBeTruthy();
   expect(screen.queryByRole("textbox")).toBeNull();
   view.rerender(tree({...empty, error: "We couldn’t load your models and chats.", listStatus: "unavailable"}));
-  expect(screen.getByText("Chat history is unavailable.")).toBeTruthy();
+  expect(screen.getByText(/Unfinished setups could not be loaded/)).toBeTruthy();
   expect(screen.queryByText("Your setup chats will appear here.")).toBeNull();
   view.rerender(tree({...empty, listStatus: "ready"}));
-  expect(screen.getByText("Your setup chats will appear here.")).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Unfinished setups"})).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
 });
 
@@ -146,14 +155,14 @@ it("does not clear a running conversation and permits a fresh one when idle", ()
 it("keeps pending and failed states accessible without visible status icons", () => {
   const view = render(tree(initial));
   const link = screen.getByRole("link", {name: DRAFT.title});
-  expect(link.querySelector("svg")).toBeNull();
+  expect(link.querySelector("svg")).toBeTruthy();
   view.rerender(tree({...initial, messages: [{...MESSAGE, state: "running"}]}));
   expect(screen.getByText("Waiting for a result").classList.contains("sr-only")).toBe(true);
-  expect(link.querySelector("svg")).toBeNull();
+  expect(link.querySelector("svg")).toBeTruthy();
   view.rerender(tree({...initial, messages: [{...MESSAGE, role: "assistant", state: "failed",
     failure: {reason: "provider_usage_unknown", error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}]}));
   expect(screen.getByText("Setup message failed")).toBeTruthy();
-  expect(link.querySelector("svg")).toBeNull();
+  expect(link.querySelector("svg")).toBeTruthy();
   fireEvent.focus(link);
   expect(screen.getByRole("tooltip").textContent).toContain(DRAFT.title);
   expect(screen.getByRole("tooltip").closest("[data-side]")?.className).toContain("ph-no-record");
@@ -173,16 +182,16 @@ it("keeps a loaded history distinct from a failed or pending chat operation", ()
   expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
   expect(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`})).toHaveProperty("disabled", true);
   view.rerender(tree({...initial, draft: null, error: "Save failed", busy: true}));
-  expect(screen.getByText("Your setup chats will appear here.")).toBeTruthy();
-  expect(screen.queryByText("Chat history is unavailable.")).toBeNull();
-  expect(screen.queryByText("Loading setup chats…")).toBeNull();
+  expect(screen.queryByRole("region", {name: "Unfinished setups"})).toBeNull();
+  expect(screen.queryByText(/Unfinished setups could not be loaded/)).toBeNull();
+  expect(screen.queryByLabelText("Loading unfinished setups")).toBeNull();
 });
 
 it("removes unfinished history when leaving chat and retains completed cards without stale controls", () => {
   const view = render(tree({...initial, draft: null, listStatus: "loading"}));
-  expect(screen.getByText("Loading setup chats…")).toBeTruthy();
+  expect(screen.getByLabelText("Loading unfinished setups")).toBeTruthy();
   view.rerender(<DraftSidebarProvider>{sidebar}</DraftSidebarProvider>);
-  expect(screen.queryByText("Loading setup chats…")).toBeNull();
+  expect(screen.queryByLabelText("Loading unfinished setups")).toBeNull();
   view.rerender(tree(initial));
   expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
   view.rerender(<DraftSidebarProvider>{sidebar}</DraftSidebarProvider>);

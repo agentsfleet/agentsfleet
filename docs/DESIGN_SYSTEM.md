@@ -55,7 +55,9 @@ Do not redefine a font family in a consumer stylesheet.
 | display-lg | 40px maximum | Website sections |
 | display-md | 28px | App titles and major values |
 | heading | 20px | Working sections and card headings |
-| body-lg | 18px | Website introductions, and the fleet chat transcript |
+| body-lg | 18px | Website introductions |
+| chat-title | 19px | Fleet and setup header titles |
+| conversation | 15px | Fleet and setup transcript, with 1.75 line height |
 | body | 15px | Default reading and controls |
 | body-sm | 14px | Supporting copy, table cells, and navigation |
 | label | 13px | Metadata, table headings, and compact status badges |
@@ -71,10 +73,12 @@ Use tabular numerals for changing values and aligned numeric columns.
 Do not use mono for an entire table when its rows contain names and descriptions.
 
 The 13px step serves compact sans labels, table headings, and technical mono values.
-Use 14px for supporting descriptions, operational status lines, and relative times such as “2 hours ago.”
+Use 14px for supporting descriptions, operational status lines, and relative times.
 Reserve monospace for exact values whose character alignment helps comparison.
+
 App page titles use the shared 28px semibold `PageTitle`; do not restyle individual page headings.
 Both fleet entrances use this title style.
+Fleet workspace headers use the compact `chat-title` role above the conversation.
 
 ## Color
 
@@ -171,11 +175,16 @@ Reusable visual treatments belong in `ui/packages/design-system`. App widgets co
 
 Use Activity for the workspace feed and fleet section. Individual records remain events; existing event URLs retain their meaning.
 
-The fleet header places **Edit setup** before **Stop**. It opens the private setup chat at the fleet's saved version.
+The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** opens the private setup chat at the fleet's saved version.
 
-Fleet sections are Chat, Activity, and Memory. The chat menu holds **Edit instructions** and **Rename chat**.
+Fleet sections are Chat, Activity, and Memory.
 
-**Save fleet** sits beside the chat title. **Save changes** stays below the composer.
+**Save fleet** sits beside the chat title. **Save changes** stays in the setup footer, above its composer.
+**Stop** and permanent **Kill** live in **Fleet actions**, with confirmation dialogs.
+
+Setup and saved chat share a 728px reading column and a composer pinned to its bottom edge.
+User messages use a quiet bubble; assistant replies use plain prose and the fleet's name.
+Memory and Activity keep their own scrollable content beneath the fleet tabs.
 
 ### Compact density
 
@@ -322,9 +331,11 @@ Use native setup records throughout. Do not offer file imports, bundle exports, 
 
 ### Workspace authoring and publication
 
-The sidebar's Recent section lists authorized fleets and unfinished private setup chats. Each compact row shows one title and a trash control.
+The sidebar's **Fleets** section lists saved, authorized fleets. Each row shows the fleet name, a status dot, and a delete control.
 
-Keep private setup status available to screen readers and in the private tooltip. Active fleet titles use the shared mint token. The list has no search control.
+Private drafts appear under **Unfinished setups** on **New fleet**. Each row offers **Resume** and a delete control.
+
+Keep private setup status available to screen readers and in the tooltip. Active fleet dots use the shared mint token.
 
 Chat titles use the same 14px Instrument Sans as navigation, with ellipsis and the full title on hover or keyboard focus.
 
@@ -334,11 +345,22 @@ Keep every accepted message and saved assistant reply in the creator-private dra
 
 During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
 
-Keep review and correction available from the chat menu throughout a long conversation. **Edit instructions** opens a side panel on desktop and a full-screen editor on mobile.
+For new drafts, keep review and correction available from the chat menu throughout a long conversation.
+**Edit instructions** opens a side panel on desktop and a full-screen editor on mobile.
 
-**Review and run options** holds the current task, runtime model, access, budget, readiness, publishing, and optional first run. Update edited fields before saving or publishing. Publication stores the selected candidate unchanged; the transcript stays private.
+**Review and run options** holds the current task, runtime model, access, budget, readiness, publishing, and optional first run.
+Update edited fields before saving or publishing. Publication stores the selected candidate unchanged; the transcript stays private.
+
+Saved-fleet setup uses the inline **Edit instructions manually** editor and **Review and publish options** below its conversation.
 
 Opening the editor or review creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the panel is open.
+
+The saved-fleet editor keeps manual instructions when folded or closed. Disable **Save changes** until manual edits are applied through **Update instructions**.
+
+Failed replies retain partial answers and explain the next action in plain language.
+Keep diagnostic details behind **View details**. Unknown usage stays unknown; never substitute zero tokens or zero cost.
+
+**Try again** sends the original request. Saved chat offers it only for the signed-in person's own request.
 
 Show only **Saved vN** and a short explanation in the conversation after saving. Keep that summary above later messages until a new proposal replaces it. The version describes the fleet's saved setup; never append an inferred unsaved label to it.
 

@@ -16,8 +16,8 @@ export function ChatMessageRow({sender, operator, children, messageRole, dimmed,
           className="inline-flex items-center gap-sm text-label leading-label text-muted-foreground">
           {!operator ? <BrandMark className="size-3.5 shrink-0 text-pulse" /> : null}{sender}
         </span> : null}
-        <div className={cn("min-w-0 max-w-full break-words font-sans text-reading leading-reading text-foreground",
-          operator ? "w-fit rounded-xl bg-muted px-lg py-md" : "w-full")}>
+        <div className={cn("min-w-0 max-w-full break-words font-sans text-conversation leading-conversation text-foreground",
+          operator ? "w-fit rounded-xl bg-muted px-md py-2.5" : "w-full")}>
           <span className="sr-only">{sender}: </span>{children}
         </div>
         {footer}

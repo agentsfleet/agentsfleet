@@ -94,7 +94,7 @@ export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: Shel
       <div
         data-testid="shell-leading-cluster"
         className={cn(
-          "flex shrink-0 items-center gap-2 px-4 md:gap-4 md:px-3",
+          "flex shrink-0 items-center gap-2 px-4 md:gap-4 md:px-5",
           "transition-all duration-snap ease-snap",
           collapsed
             ? `${SIDEBAR_COLUMN.header.collapsed} md:justify-center`
@@ -176,13 +176,12 @@ function BrandLink({
           : "/"
       }
       className={cn(
-        "inline-flex shrink-0 items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline",
-        "md:ml-1",
+        "inline-flex shrink-0 items-center gap-2.5 font-sans text-body-sm font-medium tracking-tight text-foreground no-underline",
         collapsed && "md:hidden",
       )}
       aria-label="agentsfleet home"
     >
-      <BrandMark className="size-5" />
+      <BrandMark className="size-4.5" />
       <span>agentsfleet</span>
     </Link>
   );

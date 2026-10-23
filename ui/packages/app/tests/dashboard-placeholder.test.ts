@@ -44,6 +44,9 @@ vi.mock("@/lib/api/fleets", async () =>
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () =>
   (await import("./helpers/dashboard-app-mocks")).fleetActionsMock(),
 );
+vi.mock("@/lib/api/model_library", () => ({
+  getModelLibrary: vi.fn().mockResolvedValue({models: [], next_cursor: null}),
+}));
 vi.mock("@/lib/api/tenant_billing", async () =>
   (await import("./helpers/dashboard-app-mocks")).tenantBillingMock(),
 );
