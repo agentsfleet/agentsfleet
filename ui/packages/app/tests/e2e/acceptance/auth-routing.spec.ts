@@ -58,7 +58,7 @@ test.describe("auth routing", () => {
 
     await gotoWorkspace(page, FIXTURE_KEY.regular, "events");
     await expect(page).toHaveURL(workspaceUrlPattern("events"), { timeout: ROUTING_TIMEOUT_MS });
-    await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
   });
 
   test("signed-out user is redirected from protected routes to sign-in", async ({ page }) => {

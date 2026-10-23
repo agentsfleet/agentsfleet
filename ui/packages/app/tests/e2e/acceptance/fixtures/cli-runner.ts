@@ -77,26 +77,8 @@ export async function spawnAgentsfleet(
   });
 }
 
-/**
- * A credential the CLI will actually accept, minted for this run.
- *
- * `writeCliState` used to be handed a Clerk session JWT, and the CLI discards
- * it without a word: `tokenOf` only surfaces a stored token whose SHAPE passes
- * `isPersistable` — `/^afc_[0-9a-f]{64}$/` or an `agt_t` prefix
- * (cli/src/services/credentials.ts:84-97). A JWT is neither, so the record on
- * disk is read, rejected, and reported as `not authenticated — run agentsfleet
- * login`, which sends whoever reads it looking for a login problem that is
- * really a shape problem.
- *
- * Nothing caught it because no acceptance spec had ever authenticated the CLI
- * successfully: `cli-adversarial` asserts the expired and malformed paths, and
- * `retry-policy` talks to a stub. The one spec that needed a WORKING credential
- * only started running when the lane stopped dying in global setup.
- *
- * `POST /v1/api-keys` mints an `agt_t` tenant key and returns its plaintext
- * exactly once (afd_api_wire/src/tenant.rs:29-40), which is the one shape a test
- * can hand a subprocess. The caller deletes it in teardown.
- */
+/** Mint a tenant key for AGENTSFLEET_API_KEY; only login credentials are persisted.
+ * The caller revokes and deletes this run's key in teardown. */
 export async function mintCliKey(
   apiUrl: string,
   sessionJwt: string,

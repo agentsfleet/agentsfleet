@@ -13,9 +13,10 @@ use tracing_subscriber::filter::Targets;
 /// rig's targets: its own `rig::…` names and its module paths.
 const RIG: [&str; 2] = ["rig", "rig_core"];
 /// Modules whose warnings include untrusted provider response strings.
-const QUOTES_THE_PROVIDER: [&str; 2] = [
+const QUOTES_THE_PROVIDER: [&str; 3] = [
     "rig_core::providers::internal::openai_chat_completions_compatible",
     "rig_core::operation::completion",
+    "rig_core::providers::openai::wire::chat",
 ];
 
 /// The filter for `level`: everything at `level`, rig at warn or quieter, and

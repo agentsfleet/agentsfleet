@@ -88,7 +88,7 @@ test.describe("teammates join an account", () => {
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/members");
-    await expect(page.getByRole("heading", { name: /^members$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^team$/i })).toBeVisible();
 
     // Invite from the dialog, then copy the link the invitee will open.
     await page.getByRole("button", { name: /^invite$/i }).click();
@@ -158,7 +158,7 @@ test.describe("teammates join an account", () => {
     const { page } = invitee;
     await page.goto(new URL(invite.link).pathname);
     await page.getByRole("button", { name: new RegExp(`^accept invite into ${ownerName}'s account$`, "i") }).click();
-    await expect(page).toHaveURL(new RegExp(`/w/${first!.id}/fleets(\\?|$)`));
+    await expect(page).toHaveURL(new RegExp(`/w/${first!.id}/fleets/new(\\?|$)`));
 
     // The switcher files it under the owner's account, beside the invitee's own.
     await page.getByTestId("workspace-switcher").click();

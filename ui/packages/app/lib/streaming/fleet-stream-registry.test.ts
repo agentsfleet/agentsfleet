@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { __resetRegistryForTests, CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "./fleet-stream-registry";
+import { __resetRegistryForTests, CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";

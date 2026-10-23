@@ -27,9 +27,10 @@ vi.mock("next/navigation", async () =>
 vi.mock("@clerk/nextjs/server", async () =>
   (await import("../helpers/dashboard-mocks")).clerkServerMock(),
 );
-vi.mock("@clerk/nextjs", async () =>
-  (await import("../helpers/dashboard-mocks")).clerkMock(),
-);
+vi.mock("@clerk/nextjs", async () => ({
+  ...(await import("../helpers/dashboard-mocks")).clerkMock(),
+  useUser: () => ({isLoaded: true, isSignedIn: true, user: {id: "fleet-reader"}}),
+}));
 vi.mock("next/link", async () =>
   (await import("../helpers/dashboard-mocks")).nextLinkMock(),
 );

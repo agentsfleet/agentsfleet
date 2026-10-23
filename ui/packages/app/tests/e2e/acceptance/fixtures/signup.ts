@@ -21,7 +21,7 @@
 import type { Page } from "@playwright/test";
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { bootstrapTenant } from "./bootstrap";
-import { findUserIdByEmail, refreshSessionToken, waitForTenantMetadata } from "./clerk-admin";
+import { refreshSessionToken, waitForTenantMetadata } from "./clerk-admin";
 import { FIXTURE_KEY, type FixtureKey } from "./constants";
 
 const TEST_OTP = "424242";
@@ -31,6 +31,7 @@ const WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
 interface ClerkSignUpAttempt {
   createdSessionId?: string | null;
+  createdUserId?: string | null;
   status?: string;
 }
 
@@ -78,23 +79,19 @@ export async function signUpAs(
     const clerk = (window as unknown as { Clerk?: { loaded?: boolean } }).Clerk;
     return Boolean(clerk?.loaded);
   });
-  const sessionId = await page.evaluate(
+  const { sessionId, clerkUserId } = await page.evaluate(
     async ({ emailAddress, pwd, code }) => {
       const clerk = (window as unknown as { Clerk: ClerkBrowserSurface }).Clerk;
       await clerk.client.signUp.create({ emailAddress, password: pwd });
       await clerk.client.signUp.prepareEmailAddressVerification({ strategy: "email_code" });
       const attempt = await clerk.client.signUp.attemptEmailAddressVerification({ code });
-      if (!attempt.createdSessionId) {
-        throw new Error(`signUp.attempt did not return createdSessionId (status=${attempt.status})`);
+      if (!attempt.createdSessionId || !attempt.createdUserId) {
+        throw new Error(`signUp.attempt did not return its user and session (status=${attempt.status})`);
       }
-      return attempt.createdSessionId;
+      return { sessionId: attempt.createdSessionId, clerkUserId: attempt.createdUserId };
     },
     { emailAddress: email, pwd: password, code: TEST_OTP },
   );
-  const clerkUserId = await findUserIdByEmail(email);
-  if (!clerkUserId) {
-    throw new Error(`signed-up Clerk user not found for ${email}`);
-  }
   if (shouldBootstrap) {
     await bootstrapTenant({ key, email, password, clerkUserId });
   }

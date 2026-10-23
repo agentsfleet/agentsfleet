@@ -1,5 +1,6 @@
 import type { Draft, Message } from "@/lib/api/draft-types";
 import { vi } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
 import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 // Load the real dynamic children before interaction deadlines start.
@@ -8,6 +9,9 @@ import "@/components/domain/chat/FleetSetup";
 
 export type Call = {path: string; method: string; body: unknown; headers: Headers};
 const auth = vi.hoisted(() => ({isLoaded: true, isSignedIn: true, userId: "creator"}));
+const navigation = vi.hoisted(() => ({push: vi.fn(), refresh: vi.fn()}));
+export const chatRouter = navigation;
+vi.mock("next/navigation", () => ({useRouter: () => navigation}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => auth}));
 vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({stagePlatformLibraryAction: vi.fn()}));
 
@@ -38,6 +42,7 @@ export class ChatFixture {
     throw new Error(`Unexpected chat fixture request ${call.method} ${path}`);
   });
   mount(): void {
+    chatRouter.push.mockClear(); chatRouter.refresh.mockClear();
     auth.isLoaded = true; auth.isSignedIn = true; auth.userId = "creator";
     FakeEventSource.instances = [];
     vi.stubGlobal("EventSource", FakeEventSource);
@@ -47,3 +52,19 @@ export class ChatFixture {
 }
 
 export const CHAT_PROPS = {account: "account-one", workspace: WORKSPACE};
+
+export async function setupAction(name: string): Promise<HTMLElement> {
+  if (name === "Save fleet" || name === "Save changes") return screen.findByRole("button", {name});
+  fireEvent.keyDown(await screen.findByRole("button", {name: "Setup chat actions"}), {key: "Enter"});
+  return screen.findByRole("menuitem", {name});
+}
+
+export async function chooseSetupAction(name: string): Promise<void> {
+  fireEvent.click(await setupAction(name));
+}
+
+export async function openSetupReview(): Promise<void> {
+  await chooseSetupAction("Edit instructions");
+  const toggle = await screen.findByRole("button", {name: "Review and run options"});
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+}

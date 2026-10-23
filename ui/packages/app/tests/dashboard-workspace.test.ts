@@ -159,7 +159,7 @@ describe("WorkspaceSwitcher component", () => {
   it("still renders with a Create workspace affordance when workspaces is empty", async () => {
     usePathname.mockReturnValue("/");
     await renderSwitcher({ workspaces: [] });
-    expect(screen.getByLabelText(/workspace and account menu/i).textContent).toContain(
+    expect(screen.getByRole("button", { name: /workspace and account menu/i }).textContent).toContain(
       "No workspace",
     );
     expect(screen.getByTestId("workspace-new")).toBeTruthy();
@@ -187,7 +187,7 @@ describe("WorkspaceSwitcher component", () => {
 
   it("renders the active workspace label", async () => {
     await renderSwitcher();
-    expect(screen.getByLabelText(/workspace and account menu/i).textContent).toContain(
+    expect(screen.getByRole("button", { name: /workspace and account menu/i }).textContent).toContain(
       "Alpha",
     );
   });
@@ -195,7 +195,7 @@ describe("WorkspaceSwitcher component", () => {
   it("uses the oldest visible workspace when no route is active", async () => {
     usePathname.mockReturnValue("/");
     await renderSwitcher();
-    expect(screen.getByLabelText(/workspace and account menu/i).textContent).toContain(
+    expect(screen.getByRole("button", { name: /workspace and account menu/i }).textContent).toContain(
       "Alpha",
     );
   });
@@ -205,7 +205,7 @@ describe("WorkspaceSwitcher component", () => {
     await renderSwitcher({
       workspaces: [{ id: "ws_only", name: null, ...OWN_ACCOUNT }],
     });
-    expect(screen.getByLabelText(/workspace and account menu/i).textContent).toContain(
+    expect(screen.getByRole("button", { name: /workspace and account menu/i }).textContent).toContain(
       "Unnamed workspace",
     );
   });
@@ -218,7 +218,7 @@ describe("WorkspaceSwitcher component", () => {
         { id: "ws_b", name: "Beta", ...OWN_ACCOUNT },
       ],
     });
-    expect(screen.getByLabelText(/workspace and account menu/i).textContent).toContain(
+    expect(screen.getByRole("button", { name: /workspace and account menu/i }).textContent).toContain(
       "Current workspace",
     );
     expect(screen.queryByText("ws_unknown")).toBeNull();

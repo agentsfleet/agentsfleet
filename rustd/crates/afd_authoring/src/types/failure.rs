@@ -2,7 +2,44 @@
 
 use afd_core::error_code::{self, ErrorCode};
 use afd_wire::authoring::FailureReason;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// Content-free observation of why a physical model request did not complete.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureCause {
+    /// The total deadline or inactivity bound elapsed.
+    Deadline,
+    /// The caller stopped reading the request.
+    Cancelled,
+    /// The provider connection or protocol ended unsuccessfully.
+    ProviderInterrupted,
+    /// The provider did not supply a verified completion and usage.
+    CompletionUnverified,
+}
+
+impl FailureCause {
+    /// Stable bounded storage and API spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Deadline => "deadline",
+            Self::Cancelled => "cancelled",
+            Self::ProviderInterrupted => "provider_interrupted",
+            Self::CompletionUnverified => "completion_unverified",
+        }
+    }
+}
+
+impl From<afd_inference::stream::FailureCause> for FailureCause {
+    fn from(cause: afd_inference::stream::FailureCause) -> Self {
+        match cause {
+            afd_inference::stream::FailureCause::Deadline => Self::Deadline,
+            afd_inference::stream::FailureCause::Cancelled => Self::Cancelled,
+            afd_inference::stream::FailureCause::Provider => Self::ProviderInterrupted,
+        }
+    }
+}
 
 /// The owner must add balance before another turn can be admitted.
 const ACTION_OWNER_BILLING: &str = "owner_billing";
@@ -26,6 +63,9 @@ pub struct Failure {
     pub error_code: ErrorCode,
     /// Stable client action; authorized labels/links are derived on read.
     pub recovery_action: &'static str,
+    /// Observed transport cause; provider message bodies never enter this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cause: Option<FailureCause>,
 }
 
 impl Failure {
@@ -33,8 +73,10 @@ impl Failure {
         reason: FailureReason,
         sequence: i64,
         cancelled_through: i64,
+        cause: Option<FailureCause>,
     ) -> Self {
         let mut failure = Self::from(reason);
+        failure.cause = cause;
         if reason == FailureReason::ProviderUsageUnknown && sequence <= cancelled_through {
             failure.recovery_action = ACTION_RETRY_MESSAGE;
         }
@@ -61,6 +103,32 @@ impl From<FailureReason> for Failure {
             reason,
             error_code,
             recovery_action,
+            cause: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FailureCause;
+    use afd_inference::stream::FailureCause as StreamCause;
+
+    #[test]
+    fn stream_failures_keep_their_exact_durable_and_public_spelling() {
+        for (cause, expected) in [
+            (StreamCause::Deadline, "deadline"),
+            (StreamCause::Cancelled, "cancelled"),
+            (StreamCause::Provider, "provider_interrupted"),
+        ] {
+            let projected = FailureCause::from(cause);
+            assert_eq!(projected.as_str(), expected);
+            assert_eq!(serde_json::to_value(projected).ok(), Some(expected.into()));
+        }
+        let unverified = FailureCause::CompletionUnverified;
+        assert_eq!(unverified.as_str(), "completion_unverified");
+        assert_eq!(
+            serde_json::to_value(unverified).ok(),
+            Some("completion_unverified".into())
+        );
     }
 }

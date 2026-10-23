@@ -50,12 +50,15 @@ test.describe("secrets lifecycle", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "secrets");
     await expect(page.getByRole("heading", { name: /^secrets$/i })).toBeVisible();
 
-    const search = page.getByRole("textbox", {name: "Search secrets"});
+    const search = page.getByRole("searchbox", {name: "Search secrets"});
     await search.click();
     await search.fill("a");
     await expect(search).toBeFocused();
     await expect(search).toHaveCSS("box-shadow", /inset/);
-    await expect(search).toHaveCSS("border-left-color", await search.evaluate((element) => getComputedStyle(element).borderRightColor));
+    await expect.poll(() => search.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return style.borderLeftColor === style.borderRightColor;
+    })).toBe(true);
     await search.clear();
     await expect(page.getByText("Encrypted", {exact: true})).toBeVisible();
     await expect(page.getByText("Encrypted and hidden.", {exact: true})).toHaveCount(0);

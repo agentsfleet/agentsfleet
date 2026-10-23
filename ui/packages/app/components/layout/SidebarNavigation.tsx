@@ -59,7 +59,7 @@ export function SidebarNavigation({ pathname, workspaceId, operatorScopes, colla
   return <Nav aria-label="Primary" className="flex h-full min-h-0 flex-col py-sm">
     <NavSection items={PRIMARY_NAV} {...shared} />
     {!collapsed ? <div className="min-h-0 flex-1 overflow-y-auto">
-      <Suspense><DraftSidebarHistory workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
+      <Suspense><DraftSidebarHistory account={workspaces.find(item => item.id === workspaceId)?.account.tenant_id ?? null} workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
     </div> : <div className="flex-1" />}
     <div className="mt-auto shrink-0 border-t border-border px-sm pt-sm">
       <WorkspaceSwitcher workspaces={workspaces} operatorScopes={operatorScopes} collapsed={collapsed} />

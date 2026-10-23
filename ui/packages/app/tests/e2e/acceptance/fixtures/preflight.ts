@@ -122,7 +122,7 @@ function assertRunnerHeartbeatAdvanced(
       "the selected runner did not remain online across the heartbeat observation window",
     );
   }
-  if (second.last_seen_at <= first.last_seen_at) {
+  if (!(Date.parse(second.last_seen_at) > Date.parse(first.last_seen_at))) {
     throw new ReleasePreflightError(
       "the selected runner heartbeat did not advance across two bounded reads",
     );

@@ -5,7 +5,7 @@ use serde::Deserialize;
 use sqlx::PgConnection;
 
 use super::super::{
-    ModelCallInput, budget,
+    ModelCallInput,
     dispatch::{CONTEXT, Decision},
     dispatch_status, sql,
 };
@@ -34,7 +34,7 @@ struct Receipt {
     status: String,
     result: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    created_at: Timestamp,
+    dispatch_expires_at: Timestamp,
 }
 
 pub(in crate::model) async fn prior(
@@ -76,38 +76,73 @@ async fn existing(
     guarded: &Guarded,
     receipt: Receipt,
 ) -> Result<Decision> {
-    let error = match word::<State>(&receipt.status)? {
-        State::Completed => {
-            let mut result: super::super::ModelCallResult =
-                value(&receipt.result.ok_or(ErrorKind::Gone)?)?;
-            result.replayed = true;
-            return Ok(Decision::Replay(result));
-        }
-        State::Failed => ErrorKind::Provider,
-        State::Unknown => ErrorKind::Unknown,
-        State::Pending
-            if guarded.now
-                < afd_core::clock::after(receipt.created_at, budget::PROVIDER_TIMEOUT) =>
-        {
-            ErrorKind::State {
-                current: "dispatching",
+    if let Some(decision) = receipt.decision(guarded.now)? {
+        return Ok(decision);
+    }
+    sqlx::query(sql::UNKNOWN)
+        .bind(&receipt.id)
+        .bind(dispatch_status::UNKNOWN)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    sqlx::query(sql::UNCERTAIN)
+        .bind(guarded.attempt.id.as_str())
+        .bind(Status::AwaitingAccounting.as_str())
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(Decision::Refused(ErrorKind::Unknown.into()))
+}
+
+impl Receipt {
+    /// An expired pending intent needs durable uncertainty recording first.
+    fn decision(&self, now: Timestamp) -> Result<Option<Decision>> {
+        let error = match word::<State>(&self.status)? {
+            State::Completed => {
+                let mut result: super::super::ModelCallResult =
+                    value(self.result.as_deref().ok_or(ErrorKind::Gone)?)?;
+                result.replayed = true;
+                return Ok(Some(Decision::Replay(result)));
             }
+            State::Failed => ErrorKind::Provider,
+            State::Unknown => ErrorKind::Unknown,
+            State::Pending if now < self.dispatch_expires_at => ErrorKind::State {
+                current: "dispatching",
+            },
+            State::Pending => return Ok(None),
+        };
+        Ok(Some(Decision::Refused(error.into())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Decision, Receipt};
+    use afd_core::error_code;
+    use jiff::Timestamp;
+
+    #[test]
+    fn a_pending_replay_needs_durable_uncertainty_at_the_exact_dispatch_deadline()
+    -> crate::Result<()> {
+        let deadline = Timestamp::constant(100, 0);
+        let receipt = Receipt {
+            id: String::new(),
+            sequence: 1,
+            request_digest: String::new(),
+            status: "pending".into(),
+            result: None,
+            dispatch_expires_at: deadline,
+        };
+        let before = receipt.decision(Timestamp::constant(99, 999_999_999))?;
+        assert!(
+            matches!(before, Some(Decision::Refused(error)) if error.code() == error_code::AUTHORING_STATE)
+        );
+        for now in [deadline, Timestamp::constant(100, 1)] {
+            assert!(
+                receipt.decision(now)?.is_none(),
+                "at or after expiry, record uncertainty instead of waiting or replaying"
+            );
         }
-        State::Pending => {
-            sqlx::query(sql::UNKNOWN)
-                .bind(&receipt.id)
-                .bind(dispatch_status::UNKNOWN)
-                .execute(&mut *connection)
-                .await
-                .map_err(query(CONTEXT))?;
-            sqlx::query(sql::UNCERTAIN)
-                .bind(guarded.attempt.id.as_str())
-                .bind(Status::AwaitingAccounting.as_str())
-                .execute(connection)
-                .await
-                .map_err(query(CONTEXT))?;
-            ErrorKind::Unknown
-        }
-    };
-    Ok(Decision::Refused(error.into()))
+        Ok(())
+    }
 }

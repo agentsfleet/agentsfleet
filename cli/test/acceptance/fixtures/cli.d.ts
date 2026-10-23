@@ -1,11 +1,4 @@
-// Ambient declaration for the still-JS acceptance spawner. cli.js stays
-// JS until §14 D43 flips the spawner from `bun` back to `node` against
-// the tsc-emitted dist/. For now the .d.ts gives strict TS callers
-// honest signatures at the import seam — mirrors src/lib/analytics.d.ts.
-//
-// Shapes match cli.js verbatim. Adding fields here without adding them
-// to the .js file is a lie; removing fields the .js file produces is
-// also a lie.
+// TypeScript signatures for the JavaScript acceptance spawner in cli.js.
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
@@ -36,8 +29,7 @@ export interface BinarySpec {
   readonly prefixArgs: ReadonlyArray<string>;
 }
 
-// Resolves the spawn target (worktree `node dist/bin/...` vs global
-// `agentsfleet`) — shared by runFleetctl and the pty harness.
+// The ordinary runner and pseudo-terminal harness share the Bun spawn target.
 export function resolveBinary(opts?: Pick<RunOptions, "binary">): BinarySpec;
 
 export function runFleetctl(args: ReadonlyArray<string>, opts: RunOptions): Promise<RunResult>;

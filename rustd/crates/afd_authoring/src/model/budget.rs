@@ -16,7 +16,7 @@ use crate::{
 
 pub(crate) const INPUT_PER_CALL: i64 = 32_768;
 pub(crate) const MAX_CALLS: i64 = 8;
-pub(crate) const PROVIDER_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const PROVIDER_TIMEOUT: Duration = afd_inference::stream::READ_TIMEOUT;
 /// How long a provider's private result outlives its dispatch.
 pub(crate) const PRIVATE_TTL: Duration = afd_core::timing::DAY;
 /// The longest an authoring attempt runs, renewal included.

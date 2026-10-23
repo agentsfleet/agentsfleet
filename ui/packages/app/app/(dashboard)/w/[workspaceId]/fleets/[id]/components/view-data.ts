@@ -33,11 +33,6 @@ export type MemoryViewData = {
   memories: Promise<Awaited<ReturnType<typeof listAllMemories>> | null>;
 };
 
-/** Setup and trigger render from the fleet itself. */
-export type SourceViewData = {
-  view: typeof FLEET_VIEW.setup;
-};
-
 /**
  * The in-flight reads a view needs that depend only on route params — started
  * beside the fleet read, never after it. Fields are promises; the matching
@@ -49,8 +44,7 @@ export type SourceViewData = {
 export type ViewData =
   | ChatViewData
   | EventsViewData
-  | MemoryViewData
-  | SourceViewData;
+  | MemoryViewData;
 
 export type ViewDataArgs = {
   workspaceId: string;
@@ -82,9 +76,6 @@ export function startViewData(view: FleetView, args: ViewDataArgs): ViewData {
           () => null,
         ),
       };
-    case FLEET_VIEW.setup:
-      // Trigger delivery lookups need the fleet's saved setup first.
-      return { view };
     default:
       return {
         view,

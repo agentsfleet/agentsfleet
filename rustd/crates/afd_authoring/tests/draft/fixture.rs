@@ -18,6 +18,8 @@ use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
 use std::sync::{Arc, LazyLock};
 
+mod upgrade;
+
 /// One recorder for every fixture in the suite.
 ///
 /// A maintenance pass expires and finishes every lane's stale work, so a step

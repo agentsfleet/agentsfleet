@@ -10,10 +10,11 @@ use futures_util::StreamExt as _;
 use serde_json::{Value, json};
 
 mod replay;
+mod usage_failure;
 
 use super::ends::{SIGNATURE, THOUGHT};
 use super::support::wires::{self, Wire};
-use super::support::{Fake, Reply, connector, lease};
+use super::support::{Fake, RUN_BUDGET, Reply, connector, lease};
 use super::{ANSWER, CALL_ID};
 
 /// The model every turn here names.
@@ -42,7 +43,9 @@ async fn streamed(
         hosted: &[],
         cache_key: FLEET,
     };
-    provider.stream(request).take(BOUND).collect().await
+    tokio::time::timeout(RUN_BUDGET, provider.stream(request).take(BOUND).collect())
+        .await
+        .unwrap()
 }
 
 /// The chunks of a turn that streamed no failure.

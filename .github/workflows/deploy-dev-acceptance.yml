@@ -66,8 +66,7 @@ jobs:
   # (tests/e2e/acceptance/**). Failures gate the notify step.
   #
   # deploy-dev-dashboard builds app-dev.agentsfleet.net with the development
-  # target and revision metadata. The downloaded receipts bind these tests
-  # to that deployment. NEXT_PUBLIC_API_URL below configures fixture calls;
+  # target. NEXT_PUBLIC_API_URL below configures fixture calls;
   # the dashboard's API destination was embedded during its build.
   acceptance-e2e:
     runs-on: ubuntu-latest
@@ -92,15 +91,9 @@ jobs:
           cache-prefix: playwright-app
           lock-file: bun.lock
 
-      - name: Install command-line dependencies before credentials
-        run: bun install --frozen-lockfile
+      - name: Build the command-line application before credentials
+        run: bun install --frozen-lockfile && bun run build
         working-directory: cli
-
-      - uses: ./.github/actions/acceptance-inputs
-        with:
-          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          vault-dev: ${{ vars.VAULT_DEV }}
-          vault-prod: ${{ vars.VAULT_PROD }}
 
       - name: Load Clerk DEV credentials from 1Password
         uses: 1password/load-secrets-action@v5
@@ -138,9 +131,6 @@ jobs:
           path: |
             ui/packages/app/playwright-acceptance-results/
             ui/packages/app/playwright-acceptance-report/
-            .tmp/acceptance-build.json
-            .tmp/acceptance-runner-process.json
-            .tmp/acceptance-preflight.md
           include-hidden-files: true
           retention-days: 7
 
@@ -149,8 +139,7 @@ jobs:
   # deployed api-dev. Same posture: Clerk DEV credentials load AFTER
   # `bun install` (WS-E #C2 — postinstall sees no Clerk admin key). The
   # lifecycle-after-login spec uses Playwright Chromium to drive the
-  # dashboard's /cli-auth/{session_id} handoff page. The dashboard URL and
-  # deployed build identity are required by the build-binding preflight.
+  # dashboard's /cli-auth/{session_id} handoff page.
   acceptance-cli:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -164,14 +153,9 @@ jobs:
           # cli/ is its own Bun project with its own lock.
           lock-file: cli/bun.lock
 
-      - name: Install build inspection dependencies before credentials
-        run: bun install --frozen-lockfile
-
-      - uses: ./.github/actions/acceptance-inputs
-        with:
-          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          vault-dev: ${{ vars.VAULT_DEV }}
-          vault-prod: ${{ vars.VAULT_PROD }}
+      - name: Build the command-line application before credentials
+        run: bun run build
+        working-directory: cli
 
       - name: Load Clerk DEV credentials from 1Password (AFTER install)
         uses: 1password/load-secrets-action@v5
@@ -215,9 +199,6 @@ jobs:
           name: acceptance-cli-${{ github.sha }}
           path: |
             cli/playwright-cli-report/
-            .tmp/acceptance-build.json
-            .tmp/acceptance-runner-process.json
-            .tmp/acceptance-preflight.md
           include-hidden-files: true
           retention-days: 7
 

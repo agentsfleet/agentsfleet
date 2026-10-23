@@ -5,7 +5,7 @@ import {
   getSnapshot,
   retryConnection,
   subscribe,
-} from "./fleet-stream-registry";
+} from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 
 const FLEET_ID = "fleet_retry";

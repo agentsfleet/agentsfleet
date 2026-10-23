@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { v7 as uuidv7 } from "uuid";
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
-import { ReviewSchema, FleetSchema, ModelsSchema } from "@/lib/api/draft-types";
+import { ReviewSchema, FleetSchema } from "@/lib/api/draft-types";
 import { signInAs } from "./fixtures/auth";
 import { purgeFixtureFleet } from "./fixtures/teardown";
 import { FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
@@ -12,9 +12,12 @@ import { cliEnv, deleteCliKey, makeCliStateDir, mintCliKey, spawnAgentsfleet, wr
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { workspaceHref } from "./fixtures/nav";
 import { clientFor } from "./fixtures/api-client";
+import { authoringModelRef } from "./fixtures/native-setup";
 
 const cacheSchema = z.record(z.string(), z.object({sessionJwt: z.string()}));
 const FLOW_TIMEOUT_MS = 330_000;
+// The CLI prints its validated fleet projection; webhook URLs remain on the API read.
+const terminalFleetSchema = FleetSchema.omit({webhook_urls: true});
 
 function jsonLines(text: string): unknown[] {
   return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
@@ -36,13 +39,11 @@ test("terminal chat creates a private draft and explicitly saves a fleet visible
   try {
     await writeCliState(stateDir, workspace, key.key, api, "acceptance-workspace");
     const client = clientFor({sessionJwt: key.key});
-    const env = cliEnv({AGENTSFLEET_STATE_DIR: stateDir, AGENTSFLEET_API_URL: api});
-    const models = ModelsSchema.parse(await client.get<unknown>(`${base}/models?limit=100`));
-    const model = models.items.find((item) => item.eligibility.authoring);
-    if (!model) throw new Error("No authoring model for terminal chat acceptance");
-    const sent = await spawnAgentsfleet(["--json", "chat", "--no-input", "--model", model.ref,
+    const env = cliEnv({AGENTSFLEET_STATE_DIR: stateDir, AGENTSFLEET_API_URL: api, AGENTSFLEET_API_KEY: key.key});
+    const model = await authoringModelRef({sessionJwt: key.key}, workspace);
+    const sent = await spawnAgentsfleet(["--json", "chat", "--no-input", "--model", model,
       "--operation-id", uuidv7(), "--message", `${name}: Create a fleet for chat and steer messages only, with no external triggers, tools or credentials, daily budget one dollar, no monthly ceiling. Reply briefly to messages.`], env, FLOW_TIMEOUT_MS);
-    expect(sent.code, sent.stderr).toBe(0);
+    expect(sent.code, sent.stdout + sent.stderr).toBe(0);
     const drafts = await client.get<{items: {id: string; title: string}[]}>(`${base}/drafts?limit=100`);
     const draft = drafts.items.find((item) => item.title.includes(name));
     if (!draft) throw new Error("Terminal-created private draft was not discoverable by its creator");
@@ -50,11 +51,12 @@ test("terminal chat creates a private draft and explicitly saves a fleet visible
     expect(inspected.code, inspected.stderr).toBe(0);
     const review = jsonLines(inspected.stdout).map((value) => ReviewSchema.safeParse(value)).find((result) => result.success);
     if (!review?.success) throw new Error("CLI returned no reviewed setup");
-    const result = await spawnAgentsfleet(["--json", "chat", draft.id, "--no-input", "--save", "--review-digest", review.data.review_digest], env);
+    const result = await spawnAgentsfleet(["--json", "chat", draft.id, "--no-input", "--save", "--name", name, "--review-digest", review.data.review_digest], env);
     expect(result.code, result.stderr).toBe(0);
-    const fleet = jsonLines(result.stdout).map((value) => FleetSchema.safeParse(value)).find((value) => value.success);
+    const fleet = jsonLines(result.stdout).map((value) => terminalFleetSchema.safeParse(value)).find((value) => value.success);
     if (!fleet?.success) throw new Error("CLI returned no saved fleet");
     saved = fleet.data.id;
+    expect(FleetSchema.parse(await client.get<unknown>(`${base}/fleets/${saved}`)).name).toBe(name);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspace, `fleets/${saved}`));
     await expect(page.getByRole("heading", {name: agentDisplayName(saved), exact: true})).toBeVisible();

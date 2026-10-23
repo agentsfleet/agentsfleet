@@ -214,18 +214,19 @@ impl ControlPlane {
 
     /// The one place a verb leaves the runner, so every call is logged once.
     async fn send(&self, verb: Verb, path: Cow<'static, str>, body: Option<Bytes>) -> Result<Body> {
+        let verb_name = verb.as_str();
         let event = EVENT_STARTED;
-        tracing::debug!(verb = verb.as_str(), event);
+        tracing::debug!(verb = verb_name, event);
         match self.api.send(Call { verb, path, body }).await {
             Ok(bytes) => {
                 let event = EVENT_COMPLETED;
-                tracing::debug!(verb = verb.as_str(), event);
+                tracing::debug!(verb = verb_name, event);
                 Ok(Body { verb, bytes })
             }
             Err(failure) => {
                 let code = failure.code().as_str();
                 let event = EVENT_FAILED;
-                tracing::debug!(error_code = code, verb = verb.as_str(), event);
+                tracing::debug!(error_code = code, verb = verb_name, event);
                 Err(failure)
             }
         }

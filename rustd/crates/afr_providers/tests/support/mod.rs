@@ -54,6 +54,8 @@ pub(crate) const LEASE_ID: &str = "lease-1";
 const AT: &str = "1970-01-01T00:00:00.001Z";
 /// The content type a streamed turn answers with.
 const EVENT_STREAM: &str = "text/event-stream";
+/// Maximum real time for scripted turns, including their bounded retries.
+pub(crate) const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// One scripted answer to one request.
 #[derive(Debug, Clone)]
@@ -283,6 +285,9 @@ pub(crate) async fn run_with(
         meter: &Meter::default(),
         stop: &stop,
     };
-    let output = engine.run(run).await.unwrap();
+    let output = tokio::time::timeout(RUN_BUDGET, engine.run(run))
+        .await
+        .expect("scripted run must finish within its retry budget")
+        .unwrap();
     (output, frames.try_iter().collect())
 }

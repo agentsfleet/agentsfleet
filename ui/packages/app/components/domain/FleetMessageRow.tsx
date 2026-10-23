@@ -13,6 +13,7 @@ import {
 
 import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
 import { RelativeNowProvider, Timestamp } from "./FleetTimestamp";
+import { ChatMessageRow } from "./chat/ChatMessageRow";
 
 const ROW_ENTER =
   "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
@@ -73,62 +74,11 @@ export function FleetMessageRow({
   showSender,
   createdAt,
 }: FleetMessageRowProps) {
-  const isOperator = tone === ROW_TONE.OPERATOR;
-  return (
-    <div
-      className={cn("w-full", ROW_ENTER)}
-      data-role={messageRole}
-      data-optimistic={dimmed || undefined}
-      data-failed={failed || undefined}
-    >
-      <div
-        className={cn(
-          // No horizontal padding: the rail IS the measure, so the row's edges
-          // are the rail's edges and the transcript lines up with the composer
-          // below it. `px-lg` here inset the prose 12px on each side while the
-          // composer spanned the full rail, so the two disagreed by 9px on the
-          // left and 15px on the right — visible straight down the left margin.
-          "flex w-full py-md",
-          isOperator ? "justify-end" : "justify-start",
-        )}
-      >
-        <div
-          className={cn(
-            "flex min-w-0 flex-col gap-xs",
-            // The cap is the BUBBLE's, not the transcript's. A fleet reply is
-            // prose and fills the centred rail; capping it again pinned it to
-            // the rail's left edge and left the right half empty — measured at
-            // 1920px: 216px of gutter on the left against 700px on the right.
-            // The operator's turn is a bubble, and a bubble that spans the full
-            // measure stops reading as one, so it keeps the cap.
-            isOperator ? "max-w-prose items-end" : "w-full items-start",
-          )}
-        >
-          {showSender ? (
-            // Seen, not read: the bubble's own sr-only prefix already says it.
-            <span aria-hidden="true" className="text-label leading-label text-muted-foreground" data-testid="fleet-message-sender">
-              {sender}
-            </span>
-          ) : null}
-          <div
-            className={cn(
-            // Both turns read at `reading`. The operator's message used to be
-            // `body-sm` (14px) against the fleet's 16px, so your own words came
-            // back smaller than the reply to them: one conversation, two sizes.
-            "min-w-0 max-w-full break-words font-sans text-reading leading-reading text-foreground",
-              isOperator
-                ? "w-fit rounded-lg rounded-br-sm border border-border-strong bg-accent px-md py-sm"
-                : "w-full",
-            )}
-          >
-            <span className="sr-only">{sender}: </span>
-            {children}
-          </div>
-          {createdAt ? <span className="flex"><Timestamp createdAt={createdAt} /></span> : null}
-        </div>
-      </div>
-    </div>
-  );
+  return <ChatMessageRow sender={sender} operator={tone === ROW_TONE.OPERATOR} messageRole={messageRole}
+    dimmed={dimmed} failed={failed} showSender={showSender}
+    footer={createdAt ? <span className="flex"><Timestamp createdAt={createdAt} /></span> : undefined}>
+    {children}
+  </ChatMessageRow>;
 }
 
 export type FleetActivityRowProps = {

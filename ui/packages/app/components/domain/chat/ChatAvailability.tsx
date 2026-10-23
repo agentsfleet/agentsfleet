@@ -20,7 +20,7 @@ export function ChatAvailability({title, children, actions}: {title: string; chi
 
 export function ChatModelAvailability({client, view, workspace, canManagePlatformModels = false}: {client: DraftClient; view: DraftView; workspace: string; canManagePlatformModels?: boolean}) {
   if (view.error || view.inaccessible || view.models.some(model => model.eligibility.authoring)) return null;
-  if (view.listStatus === DRAFT_LIST_STATUS.loading) return <Skeleton className="mx-auto h-24 w-full max-w-measure" aria-label="Loading chat models" />;
+  if (view.listStatus === DRAFT_LIST_STATUS.loading) return <output className="contents" aria-label="Loading chat models"><Skeleton className="mx-auto h-24 w-full max-w-measure" /></output>;
   if (view.listStatus !== DRAFT_LIST_STATUS.ready) return null;
   const incomplete = view.moreModels;
   const configured = view.models.length > 0;

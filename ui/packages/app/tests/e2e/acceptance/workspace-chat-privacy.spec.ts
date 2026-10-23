@@ -134,7 +134,7 @@ async function aRevokedTeammateLosesTheChatUntilRejoining(invitee: Invitee, work
   const chat = await writePrivateChat(invitee, workspaceId);
   await openDraft(invitee.page, workspaceId, chat.draftId);
   await revokeMembership(email);
-  await saveSetupButton(invitee.page).click();
+  await (await saveSetupButton(invitee.page)).click();
   await expect(chatUnavailable(invitee.page)).toBeVisible();
   await expect(historyEntry(invitee.page, chat.draftId)).toHaveCount(0);
   await expectNoPrivateText(invitee.page, chat, "revoked teammate");

@@ -18,7 +18,7 @@ status:  ## List shared development stacks, registered worktrees and container s
 	@bash scripts/local-dev.sh status
 
 _ensure-local-daemon:
-	@FOLLOW_LOGS=0 $(MAKE) --no-print-directory up
+	@if [ -n "$${LOCAL_DEV_BINARY:-}" ]; then bash scripts/local-dev.sh ensure; else FOLLOW_LOGS=0 $(MAKE) --no-print-directory up; fi
 
 # One target for both the first fill and the monthly refresh — an empty catalogue
 # emits INSERTs, a populated one emits UPSERTs for drift only, so the refresh path

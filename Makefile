@@ -45,6 +45,7 @@ help:  ## Show all available Makefile targets
 	@echo "  test-coverage-all        Coverage gate: app + website + agentsfleet + design-system"
 	@echo ""
 	@echo "Acceptance:"
+	@echo "  acceptance-local         Prepare local services and run dashboard + CLI acceptance (SUITE=e2e|cli|execution)"
 	@echo "  dry                      Dry lanes — website + app Playwright page renders (no Clerk auth)"
 	@echo "  dry-smoke                Smoke dry lanes — fast website + app (no Clerk auth)"
 	@echo "  acceptance-e2e           Dashboard auth acceptance — Clerk sign-in + lifecycle vs live API (mirrors CI acceptance-e2e)"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -123,7 +123,10 @@ export function FleetThread({
     [isRunning, entries, convertEntry, delivery.onNew, queue],
   );
   const runtime = useExternalStoreRuntime<FleetThreadEntry>(adapter);
-  runtimeRef.current = runtime;
+  useEffect(() => {
+    runtimeRef.current = runtime;
+    return () => { runtimeRef.current = null; };
+  }, [runtime]);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetScopeProvider workspaceId={workspaceId} fleetId={fleetId}>
@@ -131,7 +134,6 @@ export function FleetThread({
           <SenderNamesProvider names={names}>
             <DashboardPanel
               id="fleet-chat-transcript"
-              aria-label="Fleet chat"
               padding="none"
               className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
             >

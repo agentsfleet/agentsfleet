@@ -20,9 +20,6 @@
  * renders on success — the CLI's /verify call is the authoritative ack.
  */
 
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import {
   createSignInTicket,
   withClientSessionSweepOnFailure,
@@ -37,8 +34,6 @@ const VERIFICATION_CODE_LABEL = "Verification code";
 const VERIFICATION_CODE_RE = /^\d{6}$/;
 const SIGN_IN_PATH = "/sign-in";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const NODE_BIN = "node";
-const NODE_STRIP_TYPES_FLAG = "--experimental-strip-types";
 
 export interface CliAuthHandoffOptions {
   readonly loginUrl: string;
@@ -113,12 +108,11 @@ async function approveLogin(page: Page, opts: CliAuthHandoffOptions, sessionId: 
   return code;
 }
 
-async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
+export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<string> {
   if (!opts?.loginUrl) throw new Error("completeCliAuthHandoff: loginUrl required");
   if (!opts?.clerkUserId) throw new Error("completeCliAuthHandoff: clerkUserId required");
   const clerkSecret = process.env[CLERK_SECRET_KEY_ENV];
   if (!clerkSecret) throw new Error(`completeCliAuthHandoff: ${CLERK_SECRET_KEY_ENV} required`);
-  // Node hosts the Playwright transport; the parent Bun process owns orchestration.
   const { chromium } = await import("playwright");
   const { clerkSetup } = await import("@clerk/testing/playwright");
   await clerkSetup();
@@ -134,52 +128,5 @@ async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
     return await withSessionRevocation(clerkSecret, sessionId, () => approveLogin(page, opts, sessionId));
   } finally {
     await browser.close().catch(() => {});
-  }
-}
-
-/**
- * Run the Playwright transport under Node while Bun retains test orchestration.
- * Playwright's direct Bun transport cannot parse Clerk's relative response URL.
- */
-export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<string> {
-  const child = Bun.spawn([
-    NODE_BIN,
-    NODE_STRIP_TYPES_FLAG,
-    fileURLToPath(import.meta.url),
-  ], {
-    env: process.env,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  child.stdin.write(JSON.stringify(opts));
-  child.stdin.end();
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-  if (exitCode !== 0) {
-    throw new Error(`browser handoff exited ${exitCode}: ${stderr.trim()}`);
-  }
-  const code = stdout.trim().split("\n").at(-1)?.trim() ?? "";
-  if (!VERIFICATION_CODE_RE.test(code)) {
-    throw new Error(`browser handoff returned invalid code: ${JSON.stringify(code)}`);
-  }
-  return code;
-}
-
-const isNodeEntrypoint = process.argv[1] !== undefined
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-
-if (isNodeEntrypoint) {
-  try {
-    let input = "";
-    for await (const chunk of process.stdin) input += String(chunk);
-    const opts = JSON.parse(input) as CliAuthHandoffOptions;
-    process.stdout.write(await runBrowserHandoff(opts));
-  } catch (error: unknown) {
-    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
-    process.exitCode = 1;
   }
 }

@@ -36,7 +36,8 @@ test.describe("fleet detail logs", () => {
     await composer.getByPlaceholder(/message this fleet/i).fill(message);
     const persisted = page.waitForResponse((response) => {
       const request = response.request();
-      return request.method() === "POST" && Boolean(request.headers()["next-action"]);
+      return request.method() === "POST"
+        && new URL(response.url()).pathname === `/live/v1/workspaces/${ws}/fleets/${seeded.id}/messages`;
     });
     await composer.getByRole("button", { name: /send/i }).click();
     await expect(page.getByLabel("Fleet chat").getByText(message)).toBeVisible();

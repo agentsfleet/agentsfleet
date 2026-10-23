@@ -21,7 +21,7 @@ vi.mock("@/components/domain/island-dynamic/intent-module-loader", () => ({
 afterEach(cleanup);
 
 it("announces loading, offers retry after a chunk failure, and opens the real confirmation", async () => {
-  const props = {card: {id: DRAFT.id, title: DRAFT.title, detail: "Setup ready"}, workspace: WORKSPACE,
+  const props = {card: {id: DRAFT.id, title: DRAFT.title, detail: "Setup ready", activity: "draft" as const}, workspace: WORKSPACE,
     remove: vi.fn(), onRemoved: vi.fn(), onClose: vi.fn()};
   const view = render(<DraftDeleteDialogDynamic {...props} />);
   expect(state.preload).toHaveBeenCalledOnce();

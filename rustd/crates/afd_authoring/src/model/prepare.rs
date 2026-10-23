@@ -76,7 +76,7 @@ fn input_tokens(
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
 ) -> Result<i64> {
-    let encoded = route.encode(&model.model, canonical.clone())?;
+    let encoded = route.encode_stream(&model.model, canonical.clone())?;
     let body = afd_inference::json_request(encoded.request)?.into_body();
     garde::Unvalidated::new(Envelope { bytes: &body }).validate()?;
     let text = std::str::from_utf8(&body).map_err(|_unreachable| ErrorKind::Token)?;

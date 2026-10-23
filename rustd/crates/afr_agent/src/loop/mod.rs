@@ -202,7 +202,6 @@ impl<'s, 'run> Harness<'s, 'run> {
                 Some(Err(failure)) => break Ending::Failed(failure),
                 None => break Ending::Stopped,
             };
-            self.shared.meter.add(turn.usage);
             if capped || turn.calls.is_empty() {
                 break Ending::Answered(turn.text);
             }

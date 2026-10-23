@@ -39,10 +39,10 @@ test.describe("workspace in the URL", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "integrations");
 
     await expect(page).toHaveURL(workspaceUrlPattern("integrations"));
-    await expect(page.getByRole("heading", { name: /^integrations$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^connect apps$/i })).toBeVisible();
     // The original bug: the connectors region failed to load ("Couldn't load
     // connectors"). It must render, with no load-failure banner.
-    await expect(page.getByTestId("integrations-page")).toBeVisible();
+    await expect(page.getByTestId("integrations-connectors")).toBeVisible();
     await expect(page.getByText(/couldn'?t load connectors/i)).toHaveCount(0);
   });
 

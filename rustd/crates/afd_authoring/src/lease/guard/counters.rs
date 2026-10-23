@@ -12,6 +12,7 @@ const COUNTER: &str = "Authoring counters must be canonical nonnegative decimal 
 /// names it.
 pub(crate) const DELETION_GENERATION: i64 = 0;
 
+#[derive(Clone)]
 pub(crate) struct Counters {
     pub(super) fence: i64,
     pub(super) sequence: Option<i64>,

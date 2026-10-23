@@ -7,6 +7,8 @@ import { cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet } from "@/lib/api/fleets";
+import { listTenantWorkspacesCached } from "@/lib/workspace";
+import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import {
   startViewData,
@@ -24,7 +26,6 @@ import {
   cursorTrailFrom,
   pageSizeFrom,
 } from "@/lib/pagination/cursor-trail";
-import { SetupPanel } from "./components/SetupPanel";
 import MemoryPanel from "./components/MemoryPanel";
 import { ChatView } from "./components/ChatView";
 import { FleetHeader } from "./components/FleetHeader";
@@ -87,9 +88,11 @@ export default async function FleetDetailPage({
     eventsCursor,
     eventsPageSize,
   });
-  const [fleetResult, billing] = await Promise.all([
+  const [fleetResult, billing, workspaces, sessionClaims] = await Promise.all([
     loadFleet(workspaceId, id, token),
     getTenantBillingCached(token).catch(() => null),
+    listTenantWorkspacesCached(token).catch(() => null),
+    claims(),
   ]);
   if (!fleetResult) notFound();
 
@@ -120,6 +123,9 @@ export default async function FleetDetailPage({
       )}
     >
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
+      <FleetSetupWorkspace account={workspaces?.items.find(item => item.id === workspaceId)?.account.tenant_id ?? null}
+        workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision}
+        viewer={typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null} header={<>
       <FleetHeader
         workspaceId={workspaceId}
         fleet={fleet}
@@ -127,6 +133,7 @@ export default async function FleetDetailPage({
       />
 
       <FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} />
+      </>}>
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
@@ -136,7 +143,7 @@ export default async function FleetDetailPage({
         <div
           className={cn(
             "flex min-w-0 flex-1 flex-col gap-3xl",
-            claimsViewport && "h-full min-h-0 flex-1 overflow-clip",
+            claimsViewport && "h-full min-h-0 flex-1 gap-md overflow-clip",
           )}
         >
           <FleetSubnavigation
@@ -155,6 +162,7 @@ export default async function FleetDetailPage({
           </div>
         </div>
       </div>
+      </FleetSetupWorkspace>
     </div>
   );
 }
@@ -175,8 +183,6 @@ async function loadFleetView(
       return loadEventsView(context, data);
     case FLEET_VIEW.memory:
       return loadMemoryView(context, data);
-    case FLEET_VIEW.setup:
-      return <SetupPanel workspaceId={context.workspaceId} fleet={context.fleet} />;
     default:
       return loadChatView(context, data);
   }

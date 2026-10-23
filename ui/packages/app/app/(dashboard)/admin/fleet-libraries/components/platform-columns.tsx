@@ -6,7 +6,7 @@ import { preloadEditFleetDialog } from "@/components/domain/island-dynamic/EditF
 import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
 import { DELETE, EDIT, PUBLISH, UNPUBLISH } from "../library-copy";
 
-type Actions = {busy: boolean; edit: (entry: PlatformEntry) => void; remove: (entry: PlatformEntry) => void; publish: (entry: PlatformEntry, published: boolean) => void};
+type Actions = {busy: boolean; edit: (entry: PlatformEntry, opener: HTMLElement) => void; remove: (entry: PlatformEntry) => void; publish: (entry: PlatformEntry, published: boolean) => void};
 
 export function platformColumns(actions: Actions): DataTableColumn<PlatformEntry>[] {
   return [
@@ -21,7 +21,7 @@ export function platformColumns(actions: Actions): DataTableColumn<PlatformEntry
 function RowActions({entry, actions}: {entry: PlatformEntry; actions: Actions}) {
   return <div className="flex items-center justify-end gap-xs">
     <IconAction variant="ghost" label={EDIT} disabled={actions.busy} onFocus={preloadEditFleetDialog}
-      onPointerEnter={() => { if (maySpeculateOnHover()) preloadEditFleetDialog(); }} onClick={() => actions.edit(entry)}><PencilIcon size={14} /></IconAction>
+      onPointerEnter={() => { if (maySpeculateOnHover()) preloadEditFleetDialog(); }} onClick={(event) => actions.edit(entry, event.currentTarget)}><PencilIcon size={14} /></IconAction>
     <IconAction variant="ghost" label={entry.published ? UNPUBLISH : PUBLISH} disabled={actions.busy} onClick={() => actions.publish(entry, !entry.published)}>
       {entry.published ? <EyeOffIcon size={14} /> : <EyeIcon size={14} />}
     </IconAction>

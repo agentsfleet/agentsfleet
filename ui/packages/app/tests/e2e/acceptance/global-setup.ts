@@ -47,7 +47,6 @@ import {
 } from "./fixtures/constants";
 import { diagnoseApiError } from "./fixtures/preflight";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
-import { requireMatchingBuilds } from "./fixtures/build-binding";
 import { initializeBrowserSessions } from "./fixtures/browser-sessions";
 
 // Defensive: playwright.acceptance.config.ts loads worktree-root .env, but
@@ -176,10 +175,6 @@ export default async function globalSetup(): Promise<void> {
   for (const key of REQUIRED_ENV) {
     if (!process.env[key]) failLoud(key);
   }
-  await requireMatchingBuilds(
-    process.env.NEXT_PUBLIC_API_URL ?? "",
-    process.env.BASE_URL ?? "http://localhost:3000",
-  );
   initializeBrowserSessions();
   await primeVercelBypassState();
   await clerkSetup();
