@@ -62,7 +62,7 @@ async fn cut_output_never_submits_a_proposal_even_if_a_reply_contains_one() {
     let mut rig = rig(|call| match call.verb {
         Verb::AuthoringModel => result(
             call,
-            &json!([{"outcome":"proposed","id":"cut-call",
+            &json!([{"id":"cut-call",
             "proposal":{"kind":"initialize","definition":{}}}]),
             true,
         ),
@@ -86,7 +86,7 @@ async fn a_refused_proposal_is_repaired_without_skipping_its_activity_sequence()
             let proposals = if request["call_index"] == 3 {
                 json!([])
             } else {
-                json!([{"outcome":"proposed","id":format!("call-{}",request["call_index"]),
+                json!([{"id":format!("call-{}",request["call_index"]),
                     "proposal":{"kind":"initialize","definition":{}}}])
             };
             result(call, &proposals, false)

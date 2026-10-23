@@ -58,7 +58,7 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
 fn response(call: &Call, unknown: bool) -> Answer {
     let Answer::Reply(bytes) = result(
         call,
-        &json!([{"outcome":"proposed","id":"edit","proposal":{"kind":"initialize","definition":{}}}]),
+        &json!([{"id":"edit","proposal":{"kind":"initialize","definition":{}}}]),
         false,
     ) else {
         unreachable!()

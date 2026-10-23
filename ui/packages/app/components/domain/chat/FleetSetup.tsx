@@ -4,7 +4,8 @@ import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import Link from "next/link";
 import { Button, Section } from "@agentsfleet/design-system";
-import { START_KIND, scheduleOwed } from "@/lib/api/draft-types";
+import { START_KIND } from "@/lib/api/draft-vocabulary";
+import { scheduleOwed } from "@/lib/api/schedule-status";
 import { ScheduleSync } from "./ScheduleSync";
 
 export function FleetSetup({client, view, workspace}: {client: DraftClient; view: DraftView; workspace: string}) {

@@ -1,7 +1,9 @@
 "use client";
 
 import { Alert, Button, List, ListItem } from "@agentsfleet/design-system";
-import { SCHEDULE_SYNC, scheduleOwed, type Schedule } from "@/lib/api/draft-types";
+import { type Schedule } from "@/lib/api/draft-types";
+import { SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
+import { scheduleOwed } from "@/lib/api/schedule-status";
 
 // A schedule saves before the external scheduler registers it, so a fleet can
 // be active while cron work never wakes. Each unregistered schedule says so and

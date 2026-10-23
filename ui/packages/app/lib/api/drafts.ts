@@ -17,10 +17,8 @@ import { sourcePreview } from "./draft-source";
 import { readySetup } from "./draft-ready-setup";
 import { chatRecovery } from "./draft-recovery";
 import { REQUEST_METHOD, deleteDraft, definiteRefusal, losesAccess, setupErrorMessage, setupRequest, SetupUnavailable, type SetupRequest } from "./draft-request";
-import {
-  AcceptedSchema, AppliedSchema, CancellationSchema, CreatedMessageSchema, DRAFT_STATE, DraftSchema, FleetSchema,
-  MessageInputSchema, SETUP_HEADERS, SOURCE_KIND, START_KIND, ScheduleSchema, appliedNotice,
-} from "./draft-types";
+import { AcceptedSchema, AppliedSchema, CancellationSchema, CreatedMessageSchema, DRAFT_STATE, DraftSchema, FleetSchema, MessageInputSchema, SETUP_HEADERS, ScheduleSchema, appliedNotice } from "./draft-types";
+import { SOURCE_KIND, START_KIND } from "./draft-vocabulary";
 import { scheduleSynced, scheduleSyncPath, type Schedule } from "./draft-schedules";
 
 export class DraftClient {

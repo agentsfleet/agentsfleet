@@ -11,7 +11,8 @@ import { stagePlatformLibraryAction } from "@/app/(dashboard)/admin/fleet-librar
 import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DraftClient } from "@/lib/api/drafts";
 import { DraftCache } from "@/lib/api/draft-cache";
-import { isRunning, SOURCE_KIND } from "@/lib/api/draft-types";
+import { isRunning } from "@/lib/api/draft-types";
+import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
 import { ScheduleSync } from "./ScheduleSync";

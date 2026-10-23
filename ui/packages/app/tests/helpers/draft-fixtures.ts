@@ -1,5 +1,6 @@
 import type { Draft, Fleet, Message, Review, WorkspaceModel } from "@/lib/api/draft-types";
-import { DRAFT_STATE, MESSAGE_ROLE, MESSAGE_STATE, START_KIND } from "@/lib/api/draft-types";
+import { DRAFT_STATE, MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
+import { START_KIND } from "@/lib/api/draft-vocabulary";
 import { NANOS_PER_USD } from "@/lib/types";
 
 export const WORKSPACE = "0199a801-1000-7000-8000-000000000001";

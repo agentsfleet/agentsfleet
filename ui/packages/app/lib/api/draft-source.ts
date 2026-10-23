@@ -1,6 +1,7 @@
 import type { Source } from "./draft-types";
 import { z } from "zod";
-import { DefinitionSchema, SOURCE_KIND } from "./draft-types";
+import { DefinitionSchema } from "./draft-types";
+import { SOURCE_KIND } from "./draft-vocabulary";
 import { LibrarySchema } from "./draft-library";
 import { setupRequest, SetupUnavailable } from "./draft-request";
 
