@@ -8,7 +8,10 @@ use crate::{
     error::{ErrorKind, raise::stored},
 };
 use afd_credential::provider::RegisteredModel;
-use afd_wire::{authoring::ModelMessage, inference::InferenceApi};
+use afd_wire::{
+    authoring::{ModelMessage, ProposalCall},
+    inference::InferenceApi,
+};
 use rig_core::completion::{CompletionRequest, ToolAnnotations, ToolDefinition};
 use rig_core::message::{
     AssistantContent, CallId, Message, ToolCall, ToolFunction, ToolName, UserContent,
@@ -18,13 +21,14 @@ use serde_json::json;
 pub(in crate::model) fn body(
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
+    editing: bool,
 ) -> Result<CompletionRequest> {
     let name = ToolName::new(TOOL).map_err(|_invalid| ErrorKind::Model)?;
     let mut history = Vec::with_capacity(request.request.messages.len());
     for message in &request.request.messages {
         history.push(message_to_sdk(message, &name)?);
     }
-    let schema = tool();
+    let schema = tool(editing);
     let mut body = CompletionRequest::new(Message::user(String::new()))
         .model(model.model.as_ref())
         .tools(vec![ToolDefinition {
@@ -69,10 +73,17 @@ fn message_to_sdk(
                 content.push(AssistantContent::text(text.clone()));
             }
             for call in proposal_calls {
-                let proposal = serde_json::to_string(&call.proposal).map_err(stored)?;
+                // Continuation restoration replaces this placeholder with the
+                // original native call, including any invalid model arguments.
+                let arguments = match call {
+                    ProposalCall::Proposed { proposal, .. } => {
+                        json!({PROPOSAL_ARGUMENT:serde_json::to_value(proposal).map_err(stored)?})
+                    }
+                    ProposalCall::Refused { .. } => json!({}),
+                };
                 content.push(AssistantContent::ToolCall(ToolCall::new(
-                    CallId::from_wire(call.id.clone()),
-                    ToolFunction::new(tool.clone(), json!({PROPOSAL_ARGUMENT:proposal})),
+                    CallId::from_wire(call.id().to_owned()),
+                    ToolFunction::new(tool.clone(), arguments),
                 )));
             }
             Message::Assistant(rig_core::message::AssistantMessage::new(content))

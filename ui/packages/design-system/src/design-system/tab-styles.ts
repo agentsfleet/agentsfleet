@@ -17,19 +17,19 @@
 /** Underline rail: a thin bottom border the triggers sit on — replaces the
  *  retired pill tray (a muted-fill rounded container). */
 export const TAB_LIST_CLASS =
-  "flex items-center justify-start gap-1 border-b border-border text-muted-foreground";
+  "flex items-center justify-start gap-2xl border-b border-border text-muted-foreground";
 
 /** Shared trigger chrome — everything except the active-state selector. The
  *  `-mb-px` laps the trigger's 2px underline over the rail's 1px border. */
 const TAB_TRIGGER_BASE =
-  "tab-trigger relative inline-flex min-h-11 items-center justify-center whitespace-nowrap px-md py-2.5 -mb-px sm:px-3.5 " +
-  "text-body-sm font-medium no-underline border-b-2 border-transparent " +
-  "ring-offset-background transition-colors duration-fade ease-fade hover:bg-accent hover:text-foreground " +
+  "tab-trigger relative inline-flex min-h-11 items-center justify-center whitespace-nowrap px-0 py-2.5 -mb-px " +
+  "font-sans text-body-sm font-normal text-muted-foreground no-underline border-b-2 border-transparent " +
+  "ring-offset-background transition-colors duration-fade ease-fade hover:text-foreground " +
   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 " +
   "disabled:pointer-events-none disabled:opacity-50";
 
 /** Active underline for the Radix `Tabs` trigger (sets `data-state=active`). */
-export const TAB_TRIGGER_CLASS_RADIX = `${TAB_TRIGGER_BASE} data-[state=active]:text-foreground`;
+export const TAB_TRIGGER_CLASS_RADIX = `${TAB_TRIGGER_BASE} data-[state=active]:text-foreground data-[state=active]:font-medium`;
 
 /** Active underline for the route-link `TabNav` item (sets `data-active=true`). */
-export const TAB_TRIGGER_CLASS_LINK = `${TAB_TRIGGER_BASE} data-[active=true]:text-foreground`;
+export const TAB_TRIGGER_CLASS_LINK = `${TAB_TRIGGER_BASE} data-[active=true]:text-foreground data-[active=true]:font-medium`;

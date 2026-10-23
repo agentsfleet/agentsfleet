@@ -4,23 +4,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{DECIMAL_BYTES_MAX, ENVELOPE_BYTES_MAX, Proposal};
-
-/// A fixed proposal call, still untrusted until activity accepts its edit.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct ProposalCall<D = Value, C = Value, I = Value> {
-    /// Provider call identity, with no tool authority of its own.
-    #[garde(
-        length(bytes, min = 1, max = 128),
-        custom(afd_validate::rules::nul_free)
-    )]
-    pub id: String,
-    /// The one tool this protocol supports.
-    #[garde(dive)]
-    pub proposal: Proposal<D, C, I>,
-}
+use super::{DECIMAL_BYTES_MAX, ENVELOPE_BYTES_MAX, ProposalCall};
 
 /// Roles cannot introduce system instructions or other tools.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -38,11 +22,11 @@ pub enum ModelMessage<D = Value, C = Value, I = Value> {
         /// Untrusted prior text.
         #[garde(length(bytes, max = ENVELOPE_BYTES_MAX), custom(afd_validate::rules::nul_free))]
         text: String,
-        /// Only proposals can appear in prior tool calls.
+        /// Only fixed proposal calls or their bounded refusals can appear here.
         #[garde(length(max = 8), dive)]
         proposal_calls: Vec<ProposalCall<D, C, I>>,
     },
-    /// Outcome of applying a proposal through activity.
+    /// Outcome of applying a proposal or rejecting its arguments.
     Tool {
         /// A prior fixed-tool call.
         #[garde(

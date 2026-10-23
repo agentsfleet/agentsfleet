@@ -30,7 +30,7 @@ async function setup() {
 describe("private chat Save", () => {
   it("lets the user edit a suggested job before sending it", async () => {
     render(<WorkspaceChat {...CHAT_PROPS} />);
-    const suggestion = await screen.findByRole("button", {name: /Fix a build/});
+    const suggestion = await screen.findByRole("button", {name: /Review pull requests/});
     await waitFor(() => expect(suggestion).toHaveProperty("disabled", false));
     fireEvent.click(suggestion);
     expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", CHAT_EXAMPLES[0]);

@@ -39,6 +39,7 @@ pub(super) struct Intent {
     pub(super) outbound: provider::Outbound,
     pub(super) authorized_at: Instant,
     pub(super) output_limit: u32,
+    pub(super) candidate: Option<crate::types::Candidate>,
 }
 
 impl Intent {
@@ -49,6 +50,7 @@ impl Intent {
         dispatch_id: &str,
         now: Timestamp,
         authorized_at: Instant,
+        candidate: Option<crate::types::Candidate>,
     ) -> Self {
         let remaining = attempt
             .expires_at
@@ -70,6 +72,7 @@ impl Intent {
             attempt,
             authorized_at,
             output_limit: prepared.output_limit,
+            candidate,
         }
     }
 }
@@ -194,7 +197,17 @@ impl ModelCalls {
         held?;
         let continuations =
             super::continuation::read(connection, &guarded.attempt, request, guarded.now).await?;
-        let prepared = prepare::body(request, &guarded.attempt.model_snapshot, continuations)?;
+        let candidate = match &guarded.draft.head_candidate_id {
+            Some(id) => Some(crate::candidate::read(connection, &guarded.draft.id, id).await?),
+            None => None,
+        };
+        // Available proposal shapes come from the locked draft, never runner text.
+        let prepared = prepare::body(
+            request,
+            &guarded.attempt.model_snapshot,
+            continuations,
+            candidate.is_some(),
+        )?;
         let key = self
             .providers
             .registered_key(
@@ -215,6 +228,7 @@ impl ModelCalls {
             &request.dispatch_id,
             now,
             authorized_at,
+            candidate,
         ))))
     }
 }

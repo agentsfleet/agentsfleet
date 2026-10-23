@@ -98,6 +98,17 @@ The tests select model references and make real provider calls through the backe
 Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
 Startup logs live under `<WORKTREE_STATE>/acceptance/`.
 
+### Local dashboard against api-dev
+
+Set `NEXT_PUBLIC_API_URL` to `https://api-dev.agentsfleet.net` in the dashboard environment, then build and start the production dashboard locally.
+Set `BASE_URL` to that local dashboard when running `make acceptance-e2e`; this uses the running server without starting another.
+Use a production build because acceptance includes production prefetch and stream-ownership behavior.
+
+Connector checks use `NEXT_PUBLIC_API_URL` to select the registered development or production dashboard callback origin.
+For local API targets, they use `BASE_URL`. No separate connector setting is needed.
+The test checks the exact registered origin and callback path.
+Use dedicated acceptance accounts, since these tests create and delete their fixture fleets.
+
 ### Shutdown and recovery
 
 ```bash

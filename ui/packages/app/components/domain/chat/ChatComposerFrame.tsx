@@ -9,23 +9,22 @@ type Props = {
   id?: string; label: string; placeholder: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   disabled?: boolean; focusKey?: number;
-  children?: ReactNode; toolbar?: ReactNode; actions: ReactNode;
+  children?: ReactNode; toolbar: ReactNode; actions: ReactNode;
 };
 
 /** Both chat purposes use the same input, focus lifecycle and height limits. */
 export function ChatComposerFrame({id, label, placeholder, inputRef, disabled = false, focusKey, children, toolbar, actions}: Props) {
   useComposerFocus(inputRef, disabled, focusKey);
-  return <DashboardPanel asChild padding="none" className="min-h-0 rounded-xl bg-card p-md focus-within:border-border-strong">
+  return <DashboardPanel asChild padding="none" className="min-h-0 rounded-xl bg-card px-3.5 py-lg focus-within:border-border-strong">
     <ComposerPrimitive.Root id={id} className="flex min-h-0 flex-col gap-sm" aria-label={label}>
       {children}
-      <div className="flex min-h-9 flex-row items-stretch gap-sm pointer-coarse:min-h-11 sm:gap-md">
+      <div className="flex min-h-chat-input flex-row items-stretch">
         <ComposerPrimitive.Input asChild placeholder={placeholder} submitMode="enter" disabled={disabled}>
-          <Textarea appearance="composer" ref={inputRef} aria-label={placeholder} rows={1}
-            className="field-sizing-content min-h-9 max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto px-sm py-xs text-reading leading-reading text-foreground placeholder:text-muted-foreground pointer-coarse:py-md" />
+          <Textarea appearance="composer" ref={inputRef} aria-label={placeholder} rows={2}
+            className="field-sizing-content min-h-chat-input max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto p-0 text-body-sm leading-prose text-foreground placeholder:text-muted-foreground pointer-coarse:py-md" />
         </ComposerPrimitive.Input>
-        {toolbar ? null : actions}
       </div>
-      {toolbar ? <div className="flex min-w-0 items-end gap-sm">{toolbar}{actions}</div> : null}
+      <div className="flex min-w-0 items-center justify-between gap-sm">{toolbar}{actions}</div>
     </ComposerPrimitive.Root>
   </DashboardPanel>;
 }

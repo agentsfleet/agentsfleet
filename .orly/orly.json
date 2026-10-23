@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.15.0",
+  "orly_version": "0.17.0",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -140,8 +140,8 @@
     ".orly/audits/rule-ledger-lib.sh": "sha256:168182658aa0d53bf08bbd571f81e04d538fc5b9b0c6d0006e57c6974c083164",
     ".orly/audits/rust-error.sh": "sha256:4127d08e592d61b2b158bedfcd8e5809707398566abca735c80620be9bb9a29f",
     ".orly/audits/scope.sh": "sha256:83725913f561729377f4b913495823e749ed64de5aeb9eda8fa1b35e01ef707b",
-    ".orly/audits/spec-template.sh": "sha256:ea2aa79fd39c632e88be4d5b9f755beabfdd844c2c3fa882a0d13f9822daae29",
-    ".orly/audits/spec-template.ts": "sha256:fcfc1534a8d33586835b456cf0d27284ffb3441fa00abe75848c2db6a05af247",
+    ".orly/audits/spec-template.sh": "sha256:403046b83d8be1fa8279940f39a6aae2b23336e9a33d53d2af8b227406fffd2f",
+    ".orly/audits/spec-template.ts": "sha256:ef10e170d86731d40cab6a9466b9ce26b9b20f6974b122e6defd870af40749e1",
     ".orly/audits/ufs-strings.awk": "sha256:a6ef0f62d627f3c09f64c9d8b6e33ea6b25d85ccf2585cfddb2f3500be1a80c0",
     ".orly/audits/ufs.sh": "sha256:18b93033a91ea5ef2d7f453fc1f893201245e17a6932f67a8227c4ebb707e19e",
     ".orly/dispatch/lib.sh": "sha256:63b5e2b8e962808ce41523f122e34a75d316e58bf4026c3aafab54c28e73ea97",
@@ -159,7 +159,7 @@
     ".orly/dispatch/write_rust.md": "sha256:fb2eda58dfc67c017eea1bfd99d48949b69e7e83e3a8daee410e473f0c0f06ef",
     ".orly/dispatch/write_rust.sh": "sha256:f6f3b5d136453f2f3247db268aa59b0f4467f7cf844d71619a2436aac8df0374",
     ".orly/dispatch/write_shell.md": "sha256:0748aa03a8b985a720c5d2586a931a9a98fe865bb4a44dd54a898bb8eb59f2a7",
-    ".orly/dispatch/write_spec.md": "sha256:ffc8f991965faed799f8ce83ff4052a3de18defafdfe0d112ab2ebf176804ee4",
+    ".orly/dispatch/write_spec.md": "sha256:a1b89dcf110985b949ec8277f7a79241fedab4da2744ac727019f53c1a152bfb",
     ".orly/dispatch/write_sql.md": "sha256:74790a353d92f0c1c8d91177b3a8ef7414faf4abe47846f384bebf36847dd1dc",
     ".orly/dispatch/write_sql.sh": "sha256:5bc69c7bcbc225d3a8209f5ec73e6a8cbe729e4b9510f48a467486530ba9593c",
     ".orly/dispatch/write_ts_adhere_bun.md": "sha256:81fabda7bcba0ccfdd412154b7fbecda5cd87951c04d7beaf21629f72b79ada8",

@@ -2,11 +2,10 @@
 
 import type { PlatformEntry } from "@/lib/api/platform-library-types";
 import { useState } from "react";
-import Link from "next/link";
-import { Alert, Button, ConfirmDialog, DataTable, EmptyState } from "@agentsfleet/design-system";
-import { LibraryIcon } from "lucide-react";
+import { Alert, ConfirmDialog, DataTable } from "@agentsfleet/design-system";
+import { FleetLibraryEmptyState } from "@/components/domain/FleetLibraryEmptyState";
 import EditFleetDialogDynamic from "@/components/domain/island-dynamic/EditFleetDialogDynamic";
-import { DELETE, DELETE_CONFIRM_BODY, DELETE_CONFIRM_TITLE, EMPTY_DESCRIPTION, EMPTY_TITLE, FLEET_SETUPS_SECTION } from "../library-copy";
+import { DELETE, DELETE_CONFIRM_BODY, DELETE_CONFIRM_TITLE, EMPTY_DESCRIPTION, FLEET_SETUPS_SECTION } from "../library-copy";
 import { platformColumns } from "./platform-columns";
 import { usePlatformCatalog } from "./use-platform-catalog";
 
@@ -20,8 +19,7 @@ export default function PlatformCatalogTable({entries}: {entries: PlatformEntry[
   return <div className="flex min-h-0 flex-col gap-md">
     {state.error ? <Alert variant="destructive" data-testid="catalog-error">{state.error}</Alert> : null}
     <DataTable columns={columns} rows={state.current} rowKey={(row) => row.id} caption={FLEET_SETUPS_SECTION} isLoading={state.busy}
-      empty={<EmptyState icon={<LibraryIcon size={20} aria-hidden="true" />} title={EMPTY_TITLE} description={EMPTY_DESCRIPTION}
-        action={<Button asChild variant="secondary"><Link href="/">New fleet</Link></Button>} />} />
+      empty={<FleetLibraryEmptyState createHref="/" description={EMPTY_DESCRIPTION} />} />
     {editing ? <EditFleetDialogDynamic key={editing.entry.id} entry={editing.entry} returnFocusTo={editing.opener} open onOpenChange={() => setEditing(null)}
       onSaved={(updated) => { state.remember(editing.entry.etag, updated); setEditing(null); }} /> : null}
     <ConfirmDialog open={deleting !== null} onOpenChange={() => setDeleting(null)}

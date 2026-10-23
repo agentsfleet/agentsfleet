@@ -1,5 +1,4 @@
 import { executionInstructions } from "./fixtures/definition";
-import { agentDisplayName } from "@/lib/fleets/agent-label";
 /**
  * fleet-execution.spec.ts — one fleet, from a reviewed chat setup to a finished job,
  * against the Rust daemon serving this environment.
@@ -125,9 +124,8 @@ function countStreams(page: Page, workspaceId: string): StreamCounts {
 // line and the counters are its siblings — so the card is what carries the
 // words a person reads, and the link is only how the card is found.
 function tileFor(page: Page, fleetId: string) {
-  const overlay = page.getByRole("link", {
-    name: new RegExp(`^${MANAGE_FLEET_LABEL}: ${agentDisplayName(fleetId)} — `),
-  });
+  const overlay = page.getByRole("link", {name: new RegExp(`^${MANAGE_FLEET_LABEL}: `)})
+    .and(page.locator(`a[href$="/fleets/${fleetId}"]`));
   return page.locator(TILE_CARD).filter({ has: overlay });
 }
 
@@ -209,7 +207,7 @@ test.describe("fleet execution", () => {
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     const composer = page.getByLabel(COMPOSER_LABEL);
     await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await composer.getByPlaceholder(/message this fleet/i).fill(`${MESSAGE_PREFIX}${tag}`);
+    await composer.getByPlaceholder(/message your fleet/i).fill(`${MESSAGE_PREFIX}${tag}`);
     await composer.getByRole("button", { name: /send/i }).click();
 
     // ── 1.2 An online runner leases the delivery ──

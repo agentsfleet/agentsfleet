@@ -4,6 +4,7 @@ import { ChatFixture, CHAT_PROPS } from "./fixture";
 import { DraftClient } from "@/lib/api/drafts";
 import { ChatModelAvailability } from "@/components/domain/chat/ChatAvailability";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
+import { DraftSidebarProvider } from "@/components/layout/draft-sidebar-state";
 import { MODEL, response, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
@@ -16,7 +17,7 @@ it("explains unavailable setup, preserves the lock, and offers reload or fleet n
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("alert")).textContent).toContain("Fleet setup isn’t available");
   expect(screen.getByRole("link", {name: "Your fleets"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets`);
-  expect(screen.queryByRole("button", {name: /Fix a build/})).toBeNull();
+  expect(screen.queryByRole("button", {name: /Review pull requests/})).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Reload"}));
   expect(reload).toHaveBeenCalledOnce();
@@ -30,7 +31,19 @@ it("retries a failed initial read without claiming the workspace has no models",
   expect(screen.queryByText(/Add a model to this workspace/)).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-  await waitFor(() => expect(screen.getByRole("button", {name: /Fix a build/})).toHaveProperty("disabled", false));
+  await waitFor(() => expect(screen.getByRole("button", {name: /Review pull requests/})).toHaveProperty("disabled", false));
+  expect(fixture.writes()).toHaveLength(0);
+});
+
+it("reloads unavailable unfinished setups from their own recovery action without writing", async () => {
+  fixture.fetch.mockResolvedValueOnce(response({}, 503));
+  render(<DraftSidebarProvider><WorkspaceChat {...CHAT_PROPS} /></DraftSidebarProvider>);
+  await screen.findByText(/Unfinished setups could not be loaded/);
+  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  await waitFor(() => expect(screen.queryByText(/Unfinished setups could not be loaded/)).toBeNull());
+  expect(screen.queryByText(/We couldn’t load your models and chats/)).toBeNull();
+  fireEvent.change(screen.getByRole("textbox", {name: "Describe the work you want this fleet to do…"}), {target: {value: "Review the nightly build"}});
+  expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", false);
   expect(fixture.writes()).toHaveLength(0);
 });
 
@@ -39,7 +52,7 @@ it("shows an oversized message refusal inside the chat without creating a draft"
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   render(<WorkspaceChat {...CHAT_PROPS} />);
   const input = await screen.findByRole("textbox", {name: "Describe the work you want this fleet to do…"});
-  await waitFor(() => expect(screen.getByRole("button", {name: /Fix a build/})).toHaveProperty("disabled", false));
+  await waitFor(() => expect(screen.getByRole("button", {name: /Review pull requests/})).toHaveProperty("disabled", false));
   fireEvent.change(input, {target: {value: "🌱".repeat(8_193)}});
   fireEvent.click(screen.getByRole("button", {name: "Send message"}));
   expect((await screen.findByRole("alert")).textContent).toContain("Messages must contain 1 to 32,768 bytes of text.");

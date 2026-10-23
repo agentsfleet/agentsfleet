@@ -34,7 +34,7 @@ export function ShellFrame({
   return (
     <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
       <DraftSidebarProvider><div
-        className="app-surface fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
+        className="app-surface app-shell fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
         data-surface="dashboard"
       >
         {/* Each header cluster supplies its own padding to align with the sidebar. */}

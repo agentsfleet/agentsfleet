@@ -55,6 +55,7 @@ export function ModelName({
   displayName,
   managedByPlatform = false,
   trimmed = false,
+  copyable = true,
   trailing,
 }: {
   modelId: string;
@@ -63,6 +64,8 @@ export function ModelName({
   trimmed?: boolean;
   /** Marks the row as a platform admin's, which a tenant admin cannot edit. */
   managedByPlatform?: boolean;
+  /** Show the identifier copy control where the table offers it as an action. */
+  copyable?: boolean;
   /** What follows the name on this table, such as the library's Default badge. */
   trailing?: ReactNode;
 }) {
@@ -78,7 +81,7 @@ export function ModelName({
         >
           {modelLabel(modelId, displayName)}
         </span>
-        <CopyButton value={modelId} label={modelIdCopyLabel(modelId)} />
+        {copyable ? <CopyButton value={modelId} label={modelIdCopyLabel(modelId)} /> : null}
       </span>
       {trailing}
     </span>

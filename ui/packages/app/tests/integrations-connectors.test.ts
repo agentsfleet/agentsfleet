@@ -302,13 +302,14 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
-  it("requests a connector inline and confirms it without navigation or setup actions", () => {
+  it("requests connector access and confirms it without navigation or setup actions", () => {
     renderConnectors([entry({ id: "jira", archetype: "oauth2", display_name: "Jira", configured: false })]);
     const jira = screen.getByTestId("integration-jira");
-    const request = within(jira).getByRole("button", { name: "Request connector" });
-    expect(request.closest("p")?.textContent).toBe("A platform admin needs to enable this connector. Choose Request connector to register your interest.");
-    expect(jira.textContent).toContain("Admin setup required");
-    expect(request.classList.contains("text-info")).toBe(true);
+    const request = within(jira).getByRole("button", { name: "Request access to Jira" });
+    expect(request.textContent).toBe("Request access");
+    expect(request.closest("p")).toBeNull();
+    expect(jira.textContent).toContain("Choose Request access to register your interest.");
+    expect(jira.textContent).not.toContain("Admin setup required");
     expect(screen.queryByRole("button", { name: /connect jira/i })).toBeNull();
     expect(within(jira).queryByRole("link")).toBeNull();
     expect(captureProductEventMock).not.toHaveBeenCalled();

@@ -27,14 +27,14 @@ export const CHAT_COPY = {
   composerInput: "Describe the work you want this fleet to do…",
   send: "Send message",
   unavailable: "Chat is unavailable",
-  historyUnavailable: "Chat history is unavailable.",
+  historyUnavailable: "Unfinished setups could not be loaded.",
 } as const;
 
 export function draftHref(workspaceId: string, draftId: string): string {
   return `${workspaceHref(workspaceId, NEW_FLEET)}?draft=${encodeURIComponent(draftId)}`;
 }
 
-/** The chat's entry under "Fleet setup chats" in the sidebar. */
+/** The private chat's entry under Unfinished setups on New fleet. */
 export function historyEntry(page: Page, draftId: string): Locator {
   return page.locator(`a[href$="?draft=${encodeURIComponent(draftId)}"]`);
 }

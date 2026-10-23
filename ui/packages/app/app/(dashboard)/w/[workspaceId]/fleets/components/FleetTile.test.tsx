@@ -89,7 +89,7 @@ describe("FleetTile kinds", () => {
     expect(getByText(FLEET_WAITING_COPY)).toBeTruthy();
     expect(getByText("Open →")).toBeTruthy();
     expect(
-      getByRole("link", { name: /manage fleet: agent [a-z]+-[0-9a-f]{4} — active/i }),
+      getByRole("link", { name: /manage fleet: alpha — agent [a-z]+-[0-9a-f]{4} — active/i }),
     ).toBeTruthy();
     // Footer reads server truth, not token math — figures carry their unit as
     // a plain word, never an abbreviation.
@@ -191,8 +191,8 @@ describe("FleetTile kinds", () => {
       ),
     );
     const labels = getAllByRole("link").map((link) => link.getAttribute("aria-label"));
-    expect(labels[0]).toMatch(/^Manage fleet: AGENT [A-Z]+-[0-9A-F]{4} — active$/);
-    expect(labels[1]).toMatch(/^Manage fleet: AGENT [A-Z]+-[0-9A-F]{4} — active$/);
+    expect(labels[0]).toMatch(/^Manage fleet: alpha — AGENT [A-Z]+-[0-9A-F]{4} — active$/);
+    expect(labels[1]).toMatch(/^Manage fleet: alpha — AGENT [A-Z]+-[0-9A-F]{4} — active$/);
     expect(labels[0]).not.toBe(labels[1]);
   });
 
@@ -294,7 +294,7 @@ describe("FleetTile kinds", () => {
     expect(container.querySelector('[data-live="true"]')).toBeNull();
   });
 
-  it("leads with the callsign and explains its saved purpose", () => {
+  it("leads with the saved name and keeps the callsign and purpose", () => {
     streamMock.mockReturnValue({
       feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
@@ -306,19 +306,19 @@ describe("FleetTile kinds", () => {
     const agent = container.querySelector("[data-agent-name]");
     expect(agent?.textContent).toBe(agentDisplayName("flt_1"));
     expect(container.querySelector("[data-fleet-status]")?.textContent).toBe("Active");
-    // The status sits on the agent's own line, and the activity is the next.
+    // The callsign remains secondary and precedes the saved purpose.
     expect((agent?.compareDocumentPosition(container.querySelector("[data-fleet-purpose]")!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container.querySelector("[data-tile-activity]")?.textContent).toBe(FLEET_WAITING_COPY);
     expect(container.querySelector("[data-fleet-purpose]")?.textContent).toBe(PURPOSE);
     expect(container.querySelector("a")?.getAttribute("aria-label")).toContain(PURPOSE);
-    expect(container.textContent).not.toContain("alpha");
+    expect(container.textContent).toContain("alpha");
     expect(container.textContent).not.toContain("Runs in a loop");
   });
 
   it("does not invent a purpose for a fleet without saved setup", () => {
     const {container} = renderTile(fleet({status: "stopped"}));
     expect(container.querySelector("[data-fleet-purpose]")).toBeNull();
-    expect(container.textContent).not.toContain("alpha");
+    expect(container.textContent).toContain("alpha");
   });
 
   it("a server drop signal surfaces catching up", () => {

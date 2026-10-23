@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChatFixture, CHAT_PROPS, chooseSetupAction, setupAction } from "./fixture";
 import { DraftChatHeading } from "@/components/domain/chat/DraftChatHeading";
+import { DraftSaveButton } from "@/components/domain/chat/DraftSaveBar";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
 import { DraftClient } from "@/lib/api/drafts";
@@ -31,7 +32,7 @@ it.each([false, true])("hides private actions without an accessible setup (inacc
 it("offers editing before the first message without allowing an unreviewed save or rename", async () => {
   client.fresh({kind: "definition", definition: REVIEW.effective.definition}); await client.refreshSetup();
   render(<DraftChatHeading client={client} view={client.getSnapshot()} />);
-  expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
+  expect(screen.getByRole("button", {name: SAVE})).toHaveProperty("disabled", true);
   await setupAction(EDIT);
   expect(screen.getByRole("menuitem", {name: RENAME}).getAttribute("aria-disabled")).toBe("true");
   fireEvent.click(screen.getByRole("menuitem", {name: EDIT}));
@@ -69,7 +70,7 @@ it.each([
 
 it("keeps an unfinished candidate unsavable and allows naming the conversation", async () => {
   render(<DraftChatHeading client={client} view={{...client.getSnapshot(), draft: {...DRAFT, candidate: undefined, review: undefined}}} />);
-  expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
+  expect(screen.getByRole("button", {name: SAVE})).toHaveProperty("disabled", true);
   await setupAction(EDIT);
   expect(screen.getByRole("menuitem", {name: EDIT}).getAttribute("aria-disabled")).toBe("true");
   fireEvent.click(screen.getByRole("menuitem", {name: RENAME}));
@@ -141,5 +142,19 @@ it("clears unfinished rename and editor state when New fleet resets the conversa
   view.rerender(<DraftChatHeading client={client} view={{...snapshot, draft: null, preview: null}} />);
   view.rerender(<DraftChatHeading client={client} view={snapshot} />);
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(fixture.writes()).toHaveLength(0);
+});
+
+it("keeps saved-fleet setup saving in its persistent footer instead of duplicating it in the heading", () => {
+  const review = {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}};
+  render(<DraftChatHeading client={client} view={{...client.getSnapshot(), draft: {...DRAFT, review}}} />);
+  expect(screen.queryByRole("button", {name: "Save changes"})).toBeNull();
+  expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
+  expect(fixture.writes()).toHaveLength(0);
+});
+
+it("removes the save action when the current viewer loses access", () => {
+  render(<DraftSaveButton client={client} view={{...client.getSnapshot(), inaccessible: true}} />);
+  expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
   expect(fixture.writes()).toHaveLength(0);
 });

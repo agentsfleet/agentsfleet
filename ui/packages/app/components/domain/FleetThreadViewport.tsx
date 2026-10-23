@@ -15,6 +15,7 @@ const EMPTY_HINT = "Message this fleet or wait for its next trigger. Activity an
 const BACKFILL_LABEL = "Loading recent activity";
 
 type FleetThreadViewportProps = SteerComposerProps & {
+  setupRevision?: string;
   eventsCount: number;
   connectionStatus: ConnectionStatus;
   /** Reconnects the live stream now, from the offline notice. */
@@ -24,13 +25,13 @@ type FleetThreadViewportProps = SteerComposerProps & {
 // Memoised: the thread re-renders on every streamed flush, and nothing this
 // shell draws moves with one. The messages below subscribe on their own.
 export const FleetThreadViewport = memo(function FleetThreadViewport({
-  eventsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft,
+  eventsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, modelLabel, setupRevision,
 }: FleetThreadViewportProps) {
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
     <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
-    <SteerComposer pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} />
+    <SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} />
   </>}>
-    <SettledReplyStatus><ChatHistory eventsCount={eventsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
+    <SettledReplyStatus><ChatHistory setupRevision={setupRevision} eventsCount={eventsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
   </ChatThread>;
 });
 
@@ -48,7 +49,7 @@ function BackfillSkeleton() {
   );
 }
 
-function ChatHistory({ eventsCount, connectionStatus }: Pick<FleetThreadViewportProps, "eventsCount" | "connectionStatus">) {
+function ChatHistory({ eventsCount, connectionStatus, setupRevision }: Pick<FleetThreadViewportProps, "eventsCount" | "connectionStatus" | "setupRevision">) {
   const isAwaitingFirstFrames =
     eventsCount === 0 &&
     (connectionStatus === CONNECTION_STATUS.CONNECTING ||
@@ -68,8 +69,12 @@ function ChatHistory({ eventsCount, connectionStatus }: Pick<FleetThreadViewport
       // never covers its newest rows. Top-aligned, as the viewport's top
       // anchor expects: a bottom-aligned short thread slid down by the height
       // of every Thought that folded above the composer.
-      className="mx-auto flex w-full max-w-measure flex-1 flex-col justify-start py-lg"
+      className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-3xl"
     >
+      {setupRevision ? <div className="mb-md border-l-2 border-border pl-md text-label">
+        <p className="font-semibold">Saved v{setupRevision}</p>
+        <p className="mt-xs text-muted-foreground">New runs use this setup. Edit setup to change it.</p>
+      </div> : null}
       {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}
       {isIdleEmpty ? (
         <p className="px-sm py-lg text-sm text-muted-foreground">{EMPTY_HINT}</p>

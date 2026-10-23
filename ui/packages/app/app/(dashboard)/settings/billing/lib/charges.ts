@@ -1,18 +1,20 @@
 import { CHARGE_TYPE, type TenantBillingChargesResponse } from "@/lib/types";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
+import { modelLabel } from "@/lib/models/display";
+import { MS_PER_SECOND } from "@/lib/utils";
 import { formatDollars, MIN_VISIBLE_NANOS, SUBVISIBLE_AMOUNT_LABEL } from "@/lib/money";
 export { formatDollars } from "@/lib/money";
 
-export type ChargeRow = TenantBillingChargesResponse["items"][number];
+export type ChargeRow = TenantBillingChargesResponse["items"][number] & { model_display_name?: string | null };
 
 const EVENT_RECEIVED_LABEL = "Event received";
-const RUN_LABEL = "Run";
 const SETUP_CHAT_LABEL = "Setup chat";
-const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
+const NO_TOKEN_USAGE_LABEL = "Token usage unavailable";
 const TOKENS_LABEL = "tokens";
-const TOKENS_IN = "in";
-const TOKENS_OUT = "out";
+const TOKENS_IN = "input";
+const TOKENS_OUT = "output";
 const TOKEN_SPLIT_SEPARATOR = " · ";
+const RUNTIME_SECONDS = new Intl.NumberFormat("en-US", {style: "unit", unit: "second", unitDisplay: "long", maximumFractionDigits: 3});
 /** Human-readable debit: never render a misleading negative zero. */
 export function formatChargeAmount(nanos: string): string {
   const amount = BigInt(nanos);
@@ -24,13 +26,12 @@ export function formatChargeAmount(nanos: string): string {
 /** Retained fleet identifiers keep billing labels stable after deletion. */
 export function chargeAgentLabel(row: ChargeRow): string {
   if (row.charge_type === CHARGE_TYPE.authoring && row.fleet_id === null) return SETUP_CHAT_LABEL;
-  return agentDisplayName(row.fleet_id);
+  return row.fleet_name && row.fleet_name !== row.fleet_id ? row.fleet_name : agentDisplayName(row.fleet_id);
 }
 
-/** Strip the provider namespace and separators without changing model casing. */
-export function displayModelName(model: string): string {
-  const modelId = model.slice(model.lastIndexOf("/") + 1);
-  return modelId.replaceAll(/[-_]/g, " ");
+/** Use the catalogue's spelling; preserve an unknown model's exact identifier. */
+export function displayModelName(model: string, displayName?: string | null): string {
+  return modelLabel(model, displayName);
 }
 
 // recorded_at is an RFC 3339 instant (`ChargeSummary::recorded_at` in
@@ -55,24 +56,25 @@ export function formatChargeTimestamp(recordedAt: string): string {
   return `${DATE_FORMATTER.format(at)} · ${TIME_FORMATTER.format(at)}`;
 }
 
-/**
- * Activity and recorded usage; the amount comes only from the saved debit.
- */
-export function describeCharge(row: ChargeRow): string {
+/** Recorded usage stays separate from the amount, which only the ledger supplies. */
+export function chargeUsage(row: ChargeRow): {label: string; detail: string} {
   if (row.charge_type === CHARGE_TYPE.receive) {
-    return EVENT_RECEIVED_LABEL;
+    return {label: EVENT_RECEIVED_LABEL, detail: ""};
   }
-  const label = row.charge_type === CHARGE_TYPE.authoring ? SETUP_CHAT_LABEL : RUN_LABEL;
   if (row.token_count_input === null || row.token_count_output === null) {
-    return `${label} · ${NO_TOKEN_USAGE_LABEL}`;
+    return {label: NO_TOKEN_USAGE_LABEL, detail: ""};
   }
   if (row.token_count_input === 0 && row.token_count_output === 0) {
-    return `${label} · ${NO_TOKEN_USAGE_LABEL}`;
+    return row.wall_ms !== null && row.wall_ms > 0
+      ? {label: "Runtime", detail: RUNTIME_SECONDS.format(row.wall_ms / MS_PER_SECOND)}
+      : {label: "0 tokens", detail: ""};
   }
-  // "2,075 input tokens · 1,112 output tokens" said "tokens" twice and led with
-  // the least useful number. The total is what an operator scans for; the split
-  // is what they check afterwards.
   const total = row.token_count_input + row.token_count_output;
   const split = `${row.token_count_input.toLocaleString()} ${TOKENS_IN}${TOKEN_SPLIT_SEPARATOR}${row.token_count_output.toLocaleString()} ${TOKENS_OUT}`;
-  return `${label} · ${total.toLocaleString()} ${TOKENS_LABEL} · ${split}`;
+  return {label: `${total.toLocaleString()} ${TOKENS_LABEL}`, detail: split};
+}
+
+export function describeCharge(row: ChargeRow): string {
+  const usage = chargeUsage(row);
+  return usage.detail ? `${usage.label}${TOKEN_SPLIT_SEPARATOR}${usage.detail}` : usage.label;
 }

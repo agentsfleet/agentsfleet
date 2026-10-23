@@ -89,7 +89,7 @@ const LUCIDE_ICONS = [
   "MessageSquareIcon", "Code2Icon", "FolderIcon",
   "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ChevronsUpDown",
   // The fleet lifecycle controls, which carry a glyph the way runner actions do.
-  "CircleStopIcon", "PlayIcon", "PowerOffIcon",
+  "CircleStopIcon", "PlayIcon", "PowerOffIcon", "SquareIcon", "EllipsisIcon",
   // The status lines' glyphs and the runner checks badge.
   "CircleAlertIcon", "CoinsIcon", "HourglassIcon", "LoaderCircleIcon", "TimerIcon", "HeartPulseIcon",
   "ShieldCheckIcon", "ShieldAlertIcon", "LockKeyholeIcon",

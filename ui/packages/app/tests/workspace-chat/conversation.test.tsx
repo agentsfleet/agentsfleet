@@ -40,7 +40,7 @@ it.each([false, true])("shows the new-fleet entrance only before an empty draft 
       onContinue={() => {}} onRetrySchedule={() => {}} /> : null}
   </DraftConversation>);
   const entrance = screen.queryByRole("heading", {name: "What should your fleet do?"});
-  const suggestion = screen.queryByRole("button", {name: /Fix a build/});
+  const suggestion = screen.queryByRole("button", {name: /Review pull requests/});
   if (saved) {
     expect(entrance).toBeNull();
     expect(suggestion).toBeNull();
@@ -65,25 +65,27 @@ it("stops authoring at the durable watermark and replaces Working with the termi
   await client.resume(DRAFT.id); render(<LiveConversation />);
   expect(screen.getByRole("status", {name: "Working"})).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
-  expect(await screen.findByText("Authoring stopped.")).toBeTruthy();
+  expect(await screen.findByText("Request stopped.")).toBeTruthy();
   await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
   expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
 });
 
 it.each([
-  ["insufficient_balance", "The account balance could not cover this setup turn."],
-  ["model_unavailable", "The selected setup model is no longer available."],
-  ["context_too_large", "The conversation and instructions exceed the model’s context limit."],
-  ["provider_failed", "The setup turn failed after model usage was recorded. No detailed cause was recorded."],
-  ["provider_usage_unknown", "The model request ended without confirmed usage."],
-  ["attempt_timed_out", "The setup turn exceeded its time limit."],
-  ["policy_changed", "The setup or its access policy changed during this turn."],
-  ["new-failure-reason", "The setup turn failed. No detailed cause was recorded."],
+  ["insufficient_balance", "There aren’t enough credits to finish this request."],
+  ["model_unavailable", "This model isn’t available right now."],
+  ["context_too_large", "This conversation is too long for the selected model."],
+  ["provider_failed", "The model didn’t finish its response."],
+  ["provider_usage_unknown", "Usage is still being reconciled."],
+  ["attempt_timed_out", "The model didn’t finish in time, so there’s no complete response."],
+  ["policy_changed", "The setup or its permissions changed during this request."],
+  ["new-failure-reason", "The model didn’t finish its response."],
 ])("explains the recorded failure without asking for another message (%s)", (reason, copy) => {
   const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",
     text: undefined, failure: {reason, error_code: "UZ-TEST-001", recovery_action: "retry_message"}}]};
   render(<DraftConversation client={client} view={view} />);
   expect(screen.getByRole("log").textContent).toContain(copy);
+  expect(screen.getByRole("log").textContent).not.toContain("UZ-TEST-001");
+  fireEvent.click(screen.getByRole("button", {name: "View details"}));
   expect(screen.getByRole("log").textContent).toContain("UZ-TEST-001");
   expect(screen.getByRole("log").textContent).not.toContain("Send a new message to try again");
   expect(screen.queryByRole("button", {name: /Retry request/})).toBeNull();

@@ -25,7 +25,7 @@ impl Transport for Reasoning {
             json!([
                 {"type":"reasoning","id":"rs_private","summary":[],"encrypted_content":"opaque-private-reasoning"},
                 {"type":"function_call","id":"fc_private","call_id":"call_proposal","name":"propose_setup",
-                 "arguments":json!({"proposal_json":proposal.to_string()}).to_string()}
+                 "arguments":json!({"proposal":proposal}).to_string()}
             ])
         } else {
             json!([{"type":"message","content":[{"type":"output_text","text":"Ready"}]}])

@@ -2,7 +2,7 @@
 // suites assert them. No test-runner imports: component, hook and ledger suites
 // share it without pulling in the fleet-thread harness's module mocks.
 
-export const COMPOSER_NAME = "Message this fleet…";
+export const COMPOSER_NAME = "Message your fleet…";
 export const SEND_FAILED_TEXT = "Message not sent.";
 export const SEND_UNCONFIRMED_TEXT = "Couldn't confirm this message was sent.";
 export const TOO_LONG_TEXT = "Messages can be at most 8,192 bytes.";

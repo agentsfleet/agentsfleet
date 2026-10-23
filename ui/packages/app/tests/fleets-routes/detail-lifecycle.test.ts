@@ -1,6 +1,5 @@
-import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { FLEET_ID } from "../helpers/draft-fixtures";
-import { happyBilling, mockFetchBilling } from "./harness";
+import { detailBody, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it } from "vitest";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { fetchMock } from "../helpers/dashboard-mocks";
@@ -52,7 +51,7 @@ describe("fleets routes — detail lifecycle states", () => {
         params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
-    expect(markup).toContain(agentDisplayName(FLEET_ID));
+    expect(markup).toContain(detailBody().name);
     expect(markup).not.toContain("Balance exhausted");
   });
 
