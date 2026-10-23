@@ -1,6 +1,9 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render as renderWithoutProviders } from "@testing-library/react";
+
+import { TooltipProvider } from "@agentsfleet/design-system";
+const render = (element: React.ReactNode) => renderWithoutProviders(element, {wrapper: TooltipProvider});
 
 vi.mock("lucide-react", () => ({
   ActivityIcon: () => React.createElement("svg", { "data-icon": "ActivityIcon" }),
@@ -20,7 +23,6 @@ vi.mock("next/navigation", () => ({
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";
 import {
-  formatChargeTimestamp,
   type ChargeRow,
 } from "@/app/(dashboard)/settings/billing/lib/charges";
 import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
@@ -79,15 +81,15 @@ describe("BillingUsageTab charge cell", () => {
 
     const time = container.querySelector("time");
     expect(time).not.toBeNull();
-    // Visible text is still the approved ledger string ("MMM DD, YYYY · HH:MM").
-    expect(time?.textContent).toBe(formatChargeTimestamp(new Date(RECORDED_AT_MS).toISOString()));
+    // Relative text keeps the exact instant available to assistive tools and hover.
+    expect(time?.textContent).toMatch(/ago$/);
     // The datetime attribute is the canonical ISO instant.
     expect(time?.getAttribute("datetime")).toBe(
       new Date(RECORDED_AT_MS).toISOString(),
     );
   });
 
-  it("renders only the retained callsign after fleet deletion", () => {
+  it("renders the retained chosen name after fleet deletion", () => {
     const { container } = render(
       React.createElement(BillingUsageTab, {
         initialCharges: [
@@ -98,11 +100,9 @@ describe("BillingUsageTab charge cell", () => {
       }),
     );
 
-    const expected = agentDisplayName(PURGED_FLEET_ID);
-    const label = container.querySelector(`[data-agent-name="${expected}"]`);
+    const label = container.querySelector(`[data-agent-name="${CAPTURED_NAME}"]`);
     expect(label).not.toBeNull();
-    expect(container.textContent).not.toContain(CAPTURED_NAME);
-    expect(label?.textContent).toContain("AGENT ");
+    expect(label?.textContent).toBe(CAPTURED_NAME);
     expect(container.textContent).not.toContain(DELETED_AGENT_LABEL);
   });
 
@@ -129,5 +129,14 @@ describe("BillingUsageTab charge cell", () => {
     ]} initialCursor={null} pageSize={25} />);
     expect(container.querySelector('[data-agent-name="Setup chat"]')?.textContent).toBe("Setup chat");
     expect(container.textContent).not.toContain(DELETED_AGENT_LABEL);
+  });
+  it("shows a zero debit and recorded zero tokens without inventing usage", () => {
+    const {container} = render(<BillingUsageTab initialCharges={[
+      charge({credit_deducted_nanos: "0", token_count_input: 0, token_count_output: 0, wall_ms: null}),
+    ]} initialCursor={null} pageSize={25} />);
+    expect(container.querySelector('[data-zero="true"]')?.textContent).toBe("$0.00");
+    expect(container.textContent).toContain("0 tokens");
+    expect(container.textContent).not.toContain("Token usage unavailable");
+    expect(container.textContent).not.toContain("−$0.00");
   });
 });

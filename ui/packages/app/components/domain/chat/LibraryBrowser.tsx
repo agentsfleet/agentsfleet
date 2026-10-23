@@ -3,10 +3,9 @@
 import type { Source } from "@/lib/api/draft-types";
 import type { Library, LibraryCard } from "@/lib/api/draft-library";
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { LibraryIcon, PlusIcon } from "lucide-react";
 import { workspacePath } from "@/lib/workspace-routes";
-import { Button, EmptyState, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
+import { Button, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
+import { FleetLibraryEmptyState } from "@/components/domain/FleetLibraryEmptyState";
 import { inspectLibrary, libraryHistory, libraryPage } from "@/lib/api/draft-library";
 import { losesAccess } from "@/lib/api/draft-request";
 import { LIBRARY_UNAVAILABLE_TITLE, libraryUnavailableDescription } from "@/lib/library-copy";
@@ -85,8 +84,7 @@ function LibraryEmpty({workspace, paged, owned}: {workspace: string; paged: bool
   const copy = paged ? "No published setups on this page. Check another page or change the library scope."
     : owned ? "No setups have been published by this workspace. Start a fleet setup chat, then save or publish your setup."
     : "No published setups are available yet. Start a fleet setup chat, then save or publish your setup.";
-  return <EmptyState icon={<LibraryIcon size={28} />} title="Build your next fleet" description={copy}
-    action={<Button asChild variant="secondary"><Link href={workspacePath(workspace, "fleets/new")}><PlusIcon size={16} aria-hidden="true" />New fleet</Link></Button>} />;
+  return <FleetLibraryEmptyState createHref={workspacePath(workspace, "fleets/new")} description={copy} />;
 }
 
 function LibraryChoices({page, workspace, owned, onRemoved, onInspect}: {page: Page | null; workspace: string; owned: boolean; onRemoved: () => void; onInspect: (card: LibraryCard) => void}) {

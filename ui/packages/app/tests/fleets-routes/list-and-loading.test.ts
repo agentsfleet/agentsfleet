@@ -96,7 +96,7 @@ describe("fleets routes — list and loading", () => {
     expect(markup).toContain(`href="/w/ws_1/fleets/${FLEET_ID}"`);
     expect(markup).toContain(agentDisplayName(FLEET_ID));
     expect(markup).toContain(FLEET_DETAIL.definition.description);
-    expect(markup).not.toContain("platform-ops");
+    expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
   });
 

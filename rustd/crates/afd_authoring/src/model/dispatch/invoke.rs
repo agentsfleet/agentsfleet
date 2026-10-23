@@ -20,6 +20,7 @@ impl ModelCalls {
             mut outbound,
             authorized_at,
             output_limit,
+            candidate,
         } = intent;
         outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
         let publisher = self.streams.as_ref().map(|streams| {
@@ -49,13 +50,9 @@ impl ModelCalls {
                         request,
                         &attempt.model_snapshot,
                         output_limit,
+                        candidate.as_ref(),
                     );
-                    let cause = cause.or_else(|| {
-                        decoded
-                            .is_err()
-                            .then_some(crate::types::FailureCause::CompletionUnverified)
-                    });
-                    (decoded, cause)
+                    received(decoded, cause)
                 }
                 Err(error) => (Err(error), None),
             }
@@ -74,4 +71,19 @@ impl ModelCalls {
         )
         .await
     }
+}
+
+fn received(
+    decoded: Result<provider::Decoded>,
+    cause: Option<crate::types::FailureCause>,
+) -> (
+    Result<provider::Decoded>,
+    Option<crate::types::FailureCause>,
+) {
+    let cause = cause.or_else(|| {
+        decoded
+            .is_err()
+            .then_some(crate::types::FailureCause::CompletionUnverified)
+    });
+    (decoded, cause)
 }

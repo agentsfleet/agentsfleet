@@ -4,9 +4,15 @@ use rig_core::completion::CompletionRequest;
 
 use super::{Configured, Result, error::ErrorKind};
 
+#[path = "budget_minimax.rs"]
+mod minimax;
+
 /// Unknown tokenizers reserve one token per UTF-8 byte; billing uses actual usage.
 #[must_use]
 pub fn input_tokens(model: &str, text: &str) -> usize {
+    if let Some(count) = minimax::input_tokens(model, text) {
+        return count;
+    }
     tiktoken_rs::bpe_for_model(model)
         .map_or(text.len(), |encoding| encoding.encode_ordinary(text).len())
 }

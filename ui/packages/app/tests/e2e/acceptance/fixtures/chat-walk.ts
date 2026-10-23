@@ -15,12 +15,7 @@
  */
 import { expect, type Page } from "@playwright/test";
 import type { EventDetail } from "@/lib/api/events";
-import {
-  METRICS_STRIP_LABEL,
-  METRICS_TIME_LABEL,
-  METRICS_TOKENS_LABEL,
-  METRICS_VALUE_UNKNOWN,
-} from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy";
+import { REPLY_FIGURES_TEST_ID, WORKED_FOR } from "@/components/domain/FleetReplyFigures";
 import { FIXTURE_KEY } from "./constants";
 import {
   anyRunnerLive,
@@ -66,7 +61,7 @@ export async function messageFleet(
   await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
   const composer = page.getByLabel(COMPOSER_LABEL);
   await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-  await composer.getByPlaceholder(/message this fleet/i).fill(body);
+  await composer.getByPlaceholder(/message your fleet/i).fill(body);
   await composer.getByRole("button", { name: /send/i }).click();
   await expect
     .poll(
@@ -112,12 +107,11 @@ export async function awaitTerminalTurn(
 }
 
 /**
- * The reply as the operator reads it, and the figures beside it.
+ * The reply as the operator reads it, and the figures under that reply.
  *
  * The row is what the daemon persisted; this is the surface a person sees, and
- * the two are asserted apart on purpose. The figures are graded against the
- * strip's own unknown-dash rather than against a number, because what the model
- * spent is not this walk's claim — only that the strip has it.
+ * the two are asserted apart on purpose. Unknown figures are omitted from the
+ * footer, so require both recorded time and token count beside this answer.
  */
 export async function expectAnsweredOnScreen(
   page: Page,
@@ -128,14 +122,8 @@ export async function expectAnsweredOnScreen(
   const reply = page.getByLabel(CHAT_LABEL).locator(ASSISTANT_TURN).last();
   await expect(reply).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
   await expect(reply).not.toHaveText(/^\s*$/);
-  const strip = page.getByLabel(METRICS_STRIP_LABEL);
-  await expect(strip).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-  for (const label of [METRICS_TOKENS_LABEL, METRICS_TIME_LABEL]) {
-    const figure = new RegExp(`${label}\\s*(\\S+)`, "i");
-    await expect
-      .poll(async () => figure.exec(await strip.innerText())?.[1] ?? METRICS_VALUE_UNKNOWN, {
-        timeout: RENDER_TIMEOUT_MS,
-      })
-      .not.toBe(METRICS_VALUE_UNKNOWN);
-  }
+  const figures = reply.getByTestId(REPLY_FIGURES_TEST_ID);
+  await expect(figures).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+  await expect(figures).toContainText(new RegExp(`${WORKED_FOR}\\s+\\d`), { timeout: RENDER_TIMEOUT_MS });
+  await expect(figures).toContainText(/\d[\d.,]*(?:[kmb])?\s+tokens/i, { timeout: RENDER_TIMEOUT_MS });
 }

@@ -97,7 +97,7 @@ function chatParts(page: Page) {
     // own text, so the whole panel would match the restored draft.
     transcript: chat.getByRole("log", { name: TRANSCRIPT_LABEL }),
     composer,
-    draft: composer.getByPlaceholder(/message this fleet/i),
+    draft: composer.getByPlaceholder(/message your fleet/i),
     notices: composer.getByRole("list", { name: NOTICES_LABEL }),
   };
 }

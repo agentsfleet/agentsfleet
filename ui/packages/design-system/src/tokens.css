@@ -143,6 +143,12 @@
   --max-w-trim: 11.25rem;
   --max-w-narrow: 640px;
   --max-w-measure: 720px;
+  --max-w-chat: 728px;
+  --chat-input-height: 57px;
+  --chat-inset: 28px;
+  --fs-conversation: 15px;
+  --lh-conversation: 1.75;
+  --fs-chat-title: 19px;
   --max-w-form: 760px;
   --max-w-wide: 860px;
   --max-w-content: 1280px;

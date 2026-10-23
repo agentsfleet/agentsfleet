@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useOptimistic, useTransition, type ComponentType } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CircleStopIcon, PlayIcon, PowerOffIcon } from "lucide-react";
-import { Button, ConfirmDialog } from "@agentsfleet/design-system";
+import { EllipsisIcon } from "lucide-react";
+import { Button, ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetStatusSettable } from "@/lib/api/fleets";
 import { setFleetStatusAction } from "../../actions";
@@ -17,15 +17,6 @@ interface KillSwitchProps {
 interface ActionConfig {
   target: FleetStatusSettable;
   buttonLabel: string;
-  /**
-   * The glyph beside the label, the way every runner action carries one.
-   *
-   * Stop and Kill are the two most consequential controls in the product and
-   * they read as plain words in a row of plain words; the icon is what makes
-   * them findable before they are read.
-   */
-  icon: ComponentType<{ "aria-hidden"?: boolean }>;
-  variant: "outline" | "destructive";
   dialogTitle: string;
   dialogDescription: string;
   confirmLabel: string;
@@ -98,8 +89,6 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   const stopAction: ActionConfig = {
     target: AGENTSFLEET_STATUS.STOPPED,
     buttonLabel: "Stop",
-    icon: CircleStopIcon,
-    variant: "outline",
     dialogTitle: "Stop this fleet?",
     dialogDescription: "Halt execution now. You can resume it later from this page or via the CLI.",
     confirmLabel: "Stop",
@@ -109,8 +98,6 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   const resumeAction: ActionConfig = {
     target: AGENTSFLEET_STATUS.ACTIVE,
     buttonLabel: "Resume",
-    icon: PlayIcon,
-    variant: "outline",
     dialogTitle: "Resume this fleet?",
     dialogDescription:
       optimisticStatus === AGENTSFLEET_STATUS.PAUSED
@@ -123,8 +110,6 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   const killAction: ActionConfig = {
     target: AGENTSFLEET_STATUS.KILLED,
     buttonLabel: "Kill",
-    icon: PowerOffIcon,
-    variant: "destructive",
     dialogTitle: "Kill this fleet permanently?",
     dialogDescription:
       "Marks the fleet terminal. This is irreversible — once killed, the fleet cannot be resumed and only Delete remains.",
@@ -153,23 +138,14 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
           Killed
         </Button>
       ) : (
-        <div className="flex flex-wrap items-center justify-end gap-sm">
-          {actions.map((action) => {
-            const ActionIcon = action.icon;
-            return (
-              <Button
-                key={action.target}
-                variant={action.variant}
-                size="sm"
-                className="min-h-11 sm:min-h-0"
-                onClick={() => setPendingAction(action)}
-              >
-                <ActionIcon aria-hidden={true} />
-                {action.buttonLabel}
-              </Button>
-            );
-          })}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Fleet actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-0 w-32">
+            {actions.map((action) => <DropdownMenuItem key={action.target} onSelect={() => setPendingAction(action)}>
+              {action.buttonLabel}
+            </DropdownMenuItem>)}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
       <ConfirmDialog
         open={pendingAction !== null}

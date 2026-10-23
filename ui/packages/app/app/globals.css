@@ -98,3 +98,41 @@ code, pre, kbd { font-family: var(--ff-mono); }
 }
 .app-dashboard-canvas:has([data-fleet-authoring]) > div { height: 100%; min-height: 0; }
 .app-sidebar { overflow: hidden; }
+
+/* Fleet workspaces share the approved edge-to-edge chat frame. */
+.app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-dashboard-canvas {
+  padding: 0;
+  scrollbar-gutter: auto;
+  overflow: hidden;
+}
+.app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-dashboard-canvas > div {
+  height: 100%;
+  min-height: 0;
+}
+[data-fleet-workspace] nav[aria-label="Fleet sections"] {
+  padding-inline: var(--chat-inset);
+  margin: 0;
+}
+@media (min-width: 48rem) {
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) {
+    grid-template-rows: 60px minmax(0, 1fr);
+  }
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > header {
+    grid-column: 1;
+    grid-row: 1;
+    background: var(--card);
+  }
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > header::after,
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-shell-trailing {
+    display: none;
+  }
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > .app-sidebar {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > main {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    border-left: 1px solid var(--border);
+  }
+}

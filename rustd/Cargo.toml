@@ -38,6 +38,8 @@ categories = ["network-programming"]
 [workspace.dependencies]
 # Exact model tokenization for the daemon authoring boundary.
 tiktoken-rs = { version = "0.12.1", default-features = false }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+unicode-normalization = { version = "0.1.26", default-features = false, features = ["std"] }
 percent-encoding = "2.3.2"
 # Every known secret value replaced in one pass over a tool's output, a frame
 # or a reply: leftmost-longest multi-pattern matching, rather than one scan per

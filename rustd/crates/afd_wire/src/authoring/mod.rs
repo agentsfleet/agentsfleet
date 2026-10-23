@@ -4,13 +4,15 @@ mod activity;
 mod lease;
 mod meter;
 mod model;
+mod proposal;
 mod renew;
 mod report;
 
 pub use activity::{ActivityAccepted, ActivityEvent, ActivityRequest, CandidateVersion, Proposal};
 pub use lease::{ContextMessage, ContextRole, Lease, Limits, ModelAccess, Pricing, SelectedModel};
 pub use meter::{Knowledge, Meter, Usage};
-pub use model::{ModelCall, ModelMessage, ModelRequest, ModelResult, ModelUsage, ProposalCall};
+pub use model::{ModelCall, ModelMessage, ModelRequest, ModelResult, ModelUsage};
+pub use proposal::{ProposalCall, ProposalRejection};
 pub use renew::{Renew, Renewed};
 pub use report::{Accounting, FailureReason, Outcome, Report, Reported};
 

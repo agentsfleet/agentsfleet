@@ -147,7 +147,7 @@ orly gate work                  # what the pre-commit hook runs
 and `.githooks/pre-push`, and orly declines to overwrite hooks it did not
 write.
 
-`make harness-verify` runs shared gates from `.orly/audits/` and repository-owned checks from `audits/`.
+`make harness-verify` runs shared gates from `.orly/audits/` and repository-owned checks from `scripts/checks/`.
 
 Read about [architecture](docs/architecture/), start with the
 [operator playbooks](playbooks/README.md), or jump into

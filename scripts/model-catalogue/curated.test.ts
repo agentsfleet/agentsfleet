@@ -5,6 +5,16 @@ import { CATALOGUE_URL, parseCatalogue, readCatalogue } from "./catalogue";
 import { catalogueFixture, modelFixture, priceFixture } from "./test-fixtures";
 
 describe("curated catalogue bounds", () => {
+  test("Fireworks MiniMax uses its native route and standard serverless prices", async () => {
+    const catalogue = await readCatalogue(CATALOGUE_URL);
+    // pin test: literal is the contract
+    expect(catalogue.models.find(model => model.provider === "fireworks" && model.model_name === "accounts/fireworks/models/minimax-m3p1-flash"))
+      // pin test: literal is the contract
+      .toMatchObject({context: {tokens: 1048576}, inference: {api: "chat", base_url: "https://api.fireworks.ai/inference/v1"},
+        // pin test: literal is the contract
+        prices: [{input: "0.15", cached_input: "0.015", output: "0.60"}]});
+  });
+
   test("free models refuse a nonzero price", async () => {
     const catalogue = await readCatalogue(new URL("../model-library-allowlist.json", import.meta.url));
     const free = catalogue.models.filter(isFreeModel);
@@ -30,7 +40,7 @@ describe("curated catalogue bounds", () => {
 
   test("membership and safe diagnostic names come from the allowlist", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
-    expect(catalogue.models).toHaveLength(19);
+    expect(catalogue.models).toHaveLength(20);
     expect(catalogue.models.every(isCuratedModel)).toBe(true);
     expect([...catalogueModelNames]).toEqual([...new Set(catalogue.models.map((model) => model.model_name))]);
     expect(() => parseCatalogue(catalogueFixture([modelFixture(), modelFixture()])))

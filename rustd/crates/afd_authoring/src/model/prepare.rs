@@ -45,15 +45,16 @@ pub(super) fn body(
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
     continuations: Vec<super::continuation::Continuation>,
+    editing: bool,
 ) -> Result<Prepared> {
     let settings = model.inference.as_ref().ok_or(ErrorKind::Model)?;
     let context =
         u32::try_from(model.context_window_tokens).map_err(|_invalid| ErrorKind::Model)?;
     let route = afd_inference::Configured::new(settings, context)?;
-    let mut canonical = provider::body(request, model)?;
+    let mut canonical = provider::body(request, model, editing)?;
     super::continuation::restore(&mut canonical, request, continuations)?;
     // Saved continuation indexes address conversation messages without the system prefix.
-    canonical = canonical.preamble(provider::SYSTEM);
+    canonical = canonical.preamble(provider::system(editing));
     let input = input_tokens(&route, &canonical, request, model)?;
     if input > budget::INPUT_PER_CALL || input >= i64::from(context) {
         return Err(ErrorKind::Token.into());
@@ -93,3 +94,7 @@ fn input_tokens(
     let counted = tokens.checked_add(framing).ok_or(ErrorKind::Token)?;
     i64::try_from(counted).map_err(|_overflow| ErrorKind::Token.into())
 }
+
+#[cfg(test)]
+#[path = "prepare_tests.rs"]
+mod tests;

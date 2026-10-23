@@ -5,7 +5,7 @@ import { DraftClient } from "@/lib/api/drafts";
 import { DraftConversation } from "@/components/domain/chat/DraftConversation";
 import { FleetSetup } from "@/components/domain/chat/FleetSetup";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
-import { DRAFT, FLEET, MESSAGE, MODEL, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, MESSAGE, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 const SUMMARY = "Fleet setup";
 const DETAILS = "Setup details";
@@ -51,8 +51,8 @@ it("keeps the latest proposal after the reply that created it", () => {
 
 it("shows only a heading and short text without an expandable setup report", () => {
   render(<FleetSetup client={client} view={client.getSnapshot()} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Setup ready · Unsaved"})).toBeTruthy();
-  expect(screen.getByText(/Proposed runtime: Authoring model/)).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup ready"})).toBeTruthy();
+  expect(screen.getByText(/Keep chatting to refine it/)).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Setup instructions"})).toBeNull();
   expect(screen.queryByRole("button", {name: DETAILS})).toBeNull();
   expect(screen.getByRole("region", {name: SUMMARY}).children).toHaveLength(2);
@@ -61,7 +61,7 @@ it("shows only a heading and short text without an expandable setup report", () 
 it("does not label an unchanged fleet-source chat as having unsaved changes", () => {
   const draft = {...DRAFT, linked_fleet_id: FLEET.id, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   render(<FleetSetup client={client} view={{...client.getSnapshot(), draft}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Based on v1"})).toBeTruthy();
   expect(screen.queryByText(/Unsaved changes/)).toBeNull();
   expect(screen.queryByText(/New runs use v2/)).toBeNull();
 });
@@ -70,31 +70,17 @@ it("keeps saved fleet status separate from a resumed draft proposal", () => {
   const draft = {...DRAFT, linked_fleet_id: FLEET.id, candidate: {...DRAFT.candidate!, revision: "2"},
     review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   render(<FleetSetup client={client} view={{...client.getSnapshot(), draft}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Based on v1"})).toBeTruthy();
   expect(screen.queryByText(/Unsaved changes/)).toBeNull();
-  expect(screen.getByText(/Runs already started keep their version/)).toBeTruthy();
+  expect(screen.getByText(/Save changes when you’re ready|New runs use this setup/)).toBeTruthy();
 });
 
 it("summarizes a saved fleet without opening its full setup report", () => {
   render(<FleetSetup client={client} view={{...client.getSnapshot(), fleet: {...FLEET, status: "active", setup: {state: "ready", checks: []}}}} workspace={WORKSPACE} />);
   expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
-  expect(screen.getByText(/New runs use v1/)).toBeTruthy();
+  expect(screen.getByText(/New runs use this setup/)).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Saved fleet setup"})).toBeNull();
   expect(screen.getByRole("link", {name: "Open fleet"})).toBeTruthy();
-});
-
-it("keeps an unresolved runtime model distinct from the setup chat model", () => {
-  render(<FleetSetup client={client} view={{...client.getSnapshot(), draft: {...DRAFT,
-    review: {...REVIEW, effective: {...REVIEW.effective, runtime_model_ref: null}}}, models: [MODEL]}} workspace={WORKSPACE} />);
-  expect(screen.getByText(/Proposed runtime: Not yet resolved/)).toBeTruthy();
-  expect(screen.getByText(/Setup chat: Authoring model/)).toBeTruthy();
-});
-
-it("retains an unlisted model reference and makes a missing chat model explicit", () => {
-  render(<FleetSetup client={client} view={{...client.getSnapshot(), model: "", draft: {...DRAFT,
-    review: {...REVIEW, effective: {...REVIEW.effective, runtime_model_ref: "model:unlisted"}}}}} workspace={WORKSPACE} />);
-  expect(screen.getByText(/Proposed runtime: model:unlisted/)).toBeTruthy();
-  expect(screen.getByText(/Setup chat: Not selected/)).toBeTruthy();
 });
 
 it.each(["2", "3"])("shows confirmed saved v%s without labeling the draft as saved or unsaved", (revision) => {
@@ -103,7 +89,7 @@ it.each(["2", "3"])("shows confirmed saved v%s without labeling the draft as sav
   expect(screen.getByRole("heading", {name: `Saved v${revision}`})).toBeTruthy();
   view.rerender(<FleetSetup client={client} view={{...snapshot, draft: {...DRAFT, candidate: {...DRAFT.candidate!, id: FLEET.id}}}} workspace={WORKSPACE} />);
   expect(screen.getByRole("heading", {name: `Saved v${revision}`})).toBeTruthy();
-  expect(screen.getByText(/Runs already started keep their version/)).toBeTruthy();
+  expect(screen.getByText(/Save changes when you’re ready|New runs use this setup/)).toBeTruthy();
 });
 
 it("does not hide an unconfirmed first run behind a saved-success summary", () => {

@@ -5,7 +5,6 @@ import { ActivityIcon } from "lucide-react";
 import {
   DataTable,
   EmptyState,
-  EYEBROW_CLASS,
   PAGINATION_KIND,
   Time,
   type DataTableColumn,
@@ -14,6 +13,7 @@ import {
   chargeAgentLabel,
   displayModelName,
   describeCharge,
+  chargeUsage,
   formatChargeTimestamp,
   formatChargeAmount,
   type ChargeRow,
@@ -45,33 +45,28 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "model",
     header: "Model",
     hideOnMobile: true,
-    sortValue: (c) => displayModelName(c.model),
+    sortValue: (c) => displayModelName(c.model, c.model_display_name),
     cell: (c) => (
-      <span className="text-muted-foreground">{displayModelName(c.model)}</span>
+      <span>{displayModelName(c.model, c.model_display_name)}</span>
     ),
   },
   {
     key: "activity",
-    header: "Activity",
+    header: "Usage",
     hideOnMobile: true,
     sortValue: (c) => describeCharge(c),
-    cell: (c) => (
-      <span className="text-muted-foreground">{describeCharge(c)}</span>
-    ),
+    cell: (c) => <ChargeUsageCell charge={c} />,
   },
   {
     key: "created",
-    header: TIME_LABEL.created,
+    header: TIME_LABEL.occurred,
     hideOnMobile: true,
     sortValue: (c) => Date.parse(c.recorded_at),
-    // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
-    // through Time so the cell carries the canonical <time datetime> ISO instant.
-    // The label already IS the precise instant, so no hover tooltip is added.
     cell: (c) => (
       <Time
         value={c.recorded_at}
-        label={formatChargeTimestamp(c.recorded_at)}
-        className="font-mono text-mono leading-mono"
+        format="relative"
+        tooltipContent={formatChargeTimestamp(c.recorded_at)}
       />
     ),
   },
@@ -95,12 +90,17 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
 function ChargeIdentityCell({ charge }: { charge: ChargeRow }) {
   const label = chargeAgentLabel(charge);
   return <div className="space-y-xs sm:space-y-0">
-    <span className={EYEBROW_CLASS} data-agent-name={label}>{label}</span>
+    <span className="text-body-sm font-medium" data-agent-name={label}>{label}</span>
     <div className="space-y-xs text-label text-muted-foreground sm:hidden">
-      <p>{displayModelName(charge.model)} · {describeCharge(charge)}</p>
-      <Time value={new Date(charge.recorded_at)} label={formatChargeTimestamp(charge.recorded_at)} />
+      <p>{displayModelName(charge.model, charge.model_display_name)} · {describeCharge(charge)}</p>
+      <Time value={charge.recorded_at} format="relative" tooltipContent={formatChargeTimestamp(charge.recorded_at)} />
     </div>
   </div>;
+}
+
+function ChargeUsageCell({charge}: {charge: ChargeRow}) {
+  const usage = chargeUsage(charge);
+  return <div><p>{usage.label}</p>{usage.detail ? <p className="text-label text-muted-foreground">{usage.detail}</p> : null}</div>;
 }
 
 export default function BillingUsageTab({

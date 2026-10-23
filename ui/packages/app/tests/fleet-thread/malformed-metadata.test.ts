@@ -111,7 +111,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     const bubble = row?.querySelector(".sr-only")?.parentElement;
     expect(bubble?.textContent).toBe("Operator: ");
     expect(bubble?.querySelector("time")).toBeNull();
-    expect(row?.querySelector("time")).toBeTruthy();
+    expect(row?.querySelector("time")).toBeNull();
   });
 
   it("renders no operator bubble for a turn whose body the read never carried", () => {

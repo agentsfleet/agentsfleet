@@ -49,15 +49,16 @@ it("keeps setup editing available while renewed access review is required", () =
   expect(screen.getByRole("button", {name: "Edit setup"}).getAttribute("aria-expanded")).toBe("false");
 });
 
-it("keeps Edit setup before Stop in the existing fleet workspace", () => {
+it("keeps Edit setup before Fleet actions in the existing fleet workspace", () => {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
   render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
     header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
   const edit = screen.getByRole("button", {name: "Edit setup"});
-  const stop = screen.getByRole("button", {name: "Stop"});
+  const actions = screen.getByRole("button", {name: "Fleet actions"});
   expect(edit).toHaveProperty("disabled", false);
   expect(edit.getAttribute("aria-expanded")).toBe("false");
-  expect(edit.compareDocumentPosition(stop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(edit.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Stop"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Saved instructions"})).toBeNull();
 });
 

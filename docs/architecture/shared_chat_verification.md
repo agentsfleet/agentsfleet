@@ -188,6 +188,17 @@ The mounted private identity owns the cache and clears it after lost access.
 
 The private transcript stays out of browser storage.
 
+The sidebar reads saved fleets only. Creator-private drafts remain in **Unfinished setups** on **New fleet**.
+Both lists remain scoped to the account, workspace, and signed-in person.
+
+Draft projection indexes original requests by sequence once per snapshot.
+A conversation-owned weak cache preserves unchanged message objects while the latest reply streams.
+Settled rows receive message data without scanning the transcript again.
+
+Setup retry reads current client state, stops uncertain work when required, then submits the original request.
+Saved-chat retry uses the normal delivery queue and requires the original request's actor to match the signed-in person.
+Partial answers and unknown usage remain visible after failure.
+
 ### Setup and runtime stay together
 
 New fleet supports multiple setup messages before explicit **Save fleet**.
@@ -195,6 +206,7 @@ Saving opens that fleet's Chat.
 **Edit setup** opens a private chat panel beside the mounted runtime conversation.
 
 Manual instructions are optional, and **Save changes** remains reachable below the editor.
+Unapplied manual edits disable that save action. Folding or closing the editor retains the local text until it is applied or the owner changes.
 
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.

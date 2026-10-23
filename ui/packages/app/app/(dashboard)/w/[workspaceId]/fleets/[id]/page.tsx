@@ -12,6 +12,7 @@ import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspac
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import {
   startViewData,
+  runtimeModelLabel,
   type ChatViewData,
   type EventsViewData,
   type MemoryViewData,
@@ -32,7 +33,6 @@ import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/events/run-summary";
 import { FleetRecovery } from "./components/FleetRecovery";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
-import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { namedMembers } from "@/lib/events/sender-names";
 import {
   FleetSubnavigation,
@@ -108,18 +108,15 @@ export default async function FleetDetailPage({
     },
     viewData,
   );
-  // The chat is a conversation surface, not a document: it claims the frame so
-  // its composer stays on screen and only the message list scrolls. Every
-  // other view is ordinary page content and scrolls with the page. The frame
-  // clips rather than hides: a hidden box is still a scroll container, and in
-  // a short window focusing the composer scrolled these wrappers.
+  // Chat owns scrolling inside its transcript. Other tabs own a scrollable
+  // content area beneath the fixed header and navigation.
   const claimsViewport = view === FLEET_VIEW.chat;
 
   return (
     <div
+      data-fleet-workspace
       className={cn(
-        "flex min-h-full flex-1 flex-col",
-        claimsViewport && "h-full min-h-0 overflow-clip",
+        "flex h-full min-h-0 flex-1 flex-col overflow-clip",
       )}
     >
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
@@ -142,8 +139,8 @@ export default async function FleetDetailPage({
       >
         <div
           className={cn(
-            "flex min-w-0 flex-1 flex-col gap-3xl",
-            claimsViewport && "h-full min-h-0 flex-1 gap-md overflow-clip",
+            "flex min-h-0 min-w-0 flex-1 flex-col gap-3xl",
+            claimsViewport && "h-full min-h-0 flex-1 gap-0 overflow-clip",
           )}
         >
           <FleetSubnavigation
@@ -154,8 +151,8 @@ export default async function FleetDetailPage({
           <div
             key={view}
             className={cn(
-              "page-entrance flex min-w-0 flex-1 flex-col",
-              claimsViewport && "h-full min-h-0 overflow-clip",
+              "page-entrance flex min-h-0 min-w-0 flex-1 flex-col",
+              claimsViewport ? "h-full overflow-clip" : "overflow-y-auto px-xl pb-xl sm:px-chat-inset",
             )}
           >
             {content}
@@ -198,7 +195,7 @@ async function loadChatView(
   // strip's first figures come off that same page, and its pending count off
   // the fleet detail the page already holds: the chat opens on two reads, and
   // the live tail moves both from there.
-  const [threadResult, members] = await Promise.all([data.thread, data.members]);
+  const [threadResult, members, models] = await Promise.all([data.thread, data.members, data.models]);
   const turns = threadResult?.items ?? [];
   // Who is signed in, from the verified claims this request already holds:
   // the thread keys its unsent messages by it before the client knows.
@@ -208,7 +205,9 @@ async function loadChatView(
     <ChatView
       workspaceId={workspaceId}
       fleetId={fleet.id}
-      senderLabel={agentDisplayName(fleet.id)}
+      senderLabel={fleet.name}
+      setupRevision={fleet.setup_revision}
+      modelLabel={runtimeModelLabel(models, fleet.definition.config["x-agentsfleet"].model)}
       initial={turns}
       initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
       approvalsHref={approvalsHref}

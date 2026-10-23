@@ -17,6 +17,10 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 // ── Billing settings page — Promise.all catch fallbacks ─────────────────
 
+vi.mock("@/lib/api/model_library", () => ({
+  getModelLibrary: vi.fn().mockRejectedValue(new Error("catalogue unavailable")),
+}));
+
 describe("billing settings page — error fallback", () => {
   beforeEach(() => {
     vi.resetModules();

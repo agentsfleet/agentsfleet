@@ -33,21 +33,18 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 const NOT_CONNECTED_LABEL = "Not connected";
 const CONNECTED_LABEL = "Connected";
 const RECONNECT_LABEL = "Reconnect needed";
-const NOT_CONFIGURED_LABEL = "Admin setup required";
 const CONNECTING_LABEL = "Connecting…";
 const DISCONNECTING_LABEL = "Disconnecting…";
 const CONNECT_LABEL = "Connect";
 const DISCONNECT_LABEL = "Disconnect";
-const REQUEST_CONNECTOR_LABEL = "Request connector";
+const REQUEST_CONNECTOR_LABEL = "Request access";
 // The description never says "connected": the status pill on the same row
 // already does, and a row that said it twice read as a stutter. It says what
 // the connection IS instead — which account it landed on, or that fleets may
 // use it — which is the one thing the pill cannot.
 const INSTALLED_ON_PREFIX = "Installed on ";
 const CONNECTED_DESCRIPTION = "Ready for your fleets to use.";
-const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connector.";
-const REQUEST_CONNECTOR_PROMPT = " Choose ";
-const REQUEST_CONNECTOR_DESCRIPTION = " to register your interest.";
+const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connector. Choose Request access to register your interest.";
 
 // The card LIST comes from the catalog; this map only decorates a known provider
 // id with an icon. An unknown id falls back to a generic plug, so a newly
@@ -110,9 +107,7 @@ export function OAuthConnectorRow({
     override?.status ?? (entry.connected ? CONNECTOR_STATUS.connected : CONNECTOR_STATUS.notConnected);
   const identity = override?.identity ?? null;
   const isConnected = status === CONNECTOR_STATUS.connected;
-  const pill = entry.configured
-    ? oauthStatusPill(status)
-    : { label: NOT_CONFIGURED_LABEL, variant: "neutral" as const };
+  const pill = oauthStatusPill(status);
   async function connect() {
     setError(null);
     setConnecting(true);
@@ -168,19 +163,20 @@ export function OAuthConnectorRow({
       : "Choose Connect to authorize access with your provider.";
 
   return <DashboardPanel data-testid={`integration-${entry.id}`} className="flex flex-col gap-xl p-2xl">
-    <DashboardPanelHeader>
-      <div className="flex items-center gap-lg">
+    <DashboardPanelHeader className="md:items-center">
+      <div className="flex min-w-0 items-center gap-lg">
         <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-secondary text-foreground" aria-hidden="true"><Icon size={22} /></span>
         <DashboardPanelTitle>{entry.display_name}</DashboardPanelTitle>
       </div>
-      <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>{pill.label}</StatusPill>
+      {entry.configured ? <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>{pill.label}</StatusPill>
+        : <Button variant="secondary" size="sm" className="shrink-0" aria-label={`${REQUEST_CONNECTOR_LABEL} to ${entry.display_name}`}
+          onClick={() => {
+            captureProductEvent(EVENTS.integration_requested, { integration_id: entry.id, integration_name: entry.display_name });
+            onRequest();
+          }}>{REQUEST_CONNECTOR_LABEL}</Button>}
     </DashboardPanelHeader>
     <DashboardPanelDescription className="flex-1">
-      {description}{!entry.configured ? <>{REQUEST_CONNECTOR_PROMPT}<Button variant="link" size="eyebrow" className="h-auto px-0 text-body-sm text-info"
-        onClick={() => {
-          captureProductEvent(EVENTS.integration_requested, { integration_id: entry.id, integration_name: entry.display_name });
-          onRequest();
-        }}>{REQUEST_CONNECTOR_LABEL}</Button>{REQUEST_CONNECTOR_DESCRIPTION}</> : null}
+      {description}
     </DashboardPanelDescription>
     {error ? <Alert variant="destructive">{error}</Alert> : null}
     {entry.configured ? <div className="flex items-center justify-end border-t border-border pt-lg">

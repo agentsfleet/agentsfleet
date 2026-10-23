@@ -39,7 +39,7 @@ describe("cn", () => {
     const scale = [
       "text-display-xl", "text-display-lg", "text-display-md", "text-heading",
       "text-eyebrow", "text-reading", "text-body-lg", "text-body", "text-body-sm",
-      "text-label", "text-mono",
+      "text-label", "text-mono", "text-conversation", "text-chat-title",
     ];
     for (const token of scale) {
       expect(cn(token, "text-foreground")).toBe(`${token} text-foreground`);
@@ -49,6 +49,14 @@ describe("cn", () => {
   it("test_ds_cn_merges_and_keeps_fontsize — resolves a Tailwind conflict last-wins", () => {
     expect(cn("px-2", "px-4")).toBe("px-4");
     expect(cn("text-body", "text-heading")).toBe("text-heading");
+  });
+
+  it("lets caller spacing override semantic defaults without leaving competing classes", () => {
+    expect(cn("px-md", "px-lg")).toBe("px-lg");
+    expect(cn("px-md", "px-3")).toBe("px-3");
+    expect(cn("gap-md", "gap-2.5")).toBe("gap-2.5");
+    expect(cn("px-3", "px-md")).toBe("px-md");
+    expect(cn("md:px-md", "md:px-lg")).toBe("md:px-lg");
   });
 
   it("test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token", () => {

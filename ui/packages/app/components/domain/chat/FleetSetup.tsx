@@ -13,17 +13,14 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
   const revision = view.fleet?.setup_revision ?? view.savedSetupRevision ?? setup?.effective.target_setup_revision ?? view.preview?.setupRevision;
   const attention = Boolean(view.fleet && (view.fleet.status !== "active" || view.fleet.schedules.some(scheduleOwed)
     || view.fleet.start.kind === START_KIND.runNow && view.fleet.start.state !== "accepted"));
-  const runtime = setup?.effective.runtime_model_ref;
-  const modelLabel = (ref: string): string => view.models.find((model) => model.ref === ref)?.label ?? ref;
+  const editing = !view.fleet && !view.savedSetupRevision && Boolean(setup?.effective.target_setup_revision || view.preview?.setupRevision);
   const continueSetup = Boolean(view.fleet && (view.fleet.status !== "active"
     || view.fleet.start.kind === START_KIND.runNow && view.fleet.start.state !== "accepted"));
   return <Section className="ph-no-capture ph-no-record my-md gap-xs border-l-2 border-border pl-md py-xs" aria-label="Fleet setup">
-    <h2 className="text-body font-semibold">{revision ? `Saved v${revision}` : setup ? "Setup ready · Unsaved" : "Draft setup"}</h2>
+    <h2 className="text-body font-semibold">{editing ? `Based on v${revision}` : revision ? `Saved v${revision}` : setup ? "Setup ready" : "Preparing your setup"}</h2>
     <p className="text-label text-muted-foreground">{revision
-      ? `New runs use v${revision}. Runs already started keep their version.`
-      : setup || view.preview ? "Save fleet from the header when ready." : "Continue chatting to finish these instructions before saving."}
-      {!revision ? <> Proposed runtime: {runtime ? modelLabel(runtime) : "Not yet resolved"}. Setup chat: {view.model ? modelLabel(view.model) : "Not selected"}.</> : null}
-      {" "}Edit instructions manually from the chat menu.
+      ? editing ? "Tell me what you’d like to change. Save changes when you’re ready." : "New runs use this setup. Edit setup to change it."
+      : setup || view.preview ? "Keep chatting to refine it, or select Save fleet in the header to create your fleet." : "Keep chatting to work out the instructions together."}
       {view.fleet ? <> <Link className="underline underline-offset-4" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet</Link>.</> : null}
     </p>
     {attention ? <p className="text-label text-warning">Saved, but setup needs attention before relying on this fleet.</p> : null}

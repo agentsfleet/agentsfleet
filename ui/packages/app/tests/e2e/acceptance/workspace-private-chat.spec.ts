@@ -23,7 +23,7 @@ import { DraftSchema } from "@/lib/api/draft-types";
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, historyEntry, openDraft, saveSetupButton, setupAction, setupSummary,
+  CHAT_COPY, NEW_FLEET, draftHref, historyEntry, openDraft, saveSetupButton, setupSummary,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -101,18 +101,19 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   await page.getByRole("button", { name: CHAT_COPY.improve, exact: true }).click();
   const panel = page.getByRole("complementary", {name: "Edit fleet setup", exact: true});
   await expect(panel.getByLabel(CHAT_COPY.composer)).toBeVisible();
-  await (await setupAction(page, CHAT_COPY.editSetup)).click();
-  const dialog = page.getByRole("dialog", {name: CHAT_COPY.editSetup, exact: true});
-  await dialog.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(IMPROVED_INSTRUCTIONS);
+  const editor = panel.getByRole("button", {name: "Edit instructions manually", exact: true});
+  await editor.click();
+  await panel.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(IMPROVED_INSTRUCTIONS);
+  await expect(panel.getByRole("button", {name: CHAT_COPY.apply, exact: true})).toBeDisabled();
   const created = page.waitForResponse(response => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith(`/workspaces/${workspaceId}/drafts`));
-  await dialog.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
+  await panel.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
   const response = await created;
   expect(response.status()).toBe(201);
   const location = await response.headerValue("location");
   const draftId = DraftSchema.shape.id.parse(location?.split("/").at(-1));
   expect(location).toBe(`/v1/workspaces/${workspaceId}/drafts/${draftId}`);
-  await expect(dialog).toBeHidden();
+  await expect(editor).toHaveAttribute("aria-expanded", "false");
   await panel.getByRole("button", {name: CHAT_COPY.apply, exact: true}).click();
   await expect(panel).toBeHidden({timeout: SETUP_TIMEOUT_MS});
   await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}$`));

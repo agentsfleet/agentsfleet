@@ -23,6 +23,7 @@ export function ChatComposer({ client, view, canStop, blocked }: { client: Draft
       toolbar={<ChatToolbar client={client} view={view} />}
       actions={canStop ? <Button variant="secondary" size="icon" aria-label="Stop authoring" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }}><SquareIcon className="size-4" /></Button>
         : <ComposerPrimitive.Send asChild><Button size="icon" aria-label="Send message" onClick={() => input.current?.focus({preventScroll: true})} {...(disabled ? {disabled: true} : {})}><ArrowUpIcon className="size-4" /></Button></ComposerPrimitive.Send>} />
-    <p className="mt-sm text-center text-label text-muted-foreground">Private to you.</p>
+    <p className="mt-sm text-center text-eyebrow text-muted-foreground">{view.preview?.setupRevision || view.draft?.linked_fleet_id
+      ? "Private to you. Save changes when you’re ready." : "Private to you. Save fleet when the setup is ready."}</p>
   </>;
 }

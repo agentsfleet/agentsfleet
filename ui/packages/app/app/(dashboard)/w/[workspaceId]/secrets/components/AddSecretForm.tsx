@@ -139,8 +139,8 @@ export default function AddSecretForm({ workspaceId, onDone, onCancel }: Props) 
                 <Input placeholder="stripe" className="font-mono" spellCheck={false} {...field} />
               </FormControl>
               <p className="text-body-sm leading-body-sm text-muted-foreground">
-                Use it in a fleet by writing{" "}
-                <code className="font-mono">{"${secrets.<name>.<field>}"}</code> in your config.
+                In setup chat, ask: “Use the <code className="font-mono">api_key</code> field
+                from my <code className="font-mono">stripe</code> secret.”
               </p>
               <FormMessage />
             </FormItem>

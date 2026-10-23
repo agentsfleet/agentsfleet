@@ -1,13 +1,9 @@
-import Link from "next/link";
-import { Badge, Nav, PageTitle } from "@agentsfleet/design-system";
-import { workspacePath } from "@/lib/workspace-routes";
+import { Badge, PageTitle } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
-import { BREADCRUMB_LABEL, FLEETS_CRUMB_LABEL } from "./console-copy";
-import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
 
 const LIFECYCLE_ACTION_STATUSES = new Set<string>([
@@ -15,29 +11,6 @@ const LIFECYCLE_ACTION_STATUSES = new Set<string>([
   AGENTSFLEET_STATUS.PAUSED,
   AGENTSFLEET_STATUS.STOPPED,
 ]);
-
-function FleetBreadcrumb({
-  workspaceId,
-  fleetName,
-}: {
-  workspaceId: string;
-  fleetName: string;
-}) {
-  return (
-    <Nav
-      aria-label={BREADCRUMB_LABEL}
-      className="mb-md shrink-0 text-sm text-muted-foreground"
-    >
-      <Link
-        href={workspacePath(workspaceId, "fleets")}
-        className="hover:text-foreground"
-      >
-        {FLEETS_CRUMB_LABEL}
-      </Link>
-      <span className="sr-only"> / {fleetName}</span>
-    </Nav>
-  );
-}
 
 export function FleetHeader({
   workspaceId,
@@ -49,15 +22,14 @@ export function FleetHeader({
   exhaustedAt?: string | null;
 }) {
   return (
-    <div className="mb-md flex flex-col gap-lg sm:flex-row sm:items-center sm:justify-between">
+    <div className="fleet-chat-heading flex shrink-0 items-center justify-between gap-md px-xl pb-sm pt-5 sm:px-chat-inset">
       <div className="min-w-0">
-        <FleetBreadcrumb workspaceId={workspaceId} fleetName={agentDisplayName(fleet.id)} />
-        <PageTitle className="break-words">{agentDisplayName(fleet.id)}</PageTitle>
-        <p className="mt-sm text-body-sm text-muted-foreground">{fleet.definition.description}</p>
+        <PageTitle size="chat" className="truncate">{fleet.name}</PageTitle>
+        <p className="mt-xs text-eyebrow text-muted-foreground">Saved v{fleet.setup_revision} · <span className="capitalize">{fleet.status}</span></p>
       </div>
       <div
         aria-label="Fleet lifecycle actions"
-        className="flex flex-wrap items-center justify-end gap-sm"
+        className="flex shrink-0 items-center justify-end gap-sm"
       >
         {exhaustedAt !== undefined ? (
           <ExhaustionBadge exhaustedAt={exhaustedAt} />
@@ -72,7 +44,7 @@ export function FleetHeader({
           <FleetConfig
             workspaceId={workspaceId}
             fleetId={fleet.id}
-            fleetName={agentDisplayName(fleet.id)}
+            fleetName={fleet.name}
             etag={fleet.etag}
           />
         ) : LIFECYCLE_ACTION_STATUSES.has(fleet.status) ? (

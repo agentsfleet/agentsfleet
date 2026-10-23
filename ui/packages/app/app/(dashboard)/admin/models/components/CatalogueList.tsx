@@ -3,15 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Badge,
   ConfirmDialog,
   DataTable,
   type DataTableColumn,
   EmptyState,
   IconAction,
   Spinner,
+  TooltipButton,
 } from "@agentsfleet/design-system";
-import { CoinsIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
+import { CoinsIcon, LockIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
 import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library";
 import {
   CONTEXT_HEADER,
@@ -22,7 +22,6 @@ import {
   formatContextTokens,
   formatRatesPerMtok,
 } from "@/lib/models/display";
-import { CatalogueEvidence, ModelPriceSchedule } from "@/components/domain/ModelPriceSchedule";
 import { ModelName, ProviderBadge } from "@/components/domain/ModelCells";
 import { providerLabel } from "@/lib/api/model-library-types";
 import { presentErrorString } from "@/lib/errors";
@@ -34,6 +33,8 @@ import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-m
 import { deleteAdminModelAction } from "../actions";
 import MakeDefaultDialog from "./MakeDefaultDialog";
 
+const DEFAULT_MODEL_LABEL = "Platform default";
+
 // The active default resolves to exactly one catalogue row — the one whose
 // (provider, model_id) equals the active row's (provider, model).
 function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
@@ -42,12 +43,11 @@ function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
 
 function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey | null }) {
   return (
-    <ModelName
-      trimmed
-      modelId={model.model_id}
-      displayName={model.metadata.display_name}
-      trailing={isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
-    />
+    <span className="flex min-w-0 items-center gap-sm">
+      {isDefault(model, active) ? <TooltipButton variant="ghost" size="icon-sm" aria-label={DEFAULT_MODEL_LABEL}
+        tooltip={`${DEFAULT_MODEL_LABEL}. You can edit it here.`}><LockIcon aria-hidden="true" /></TooltipButton> : null}
+      <ModelName copyable={false} modelId={model.model_id} displayName={model.metadata.display_name} />
+    </span>
   );
 }
 
@@ -157,22 +157,8 @@ function buildColumns({
       sortValue: (m) => currentBasePrice(m.prices)?.input_nanos_per_mtok ?? "",
       compare: (a, b) => compareNanos(currentBasePrice(a.prices)?.input_nanos_per_mtok ?? null, currentBasePrice(b.prices)?.input_nanos_per_mtok ?? null),
       cell: (m) => (
-        <div className="space-y-sm">
-          <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">{formatRatesPerMtok(currentBasePrice(m.prices))}</span>
-          <div className="space-y-sm text-left sm:hidden">
-            <CatalogueEvidence source={m.metadata.context_source_url} verifiedAt={m.metadata.context_verified_at} />
-            <ModelPriceSchedule prices={m.prices} />
-          </div>
-        </div>
+        <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">{formatRatesPerMtok(currentBasePrice(m.prices))}</span>
       ),
-    },
-    {
-      key: "context-evidence", header: "Context source", hideOnMobile: true,
-      cell: (m) => <CatalogueEvidence source={m.metadata.context_source_url} verifiedAt={m.metadata.context_verified_at} />,
-    },
-    {
-      key: "price-schedule", header: "Pricing details", hideOnMobile: true,
-      cell: (m) => <ModelPriceSchedule prices={m.prices} />,
     },
     {
       key: "actions",
@@ -275,7 +261,7 @@ export default function CatalogueList({
           onOpenChange={() => setDefaultTarget(null)}
           onDone={() => {
             setDefaultTarget(null);
-            // Re-read the server so the "Default" badge moves to this row.
+            // Re-read the server so the default marker follows the saved selection.
             router.refresh();
           }}
         />

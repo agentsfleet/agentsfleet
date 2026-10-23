@@ -23,6 +23,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
+import { addWorkspace, listWorkspaces, useWorkspace } from "./fixtures/workspace-ops.ts";
 import { createNativeDraft, fixtureDefinition, inspectDraft } from "./fixtures/native-setup.ts";
 import { FleetSchema } from "../../src/commands/chat/protocol.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
@@ -43,6 +44,7 @@ const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 const STATE_DIR_PREFIX = "agentsfleet-grant-" as const;
+const GRANT_WORKSPACE = "fixture-cli-connector-grants";
 const NO_COLOR = "1" as const;
 const JSON_FLAG = "--json" as const;
 const STEER_COMMAND = "steer" as const;
@@ -118,6 +120,9 @@ if (!isLive) {
       });
       workspaceId = (await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir }))
         .currentWorkspaceId;
+      const existing = (await listWorkspaces(env)).find(workspace => workspace.name === GRANT_WORKSPACE);
+      workspaceId = existing?.workspace_id ?? (await addWorkspace(env, GRANT_WORKSPACE)).workspaceId;
+      await useWorkspace(env, workspaceId);
       ctx = await readAuthContext(env);
 
       balanceBeforeNanos = await readBalanceNanos();
@@ -136,12 +141,15 @@ if (!isLive) {
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
-      if (env && workspaceId) {
-        try {
+      try {
+        if (workspaceId) {
           await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        } catch { /* best-effort teardown; never fail the run on cleanup */ }
+          const removed = await runFleetctl(["secret", "delete", GRANT_CREDENTIAL_NAME, JSON_FLAG], {env});
+          assert.equal(removed.code, 0, `synthetic connector cleanup failed: ${removed.stderr}`);
+        }
+      } finally {
+        if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
       }
-      if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
     it("a declared connector leaves a pending grant and keeps setup from activating", async () => {

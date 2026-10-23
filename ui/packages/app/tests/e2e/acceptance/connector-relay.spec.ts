@@ -52,6 +52,12 @@ const RELAY_SUFFIX = "/callback";
 const REDIRECT_PARAM = "redirect_uri";
 /** What a path must never contain — the `%2F` defect, in one assertion. */
 const ENCODED_SLASH = "%2f";
+// Registered deployment pairs; the browser under test may be a local build.
+// Keep these independent of the callback returned by the daemon.
+const DASHBOARD_BY_API_ORIGIN = new Map([
+  ["https://api-dev.agentsfleet.net", "https://app-dev.agentsfleet.net"],
+  ["https://api.agentsfleet.net", "https://app.agentsfleet.net"],
+]);
 
 interface ConnectStarted {
   install_url: string;
@@ -63,10 +69,12 @@ interface CatalogueEntry {
   configured: boolean;
 }
 
-/** The dashboard origin this run drives, which is the origin a provider returns to. */
+/** A local dashboard may use a remote API whose registered callbacks return to its deployed dashboard. */
 function dashboardOrigin(baseURL: string | undefined): string {
-  if (!baseURL) throw new Error("the acceptance config must supply a baseURL");
-  return new URL(baseURL).origin;
+  const api = process.env.NEXT_PUBLIC_API_URL;
+  const configured = (api ? DASHBOARD_BY_API_ORIGIN.get(new URL(api).origin) : undefined) ?? baseURL;
+  if (!configured) throw new Error("the acceptance config must supply a dashboard URL");
+  return new URL(configured).origin;
 }
 
 test.describe("connector relay", () => {

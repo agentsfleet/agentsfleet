@@ -1,5 +1,6 @@
 import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
+import { getModelLibrary } from "@/lib/api/model_library";
 import {
   getTenantBilling,
   listTenantBillingCharges,
@@ -35,9 +36,8 @@ export default async function BillingSettingsPage({
   );
   const token = await requireCredential();
 
-  // Both reads are independent. Failures reach the shared retry boundary so an
-  // unavailable ledger never becomes a successful "No charges yet" result.
-  const [billing, chargesResp] = await Promise.all([
+  // The ledger must load. Catalogue failure preserves exact model identifiers.
+  const [billing, chargesResp, catalogue] = await Promise.all([
     getTenantBilling(token),
     // The ledger page comes from the URL, so a reload or a shared link opens
     // the page the operator meant rather than resetting to the newest.
@@ -45,9 +45,11 @@ export default async function BillingSettingsPage({
       limit: pageSize,
       ...(cursor ? { cursor } : {}),
     }),
+    getModelLibrary(token).catch(() => null),
   ]);
 
-  const charges = chargesResp.items;
+  const names = new Map(catalogue?.models.map(model => [model.id, model.display_name]));
+  const charges = chargesResp.items.map(charge => ({...charge, model_display_name: names.get(charge.model)}));
 
   return (
     <PageLayout fullHeight className="h-full overflow-hidden">

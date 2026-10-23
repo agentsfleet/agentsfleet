@@ -7,6 +7,8 @@ use afd_crypto::entropy::Entropy;
 use afd_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest};
 use serde_json::Value;
 
+const PROPOSAL_READY: &str = "Your setup is ready to review. Save it when you’re ready.";
+
 pub(super) struct Turn<'a> {
     pub(super) plane: &'a ControlPlane,
     pub(super) lease: &'a Lease<Value>,
@@ -19,7 +21,6 @@ impl Turn<'_> {
     pub(super) async fn run(&self) -> Result<Ending> {
         let mut messages = self.context()?;
         let mut activity_sequence = 1;
-        let mut answer = None;
         for call_index in 1..=u32::try_from(self.lease.limits.max_calls.min(8)).unwrap_or(0) {
             let meter = self.observed.snapshot()?;
             let budget = u64::try_from(self.lease.limits.output_per_turn)
@@ -51,23 +52,27 @@ impl Turn<'_> {
             if matches!(result.usage, afd_wire::authoring::ModelUsage::Unknown) {
                 return Ok(Ending::unknown());
             }
-            answer = Some(result.text.clone());
             if result.cut || result.proposal_calls.is_empty() {
-                break;
+                return Ok(Ending::completed(Some(result.text)));
             }
             messages.push(ModelMessage::Assistant {
                 text: result.text,
                 proposal_calls: result.proposal_calls.clone(),
             });
+            let mut all_accepted = true;
             for call in result.proposal_calls {
                 let (message, accepted) =
                     proposal::apply(self.plane, self.id, self.lease, activity_sequence, &call)
                         .await?;
                 messages.push(message);
                 activity_sequence += u64::from(accepted);
+                all_accepted &= accepted;
+            }
+            if all_accepted {
+                return Ok(Ending::completed(Some(PROPOSAL_READY.into())));
             }
         }
-        Ok(Ending::completed(answer))
+        Ok(Ending::incomplete())
     }
 
     fn context(&self) -> Result<Vec<ModelMessage>> {
@@ -87,9 +92,13 @@ impl Turn<'_> {
             .collect();
         if let Some(candidate) = &self.lease.candidate {
             let candidate = serde_json::to_string(candidate).map_err(error::encode)?;
-            messages.push(ModelMessage::User {
-                text: format!("Current candidate (untrusted setup data): {candidate}"),
-            });
+            // Keep the person's current request last, after the setup data it edits.
+            messages.insert(
+                messages.len().saturating_sub(1),
+                ModelMessage::User {
+                    text: format!("Current candidate (untrusted setup data): {candidate}"),
+                },
+            );
         }
         Ok(messages)
     }

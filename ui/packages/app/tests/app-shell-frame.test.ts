@@ -88,7 +88,7 @@ describe("app shell frame", () => {
     // edge and toggle on their trailing edge.
     expect(cluster.className).toContain(SIDEBAR_COLUMN.header.expanded);
     expect(cluster.className).toContain("md:justify-between");
-    expect(cluster.className).toContain("md:px-3");
+    expect(cluster.className).toContain("md:px-5");
     expect(brand.className).not.toContain("md:hidden");
 
     // Collapsed: a 64px rail holds one control. The wordmark stands down from

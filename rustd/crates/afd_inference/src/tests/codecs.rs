@@ -9,6 +9,21 @@ fn known_tokenizers_count_tokens_and_unknown_models_reserve_utf8_bytes() {
     assert_eq!(crate::input_tokens("unknown-tokenizer", "🌿"), 4);
 }
 
+// Value: protects=the selected MiniMax model uses tokens rather than rejecting
+// ordinary long conversations at a byte count; seam=shared input admission.
+#[test]
+fn minimax_flash_uses_its_published_tokenizer_without_loosening_unknown_models() {
+    let text = "hello world";
+    assert_eq!(
+        crate::input_tokens("accounts/fireworks/models/minimax-m3p1-flash", text),
+        2
+    );
+    assert_eq!(
+        crate::input_tokens("unverified/minimax-m3p1-flash", text),
+        text.len()
+    );
+}
+
 #[test]
 fn native_routes_advertise_tool_support_through_the_sdk() {
     for api in [InferenceApi::Gemini, InferenceApi::Ollama] {

@@ -38,6 +38,14 @@ impl Ending {
         }
     }
 
+    fn incomplete() -> Self {
+        Self {
+            outcome: Outcome::Failed,
+            reason: Some(FailureReason::ProviderFailed),
+            answer: None,
+        }
+    }
+
     fn timed_out() -> Self {
         Self {
             outcome: Outcome::TimedOut,

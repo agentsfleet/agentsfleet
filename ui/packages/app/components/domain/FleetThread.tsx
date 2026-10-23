@@ -30,6 +30,8 @@ import { FleetThreadViewport } from "./FleetThreadViewport";
 import { FleetScopeProvider } from "./FleetScope";
 
 export type FleetThreadProps = {
+  modelLabel?: string;
+  setupRevision?: string;
   workspaceId: string;
   fleetId: string;
   /** The console's own fleet — the name a fleet reply is labelled with. */
@@ -72,7 +74,7 @@ export function FleetThread({
   senderLabel,
   initial,
   viewer,
-  senderNames,
+  senderNames, modelLabel, setupRevision,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   // The header row is chrome that earns its space only while the stream is not
@@ -159,7 +161,7 @@ export function FleetThread({
                   <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
                 </DashboardPanelHeader>
               )}
-              <FleetThreadViewport
+              <FleetThreadViewport modelLabel={modelLabel} setupRevision={setupRevision}
                 eventsCount={stream.events.length}
                 connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection}

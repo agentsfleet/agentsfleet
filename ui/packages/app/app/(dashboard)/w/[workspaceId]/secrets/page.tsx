@@ -39,12 +39,12 @@ export default async function SecretsPage({
   );
 
   return (
-    <PageLayout fullHeight className="h-full overflow-hidden">
+    <PageLayout>
       <PageHeader description={<SecretsDescription />}>
         <PageTitle>{SECRETS_PAGE_TITLE}</PageTitle>
       </PageHeader>
 
-      <Section aria-label="Stored secrets" className="flex min-h-0 flex-1 flex-col gap-xl">
+      <Section aria-label="Stored secrets" className="flex flex-col gap-xl">
         <SectionHeader as="p" actions={<AddSecretDialog workspaceId={workspaceId} />}>Stored secrets</SectionHeader>
         <SecretsList
             workspaceId={workspaceId}

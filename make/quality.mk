@@ -129,7 +129,7 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@# this script's half, and it rides the same target because both answer one
 	@# question: will these workflows still work tomorrow.
 	@echo "→ [gh-actions] Checking action pins — runtimes and mutable refs..."
-	@bash audits/gh-actions-runtime.sh
+	@bash scripts/checks/gh-actions-runtime.sh
 	@# The builder pin lives in its own script so it can have its own tests —
 	@# the shape check-architecture-doc uses. A gate with no self-test can pass
 	@# vacuously: a broken grep reports a clean tree and reads like success.

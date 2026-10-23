@@ -89,7 +89,7 @@ export function reportsOwnRun(events: readonly FleetEvent[], subject: string | n
  * (status, outcome, failure, timing), so the reply reads the same fields the
  * trigger does.
  */
-export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent): ThreadMessageLike {
+export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent, requestActor = event.actor): ThreadMessageLike {
   return {
     ...base,
     role: "assistant",
@@ -99,6 +99,7 @@ export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent): Thre
       ...base.metadata,
       custom: {
         ...base.metadata?.custom,
+        requestActor,
         [REASONING_SPAN.STARTED]: event.reasoningStartedAtMs,
         [REASONING_SPAN.ENDED]: event.reasoningEndedAtMs,
         [REPLY_FIGURE.TOKENS]: event.tokens,

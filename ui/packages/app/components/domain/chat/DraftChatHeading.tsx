@@ -19,7 +19,11 @@ const EDIT_LABEL = "Edit instructions";
 const ignore = (): void => undefined;
 
 export function DraftChatHeading({client, view}: Props) {
-  if (view.inaccessible || (!view.draft && !view.preview)) return null;
+  if (view.inaccessible) return null;
+  if (!view.draft && !view.preview) return <div className="fleet-chat-heading flex w-full shrink-0 items-center gap-sm border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
+    <div className="min-w-0 flex-1"><h2 className="text-chat-title font-semibold">New fleet</h2><p className="mt-xs text-eyebrow text-muted-foreground">Private setup</p></div>
+    <DraftSaveButton client={client} view={view} />
+  </div>;
   return <SetupChatHeading client={client} view={view} />;
 }
 
@@ -32,15 +36,15 @@ function SetupChatHeading({client, view}: Props) {
   const draft = view.draft;
   const recovery = chatRecovery(view);
   const locked = view.busy || view.pending || recovery.pending || recovery.blocked || Boolean(draft && draft.state !== DRAFT_STATE.editing);
-  const label = draft ? chatTitle(draft.title, draft.id, firstChatRequest(view.messages) || draft.candidate?.definition.description) : "Fleet setup";
+  const label = draft ? chatTitle(draft.title, draft.id, firstChatRequest(view.messages) || draft.candidate?.definition.description) : "New fleet";
   const canEdit = Boolean(draft?.candidate || view.preview);
   return <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-    <div className="mx-auto flex w-full max-w-measure shrink-0 flex-wrap items-center gap-sm px-sm">
+    <div className="fleet-chat-heading flex w-full shrink-0 flex-wrap items-center gap-sm border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
     {editing && draft ? <><Label htmlFor={`${draft.id}-title`} className="sr-only">Chat name</Label>
       <Input id={`${draft.id}-title`} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={CHAT_TITLE_LIMIT} className="min-w-0 flex-1" />
       <Button size="sm" disabled={locked || !title.trim()} onClick={() => {void client.rename(title.trim()).then(() => setEditing(false)).catch(ignore);}}>Save name</Button>
       <Button variant="ghost" size="sm" disabled={locked} onClick={() => setEditing(false)}>Cancel</Button></>
-      : <h2 className="min-w-0 flex-1 truncate text-body font-semibold">{label}</h2>}
+      : <div className="min-w-0 flex-1"><h2 className="truncate text-chat-title font-semibold">{label}</h2><p className="mt-xs text-eyebrow text-muted-foreground">{draft ? "Unfinished setup · Private to you" : "Private setup"}</p></div>}
     {draft?.review?.effective.target_setup_revision === undefined ? <DraftSaveButton client={client} view={view} /> : null}
     <DropdownMenu><DropdownMenuTrigger asChild><Button ref={trigger} variant="ghost" size="icon" aria-label="Setup chat actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end" onCloseAutoFocus={(event) => {if (editorOpen) event.preventDefault();}}>

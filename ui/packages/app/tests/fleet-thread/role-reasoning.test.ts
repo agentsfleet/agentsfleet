@@ -112,7 +112,7 @@ describe("FleetThread — reasoning disclosure", () => {
     // second colour beside the answer; dim is the voice a reader can skip.
     expect(reasoning.className).toContain("text-text-dim");
     expect(screen.queryByText(/private/)).toBeNull();
-    expect(screen.getByText("Remembered.").closest(".text-text-chat")).toBeTruthy();
+    expect(screen.getByText("Remembered.").closest(".text-conversation")).toBeTruthy();
   });
 
   it("renders no fold at all when the model reasoned nowhere", () => {

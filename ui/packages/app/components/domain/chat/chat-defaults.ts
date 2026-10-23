@@ -4,7 +4,7 @@ export const DEFAULT_INSTANCE_NAME = "my-fleet";
 export const DEFAULT_DAILY_NANOS = "1000000000";
 export const CHAT_PLACEHOLDER = "Describe the work you want this fleet to do…";
 export const CHAT_EXAMPLES = [
-  "Investigate failed builds and explain what changed.",
+  "Review GitHub pull requests and share findings in Slack.",
   "Watch production errors and prepare a repair for review.",
   "Summarize the work my team should act on each morning.",
 ] as const;
