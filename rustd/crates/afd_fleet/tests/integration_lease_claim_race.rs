@@ -21,7 +21,6 @@ use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
 use afd_fleet::lease::sql::lease::CLAIM_FLEET_SLOT;
 use sqlx::Connection as _;
 
-use crate::queue;
 use crate::seed::{Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -97,6 +96,5 @@ async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
         .await
         .expect("the slot reads back");
     assert_eq!(holder, second.as_str(), "the slot is the first claimer's");
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }

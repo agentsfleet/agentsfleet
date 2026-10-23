@@ -1,31 +1,15 @@
-//! §7's scenario: a booted daemon, a funded fleet, and an enrolled runner.
+//! A booted daemon, funded fleet, and enrolled runner.
 //!
-//! # One lane database, and one ready stream
-//!
-//! Every scenario boots a real daemon against the lane's own database, handed
-//! to it through `DATABASE_URL_API`. Scenarios are kept apart in Postgres by
-//! the identifiers `unique_ids` mints, not by a database apiece.
-//!
-//! That is enough for rows and not enough for the queue. `fleet:ready` is one
-//! hash for the whole deployment and the assignment pass takes a candidate at
-//! random from it, so two concurrent scenarios race for each other's seeded
-//! event: the winner leases work it did not seed, stamps its activity with that
-//! event, and publishes to a fleet channel the other test is subscribed to.
-//! Minted identifiers cannot reach that — a queue is one key and a group is one
-//! group. [`READY_STREAM`] serialises scenarios instead, and the guard rides on
-//! [`Scenario`] so a test cannot forget to take it.
-//!
-//! A test CAN still forget to release it correctly. `Supervisor` has no `Drop`,
-//! so a scenario that never calls `shutdown().await` leaves its tasks running
-//! after the guard is gone, and the next scenario boots beside a live
-//! competitor. End every scenario with `supervisor.shutdown().await` then
-//! `run.cleanup().await`, in that order.
+//! Shared-database scenarios serialize placement through [`SCENARIOS`]. Unique
+//! fleet tags keep positive assertions scoped; a test that must prove no work
+//! is available needs an isolated database because untagged fleets also match.
+//! Stop the supervisor before cleanup releases the scenario guard.
 //!
 //! # Why the clock is real
 //!
 //! The store suites freeze time at `ENROLLED_AT` because they call verbs
 //! directly and pass the instant in. Here the daemon reads its own clock, so a
-//! frozen seed would place the readiness mark and the lease deadline years
+//! frozen seed would place the admission and the lease deadline years
 //! apart and the assignment pass would correctly find nothing. Everything below
 //! is stamped from [`afd_core::clock::now`] for that reason, which is also why
 //! nothing here asserts on an absolute instant.
@@ -82,21 +66,8 @@ pub(crate) const EPHEMERAL: u16 = 0;
 pub(crate) const GOOD_KEK: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// Distinguishes scenarios built by one process, so two never share a fleet.
-/// One scenario at a time, because the ready stream is one queue.
-///
-/// Every scenario boots a REAL daemon, and every daemon polls the same
-/// `fleet:ready` consumer group — competing consumers, which is what that
-/// group is for in production. Two concurrent scenarios therefore race for
-/// each other's seeded event: the winner leases work it did not seed, stamps
-/// its activity with that event, and publishes to a fleet channel the other
-/// test is subscribed to. Both tests then fail, and neither failure names the
-/// cause.
-///
-/// Minted identifiers cannot fix this. They keep the ROWS apart in Postgres;
-/// the queue is one key and the group is one group. The lock is held by the
-/// `Scenario` itself, so exclusivity is not something a test has to remember.
-pub(crate) static READY_STREAM: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Serializes scenarios that share the lane database and platform default.
+pub(crate) static SCENARIOS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
@@ -175,9 +146,7 @@ pub(crate) struct Scenario {
     pub(crate) workspace: String,
     /// Its billing tenant.
     pub(crate) tenant: String,
-    /// The ledger's logical id for the seeded event — what the lease, the
-    /// report and every row spell it as. NOT the stream entry id: that is the
-    /// receipt, and one logical event can have had two of them.
+    /// The admission identifier shared by the lease, report, and narrative.
     pub(crate) event_id: String,
     /// The enrolled runner's durable identifier.
     pub(crate) runner_id: Uuid7,
@@ -186,22 +155,18 @@ pub(crate) struct Scenario {
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: Timestamp,
     /// This scenario's hold on the platform default, released after the daemon
-    /// above has stopped and before the stream guard below.
+    /// above has stopped and before the scenario guard below.
     pub(crate) _default: afd_db::test_util::PlatformDefault,
-    /// Exclusive use of the ready stream, for as long as this scenario lives.
+    /// Exclusive placement among scenarios sharing the lane database.
     ///
     /// Last field, so it is released only after the daemon above has been
-    /// dropped and stopped polling — a guard freed while a daemon still reads
-    /// the group would hand the next scenario a competitor.
+    /// dropped and stopped polling.
     pub(crate) _exclusive: tokio::sync::MutexGuard<'static, ()>,
 }
 
 /// Boots the daemon and seeds one funded fleet with one event and one runner.
 ///
-/// The order is the daemon's own: nothing is put on the stream until the fleet
-/// row it joins against exists, because the assignment pass filters candidates
-/// through `fleet.fleets` and a mark with no row makes a correct refusal look
-/// like a broken poll.
+/// The fleet exists before its initial admission is committed.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     scenario_with_provider(supervisor, None).await
 }
@@ -232,7 +197,7 @@ pub(crate) async fn scenario_with(
     install_subscriber();
     // Before the daemon boots, because booting one is joining the consumer
     // group this guards.
-    let exclusive = READY_STREAM.lock().await;
+    let exclusive = SCENARIOS.lock().await;
     // The lane's database, already migrated. Scenarios are kept apart in
     // Postgres by the identifiers `unique_ids` mints below, not by a database
     // apiece, and on the ready stream by the guard above.

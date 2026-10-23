@@ -21,12 +21,6 @@ async fn save_without_run_activates_without_admitting_a_message() {
     assert!(matches!(saved.start, StartOutcome::None));
     assert_eq!(saved.setup.state, "ready");
     assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
-    assert_eq!(
-        afd_dragonfly::test_util::fleet_entries(&c.queue, saved.id.as_str())
-            .await
-            .expect("stream"),
-        [] as [afd_dragonfly::FleetEvent; 0]
-    );
     let closed = c
         .base
         .drafts
@@ -40,7 +34,7 @@ async fn save_without_run_activates_without_admitting_a_message() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn run_now_is_accepted_only_with_one_saved_receipt_and_replays_same_event() {
+async fn run_now_is_accepted_only_with_one_committed_admission_and_replays_same_event() {
     let c = Case::create().await;
     c.fund().await;
     let (_, request) = c
@@ -66,8 +60,7 @@ async fn run_now_is_accepted_only_with_one_saved_receipt_and_replays_same_event(
     assert!(error_code.is_none());
     let rows = c.admissions(&saved.id).await;
     assert_eq!(rows.len(), 1);
-    assert_eq!(event_id.as_ref(), Some(&rows[0].0));
-    assert!(rows[0].1.is_some());
+    assert_eq!(event_id.as_ref(), Some(&rows[0]));
     let retried = c.save(&key, request).await;
     assert_eq!(retried.id, saved.id);
     assert_eq!(
@@ -75,12 +68,5 @@ async fn run_now_is_accepted_only_with_one_saved_receipt_and_replays_same_event(
         serde_json::to_value(&saved.start).expect("outcome")
     );
     assert_eq!(c.admissions(&saved.id).await, rows);
-    assert_eq!(
-        afd_dragonfly::test_util::fleet_entries(&c.queue, saved.id.as_str())
-            .await
-            .expect("stream")
-            .len(),
-        1
-    );
     c.cleanup().await;
 }

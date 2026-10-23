@@ -57,8 +57,7 @@ pub(crate) use self::refuse::{
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.
 pub(crate) use self::report::{
-    envelope_field, envelope_malformed, query, rejected, row_malformed, sequence_corrupt,
-    vault_data_invalid,
+    query, rejected, row_malformed, sequence_corrupt, vault_data_invalid,
 };
 
 /// The result every fallible function in this crate returns.
@@ -119,14 +118,6 @@ pub(crate) enum ErrorKind {
         source: afd_dragonfly::Error,
     },
 
-    /// The admission ledger could not say where a lost consumer group
-    /// should resume.
-    #[error("the admission ledger could not answer for the runner plane")]
-    Admission {
-        #[source]
-        source: afd_admission::Error,
-    },
-
     #[error("the billing store could not answer for the runner plane")]
     Billing {
         #[source]
@@ -166,12 +157,6 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_outbound::Error,
     },
-
-    #[error("the leased event envelope is missing {field}")]
-    Envelope { field: &'static str },
-
-    #[error("the leased event envelope's {field} is present but unreadable")]
-    EnvelopeMalformed { field: &'static str },
 
     #[error("{detail}")]
     Rejected { detail: &'static str },

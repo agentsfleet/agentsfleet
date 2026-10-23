@@ -1,30 +1,5 @@
-//! What boot refuses before any work is accepted.
-//!
-//! Three questions, asked of the datastore itself and answered before the
-//! first write: is this a cluster, does it speak the commands this daemon's
-//! design requires, and does it keep every key it is given. A no to any of
-//! them is a deployment that would lose accepted work or silently drop a
-//! surface, and the only honest moment to say so is before a producer has
-//! been told yes.
-//!
-//! # Why eviction is a boot refusal and not a runtime warning
-//!
-//! Every key this crate writes is accepted work or the record of it. A stream
-//! entry is a receipt the ledger re-appends if it vanishes; a readiness mark,
-//! a pending list and a session have no second copy at all. A node in
-//! `cache_mode`, or under any `maxmemory_policy` but `noeviction`, discards
-//! keys when it is full and then answers every read as though they had never
-//! existed. That is data loss the datastore performs on purpose, and the only
-//! moment to refuse it is before the first write — so the check runs beside
-//! the connect and answers in the same error class, and a daemon that boots
-//! has proven every primary keeps what it is given.
-//!
-//! # Asked of every primary, and only primaries
-//!
-//! `INFO memory` has no key, so it is routed per primary the way every other
-//! server statistic is. Replicas are not asked: a replica evicting keys is a
-//! replica that will disagree with its primary, which a failover surfaces and
-//! nothing here could prevent.
+//! Boot checks every primary for cluster routing, required commands and non-evicting storage.
+//! Session keys and pending outbound entries must survive memory pressure.
 
 use redis::Value;
 

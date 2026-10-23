@@ -10,7 +10,6 @@
 use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
 use super::{hold, id, live, slot};
-use crate::queue;
 use crate::rows::Row;
 use crate::seed::{self, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -64,9 +63,8 @@ async fn offered_to_another(lapse: Lapse) -> bool {
     .await;
     lapse_hold(&fixtures, &fleet, holder.as_str(), lapse).await;
 
-    let found = seed::select_fleet_within_rotations(&leases, &other, &fleet).await;
+    let found = seed::select_fleet(&leases, &other, &fleet).await;
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
     found.is_some()
 }

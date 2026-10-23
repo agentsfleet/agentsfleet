@@ -85,6 +85,9 @@ pub(crate) fn report<'a>(
 /// `why` names the route that got here, because three different empty claims
 /// share this assertion set and a bare failure would not say which one broke.
 pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
+    let settled = held.fixtures.admission_settled(&held.event_id).await;
+    assert!(!settled, "{why}: the admission remains runnable");
+
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
         Some(DEEP_POOL),

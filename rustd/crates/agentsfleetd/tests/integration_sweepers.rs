@@ -19,7 +19,7 @@ use agentsfleetd::serve::boot;
 use agentsfleetd::supervisor::Supervisor;
 use sqlx::Connection as _;
 
-use crate::e2e::{DATABASE_LANE_KNOB, EPHEMERAL, READY_STREAM, lane};
+use crate::e2e::{DATABASE_LANE_KNOB, EPHEMERAL, SCENARIOS, lane};
 use crate::e2e_db::daemon_environment;
 use crate::support::install_subscriber;
 
@@ -94,9 +94,8 @@ async fn test_the_first_sweep_ends_orphaned_holds_and_expired_receipts() {
         .await
         .expect("the expired receipt seeds");
 
-    // A booted daemon joins the deployment's consumer groups, so it waits its
-    // turn beside the scenarios as `e2e` explains.
-    let exclusive = READY_STREAM.lock().await;
+    // Serialize daemons that share placement rows with the scenarios.
+    let exclusive = SCENARIOS.lock().await;
     let mut supervisor = Supervisor::new();
     let booted = boot(
         &daemon_environment(&database_url, None, &[]),

@@ -158,7 +158,7 @@ struct Ready {
 async fn ready(fixtures: &Fixtures) -> Ready {
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(fixtures).await;
     let event_id = crate::queue::enqueue(
-        fixtures.queue(),
+        &fixtures.database,
         &fleet,
         &workspace,
         ACTOR,
@@ -180,7 +180,7 @@ async fn ready(fixtures: &Fixtures) -> Ready {
 /// Split from [`drive`] because the case below has to act BETWEEN the two: a
 /// fleet paused after its event was claimed is a window that exists only here.
 async fn claim(fixtures: &Fixtures, ready: &Ready) -> Acquired {
-    crate::seed::select_fleet_within_rotations(&fixtures.leases(), &ready.runner, &ready.fleet)
+    crate::seed::select_fleet(&fixtures.leases(), &ready.runner, &ready.fleet)
         .await
         .expect("the fleet is leasable")
 }

@@ -8,7 +8,7 @@
 //! hanging it.
 
 use super::super::{fixture::now, mint};
-use super::fixture::{Case, NO_ADMISSIONS, NO_EVENTS};
+use super::fixture::{Case, NO_ADMISSIONS};
 use afd_authoring::{
     Result, SavedFleet,
     types::{DraftState, SaveFleet, Start, StartOutcome, StartState},
@@ -199,7 +199,6 @@ async fn a_kill_committed_while_activation_waits_refuses_that_activation() {
     );
     assert_eq!(refused.setup.state, "cancelled");
     assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
-    assert_eq!(c.stream_events(&fleet).await, NO_EVENTS);
     let restored = c.base.drafts.read(c.base.access(), &draft).await;
     assert_eq!(restored.expect("draft").state, DraftState::Editing);
     Arc::into_inner(c).expect("tasks joined").cleanup().await;

@@ -15,14 +15,11 @@
 )]
 
 use afd_admission::{Admission, Key, Producer, Reply};
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{ACTOR_MACHINE, Steer};
 use afd_wire::event::EventType;
 
 use crate::integration_steer_replay::{CHANGED_JSON, OPERATION};
-use crate::integration_steer_retry::{
-    KEY_SEPARATOR, REQUEST_JSON, admissions_for, append_with, clean,
-};
+use crate::integration_steer_retry::{KEY_SEPARATOR, REQUEST_JSON, admissions_for, append_with};
 use crate::support::EventsLane;
 
 /// Rounds of two concurrent sends per race test: enough that the two reach
@@ -38,7 +35,6 @@ const OTHER_ACTOR: &str = "steer:user_other";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_racing_repeats_admit_once() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
     let steer = Steer::new(lane.admissions());
     for round in 0..RACE_ROUNDS {
         let operation = format!("{OPERATION}-same-{round}");
@@ -49,7 +45,6 @@ async fn test_racing_repeats_admit_once() {
         assert_eq!(first, second, "round {round}: one id, one event");
         assert_eq!(admissions_for(&lane, &operation).await, 1, "round {round}");
     }
-    clean(&lane, &streams).await;
 }
 
 /// Two sends with one id and different messages racing to the insert: one is
@@ -58,7 +53,6 @@ async fn test_racing_repeats_admit_once() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_racing_drift_is_refused() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
     let steer = Steer::new(lane.admissions());
     for round in 0..RACE_ROUNDS {
         let operation = format!("{OPERATION}-drift-{round}");
@@ -91,7 +85,6 @@ async fn test_racing_drift_is_refused() {
         assert_eq!((admitted, refused), (1, 1), "round {round}: {outcomes:?}");
         assert_eq!(admissions_for(&lane, &operation).await, 1, "round {round}");
     }
-    clean(&lane, &streams).await;
 }
 
 /// Another person reusing an id someone in the workspace already sent, with the
@@ -100,7 +93,6 @@ async fn test_racing_drift_is_refused() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_reused_id_by_another_caller_is_refused() {
     let lane = EventsLane::open().await;
-    let streams = FleetStreams::new(lane.queue.clone());
     let steer = Steer::new(lane.admissions());
     append_with(&steer, &lane, Some(OPERATION)).await;
     let refused = steer
@@ -128,7 +120,6 @@ async fn test_reused_id_by_another_caller_is_refused() {
             .is_operation_conflict()
     );
     assert_eq!(admissions_for(&lane, OPERATION).await, 1);
-    clean(&lane, &streams).await;
 }
 
 /// A row some other fleet holds under the key a steer composes is refused, not
@@ -165,6 +156,4 @@ async fn test_a_key_another_fleet_holds_is_refused() {
         .await
         .expect_err("a row another fleet holds is refused");
     assert!(refused.is_operation_conflict(), "{refused}");
-    clean(&holder, &FleetStreams::new(holder.queue.clone())).await;
-    clean(&steered, &FleetStreams::new(steered.queue.clone())).await;
 }

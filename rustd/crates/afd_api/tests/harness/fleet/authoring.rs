@@ -11,7 +11,6 @@ pub(super) struct Stores {
 
 pub(super) fn stores(
     database: &Db,
-    queue: &Dragonfly,
     ledger: &afd_admission::Admissions,
     providers: &HarnessProviders,
 ) -> Stores {
@@ -24,7 +23,7 @@ pub(super) fn stores(
     );
     let setup = afd_authoring::Setup::new(drafts.clone(), Arc::new(Kek::from_bytes(FIXTURE_KEK)));
     Stores {
-        creations: afd_authoring::Creations::new(setup.clone(), queue.clone(), ledger.clone()),
+        creations: afd_authoring::Creations::new(setup.clone(), ledger.clone()),
         models: afd_authoring::ModelCalls::new(
             drafts.clone(),
             providers.store().clone(),

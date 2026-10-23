@@ -85,11 +85,64 @@ test_arch_schema_layout_matches_doc() {
   expect_layout_refusal "$name" "$root/arch" "$root/one_table" \
     "vault.secrets is listed in $root/arch/postgres_schemas.md" || return
 
+  write_layout_schema "$root/reshaped" ''
+  printf '%s\n' 'ALTER TABLE vault.secrets ADD COLUMN label TEXT;' >>"$root/reshaped/1200_vault_secrets.sql"
+  expect_layout_refusal "$name" "$root/arch" "$root/reshaped" \
+    "vault.secrets.label is in $root/reshaped/1200_vault_secrets.sql" || return
+
   mkdir -p "$root/no_rows"
   printf '# Fixture\n\nThe layout moved elsewhere.\n' >"$root/no_rows/postgres_schemas.md"
   expect_layout_refusal "$name" "$root/no_rows" "$root/schema" \
     "$root/no_rows/postgres_schemas.md lists no table" || return
+  test_layout_forward_columns "$root" || return
   ok "$name"
+}
+
+# Forward migrations must match their final inventory; malformed or unsupported
+# changes still fail, including a matching-looking inventory after a bad edit.
+layout_alter_refusal() {
+  local root="$1" tag="$2" sql="$3" expected="$4"
+  write_layout_schema "$root/$tag" ''
+  printf '%s\n' "$sql" >"$root/$tag/1300_forward.sql"
+  expect_layout_refusal "$LAYOUT_CHECK" "$root/arch" "$root/$tag" "$expected"
+}
+
+test_layout_forward_columns() {
+  local root="$1" output
+  write_layout_schema "$root/forward" ''
+  printf '%s\n' \
+    "ALTER TABLE identity.tenants ADD COLUMN nickname TEXT DEFAULT 'a,b', ADD COLUMN score NUMERIC(12,3);" \
+    'ALTER TABLE identity.tenants DROP COLUMN nickname, DROP COLUMN score;' \
+    'ALTER TABLE vault.secrets ADD COLUMN value TEXT;' >"$root/forward/1300_add.sql"
+  printf '%s\n' 'ALTER TABLE vault.secrets DROP COLUMN value;' >"$root/forward/1400_drop.sql"
+  write_layout_doc "$root/forward_doc" 'id, name, created_at'
+  if ! output="$(run_layout_gate "$root/forward_doc" "$root/forward")"; then
+    bad "$LAYOUT_CHECK" "ordered forward migrations were rejected: $output"
+    return 1
+  fi
+  layout_alter_refusal "$root" dropped 'ALTER TABLE identity.tenants DROP COLUMN name;' \
+    "identity.tenants.name is in $root/arch/postgres_schemas.md" || return
+  layout_alter_refusal "$root" renamed 'ALTER TABLE identity.tenants RENAME COLUMN name TO title;' \
+    "$root/renamed/1300_forward.sql: ALTER TABLE identity.tenants: unsupported column change" || return
+  layout_alter_refusal "$root" shorthand 'ALTER TABLE identity.tenants DROP name;' \
+    "$root/shorthand/1300_forward.sql: ALTER TABLE identity.tenants: unsupported column change" || return
+  layout_alter_refusal "$root" unknown 'ALTER TABLE identity.ghost ADD COLUMN id UUID;' \
+    "$root/unknown/1300_forward.sql: ALTER TABLE identity.ghost: table has not been created" || return
+  layout_alter_refusal "$root" duplicate 'ALTER TABLE identity.tenants ADD COLUMN name TEXT;' \
+    "$root/duplicate/1300_forward.sql: ALTER TABLE identity.tenants: column name already exists" || return
+  layout_alter_refusal "$root" missing 'ALTER TABLE identity.tenants DROP COLUMN nickname;' \
+    "$root/missing/1300_forward.sql: ALTER TABLE identity.tenants: column nickname does not exist" || return
+  layout_alter_refusal "$root" malformed 'ALTER TABLE identity.tenants ADD COLUMN nickname;' \
+    "$root/malformed/1300_forward.sql: ALTER TABLE identity.tenants: unsupported column change" || return
+  layout_alter_refusal "$root" optional_malformed 'ALTER TABLE identity.tenants ADD COLUMN IF NOT EXISTS name;' \
+    "$root/optional_malformed/1300_forward.sql: ALTER TABLE identity.tenants: unsupported column change" || return
+  layout_alter_refusal "$root" trailing 'ALTER TABLE identity.tenants ADD COLUMN score NUMERIC(8,2)) ignored;' \
+    "$root/trailing/1300_forward.sql: ALTER TABLE identity.tenants: unexpected text after column list" || return
+  layout_alter_refusal "$root" removed 'DROP TABLE vault.secrets;' \
+    "$root/removed/1300_forward.sql: DROP TABLE removes a table after its CREATE" || return
+  layout_alter_refusal "$root" premature \
+    'ALTER TABLE identity.later ADD COLUMN id UUID; CREATE TABLE identity.later (id UUID);' \
+    "$root/premature/1300_forward.sql: ALTER TABLE identity.later: table has not been created" || return
 }
 
 test_arch_schema_forward_columns() {
@@ -122,25 +175,25 @@ test_arch_schema_unsupported_changes() {
   local name="test_arch_schema_unsupported_changes" root="$WORK_DIR/unsupported_layout"
   local action index=0 schema
   write_layout_doc "$root/arch" 'id, name, created_at'
-  for action in 'DROP COLUMN key_name' 'RENAME COLUMN key_name TO other_name' \
+  for action in 'RENAME COLUMN key_name TO other_name' \
     'RENAME TO other_table'; do
     schema="$root/schema_$index"
     write_layout_schema "$schema" ''
     printf 'ALTER TABLE vault.secrets %s;\n' "$action" >"$schema/1300_change.sql"
     expect_layout_refusal "$name" "$root/arch" "$schema" \
-      "$schema/1300_change.sql: ALTER TABLE vault.secrets reshapes columns" || return
+      "$schema/1300_change.sql: ALTER TABLE vault.secrets: unsupported column change" || return
     index=$((index + 1))
   done
   write_layout_schema "$root/duplicate" ''
   printf '%s\n' 'ALTER TABLE vault.secrets ADD COLUMN key_name TEXT;' \
     >"$root/duplicate/1300_change.sql"
   expect_layout_refusal "$name" "$root/arch" "$root/duplicate" \
-    "$root/duplicate/1300_change.sql: vault.secrets.key_name already exists" || return
+    "$root/duplicate/1300_change.sql: ALTER TABLE vault.secrets: column key_name already exists" || return
   write_layout_schema "$root/unknown" ''
   printf '%s\n' 'ALTER TABLE vault.missing ADD COLUMN label TEXT;' \
     >"$root/unknown/1300_change.sql"
   expect_layout_refusal "$name" "$root/arch" "$root/unknown" \
-    "$root/unknown/1300_change.sql: ALTER TABLE vault.missing has no prior CREATE" || return
+    "$root/unknown/1300_change.sql: ALTER TABLE vault.missing: table has not been created" || return
   write_layout_schema "$root/malformed" ''
   printf '%s\n' 'ALTER TABLE vault.secrets ADD COLUMN score NUMERIC(8, 2;' \
     >"$root/malformed/1300_change.sql"

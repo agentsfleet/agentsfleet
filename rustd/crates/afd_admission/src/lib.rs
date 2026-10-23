@@ -1,49 +1,5 @@
-//! The admission ledger: the row that IS a producer's acceptance, and the
-//! queue entry that is only its receipt.
-//!
-//! # The row is the acceptance, the entry is a receipt
-//!
-//! Every producer — a steer, a webhook delivery, a schedule fire, a gate's
-//! continuation, a repair verifier — commits a `fleet.admissions` row
-//! before it is told yes. The row's own `UUIDv7` id is the event's identity
-//! from here to the usage ledger. The `XADD` that follows is
-//! recorded back as a receipt, and a row that never got one is re-appended by
-//! [`Admissions::replay`] under the same id. Losing the queue therefore loses
-//! no accepted work while Postgres survives.
-//!
-//! # Duplicates are a unique index, not a Dragonfly claim
-//!
-//! `(producer, producer_key)` is unique. A retry is a conflict that answers
-//! the FIRST call's id with `replayed = true`, which is what the two-key
-//! `append_once` script used to answer — with no expiry, no second key and
-//! no cross-slot Lua. A key reused with a DIFFERENT payload is answered the
-//! same way and logged: the key is the identity, and a redelivery whose body
-//! this daemon now renders differently is still the same delivery. Refusing
-//! it with a 4xx would stop the sender retrying, which is how a delivery is
-//! lost across a deploy.
-//!
-//! A key the caller chooses ([`Producer::is_caller_keyed`], a steer's
-//! operation id) is the exception. The ledger still answers the first row, and
-//! [`Admitted::stored`] carries its digest and fleet, but it does not log the
-//! drift: a different payload there is the caller's mistake, not a deploy, and
-//! the producer's own crate refuses it and logs it as one.
-//!
-//! # Who appends, when two admit at once
-//!
-//! Two daemons can take one retry at the same instant. Both commit the same
-//! row — one inserts, one conflicts — and only the inserter appends; the other
-//! answers `replayed` and leaves the append to the inserter or, should it die
-//! first, to the replay sweeper. A queue that refuses the append is a
-//! deferral, not a refusal: the row is safe, the caller is answered, and the
-//! sweeper delivers when the queue is back. Two things refuse, both with a
-//! retryable class and no acceptance recorded: a database that will not
-//! commit, and a budget that is spent — see [`budget`].
-//!
-//! # Why its own crate
-//!
-//! One owner per table, the way `afd_events` owns `fleet.events`. Every
-//! producer crate admits through here and none of them may depend on another,
-//! which is the shape a shared module in any one of them could not have.
+//! One durable admission per producer key. The committed row is the work queue.
+//! Notifications are best-effort hints; polling Postgres always finds accepted work.
 
 // A dependency listed but unused is a supply-chain and compile-time cost with
 // no offsetting benefit. Gated on `not(test)` because the test build links
@@ -53,15 +9,14 @@
 
 mod admission;
 mod admit;
-mod admit_receipt;
+mod backlog;
 pub mod budget;
-mod cursor;
+mod confirm;
 pub mod error;
-mod reconcile;
 mod repeat;
-mod replay;
 pub mod sql;
 mod stage;
+mod wake;
 
 use std::sync::Arc;
 
@@ -70,13 +25,12 @@ use afd_db::Db;
 use afd_dragonfly::{Dragonfly, FleetStreams};
 
 pub use self::admission::{Admission, Key, Producer, Reply};
+pub use self::backlog::LedgerBacklog;
 use self::budget::Ceiling;
 pub use self::budget::{BudgetScope, Budgets};
-pub use self::cursor::LedgerBacklog;
+pub use self::confirm::Confirmation;
 pub use self::error::{Error, Result};
-pub use self::reconcile::{DEFAULT_REPAIR_CAPACITY, Progress, Reconciled};
 pub use self::repeat::Repeated;
-pub use self::replay::{Confirmation, Replayed};
 pub use self::stage::PreparedAdmission;
 
 /// What an admission decided.
@@ -91,14 +45,8 @@ pub struct Admitted {
     pub stored: Repeated,
 }
 
-/// The admission ledger over the database that holds it and the queue it
-/// hands receipts to.
-///
-/// Cheap to clone: two pool handles, an entropy source, two numbers, and a
-/// shared handle on the deployment ceiling's sampled figure. The figure is
-/// behind an [`Arc`] on purpose — every clone of one ledger must read the
-/// sample the last one published, or each clone would carry its own idea of
-/// the backlog and none of them would resample often enough to matter.
+/// The durable queue, its entropy source and best-effort notification transport.
+/// Clones share the deployment ceiling sample.
 #[derive(Debug, Clone)]
 pub struct Admissions {
     database: Db,

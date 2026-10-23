@@ -19,10 +19,9 @@ use std::error::Error as _;
 use std::time::Duration;
 
 use afd_dragonfly::Dragonfly;
-use afd_dragonfly::OutboundQueue;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::session::{AbortReason, Approval, SessionStore};
-use afd_dragonfly::streams::FleetStreams;
+use afd_dragonfly::{OutboundJob, OutboundQueue};
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
 use afd_core::test_util::trace::Capture;
@@ -160,7 +159,14 @@ async fn test_an_empty_xadd_id_is_refused_rather_than_handed_out() {
 
     let error = tokio::time::timeout(
         BUDGET,
-        FleetStreams::new(redis).append("fleet-1", &[("kind", "created")]),
+        OutboundQueue::new(redis).enqueue(OutboundJob {
+            provider: "fixture",
+            destination: "destination",
+            workspace_id: "workspace",
+            fleet_id: "fleet",
+            event_id: "event",
+            answer: "answer",
+        }),
     )
     .await
     .expect("the fake answers, so the append must not hang")
@@ -201,7 +207,14 @@ async fn test_a_socket_that_dies_mid_command_reports_redis_unreachable() {
 
     let error = tokio::time::timeout(
         BUDGET,
-        FleetStreams::new(redis).append("fleet-1", &[("kind", "created")]),
+        OutboundQueue::new(redis).enqueue(OutboundJob {
+            provider: "fixture",
+            destination: "destination",
+            workspace_id: "workspace",
+            fleet_id: "fleet",
+            event_id: "event",
+            answer: "answer",
+        }),
     )
     .await
     .expect("a dropped socket must fail the command, not hang it")

@@ -169,26 +169,9 @@ pub(crate) enum ErrorKind {
 
     #[error("the subscription hub's connection is gone")]
     HubClosed,
-
-    /// The entropy a readiness token is minted from could not be drawn.
-    #[error("the entropy a readiness token is minted from could not be drawn")]
-    Entropy {
-        #[source]
-        source: afd_crypto::error::Error,
-    },
-
-    /// A readiness token could not be minted from the current instant.
-    #[error("a readiness token could not be minted")]
-    Identifier {
-        #[source]
-        source: afd_core::error::Error,
-    },
 }
 
-afd_core::error_lifts!(Error, ErrorKind:
-    afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Identifier,
-);
+afd_core::error_lifts!(Error, ErrorKind: garde::Report => InvalidNamespace);
 
 impl Error {
     /// Raises `kind` as an error, capturing a backtrace.
@@ -316,19 +299,6 @@ impl Error {
         )
     }
 
-    /// Whether a readiness token could not be minted: the host refused its
-    /// entropy, or its clock sits outside what a version-7 identifier carries.
-    ///
-    /// Neither the datastore nor the command is at fault, so neither
-    /// [`Self::is_unavailable`] nor [`Self::is_command`] claims it.
-    #[must_use]
-    pub fn is_unmintable(&self) -> bool {
-        matches!(
-            self.inner.kind,
-            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. }
-        )
-    }
-
     /// The registry code a handler would surface for this failure.
     ///
     /// A full datastore answers the UNAVAILABLE code rather than the
@@ -343,9 +313,7 @@ impl Error {
             | ErrorKind::UnexpectedReply { .. }
             | ErrorKind::GroupMissing { .. }
             | ErrorKind::GroupExists { .. }
-            | ErrorKind::WrongType { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::WrongType { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Full { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             _ => error_code::STARTUP_DRAGONFLY_CONNECT,
         }

@@ -24,7 +24,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::queue;
 use crate::report_seed;
 use std::borrow::Cow;
 
@@ -133,7 +132,6 @@ async fn test_memory_capture_fencing() {
          above an overwrite check rather than a count"
     );
 
-    queue::clear_ready(run.fixtures.queue(), &run.fleet).await;
     run.fixtures.cleanup().await;
 }
 
@@ -173,7 +171,6 @@ async fn test_memory_capture_refuses_a_token_that_is_not_the_holders() {
         "and nothing was written on the way to refusing either token"
     );
 
-    queue::clear_ready(run.fixtures.queue(), &run.fleet).await;
     run.fixtures.cleanup().await;
 }
 
@@ -241,7 +238,6 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
         "no refused capture reached the store"
     );
 
-    queue::clear_ready(run.fixtures.queue(), &run.fleet).await;
     run.fixtures.cleanup().await;
 }
 
@@ -289,7 +285,6 @@ async fn test_memory_capture_refuses_a_lease_the_runner_does_not_hold() {
         "and nothing was written on the way to refusing it"
     );
 
-    queue::clear_ready(run.fixtures.queue(), &run.fleet).await;
     run.fixtures.cleanup().await;
 }
 

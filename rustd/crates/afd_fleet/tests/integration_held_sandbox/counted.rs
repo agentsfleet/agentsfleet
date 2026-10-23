@@ -18,7 +18,6 @@ use afd_observability::test_util::Capture;
 use jiff::Timestamp;
 
 use super::{hold, id, live};
-use crate::queue;
 use crate::rows::{LAPSE, Row};
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -74,7 +73,7 @@ async fn held(fixtures: &Fixtures) -> Seeded<1> {
 /// so the lease left to lapse is one the next claim reclaims.
 async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: Timestamp) -> Acquired {
     let [holder] = &seeded.runners;
-    let acquired = seed::select_fleet_within_rotations(leases, holder, &seeded.fleet)
+    let acquired = seed::select_fleet(leases, holder, &seeded.fleet)
         .await
         .expect("the holder leases its held fleet");
     if acquired.kind == Kind::Fresh {
@@ -113,7 +112,6 @@ async fn test_the_holders_claim_counts_as_the_holders() {
     let after = claims(&capture, HOLDER);
     assert!(fresh.resume_hold, "the fresh event resumes the hold");
     assert!(after > before, "{before} -> {after}");
-    queue::clear_ready(fixtures.queue(), &seeded.fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -147,7 +145,6 @@ async fn test_the_holders_reclaims_on_a_live_hold_count_nothing() {
         moved < CLAIMS_IN_A_ROW,
         "{CLAIMS_IN_A_ROW} reclaims on a live hold moved the holder series by {moved}"
     );
-    queue::clear_ready(fixtures.queue(), &seeded.fleet).await;
     fixtures.cleanup().await;
 }
 

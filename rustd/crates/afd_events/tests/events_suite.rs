@@ -18,8 +18,6 @@ mod counters_refused;
 
 #[path = "integration_admission_history.rs"]
 mod integration_admission_history;
-#[path = "integration_admission_prototype.rs"]
-mod integration_admission_prototype;
 #[path = "integration_backfill.rs"]
 mod integration_backfill;
 #[path = "integration_budgets.rs"]

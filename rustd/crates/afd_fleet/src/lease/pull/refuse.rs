@@ -91,18 +91,11 @@ impl Plane {
     ) -> Result<String> {
         let ended = self
             .leases
-            .block(
-                &acquired.fleet_id,
-                &acquired.event_id,
-                Refusal { label, detail: "" },
-            )
+            .block(acquired, Refusal { label, detail: "" })
             .await?;
         if let crate::lease::event::Ended::Now(closed) = ended {
             self.leases.publish_completion(&closed, None).await;
         }
-        self.leases
-            .acknowledge(&acquired.fleet_id, &acquired.receipt)
-            .await?;
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
         let event_id_field = acquired.event_id.as_str();

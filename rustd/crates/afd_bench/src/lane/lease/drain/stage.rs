@@ -1,25 +1,4 @@
-//! Everything the daemon's whole lease plane needs before it will issue a
-//! lease, staged the way the lease suites stage it.
-//!
-//! # Why more than the contended window seeds
-//!
-//! The contended window drives `Leases::select` alone, which stops at the
-//! claim. The drain drives `Plane::lease` and `Plane::report` — the two verbs
-//! the runner routes serve — and those walk on past the claim into the
-//! installed config, the payer's provider, the wallet, the approval gate and
-//! the policy. Each of those reads a row, and a missing one ends the event as
-//! a refusal the drain would then count as a lease. So this seeds, in order:
-//!
-//! 1. the three identity rows per fleet, whose setup revision carries a config
-//!    the runtime parser accepts, and a wallet deep enough that no gate clamps
-//!    against it;
-//! 2. one catalogue row, one sealed platform credential and the one platform
-//!    default naming both, which is what a platform-posture tenant resolves;
-//! 3. one `chat` event per fleet and its readiness mark, the shape ingress
-//!    leaves behind.
-//!
-//! The platform half of step 2 is `platform.rs`'s, because it is the one part
-//! the prefix sweep cannot remove on its own.
+//! Create the funded fleets, runners and admitted events owned by one drain.
 
 use std::sync::Arc;
 

@@ -14,7 +14,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::queue;
 use crate::report_seed;
 
 use afd_core::id::Uuid7;
@@ -30,10 +29,10 @@ const CLOCK_SKEW: std::time::Duration = std::time::Duration::from_secs(1);
 const INSERT_EARLIER_SUCCESSOR: &str = "\
 INSERT INTO runner.leases \
   (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, \
-   receipt, posture, provider, model, last_metered_at, fencing_token, \
+   posture, provider, model, last_metered_at, fencing_token, \
    lease_expires_at, status, posted_message_count, created_at, updated_at) \
 SELECT $2::uuid, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, \
-   event_created_at, receipt, posture, provider, model, last_metered_at, \
+   event_created_at, posture, provider, model, last_metered_at, \
    fencing_token + 1, lease_expires_at, status, 0, created_at - $3::interval, updated_at \
 FROM runner.leases WHERE id = $1::uuid \
 RETURNING fencing_token";
@@ -57,7 +56,6 @@ async fn test_hydrate_trusts_the_higher_token_over_the_clock() {
         .await
         .expect("the successor's token is the live sequence, whatever its clock says");
 
-    queue::clear_ready(run.fixtures.queue(), &run.fleet).await;
     run.fixtures.cleanup().await;
 }
 

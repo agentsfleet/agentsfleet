@@ -1,11 +1,4 @@
-//! The purges that must not happen, and the one that must survive a dead queue.
-//!
-//! Each refusal is settled under the row lock before the delete runs, so none
-//! of them reaches Dragonfly: the lane here is Postgres with a queue nobody
-//! answers on. Every refusal asserts the row is still there afterwards, because
-//! an error answered AFTER a delete committed would read the same to a caller.
-//!
-//! `#[ignore]`d; `make test-integration-rustd` runs it.
+//! Purge scope, authorization and rollback leave unrelated rows intact.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -24,7 +17,7 @@ const SEEDED_VERSION: i64 = 1;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn a_stale_tag_purges_nothing_and_answers_the_current_tag() {
-    let lane = Lane::without_queue().await;
+    let lane = Lane::create().await;
     let fleet = lane.fleet().await;
     let stale = afd_core::etag::versioned(&fleet, SEEDED_VERSION);
     let current = lane.kill(&fleet).await;
@@ -48,7 +41,7 @@ async fn a_stale_tag_purges_nothing_and_answers_the_current_tag() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn a_live_fleet_is_refused_until_it_is_killed() {
-    let lane = Lane::without_queue().await;
+    let lane = Lane::create().await;
     let fleet = lane.fleet().await;
     let tag = lane.tag(&fleet).await;
 
@@ -72,7 +65,7 @@ async fn a_live_fleet_is_refused_until_it_is_killed() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn another_workspaces_fleet_is_not_found() {
-    let lane = Lane::without_queue().await;
+    let lane = Lane::create().await;
     let neighbour = lane.another_workspace().await;
     let theirs = lane.fleet_at(&neighbour, NOW).await;
     let tag = lane.kill(&theirs).await;
@@ -91,19 +84,18 @@ async fn another_workspaces_fleet_is_not_found() {
     lane.cleanup().await;
 }
 
-/// The queue's cleanup runs after the commit and cannot undo it: with no
-/// Dragonfly answering, the purge still succeeds and the row is gone.
+/// Purge commits its database deletion.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
-async fn a_purge_commits_when_the_queue_cannot_forget() {
-    let lane = Lane::without_queue().await;
+async fn a_purge_commits_its_database_deletion() {
+    let lane = Lane::create().await;
     let fleet = lane.fleet().await;
     let tag = lane.kill(&fleet).await;
 
     lane.fleets
         .purge_tagged(&lane.workspace, &fleet, &tag)
         .await
-        .expect("the stream cleanup is best-effort and after the commit");
+        .expect("purge commits");
 
     assert!(
         lane.fleet_column(&fleet, "id").await.is_none(),
@@ -147,7 +139,7 @@ async fn fixture_ddl(lane: &Lane, statements: [String; 2]) {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn a_purge_whose_delete_removes_no_row_is_refused_and_rolled_back() {
-    let lane = Lane::without_queue().await;
+    let lane = Lane::create().await;
     let fleet = lane.fleet().await;
     let tag = lane.kill(&fleet).await;
     // The identifier is minted, never input, which is what makes naming the

@@ -35,7 +35,6 @@ use std::borrow::Cow;
 
 use afd_core::error_code;
 use afd_core::event::label;
-use afd_core::id::Uuid7;
 use afd_fleet::lease::Ended;
 use afd_fleet::lease::admit::Refusal;
 use afd_observability::test_util::Capture;
@@ -214,15 +213,10 @@ async fn test_activity_with_a_dead_queue_still_refuses_a_lease_the_runner_does_n
 async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
     let run = held().await;
     let plane = run.fixtures.plane_with_dead_queue();
-    let fleet = Uuid7::parse(&run.fleet).expect("the seeded fleet id is well formed");
 
     let ended = plane
         .leases
-        .block(
-            &fleet,
-            &run.event_id,
-            Refusal::labelled(label::APPROVAL_DENIED),
-        )
+        .block(&run.acquired, Refusal::labelled(label::APPROVAL_DENIED))
         .await
         .expect("the refusal writes over live Postgres whatever the queue does");
     let closed = match ended {
@@ -248,7 +242,6 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_closing_counts_the_fleets_pending_gates() {
     let run = held().await;
-    let fleet = Uuid7::parse(&run.fleet).expect("the seeded fleet id is well formed");
     seed_gate(&run, afd_api_wire::approval::status::PENDING).await;
     seed_gate(&run, afd_api_wire::approval::status::DENIED).await;
 
@@ -256,11 +249,7 @@ async fn test_a_closing_counts_the_fleets_pending_gates() {
         .fixtures
         .plane()
         .leases
-        .block(
-            &fleet,
-            &run.event_id,
-            Refusal::labelled(label::APPROVAL_DENIED),
-        )
+        .block(&run.acquired, Refusal::labelled(label::APPROVAL_DENIED))
         .await
         .expect("the refusal writes over live Postgres");
     let closed = match ended {

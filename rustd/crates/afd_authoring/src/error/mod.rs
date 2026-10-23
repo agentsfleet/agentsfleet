@@ -83,12 +83,6 @@ pub(crate) enum ErrorKind {
         #[from]
         source: reqwest::Error,
     },
-    /// Absent cause: the queue did not answer within its bound.
-    #[error("the fleet stream could not be created, so the install was removed")]
-    RolledBack {
-        #[source]
-        source: Option<afd_dragonfly::Error>,
-    },
     #[error("the private preview could not be published")]
     Preview {
         #[source]
@@ -189,7 +183,6 @@ impl Error {
             ErrorKind::Unknown | ErrorKind::Transport { .. } | ErrorKind::Sdk { .. } => {
                 error_code::AUTHORING_UNKNOWN
             }
-            ErrorKind::RolledBack { .. } => error_code::AGENTSFLEET_INSTALL_ROLLED_BACK,
             ErrorKind::Cursor => error_code::AUTHORING_CURSOR,
             ErrorKind::Validation { .. }
             | ErrorKind::Definition { .. }

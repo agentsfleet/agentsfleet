@@ -8,13 +8,12 @@
 //! makes a redelivery the same event, and so the same branch.
 
 use afd_admission::{Admission, Admissions, Admitted, Key, Producer};
-use afd_dragonfly::FleetStreams;
 use afd_gate::policy::repair;
 use afd_wire::event::EventType;
 
 use super::seed::seed_provider_resolution;
 use super::*;
-use crate::integration_admission_recovery::{admission, ledger};
+use crate::recovery_seed::{admission, ledger};
 
 /// One Slack mention, admitted as the mention route admits it.
 async fn admit_mention(ledger: &Admissions, fleet: &str, workspace: &str, key: &str) -> Admitted {
@@ -75,18 +74,12 @@ async fn one_slack_request_is_one_attempt() {
     let first_branch = repair::branch_for(&first.stored.id);
     assert!(answer.contains(&first_branch), "{first_branch}: {answer}");
 
-    // Three deliveries, two entries: the one leased and the one after it. The
-    // retry put nothing on the stream, so it can never be a second attempt.
-    let backlog = FleetStreams::new(fixtures.queue().clone())
-        .backlog(&fleet)
-        .await
-        .expect("the backlog reads")
-        .expect("the lease created the fleet's group");
-    assert_eq!(
-        (backlog.pending, backlog.undelivered),
-        (1, Some(1)),
-        "one entry leased, one waiting"
-    );
+    let mut connection = fixtures.database.acquire().await.expect("database");
+    let states: Vec<(bool,)> = sqlx::query_as(
+        "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1::uuid ORDER BY created_at, sequence"
+    ).bind(&fleet).fetch_all(&mut *connection).await.expect("queue state");
+    assert_eq!(states, [(true,), (false,)], "one delivered, one waiting");
+    drop(connection);
     // The second request authors elsewhere: its branch is named for its own
     // event, the name the lease path gives it (`deliver.rs`).
     assert_ne!(repair::branch_for(&second.stored.id), first_branch);

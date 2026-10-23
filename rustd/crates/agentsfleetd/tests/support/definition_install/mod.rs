@@ -37,7 +37,7 @@ use self::fleet::{enrol, install};
 pub(crate) use self::seed::seal;
 use self::seed::{fresh_installation, github_handle, seed_install, seed_workspace};
 use crate::e2e::{
-    DATABASE_LANE_KNOB, EPHEMERAL, READY_STREAM, Scenario, daemon_environment, lane, unique_ids,
+    DATABASE_LANE_KNOB, EPHEMERAL, SCENARIOS, Scenario, daemon_environment, lane, unique_ids,
 };
 use crate::e2e_db::scenario_database;
 use crate::e2e_event::enqueue;
@@ -79,7 +79,7 @@ pub(crate) struct Secret {
 
 /// Boots a daemon, installs the corpus fleet named `fleet_name` with `secrets`
 /// and the GitHub handle sealed beside them, enrols a runner, and puts one
-/// steer on its stream.
+/// steer in its admissions ledger.
 ///
 /// A steer for every fleet, webhook-triggered ones included: the pull path
 /// leases any event type it can name, and the scripted model, not the event
@@ -92,7 +92,7 @@ pub(crate) async fn install_definition(
     provider_base: Option<&str>,
 ) -> Scenario {
     install_subscriber();
-    let exclusive = READY_STREAM.lock().await;
+    let exclusive = SCENARIOS.lock().await;
     let booted = boot_minting(supervisor, provider_base).await;
     let now = afd_core::clock::now();
     let (_unused, workspace, tenant) = unique_ids();

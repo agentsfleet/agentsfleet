@@ -14,10 +14,10 @@ name and whose third is the backticked column list, under a `## <schema>`
 heading or naming its schema itself (`vault.secrets`). A parenthesised note
 after a column (`id (=1)`) is not part of its name.
 
-The schema side reads `CREATE TABLE <schema>.<table> (...)` and forward
-`ALTER TABLE ... ADD [COLUMN]` actions in numbered-slot order. Added columns
-must also appear in the doc. Duplicate additions without `IF NOT EXISTS`,
-unknown target tables, drops and renames are reported rather than guessed.
+The schema side applies CREATE TABLE, ADD COLUMN and DROP COLUMN in migration
+and statement order. Constraint changes do not change the column inventory.
+Unsupported ALTER forms and DROP TABLE fail explicitly rather than guessing
+the resulting layout.
 """
 
 from __future__ import annotations
@@ -35,12 +35,14 @@ Layout = dict[str, set[str]]
 HEADING = "## "
 CREATE = re.compile(r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_]+\.[a-z_]+)\s*\(", re.IGNORECASE)
 ALTER = re.compile(r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([a-z_]+\.[a-z_]+)\s+([^;]*)", re.IGNORECASE)
-RESHAPES = re.compile(r"\b(?:ADD\s+COLUMN|DROP\s+COLUMN|RENAME)\b|\bADD\s+(?!CONSTRAINT\b)", re.IGNORECASE)
+RESHAPES = re.compile(r"\bRENAME\b|\b(?:ADD|DROP)\s+(?!CONSTRAINT\b)", re.IGNORECASE)
 ADD_COLUMN = re.compile(
     r"ADD\s+(?:COLUMN\s+)?(?P<optional>IF\s+NOT\s+EXISTS\s+)?"
-    r'(?P<column>[a-z_][a-z0-9_]*|"[a-z_][a-z0-9_]*")\s+.+',
+    r'(?P<column>(?!(?:COLUMN|IF)\b)[a-z_][a-z0-9_]*|"[a-z_][a-z0-9_]*")\s+.+',
     re.IGNORECASE | re.DOTALL,
 )
+DROP_COLUMN = re.compile(r"DROP\s+COLUMN\s+([a-z_][a-z_0-9]*)(?:\s+(?:CASCADE|RESTRICT))?", re.IGNORECASE)
+CONSTRAINT_CHANGE = re.compile(r"(?:ADD|DROP)\s+CONSTRAINT\b", re.IGNORECASE)
 DROP = re.compile(r"\bDROP\s+TABLE\b", re.IGNORECASE)
 # The first word of a table element that is a constraint, never a column.
 TABLE_CONSTRAINTS = frozenset({"constraint", "primary", "unique", "check", "foreign", "exclude", "like"})
@@ -116,36 +118,37 @@ def top_level_elements(sql: str, open_paren: int, strict: bool = False) -> list[
     raise ValueError("the column list never closes")
 
 
-def added_columns(
-    alter: re.Match[str], where: str, layout: Layout, homes: dict[str, str]
-) -> list[str]:
-    """Apply only additive column actions; retain each column's migration source."""
-    name = alter.group(1).lower()
-    try:
-        actions = top_level_elements(f"({alter.group(2)})", 0, strict=True)
-    except ValueError as fault:
-        return [f"{where}: ALTER TABLE {name}: {fault}"]
-    problems = []
-    for action in actions:
-        if not RESHAPES.search(action):
+def created_columns(sql: str, create: re.Match[str]) -> set[str]:
+    elements = top_level_elements(sql, create.end() - 1)
+    columns = {element.split()[0].strip('"') for element in elements if element.split()}
+    return {column for column in columns if column.lower() not in TABLE_CONSTRAINTS}
+
+
+def alter_columns(layout: Layout, name: str, body: str, where: str, homes: dict[str, str]) -> None:
+    if name not in layout:
+        raise ValueError("table has not been created")
+    for element in top_level_elements(f"({body})", 0, strict=True):
+        clause = element.strip()
+        if CONSTRAINT_CHANGE.match(clause) or not RESHAPES.search(clause):
             continue
-        addition = ADD_COLUMN.fullmatch(action.strip())
-        if addition and addition.group("column").lower() in TABLE_CONSTRAINTS:
-            continue
-        if addition is None:
-            problems.append(f"{where}: ALTER TABLE {name} reshapes columns after the CREATE")
-            continue
-        if name not in layout:
-            problems.append(f"{where}: ALTER TABLE {name} has no prior CREATE")
-            continue
-        column = addition.group("column").strip('"')
-        if column in layout[name]:
-            if addition.group("optional") is None:
-                problems.append(f"{where}: {name}.{column} already exists")
-            continue
-        layout[name].add(column)
-        homes[f"{name}.{column}"] = where
-    return problems
+        if add := ADD_COLUMN.fullmatch(clause):
+            column = add.group("column").strip('"').lower()
+            if column in TABLE_CONSTRAINTS:
+                continue
+            if column in layout[name]:
+                if add.group("optional") is not None:
+                    continue
+                raise ValueError(f"column {column} already exists")
+            layout[name].add(column)
+            homes[f"{name}.{column}"] = where
+        elif drop := DROP_COLUMN.fullmatch(clause):
+            column = drop.group(1).lower()
+            if column not in layout[name]:
+                raise ValueError(f"column {column} does not exist")
+            layout[name].remove(column)
+            homes.pop(f"{name}.{column}", None)
+        else:
+            raise ValueError(f"unsupported column change: {clause}")
 
 
 def built(schema_dir: Path) -> tuple[Layout, dict[str, str], list[str]]:
@@ -155,20 +158,20 @@ def built(schema_dir: Path) -> tuple[Layout, dict[str, str], list[str]]:
     for path in sorted(schema_dir.glob("*.sql")):
         sql = without_comments(path.read_text(encoding="utf-8"))
         where = path.as_posix()
-        for create in CREATE.finditer(sql):
-            name = create.group(1).lower()
+        changes = sorted([*CREATE.finditer(sql), *ALTER.finditer(sql)], key=lambda item: item.start())
+        for change in changes:
+            name = change.group(1).lower()
+            operation = "CREATE" if change.re is CREATE else "ALTER"
             try:
-                elements = top_level_elements(sql, create.end() - 1)
+                if change.re is CREATE:
+                    if name in layout:
+                        raise ValueError(f"created twice: {homes[name]} and {where}")
+                    layout[name] = created_columns(sql, change)
+                    homes[name] = where
+                else:
+                    alter_columns(layout, name, change.group(2), where, homes)
             except ValueError as fault:
-                problems.append(f"{where}: CREATE TABLE {name}: {fault}")
-                continue
-            if name in layout:
-                problems.append(f"{name} is created twice: {homes[name]} and {where}")
-            columns = {element.split()[0].strip('"') for element in elements if element.split()}
-            layout[name] = {column for column in columns if column.lower() not in TABLE_CONSTRAINTS}
-            homes[name] = where
-        for alter in ALTER.finditer(sql):
-            problems += added_columns(alter, where, layout, homes)
+                problems.append(f"{where}: {operation} TABLE {name}: {fault}")
         if DROP.search(sql):
             problems.append(f"{where}: DROP TABLE removes a table after its CREATE")
     return layout, homes, problems

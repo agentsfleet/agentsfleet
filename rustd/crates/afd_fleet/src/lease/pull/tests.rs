@@ -25,28 +25,15 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
     );
 }
 
-/// A finished event whose acknowledgement the queue refused is still answered
-/// no work, and the warning's reason is the failure's sentence alone.
+/// A failed terminal settlement stays retryable instead of claiming success.
 #[tokio::test]
-async fn an_unacknowledged_terminal_reason_carries_no_code_prefix() {
-    use afd_core::test_util::trace::Capture;
-
-    let log = Capture::install();
-    test_dead::plane()
+async fn terminal_settlement_propagates_a_database_outage() {
+    let refused = test_dead::plane()
         .finished(&test_dead::acquired(), &test_dead::id(9))
         .await
-        .expect("a lost acknowledgement is logged, not raised");
-
-    let line = log.only(super::EVENT_TERMINAL_ACK_FAILED);
-    let reason = line.field("reason").unwrap_or_default();
-    assert!(
-        line.field("error_code")
-            .is_some_and(|code| !code.is_empty())
-    );
-    assert!(
-        !reason.is_empty() && !reason.contains("[UZ-"),
-        "the code is the line's `error_code`, never the reason's prefix: {reason}"
-    );
+        .err()
+        .expect("the durable settlement failed");
+    assert!(refused.is_datastore_unavailable(), "{refused}");
 }
 
 /// A fleet whose unreadable config cannot even be recorded is answered no

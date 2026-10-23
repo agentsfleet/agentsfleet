@@ -124,7 +124,7 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
 
 /// An open card parks the delivery; every other answer stops it.
 ///
-/// Parking clears the fleet's readiness mark, so only a card a person will
+/// Parking blocks the admission head, so only a card a person will
 /// answer may park: a retry that parked would wait on nobody.
 #[test]
 fn only_an_open_card_turns_the_answer_into_a_park() {

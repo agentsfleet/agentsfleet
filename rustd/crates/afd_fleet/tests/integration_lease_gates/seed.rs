@@ -103,7 +103,7 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
 }
 
 /// The workspace a seeded fleet belongs to.
-async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
+pub(super) async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
     let mut connection = fixtures
         .database
         .acquire()
@@ -154,9 +154,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
 /// Two writes, because the gate is two things. The DECISION is a
 /// `fleet.approval_gates` row keyed by `action_id`; the REFERENCE that
 /// points a poll at it is a Dragonfly key, and `Gates::check` reads the
-/// reference FIRST — a durable row with no reference is invisible to the verb,
-/// which is what an earlier revision of this suite discovered by watching a
-/// denied gate issue a perfectly good lease.
+/// reference first, then recovers it from the durable row on a cache miss.
 ///
 /// The reference is written through `Gates::record`, the production writer,
 /// rather than by forging the key by hand.
@@ -206,11 +204,9 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
 ///
 /// A different table read from [`seed_gate`]'s, despite the shared row: that
 /// one is answered through `Gates::check`, which reads a Dragonfly reference
-/// first, so a durable row alone is invisible to it. This one is read by
-/// `approved_write_gate` in plain SQL off `fleet.approval_gates`, so no
-/// reference is written here — and the absence is deliberate, because a
-/// reference would also put an EVENT gate in the verb's way and the case under
-/// test would stop on that instead.
+/// first and falls back to the durable event association. This one is also
+/// read by `approved_write_gate` in SQL off `fleet.approval_gates`; its approval
+/// allows the event to proceed when the reference is absent.
 ///
 /// Every clause the statement filters on is set rather than defaulted:
 /// `updated_at <= expires_at`, a non-null `stated_binding`, a non-null

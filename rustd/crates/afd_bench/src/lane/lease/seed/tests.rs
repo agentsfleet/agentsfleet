@@ -26,7 +26,7 @@ const LIVE_INDEX: u64 = 0x2000_0000;
 
 /// The fleet's admission rows, with whether each carries its receipt.
 const SELECT_ADMISSIONS: &str =
-    "SELECT id::text, receipt IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1::uuid";
+    "SELECT id::text, delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1::uuid";
 
 #[test]
 fn test_an_identifier_passes_the_schemas_version_check() {
@@ -98,29 +98,49 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
         .fetch_all(&mut *connection)
         .await
         .expect("the admissions read");
-    let [(admission, receipted)] = rows.as_slice() else {
+    let [(admission, delivered)] = rows.as_slice() else {
         panic!("one seeded event stands on exactly one admission row: {rows:?}");
     };
-    assert!(receipted, "the ledger recorded the append's receipt");
-    let first = stamp(&mut connection, &seeded.fleet, admission).await;
-    let again = stamp(&mut connection, &seeded.fleet, admission).await;
+    assert!(!delivered, "seeded work is still waiting");
     drop(connection);
-    sweep::everything(&database, &queue, &prefix)
+    let runner = super::runner(
+        &database,
+        &prefix.name("proof-host"),
+        &placement_tag(&prefix),
+        SEEDED_AT,
+    )
+    .await
+    .expect("fixture runner");
+    let leases = afd_fleet::lease::Leases::new(
+        database.clone(),
+        queue.clone(),
+        afd_crypto::entropy::Entropy::new(),
+    );
+    let acquired = leases
+        .select(&runner, &[])
         .await
-        .expect("the run's rows sweep");
-
-    assert_eq!(first, 1, "the delivery stamp meets exactly the seeded row");
-    assert_eq!(again, 0, "a stamped row is not stamped twice");
-}
-
-/// The lease path's delivery stamp on one admission row, answering how many
-/// rows it moved.
-async fn stamp(connection: &mut sqlx::PgConnection, fleet: &str, admission: &str) -> u64 {
-    sqlx::query(afd_admission::sql::MARK_DELIVERED)
-        .bind(fleet)
-        .bind(admission)
-        .execute(connection)
+        .expect("claim")
+        .expect("work");
+    assert_eq!(&acquired.event_id, admission);
+    let first = leases
+        .record_received(&acquired)
         .await
-        .expect("the stamp runs")
-        .rows_affected()
+        .expect("first delivery");
+    let again = leases
+        .record_received(&acquired)
+        .await
+        .expect("repeat delivery");
+    assert_eq!(first.delivery, afd_fleet::lease::Delivery::First);
+    assert_eq!(again.delivery, afd_fleet::lease::Delivery::Repeat);
+    let delivered: bool = sqlx::query_scalar(
+        "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid",
+    )
+    .bind(admission)
+    .fetch_one(&mut *database.acquire().await.expect("connection"))
+    .await
+    .expect("durable delivery");
+    assert!(delivered);
+    sweep::everything(&database, &prefix)
+        .await
+        .expect("owned fixtures sweep");
 }

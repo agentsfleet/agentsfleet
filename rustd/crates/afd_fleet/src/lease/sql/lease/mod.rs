@@ -79,69 +79,6 @@ pub const RELEASE_FLEET_SLOT: &str = include_str!("release_fleet_slot.sql");
 /// unhinted as before, so the starvation guard still covers it.
 pub const RELEASE_UNLEASED_SLOT: &str = include_str!("release_unleased_slot.sql");
 
-/// Reclaim the fleet's latest `active` lease: find it, expire it, and return
-/// what it was executing — in ONE statement.
-///
-/// Called only after a claim has been won, so the row it finds is unambiguously
-/// the dead holder's. The single statement is what makes the find and the
-/// expire inseparable: split in two, a concurrent sweep could expire the row
-/// between them and two runners would re-lease the same event.
-///
-/// The `tally` CTE rides along because this is the sole `active` → `expired`
-/// writer, so the lifetime counter can never drift from the rows it counts.
-///
-/// # The join is INNER on purpose
-///
-/// The body comes from `fleet.events` through the `(fleet_id, event_id)`
-/// unique key rather than from a column on the lease — the hottest write in the
-/// system does not duplicate the largest value in it. An event row deleted out
-/// from under a live lease therefore yields NO row here, and the caller takes
-/// fresh work instead of re-delivering an empty event. The status flip and the
-/// tally still commit in that case: a data-modifying CTE runs to completion
-/// whether or not the primary query reads its output, so the dead lease does
-/// not linger `active`.
-///
-/// `$1` fleet id, `$2` the active status, `$3` the expired status; stamps are `now()`.
-pub const RECLAIM_PRIOR_ACTIVE: &str = include_str!("reclaim_prior_active.sql");
-
-/// Eligible active fleets for one poll, cursor-first then sticky, bounded.
-///
-/// Readiness NARROWS the input; it never decides eligibility. The label gate
-/// and the sticky ordering are properties of this query — `required_tags <@
-/// labels` still filters (empty tags are a subset of any labels, so any runner
-/// qualifies) and the runner's own affinity still sorts first within its peek. The `$3`
-/// membership restriction is the readiness index's contribution, and `$4` is
-/// the ceiling that makes per-poll cost independent of how many fleets exist.
-///
-/// A slot a live runner holds is skipped: its claim would lose, and a fleet
-/// running a long reply keeps its mark the whole time, so without `$5` every
-/// poll that sampled it would spend a claim round trip finding that out. The
-/// comparison is the claim's own, so a slot the claim could win is never
-/// filtered. Ties break at random, so runners do not all race the oldest fleet
-/// and no fleet whose pass keeps stopping is tried first on every poll.
-///
-/// The runner's labels (stored JSONB) bind as a constant `TEXT[]` via the
-/// uncorrelated subquery, so `<@` stays a `column <@ constant` shape the
-/// `required_tags` GIN index can serve — not a column-to-column join, which no
-/// index serves.
-///
-/// A fleet another runner holds and can still lease is skipped the same way,
-/// by the claim's own hold condition (see [`CLAIM_FLEET_SLOT`]).
-///
-/// The cursor's partition's fleets (`$8`) sort ahead of the partition the
-/// readiness doorbell rang: a poll the rotation sends to a partition with work
-/// leases from it, so one rotation of polls still reaches every placeable
-/// fleet, and the rung partition gives what that partition leaves. The ids are cast inside
-/// a scalar subquery, which Postgres runs once per scan; cast in the sort key
-/// itself, a generic plan casts all of them again for every candidate row.
-/// The outer cast is what makes `ANY` read the subquery as one array.
-///
-/// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling,
-/// `$5` how long a silent runner stays live, `$6` the runner status that may
-/// lease, `$7` the ids among `$3` from the cursor's partition. Deadlines are
-/// read on `statement_timestamp()`.
-pub const SELECT_READY_CANDIDATES: &str = include_str!("select_ready_candidates.sql");
-
 /// What one lease authorises a mint to reach.
 ///
 /// Every clause in the `WHERE` is an authorisation, and the reason they are all

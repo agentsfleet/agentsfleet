@@ -16,7 +16,6 @@
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::{Renewed, Settled};
 
-use crate::queue;
 use crate::report_seed::held;
 
 /// How many times each race runs, so one lucky interleaving cannot pass it.
@@ -40,12 +39,14 @@ async fn line_numbers(fixtures: &crate::support::Fixtures, lease: &str) -> Vec<i
 /// The first line number the daemon's runtime lines take.
 const BASE: i64 = afd_wire::usage::DAEMON_SEQ_BASE as i64;
 
+const REQUEST_INPUT_TOKENS: u32 = 1_000;
+
 /// One provider request, numbered `seq`, as a runner reports it.
 fn request(held: &crate::report_seed::Held, seq: u32) -> afd_wire::usage::RequestUsage {
     afd_wire::usage::RequestUsage {
         seq,
         at: held.now,
-        input_tokens: 1_000,
+        input_tokens: REQUEST_INPUT_TOKENS,
         cached_input_tokens: 0,
         cache_write_tokens: 0,
         cache_write_5m_tokens: 0,
@@ -83,7 +84,6 @@ async fn two_reports_of_one_lease_log_one_final_line() {
         );
         assert_eq!(line_numbers(&held.fixtures, lease).await, [0, BASE]);
 
-        queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
         held.fixtures.cleanup().await;
     }
 }
@@ -155,7 +155,6 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
             );
         }
 
-        queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
         held.fixtures.cleanup().await;
     }
 }

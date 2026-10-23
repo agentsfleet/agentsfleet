@@ -35,13 +35,13 @@ WITH runner AS (
 )
 INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
-   receipt, posture, provider, model, last_metered_at, fencing_token, lease_expires_at,
+   posture, provider, model, last_metered_at, fencing_token, lease_expires_at,
    status, posted_message_count,
    created_at, updated_at)
 VALUES
-  ($6::uuid, $4::uuid, $3::uuid, $2::uuid, $1::uuid, $5::uuid, now(), $8, 'platform',
+  ($6::uuid, $4::uuid, $3::uuid, $2::uuid, $1::uuid, $5::uuid, now(), 'platform',
    'anthropic', 'model-a', now(), 2, now(), 'active', 0, now(), now()),
-  ($7::uuid, $4::uuid, $3::uuid, $2::uuid, $1::uuid, $5::uuid, now(), $8, 'platform',
+  ($7::uuid, $4::uuid, $3::uuid, $2::uuid, $1::uuid, $5::uuid, now(), 'platform',
    'anthropic', 'model-a', now(), 1, now(), 'reported', 0, now(), now())
 ";
 

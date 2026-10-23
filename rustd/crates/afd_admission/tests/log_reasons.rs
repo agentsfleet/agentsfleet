@@ -1,10 +1,9 @@
 //! What an admission says when neither datastore answers.
 //!
 //! No datastore, deliberately: the pool points at a reserved port and the
-//! queue at a loopback port nobody listens on. One admission walks three
-//! failure arms in order — the fleet backlog the queue would not report, the
-//! deployment ceiling the pool would not count, and the row the pool would not
-//! commit — and each says why in a `reason` free of the registry code, which
+//! queue at a loopback port nobody listens on. One admission walks two
+//! failure arms in order — the deployment ceiling the pool would not count,
+//! and the row the pool would not commit — and each says why in a `reason` free of the registry code, which
 //! the refusal line carries in its own field, and of a captured backtrace.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -62,7 +61,6 @@ async fn a_refused_admission_reason_carries_no_code_prefix() {
         .await
         .expect_err("a pool that will not answer commits nothing");
 
-    told_reason(&capture, "admission_backlog_unread");
     told_reason(&capture, "admission_ceiling_unread");
     told_reason(&capture, "admission_failed");
     assert_eq!(

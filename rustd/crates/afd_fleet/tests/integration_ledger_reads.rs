@@ -15,7 +15,6 @@ use afd_billing::limits::SELECT_FLEET_SPEND;
 use afd_db::config::DbRole;
 use sqlx::Row as _;
 
-use crate::queue;
 use crate::report_seed::held;
 
 /// The index the spend read must still be served by.
@@ -141,6 +140,5 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
          line ever written:\n{plan}"
     );
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }

@@ -26,7 +26,6 @@ use afd_approval::{
 };
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_dragonfly::ReadyIndex;
 use jiff::Timestamp;
 
 use crate::lane::{Lane, NOW};
@@ -103,11 +102,7 @@ async fn cards(lane: &Lane) -> Vec<(String, Option<String>, Option<String>)> {
 /// Any mark counts: the index mints each generation's token, so the value
 /// says only that a mark was written.
 async fn fleet_is_ready(lane: &Lane) -> bool {
-    ReadyIndex::new(lane.queue.clone())
-        .token_for(lane.fleet.as_str())
-        .await
-        .expect("the ready index is readable")
-        .is_some()
+    crate::tail_watch::delivery_unparked(lane).await
 }
 
 /// The action id of the one card this fleet holds.
@@ -133,6 +128,7 @@ async fn first_card_action(lane: &Lane) -> String {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_request_writes_the_grant_and_the_card_together() {
     let lane = Lane::isolated().await;
+    crate::tail_watch::park_delivery(&lane).await;
 
     assert_eq!(request(&lane).await, Requested::Raised);
 
@@ -162,6 +158,7 @@ async fn a_request_writes_the_grant_and_the_card_together() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_repeated_request_does_not_duplicate_the_grant() {
     let lane = Lane::isolated().await;
+    crate::tail_watch::park_delivery(&lane).await;
 
     assert_eq!(request(&lane).await, Requested::Raised);
     assert_eq!(request(&lane).await, Requested::Pending);
@@ -179,6 +176,7 @@ async fn a_repeated_request_does_not_duplicate_the_grant() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_redelivering_park_raises_one_card_not_one_per_second() {
     let lane = Lane::isolated().await;
+    crate::tail_watch::park_delivery(&lane).await;
 
     let mut outcomes = Vec::with_capacity(POLLS);
     for _poll in 0..POLLS {
@@ -202,6 +200,7 @@ async fn a_redelivering_park_raises_one_card_not_one_per_second() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn approving_the_card_grants_the_integration() {
     let lane = Lane::isolated().await;
+    crate::tail_watch::park_delivery(&lane).await;
     request(&lane).await;
     let action = first_card_action(&lane).await;
 
@@ -244,6 +243,7 @@ async fn approving_the_card_grants_the_integration() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn denying_the_card_revokes_the_grant() {
     let lane = Lane::isolated().await;
+    crate::tail_watch::park_delivery(&lane).await;
     request(&lane).await;
     let action = first_card_action(&lane).await;
 
@@ -276,6 +276,7 @@ async fn denying_the_card_revokes_the_grant() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approved_grant_raises_no_second_card() {
     let lane = Lane::isolated().await;
+    crate::tail_watch::park_delivery(&lane).await;
     request(&lane).await;
     let action = first_card_action(&lane).await;
     lane.inbox

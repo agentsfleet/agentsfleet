@@ -15,14 +15,11 @@
 //! fleets reference workspaces, workspaces reference tenants.
 
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, FleetStreams, OUTBOUND_STREAM_KEY, ReadyIndex};
+use afd_dragonfly::{Dragonfly, OUTBOUND_STREAM_KEY};
 
 use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};
 use crate::error::Result;
 use crate::fixture::RunPrefix;
-
-/// The fleet ids a run's prefix names.
-const SELECT_FLEET_IDS: &str = include_str!("sql/select_fleet_ids.sql");
 
 /// A run's runners, by the prefix in their host id.
 const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
@@ -52,36 +49,9 @@ fn like(prefix: &RunPrefix) -> String {
 /// Whatever Postgres or Dragonfly refused. A sweep that cannot finish is reported
 /// rather than swallowed: the whole point of the count in the result file is
 /// that somebody can see it did not match.
-pub async fn everything(database: &Db, queue: &Dragonfly, prefix: &RunPrefix) -> Result<u64> {
+pub async fn everything(database: &Db, prefix: &RunPrefix) -> Result<u64> {
     let pattern = like(prefix);
-    let fleets = fleet_ids(database, &pattern).await?;
-    forget_streams(queue, &fleets).await?;
     rows(database, &pattern).await
-}
-
-/// The fleet ids this run created, read before the rows go.
-async fn fleet_ids(database: &Db, pattern: &str) -> Result<Vec<String>> {
-    let mut connection = database.acquire().await?;
-    Ok(sqlx::query_scalar(SELECT_FLEET_IDS)
-        .bind(pattern)
-        .fetch_all(&mut *connection)
-        .await?)
-}
-
-/// Drop each fleet's stream and its readiness mark.
-///
-/// Dragonfly has no database-per-run equivalent: the readiness index is one hash at
-/// a fixed key and a stream is keyed by fleet, so this is the only isolation
-/// there is. A mark left behind would make the next run's first poll examine a
-/// fleet whose rows are gone.
-async fn forget_streams(queue: &Dragonfly, fleets: &[String]) -> Result<()> {
-    let streams = FleetStreams::new(queue.clone());
-    let ready = ReadyIndex::new(queue.clone());
-    for fleet in fleets {
-        ready.force_clear(fleet).await?;
-        streams.forget(fleet).await?;
-    }
-    Ok(())
 }
 
 /// Delete the rows, parents last, counting everything removed.

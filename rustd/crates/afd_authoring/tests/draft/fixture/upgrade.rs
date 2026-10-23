@@ -39,7 +39,12 @@ async fn dispatch_deadline_upgrade_preserves_old_rows_and_old_writers() {
         .run(&database)
         .await
         .expect("apply the new deadline slot to populated dispatches");
-    assert_eq!(upgraded.applied, [DEADLINE_SLOT]);
+    let expected: Vec<_> = MIGRATIONS
+        .iter()
+        .skip(preceding)
+        .map(afd_db::migration::Migration::version)
+        .collect();
+    assert_eq!(upgraded.applied, expected);
     assert_backfill(&f, &attempt).await;
 
     // The old process still writes its old column list after the release

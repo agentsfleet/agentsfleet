@@ -22,17 +22,6 @@
     "panelId": 2
   },
   {
-    "name": "ready-index-write-failure",
-    "title": "Ready-index writes failing",
-    "severity": "critical",
-    "for": "0s",
-    "noDataState": "Ok",
-    "execErrState": "Error",
-    "expr": "sum(increase(agentsfleet_fleet_ready_write_failures_total[5m])) > 0",
-    "summary": "The control plane failed to update the shared fleet readiness index.",
-    "panelId": 4
-  },
-  {
     "name": "runner-silent",
     "title": "Runner heartbeat overdue",
     "severity": "critical",

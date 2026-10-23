@@ -29,6 +29,7 @@ mod config_tls;
 mod config_tls_cert_files;
 #[path = "error_surface.rs"]
 mod error_surface;
+mod integration_admissions_queue;
 mod integration_catalogue_seeder;
 mod integration_migrate;
 #[path = "integration_migrate_batch.rs"]

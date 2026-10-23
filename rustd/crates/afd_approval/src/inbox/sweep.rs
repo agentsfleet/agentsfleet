@@ -4,15 +4,8 @@
 //! in one statement and then owes the tail one frame per row. The statement
 //! hands back each row's fleet, event and the fleet's count after the sweep;
 //! the loop below reads the fleet's counters and wakes the fleet once per
-//! distinct fleet, then decodes and announces. A backlog of N expired gates
-//! across F fleets costs F key lookups and F marks, not N.
-//!
-//! # Every swept fleet is woken
-//!
-//! A delivery parked on a gate cleared its fleet's readiness mark, because
-//! the answer was going to re-mark it. An expiry IS that answer, and nobody
-//! else gives it: without the mark, no poll reads the lapsed gate and the
-//! parked delivery never ends.
+//! distinct fleet, then decodes and announces. Expiry clears the admission's
+//! park stamp in Postgres. A failed wake cannot hide the admission from polls.
 //!
 //! # The rows decode by construction
 //!
@@ -120,7 +113,7 @@ impl Inbox {
         let counters = if let Some(counters) = read.get(&swept.fleet) {
             *counters
         } else {
-            self.wake_parked_delivery(&swept.fleet, &swept.gate).await;
+            self.wake_parked_delivery(&swept.fleet).await;
             let counters =
                 afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
             read.insert(swept.fleet.clone(), counters);

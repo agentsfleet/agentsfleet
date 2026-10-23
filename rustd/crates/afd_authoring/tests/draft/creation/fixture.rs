@@ -15,17 +15,14 @@ use afd_core::{
 };
 use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_dragonfly::{
-    Dragonfly, FleetStreams, ReadyIndex,
+    Dragonfly,
     config::{DragonflyConfig, DragonflyRole},
 };
 use serde_json::json;
 use std::sync::Arc;
 
 /// What [`Case::admissions`] reads for a fleet that admitted nothing.
-pub(super) const NO_ADMISSIONS: [(String, Option<String>); 0] = [];
-
-/// What [`Case::stream_events`] reads for a fleet nothing was appended to.
-pub(super) const NO_EVENTS: [String; 0] = [];
+pub(super) const NO_ADMISSIONS: [String; 0] = [];
 
 /// The state `saved` reports for its setup check of `kind`.
 pub(super) fn check<'a>(saved: &'a SavedFleet, kind: &str) -> &'a str {
@@ -70,7 +67,7 @@ impl Case {
             .expect("fixture encryption key");
         let setup = Setup::new(base.drafts.clone(), Arc::new(key));
         let admissions = Admissions::new(base.db.clone(), queue.clone(), Entropy::new());
-        let creations = Creations::new(setup.clone(), queue.clone(), admissions);
+        let creations = Creations::new(setup.clone(), admissions);
         Self {
             base,
             setup,
@@ -133,25 +130,14 @@ impl Case {
             .expect("retained Save")
     }
 
-    pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<(String, Option<String>)> {
-        sqlx::query_as("SELECT id::text,receipt FROM fleet.admissions WHERE fleet_id=$1::uuid ORDER BY sequence")
-            .bind(fleet.as_str()).fetch_all(&mut *self.base.connection().await).await.expect("durable admissions")
-    }
-
-    /// The logical event ID every physical entry on `fleet`'s stream carries.
-    /// A replayed append may land twice under one ID; a second run never does.
-    pub(super) async fn stream_events(&self, fleet: &Uuid7) -> Vec<String> {
-        afd_dragonfly::test_util::fleet_entries(&self.queue, fleet.as_str())
-            .await
-            .expect("read the fleet stream")
-            .iter()
-            .map(|entry| {
-                entry
-                    .field(afd_wire::event::field::EVENT_ID)
-                    .expect("every entry names its event")
-                    .to_owned()
-            })
-            .collect()
+    pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<String> {
+        sqlx::query_scalar(
+            "SELECT id::text FROM fleet.admissions WHERE fleet_id=$1::uuid ORDER BY sequence",
+        )
+        .bind(fleet.as_str())
+        .fetch_all(&mut *self.base.connection().await)
+        .await
+        .expect("durable admissions")
     }
 
     pub(super) async fn fleet_count(&self) -> i64 {
@@ -163,22 +149,6 @@ impl Case {
     }
 
     pub(super) async fn cleanup(self) {
-        let fleets: Vec<String> =
-            sqlx::query_scalar("SELECT id::text FROM fleet.fleets WHERE workspace_id=$1::uuid")
-                .bind(self.base.workspace.as_str())
-                .fetch_all(&mut *self.base.connection().await)
-                .await
-                .expect("owned streams");
-        for fleet in fleets {
-            FleetStreams::new(self.queue.clone())
-                .forget(&fleet)
-                .await
-                .expect("remove owned stream");
-            ReadyIndex::new(self.queue.clone())
-                .force_clear(&fleet)
-                .await
-                .expect("remove owned hint");
-        }
         self.base.cleanup().await;
     }
 }

@@ -13,7 +13,7 @@
 use std::time::Duration;
 
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::{Doorbell, ReadyPrefix, SubscriptionHub};
+use afd_dragonfly::{Doorbell, SubscriptionHub};
 use backon::ExponentialBuilder;
 
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
@@ -58,7 +58,7 @@ async fn test_a_cluster_refusing_resubscribes_is_redialled_on_a_climbing_wait() 
     .expect("the fake serves, so the hub must start")
     .expect("the fake serves, so the hub must start");
     let doorbell = Doorbell::new();
-    doorbell.listen(&hub, &ReadyPrefix::production());
+    doorbell.listen(&hub);
     until("the doorbell's subscribes to reach the server", || {
         server.seen().iter().any(|command| command == "SSUBSCRIBE")
     })

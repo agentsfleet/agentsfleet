@@ -1,7 +1,7 @@
 //! A capable host with one issued runtime lease, using the real lease store.
 
 use crate::{
-    queue, requests,
+    requests,
     seed::{self, Seeded},
     support::Fixtures,
 };
@@ -62,7 +62,7 @@ impl Running {
             .await
             .expect("host proves its assigned enforcement");
         let leases = fixtures.leases();
-        let acquired = seed::select_fleet_within_rotations(&leases, &runner, &fleet)
+        let acquired = seed::select_fleet(&leases, &runner, &fleet)
             .await
             .expect("a fresh affinity is selected");
         leases
@@ -120,7 +120,6 @@ impl Running {
     }
 
     pub(super) async fn cleanup(self) {
-        queue::clear_ready(self.fixtures.queue(), &self.fleet).await;
         self.fixtures.cleanup().await;
     }
 }

@@ -6,7 +6,6 @@
 )]
 
 use crate::integration_held_sandbox::report::processed;
-use crate::queue;
 use crate::report_seed;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
@@ -128,7 +127,6 @@ async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
     assert_eq!(malformed.code(), error_code::RUN_BUDGET_EXCEEDED);
 
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -159,7 +157,6 @@ async fn a_fleet_killed_mid_run_keeps_its_breached_ceiling() {
     assert_eq!(still_refused.code(), error_code::RUN_BUDGET_EXCEEDED);
 
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -180,7 +177,6 @@ async fn a_fleet_killed_mid_run_with_room_still_renews() {
         .expect("a killed fleet's run with room left keeps renewing");
 
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -225,7 +221,6 @@ async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
     );
 
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -275,7 +270,6 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     drop(log);
     held.fixtures.set_catalogue_readable(true).await;
 
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 

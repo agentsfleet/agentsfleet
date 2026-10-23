@@ -33,10 +33,10 @@ VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,1,1,$1,'{}
 
 const RUNTIME: &str = "\
 INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,fleet_event_id,
-event_created_at,receipt,posture,provider,model,last_metered_at,fencing_token,
+event_created_at,posture,provider,model,last_metered_at,fencing_token,
 lease_expires_at,status,
 posted_message_count,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,now(),'1-0','platform','test',
+VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,now(),'platform','test',
 'test',now(),1,now()+interval '1 minute','active',0,now(),now())";
 
 /// The event the runtime lease executes: a chat a person sent, received.

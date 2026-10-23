@@ -27,7 +27,6 @@ use afd_wire::lease::AcceptedKinds;
 use afd_wire::report::{Outcome, RenewRequest, ReportRequest};
 
 use crate::integration_held_sandbox::report::processed;
-use crate::queue;
 use crate::report_seed::{Held, held};
 
 /// A host's degraded verdict, which bars it from claiming and renewing alike.
@@ -135,7 +134,6 @@ async fn test_a_renewal_its_host_or_its_lease_no_longer_allows_is_lost() {
     assert_eq!(degraded.err().map(|error| error.code()), lost);
     assert_eq!(reported.err().map(|error| error.code()), lost);
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -157,7 +155,6 @@ async fn test_a_renewal_that_measured_nothing_charges_nothing() {
 
     assert_eq!(charged, Nanos::ZERO);
     assert!(expires_at > held.now, "the deadline moved forward");
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -227,7 +224,6 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     .await
     .expect("the holds count");
     assert_eq!(open, 0, "the failed run's hold is released");
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }
 
@@ -263,6 +259,5 @@ async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
     assert!(answer.contains("\"lease\":null"), "{answer}");
     assert_eq!(line.field("runner_id"), Some(stranger.as_str()));
     drop(plane);
-    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
 }

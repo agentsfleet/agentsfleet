@@ -12,7 +12,7 @@
 /// own token.
 ///
 /// The lock is what makes the check hold until the write commits. A settle
-/// (`CLAIM_AND_SETTLE` takes `FOR UPDATE OF l`) and a reclaim both change this
+/// (`METER_LEASE` takes `FOR UPDATE OF l`) and a reclaim both change this
 /// row, so neither can supersede the lease between this check and the upsert —
 /// and a stale holder cannot write records after the settle that would have
 /// deleted them. It also serialises two posts of one lease, so they cannot both

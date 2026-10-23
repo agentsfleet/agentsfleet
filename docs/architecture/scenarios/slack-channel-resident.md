@@ -23,8 +23,12 @@ sequenceDiagram
   Lead->>Slack: @agentsfleet what's our prod called? (thread A)
   Slack->>API: POST /v1/connectors/slack/events (v0 Hash-based Message Authentication Code (HMAC)) ✅
   API->>PG: resolve team→workspace; materialise the channel fleet as native system setup (resident.md instructions) ✅
-  API->>API: admit producer slack_mention, key <team_id>:<event_id>, actor=slack:<user> → XADD fleet:{channel_fleet_id}:events ✅
-  Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ♻️
+  API->>PG: commit slack_mention admission for channel_fleet_id ✅
+  Note over API,PG: key <team_id>:<event_id>, actor=slack:<user>
+  API->>API: attempt best-effort wake notification
+  Runner->>API: poll for a lease
+  API->>PG: claim ledger head and fleet slot atomically
+  Runner->>API: run; GET /me/memory/{channel_fleet_id} (empty) ♻️
   Runner->>API: report "don't know yet — tell me?"
   API->>Slack: chat.postMessage thread_ts=A (outbound poster) ✅
   Lead->>Slack: it's "aurora" (thread A)
@@ -54,7 +58,11 @@ The first `@mention` in `#support` materialises a **durable per-channel resident
 
 ## 3. Mention → steer → answer (one reasoning loop)
 
-A mention is a `slack:<user>` event admitted under producer `slack_mention`, keyed `<team_id>:<event_id>` (`rustd/crates/afd_ingress/src/slack/admit.rs:59`), on `fleet:{channel_fleet_id}:events`, the **same** single ingress as webhook, cron and steer ([`../data_flow.md`](../data_flow.md) §"B. TRIGGER"). On lease, the runner hydrates the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`); the runner's agent loop ([`../runner_execution.md`](../runner_execution.md#process-model)) answers from that memory plus the live thread context (it holds no tools and no credentials); the daemon's outbound poster posts the answer with `chat.postMessage thread_ts=<originating>` (`afd_outbound/src/slack/mod.rs`). Before the report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The hydrate/capture loop is **reused unchanged** from [`../runner_fleet.md`](../runner_fleet.md) §"Memory continuity".
+A mention creates a `slack:<user>` event under producer `slack_mention`, keyed `<team_id>:<event_id>` (`rustd/crates/afd_ingress/src/slack/admit.rs:59`). It enters `fleet.admissions` through the same ingress as webhook, cron and steer ([`../data_flow.md`](../data_flow.md) §"B. TRIGGER").
+
+On lease, the runner loads the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`). The [agent loop](../runner_execution.md#process-model) answers from that memory and the live thread context, with no tools or credentials. The daemon's outbound poster sends the answer with `chat.postMessage thread_ts=<originating>` (`afd_outbound/src/slack/mod.rs`).
+
+Before the report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The load/capture loop reuses [`../runner_fleet.md`](../runner_fleet.md) §"Memory continuity" unchanged.
 
 ## 4. The cross-thread payoff
 

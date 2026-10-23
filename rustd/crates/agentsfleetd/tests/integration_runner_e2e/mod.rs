@@ -18,7 +18,8 @@
 //!
 //! # Where row shapes are checked
 //!
-//! `test_seeded_row_shapes`, in `integration_runner_shapes.rs`, pins each
+//! `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows`, in
+//! `integration_runner_shapes.rs`, pins each
 //! statement's own output as a recorded shape: every row carries the columns
 //! its statement was written to fill.
 //!

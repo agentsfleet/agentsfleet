@@ -19,12 +19,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use crate::queue;
 use crate::seed;
 use crate::support;
 use afd_fleet::lease::Kind;
 
-use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, Seeded, seeded, seeded_parts};
+use self::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, Seeded, seeded};
 use self::support::Fixtures;
 use crate::rows::{LAPSE, Row};
 
@@ -44,7 +43,7 @@ async fn test_select_assigns_a_ready_fleets_event() {
         ..
     } = seeded::<1>(&fixtures).await;
 
-    let acquired = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
+    let acquired = crate::seed::select_fleet(&fixtures.leases(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
 
@@ -68,7 +67,6 @@ async fn test_select_assigns_a_ready_fleets_event() {
         "a fleet leased for the first time opens at fence one"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }
 
@@ -80,24 +78,22 @@ async fn test_select_assigns_a_ready_fleets_event() {
 /// NOT leased while its readiness mark is absent.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_an_unmarked_fleet_is_not_discovered() {
+async fn test_a_fleet_is_discovered_without_any_notification() {
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded {
         runners: [runner],
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    queue::clear_ready(fixtures.queue(), &fleet).await;
 
     // A full rotation, because one poll proves nothing: since §4 it samples ONE
     // of sixteen partitions, so a single `None` is as likely to mean "wrong
     // partition" as "nothing marked". A rotation visits every partition once.
-    let acquired =
-        crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet).await;
+    let acquired = crate::seed::select_fleet(&fixtures.leases(), &runner, &fleet).await;
 
     assert!(
-        acquired.is_none(),
-        "readiness is how a fleet is discovered; an unmarked one is invisible to the poll"
+        acquired.is_some(),
+        "the ledger probe discovers work without a notification"
     );
 
     fixtures.cleanup().await;
@@ -134,13 +130,13 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
 
-    let held = crate::seed::select_fleet_within_rotations(&leases, &first, &fleet)
+    let held = crate::seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
 
     // A full rotation: one poll could miss the claimed fleet's partition and
     // answer `None` for a reason that has nothing to do with the claim.
-    let refused = crate::seed::select_fleet_within_rotations(&leases, &second, &fleet).await;
+    let refused = crate::seed::select_fleet(&leases, &second, &fleet).await;
     assert!(
         refused.is_none(),
         "one fleet, one holder — the second runner polls on"
@@ -154,7 +150,7 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     // Scoped like the two acquisitions above it. `seeded::<2>` leaves a second
     // fleet leasable, so an unscoped poll could win THAT one and then be
     // compared, event id and fence, against a claim it never displaced.
-    let regained = crate::seed::select_fleet_within_rotations(&leases, &second, &fleet)
+    let regained = crate::seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 
@@ -175,128 +171,5 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
          see this test's own documentation"
     );
 
-    queue::clear_ready(fixtures.queue(), &fleet).await;
-    fixtures.cleanup().await;
-}
-
-/// An entry no reader can decode is dropped, and the fleet stays leasable.
-///
-/// This is the failure the wire fix would otherwise have left behind. Entries
-/// in the cutover-era shape are on real streams now, and nothing re-offers a
-/// delivered entry: `XREADGROUP >` skips it, the reclaim sweeper claims it back
-/// into this consumer every pass, and pending-first hands it out again as the
-/// oldest entry on every poll that wins the fleet. Refusing it without
-/// acknowledging it therefore does not cost one event — it costs the fleet, and
-/// every event queued behind it, permanently.
-///
-/// The second poll is the whole assertion. A first poll returning `None` proves
-/// only that the pass did not fault; it is the SECOND one, reaching the good
-/// entry behind the poison, that proves the poison is gone rather than merely
-/// stepped over.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_an_undecodable_entry_is_dropped_so_the_fleet_stays_leasable() {
-    let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-
-    let poison = queue::enqueue_cutover_era(
-        fixtures.queue(),
-        &fleet,
-        &workspace,
-        ACTOR,
-        EVENT_TYPE,
-        REQUEST_JSON,
-    )
-    .await;
-    let good = queue::enqueue(
-        fixtures.queue(),
-        &fleet,
-        &workspace,
-        ACTOR,
-        EVENT_TYPE,
-        REQUEST_JSON,
-        fixtures.enrolled_at(),
-    )
-    .await;
-    assert_ne!(poison, good, "the fixture must append two distinct entries");
-
-    // One rotation visits this fleet's partition exactly once, so the poison is
-    // met once and dropped, and the rotation ends with nothing leasable.
-    let first = crate::seed::select_within_one_rotation(&fixtures.leases(), &runner).await;
-    assert!(
-        first.is_none(),
-        "the poll meets the undecodable entry first and has nothing to lease yet"
-    );
-
-    // Narrowed to THIS fleet, unlike the poll above: the assertion that follows
-    // names this fleet's own entry, and the readiness cursor is process-global,
-    // so an unnarrowed poll can answer a sibling suite's work and fail here for
-    // a reason that has nothing to do with the poison.
-    let second = crate::seed::select_fleet_within_rotations(&fixtures.leases(), &runner, &fleet)
-        .await
-        .expect("the fleet must still be leasable once the undecodable entry is gone");
-    assert_eq!(
-        second.event_id, good,
-        "the entry behind the poison must be reachable; if this is the poison id \
-         again, it was refused without being acknowledged and the fleet is wedged"
-    );
-}
-
-/// A fault after the claim is won frees the claim before the poll raises it.
-///
-/// The fault is a stream the takeover cannot read: a string where the fleet's
-/// events belong answers every stream command with a type error. Before the
-/// fix that error left the slot held for the whole claim lifetime, and the
-/// held-slot filter hid the fleet from every runner until it lapsed. One
-/// millisecond later is the earliest a freed slot is winnable again, because
-/// `release` sets `leased_until = now` and the claim admits `leased_until < now`.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_fault_after_the_claim_frees_the_claim() {
-    // Several rotations, for the reason `select_fleet_within_rotations` gives.
-    const ROTATIONS: u16 = 8;
-    let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [first, second]) = seeded_parts::<2>(&fixtures).await;
-    let key = afd_dragonfly::fleet_stream_key(&fleet);
-    let mut poison = redis::cmd("SET");
-    poison.arg(&key).arg("not a stream");
-    let () = fixtures
-        .queue()
-        .command("SET", &key, &poison)
-        .await
-        .expect("the lane's Dragonfly takes a plain write");
-    queue::mark_ready(fixtures.queue(), &fleet).await;
-    let leases = fixtures.leases();
-
-    let mut faulted = false;
-    for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
-        if leases.select(&first, &[]).await.is_err() {
-            faulted = true;
-            break;
-        }
-    }
-    assert!(
-        faulted,
-        "the poll that wins the fleet must meet the unreadable stream"
-    );
-
-    let fleet_id = afd_core::id::Uuid7::parse(&fleet).expect("a seeded fleet id parses");
-    let regained = leases
-        .claim(&fleet_id, &second, afd_core::timing::LEASE_TTL)
-        .await
-        .expect("the claim statement answers");
-    assert!(
-        regained.is_some(),
-        "the faulted poll must free its claim; a held slot hides the fleet for a full TTL"
-    );
-
-    let mut clear = redis::cmd("DEL");
-    clear.arg(&key);
-    let _removed: i64 = fixtures
-        .queue()
-        .command("DEL", &key, &clear)
-        .await
-        .expect("the poison key is removed");
-    queue::clear_ready(fixtures.queue(), &fleet).await;
     fixtures.cleanup().await;
 }

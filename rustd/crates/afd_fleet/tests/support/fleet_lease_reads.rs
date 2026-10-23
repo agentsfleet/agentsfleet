@@ -83,8 +83,8 @@ impl Fixtures {
     /// tenant and workspace it belongs to.
     ///
     /// The tag is what keeps the lease suites apart on one shared database.
-    /// `Leases::select` peeks the GLOBAL readiness set and filters candidates
-    /// by `required_tags <@ labels`, so a fleet seeded with no tag is placeable
+    /// `Leases::select` filters candidates by `required_tags <@ labels`,
+    /// so a fleet seeded with no tag is placeable
     /// by every other test's runner, and two suites polling at once trade
     /// fleets. Isolating through the production filter leaves the assignment
     /// pass under test rather than around it.

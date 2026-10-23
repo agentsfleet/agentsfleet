@@ -101,7 +101,7 @@ impl Fixtures {
     /// The same as [`Fixtures::create_isolated`], plus the lane's Dragonfly.
     ///
     /// The pairing a deployment-WIDE assertion needs. A budget counted across
-    /// every unconfirmed row in the database cannot be proven to clear on the
+    /// every unsettled row in the database cannot be proven to clear on the
     /// shared lane, where a sibling suite's deferred row keeps the count up;
     /// a private database makes this test the only writer of the number it
     /// asserts on. Dragonfly stays shared, which is harmless — its keys are
@@ -206,7 +206,7 @@ impl Fixtures {
         Gates::new(self.database.clone(), self.queue().clone(), Entropy::new())
     }
 
-    /// The queue handle, for the suites that seed a stream or a readiness mark.
+    /// Dragonfly for tests reading activity frames or outbound delivery.
     pub(crate) fn queue(&self) -> &Dragonfly {
         self.queue
             .as_ref()
