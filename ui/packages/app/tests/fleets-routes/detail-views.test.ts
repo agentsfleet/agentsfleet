@@ -2,6 +2,7 @@ import { FLEET_ID } from "../helpers/draft-fixtures";
 import { detailBody, detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { render } from "@testing-library/react";
 import { fetchMock, authMock as auth, listTenantWorkspacesCached } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail views", () => {
@@ -63,12 +64,11 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        searchParams: Promise.resolve({ view: "events", ps: "50" }),
-      }),
-    );
+    const page = await Page({
+      params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
+      searchParams: Promise.resolve({ view: "events", ps: "50" }),
+    });
+    const markup = renderToStaticMarkup(page);
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
     expect(urls).toContainEqual(
       expect.stringContaining(`/fleets/${FLEET_ID}/events?limit=50`),
@@ -77,6 +77,8 @@ describe("fleets routes — detail views", () => {
     expect(markup).toContain(
       `href="/w/ws_1/fleets/${FLEET_ID}?view=events" aria-current="page"`,
     );
+    const { findByText } = render(page);
+    expect(await findByText("Fleet activity appears here.")).toBeTruthy();
   });
 
   it("fleet Activity view threads the URL cursor into the events fetch", async () => {
