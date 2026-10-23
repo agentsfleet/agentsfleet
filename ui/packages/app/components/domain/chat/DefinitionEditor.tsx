@@ -2,20 +2,25 @@
 
 import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Alert, Button, Input, Label, Textarea } from "@agentsfleet/design-system";
 import { DefinitionSchema, DRAFT_STATE } from "@/lib/api/draft-types";
 import { draftTriggerError } from "@/lib/api/draft-triggers";
 import { setupErrorMessage } from "@/lib/api/draft-request";
+import { chatRecovery } from "@/lib/api/draft-recovery";
 import { initialDefinition } from "./chat-defaults";
 
-export function DefinitionEditor({client, view, onUpdated}: {client: DraftClient; view: DraftView; onUpdated: () => void}) {
+export function DefinitionEditor({client, view, onUpdated, onDirtyChange}: {client: DraftClient; view: DraftView; onUpdated: () => void; onDirtyChange?: (dirty: boolean) => void}) {
   const inputId = useId();
   const initial = view.draft?.candidate?.definition ?? view.preview?.definition ?? initialDefinition();
   const [instructions, setInstructions] = useState(initial.instructions_md);
   const [config, setConfig] = useState(JSON.stringify(initial.config, null, 2));
   const [name, setName] = useState(view.draft?.review?.effective.instance_name ?? view.preview?.instanceName ?? String(initial.config.name));
   const [error, setError] = useState<string | null>(null);
+  const dirty = instructions !== initial.instructions_md || config !== JSON.stringify(initial.config, null, 2)
+    || name !== (view.draft?.review?.effective.instance_name ?? view.preview?.instanceName ?? String(initial.config.name));
+  useEffect(() => {onDirtyChange?.(dirty);}, [dirty, onDirtyChange]);
+  const recovery = chatRecovery(view);
   const apply = async (): Promise<void> => {
     setError(null);
     try {
@@ -35,6 +40,6 @@ export function DefinitionEditor({client, view, onUpdated}: {client: DraftClient
     <div className="space-y-xs"><Label htmlFor={`${inputId}-instructions`}>Instructions</Label><Textarea id={`${inputId}-instructions`} rows={8} value={instructions} onChange={(event) => setInstructions(event.target.value)} /></div>
     <div className="space-y-xs"><Label htmlFor={`${inputId}-config`}>Runtime config</Label><Textarea id={`${inputId}-config`} rows={10} className="font-mono" value={config} onChange={(event) => setConfig(event.target.value)} /></div>
     {error ? <Alert variant="destructive">{error}</Alert> : null}
-    <Button disabled={view.busy || view.pending || Boolean(view.draft && (!view.draft.candidate || view.draft.state !== DRAFT_STATE.editing))} onClick={() => { void apply(); }}>Update instructions</Button>
+    <Button disabled={view.busy || view.pending || recovery.pending || recovery.blocked || Boolean(view.draft && (!view.draft.candidate || view.draft.state !== DRAFT_STATE.editing))} onClick={() => { void apply(); }}>Update instructions</Button>
   </div>;
 }

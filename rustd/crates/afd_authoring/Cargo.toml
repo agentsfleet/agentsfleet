@@ -19,6 +19,7 @@ afd_billing.workspace = true
 afd_identity.workspace = true
 afd_crypto.workspace = true
 afd_db.workspace = true
+afd_dragonfly.workspace = true
 afd_credential.workspace = true
 afd_connector.workspace = true
 afd_fleet_runtime.workspace = true
@@ -40,6 +41,7 @@ hex.workspace = true
 # jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true
+moka.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -47,13 +49,18 @@ reqwest.workspace = true
 rig-core.workspace = true
 http.workspace = true
 futures-util.workspace = true
+bytes.workspace = true
 subtle.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["net", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# One isolated allocator observer also checks the runner's public secret owner.
+afr_secrets.workspace = true
 afd_runner = { workspace = true, features = ["test-util"] }
 afd_approval = { workspace = true, features = ["test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }
@@ -66,7 +73,7 @@ afd_crypto = { workspace = true, features = ["test-util"] }
 # The fleet purge, so the deletion-matrix test (Dimension 4.1) drives both
 # erasure roots from one fixture. Already in the tree through afd_approval.
 afd_fleet_lifecycle.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "test-util"] }
 
 [features]
 test-util = ["afd_db/test-util"]
@@ -77,3 +84,7 @@ workspace = true
 [[test]]
 name = "authoring_suite"
 path = "tests/authoring_suite.rs"
+
+[[test]]
+name = "secret_wiping"
+path = "tests/secret_wiping.rs"

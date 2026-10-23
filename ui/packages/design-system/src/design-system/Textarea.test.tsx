@@ -34,6 +34,19 @@ describe("Textarea", () => {
     expect(screen.getByTestId("t")).toBeDisabled();
   });
 
+  it("keeps composer typing and focus on the textarea", () => {
+    const ref = { current: null as HTMLTextAreaElement | null };
+    const changed = vi.fn();
+    render(<Textarea appearance="composer" ref={ref} aria-label="Message" onChange={changed} />);
+    const field = screen.getByRole("textbox", { name: "Message" });
+    ref.current?.focus();
+    fireEvent.change(field, { target: { value: "Watch the build" } });
+    expect(field).toHaveFocus();
+    expect(field).toHaveValue("Watch the build");
+    expect(changed).toHaveBeenCalledOnce();
+    expect(field).not.toHaveAttribute("appearance");
+  });
+
   it("forwards ref to the underlying <textarea>", () => {
     const ref = { current: null as HTMLTextAreaElement | null };
     render(<Textarea ref={ref} />);

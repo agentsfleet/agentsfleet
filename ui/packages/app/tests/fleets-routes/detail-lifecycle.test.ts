@@ -78,25 +78,10 @@ describe("fleets routes — detail lifecycle states", () => {
     expect(markup).not.toContain("Pending approvals");
   });
 
-  it("fleet Setup view degrades cleanly and never renders a webhook box", async () => {
-    const respond = mockFetchBilling(happyBilling);
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes("/approvals")) throw new Error("approvals down");
-      if (url.includes("/memories")) throw new Error("memories down");
-      if (url.includes("/events")) throw new Error("events down");
-      return respond(url);
-    });
-    const { default: Page } =
-      await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        searchParams: Promise.resolve({ view: "setup" }),
-      }),
-    );
-    expect(markup).toContain(agentDisplayName(FLEET_ID));
-    expect(markup).toContain("Schedule");
-    expect(markup).toContain("No schedule set.");
-    expect(markup).not.toContain("Webhook URL");
+  it("redirects the removed Setup view to fleet Chat", async () => {
+    mockFetchBilling(happyBilling);
+    const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    await expect(Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID}),
+      searchParams: Promise.resolve({view: "setup"})})).rejects.toThrow(`redirect:/w/ws_1/fleets/${FLEET_ID}`);
   });
 });

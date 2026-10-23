@@ -28,10 +28,11 @@ export function BalanceLink({
   balanceNanos: string;
   isExhausted: boolean;
 }) {
+  const balance = formatHeaderBalance(balanceNanos);
   return (
     <Link
       href={BALANCE_HREF}
-      aria-label={isExhausted ? BALANCE_EXHAUSTED_ARIA_LABEL : BALANCE_ARIA_LABEL}
+      aria-label={`${BALANCE_LABEL} ${balance}: ${isExhausted ? BALANCE_EXHAUSTED_ARIA_LABEL : BALANCE_ARIA_LABEL}`}
       data-exhausted={isExhausted ? "true" : undefined}
       className={cn(
         "hidden h-8 shrink-0 items-center gap-sm rounded-md border px-md no-underline sm:inline-flex",
@@ -50,7 +51,7 @@ export function BalanceLink({
           isExhausted ? "text-destructive" : "text-info",
         )}
       >
-        {formatHeaderBalance(balanceNanos)}
+        {balance}
       </span>
     </Link>
   );

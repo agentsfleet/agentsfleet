@@ -5,6 +5,8 @@ import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility
 
 const WIDTHS = [1440, 390, 320];
 const CREATE_WORKSPACE = "Create workspace";
+// Contrast is measured at rest; animation timing has separate browser checks.
+test.use({reducedMotion: "reduce"});
 
 for (const width of WIDTHS) {
   test(`workspace menu and creation preserve accessibility and keyboard focus at ${width}px`, async ({ page }) => {
@@ -12,8 +14,10 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
-    await expect(page.getByRole("button", { name: "Open user menu" })).toBeVisible();
-    const opener = page.getByTestId("workspace-switcher");
+    await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
+    const opener = page.getByRole("button", { name: "Workspace and account menu" });
+    if (!await opener.isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
+    await expect(opener).toBeVisible();
     await opener.focus();
     await page.keyboard.press("Enter");
     const create = page.getByRole("menuitem", { name: CREATE_WORKSPACE });
@@ -42,10 +46,11 @@ for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
+    await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
     const opener = page.getByRole("button", { name: "Open navigation" });
     await opener.focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("link", { name: "Secrets", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Your fleets", exact: true })).toBeVisible();
     await expectAccessible(page, "Mobile navigation");
     await expectNoPageOverflow(page);
     await page.keyboard.press("Escape");

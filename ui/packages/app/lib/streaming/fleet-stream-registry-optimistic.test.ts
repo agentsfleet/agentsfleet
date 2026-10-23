@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { appendOptimistic, discardOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "./fleet-stream-registry";
+import { appendOptimistic, discardOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { setupRegistryTests, row, WS, Z_A, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";

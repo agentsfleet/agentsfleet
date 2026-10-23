@@ -83,7 +83,7 @@ export async function expectRowState(
 
 // A killed fleet exposes only its terminal cleanup action in the detail header.
 export async function expectDetailKilled(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "Delete fleet" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Delete fleet", exact: true })).toBeVisible({
     timeout: ROW_STATE_TIMEOUT_MS,
   });
   await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);

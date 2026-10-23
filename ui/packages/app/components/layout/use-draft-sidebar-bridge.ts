@@ -4,7 +4,8 @@ import { useCallback, useContext, useEffect, useMemo } from "react";
 import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import type { DraftSidebarState } from "./draft-sidebar-state";
-import { firstChatRequest, sidebarDrafts, type SidebarDraft } from "@/lib/api/draft-summary";
+import { CHAT_ACTIVITY, firstChatRequest, sidebarDrafts, type SidebarDraft } from "@/lib/api/draft-summary";
+import { chatRecovery } from "@/lib/api/draft-recovery";
 import { DRAFT_LIST, DRAFT_LIST_STATUS as HISTORY_STATUS } from "@/lib/api/draft-list-types";
 import { UpdateContext } from "./draft-sidebar-state";
 
@@ -20,8 +21,10 @@ export function useDraftSidebarBridge(client: DraftClient, view: DraftView, work
   const locked = view.busy || view.pending || inaccessible || running || view.listStatus !== HISTORY_STATUS.ready;
   const more = view.moreChats && !inaccessible ? loadChats : null;
   const setupRevision = view.fleet?.id === view.draft?.linked_fleet_id ? view.fleet?.setup_revision ?? null : null;
-  const cards = useMemo(() => inaccessible ? [] : sidebarDrafts(source, view.draft, request, setupRevision),
-    [source, view.draft, request, inaccessible, setupRevision]);
+  const recovery = chatRecovery(view);
+  const activity = recovery.pending ? CHAT_ACTIVITY.pending : recovery.blocked || view.messages.at(-1)?.failure ? CHAT_ACTIVITY.failed : undefined;
+  const cards = useMemo(() => inaccessible ? [] : sidebarDrafts(source, view.draft, request, setupRevision, activity),
+    [source, view.draft, request, inaccessible, setupRevision, activity]);
   const status = view.listStatus;
   useEffect(() => {
     const next = {workspace, subject, cards, fresh, remove, locked, current, more, status, owner: client};
@@ -47,5 +50,5 @@ function releaseSidebar(current: DraftSidebarState | null, owner: DraftClient): 
 }
 
 function sameCards(left: readonly SidebarDraft[], right: readonly SidebarDraft[]): boolean {
-  return left.length === right.length && left.every((card, index) => card.id === right[index]?.id && card.title === right[index].title && card.detail === right[index].detail);
+  return left.length === right.length && left.every((card, index) => card.id === right[index]?.id && card.title === right[index].title && card.detail === right[index].detail && card.activity === right[index].activity && card.linkedFleet === right[index].linkedFleet);
 }

@@ -111,7 +111,7 @@ Discovery grep, from repo root on `main`: `git grep -l -w -E 'ReadyIndex|ReadyCu
 | `rustd/crates/afd_bench/src/bin/{tail,cardinality,steer}.rs` | EDIT | fixture sweep no longer requires an inbound queue handle |
 | `rustd/crates/afd_authoring/src/{creation/mod.rs,error/mod.rs}`, `rustd/crates/agentsfleetd/src/plane/surfaces.rs`, API authoring constructor fixtures | EDIT | remove stream-only setup state and its unreachable failure |
 | `rustd/crates/afd_events/src/lib.rs`, `rustd/crates/afd_events/src/history/queued/` | EDIT / DELETE | export the unified history read texts and remove the two-query merge |
-| `rustd/crates/afd_authoring/Cargo.toml` | EDIT | Dragonfly is now only a test fixture dependency of authoring |
+| `rustd/crates/afd_authoring/Cargo.toml` | EDIT | remove the inbound queue dependency while retaining Dragonfly for M230's authoring progress publisher and test fixtures |
 | `rustd/crates/afd_fleet/Cargo.toml`, `rustd/crates/afd_fleet/src/lease/pull/tests.rs` | EDIT | remove unused stream decoding dependencies; terminal settlement failures propagate |
 | `rustd/crates/agentsfleetd/src/serve/mod.rs`, `rustd/crates/afd_api/tests/harness/fleet/mod.rs`, `harness/fleet_seams.rs` | EDIT | remove queue arguments and unused clones from callers of stores that now use only Postgres |
 | `rustd/crates/afd_api/tests/authoring/saving/` | EDIT | initial-run fixtures assert committed admissions without inbound stream cleanup |

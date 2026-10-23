@@ -736,6 +736,7 @@ A fleet's setup is a typed Definition authored in chat and stored as an
 immutable revision ([fleet definitions](architecture/fleet_definitions.md)).
 Its configuration names the credentials the fleet needs, by name only: a setup
 cannot carry a secret value. The setup model never receives those runtime secrets.
+
 Publishing a setup to the Library and saving a fleet from one are ordinary
 `Guard::Bearer` routes. There is no upload or import route.
 
@@ -748,8 +749,9 @@ server-built `ExecutionPolicy` and workspace credential grants.
 The authoring model's inference credential has a separate path.
 Before each scoped dispatch, `agentsfleetd` checks the selected model against
 the admitted snapshot and opens only that model's vault credential.
+
 The daemon commits dispatch intent before sending the provider request
-(`afd_authoring/src/model/dispatch.rs`, `afd_credential/src/provider/registered/key.rs`).
+(`afd_authoring/src/model/dispatch/mod.rs`, `afd_credential/src/provider/registered/key.rs`).
 The inference key stays in the daemon. The authoring runner receives a scoped
 capability, and neither the browser nor sandbox receives the key.
 

@@ -9,7 +9,7 @@ use crate::{
 };
 use afd_credential::provider::RegisteredModel;
 use afd_wire::{authoring::ModelMessage, inference::InferenceApi};
-use rig_core::completion::{CompletionRequest, ToolDefinition};
+use rig_core::completion::{CompletionRequest, ToolAnnotations, ToolDefinition};
 use rig_core::message::{
     AssistantContent, CallId, Message, ToolCall, ToolFunction, ToolName, UserContent,
 };
@@ -28,6 +28,7 @@ pub(in crate::model) fn body(
     let mut body = CompletionRequest::new(Message::user(String::new()))
         .model(model.model.as_ref())
         .tools(vec![ToolDefinition {
+            annotations: ToolAnnotations::default(),
             name,
             description: schema
                 .get("description")
@@ -37,7 +38,7 @@ pub(in crate::model) fn body(
             parameters: schema.get("parameters").ok_or(ErrorKind::Model)?.clone(),
         }])
         .max_tokens(u64::from(request.request.max_output_tokens));
-    body.chat_history = history;
+    body.chat_history = history.into_iter().map(std::sync::Arc::new).collect();
     if model
         .inference
         .as_ref()

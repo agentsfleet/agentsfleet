@@ -6,16 +6,17 @@ import { FleetThread } from "@/components/domain/FleetThread";
 import { RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 
 describe("FleetThread — role rendering: row kinds and badges", () => {
-  it("does not repeat the fleet name beside a reply", () => {
+  it("aligns the fleet name and brand mark above a reply", () => {
     mockStream([
       ev({ role: "assistant", actor: "fleet", reply: "reviewed it" }),
     ]);
     renderThread();
-    expect(screen.queryByText(FLEET_NAME)).toBeNull();
+    expect(screen.getByTestId("fleet-message-sender").textContent).toBe(FLEET_NAME);
+    expect(screen.getByTestId("fleet-message-sender").querySelector("svg")).toBeTruthy();
     expect(screen.getByText("reviewed it")).toBeTruthy();
   });
 
-  it("does not add a fallback sender label when no fleet name is known", () => {
+  it("uses Fleet as the accessible sender when its name is unavailable", () => {
     mockStream([
       ev({ role: "assistant", actor: "fleet", reply: "reviewed it" }),
     ]);
@@ -29,7 +30,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
         senderNames: [],
       }),
     );
-    expect(screen.queryByText("Fleet")).toBeNull();
+    expect(screen.getByTestId("fleet-message-sender").textContent).toBe("Fleet");
     expect(screen.getByText("reviewed it")).toBeTruthy();
   });
 

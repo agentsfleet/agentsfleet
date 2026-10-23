@@ -1,4 +1,4 @@
-import { __resetRegistryForTests, getSnapshot, subscribe } from "@/lib/streaming/fleet-stream-registry";
+import { __resetRegistryForTests, getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
 
 // Runs the real registry in Chromium. No EventSource, clock or fetch replacement.
 const FLEET = "browser-transport";

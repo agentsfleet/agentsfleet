@@ -65,6 +65,39 @@ Apply those settings with the registered token when starting that checkout's run
 The settings helper prints no token and performs no remote host changes.
 On macOS, it requires an explicit runner-reachable URL because Linux cannot use this machine's loopback address.
 
+### Local acceptance
+
+`make acceptance-local` prepares the local services and calls `acceptance-e2e`, then `acceptance-cli`.
+Those existing targets keep their deployed-service behavior.
+For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
+
+The coordinator and local deployment files live in `deploy/local/`.
+
+This command needs macOS and a dedicated OrbStack Linux machine with a registered local runner token.
+The machine needs a signed toolbox for the current runner version and architecture.
+It reuses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
+
+The dashboard serves its ordinary production build from this checkout.
+Each invocation calls `acceptance-build`, starts the shipping runner service through `deploy/baremetal/deploy.sh`, and runs the selected acceptance targets.
+The dashboard is a child process and stops when the command exits; the development daemon, Caddy and Linux runner remain available.
+
+Keep trusted local settings in `<WORKTREE_STATE>/acceptance.env`, or select that file with `AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE`.
+Load the existing local platform settings there, including the encryption key for this database, and supply:
+
+| Setting | Value |
+| --- | --- |
+| `ACCEPTANCE_LOCAL_RUNNER_MACHINE` | Dedicated OrbStack Linux machine name; uses the standard `agentsfleet-runner.service` |
+| `ACCEPTANCE_LOCAL_TOOLBOX_DIR` | Absolute Linux path containing the signed toolbox image and manifest |
+| `ACCEPTANCE_LOCAL_RUNNER_RECORD` | Private registration JSON containing `runner_id` and `runner_token` |
+
+The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply the existing development Clerk credentials.
+Before the first run, sign in to the local dashboard as a platform admin and open **Platform > Models**.
+Set a default model with its provider credential; the backend stores the credential in its encrypted vault.
+
+The tests select model references and make real provider calls through the backend; they do not need a provider API key.
+Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
+Startup logs live under `<WORKTREE_STATE>/acceptance/`.
+
 ### Shutdown and recovery
 
 ```bash
@@ -119,6 +152,15 @@ Set `<SIBLING_CHECKOUT>` to an existing sibling checkout's absolute path; its `l
 Run `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` for the two-worktree proof; success prints `OK` and exits 0.
 `make test-integration-rustd` retains its own disposable stack and destructive reset behavior.
 See [datastore scaling](architecture/datastore_scaling.md#shared-local-development) for the isolation boundaries.
+
+## TypeScript checks and builds
+
+TypeScript package scripts run the pinned `tsrs` compiler through Bun.
+Use `make lint-cli`, `make lint-app`, `make lint-website` or `make lint-design-system` for the affected package.
+`make acceptance-build` also uses the migrated build scripts.
+
+Keep the `typescript` dependency: Next.js still uses its compiler to read configuration with `--showConfig` and check the dashboard during builds.
+The pinned `tsrs` release does not support `--showConfig`.
 
 ## Compiler cache for Rust gates
 

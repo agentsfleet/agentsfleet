@@ -5,7 +5,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { fixtureDefinition } from "./fixtures/definition";
 import { publishFixtureLibrary } from "./fixtures/native-setup";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
-import { workspaceHref } from "./fixtures/nav";
+import { openSettingsDestination, workspaceHref } from "./fixtures/nav";
 
 test("a workspace publication is removed through its reachable Library page", async ({page}) => {
   const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
@@ -13,8 +13,9 @@ test("a workspace publication is removed through its reachable Library page", as
   const entry = await publishFixtureLibrary(FIXTURE_KEY.regular, workspace, fixtureDefinition(name));
   await signInAs(page, FIXTURE_KEY.regular);
   await page.goto(workspaceHref(workspace, "fleets/new"));
-  await page.locator(`a[href="/w/${workspace}/library"]`).first().click();
-  const row = page.getByRole("row").filter({hasText: name});
+  await openSettingsDestination(page, "Fleet library");
+  await page.getByRole("tab", {name: "Workspace", exact: true}).click();
+  const row = page.getByRole("listitem").filter({hasText: name});
   await expect(row).toBeVisible();
   await row.getByRole("button", {name: "Remove from this workspace"}).click();
   const dialog = page.getByRole("alertdialog");

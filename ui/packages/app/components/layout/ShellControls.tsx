@@ -177,7 +177,7 @@ function BrandLink({
       }
       className={cn(
         "inline-flex shrink-0 items-center gap-2 font-sans text-sm font-medium tracking-tight text-foreground no-underline",
-        "md:ml-2.5",
+        "md:ml-1",
         collapsed && "md:hidden",
       )}
       aria-label="agentsfleet home"

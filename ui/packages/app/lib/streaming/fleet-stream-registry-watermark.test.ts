@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { subscribe } from "./fleet-stream-registry";
+import { subscribe } from "@/tests/helpers/fleet-streams";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { setupRegistryTests, row, WS, Z_A, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, RECONNECT_ADVANCE_MS, SEED_AT_MS, MISSED_AT_MS, SEED_SINCE_PARAM, MISSED_SINCE_PARAM, fetchSpy, pageWith, flushBackfill, reconnect, reconnectAgain } from "@/tests/helpers/fleet-stream-backfill-fixtures";

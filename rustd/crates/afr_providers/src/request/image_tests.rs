@@ -34,7 +34,7 @@ fn should_carry_a_tool_results_image_as_base64_content_after_its_text() {
 
     let sent = built(Wire::Messages, &messages, &[], &[]);
 
-    let RigMessage::User { content: answered } = &sent.chat_history[3] else {
+    let RigMessage::User { content: answered } = sent.chat_history[3].as_ref() else {
         panic!("the result is a user turn: {:?}", sent.chat_history);
     };
     let UserContent::ToolResult(result) = &answered[0] else {
@@ -79,7 +79,7 @@ fn should_name_each_image_kinds_media_type() {
 
         let sent = built(Wire::Responses, &messages, &[], &[]);
 
-        let RigMessage::User { content: answered } = &sent.chat_history[3] else {
+        let RigMessage::User { content: answered } = sent.chat_history[3].as_ref() else {
             panic!("the result is a user turn: {:?}", sent.chat_history);
         };
         let UserContent::ToolResult(result) = &answered[0] else {

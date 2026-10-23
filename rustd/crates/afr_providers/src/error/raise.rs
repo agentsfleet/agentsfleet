@@ -1,13 +1,13 @@
 //! How a failure becomes an [`Error`](super::Error): the lift, and the
 //! raisers for the kinds that carry data.
 
+use garde::Validate as _;
 use std::error::Error as StdError;
 
 use rig_core::message::EmptyToolName;
 use rig_core::{ProviderError, ProviderResponseError};
 
 use super::{Error, ErrorKind};
-use crate::transport::Oversize;
 
 /// The longest provider code a report carries; a longer one is a message.
 const CODE_CAP: usize = 64;
@@ -22,9 +22,10 @@ afd_core::error_lifts!(Error, ErrorKind:
 );
 
 /// The provider ended the turn with its own error, named `reason`.
-pub(crate) fn ended(reason: &str) -> Error {
+pub(crate) fn ended(reason: &str, source: ProviderError) -> Error {
     Error::from(ErrorKind::Ended {
         reason: reason.to_owned(),
+        source,
     })
 }
 
@@ -85,14 +86,18 @@ pub(crate) fn provider(failure: ProviderError) -> Error {
         return Error::from(ErrorKind::Refused {
             status,
             code: named,
+            source: Some(failure),
         });
     }
     match failure {
-        _ if oversize(&failure) => Error::from(ErrorKind::Oversize(Oversize)),
+        _ if oversize(&failure) => Error::from(ErrorKind::Oversize {
+            source: failure,
+            limit: afd_inference::transport::REPLY_MAX_BYTES,
+        }),
         ProviderError::Http(_) | ProviderError::Truncated => Error::lost(failure),
-        ProviderError::Provider(_) => ended(UNNAMED_END),
+        ProviderError::Provider(_) => ended(UNNAMED_END, failure),
         _ if failure.provider_response().is_some() => {
-            ended(named.as_deref().unwrap_or(UNNAMED_END))
+            ended(named.as_deref().unwrap_or(UNNAMED_END), failure)
         }
         source => Error::from(ErrorKind::Wire { source }),
     }
@@ -116,7 +121,9 @@ pub(crate) fn oversize(failure: &ProviderError) -> bool {
         return false;
     };
     let first: &(dyn StdError + 'static) = &**transport;
-    std::iter::successors(Some(first), |&error| error.source()).any(<dyn StdError>::is::<Oversize>)
+    std::iter::successors(Some(first), |&error| error.source())
+        .filter_map(|error| error.downcast_ref::<afd_inference::Error>())
+        .any(afd_inference::Error::is_oversize)
 }
 
 /// The provider's own name for `failure`, when it gave one that reads as a
@@ -131,9 +138,11 @@ pub(crate) fn code(failure: &ProviderError) -> Option<String> {
 /// Whether `code` reads as a provider's name for a failure rather than its
 /// message, which may quote the conversation and is never carried.
 fn is_code(code: &str) -> bool {
-    code.len() <= CODE_CAP
-        && !code.is_empty()
-        && code
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-'))
+    ProviderCode { value: code }.validate().is_ok()
+}
+
+#[derive(garde::Validate)]
+struct ProviderCode<'a> {
+    #[garde(length(bytes, min = 1, max = CODE_CAP), pattern(r"^[A-Za-z0-9_.:-]+$"))]
+    value: &'a str,
 }

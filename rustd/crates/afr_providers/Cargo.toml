@@ -40,6 +40,7 @@ futures-util.workspace = true
 http.workspace = true
 # `Retry-After` in its HTTP-date form.
 httpdate.workspace = true
+garde.workspace = true
 # The one HTTP client every wire posts through, behind rig's HTTP seam.
 reqwest.workspace = true
 # Each wire: the request rig builds, the stream it decodes, the calls it

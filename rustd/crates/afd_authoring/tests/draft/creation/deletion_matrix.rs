@@ -97,9 +97,9 @@ async fn column(c: &Case, statement: &'static str, id: &Uuid7) -> Option<String>
 async fn dispatch_with_output(c: &Case, attempt: &Uuid7) {
     sqlx::query(
         "INSERT INTO authoring.dispatches (id, attempt_id, sequence, request_digest, status, \
-         result, usage, native_reply, private_expires_at, created_at, updated_at) \
+         result, usage, native_reply, private_expires_at, dispatch_expires_at, created_at, updated_at) \
          VALUES ($1::uuid, $2::uuid, 1, 'fixture', 'known', $3::jsonb, '{}'::jsonb, $3::jsonb, \
-         now() + interval '1 day', now(), now())",
+         now() + interval '1 day', now() + interval '30 seconds', now(), now())",
     )
     .bind(mint().as_str())
     .bind(attempt.as_str())

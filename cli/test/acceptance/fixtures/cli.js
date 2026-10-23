@@ -2,11 +2,11 @@
  * Per-spawn CLI runner for the acceptance suite.
  *
  * Two binary modes:
- *   - worktree: spawn `node ./dist/bin/agentsfleet.js` from the repo (DEV jobs)
+ *   - worktree: spawn `bun ./dist/bin/agentsfleet.js` from the repo (DEV jobs)
  *   - global:   spawn `agentsfleet` from PATH (PROD jobs, post-`npm i -g`)
  *
  * Both modes run the tsc-emitted .js artifact. Worktree mode requires
- * a prior `npm run build` (the test script chains build before bun test);
+ * a prior `bun run build` (the test script chains build before bun test);
  * global mode resolves `agentsfleet` from PATH after `npm i -g`.
  *
  * The caller composes the full child env — `runFleetctl` NEVER mutates
@@ -41,7 +41,7 @@ export function resolveBinary(opts) {
   const requested = opts?.binary ?? process.env[ACCEPTANCE_BINARY_ENV] ?? ACCEPTANCE_BINARY.worktree;
   if (requested === ACCEPTANCE_BINARY.global) return { command: "agentsfleet", prefixArgs: [] };
   if (requested === ACCEPTANCE_BINARY.worktree) {
-    return { command: "node", prefixArgs: [WORKTREE_ENTRY] };
+    return { command: "bun", prefixArgs: [WORKTREE_ENTRY] };
   }
   throw new Error(`unknown AGENTSFLEET_ACCEPTANCE_BINARY: ${requested}`);
 }
@@ -141,6 +141,8 @@ export function composeEnv(fields) {
   const env = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
+    // The local HTTPS proxy's public trust certificate must reach child CLIs.
+    ...(process.env.NODE_EXTRA_CA_CERTS ? { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS } : {}),
     // Acceptance specs spawn the real CLI, whose telemetry flush reaches
     // PostHog over the network and hangs ~5s when the runner is offline.
     // Default every spawn to telemetry-off so the suite is hermetic under

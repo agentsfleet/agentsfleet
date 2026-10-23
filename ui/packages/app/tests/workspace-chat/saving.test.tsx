@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ChatFixture, CHAT_PROPS } from "./fixture";
+import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction, openSetupReview } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { CHAT_EXAMPLES, CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
-import { WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
 beforeEach(() => { fixture = new ChatFixture(); fixture.mount(); });
@@ -12,7 +12,8 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 async function converse(): Promise<void> {
   render(<WorkspaceChat {...CHAT_PROPS} />);
   const input = await screen.findByLabelText(CHAT_PLACEHOLDER);
-  await waitFor(() => expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", false));
+  await waitFor(() => expect(input).toHaveProperty("disabled", false));
+  expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
   fireEvent.change(input, {target: {value: "Investigate failures"}});
   fireEvent.click(screen.getByRole("button", {name: "Send message"}));
   await screen.findByText("Your setup is ready.");
@@ -20,7 +21,7 @@ async function converse(): Promise<void> {
 
 async function setup() {
   const region = await screen.findByRole("region", {name: "Fleet setup"});
-  await within(region).findByRole("button", {name: "Save fleet"});
+  expect(within(region).queryByRole("button", {name: "Save fleet"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
   return region;
@@ -39,15 +40,16 @@ describe("private chat Save", () => {
     expect(fixture.writes()).toHaveLength(1);
     expect(fixture.writes()[0]?.body).toMatchObject({message: CHAT_EXAMPLES[0]});
   });
-  it("sends ordinary text and saves directly from the setup summary without publishing", async () => {
+  it("sends ordinary text and saves from the header, then opens Fleet Chat", async () => {
     await converse();
     const message = fixture.writes()[0];
     expect(message?.body).toMatchObject({message: "Investigate failures", source: {kind: "blank"}});
     expect(fixture.saveAttempts).toBe(0);
-    const dialog = await setup();
-    fireEvent.click(within(dialog).getByRole("button", {name: "Save fleet"}));
-    await screen.findAllByText("repairer is ready");
+    await setup();
+    await chooseSetupAction("Save fleet");
+    await screen.findByRole("heading", {name: "Saved v1"});
     expect(fixture.saveAttempts).toBe(1);
+    await waitFor(() => expect(chatRouter.push).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`));
     expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(0);
     const save = fixture.writes().find((call) => call.path.endsWith("/fleets"));
     expect(save?.headers.get("Idempotency-Key")).toBeTruthy();
@@ -57,11 +59,11 @@ describe("private chat Save", () => {
   it("retries an uncertain Save with the original key and body", async () => {
     fixture.failSave = true;
     await converse();
-    const dialog = await setup();
-    fireEvent.click(within(dialog).getByRole("button", {name: "Save fleet"}));
+    await setup();
+    await chooseSetupAction("Save fleet");
     await screen.findAllByText("The request could not be confirmed. Retry the same operation.");
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-    await screen.findAllByText("repairer is ready");
+    await screen.findByRole("heading", {name: "Saved v1"});
     const attempts = fixture.writes().filter((call) => call.path.endsWith("/fleets"));
     expect(attempts).toHaveLength(2);
     expect(attempts[1]?.body).toEqual(attempts[0]?.body);
@@ -70,7 +72,9 @@ describe("private chat Save", () => {
 
   it("publishes explicitly without creating a running fleet", async () => {
     await converse();
-    const dialog = await setup();
+    await setup();
+    await openSetupReview();
+    const dialog = screen.getByRole("dialog", {name: "Edit instructions"});
     fireEvent.click(within(dialog).getByRole("button", {name: "Publish to Fleet library"}));
     fireEvent.click(await within(dialog).findByRole("button", {name: "Publish new entry"}));
     await waitFor(() => expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(1));
@@ -80,13 +84,16 @@ describe("private chat Save", () => {
 
   it("shows proposed instructions and returns from the editor after an instructions update", async () => {
     await converse();
-    const dialog = await setup();
+    await setup();
+    await openSetupReview();
+    const dialog = screen.getByRole("dialog", {name: "Edit instructions"});
     expect(within(dialog).getByRole("region", {name: "Setup instructions"}).textContent).toContain("Investigate failures.");
     expect(dialog.className).toContain("ph-no-capture"); expect(dialog.className).toContain("ph-no-record");
 
-    fireEvent.click(within(dialog).getByRole("button", {name: "Edit instructions"}));
-    fireEvent.click(within(dialog).getByRole("button", {name: "Update instructions"}));
-    await within(dialog).findByRole("button", {name: "Save fleet"});
+    const editor = await screen.findByRole("dialog", {name: "Edit instructions"});
+    expect(editor.className).toContain("ph-no-capture"); expect(editor.className).toContain("ph-no-record");
+    fireEvent.click(within(editor).getByRole("button", {name: "Update instructions"}));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(within(dialog).queryByLabelText("Runtime config")).toBeNull();
     expect(fixture.saveAttempts).toBe(0);
   });

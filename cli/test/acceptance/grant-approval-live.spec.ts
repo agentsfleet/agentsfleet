@@ -1,40 +1,7 @@
 /**
- * grant-approval-live — the dashboard's grant walk, at the command line.
- *
- * The browser lane proves this journey against the deployed dashboard. This is
- * the same journey against the deployed API through the published CLI surface:
- *
- *   - `secret create` stores a connector handle for the credential the bundle
- *     will declare
- *   - `install --library` installs a fleet declaring it, and the install leaves
- *     an APPROVED grant behind — visible as `agentsfleet grant list --fleet <id>`
- *   - no card is raised, and none is owed: installing is the answer
- *   - `steer` then completes, and `billing show` reports a lower balance than
- *     it did before the run
- *   - `grant delete` revokes the standing permission, which is the one stop
- *     button an operator has now that no card stands in the path
- *
- * # Why no card is answered here
- *
- * This walk used to install, wait for an `integration_grant` card, and answer
- * it through `agentsfleet approvals approve`. M202 retired that step: an
- * install declaring a mintable credential writes the grant already approved
- * (`afd_approval::request::install` binds `status::APPROVED`), because you
- * chose the fleet and its bundle names the integration. So the card's absence
- * is the behaviour under test, not an omission from the walk.
- *
- * Absence is asserted after a positive signal, never after a bare sleep: the
- * walk waits until `grant list` reports the install's own row, which is the
- * same request that would have raised the card, and only then reads the inbox.
- *
- * # Why the balance is compared as an integer
- *
- * `billing show --json` answers `balance_nanos`. A run charged a fraction of a
- * cent moves it and moves no rendered currency figure, so the comparison is on
- * the integer the API returns and never on formatted output.
- *
- * Live-only: registers real tests only when `AGENTSFLEET_ACCEPTANCE_TARGET` is
- * an https URL, matching every other live spec in this lane.
+ * A declared connector needs explicit approval before the fleet activates.
+ * The CLI saves partial setup, answers its own approval, continues the exact
+ * saved operation, runs a real message, observes spending, and revokes access.
  */
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
@@ -42,6 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Schema } from "effect";
 
 import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
@@ -55,11 +23,12 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveConnectorProbeFleet } from "./fixtures/seed.ts";
+import { createNativeDraft, fixtureDefinition, inspectDraft } from "./fixtures/native-setup.ts";
+import { FleetSchema } from "../../src/commands/chat/protocol.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
 import {
-  CONNECTOR_SERVICE_GITHUB,
+  CONNECTOR_SERVICE_LINEAR,
   ensureConnectorHandle,
   GRANT_CREDENTIAL_NAME,
   GRANT_STATUS,
@@ -85,11 +54,14 @@ const STATUS_PROCESSED = "processed" as const;
 const GRANT_COMMAND = "grant" as const;
 const DELETE_VERB = "delete" as const;
 const FLEET_FLAG = "--fleet" as const;
+const CHAT_COMMAND = "chat";
+const SAVE_FLAG = "--save";
+const NO_INPUT_FLAG = "--no-input";
+const REVIEW_DIGEST_FLAG = "--review-digest";
+const RECOVERY_KIND = "setup_operation_recovery";
+const recoverySchema = Schema.Struct({kind: Schema.Literal(RECOVERY_KIND), operation_id: Schema.String,
+  draft_candidate_id: Schema.String, name: Schema.String, review_digest: Schema.String});
 
-// The install-time grant request runs after the fleet flips active, so the row
-// lands a beat behind the install response.
-const GRANT_TIMEOUT_MS = 30_000;
-const GRANT_POLL_MS = 1_000;
 // A steer's SSE round trip falls back to a ~60s poll window before rendering;
 // the budget has to exceed the CLI's own internal cap.
 const STEER_TIMEOUT_MS = 180_000;
@@ -104,7 +76,7 @@ if (!isLive) {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
-  describe("grant-approval-live — install, run, and pay for it, with no card in the way", () => {
+  describe("grant-approval-live — approve access, continue setup, run, and revoke", () => {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
@@ -112,6 +84,7 @@ if (!isLive) {
     let fleetId = "";
     let ctx: AuthContext | null = null;
     let installGrant: GrantRow | null = null;
+    let recovery: typeof recoverySchema.Type | null = null;
     let balanceBeforeNanos = 0n;
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
@@ -149,21 +122,17 @@ if (!isLive) {
 
       balanceBeforeNanos = await readBalanceNanos();
       await ensureConnectorHandle(env);
-      const installed = await saveConnectorProbeFleet({ env }, GRANT_CREDENTIAL_NAME);
-      const id = installed.id ?? installed.fleet_id;
-      if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-      fleetId = id;
-
-      // The install-time request is what would once have raised a card. Waiting
-      // for the row it writes gives the later absence assertions a positive
-      // ordering signal instead of a bare sleep.
-      const deadline = Date.now() + GRANT_TIMEOUT_MS;
-      while (installGrant === null && Date.now() < deadline) {
-        const mine = (await listGrants(env, fleetId))
-          .filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
-        installGrant = mine[0] ?? null;
-        if (installGrant === null) await Bun.sleep(GRANT_POLL_MS);
-      }
+      const draft = await createNativeDraft(ctx, fixtureDefinition(`${ACCEPTANCE_RUN_PREFIX}-grant-${Date.now()}`, GRANT_CREDENTIAL_NAME));
+      const review = await inspectDraft(env, draft.id);
+      const saved = await runWithEnv([JSON_FLAG, CHAT_COMMAND, draft.id, NO_INPUT_FLAG, SAVE_FLAG,
+        REVIEW_DIGEST_FLAG, review.review_digest]);
+      assert.equal(saved.code, 1, `unapproved setup must remain partial: ${saved.stderr}`);
+      const fleet = saved.stdout.trim().split("\n").map((line): unknown => JSON.parse(line)).find(Schema.is(FleetSchema));
+      assert.ok(fleet, "Save returned no fleet");
+      assert.equal(fleet.status, "installing");
+      fleetId = fleet.id;
+      recovery = Schema.decodeUnknownSync(recoverySchema)(trailingJson(saved.stderr));
+      installGrant = (await listGrants(env, fleetId)).find((row) => row.service === CONNECTOR_SERVICE_LINEAR) ?? null;
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -175,17 +144,17 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    it("an install declaring a connector credential leaves an approved grant the CLI can read", async () => {
+    it("a declared connector leaves a pending grant and keeps setup from activating", async () => {
       assert.ok(fleetId, "the fleet was not installed in beforeAll");
       const grants = await listGrants(env, fleetId);
-      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
+      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_LINEAR);
       assert.equal(mine.length, 1,
-        `expected one ${CONNECTOR_SERVICE_GITHUB} grant for the fleet; got ${JSON.stringify(grants)}`);
+        `expected one ${CONNECTOR_SERVICE_LINEAR} grant for the fleet; got ${JSON.stringify(grants)}`);
       const grant = mine[0];
-      assert.equal(grant?.status, GRANT_STATUS.approved,
-        `the install-time grant must land approved: ${JSON.stringify(grant)}`);
-      assert.ok(grant?.approved_at,
-        `an approved grant must carry approved_at: ${JSON.stringify(grant)}`);
+      assert.equal(grant?.status, GRANT_STATUS.pending,
+        `saving is not consent: ${JSON.stringify(grant)}`);
+      assert.equal(grant?.approved_at ?? null, null,
+        `a pending grant cannot carry approved_at: ${JSON.stringify(grant)}`);
       assert.equal(grant?.revoked_at ?? null, null,
         `a fresh install-time grant is not revoked: ${JSON.stringify(grant)}`);
       // The provenance separates this row from one a person answered: only the
@@ -194,17 +163,11 @@ if (!isLive) {
         `the grant must name the install as its provenance: ${JSON.stringify(grant)}`);
     });
 
-    it("the install raises no card, because installing is the answer", async () => {
-      assert.ok(installGrant,
-        `the install wrote no grant within ${GRANT_TIMEOUT_MS}ms, so the inbox read proves nothing`);
+    it("the CLI inbox shows the pending access request for this fleet", async () => {
+      assert.ok(installGrant, "Save wrote no grant");
       assert.ok(ctx, "no auth context");
       const card = await pendingGateFor(ctx, fleetId);
-      assert.equal(card, null,
-        `an install must raise no ${KIND_INTEGRATION_GRANT} card: ${JSON.stringify(card)}`);
-    });
-
-    it("`approvals list` shows the operator an empty inbox for the fleet", async () => {
-      assert.ok(installGrant, "the install wrote no grant, so an empty inbox proves nothing");
+      assert.ok(card, "Save must request explicit integration approval");
       const listed = await runFleetctl(
         ["approvals", "list", FLEET_FLAG, fleetId, JSON_FLAG],
         { env },
@@ -213,8 +176,29 @@ if (!isLive) {
       const gates =
         (trailingJson(listed.stdout) as { items?: Array<{ gate_type?: string }> }).items ?? [];
       const cards = gates.filter((row) => row.gate_type === KIND_INTEGRATION_GRANT);
-      assert.equal(cards.length, 0,
-        `the inbox the CLI reads must carry no ${KIND_INTEGRATION_GRANT} card: ${listed.stdout}`);
+      assert.equal(cards.length, 1,
+        `the inbox must carry this fleet's ${KIND_INTEGRATION_GRANT} request: ${listed.stdout}`);
+    });
+
+    it("explicit approval and continuation activate the same saved fleet", async () => {
+      assert.ok(ctx, "no auth context");
+      assert.ok(recovery, "no continuation identity");
+      const card = await pendingGateFor(ctx, fleetId);
+      assert.ok(card, "no approval request");
+      const approved = await runWithEnv(["approvals", "approve", card.gate_id, JSON_FLAG]);
+      assert.equal(approved.code, 0, `approval failed: ${approved.stderr}`);
+      const continued = await runWithEnv([JSON_FLAG, CHAT_COMMAND, NO_INPUT_FLAG, SAVE_FLAG,
+        "--operation-id", recovery.operation_id, "--candidate-id", recovery.draft_candidate_id,
+        "--name", recovery.name, REVIEW_DIGEST_FLAG, recovery.review_digest]);
+      assert.equal(continued.code, 0, `continuation failed: ${continued.stderr}`);
+      const fleet = continued.stdout.trim().split("\n").map((line): unknown => JSON.parse(line)).find(Schema.is(FleetSchema));
+      assert.ok(fleet, "continuation returned no fleet");
+      assert.equal(fleet.id, fleetId, "continuation must retain the saved identity");
+      assert.equal(fleet.status, "active");
+      const grant = (await listGrants(env, fleetId)).find((row) => row.service === CONNECTOR_SERVICE_LINEAR);
+      assert.equal(grant?.status, GRANT_STATUS.approved);
+      assert.ok(grant?.approved_at);
+      assert.equal(await pendingGateFor(ctx, fleetId), null);
     });
 
     it("the granted fleet answers a steer, and the tenant balance falls", async () => {
@@ -247,7 +231,7 @@ if (!isLive) {
       assert.equal(deleted.code, 0, `grant delete exited ${deleted.code}: ${deleted.stderr}`);
 
       const grants = await listGrants(env, fleetId);
-      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_GITHUB);
+      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_LINEAR);
       assert.equal(mine.length, 1,
         `the revoke must move the row, never add one: ${JSON.stringify(grants)}`);
       assert.equal(mine[0]?.status, GRANT_STATUS.revoked,

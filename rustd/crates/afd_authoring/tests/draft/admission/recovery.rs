@@ -71,9 +71,12 @@ struct UnknownProvider;
 #[async_trait::async_trait]
 impl Transport for UnknownProvider {
     async fn send(&self, _request: ProviderRequest) -> afd_authoring::Result<ProviderResponse> {
+        let (headers, body) =
+            crate::provider_wire::body(503, br#"{"error":{"message":"unavailable"}}"#.to_vec());
         Ok(ProviderResponse {
             status: 503,
-            body: br#"{"error":{"message":"unavailable"}}"#.to_vec(),
+            headers,
+            body,
         })
     }
 }

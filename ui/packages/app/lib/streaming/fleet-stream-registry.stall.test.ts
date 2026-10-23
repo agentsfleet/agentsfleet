@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { OUTCOME } from "@/lib/events/event-summary";
-import { appendOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "./fleet-stream-registry";
+import { appendOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { REPLY_STALL_MS, setEventDetailReader, type EventDetailReader } from "./fleet-stream-reply-registry";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { IDLE_RELEASE_MS, setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";

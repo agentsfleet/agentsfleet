@@ -34,6 +34,10 @@ async fn recorded(reply: Reply, filtered: bool) -> String {
         capture.only("provider_fixture_completed").level,
         tracing::Level::WARN
     );
+    assert_eq!(
+        capture.only("model_turn_started").field("correlation_id"),
+        Some(super::support::LEASE_ID)
+    );
     format!("{:?}", capture.events())
 }
 

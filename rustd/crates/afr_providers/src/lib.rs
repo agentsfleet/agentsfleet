@@ -26,6 +26,6 @@ pub use self::image_input::{ImageInput, ImageKind};
 pub use self::provider::{
     Call, Chunk, End, Hosted, Message, Provider, Replay, Request, ToolSpec, Usage,
 };
-pub use self::transport::REPLY_MAX_BYTES;
 pub use afd_inference::log_filter;
+pub use afd_inference::transport::REPLY_MAX_BYTES;
 pub use afd_wire::inference::InferenceApi as Wire;

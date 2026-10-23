@@ -32,9 +32,11 @@ impl Transport for Physical {
         if self.fail {
             return Err(ErrorKind::Unknown.into());
         }
+        let (headers, body) = super::wire::body(self.status, self.body.clone());
         Ok(ProviderResponse {
             status: self.status,
-            body: self.body.clone(),
+            headers,
+            body,
         })
     }
 }
@@ -42,6 +44,8 @@ impl Transport for Physical {
 fn outbound(api: InferenceApi) -> Outbound {
     let key = SecretString::new("fixture".into());
     Outbound {
+        dispatch_id: "fixture-dispatch".into(),
+        progress: None,
         key,
         body: CompletionRequest::new(Message::user("private prompt")).max_tokens(16),
         inference: ModelInference {
@@ -125,7 +129,7 @@ async fn should_preserve_reported_usage_when_authentication_status_is_unauthoriz
         &json!({"status":"failed","error":{"code":"invalid_key","message":"rejected"},
         "output":[], "usage":{"input_tokens":3,"output_tokens":2}}),
     );
-    let (status, response) = complete(
+    let (status, response, _) = complete(
         outbound(InferenceApi::Responses),
         Arc::clone(&boundary) as Arc<dyn Transport>,
     )
@@ -146,13 +150,14 @@ async fn should_preserve_uncertainty_when_authentication_reply_is_lost_or_malfor
             count: AtomicUsize::new(0),
             fail,
         });
-        let fault = complete(
+        let (_, response, cause) = complete(
             outbound(InferenceApi::Chat),
             Arc::clone(&boundary) as Arc<dyn Transport>,
         )
         .await
-        .expect_err("no authoritative rejection document");
-        assert_ne!(fault.code(), error_code::AUTHORING_MODEL);
+        .expect("no authoritative rejection document");
+        assert!(cause.is_some());
+        assert!(response.usage.input_tokens.is_none());
         assert_eq!(boundary.count.load(Ordering::Relaxed), 1);
     }
 }

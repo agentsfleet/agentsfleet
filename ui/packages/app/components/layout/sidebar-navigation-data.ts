@@ -14,7 +14,7 @@ export type NavEntry = {
 export type PlatformNavEntry = NavEntry & { scope?: string };
 
 export const NAV_SURFACE = "app_sidebar";
-export const NAV_ICON_SIZE = 18;
+export const NAV_ICON_SIZE = 20;
 export const NAV_ICON_STROKE_WIDTH = 1.5;
 
 export const PRIMARY_NAV: NavEntry[] = [

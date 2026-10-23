@@ -69,6 +69,6 @@ async fn retained_fence(f: &Fixture, attempt: &Attempt) {
 }
 
 async fn age_intent(f: &Fixture, attempt: &Attempt) {
-    sqlx::query("UPDATE authoring.dispatches SET created_at=created_at-interval '30001 milliseconds' WHERE attempt_id=$1::uuid")
+    sqlx::query("UPDATE authoring.dispatches SET dispatch_expires_at=clock_timestamp()-interval '1 millisecond' WHERE attempt_id=$1::uuid")
         .bind(attempt.id.as_str()).execute(&mut *f.connection().await).await.expect("simulate unreconciled old intent");
 }
