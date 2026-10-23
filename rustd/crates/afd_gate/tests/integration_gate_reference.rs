@@ -36,16 +36,15 @@ async fn reference_case(corrupt: bool) {
     );
     let reference = key::event_ref(fixture.fleet.as_str(), event);
     if corrupt {
-        queue
+        let corrupted = queue
             .set_for(&reference, "invalid reference", CORRUPT_REFERENCE_SECONDS)
-            .await
-            .expect("corrupt cached reference");
+            .await;
+        assert!(corrupted.is_ok(), "corrupt cached reference: {corrupted:?}");
     } else {
+        let removed = queue.spend_key(&reference).await;
         assert!(
-            queue
-                .spend_key(&reference)
-                .await
-                .expect("remove cached reference")
+            matches!(removed, Ok(true)),
+            "remove cached reference: {removed:?}"
         );
     }
     for policy in [&ruled, &config(false)] {
@@ -76,11 +75,9 @@ async fn assert_deadline_and_answer(fixture: &Fixture, gates: &Gates, event: &st
         1,
         "the original question is the only card"
     );
+    let unrelated = gates.recorded(&fixture.fleet, "unrelated-event").await;
     assert!(
-        gates
-            .recorded(&fixture.fleet, "unrelated-event")
-            .await
-            .expect("scoped lookup")
-            .is_none()
+        matches!(unrelated, Ok(None)),
+        "scoped lookup: {unrelated:?}"
     );
 }
