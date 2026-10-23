@@ -2,6 +2,7 @@
 const MS_PER_MINUTE = 60_000;
 const SINGLE_TIMEOUT_MINUTES = 30;
 const CONCURRENT_TIMEOUT_MINUTES = 60;
+export const CONTINUITY_FLEET_PREFIX = "continuity-";
 
 export const CONTINUITY = {
   authoredMessages: 50,

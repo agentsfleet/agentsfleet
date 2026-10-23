@@ -11245,7 +11245,7 @@
           "Drafts"
         ],
         "summary": "Stream your private setup progress",
-        "description": "Metadata hints only. Reconcile the draft and messages on reconnect. Last-Event-ID is an ephemeral hint. Access is checked before every frame and at least every ten seconds while quiet.",
+        "description": "Private progress and provisional answer text. Reconcile the draft and messages on reconnect. Last-Event-ID is an ephemeral hint. Access is checked before every frame and at least every ten seconds while quiet.",
         "operationId": "stream_workspace_draft",
         "parameters": [
           {
@@ -20872,6 +20872,13 @@
           "recovery_action"
         ],
         "properties": {
+          "cause": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content-free cause observed by the daemon's model stream."
+          },
           "error_code": {
             "type": "string",
             "description": "Stable central registry code."
@@ -22953,7 +22960,7 @@
                 "items": {
                   "$ref": "#/components/schemas/ProposalCall_Value_Value_Value"
                 },
-                "description": "Only proposals can appear in prior tool calls."
+                "description": "Only fixed proposal calls or their bounded refusals can appear here."
               },
               "role": {
                 "type": "string",
@@ -22969,7 +22976,7 @@
           },
           {
             "type": "object",
-            "description": "Outcome of applying a proposal through activity.",
+            "description": "Outcome of applying a proposal or rejecting its arguments.",
             "required": [
               "call_id",
               "text",
@@ -24117,23 +24124,57 @@
         }
       },
       "ProposalCall_Value_Value_Value": {
-        "type": "object",
-        "description": "A fixed proposal call, still untrusted until activity accepts its edit.",
-        "required": [
-          "id",
-          "proposal"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Provider call identity, with no tool authority of its own."
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Arguments decoded successfully; native activity still decides acceptance.",
+            "required": [
+              "id",
+              "proposal"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Provider call identity, with no tool authority of its own."
+              },
+              "proposal": {
+                "$ref": "#/components/schemas/Proposal_Value_Value_Value",
+                "description": "The one tool this protocol supports."
+              }
+            },
+            "maxProperties": 2
           },
-          "proposal": {
-            "$ref": "#/components/schemas/Proposal_Value_Value_Value",
-            "description": "The one tool this protocol supports."
+          {
+            "type": "object",
+            "description": "The model may correct its arguments within the same admitted turn.",
+            "required": [
+              "id",
+              "reason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Original provider call identity, needed for its tool result."
+              },
+              "reason": {
+                "$ref": "#/components/schemas/ProposalRejection",
+                "description": "Closed vocabulary; no raw arguments or private candidate text cross here."
+              }
+            },
+            "maxProperties": 2
           }
-        },
-        "additionalProperties": false
+        ],
+        "description": "A fixed proposal call, still untrusted until activity accepts its edit."
+      },
+      "ProposalRejection": {
+        "type": "string",
+        "description": "Correctable model input failures, never native activity or Rust errors.",
+        "enum": [
+          "invalid_arguments",
+          "instructions_missing",
+          "instructions_ambiguous",
+          "stale_candidate"
+        ]
       },
       "Proposal_Value_Value_Value": {
         "oneOf": [

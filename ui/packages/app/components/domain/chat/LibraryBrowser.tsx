@@ -9,7 +9,7 @@ import { FleetLibraryEmptyState } from "@/components/domain/FleetLibraryEmptySta
 import { inspectLibrary, libraryHistory, libraryPage } from "@/lib/api/draft-library";
 import { losesAccess } from "@/lib/api/draft-request";
 import { LIBRARY_UNAVAILABLE_TITLE, libraryUnavailableDescription } from "@/lib/library-copy";
-import { SOURCE_KIND } from "@/lib/api/draft-types";
+import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { FleetSetupDetails } from "./FleetSetupDetails";
 import { LibraryRemoval } from "./LibraryRemoval";
 

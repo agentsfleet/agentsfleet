@@ -47,6 +47,7 @@ export class ContinuityJourney {
     await this.page.getByRole("button", {name: CHAT_COPY.save, exact: true}).click();
     await expect(this.page).toHaveURL(FLEET_URL, {timeout: SAVE_TIMEOUT_MS});
     this.fleetId = FleetSchema.shape.id.parse(new URL(this.page.url()).pathname.split("/").at(-1));
+    console.log(JSON.stringify({continuityIdentifiers: this.identifiers()}));
     this.runtime = new ContinuityRuntime(this.page, this.client, this.workspace, this.fleetId);
     await this.assertSaved(1);
   }
@@ -97,6 +98,11 @@ export class ContinuityJourney {
       fleet: this.fleetId ? FleetSchema.parse(await this.client.get<unknown>(scope)) : null,
       messages: this.fleetId ? await runtimeHistory(this.client, scope) : [],
     };
+  }
+
+  identifiers() {
+    return {workspace: this.workspace, name: this.name, fleet: this.fleetId || null,
+      drafts: this.drafts.map(draft => draft.draftId).filter(Boolean)};
   }
 
   async assertIsolated(otherMarkers: readonly string[]): Promise<void> {

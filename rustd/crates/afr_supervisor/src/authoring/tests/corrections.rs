@@ -9,7 +9,7 @@ fn rejected(call: &Call) -> crate::test_support::Answer {
     let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
     result(
         call,
-        &json!([{"outcome":"refused","id":format!("bad-{}",request["call_index"]),
+        &json!([{"id":format!("bad-{}",request["call_index"]),
             "reason":"instructions_missing"}]),
         false,
     )
@@ -35,7 +35,7 @@ async fn rejected_model_edits_receive_feedback_before_a_corrected_proposal_is_ap
                     assert!(feedback["text"].as_str().unwrap().contains("match"));
                     result(
                         call,
-                        &json!([{"outcome":"proposed","id":"corrected",
+                        &json!([{"id":"corrected",
                         "proposal":{"kind":"initialize","definition":{}}}]),
                         false,
                     )

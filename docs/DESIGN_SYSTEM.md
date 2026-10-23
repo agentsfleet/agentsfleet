@@ -179,7 +179,7 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 
 Fleet sections are Chat, Activity, and Memory.
 
-**Save fleet** sits beside the chat title. **Save changes** stays below the composer.
+**Save fleet** sits beside the chat title. **Save changes** stays in the setup footer, above its composer.
 **Stop** and permanent **Kill** live in **Fleet actions**, with confirmation dialogs.
 
 Setup and saved chat share a 728px reading column and a composer pinned to its bottom edge.
@@ -345,9 +345,13 @@ Keep every accepted message and saved assistant reply in the creator-private dra
 
 During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
 
-Keep review and correction available from the chat menu throughout a long conversation. **Edit instructions** opens a side panel on desktop and a full-screen editor on mobile.
+For new drafts, keep review and correction available from the chat menu throughout a long conversation.
+**Edit instructions** opens a side panel on desktop and a full-screen editor on mobile.
 
-**Review and publish options** holds the current task, runtime model, access, budget, readiness, publishing, and optional first run. Update edited fields before saving or publishing. Publication stores the selected candidate unchanged; the transcript stays private.
+**Review and run options** holds the current task, runtime model, access, budget, readiness, publishing, and optional first run.
+Update edited fields before saving or publishing. Publication stores the selected candidate unchanged; the transcript stays private.
+
+Saved-fleet setup uses the inline **Edit instructions manually** editor and **Review and publish options** below its conversation.
 
 Opening the editor or review creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the panel is open.
 

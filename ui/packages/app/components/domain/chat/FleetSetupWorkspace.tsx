@@ -6,7 +6,7 @@ import nextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { XIcon } from "lucide-react";
 import { Button, Section, Skeleton, cn } from "@agentsfleet/design-system";
-import { SOURCE_KIND } from "@/lib/api/draft-types";
+import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { useCurrentUser } from "@/lib/auth/client";
 import { FleetStreamProvider } from "../FleetStreamProvider";
 

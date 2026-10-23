@@ -18,7 +18,7 @@ import {
   type MemoryViewData,
   type ViewData,
 } from "./components/view-data";
-import { EventsList } from "@/components/domain/EventsList";
+import { FleetActivity } from "./components/FleetActivity";
 import {
   CURSOR_PAGE_SIZE_PARAM,
   CURSOR_TRAIL_PARAM,
@@ -225,7 +225,7 @@ async function loadEventsView(
   if (!result.ok) throw result.error;
   const initial = result.page;
   return (
-    <EventsList
+    <FleetActivity
       fleetId={fleet.id}
       initial={initial}
       pageSize={eventsPageSize}

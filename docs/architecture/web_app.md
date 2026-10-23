@@ -218,15 +218,15 @@ New fleet keeps the private setup conversation open across multiple messages.
 The header exposes **Save fleet** when the reviewed candidate can be saved.
 Successful Save opens that fleet's Chat.
 
-The sidebar's Recent list combines authorized fleets with unfinished private drafts.
-Active fleet titles use the brand color; hover or keyboard focus reveals Trash.
+The sidebar's **Fleets** list shows authorized saved fleets. Private drafts appear under **Unfinished setups** on **New fleet**.
+Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
 
-Fleet **Edit setup**, before **Stop**, opens a private chat panel alongside the mounted runtime conversation.
-The panel exposes **Save changes** below its composer and optional manual instructions through the chat menu.
+Fleet **Edit setup** opens a private chat panel alongside the mounted runtime conversation. **Stop** and permanent **Kill** live in **Fleet actions**.
+The panel exposes **Save changes** above its composer and optional **Edit instructions manually** below its conversation.
 Saving a revision closes the panel, refreshes server data and preserves unsent runtime text.
 
 Existing runs keep their pinned revision; new runs use the saved version.
-The Setup tab and Your fleets navigation item are removed.
+The fleet sections are **Chat**, **Activity**, and **Memory**. **Your fleets** in the sidebar opens the fleet listing.
 
 Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
 Effects own connections and cleanup; render stays pure and Hooks remain static.

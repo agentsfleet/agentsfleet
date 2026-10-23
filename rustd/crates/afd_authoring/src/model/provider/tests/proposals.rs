@@ -109,10 +109,8 @@ fn initialization_requires_native_policy_types() -> Result<(), Box<dyn std::erro
             ),
         );
         let result = serde_json::to_value(proposal(&call, None)?)?;
-        assert_eq!(
-            result.get("outcome"),
-            Some(&json!(if malformed { "refused" } else { "proposed" }))
-        );
+        assert_eq!(result.get("reason").is_some(), malformed);
+        assert_eq!(result.get("proposal").is_some(), !malformed);
         if malformed {
             assert_eq!(result.get("reason"), Some(&json!("invalid_arguments")));
         }
@@ -155,7 +153,7 @@ fn structured_edits_decode_without_weakening_native_revision_validation()
     ] {
         assert_eq!(
             serde_json::to_value(proposal(&edit(&invalid)?, Some(&base))?)?,
-            json!({"outcome":"refused","id":"proposal-fixture","reason":"invalid_arguments"})
+            json!({"id":"proposal-fixture","reason":"invalid_arguments"})
         );
     }
     Ok(())

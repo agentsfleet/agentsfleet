@@ -9,9 +9,13 @@ use super::Proposal;
 /// A fixed proposal call, still untrusted until activity accepts its edit.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
-#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
+// Distinct required fields select the variant; successful calls retain the
+// existing runner and durable receipt shape, with no discriminator to migrate.
+#[serde(untagged, deny_unknown_fields)]
 pub enum ProposalCall<D = Value, C = Value, I = Value> {
     /// Arguments decoded successfully; native activity still decides acceptance.
+    // Both declared fields are required, so this cap also rejects unknown keys.
+    #[cfg_attr(feature = "openapi", schema(max_properties = 2))]
     Proposed {
         /// Provider call identity, with no tool authority of its own.
         #[garde(
@@ -24,6 +28,7 @@ pub enum ProposalCall<D = Value, C = Value, I = Value> {
         proposal: Proposal<D, C, I>,
     },
     /// The model may correct its arguments within the same admitted turn.
+    #[cfg_attr(feature = "openapi", schema(max_properties = 2))]
     Refused {
         /// Original provider call identity, needed for its tool result.
         #[garde(
@@ -61,3 +66,7 @@ pub enum ProposalRejection {
     /// The edit does not name the reserved candidate version.
     StaleCandidate,
 }
+
+#[cfg(test)]
+#[path = "proposal_tests.rs"]
+mod tests;

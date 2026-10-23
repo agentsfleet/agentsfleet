@@ -14,7 +14,7 @@ async fn an_accepted_edit_finishes_from_its_receipt_without_another_model_call()
             assert_eq!(request["call_index"], 1, "no confirmation dispatch");
             result(
                 call,
-                &json!([{"outcome":"proposed","id":"edit",
+                &json!([{"id":"edit",
                 "proposal":{"kind":"initialize","definition":{}}}]),
                 false,
             )

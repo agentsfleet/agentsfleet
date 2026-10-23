@@ -43,6 +43,7 @@ export class ContinuitySetup {
       const response = await created;
       expect(response.status(), "private setup created").toBe(201);
       this.draftId = DraftSchema.shape.id.parse((await response.headerValue("location"))?.split("/").at(-1));
+      console.log(JSON.stringify({continuityDraft: {workspace: this.workspace, draft: this.draftId}}));
       // The new route can replace the response before Chromium exposes its body.
       // Native creation starts blank drafts at zero and fleet copies at one.
       this.revision = savedRevision === 1 ? 0n : 1n;

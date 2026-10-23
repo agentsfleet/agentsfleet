@@ -1,7 +1,8 @@
 import type { Definition, Draft, Fleet, Source } from "@/lib/api/draft-types";
 import type { ClientHandle } from "./api-client";
 import { v7 as uuidv7 } from "uuid";
-import { DraftSchema, FleetSchema, ModelsSchema, PublishedSchema, SETUP_HEADERS, SOURCE_KIND } from "@/lib/api/draft-types";
+import { DraftSchema, FleetSchema, ModelsSchema, PublishedSchema, SETUP_HEADERS } from "@/lib/api/draft-types";
+import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { clientFor } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 import { fixtureDefinition } from "./definition";

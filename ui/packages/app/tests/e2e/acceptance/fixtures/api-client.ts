@@ -54,6 +54,14 @@ export interface ApiClient {
 
 export type ClientHandle = FixtureKey | { sessionJwt: string; sessionId?: string };
 
+/** Preserve HTTP status so fixture cleanup can distinguish absence from failure. */
+export class FixtureHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "FixtureHttpError";
+  }
+}
+
 export function clientFor(handle: ClientHandle): ApiClient {
   // `sessionJwt` is mutable: a long suite run outlives the cached token's TTL,
   // so on a 401 we re-mint a fresh token on the same Clerk session and retry
@@ -92,7 +100,7 @@ export function clientFor(handle: ClientHandle): ApiClient {
       const requestId: unknown = Reflect.get(record, "request_id");
       const problem = { error_code: typeof errorCode === "string" ? errorCode : undefined,
         request_id: typeof requestId === "string" ? requestId : undefined };
-      throw new Error(`${method} ${p} → ${res.status}: ${JSON.stringify(problem)}`);
+      throw new FixtureHttpError(res.status, `${method} ${p} → ${res.status}: ${JSON.stringify(problem)}`);
     }
     return value;
   }

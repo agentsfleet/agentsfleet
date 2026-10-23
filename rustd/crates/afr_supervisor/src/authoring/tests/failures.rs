@@ -49,7 +49,7 @@ fn proposing(call: &crate::client::Call) -> Answer {
     let request: serde_json::Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
     result(
         call,
-        &json!([{"outcome":"proposed","id":format!("call-{}",request["call_index"]),
+        &json!([{"id":format!("call-{}",request["call_index"]),
             "proposal":{"kind":"initialize","definition":{}}}]),
         false,
     )
