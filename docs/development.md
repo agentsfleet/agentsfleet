@@ -106,6 +106,7 @@ Use a production build because acceptance includes production prefetch and strea
 
 Connector checks use `NEXT_PUBLIC_API_URL` to select the registered development or production dashboard callback origin.
 For local API targets, they use `BASE_URL`. No separate connector setting is needed.
+
 The test checks the exact registered origin and callback path.
 Use dedicated acceptance accounts, since these tests create and delete their fixture fleets.
 
