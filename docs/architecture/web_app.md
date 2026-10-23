@@ -224,6 +224,7 @@ Private drafts appear under **Unfinished setups** on **New fleet**.
 Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
 
 Fleet **Edit setup** opens a private chat panel alongside the mounted runtime conversation. **Stop** and permanent **Kill** live in **Fleet actions**.
+
 The panel exposes **Save changes** above its composer and optional **Edit instructions manually** below its conversation.
 Saving a revision closes the panel, refreshes server data and preserves unsent runtime text.
 
