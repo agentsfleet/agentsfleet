@@ -11,11 +11,13 @@ mod capability;
 mod continuation;
 mod dispatch;
 mod prepare;
+mod progress;
 mod provider;
 mod receipt;
 mod sql;
 
 pub use dispatch::ModelCalls;
+pub use progress::{DELTA_EVENT, Delta, draft_channel};
 pub use provider::{Network, ProviderRequest, ProviderResponse, Transport};
 
 /// Model proposals use the same native types as drawer and activity edits.

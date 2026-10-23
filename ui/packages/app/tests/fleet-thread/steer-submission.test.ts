@@ -8,6 +8,7 @@ import React from "react";
 import { FleetThread } from "@/components/domain/FleetThread";
 import { ACTOR } from "@/lib/events/event-summary";
 import type { AppendMessage } from "@assistant-ui/react";
+import userEvent from "@testing-library/user-event";
 import { getPendingSends } from "@/lib/streaming/pending-sends";
 import { MintUnavailable } from "@/lib/streaming/operation-id";
 
@@ -29,6 +30,21 @@ afterEach(() => {
 });
 
 describe("FleetThread — steer submission", () => {
+  it("keeps the caret ready for a second fleet message without clicking the input", async () => {
+    mockStream([]);
+    postSteerMock.mockResolvedValue(ACCEPTED("evt_focused"));
+    renderThread();
+    expect(document.activeElement).toBe(composerInput());
+    await userEvent.keyboard("Watch the build");
+    await userEvent.click(screen.getByRole("button", {name: SEND_LABEL}));
+    await waitFor(() => {
+      expect(postSteerMock).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(composerInput());
+    });
+    await userEvent.keyboard("And report errors");
+    expect(composerInput().value).toBe("And report errors");
+  });
+
   it("serialises rapid submissions so their HTTP requests reach the server in order", async () => {
     mockStream([]);
     // Two rapid sends: the first resolves slowly, the second quickly. Without

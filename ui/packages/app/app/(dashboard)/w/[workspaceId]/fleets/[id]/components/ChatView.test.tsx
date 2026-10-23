@@ -5,7 +5,7 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 import { type EventDetail, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
-import { __resetRegistryForTests, reconcileServerRows } from "@/lib/streaming/fleet-stream-registry";
+import { __resetRegistryForTests, reconcileServerRows, streamWrapper as StreamOwner } from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { METRICS_UNAVAILABLE } from "./console-copy";
 
@@ -97,9 +97,9 @@ function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>
 // coordination the single provider exists for.
 function view(initialSummary: FleetRunSummary, initial: EventDetail[] = [turn()]) {
   return React.createElement(
-    TooltipProvider,
+    StreamOwner,
     null,
-    React.createElement(ChatView, {
+    React.createElement(TooltipProvider, null, React.createElement(ChatView, {
       workspaceId: WORKSPACE_ID,
       fleetId: FLEET_ID,
       senderLabel: "Agent Finch",
@@ -108,7 +108,7 @@ function view(initialSummary: FleetRunSummary, initial: EventDetail[] = [turn()]
       approvalsHref: APPROVALS_HREF,
       viewer: null,
       senderNames: [],
-    }),
+    })),
   );
 }
 
@@ -256,7 +256,7 @@ describe("ChatView — the run summary as a view over the stream", () => {
     render(view(summary()));
     // The registry's own optimistic row: the composer's vocabulary, never a
     // server status — the strip keeps showing the newest server row.
-    const { appendOptimistic } = await import("@/lib/streaming/fleet-stream-registry");
+    const { appendOptimistic } = await import("@/tests/helpers/fleet-streams");
     act(() => {
       appendOptimistic(FLEET_ID, "deploy it", "steer:me");
     });

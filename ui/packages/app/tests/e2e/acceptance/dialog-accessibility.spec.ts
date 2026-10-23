@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -12,11 +12,33 @@ const CREATE_RUNNER = "Create runner";
 // A constant prefix per width: parallel widths never share a staged entry.
 const A11Y_ENTRY_PREFIX = "e2e-dialog-a11y-";
 const HOST_ERROR = "1–256 characters: letters, digits, dot, hyphen, underscore";
+const BUSY_ATTRIBUTE = "aria-busy";
+const ARIA_TRUE = "true";
+
+async function openPlatformEditor(page: Page, opener: Locator): Promise<Locator> {
+  // Hold the editor module until its loading dialog is visible, covering
+  // the focus handoff even when the browser would normally load it quickly.
+  const editorLoad = Promise.withResolvers<void>();
+  await page.route("**/_next/static/chunks/*.js", async route => {
+    await editorLoad.promise;
+    await route.continue();
+  });
+  const dialog = page.getByRole("dialog", { name: EDIT_TITLE });
+  try {
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    await expect(dialog).toHaveAttribute(BUSY_ATTRIBUTE, ARIA_TRUE);
+  } finally {
+    editorLoad.resolve();
+  }
+  await expect(dialog).not.toHaveAttribute(BUSY_ATTRIBUTE, ARIA_TRUE);
+  return dialog;
+}
 
 for (const width of WIDTHS) {
   test(`runner validation and expanded mounts keep the footer accessible at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await signInAs(page, "operator");
+    await signInAs(page, FIXTURE_KEY.policyEditor);
     await page.goto("/admin/runners");
     const opener = page.getByRole("button", { name: CREATE_RUNNER, exact: true });
     await opener.click();
@@ -34,7 +56,7 @@ for (const width of WIDTHS) {
     await submit.click();
     await expect(dialog.getByText(HOST_ERROR, { exact: true })).toBeVisible();
     const host = dialog.getByRole("textbox", { name: "Host name", exact: true });
-    await expect(host).toHaveAttribute("aria-invalid", "true");
+    await expect(host).toHaveAttribute("aria-invalid", ARIA_TRUE);
     await expect(host).toHaveAccessibleDescription(new RegExp(HOST_ERROR));
     await expectAccessible(page, "Invalid runner submission");
     await expectNoPageOverflow(page);
@@ -54,9 +76,7 @@ for (const width of WIDTHS) {
       await signInAs(page, FIXTURE_KEY.operator);
       await page.goto(ADMIN_FLEET_LIBRARIES_PATH);
       const opener = page.getByRole("row").filter({ hasText: slug }).getByRole("button", { name: EDIT, exact: true });
-      await opener.focus();
-      await page.keyboard.press("Enter");
-      const dialog = page.getByRole("dialog", { name: EDIT_TITLE });
+      const dialog = await openPlatformEditor(page, opener);
       await expect(dialog).toHaveAccessibleDescription(/.+/);
       await expect(dialog).toHaveCSS("opacity", "1");
       await expectAccessible(page, "Platform Library edit");

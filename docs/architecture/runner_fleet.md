@@ -687,13 +687,23 @@ Both fleet and authoring renewal also take that runner-row guard before their le
 
 Authoring is creator-private work. Resolve its workspace owner, recheck creator membership, choose the oldest eligible queued message within that draft, and refuse another live attempt for the same draft. Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; Dragonfly publishes wake/progress hints, not another authoritative message copy.
 
-Additive migrations 935–942 define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts; content-free `authoring.attempts` and dispatch/activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup/Library revisions join their existing domains. The authoring progress channel is `draft:{draft_id}:events`; its ownership is checked before subscription and every reconnect. No private event joins workspace broadcast. The tables are registered and applied to the local test database. The private channel and stream still require implementation; migrations do not prove their runtime behavior.
+Additive migrations 935–942 define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts; content-free `authoring.attempts` and dispatch/activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup/Library revisions join their existing domains.
+
+The private progress channel is `draft:{draft_id}:events`.
+The publisher and HTTP reader recheck current access before sending answer previews.
+No private event joins workspace broadcast; durable message reads remain authoritative.
 
 Each authoring lease has an attempt identity, fence, expiry, pinned model/inference settings/context/prices, and budget. Renewal/report/activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this lease. Instructions and native setup are untrusted context, never system authority.
 
 ### Scoped provider boundary
 
 The daemon issues an opaque lease capability and serves the fourth machine route, `/model-calls`. [The resource reference](api_resources.md) owns its issuance, bindings, wire, expiry, revocation, dispatch receipts, and replay behavior. The daemon holds provider keys and dispatches each authorized call; the runner receives bounded text/proposals/usage. Existing raw-key runtime transport is not reused for authoring. Keep automatic transport retries disabled on this path, count every physical send, and stop on an unresolved dispatch. Real-router integration tests must deny foreign runner/model bindings, expired/revoked tokens, duplicate physical sends, and runtime credential minting. A local capability type alone supplies no boundary proof.
+
+Both adapters call the shared `afd_inference::stream::StreamTurn` reader over Rig's native codecs.
+The reader owns cancellation, inactivity and finalization; known partial usage survives a failed response.
+Purpose adapters retain separate physical senders, permissions and retry eligibility.
+
+The [shared chat explanation](shared_chat_verification.md#backend-ownership) maps these methods and their callers.
 
 ### Token and time bounds
 
@@ -703,7 +713,8 @@ The daemon issues an opaque lease capability and serves the fourth machine route
 | Output across a turn | Saved model maximum output tokens | Sum provider output over all calls; reserve only remaining output for each next call. |
 | Calls per attempt | 8 | Daemon and runner counters; no tool loop beyond this count. |
 | Wall time per attempt | 300 seconds | Monotonic runner timer plus daemon expiry/fence; timeouts become timed_out. |
-| Provider request | 30 seconds | Request timeout and local abort; upstream cancellation is not assumed confirmed. |
+| Provider request | Up to 300 seconds | Recorded dispatch deadline, clipped to attempt expiry; replay never starts another send. Upstream cancellation remains unconfirmed. |
+| Runner model-call HTTP wait | 310 seconds | Allows the bounded provider call and receipt settlement. |
 | Lease TTL / renewal | 30 seconds /10 seconds | No overlapping admitted lease while the prior live attempt remains counted. |
 | First instructions / edited | 12 KiB /32 KiB | Shared validated text bounds, independently of tokenizer counts. |
 | System / tool schemas | 2,048 /4,096 tokens maximum | Pin assembled prompt version; validate these counts on model eligibility and before each call. |

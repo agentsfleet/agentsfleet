@@ -1,3 +1,4 @@
+import { streamWrapper } from "./fleet-streams";
 import { renderHook } from "@testing-library/react";
 import { useFleetEventStream } from "@/components/domain/useFleetEventStream";
 import type { EventDetail, EventRow } from "@/lib/api/events";
@@ -30,5 +31,5 @@ export const WS = "ws_1";
 export const ZID = "zomb_1";
 
 export function mount(initial: EventRow[] = []) {
-  return renderHook(() => useFleetEventStream(WS, ZID, initial));
+  return renderHook(() => useFleetEventStream(WS, ZID, initial), {wrapper: streamWrapper});
 }

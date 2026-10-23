@@ -17,7 +17,11 @@ const REASONING_EVERY_MS = 50;
 const ANSWER_CHUNKS = 60;
 const ANSWER_EVERY_MS = 40;
 const LAST_ANSWER_LINE = `Step ${ANSWER_CHUNKS} settled`;
-const TOOL_NAME = "read_file";
+const TOOL_NAME = "file_read";
+const TOOL_PATH = "src/probe.ts";
+const TOOL_CALL_ID = "f0:0";
+const EXPLORING_LABEL = "Exploring";
+const EXPLORED_LABEL = "Explored";
 const TOOL_WALL_MS = 700;
 const REQUEST_TOOL = "http_request";
 const REQUEST_URL = "https://status.example.test/health";
@@ -25,7 +29,6 @@ const REQUEST_CALL_ID = "f1:0";
 const REQUEST_OUTPUT = "200 OK\n{\"ok\":true}\n";
 const SHIMMER = "tool-shimmer";
 const LIVE_REASONING = "Checking whether delivery 1 is signed before trusting it.";
-// Each stretch of reasoning outlasts the Thought's 400 ms open delay.
 const INTERLEAVED_CHUNKS = 6;
 const INTERLEAVED_SAMPLE_MS = 2_500;
 const INTERLEAVED_ANSWER = "Hey! How can I help?";
@@ -58,13 +61,11 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
     await expect(live).toBeVisible();
     await expect(live).toContainText(LIVE_REASONING.slice(0, -1));
 
-    await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_STARTED, { args_redacted: {} })]);
-    const tool = chat.getByRole("list", { name: "Tool calls" }).locator(`[data-tool="${TOOL_NAME}"]`);
-    await expect(tool).toBeVisible();
-    await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_COMPLETED, { ms: TOOL_WALL_MS })]);
-    await expect(tool).toHaveAttribute("data-done", "true");
-    // Pin test: the wall time the frame reported, as the row prints it.
-    await expect(tool).toContainText("0.7s");
+    await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_STARTED, { call_id: TOOL_CALL_ID, args_redacted: { path: TOOL_PATH } })]);
+    await expect(chat.getByRole("list", { name: EXPLORING_LABEL, exact: true })).toContainText("Read probe.ts");
+    await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_COMPLETED, { call_id: TOOL_CALL_ID, ms: TOOL_WALL_MS, status: "succeeded" })]);
+    await expect(chat.getByRole("list", { name: EXPLORED_LABEL, exact: true })).toContainText("Read probe.ts");
+    await expect(chat.getByRole("list", { name: EXPLORING_LABEL, exact: true })).toHaveCount(0);
 
     await stream.send([chunk(seq++, "answer", ANSWER)]);
     await expect(chat.getByText(ANSWER)).toBeVisible();
@@ -105,7 +106,7 @@ test("test_live_tool_cell_settles_green", async ({ page }) => {
 });
 
 // A short prompt's model reasons, answers, then reasons again before it ends.
-// The Thought opens once and folds once: resumed reasoning keeps it folded.
+// The reader opens and closes Thought; streaming preserves each choice.
 test("test_interleaved_reasoning_folds_once", async ({ page }) => {
   await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
     let seq = 0;
@@ -115,6 +116,8 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
     }));
     await stream.send([opening(Date.now()), ...thinkFor(INTERLEAVED_CHUNKS)]);
     const thought = chat.getByRole("button", { name: /^(Thinking|Thought)/ });
+    await expect(thought).toHaveAttribute("aria-expanded", "false");
+    await thought.click();
     await expect(thought).toHaveAttribute("aria-expanded", "true");
     // Await the handle, not its pending result, before sending the answer.
     const sample = await thought.evaluateHandle((el, ms) => ({ states: new Promise<string[]>((resolve) => {
@@ -126,13 +129,16 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
         if (performance.now() - t0 < ms) requestAnimationFrame(tick);
         else resolve(seen);
       };
-      // Record the asserted open state before the next frame can fold it.
+      // Record the reader's open choice before more content arrives.
       tick();
     }) }), INTERLEAVED_SAMPLE_MS);
     try {
       await stream.send([chunk(seq++, "answer", "Hey! ")]);
+      await expect(thought).toHaveAttribute("aria-expanded", "true");
+      await thought.click();
+      await expect(thought).toHaveAttribute("aria-expanded", "false");
       await stream.send([...thinkFor(INTERLEAVED_CHUNKS), chunk(seq++, "answer", "How can I help?")]);
-      // Open, then folded for good: never open again after the answer started.
+      // Only the reader's click closes it; resumed reasoning leaves it closed.
       expect(await sample.evaluate((probe) => probe.states)).toEqual(["true", "false"]);
       await stream.send([{
         afterMs: 0,

@@ -71,6 +71,7 @@ pub(super) fn message(value: types::Message) -> wire::Message {
             reason: failure.reason,
             error_code: failure.error_code.to_string(),
             recovery_action: failure.recovery_action.into(),
+            cause: failure.cause.map(|cause| cause.as_str().to_owned()),
         }),
         created_at: value.created_at,
         finished_at: value.finished_at,

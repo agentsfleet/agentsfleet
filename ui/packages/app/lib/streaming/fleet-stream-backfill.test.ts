@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { runBackfill } from "./fleet-stream-backfill";
-import { getSnapshot, subscribe } from "./fleet-stream-registry";
+import { getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
 import { row, setupRegistryTests, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import {
   descRows,

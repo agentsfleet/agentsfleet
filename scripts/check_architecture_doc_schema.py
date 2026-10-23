@@ -35,7 +35,12 @@ Layout = dict[str, set[str]]
 HEADING = "## "
 CREATE = re.compile(r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_]+\.[a-z_]+)\s*\(", re.IGNORECASE)
 ALTER = re.compile(r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([a-z_]+\.[a-z_]+)\s+([^;]*)", re.IGNORECASE)
-ADD_COLUMN = re.compile(r"ADD\s+COLUMN\s+(?!IF\b)([a-z_][a-z_0-9]*)\s+.+", re.IGNORECASE | re.DOTALL)
+RESHAPES = re.compile(r"\bRENAME\b|\b(?:ADD|DROP)\s+(?!CONSTRAINT\b)", re.IGNORECASE)
+ADD_COLUMN = re.compile(
+    r"ADD\s+(?:COLUMN\s+)?(?P<optional>IF\s+NOT\s+EXISTS\s+)?"
+    r'(?P<column>(?!(?:COLUMN|IF)\b)[a-z_][a-z0-9_]*|"[a-z_][a-z0-9_]*")\s+.+',
+    re.IGNORECASE | re.DOTALL,
+)
 DROP_COLUMN = re.compile(r"DROP\s+COLUMN\s+([a-z_][a-z_0-9]*)(?:\s+(?:CASCADE|RESTRICT))?", re.IGNORECASE)
 CONSTRAINT_CHANGE = re.compile(r"(?:ADD|DROP)\s+CONSTRAINT\b", re.IGNORECASE)
 DROP = re.compile(r"\bDROP\s+TABLE\b", re.IGNORECASE)
@@ -89,7 +94,7 @@ def without_comments(sql: str) -> str:
     return "".join(out)
 
 
-def top_level_elements(sql: str, open_paren: int) -> list[str]:
+def top_level_elements(sql: str, open_paren: int, strict: bool = False) -> list[str]:
     """The comma-separated elements inside the parenthesis opening at `open_paren`."""
     elements, depth, quoted, start = [], 0, False, open_paren + 1
     for index in range(open_paren, len(sql)):
@@ -103,6 +108,8 @@ def top_level_elements(sql: str, open_paren: int) -> list[str]:
         elif char == ")":
             depth -= 1
             if depth == 0:
+                if strict and sql[index + 1:].strip():
+                    raise ValueError("unexpected text after column list")
                 elements.append(sql[start:index])
                 return elements
         elif char == "," and depth == 1:
@@ -117,23 +124,29 @@ def created_columns(sql: str, create: re.Match[str]) -> set[str]:
     return {column for column in columns if column.lower() not in TABLE_CONSTRAINTS}
 
 
-def alter_columns(layout: Layout, name: str, body: str) -> None:
+def alter_columns(layout: Layout, name: str, body: str, where: str, homes: dict[str, str]) -> None:
     if name not in layout:
         raise ValueError("table has not been created")
-    for element in top_level_elements(f"({body})", 0):
+    for element in top_level_elements(f"({body})", 0, strict=True):
         clause = element.strip()
-        if CONSTRAINT_CHANGE.match(clause):
+        if CONSTRAINT_CHANGE.match(clause) or not RESHAPES.search(clause):
             continue
         if add := ADD_COLUMN.fullmatch(clause):
-            column = add.group(1).lower()
+            column = add.group("column").strip('"').lower()
+            if column in TABLE_CONSTRAINTS:
+                continue
             if column in layout[name]:
+                if add.group("optional") is not None:
+                    continue
                 raise ValueError(f"column {column} already exists")
             layout[name].add(column)
+            homes[f"{name}.{column}"] = where
         elif drop := DROP_COLUMN.fullmatch(clause):
             column = drop.group(1).lower()
             if column not in layout[name]:
                 raise ValueError(f"column {column} does not exist")
             layout[name].remove(column)
+            homes.pop(f"{name}.{column}", None)
         else:
             raise ValueError(f"unsupported column change: {clause}")
 
@@ -156,7 +169,7 @@ def built(schema_dir: Path) -> tuple[Layout, dict[str, str], list[str]]:
                     layout[name] = created_columns(sql, change)
                     homes[name] = where
                 else:
-                    alter_columns(layout, name, change.group(2))
+                    alter_columns(layout, name, change.group(2), where, homes)
             except ValueError as fault:
                 problems.append(f"{where}: {operation} TABLE {name}: {fault}")
         if DROP.search(sql):
@@ -172,7 +185,8 @@ def differences(doc_path: str, design: Layout, schema: Layout, homes: dict[str, 
         found.append(f"{name} is listed in {doc_path} but no schema slot creates it")
     for name in sorted(design.keys() & schema.keys()):
         for column in sorted(schema[name] - design[name]):
-            found.append(f"{name}.{column} is in {homes[name]} but not in {doc_path}")
+            source = homes.get(f"{name}.{column}", homes[name])
+            found.append(f"{name}.{column} is in {source} but not in {doc_path}")
         for column in sorted(design[name] - schema[name]):
             found.append(f"{name}.{column} is in {doc_path} but not in {homes[name]}")
     return found

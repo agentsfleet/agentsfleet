@@ -407,6 +407,14 @@ Improve copies an immutable fleet setup revision into a creator-private draft. P
 
 Already leased runs retain captured setup except live revocation and renewed budget ceilings. New leases use the reviewed new revision. A policy marker drift blocks new admission until a human reviews and applies a revision. A name/status resource change does not falsely make setup content change; inherited schedule tags include instance setup and recipe/override revision.
 
+In the browser, **Edit setup** opens that private draft beside the current fleet conversation.
+Multiple messages and manual instruction edits update the same candidate.
+Explicit **Save changes** applies the reviewed revision and returns focus to the fleet conversation.
+
+A stale setup tag retains the proposed edits for review.
+Initial **Save fleet** opens the same fleet Chat workspace.
+Both purposes share the [provider reader and browser chat implementation](shared_chat_verification.md).
+
 #### CLI partial success
 
 The CLI displays `Fleet created: installing`, each missing check and its action, the fleet ID, and a copyable resume command that reads the fresh tag then PATCHes active. It exits nonzero, preserving the creation replay key for explicit retry. An active fleet with a blocked initial run, or any schedule not `synced` (`failed`, `syncing`, or a status the CLI does not know), prints the partial outcome and actionable retry and exits nonzero, rather than claiming all requested work succeeded.

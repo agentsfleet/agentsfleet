@@ -1,21 +1,9 @@
 /**
  * grant-ops.ts — the integration-grant surface, from the CLI's side of it.
  *
- * The CLI can raise a grant (by installing a bundle that declares a mintable
- * credential) and READ one (`agentsfleet grant list --fleet <id>`), but it has
- * no verb that answers one: `grant` ships `list` and `delete` only. So the
- * decision is made over HTTP here, against the same workspace approvals route
- * the dashboard's inbox posts to, carrying the run's own bearer — the pattern
- * `template-ops.ts` and `secret-ops.ts` already use for surfaces the CLI does
- * not cover.
- *
- * That gap is the finding this module documents rather than hides: an operator
- * living in the terminal can see the card and cannot answer it.
- *
- * The seeded handle is a CLASSIFICATION marker, not a credential. It carries
- * `integration: <connector>` and nothing else, which is all
- * `afd_credential::secrets::connector::mintable` reads — the fleets here call
- * no tool, so nothing ever mints against it.
+ * The fleet declares a name-bound refresh handle and waits for the operator's
+ * approval. These fleets call no tools, so this walk exercises permission and
+ * delivery without attempting an upstream token exchange.
  */
 
 import { runFleetctl } from "./cli.js";
@@ -29,26 +17,18 @@ import type { AuthContext } from "./native-api.ts";
 export const KIND_INTEGRATION_GRANT = "integration_grant";
 
 /** The connector asked for, as `Connector::name()` spells it. */
-export const CONNECTOR_SERVICE_GITHUB = "github";
+export const CONNECTOR_SERVICE_LINEAR = "linear";
 
 /**
- * The credential the connector bundle declares, and the vault name its handle
- * is stored under. Shared verbatim with the dashboard acceptance suite: both
- * lanes run against one fixture tenant, and both write the identical body, so
- * one name is correct where two would be two things to reason about.
- *
- * Deliberately not `github`: that name holds the static
- * `{webhook_secret, api_token}` pair the platform-ops fixture seeds, and a
- * static handle declares nothing to mint.
- *
- * Underscores, not hyphens: `CredentialName::parse` accepts ASCII alphanumerics
- * and `_` only, and a hyphen refuses the whole Definition.
+ * On-demand handles must be stored under their connector's own name. Linear
+ * needs no reverse-routing installation row, unlike GitHub and Slack.
  */
-export const GRANT_CREDENTIAL_NAME = "grant_walk_github";
+export const GRANT_CREDENTIAL_NAME = CONNECTOR_SERVICE_LINEAR;
 
 /** The vault-handle field naming the connector. Mirrors
  * `afd_credential::secrets::connector::FIELD_INTEGRATION`. */
 const FIELD_INTEGRATION = "integration";
+const FIELD_REFRESH_TOKEN = "refresh_token";
 
 /**
  * The provenance an install-time grant carries. Cross-runtime pair of
@@ -101,7 +81,8 @@ export interface GateRow {
 export async function ensureConnectorHandle(
   env: Readonly<Record<string, string>>,
 ): Promise<void> {
-  const data = JSON.stringify({ [FIELD_INTEGRATION]: CONNECTOR_SERVICE_GITHUB });
+  const data = JSON.stringify({ [FIELD_INTEGRATION]: CONNECTOR_SERVICE_LINEAR,
+    [FIELD_REFRESH_TOKEN]: GRANT_CREDENTIAL_NAME });
   const result = await runFleetctl(
     ["secret", "create", GRANT_CREDENTIAL_NAME, "--data", data, "--json"],
     { env, timeoutMs: SECRET_CREATE_TIMEOUT_MS },

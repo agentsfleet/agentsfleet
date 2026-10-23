@@ -67,6 +67,9 @@ test.describe("workspace create", () => {
     await expect(switcher).toContainText(workspaceName, {
       timeout: WORKSPACE_CREATE_TIMEOUT_MS,
     });
+    await expect(page).toHaveURL(new RegExp(`/w/(?!${workspaceId}/)[^/]+/fleets/new(?:\\?|$)`), {
+      timeout: WORKSPACE_CREATE_TIMEOUT_MS,
+    });
     await switcher.click();
     await expect(page.getByRole("menuitem", { name: workspaceName })).toBeVisible();
 

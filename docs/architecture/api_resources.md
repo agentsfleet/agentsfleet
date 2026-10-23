@@ -85,7 +85,12 @@ Requirements are derived immutable setup, not readiness results. Review digest e
 
 `Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`. Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
 
-`failure={reason,error_code,recovery_action}` is required on failed/timed_out messages and absent otherwise. All values come from the bounded table below. The daemon records failure and terminal state atomically, including failures before a runner claim. It derives safe owner-facing labels and authorized links on read; reports cannot provide diagnostic text, URLs, credentials, or actions. GET messages and private failure events carry the same fields after reload.
+`failure={reason,error_code,recovery_action,cause?}` is required on failed/timed_out messages and absent otherwise.
+The optional cause is `deadline|cancelled|provider_interrupted|completion_unverified`, recorded with the dispatch outcome.
+Older failures may lack a cause; clients must not infer one or display provider bodies.
+
+The daemon records terminal state atomically and returns the same bounded fields after reload.
+Reports cannot supply diagnostic text, URLs, credentials, or actions.
 
 | Failure reason | Stable code | Recovery action |
 |---|---|---|
@@ -182,7 +187,23 @@ Removal is immediate; there is no alias. `/v1/operations`, public turn-status, f
 
 ### Private Server-Sent Events (SSE)
 
-Events contain `{draft_id,sequence?,candidate_id?,state?,usage?,failure?}` with event names `message.accepted|message.running|message.completed|message.cancelled|message.failed|message.timed_out|candidate.changed|draft.closed|draft.deleted`. No private content appears in workspace or operator streams. Recheck current membership/deletion generation before sending private frames; periodic 10-second checks also close quiet revoked streams. Already buffered/rendered text cannot be recalled. Authorized private answer deltas may contain text but are bounded per frame at 4 KiB; final GET messages is authoritative. Revocation closes the stream; deletion emits only identity then closes. A lost event hint triggers read reconciliation, never an invented durable event-history endpoint.
+Durable notices contain `{draft_id,sequence?,candidate_id?,state?,usage?,failure?}`.
+Their event names are `message.accepted|message.running|message.completed|message.cancelled|message.failed|message.timed_out|candidate.changed|draft.closed|draft.deleted`.
+No private content enters workspace or operator streams.
+
+Provisional `message.delta` contains `{draft_id,sequence,stream_id,stream_seq,stream_start,text_kind:"answer",text}`.
+`sequence` is a decimal string; `stream_seq` starts at one per physical dispatch.
+Answer text is at most 4,096 UTF-8 bytes; the serialized payload is bounded at 8,192 bytes.
+
+Reasoning and tool arguments never enter the private preview.
+`draft.resync` carries `{}` after a subscription gap and requests a durable read, without another model request.
+
+Before each frame, recheck current membership, deletion generation, Stop watermark and running message state.
+Quiet streams check each second; each access read has a ten-second deadline.
+Revocation closes the stream; deletion emits only identity and closes.
+
+Already rendered text cannot be recalled.
+Final GET messages remains authoritative; previews never prove completion or usage.
 
 ### Runner routes and wire
 
@@ -196,7 +217,7 @@ A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{leas
  expires_at,model:{ref,provider,model,pricing},
  model_access:{token,expires_at,invocation_path},candidate?:Candidate,
  messages[],limits:{input_per_call:32768,
- output_per_turn:<saved model maximum>,max_calls:8,wall_seconds:300,provider_timeout_seconds:30}}
+ output_per_turn:<saved model maximum>,max_calls:8,wall_seconds:300,provider_timeout_seconds:300}}
 ```
 
 Authoring model access is a daemon-issued opaque capability plus the runner's existing bearer authentication. Fence, generation, and sequence are decimal strings. Internal attempt ID and capability are machine-only. The lease includes the current candidate identity/revision/definition when present, so a runner can address its first edit.
@@ -230,6 +251,14 @@ Native provider replies stay in `authoring.dispatches.native_reply`; the runner 
 4. The daemon alone resolves the pinned owner's provider key and approved destination. Eligibility requires a credentialed configured model, a daemon-reachable approved transport, a valid saved context/output bound, and pinned prices. Known tokenizers count assembled input; unknown model names use one token per UTF-8 byte as a conservative input reservation. Apply the existing outbound address guard; reject private/custom destinations the daemon cannot safely reach. Authoring transport disables redirects and every automatic provider/SDK retry. Each new physical dispatch consumes one index and the shared input/output/time budget; ordinary runtime transport stays separate.
 5. Save bounded result and authoritative usage before returning 200. Exact completed replay rechecks live authorization and returns the same result without dispatch/debit. Changed-body reuse returns REPLAY. A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls; never redispatch that intent.
 6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
+
+Setup and runtime use `afd_inference::stream::StreamTurn` and Rig's native provider decoding.
+Purpose adapters retain their credential, authorization and tool boundaries.
+Dispatch intent records its deadline, bounded by the attempt expiry and the shared 300-second provider limit.
+
+Replay uses that recorded deadline; an unfinished intent never sends the request again.
+The runner allows 310 seconds for the HTTP response and receipt settlement.
+The [shared chat explanation](shared_chat_verification.md#backend-ownership) describes the methods and failure behavior.
 
 The capability grants no runtime tools, memory, schedules, fleet messages, or credential minting. Existing raw-key runtime delivery remains source evidence, not this implementation: `rustd/crates/afd_fleet/src/lease/answer/mod.rs:76–86` and `rustd/crates/afr_providers/src/connect/mod.rs:90–94`. The new machine route and daemon provider adapter are explicit additions in the file inventory; person-route counts remain 17/7/2.
 

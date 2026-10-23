@@ -82,6 +82,10 @@ impl Fixture {
         self.services(&Scope::ALL).router()
     }
 
+    pub(super) fn owner_url(&self) -> String {
+        self.lane.url()
+    }
+
     pub(super) fn own_runner(&mut self, id: &Uuid7) {
         self.cleanup
             .record("DELETE FROM runner.runners WHERE id=$1::uuid", id.as_str());

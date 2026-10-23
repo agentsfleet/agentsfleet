@@ -20,8 +20,8 @@ const BEARER: &str = "Bearer ";
 /// failure. It must outlast the daemon's message deadline (asserted below);
 /// renewal races its own deadline rather than relying on this.
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
-/// The daemon may spend thirty seconds awaiting the one provider request.
-const AUTHORING_MODEL_TIMEOUT: Duration = Duration::from_secs(35);
+/// The daemon may spend five minutes awaiting the one provider request.
+const AUTHORING_MODEL_TIMEOUT: Duration = Duration::from_secs(310);
 
 // The daemon bounds a message post by its own deadline and answers
 // `delivered: false` past it; a call timeout shorter than that would read a

@@ -34,7 +34,9 @@ it("records the applied setup revision for both the open chat and retained histo
   await client.apply();
   expect(client.getSnapshot().cards[0]?.setup_revision).toBe(2);
   expect(client.getSnapshot().fleet).toBeNull();
+  expect(client.getSnapshot().savedSetupRevision).toBe("2");
   client.fresh();
+  expect(client.getSnapshot().savedSetupRevision).toBeNull();
   expect(sidebarDrafts(client.getSnapshot().cards, null)[0]?.detail).toContain("Saved v2");
 });
 

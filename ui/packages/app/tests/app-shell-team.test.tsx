@@ -42,7 +42,7 @@ describe("shell for teams", () => {
       balance_nanos: "3680000000", updated_at: "2026-10-19T00:00:00Z",
       is_exhausted: false, exhausted_at: null,
     } });
-    expect(markup).toContain('aria-label="Credit balance"');
+    expect(markup).toContain('aria-label="Credits $3.68: Credit balance"');
     expect(markup).toContain('href="/settings/billing"');
     expect(markup).toContain("$3.68");
   });

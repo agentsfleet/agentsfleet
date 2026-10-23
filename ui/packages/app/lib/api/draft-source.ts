@@ -11,8 +11,8 @@ export async function sourcePreview(base: string, source: Source, signal: AbortS
   if (source.kind === SOURCE_KIND.definition) return {definition: source.definition, instanceName: String(source.definition.config.name), revision: "inline"};
   if (source.kind === SOURCE_KIND.fleet) {
     const fleet = await setupRequest({path: `${base}/fleets/${encodeURIComponent(source.fleet_id)}`}, FleetSeedSchema, signal);
-    if (fleet.id !== source.fleet_id || fleet.setup_revision !== source.setup_revision) throw new SetupUnavailable("This fleet changed. Open Improve from its current setup.", 409);
-    return {definition: fleet.definition, instanceName: fleet.name, revision: source.setup_revision};
+    if (fleet.id !== source.fleet_id || fleet.setup_revision !== source.setup_revision) throw new SetupUnavailable("This fleet changed. Open Edit setup from its current setup.", 409);
+    return {definition: fleet.definition, instanceName: fleet.name, revision: source.setup_revision, setupRevision: source.setup_revision};
   }
   const query = new URLSearchParams({revision_id: source.revision_id});
   const library = await setupRequest({path: `${base}/fleet-libraries/${encodeURIComponent(source.library_id)}?${query}`}, LibrarySchema, signal);

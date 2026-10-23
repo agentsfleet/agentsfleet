@@ -208,8 +208,9 @@ export function designSystemDropdown() {
     StatusCard: ({ label, count, variant }: { label: string; count: number | string; variant?: string }) =>
       React.createElement("div", { "data-status-card": label, "data-variant": variant ?? "default" }, `${label}: ${count}`),
     DropdownMenu: ({ children }: { children: React.ReactNode }) => React.createElement("div", { "data-dropdown": "1" }, children),
-    DropdownMenuTrigger: ({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode }) =>
-      React.createElement("button", { ...rest }, children),
+    DropdownMenuTrigger: ({ children, asChild, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode; asChild?: boolean }) =>
+      asChild && React.isValidElement<React.ButtonHTMLAttributes<HTMLButtonElement>>(children)
+        ? React.cloneElement(children, rest) : React.createElement("button", { ...rest }, children),
     DropdownMenuContent: ({ children, ...rest }: { children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) =>
       React.createElement("div", { "data-dropdown-content": "1", ...rest }, children),
     DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => React.createElement("div", { "data-dropdown-label": "1" }, children),

@@ -7,9 +7,11 @@ import { cn } from "../utils";
  * form reads as the same surface. Default min-height of 80px keeps the
  * collapsed state usable; consumers override via `rows` or className.
  */
-export type TextareaProps = ComponentProps<"textarea">;
+export type TextareaProps = ComponentProps<"textarea"> & {
+  appearance?: "default" | "composer";
+};
 
-export function Textarea({ className, ref, ...props }: TextareaProps) {
+export function Textarea({ appearance = "default", className, ref, ...props }: TextareaProps) {
   return (
     <textarea
       ref={ref}
@@ -17,8 +19,9 @@ export function Textarea({ className, ref, ...props }: TextareaProps) {
         "flex min-h-20 w-full rounded-md border border-border bg-secondary",
         "px-lg py-md text-body-sm text-foreground font-sans",
         "placeholder:text-muted-foreground",
-        "enabled:hover:border-ring",
-        "focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-strong",
+        appearance === "composer"
+          ? "border-0 bg-transparent shadow-none focus:outline-none focus:ring-0"
+          : "enabled:hover:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-strong",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors duration-snap ease-snap",
         className,

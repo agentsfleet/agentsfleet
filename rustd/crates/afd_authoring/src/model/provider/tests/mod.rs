@@ -6,6 +6,8 @@
 )]
 
 mod rejections;
+#[path = "../../../../tests/provider_wire.rs"]
+mod wire;
 
 use super::*;
 use afd_crypto::secret::SecretString;
@@ -43,15 +45,19 @@ impl Transport for Physical {
         if self.fail {
             return Err(crate::error::ErrorKind::Unknown.into());
         }
+        let (headers, body) = wire::body(self.status, self.body.clone());
         Ok(ProviderResponse {
             status: self.status,
-            body: self.body.clone(),
+            headers,
+            body,
         })
     }
 }
 
 fn outbound(api: InferenceApi) -> Outbound {
     Outbound {
+        dispatch_id: "fixture-dispatch".into(),
+        progress: None,
         key: SecretString::new("private-key".into()),
         body: CompletionRequest::new(Message::user("private-prompt")).max_tokens(37),
         inference: ModelInference {
@@ -101,7 +107,7 @@ async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {
     for (api, path, header) in [
         (
             InferenceApi::Gemini,
-            "/v1/v1beta/models/workspace/model-next:generateContent",
+            "/v1/v1beta/models/workspace/model-next:streamGenerateContent",
             "x-goog-api-key",
         ),
         (InferenceApi::Ollama, "/v1/api/chat", "authorization"),
@@ -112,7 +118,7 @@ async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {
             body: serde_json::to_vec(&reply(api)).expect("response JSON"),
             fail: false,
         });
-        let (status, response) = complete(outbound(api), Arc::<Physical>::clone(&physical))
+        let (status, response, _) = complete(outbound(api), Arc::<Physical>::clone(&physical))
             .await
             .expect("SDK response");
         assert_eq!(status, 200);
@@ -150,7 +156,7 @@ async fn every_api_uses_the_configured_model_credential_limit_and_one_physical_s
             body: serde_json::to_vec(&reply(api)).expect("response JSON"),
             fail: false,
         });
-        let (status, response) = complete(outbound(api), Arc::<Physical>::clone(&physical))
+        let (status, response, _) = complete(outbound(api), Arc::<Physical>::clone(&physical))
             .await
             .expect("SDK response");
         assert_eq!(status, 200);
@@ -197,13 +203,14 @@ async fn physical_failure_invalid_json_status_and_oversize_never_retry() {
             body,
             fail,
         });
-        let error = complete(
+        let (_, response, cause) = complete(
             outbound(InferenceApi::Chat),
             Arc::<Physical>::clone(&physical),
         )
         .await
-        .expect_err("failed response");
-        assert!(!error.to_string().contains("private-"));
+        .expect("uncertainty retains partial facts");
+        assert!(cause.is_some());
+        assert!(response.usage.input_tokens.is_none());
         assert_eq!(
             physical.requests.lock().expect("recorded requests").len(),
             1
@@ -220,7 +227,7 @@ async fn failed_http_status_keeps_reported_usage_for_accounting() {
         body: serde_json::to_vec(&reply(api)).expect("JSON"),
         fail: false,
     });
-    let (status, response) = complete(outbound(api), Arc::<Physical>::clone(&physical))
+    let (status, response, _) = complete(outbound(api), Arc::<Physical>::clone(&physical))
         .await
         .expect("known reply");
     assert_eq!(status, 503);
@@ -245,9 +252,11 @@ fn provider_response_diagnostics_keep_status_without_private_reply_bytes() {
             "credential": "private-provider-credential"
         }))
         .expect("private response JSON");
+        let (headers, stream) = wire::body(status, body.clone());
         let response = ProviderResponse {
             status,
-            body: body.clone(),
+            headers,
+            body: stream,
         };
         let exposed_bytes = format!("{body:?}").replace(' ', "");
         for rendered in [format!("{response:?}"), format!("{response:#?}")] {
@@ -270,9 +279,5 @@ fn provider_response_diagnostics_keep_status_without_private_reply_bytes() {
             );
         }
         assert_eq!(response.status, status);
-        assert_eq!(
-            response.body, body,
-            "diagnostics must not alter the provider response"
-        );
     }
 }

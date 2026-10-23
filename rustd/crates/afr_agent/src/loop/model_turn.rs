@@ -39,8 +39,12 @@ impl Harness<'_, '_> {
         };
         let span = spans::chat(shared.model);
         let started = Instant::now();
-        let streamed =
-            take(shared.provider.stream(request), &mut self.live).instrument(span.clone());
+        let streamed = take(
+            shared.provider.stream(request),
+            &mut self.live,
+            shared.meter,
+        )
+        .instrument(span.clone());
         let taken = tokio::select! {
             biased;
             () = self.stop.cancelled() => None,

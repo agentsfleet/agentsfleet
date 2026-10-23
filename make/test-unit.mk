@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel test-runner-startup test-coverage-runner-kernel
+.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs build-test-unit-rustd test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel test-runner-startup test-coverage-runner-kernel
 
 # Three shards, one per crate family, so Continuous Integration runs each on its
 # own runner at once and `test-unit-rustd` is all three in order: the whole
@@ -45,6 +45,16 @@ test-unit-rustd-daemon-libs:  ## Rust unit shard: the daemon's library crates (a
 	@bash scripts/local-dev-test.sh
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-daemon-libs.log,[rustd] unit: daemon libraries,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON_LIBS)))
+
+# Cache warm-up for the three shards above, run on main by warm-cache.yml: the
+# same selections, compiled with --no-run and never executed. The shards share
+# one rust-cache key, so the dependencies compile once here instead of once per
+# shard, and a pull request restores that single target directory.
+build-test-unit-rustd:  ## Compile the Rust unit shards' test binaries without running them (main-branch cache warm-up)
+	@$(_RUSTD_NEED_CARGO)
+	@cd $(RUSTD_DIR) && $(_RUSTD_UNIT_TEST) --no-run $(call _rustd_packages,$(_RUSTD_UNIT_RUNNER))
+	@cd $(RUSTD_DIR) && $(_RUSTD_UNIT_TEST) --no-run $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON))
+	@cd $(RUSTD_DIR) && $(_RUSTD_UNIT_TEST) --no-run $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON_LIBS))
 
 test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."

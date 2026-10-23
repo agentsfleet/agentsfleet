@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
+import { CONNECTION_STATUS } from "@/tests/helpers/fleet-streams";
 import {
   deriveTileLiveness,
   fleetRowState,

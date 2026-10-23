@@ -6,13 +6,13 @@
 
 use super::Network;
 use crate::{ProviderRequest, Transport};
-use afd_wire::authoring::ENVELOPE_BYTES_MAX;
+use futures_util::TryStreamExt as _;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 #[tokio::test]
-async fn bounded_responses_keep_status_and_bytes_and_refuse_overflow() {
-    for length in [3, ENVELOPE_BYTES_MAX, ENVELOPE_BYTES_MAX + 1] {
+async fn physical_responses_keep_status_and_stream_bytes_without_normalized_envelope_collection() {
+    for length in [3, afd_wire::authoring::ENVELOPE_BYTES_MAX + 1] {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("fixture listener");
@@ -34,17 +34,74 @@ async fn bounded_responses_keep_status_and_bytes_and_refuse_overflow() {
             timeout: Duration::from_secs(5),
         };
         let response = Network::new().expect("direct client").send(request).await;
-        if length <= ENVELOPE_BYTES_MAX {
-            let response = response.expect("bounded provider response");
-            assert_eq!(response.status, 429);
-            assert_eq!(response.body, vec![b'x'; length]);
-        } else {
-            let error = response.expect_err("unbounded response refused");
-            assert_eq!(error.code(), afd_core::error_code::AUTHORING_UNKNOWN);
-            assert!(!format!("{error:?}").contains("inference"));
-        }
+        let response = response.expect("provider response head");
+        assert_eq!(response.status, 429);
+        let body = response
+            .body
+            .try_fold(Vec::new(), |mut all, bytes| async move {
+                all.extend_from_slice(&bytes);
+                Ok(all)
+            })
+            .await
+            .expect("physical bytes");
+        assert_eq!(body, vec![b'x'; length]);
         server.await.expect("server stopped");
     }
+}
+
+#[tokio::test]
+async fn response_head_and_first_bytes_arrive_before_the_provider_finishes() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("listener");
+    let address = listener.local_addr().expect("address");
+    let (release, wait) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("request");
+        let mut request = [0; 4096];
+        assert!(socket.read(&mut request).await.expect("headers") > 0);
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nfirst")
+            .await
+            .expect("first bytes");
+        wait.await.expect("test received first bytes");
+        socket.write_all(b" last").await.expect("last bytes");
+    });
+    let request = ProviderRequest {
+        request: http::Request::builder()
+            .uri(format!("http://{address}/model"))
+            .body(Vec::new())
+            .expect("request"),
+        timeout: Duration::from_secs(5),
+    };
+    let mut response = tokio::time::timeout(
+        Duration::from_secs(1),
+        Network::new().expect("network").send(request),
+    )
+    .await
+    .expect("head before finish")
+    .expect("response");
+    assert_eq!(response.status, 200);
+    let first = tokio::time::timeout(Duration::from_secs(1), response.body.try_next())
+        .await
+        .expect("first chunk before finish")
+        .expect("read")
+        .expect("chunk");
+    assert_eq!(first.as_ref(), b"first");
+    assert!(!server.is_finished());
+    release.send(()).expect("release provider");
+    assert_eq!(
+        response
+            .body
+            .try_next()
+            .await
+            .expect("last read")
+            .expect("last chunk")
+            .as_ref(),
+        b" last"
+    );
+    assert!(response.body.try_next().await.expect("end").is_none());
+    server.await.expect("provider joined");
 }
 
 #[tokio::test]

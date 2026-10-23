@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CONNECTION_STATUS, getSnapshot, retryConnection, subscribe } from "./fleet-stream-registry";
+import { CONNECTION_STATUS, getSnapshot, retryConnection, subscribe } from "@/tests/helpers/fleet-streams";
 import { OFFLINE_RETRY_MS } from "./fleet-stream-reconnect";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { NO_SEED, WS, Z_A, setupRegistryTests, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";

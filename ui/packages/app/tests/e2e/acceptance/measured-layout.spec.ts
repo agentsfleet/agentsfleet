@@ -31,11 +31,12 @@ import { OPEN_RUNNER_LABEL } from "@/app/(dashboard)/admin/runners/[runnerId]/co
 import { EDIT_POLICY_LABEL } from "@/app/(dashboard)/admin/runners/components/RunnerListCells";
 
 const SHORT_WINDOW = { width: 1280, height: 480 };
+const LIBRARY_SHORT_WINDOW = { ...SHORT_WINDOW, height: 320 };
 const WIDE_WINDOW = { width: 1280, height: 900 };
 const PHONE_WINDOW = { width: 390, height: 844 };
 const RENDER_TIMEOUT_MS = 15_000;
 const CREATE_RUNNER = "Create runner";
-const EDIT_POLICY = "Edit policy";
+const EDIT_POLICY = "Edit runner";
 // Sub-pixel rounding between a line box and its element's height.
 const LINE_TOLERANCE_PX = 1;
 const TALL_WINDOW = { width: 1280, height: 1400 };
@@ -107,8 +108,9 @@ async function seedLibraryEntry(workspaceId: string, name: string): Promise<void
 }
 
 // Onboards one platform row for the operator's library page, and removes it after.
-async function withPlatformEntry(body: () => Promise<void>): Promise<void> {
-  await withStagedPlatformEntry(await getDefaultWorkspaceId(FIXTURE_KEY.operator), PLATFORM_ENTRY_ID, body);
+async function withPlatformEntry(body: (name: string) => Promise<void>): Promise<void> {
+  const name = `${PLATFORM_ENTRY_ID}-${crypto.randomUUID()}`;
+  await withStagedPlatformEntry(await getDefaultWorkspaceId(FIXTURE_KEY.operator), name, () => body(name));
 }
 
 async function expectFooterReachable(dialog: Locator, footerButton: string): Promise<void> {
@@ -137,6 +139,7 @@ test.describe("dialogs keep their footer reachable in a short window", () => {
   });
 
   test("the create-runner form scrolls to its Create button", async ({ page }) => {
+    await signInAs(page, FIXTURE_KEY.policyEditor);
     await page.goto("/admin/runners");
     await page.getByRole("button", { name: CREATE_RUNNER, exact: true }).click();
     await expectFooterReachable(page.getByRole("dialog", { name: CREATE_RUNNER }), "Create");
@@ -147,9 +150,11 @@ test.describe("dialogs keep their footer reachable in a short window", () => {
   });
 
   test("the fleet-library edit form scrolls to its Save button", async ({ page }) => {
-    await withPlatformEntry(async () => {
+    await withPlatformEntry(async (name) => {
       await page.goto("/admin/fleet-libraries");
-      await page.getByRole("button", { name: EDIT, exact: true }).first().click();
+      await page.getByRole("row").filter({hasText: name}).getByRole("button", { name: EDIT, exact: true }).click();
+      await expect(page.getByRole("dialog", { name: EDIT_TITLE })).toBeVisible();
+      await page.setViewportSize(LIBRARY_SHORT_WINDOW);
       await expectFooterReachable(page.getByRole("dialog", { name: EDIT_TITLE }), "Save");
     });
   });
@@ -169,10 +174,11 @@ test.describe("measured placement", () => {
   test("Library inspection stays inside a phone viewport", async ({ page }) => {
     await page.setViewportSize(PHONE_WINDOW);
     const workspaceId = await layoutWorkspaceId();
-    await seedLibraryEntry(workspaceId, GALLERY_TEMPLATE);
+    const name = `${GALLERY_TEMPLATE}-${crypto.randomUUID()}`;
+    await seedLibraryEntry(workspaceId, name);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, WORKSPACE_LIBRARY));
-    const row = page.getByRole("listitem").filter({hasText: GALLERY_TEMPLATE});
+    const row = page.getByRole("listitem").filter({hasText: name});
     await row.getByRole("button", {name: "Inspect", exact: true}).click();
     const start = page.getByRole("button", {name: "Start chat from this revision"});
     await expect(start).toBeVisible({ timeout: RENDER_TIMEOUT_MS });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { reportsOwnRun } from "@/components/domain/fleetReplyMessage";
-import { appendOptimistic, discardOptimistic, getSnapshot, reconcileOptimistic, subscribe } from "./fleet-stream-registry";
+import { appendOptimistic, discardOptimistic, getSnapshot, reconcileOptimistic, subscribe } from "@/tests/helpers/fleet-streams";
 import { NO_SEED, row, setupRegistryTests, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { fetchSpy, flushBackfill, pageWith, setupBackfillTests } from "@/tests/helpers/fleet-stream-backfill-fixtures";
 

@@ -13,6 +13,7 @@ const modelSchema = Schema.Struct({ref: Schema.String, eligibility: Schema.Struc
 const modelPage = Schema.Struct({items: Schema.Array(modelSchema), next_cursor: Schema.NullOr(Schema.String)});
 const PAGE_MAX = 100;
 const COMMAND_TIMEOUT_MS = 120_000;
+const PLATFORM_DEFAULT_REF = "platform-default";
 
 export function fixtureDefinition(name: string, credential?: string): typeof DefinitionSchema.Type {
   return {schema_version: 1, description: "Acceptance probe",
@@ -23,14 +24,18 @@ export function fixtureDefinition(name: string, credential?: string): typeof Def
 
 export async function authoringModel(ctx: AuthContext): Promise<string> {
   let cursor: string | null = null; const seen = new Set<string>();
+  let fallback: string | undefined;
   for (let page = 0; page < PAGE_MAX; page++) {
     const query = new URLSearchParams({limit: "100"}); if (cursor) query.set("starting_after", cursor);
     const models = Schema.decodeUnknownSync(modelPage)(await nativeRequest(ctx, `/models?${query}`));
-    const model = models.items.find((entry) => entry.eligibility.authoring && entry.eligibility.runtime);
+    const eligible = models.items.filter((entry) => entry.eligibility.authoring && entry.eligibility.runtime);
+    const model = eligible.find((entry) => entry.ref === PLATFORM_DEFAULT_REF);
     if (model) return model.ref;
+    fallback ??= eligible[0]?.ref;
     if (!models.next_cursor || seen.has(models.next_cursor)) break;
     cursor = models.next_cursor; seen.add(cursor);
   }
+  if (fallback) return fallback;
   throw new Error("No eligible owner model for native acceptance setup");
 }
 

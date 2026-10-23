@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { OUTCOME } from "@/lib/events/event-summary";
-import { getSnapshot, subscribe } from "./fleet-stream-registry";
+import { getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
 import { createEntry } from "./fleet-stream-entry";
 import { applyReplyDelta } from "./fleet-stream-reply-frames";
 import type { FleetEvent } from "./fleet-stream-row";

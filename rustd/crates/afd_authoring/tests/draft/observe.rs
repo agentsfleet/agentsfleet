@@ -6,6 +6,7 @@ use super::{
     mint,
 };
 use afd_authoring::{Observation, View};
+use afd_core::error_code;
 
 /// Moves the draft's one message to `status`, as a lease or a cutoff does.
 const MESSAGE_STATUS: &str = "UPDATE authoring.messages SET status=$2 WHERE draft_id=$1::uuid";
@@ -17,7 +18,7 @@ const CLOSE: &str = "UPDATE authoring.drafts SET status='closed', closed_at=now(
 async fn view(f: &Fixture, draft: &afd_core::id::Uuid7) -> View {
     match f
         .drafts
-        .observe(f.access(), draft, Some(0))
+        .observe(f.access(), draft, 0)
         .await
         .expect("the creator observes their draft")
     {
@@ -89,7 +90,7 @@ async fn a_closed_draft_ends_the_stream_and_a_foreign_generation_reads_deleted()
         .draft;
     let stale = f
         .drafts
-        .observe(f.access(), &draft.id, Some(1))
+        .observe(f.access(), &draft.id, 1)
         .await
         .expect("an authorized stream");
     assert!(
@@ -105,5 +106,55 @@ async fn a_closed_draft_ends_the_stream_and_a_foreign_generation_reads_deleted()
     assert!(closed.closed);
     let last = closed.notices.last().expect("the closing notice");
     assert_eq!((last.event, &last.draft_id), ("draft.closed", &draft.id));
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_missing_draft_is_an_initial_error_and_a_deleted_observation() {
+    let f = Fixture::create().await;
+    let missing = mint();
+    let error = f
+        .drafts
+        .initial_view(f.access(), &missing)
+        .await
+        .expect_err("a missing initial resource stays hidden");
+    assert_eq!(error.code(), error_code::AUTHORING_NOT_FOUND);
+    let observed = f
+        .drafts
+        .observe(f.access(), &missing, 0)
+        .await
+        .expect("an already-open stream observes deletion");
+    assert!(matches!(observed, Observation::Deleted));
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn malformed_stored_state_remains_a_datastore_failure_during_observation() {
+    let f = Fixture::create().await;
+    let draft = f
+        .drafts
+        .create(f.access(), f.request(mint(), None), now())
+        .await
+        .expect("an idle draft")
+        .draft;
+    sqlx::query("UPDATE authoring.drafts SET status='invalid' WHERE id=$1::uuid")
+        .bind(draft.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("inject a stored-state fault");
+    let error = f
+        .drafts
+        .initial_view(f.access(), &draft.id)
+        .await
+        .expect_err("stored faults are never deletion");
+    assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY);
+    let error = f
+        .drafts
+        .observe(f.access(), &draft.id, 0)
+        .await
+        .expect_err("subsequent observations retain the fault too");
+    assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY);
     f.cleanup().await;
 }

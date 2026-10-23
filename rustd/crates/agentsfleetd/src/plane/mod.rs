@@ -135,8 +135,14 @@ impl ServingPlane {
         let drafts =
             afd_authoring::Drafts::new(database.clone(), Entropy::new(), Arc::clone(&biller))
                 .with_analytics(analytics.clone());
-        let authoring =
-            surfaces::authoring(drafts, &kek, &providers, &admissions, authoring_transport);
+        let authoring = surfaces::authoring(
+            drafts,
+            &queue,
+            &kek,
+            &providers,
+            &admissions,
+            authoring_transport,
+        );
         let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
         let tenant = stores::tenant(&database, &kek, &providers);

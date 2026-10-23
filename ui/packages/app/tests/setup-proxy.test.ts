@@ -158,7 +158,7 @@ describe("setup route whitelist", () => {
     [["drafts", DRAFT_ID], METHOD.get], [["drafts", DRAFT_ID], METHOD.patch], [["drafts", DRAFT_ID], METHOD.delete],
     [["drafts", DRAFT_ID, "messages"], METHOD.get], [["drafts", DRAFT_ID, "messages"], METHOD.post],
     [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "events", "stream"], METHOD.get],
-    [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
+    [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
     [["fleet-libraries"], METHOD.get], [["fleet-libraries"], METHOD.post], [["fleet-libraries", "owned"], METHOD.get],
@@ -173,7 +173,7 @@ describe("setup route whitelist", () => {
   ])("rejects unsupported path %s", (...path) => {expect(matchSetupRoute(WORKSPACE, path, METHOD.get)).toBeUndefined();});
   it("rejects a malformed workspace", () => {expect(matchSetupRoute("..", ["models"], METHOD.get)).toBeUndefined();});
   it.each([
-    [["fleets"], METHOD.get], [["fleets", "invalid"], METHOD.get],
+    [["fleets"], METHOD.patch], [["fleets", "invalid"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", "invalid"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.get],

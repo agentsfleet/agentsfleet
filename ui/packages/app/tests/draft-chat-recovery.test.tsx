@@ -56,7 +56,7 @@ it("lets Stop unblock unknown usage with queued text while retaining the origina
   });
   await client.resume(DRAFT.id); render(<Live />);
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", true);
-  expect(screen.getByRole("log").textContent).toContain("Stop this turn");
+  expect(screen.getByRole("log").textContent).toContain("The model request ended without confirmed usage");
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   await waitFor(() => {
     expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
@@ -94,7 +94,7 @@ it("keeps unknown usage blocked after a failed Stop and permits another Stop", a
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   await waitFor(() => expect(client.getSnapshot().error).toBe("Stop could not be saved."));
   expect(client.getSnapshot().draft?.cancelled_through).toBe("0");
-  expect(screen.getByRole("log").textContent).toContain("Stop this turn");
+  expect(screen.getByRole("log").textContent).toContain("The model request ended without confirmed usage");
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", true);
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
@@ -128,7 +128,9 @@ it.each(["MiniMax M3.1 Flash (Free)", "GLM 5.3 Flash"])("displays the selected m
   expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toBe(label);
 });
 
-it("focuses New fleet ready for typing without clicking the composer", async () => {
+it("focuses New fleet ready for typing after its launcher was focused", async () => {
+  render(<Button>Open setup</Button>);
+  screen.getByRole("button", {name: "Open setup"}).focus();
   render(<Live />);
   const input = screen.getByRole("textbox", {name: CHAT_PLACEHOLDER});
   expect(document.activeElement).toBe(input);
@@ -142,11 +144,11 @@ it("focuses a second New fleet click even when the current chat is already new",
   expect(document.activeElement).toBe(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER}));
 });
 
-it("focuses New fleet after leaving an existing chat without stealing focus on resume", async () => {
+it("focuses a resumed chat and New fleet after leaving it", async () => {
   await client.resume(DRAFT.id);
   render(<Live><Button onClick={() => client.fresh()}>New fleet</Button></Live>);
   const input = screen.getByRole("textbox", {name: CHAT_PLACEHOLDER});
-  expect(document.activeElement).not.toBe(input);
+  expect(document.activeElement).toBe(input);
   await userEvent.click(screen.getByRole("button", {name: "New fleet"}));
   expect(document.activeElement).toBe(input);
 });
@@ -158,4 +160,44 @@ it("waits for the new composer to become ready before focusing", () => {
   expect(document.activeElement).not.toBe(input);
   rendered.rerender(<DraftConversation client={client} view={view} />);
   expect(document.activeElement).toBe(input);
+});
+
+it("returns the caret after the first message and accepts the next without another click", async () => {
+  render(<Live />);
+  await userEvent.keyboard("Watch the nightly build{Enter}");
+  const input = screen.getByRole("textbox", {name: CHAT_PLACEHOLDER});
+  await waitFor(() => {
+    expect(client.getSnapshot().draft?.id).toBe(DRAFT.id);
+    expect(input).toHaveProperty("disabled", false);
+    expect(document.activeElement).toBe(input);
+  });
+  await userEvent.keyboard("And report errors");
+  expect(input).toHaveProperty("value", "And report errors");
+});
+
+it("leaves model selection focused when conversation updates arrive", async () => {
+  await client.resume(DRAFT.id);
+  const view = client.getSnapshot();
+  const rendered = render(<DraftConversation client={client} view={view} />);
+  const model = screen.getByRole("combobox", {name: "Authoring model"});
+  model.focus();
+  rendered.rerender(<DraftConversation client={client} view={{...view, messages: [...view.messages]}} />);
+  expect(document.activeElement).toBe(model);
+});
+
+it("leaves another control focused when a composer mounts or becomes ready", async () => {
+  const menu = render(<div role="menu"><Button role="menuitem">Create workspace</Button></div>);
+  const create = screen.getByRole("menuitem", {name: "Create workspace"});
+  create.focus();
+  const initial = render(<Live />);
+  expect(document.activeElement).toBe(create);
+  initial.unmount(); menu.unmount();
+  await client.resume(DRAFT.id);
+  const view = client.getSnapshot();
+  const rendered = render(<DraftConversation client={client} view={{...view, busy: true}}><Button>Inspect answer</Button></DraftConversation>);
+  const inspect = screen.getByRole("button", {name: "Inspect answer"});
+  inspect.focus();
+  rendered.rerender(<DraftConversation client={client} view={view}><Button>Inspect answer</Button></DraftConversation>);
+  expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
+  expect(document.activeElement).toBe(inspect);
 });

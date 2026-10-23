@@ -116,7 +116,7 @@ pub(super) fn restore(
             return Err(ErrorKind::Replay.into());
         }
         let target = body.chat_history.get_mut(index).ok_or(ErrorKind::Replay)?;
-        *target = Message::Assistant(saved.message);
+        *target = Message::Assistant(saved.message).into();
     }
     Ok(())
 }

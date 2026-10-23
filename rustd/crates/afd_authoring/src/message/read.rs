@@ -28,6 +28,7 @@ struct Stored {
     answer_text: Option<String>,
     candidate_id: Option<String>,
     failure_reason: Option<String>,
+    failure_cause: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     finished_at: Option<jiff_sqlx::Timestamp>,
@@ -93,6 +94,11 @@ impl Drafts {
 }
 
 fn project(stored: Stored, cancelled_through: i64) -> Result<Message> {
+    let cause = stored
+        .failure_cause
+        .as_deref()
+        .map(word::<crate::types::FailureCause>)
+        .transpose()?;
     let user = stored.ordinal == 0;
     let state: MessageState = word(&stored.status)?;
     Ok(Message {
@@ -117,7 +123,12 @@ fn project(stored: Stored, cancelled_through: i64) -> Result<Message> {
             .map(word::<afd_wire::authoring::FailureReason>)
             .transpose()?
             .map(|reason| {
-                crate::types::Failure::for_message(reason, stored.sequence, cancelled_through)
+                crate::types::Failure::for_message(
+                    reason,
+                    stored.sequence,
+                    cancelled_through,
+                    cause,
+                )
             }),
         created_at: stored.created_at,
         finished_at: stored.finished_at.map(jiff_sqlx::Timestamp::to_jiff),

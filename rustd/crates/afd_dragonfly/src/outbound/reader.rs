@@ -176,7 +176,14 @@ impl OutboundReader {
         } else {
             "outbound_entry_undecodable_drop_failed"
         };
-        tracing::warn!(entry_id = id, event);
+        let error_code = acknowledged
+            .as_ref()
+            .err()
+            .map_or(afd_core::error_code::INTERNAL_OPERATION_FAILED, |error| {
+                error.code()
+            })
+            .as_str();
+        tracing::warn!(entry_id = id, event, error_code);
     }
 }
 

@@ -62,7 +62,7 @@ export function ShellFrame({
           />
         </aside>
 
-        <main className="app-dashboard-canvas min-h-0 overflow-y-auto has-[#fleet-chat-transcript]:overflow-hidden md:has-[[data-page-layout]]:overflow-hidden">
+        <main className="app-dashboard-canvas min-h-0 overflow-y-auto has-[#fleet-chat-transcript]:[--app-canvas-block:var(--spacing-md)] has-[#fleet-chat-transcript]:overflow-hidden md:has-[[data-page-layout]]:overflow-hidden">
           <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 md:has-[[data-page-layout]]:h-full md:has-[[data-page-layout]]:min-h-0">
             <InviteNotice waiting={waitingInvites} />
             {children}

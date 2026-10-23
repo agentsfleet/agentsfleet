@@ -16,6 +16,7 @@ use std::ops::Deref;
 use afd_wire::policy::ExecutionPolicy;
 use aho_corasick::{AhoCorasick, MatchKind};
 use serde_json::Value;
+use zeroize::Zeroizing;
 
 use crate::error::Result;
 use crate::json;
@@ -56,7 +57,7 @@ impl<T> Deref for Clean<T> {
 pub struct Scrub {
     matcher: AhoCorasick,
     /// The secret values alone, without the NUL, for the held-tail check.
-    secrets: Vec<String>,
+    secrets: Vec<Zeroizing<String>>,
     /// One replacement per matcher pattern: each secret's mask, then the NUL's.
     replacements: Vec<String>,
 }
@@ -78,13 +79,13 @@ impl Scrub {
     /// # Errors
     /// The matcher could not be built over the values.
     pub fn of<'v>(named: impl IntoIterator<Item = (String, &'v str)>) -> Result<Self> {
-        let (mut replacements, secrets): (Vec<String>, Vec<String>) = named
+        let (mut replacements, secrets): (Vec<String>, Vec<Zeroizing<String>>) = named
             .into_iter()
             .filter(|(_, value)| !value.is_empty())
-            .map(|(name, value)| (format!("«secret:{name}»"), value.to_owned()))
+            .map(|(name, value)| (format!("«secret:{name}»"), Zeroizing::new(value.to_owned())))
             .unzip();
         replacements.push(NUL_STAND_IN.to_owned());
-        let patterns = secrets.iter().map(String::as_str).chain([NUL]);
+        let patterns = secrets.iter().map(|value| value.as_str()).chain([NUL]);
         // Leftmost-longest, so a secret that contains another is masked whole.
         let matcher = AhoCorasick::builder()
             .match_kind(MatchKind::LeftmostLongest)
@@ -175,7 +176,7 @@ fn partial_head(text: &str, secret: &str) -> usize {
 /// start of a secret.
 #[derive(Default)]
 pub struct Carry {
-    held: String,
+    held: Zeroizing<String>,
 }
 
 impl fmt::Debug for Scrub {
@@ -207,7 +208,10 @@ impl Carry {
         self.held.push_str(chunk);
         let cut = scrub.safe_cut(&self.held);
         let tail = self.held.split_off(cut);
-        let ready = std::mem::replace(&mut self.held, tail);
-        scrub.masked(&ready).unwrap_or(ready)
+        let mut ready = std::mem::replace(&mut self.held, Zeroizing::new(tail));
+        // Masked raw bytes are wiped; an already-safe buffer moves without a copy.
+        scrub
+            .masked(&ready)
+            .unwrap_or_else(|| std::mem::take(&mut *ready))
     }
 }

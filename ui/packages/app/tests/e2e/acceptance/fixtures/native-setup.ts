@@ -9,15 +9,10 @@ import { fixtureDefinition } from "./definition";
 const PLATFORM_LIBRARIES = "/v1/admin/fleet-libraries";
 const MODEL_PAGE_LIMIT = 100;
 const MODEL_PAGE_MAX = 100;
+const PLATFORM_DEFAULT_REF = "platform-default";
 
 export async function createFixtureDraft(handle: ClientHandle, workspace: string, definition: Definition): Promise<Draft> {
   return createDraft(handle, workspace, { kind: SOURCE_KIND.definition, definition });
-}
-
-/** A private Improve chat opened on a saved fleet's current setup revision, as the address the fleet's Setup panel links to would open it. */
-export async function createImprovementDraft(handle: ClientHandle, workspace: string,
-  fleet: Pick<Fleet, "id" | "setup_revision">): Promise<Draft> {
-  return createDraft(handle, workspace, { kind: SOURCE_KIND.fleet, fleet_id: fleet.id, setup_revision: fleet.setup_revision });
 }
 
 export async function readFixtureFleet(handle: ClientHandle, workspace: string, fleetId: string): Promise<Fleet> {
@@ -38,7 +33,7 @@ export async function publishFixtureLibrary(handle: ClientHandle, workspace: str
 
 export async function saveFixtureFleet(handle: ClientHandle, workspace: string, definition: Definition,
   name: string): Promise<Fleet> {
-  const draft = await createFixtureDraft(handle, workspace, definition);
+  const draft = await createFixtureDraft(handle, workspace, { ...definition, config: { ...definition.config, name } });
   if (!draft.candidate || !draft.review) throw new Error("Fixture draft is not reviewable");
   return FleetSchema.parse(await clientFor(handle).post<unknown>(`/v1/workspaces/${workspace}/fleets`, {
     source: { kind: "draft", draft_candidate_id: draft.candidate.id }, name,
@@ -89,18 +84,22 @@ async function createDraft(handle: ClientHandle, workspace: string, source: Sour
   }));
 }
 
-/** The first model the workspace offers for authoring, paging until one appears. */
-async function authoringModelRef(handle: ClientHandle, workspace: string): Promise<string> {
+/** Prefer the live platform model over entries other tests create with dummy keys. */
+export async function authoringModelRef(handle: ClientHandle, workspace: string): Promise<string> {
   const client = clientFor(handle);
   let cursor: string | null = null;
+  let fallback: string | undefined;
   for (let page = 0; page < MODEL_PAGE_MAX; page++) {
     const query = new URLSearchParams({ limit: String(MODEL_PAGE_LIMIT) });
     if (cursor) query.set("starting_after", cursor);
     const models = ModelsSchema.parse(await client.get<unknown>(`/v1/workspaces/${workspace}/models?${query}`));
-    const model = models.items.find((entry) => entry.eligibility.authoring);
+    const eligible = models.items.filter((entry) => entry.eligibility.authoring);
+    const model = eligible.find((entry) => entry.ref === PLATFORM_DEFAULT_REF);
     if (model) return model.ref;
+    fallback ??= eligible[0]?.ref;
     if (!models.next_cursor || models.next_cursor === cursor) break;
     cursor = models.next_cursor;
   }
+  if (fallback) return fallback;
   throw new Error("No eligible workspace authoring model for acceptance fixture");
 }

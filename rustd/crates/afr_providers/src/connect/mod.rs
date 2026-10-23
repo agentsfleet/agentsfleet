@@ -1,7 +1,6 @@
 //! Runtime routes come from the selected model's persisted lease settings.
 
 use std::fmt;
-use std::time::Duration;
 
 use afd_wire::lease::LeasePayload;
 use afd_wire::policy::ExecutionPolicy;
@@ -11,13 +10,7 @@ use crate::provider::Provider;
 use crate::transport::Transport;
 use crate::turn::Turns;
 use afd_inference::Configured;
-
-/// How long a connection may take to open.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long a turn's stream may sit silent: a reasoning model can think for
-/// minutes before its first event, so this is long, and the lease's own stop
-/// still ends a turn sooner.
-const READ_TIMEOUT: Duration = Duration::from_secs(300);
+use afd_inference::stream::{CONNECT_TIMEOUT, READ_TIMEOUT};
 
 /// What reaches the model a lease names.
 ///
@@ -101,7 +94,7 @@ impl Connect for Connector {
             .ok_or_else(|| raise::unhosted(&policy.provider))?;
         let lease_id = lease.lease_id.as_ref();
         let transport = Transport::new(self.client.clone(), lease_id, &policy.provider);
-        let model = route.model(&policy.context.model, &policy.api_key, transport);
+        let model = route.model(&policy.context.model, &policy.api_key, transport.http());
         Ok(Box::new(Turns::new(model, settings, policy, lease_id)))
     }
 }

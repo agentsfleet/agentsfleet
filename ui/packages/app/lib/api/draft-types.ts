@@ -59,7 +59,8 @@ export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema
 export const MessageSchema = z.object({
   sequence: decimal, operation_id: z.uuidv7(), role: z.enum(MESSAGE_ROLE), state: z.enum(MESSAGE_STATE),
   text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
-  failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string()}).optional(),
+  failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string(),
+    cause: z.enum(["deadline", "cancelled", "provider_interrupted", "completion_unverified"]).optional()}).optional(),
 });
 export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_LIMIT), next_cursor: z.string().nullable()});
 // The published schedule `View`; sync stays an open string so an unknown state counts as not registered.

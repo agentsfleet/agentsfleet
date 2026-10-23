@@ -186,10 +186,10 @@ serde = { version = "1.0.229", default-features = false, features = ["derive", "
 # detection and serde-typed deserialization are all its job rather than ours,
 # and every error it raises already carries the record and line it failed on.
 csv = "1.4.0"
-serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order", "raw_value"] }
+serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
-schemars = { version = "1.2.2", default-features = false, features = ["derive", "std"] }
+schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
 # `raw_value` carries `RawValue`, which is how the activity verb splices a
 # runner's already-JSON tool arguments into a published frame WITHOUT parsing
 # them into a tree and re-encoding it, which would build and drop a whole
@@ -207,14 +207,14 @@ schemars = { version = "1.2.2", default-features = false, features = ["derive", 
 # `jiff_0_2` publishes every `jiff::Timestamp` field as `type: string, format:
 # date-time`, so no `_at` field carries a hand-written schema attribute.
 utoipa = { version = "6.0.0", default-features = false, features = ["macros", "jiff_0_2"] }
-thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+thiserror = { version = "2.0.21", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.92", default-features = false }
 
 # Field bounds as annotations on the schema rather than as a hand-written
 # checker. `derive` only: `regex`, `email`, `phone-number` and `credit-card`
 # each pull their own dependency and none of them is a shape this product
 # authors. Its `garde_derive` rides the syn 2.0.119 already in the lock.
-garde = { version = "0.23.0", default-features = false, features = ["derive"] }
+garde = { version = "0.23.0", default-features = false, features = ["derive", "pattern"] }
 # A refusal sentence built from the bound it names, at compile time.
 # `Sentences` tables are `const` and std cannot format a number in a `const`,
 # so without it every sentence would spell the bound a second time.
@@ -233,13 +233,13 @@ const_format = { version = "0.2.36", default-features = false }
 # generated help, rather than a second undocumented input path. `color` and
 # `wrap_help` are left off — the daemon's usage output is read out of a
 # container log, where escape sequences and terminal-width reflow are noise.
-clap = { version = "4.6.6", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
+clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
 
 # RustCrypto. Pure Rust with no C linkage, the workspace's posture, and the
 # AES-256-GCM construction every stored vault row was sealed with.
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
 hmac = { version = "0.13.0", default-features = false }
-sha2 = { version = "0.11.0", default-features = false }
+sha2 = { version = "0.11.1", default-features = false }
 # Lower-case hex, for the credential digests and minted token bodies every
 # stored class is built from. Already in the lock via sqlx; taken directly
 # because a hand-written `write!("{:02x}")` loop is a place for a leading zero
@@ -252,7 +252,7 @@ subtle = { version = "2.6.1", default-features = false }
 # No `derive`: `zeroize_derive` is the only crate in this graph still on syn 2,
 # and a duplicate syn fails `clippy::multiple_crate_versions`. Three hand-written
 # `Drop` impls are cheaper than a second proc-macro inside a crypto crate anyway.
-zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
+zeroize = { version = "1.9.1", default-features = false, features = ["alloc"] }
 # The only system call this workspace's crypto makes.
 getrandom = { version = "0.4.3", default-features = false }
 
@@ -275,7 +275,7 @@ getrandom = { version = "0.4.3", default-features = false }
 # than a new dependency.
 url = { version = "2.5.8", default-features = false }
 
-uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.28.0", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -321,7 +321,7 @@ uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] 
 # `/usr/share/zoneinfo` (gcr.io/distroless/static-debian12:nonroot, verified).
 # It lets a zone name be VALIDATED against the real database instead of
 # pattern-matched — see `afd_cron::validate::timezone`.
-jiff = { version = "0.2.35", default-features = false, features = [
+jiff = { version = "0.2.38", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
   # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in
@@ -373,7 +373,7 @@ base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 # question askable at all. Enabling them because a build failed — rather than
 # reading which call site failed and why — is how a compatibility shim becomes
 # permanent.
-aws-lc-rs = { version = "1.18.0", default-features = false, features = [
+aws-lc-rs = { version = "1.18.2", default-features = false, features = [
     "aws-lc-sys",
     "alloc",
 ] }
@@ -430,14 +430,14 @@ reqwest = { version = "0.13.5", default-features = false, features = ["form", "r
 # Held at 0.88 for M229 (Indy decides later, 2026-10-18): 0.89's `worktree-mutation` also pulls
 # `status`, `dirwalk` and `gix-worktree/remove`, nine crates (dua-core,
 # crossbeam among them) the checkout never calls.
-gix = { version = "0.88.0", default-features = false, features = ["sha1"] }
+gix = { version = "0.89.0", default-features = false, features = ["sha1"] }
 # The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
 # `web_fetch` reads a page's text, never its markup: scripts, styles and tags
 # go, links keep their target. A real HTML parser rather than a hand-written
 # tag scanner.
-html2text = { version = "0.17.1", default-features = false }
+html2text = { version = "0.17.4", default-features = false }
 
 # The model providers' wire: Anthropic Messages, OpenAI Responses and every
 # OpenAI-compatible chat dialect, streamed, with tool calls assembled, usage
@@ -448,7 +448,7 @@ html2text = { version = "0.17.1", default-features = false }
 # their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
 # change. No default features: the transport is ours, so no HTTP stack, async
 # runtime or TLS comes with it.
-rig-core = { version = "=0.44.0", default-features = false }
+rig-core = { version = "=0.45.0", default-features = false }
 
 # A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
 # the lock through hyper, which parses the same header family with it.
@@ -482,7 +482,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 # through redis and sqlx's own feature sets — naming it here makes three
 # existing call sites (`hub.rs`, `jwks/cache.rs`) depend on a stated feature
 # rather than on unification holding.
-tokio = { version = "1.53.2", default-features = false, features = ["rt", "sync", "time", "macros"] }
+tokio = { version = "1.54.0", default-features = false, features = ["rt", "sync", "time", "macros"] }
 # Redis. The crate owns the RESP parsing, connection pooling and pub/sub
 # plumbing a hand-rolled client would carry. `connection-manager` is the piece
 # that earns it: one multiplexed connection that reconnects itself, rather than
@@ -495,7 +495,7 @@ tokio = { version = "1.53.2", default-features = false, features = ["rt", "sync"
 # `cluster-async` is the Dragonfly Swarm half: slot routing, MOVED/ASK
 # following, per-node connections and sharded pub/sub over RESP3, all the
 # driver's. This workspace never parses a redirect itself.
-redis = { version = "1.7.0", default-features = false, features = [
+redis = { version = "1.7.1", default-features = false, features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "connection-manager",
@@ -584,7 +584,7 @@ backon = { version = "1.6.0", default-features = false, features = ["std", "toki
 # requests per route CLASS, which no off-the-shelf layer knows about), but the
 # request-id, timeout and body-limit layers are not worth rewriting.
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
-tower-http = { version = "0.7.0", default-features = false, features = [
+tower-http = { version = "0.7.1", default-features = false, features = [
     "limit",
     "trace",
 ] }
@@ -596,10 +596,10 @@ tower-http = { version = "0.7.0", default-features = false, features = [
 # `client` for the dev-only side of one suite: the protocol-negotiation test
 # drives the same listener with an HTTP/1.1 client and an HTTP/2 one, and there
 # is no other way to prove the auto builder serves both.
-hyper = { version = "1.11.1", default-features = false, features = ["server", "client", "http1", "http2"] }
+hyper = { version = "1.12.0", default-features = false, features = ["server", "client", "http1", "http2"] }
 # The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
 # what lets a `tokio::net::TcpStream` be served by a hyper connection.
-hyper-util = { version = "0.1.20", default-features = false, features = [
+hyper-util = { version = "0.1.21", default-features = false, features = [
     "tokio",
     # The version-detecting connection builder. A browser caps concurrent
     # HTTP/1.1 connections per origin at six and every open event stream holds
@@ -615,8 +615,8 @@ hyper-util = { version = "0.1.20", default-features = false, features = [
 # tokio-rustls. All three on aws-lc-rs, the provider rustls already builds
 # with here, so no second crypto backend arrives.
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
-rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
-tokio-rustls = { version = "0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
+rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["aws_lc_rs", "tls12"] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.
@@ -638,11 +638,11 @@ crc16 = { version = "0.4.0", default-features = false }
 # whole map, and the entry API holds that shard for exactly the check-then-
 # act a per-key race needs. Where a map is keyed by something many tasks
 # touch at once, this is the shape, not `Mutex<HashMap>`.
-dashmap = { version = "6.1.0", default-features = false }
+dashmap = { version = "6.2.1", default-features = false }
 # An `Arc` swapped atomically: readers load it without a lock and a writer
 # replaces it whole. Where a value is read on every request and changed almost
 # never — which store a workspace's memory lives in — this is the shape.
-arc-swap = { version = "1.9.2", default-features = false }
+arc-swap = { version = "1.9.3", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and
@@ -740,7 +740,7 @@ opentelemetry_sdk = { version = "0.33.1", default-features = false, features = [
 # over a shared `AtomicBool` for one reason that matters: a token is
 # edge-triggered — `cancelled().await` wakes the instant it fires — where a
 # polled flag pays its polling interval on every shutdown.
-tokio-util = { version = "0.7.19", default-features = false }
+tokio-util = { version = "0.7.20", default-features = false }
 
 
 # `gethostname`, which `std` does not expose. The outbound worker's consumer
@@ -750,7 +750,7 @@ tokio-util = { version = "0.7.19", default-features = false }
 # no value at all.
 # A safe wrapper over the one call, rather than `libc` and an `unsafe` block
 # of our own.
-hostname = { version = "0.4.1", default-features = false }
+hostname = { version = "0.4.2", default-features = false }
 
 # Stream combinators for the pub/sub pump. `std` only — no executor, no
 # thread pool; the runtime is tokio's.
@@ -793,7 +793,7 @@ lettre = { version = "0.11.23", default-features = false, features = [
 ] }
 # Reviewed snapshots of the rendered email, so a template change shows up as a
 # diff in review rather than as a surprise in an inbox.
-insta = { version = "1.48.0", default-features = false }
+insta = { version = "1.49.0", default-features = false }
 # A directory walk for the source-reading tests, so none hand-writes the recursion.
 walkdir = { version = "2.5.0", default-features = false }
 # The subscriber, which §6 wires to OTLP. It is a dev-dependency until then for
@@ -842,7 +842,7 @@ jsonrpsee-types = { version = "0.26.1", default-features = false }
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
-libc = { version = "0.2.189", default-features = false }
+libc = { version = "0.2.191", default-features = false }
 # The sandbox's egress scope speaks netlink itself: route netlink for the veth
 # pair, its addresses and its route, nf_tables for the host-side rules. Pure
 # Rust over the kernel's own protocol, so the static runner links no C library

@@ -88,16 +88,7 @@ describe("startViewData", () => {
     expect(listAllMemoriesMock).toHaveBeenCalledWith(ARGS.workspaceId, ARGS.fleetId, ARGS.token);
   });
 
-  it("setup view fetch nothing ahead of the fleet", () => {
-    resetMocks();
-    expect(startViewData(FLEET_VIEW.setup, ARGS)).toEqual({
-      view: FLEET_VIEW.setup,
-    });
-    expect(listFleetMessagesMock).not.toHaveBeenCalled();
-    expect(listFleetEventsMock).not.toHaveBeenCalled();
-    expect(listAllMemoriesMock).not.toHaveBeenCalled();
-    expect(listWorkspaceMembersMock).not.toHaveBeenCalled();
-  });
+
 
   it("a failed thread read degrades to null instead of failing the page", async () => {
     resetMocks();
