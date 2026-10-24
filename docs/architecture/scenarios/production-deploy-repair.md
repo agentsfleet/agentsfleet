@@ -2,11 +2,11 @@
 
 > Parent: [`README.md`](./README.md) · References: [`../user_flow.md`](../user_flow.md) §"§8.5 Example: Production deploy repair", [`../capabilities.md`](../capabilities.md), and [`../connectors.md`](../connectors.md).
 
-**Outcome:** a failed production deployment becomes a diagnosis or one bounded draft Pull Request (PR). A human saves the write-bound repairer, reviews the exact diff, and merges. Only a terminal production result for the exact merged commit can wake post-deploy verification.
+**Current outcome:** diagnose a failed deployment or prepare a bounded draft Pull Request (PR) for human review. Durable incident linkage and post-deploy verification are unimplemented.
 
-**Crew shape:** three independently saved Fleets cooperate through events and durable repair linkage. There is no crew row, coordinator Fleet, or vendor-specific Grafana/Elasticsearch Fleet. <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana and <img src="https://cdn.simpleicons.org/elasticsearch" width="14" alt="" /> Elasticsearch are evidence sources read by all three members.
+**Target crew:** a responder, repairer and read-only verifier cooperate through events. Grafana and Elasticsearch supply evidence; they are not fleets. No crew row or coordinator fleet exists.
 
-**Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. It also adds the read-only verifier, durable GitHub production-result intake, standard Fleet result, and deterministic integration proof. The live GitHub App subscription and delivery are not yet proven together; the registration playbook requires that final operator check.
+**Proof boundary:** HTTP policy bounds the repairer’s repository writes. Historical M157 specifications describe durable linkage and verification that the current daemon does not implement. Live provider delivery remains separately unproven.
 
 > **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification: the App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`), and the storage and dispatcher those would feed were retired (Indy, Oct 15, 2026).
 >
@@ -16,8 +16,9 @@
                    Grafana + Elasticsearch
                     ^          ^          ^
                     |          |          |
-timer ----------> Fleet 1   Fleet 2    Fleet 3 <----- exact production result
+timer ----------> Fleet 1   Fleet 2    Fleet 3 <----- TARGET: production result
                   responder  repairer    verifier             + 15 minutes
+                                        (unimplemented)
                      |          ^
                      v          |
                  diagnosis      +----- failed workflow or human steer
@@ -58,44 +59,16 @@ The fleet's reviewed instructions own remote reconciliation. Before writing, the
 
 ## 4. Keep preview evidence without calling it production
 
-Every completed workflow on the repair branch becomes an immutable run-history row with repository, branch, workflow identity, provider run identifier, head commit hash, conclusion, and completion time. Redelivery is idempotent by provider run identifier.
+This target is unimplemented. Repair-branch workflows currently create no immutable run history, incident link or verification intent in the daemon.
 
-These rows answer what happened before merge: lint, tests, preview deploys, and any other branch workflow. They never close the incident. A green preview proves only that preview automation accepted the repair branch.
-
-```text
-repair branch workflow result
-          |
-          v
-  append immutable history
-          |
-          +---- visible evidence
-          |
-          `---- NEVER a closure trigger
-```
+A future implementation must distinguish preview evidence from production results and correlate the exact merged commit before scheduling verification. Historical M157 specifications describe that target; their guarantees do not describe current behavior.
 
 ## 5. Invariants
 
-- One incident can record at most one repair PR per repair Fleet.
-- A write-bound repair lease carries provider-neutral HTTP rules for one exact repository, trusted base, and daemon-issued repair branch.
-- The repairer's reviewed instructions reconcile the exact remote ref and Pull Request before writes; runner-local state never represents progress.
-- The runner contains no GitHub repair module or provider-specific request sequence.
-- A repair branch carries the encoded event identifier and no fleet or workspace identity.
-- Repair-branch traffic never becomes a fresh incident.
-- Preview evidence is append-only and never closes the loop.
-- Only exact workspace + repository + merged commit hash correlation can wake verification.
-- Production-first, merge-first, simultaneous arrival, and replayed delivery converge on one durable verification attempt.
-- A crash between intent and admission leaves a retryable intent, and the retry returns the original Fleet event identifier; it never creates a second verifier event.
-- No database connection or row lock remains held during Dragonfly input/output.
-- A verifier event is not queued before its fixed fifteen-minute production window is complete.
-- Raw `deployment_status` never wakes the verifier; exact correlation schedules `repair_production_result`, and the due dispatcher emits it.
-- Production verification requires the platform GitHub App's deployment-status subscription and Deployments read-only permission.
-- A signed deployment status proves mapped GitHub origin. Every push-capable identity in the mapped repository is within the trusted producer boundary; this first spine does not attest the producer in daemon code.
-- A production result without a commit hash fails closed.
-- All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.
-- Every matching verifier Fleet receives its own attempt; no name, role, or crew resolver chooses one.
-- The verifier has no repository write permission.
-- A human saves the write-bound repairer, reviews the diff, and merges.
-- No repair automatically merges, deploys, reverts, or expands to a second repository.
+- Current HTTP rules restrict a write-bound repair lease to its repository, trusted base and daemon-issued branch.
+- Reviewed instructions reconcile remote refs and Pull Requests after ambiguous writes; the runner does not enforce a multi-request repair sequence.
+- Repair-branch and `deployment_status` traffic are unsupported; neither starts the proposed verifier.
+- A human saves the repairer, reviews the diff and merges. The repairer cannot merge, deploy, revert or widen repository access through these HTTP rules.
 
 ## 6. Test fixture boundary
 

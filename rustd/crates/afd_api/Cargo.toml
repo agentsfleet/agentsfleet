@@ -76,6 +76,7 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+afd_context.workspace = true
 async-trait.workspace = true
 # The harness's frozen instant and every stamp a fixture writes.
 jiff.workspace = true

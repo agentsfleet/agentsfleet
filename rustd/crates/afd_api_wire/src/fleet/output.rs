@@ -48,10 +48,10 @@ pub struct FleetResponse<D = Value, P = Value, O = Value, S = Value> {
     pub schedules: Vec<S>,
     /// Manual webhook addresses from the declared setup.
     pub webhook_urls: Vec<WebhookUrl<'static>>,
-    /// Creation time in Unix milliseconds.
+    /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
-    /// Last mutation in Unix milliseconds.
+    /// Last update timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "afd_wire::instant")]
     pub updated_at: jiff::Timestamp,
     /// Exact lifetime event count.

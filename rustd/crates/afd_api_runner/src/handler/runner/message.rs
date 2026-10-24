@@ -49,18 +49,14 @@ const EVENT_DEADLINE: &str = "runner_message_deadline";
 /// What [`handle`] documents, its caps spelled from their constants.
 #[cfg(feature = "openapi")]
 const DESCRIPTION: &str = const_format::concatcp!(
-    "Posts one line to the thread the leased event came from, before the ",
-    "run answers, with the fleet's secret values masked. The daemon holds ",
-    "the channel's credential and posts; the runner sends text. A run may ",
-    "post at most ",
+    "Posts to the event's original thread with secrets masked. The server holds the ",
+    "channel credential. Limit: ",
     afd_wire::message_verb::MESSAGES_PER_RUN_MAX,
-    " messages, refused past that with `UZ-RUN-020`. An event from no ",
-    "thread, such as an API steer, a webhook or a schedule, is refused with ",
-    "`UZ-RUN-019`. Both are 409s naming their `current_state`. `delivered` ",
-    "is false when the channel refused the line, or stayed unreachable ",
-    "through every retry within ",
+    " messages per run; excess returns 409 `UZ-RUN-020`. Events without a thread ",
+    "return 409 `UZ-RUN-019`. Both errors include `current_state`. `delivered` is ",
+    "false after rejection or failed retries within ",
     MESSAGE_DELIVERY_DEADLINE.as_secs(),
-    " seconds. Takes no `Idempotency-Key`: each line is its own post. ",
+    " seconds. Each request posts a new message; `Idempotency-Key` is unsupported.",
 );
 
 /// Posts one line to the event's thread.

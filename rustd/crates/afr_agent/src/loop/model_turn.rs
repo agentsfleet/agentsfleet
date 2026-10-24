@@ -32,10 +32,12 @@ impl Harness<'_, '_> {
         let request = Request {
             model: shared.model,
             instructions: &shared.instructions,
-            messages: &self.messages,
+            messages: &self.context.working,
             tools: if capped { &[] } else { &self.specs },
             hosted: if capped { &[] } else { &self.hosted },
             cache_key: shared.fleet_id,
+            max_output_tokens: self.context.output,
+            single_attempt: false,
         };
         let span = spans::chat(shared.model);
         let started = Instant::now();

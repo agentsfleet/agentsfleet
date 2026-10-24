@@ -1,5 +1,1 @@
-import RouteLoading from "@/components/layout/RouteLoading";
-
-export default function ApprovalsLoading() {
-  return <RouteLoading title="Approvals" />;
-}
+export { RouteLoading as default } from "@/components/layout/RouteLoading";

@@ -14,6 +14,8 @@ use afd_core::error_code::{self, ErrorCode};
 pub(crate) enum Method {
     /// A read.
     Get,
+    /// A conditional full replacement.
+    Put,
     /// A report, a create, or an operation.
     Post,
     /// A partial change.
@@ -27,6 +29,7 @@ impl Method {
     pub(crate) const fn http(self) -> reqwest::Method {
         match self {
             Self::Get => reqwest::Method::GET,
+            Self::Put => reqwest::Method::PUT,
             Self::Post => reqwest::Method::POST,
             Self::Patch => reqwest::Method::PATCH,
             Self::Delete => reqwest::Method::DELETE,
@@ -39,6 +42,10 @@ impl Method {
 pub(crate) enum Verb {
     /// Liveness, capability, assignment.
     Heartbeat,
+    /// Private run working notes, loaded under a live fence.
+    ContextLoad,
+    /// Private run working notes, conditionally replaced.
+    ContextCommit,
     /// The next event to run.
     Lease,
     /// Scoped private model invocation; never automatically redispatched.
@@ -87,8 +94,10 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 22] = [
+    pub(crate) const ALL: [Self; 24] = [
         Self::Heartbeat,
+        Self::ContextLoad,
+        Self::ContextCommit,
         Self::Lease,
         Self::AuthoringModel,
         Self::AuthoringActivity,
@@ -115,7 +124,12 @@ impl Verb {
     /// The method this verb is sent with.
     pub(crate) const fn method(self) -> Method {
         match self {
-            Self::Hydrate | Self::Me | Self::ScheduleList | Self::ScheduleRuns => Method::Get,
+            Self::Hydrate
+            | Self::Me
+            | Self::ScheduleList
+            | Self::ScheduleRuns
+            | Self::ContextLoad => Method::Get,
+            Self::ContextCommit => Method::Put,
             Self::ScheduleUpdate => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
             Self::Heartbeat
@@ -141,6 +155,8 @@ impl Verb {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Heartbeat => "heartbeat",
+            Self::ContextLoad => "context_load",
+            Self::ContextCommit => "context_commit",
             Self::Lease => "lease",
             Self::AuthoringModel => "authoring_model",
             Self::AuthoringActivity => "authoring_activity",
@@ -169,7 +185,9 @@ impl Verb {
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
             Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
-            Self::Heartbeat
+            Self::ContextLoad
+            | Self::ContextCommit
+            | Self::Heartbeat
             | Self::Lease
             | Self::AuthoringModel
             | Self::AuthoringActivity

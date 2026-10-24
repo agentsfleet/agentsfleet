@@ -34,7 +34,7 @@ sequenceDiagram
   GH-->>API: installation accessible
   API->>PG: conditional vault handle + connector.installs route
   Note over API,PG: other workspace already owns installation → 403, no mutation
-  Op->>CLI: chat --library github-pr-reviewer --revision <revision_id>
+  Op->>CLI: chat --library github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
   CLI->>API: POST /v1/workspaces/{ws}/drafts { source: library revision }
   Op->>CLI: ask for repositories=[acme/payments], events=[pull_request]; review
   CLI->>API: GET draft review (setup, access, readiness, review digest)
@@ -42,6 +42,8 @@ sequenceDiagram
   API->>PG: INSERT fleet.fleets (installing) + setup revision 1
   API-->>CLI: { fleet, setup checks: github grant pending }
   Op->>API: approve the github grant on the setup check
+  Op->>CLI: resume <FLEET_ID>
+  CLI->>API: PATCH fleet active with current If-Match
   API->>PG: locked setup recheck ⇒ active
   Note over Op,Runner: …a PR is opened…
   GH->>API: POST /v1/ingress/github
@@ -59,7 +61,15 @@ sequenceDiagram
 
 ## 1. Save — from a Library revision to a fleet
 
-A platform admin stages a reviewed chat candidate as a platform Library revision and publishes it (`POST` and `PATCH /v1/admin/fleet-libraries`). John opens a private draft pinned to that revision with `agentsfleet chat --library github-pr-reviewer --revision <revision_id>`, asks for his repository in plain language, reviews the exact setup and Saves it (`POST /v1/workspaces/{ws}/fleets`). The routes and their errors are N2–N10, C1 and C6 in [`../api_resources.md`](../api_resources.md).
+A platform admin publishes a reviewed draft candidate through `POST` and `PATCH /v1/admin/fleet-libraries`. John opens a private draft pinned to that revision:
+
+```bash
+agentsfleet chat --library github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
+```
+
+He requests his repository, reviews the exact setup, then saves through `POST /v1/workspaces/{ws}/fleets`.
+
+Get `<MODEL_REF>` from the [authoring model list](../user_flow.md#80-the-wedge-surface), and `<REVISION_ID>` from the Library entry. Save returns `<FLEET_ID>`; approval alone does not resume setup.
 
 ## 2. Two layers: the immutable revision and the live fleet
 
@@ -73,7 +83,9 @@ The fleet runs the instructions and policy of its selected setup revision in `fl
 
    It selects only active and approved fleets matching `acme/payments` plus `pull_request`. Each fleet's `fleet.admissions` row is keyed by fleet and body digest. A best-effort notification prioritizes pickup; every poll also queries Postgres ([`../lease_flow.md`](../lease_flow.md#admission-commits-the-queue-row)).
 
-4. **The authorisation, once, at Save.** The setup's `github` credential shows as a grant check. Save raises a pending approval card for `(fleet_id, "github")`, John approves it, and the fleet activates only after a locked recheck sees every check ready (`rustd/crates/afd_authoring/src/creation/activate.rs`, `rustd/crates/afd_approval/src/request/setup.rs`). How the mint still narrows the token, and how `agentsfleet grant delete` stops it: [`../connectors.md`](../connectors.md) §"Trust anchors", item 6. A grant covers one fleet and one service, so deleting it stops every repository that fleet reaches through GitHub. To narrow reach, apply a reviewed improvement with a shorter `repositories` list instead.
+4. **The authorisation, once, at Save.** Save raises a `github` grant check. John approves it, then runs `agentsfleet resume <FLEET_ID>`; activation rechecks all setup checks under lock.
+
+   Approval alone does not resume setup (`rustd/crates/afd_authoring/src/creation/patch.rs`). Grant scope and revocation belong in [connector trust anchors](../connectors.md#trust-anchors). To narrow repository reach, apply a reviewed improvement with a shorter `repositories` list.
 
    There is no per-event approval. A repository-write gate was raised on every first-encounter event until M202: a continuation carries a fresh event identifier, so each model turn re-parked, and one steer produced three cards and zero review comments. The grant replaced it because the grant already carried everything the card asked about.
 

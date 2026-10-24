@@ -19,6 +19,7 @@ test-util = ["afd_fleet/test-util"]
 openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "afd_wire/openapi"]
 
 [dependencies]
+afd_context = { workspace = true }
 afd_authoring.workspace = true
 afd_core.workspace = true
 # Refusal sentences and route descriptions spell the caps from their constants.

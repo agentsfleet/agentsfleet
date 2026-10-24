@@ -3,6 +3,7 @@
 mod arithmetic;
 mod authorization;
 mod bounds;
+mod compaction;
 mod concurrency;
 mod corrections;
 mod deadline;

@@ -32,7 +32,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Steer | always accepted | same single ingress as webhook and cron: a committed `fleet.admissions` row with `actor=steer:<user>` | §8.3 |
 | Model identity | selected at lease time | the revision's `runtime_model_ref` resolves to a credentialed saved model; authored model text cannot replace it | §8.7 |
 | Context limits | saved physical window and separate operating cap | each lease reads the saved model window; an absent or zero operating cap inherits it, without a provider lookup | §8.7 |
-| Run-chunk threshold | 0.75 × `context_cap_tokens` | L3 chunking; continuation resumes in a fresh window | §8.7 |
+| Conversation compaction | Defaults to 90 percent of the selected physical window | An authored operating threshold or output headroom can trigger earlier; valid checkpoints let the same run continue with tools. | §8.7 |
 | Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended; shipped by M206_002 | §8.8 |
 
 ## Traps
@@ -60,8 +60,8 @@ The dual-posture model/cap resolution diagram lives in §8.7 — it is that sect
 |---|---|---|
 | Hosted-only v2 | launch claim is "open-source software (OSS) + self-managed + chat-authored", not "self-hostable"; integration burden earns v3 | §8.0.1 |
 | Browser and terminal share one draft API | one validator, one review digest, one Save; neither client has a private path | §8.1 |
-| Chat is the only authoring input | file, GitHub, and template import and Markdown export were removed by owner decision ([`decisions.md`](../reviews/workspace-setup/decisions.md) §"Chat-only authoring amendment") | §8.1 |
-| Zero or absent operating cap inherits the saved window | model identity stays bound to the reviewed selection while the setup controls wrap-up | §8.7 |
+| Private drafts are the authoring surface | Native Definition JSON can initialize a draft; retired bundle and GitHub archive imports remain unsupported | §8.1 |
+| Zero or absent operating cap inherits the saved window | model identity stays bound to the reviewed selection while setup can select an earlier compaction threshold | §8.7 |
 | `/credentials` page removed outright, not redirected | provider keys live on `/settings/models`; custom secrets on `/secrets` | §8.7 |
 
 ---
@@ -77,15 +77,18 @@ The minimum viable product (MVP)'s user-facing wedge is the **`agentsfleet` Comm
 ```bash
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
 agentsfleet login                            # Clerk OAuth
-agentsfleet chat                             # describe the job in a private draft, review it, then Save
+agentsfleet chat --model <MODEL_REF>          # describe the job, review it, then Save
 agentsfleet library                          # list reusable Library entries (GET /v1/workspaces/{ws}/fleet-libraries)
 ```
 
-A draft starts from one of three sources (`cli/src/commands/chat/commands.ts`):
+Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/models?purpose=authoring`. New drafts require this authoring model; resumed drafts retain their existing model. A draft starts from four sources (`cli/src/commands/chat/commands.ts`):
 
-- **Nothing.** `agentsfleet chat` opens a private draft; the conversation produces the setup.
-- **A Library revision.** `agentsfleet chat --library <id> --revision <revision_id>` starts from one immutable Library revision.
-- **A saved fleet.** `agentsfleet chat --fleet <id> --setup-revision <n>` drafts an improvement to that exact setup revision.
+- **Nothing.** `agentsfleet chat --model <MODEL_REF>` creates a private draft when the first message is sent.
+- **A Library revision.** `agentsfleet chat --library <LIBRARY_ID> --revision <REVISION_ID> --model <MODEL_REF>` starts from one immutable Library revision.
+- **A saved fleet.** `agentsfleet chat --fleet <FLEET_ID> --setup-revision <N> --model <MODEL_REF>` drafts an improvement to that exact setup revision.
+- **Native JSON.** `agentsfleet chat --definition <PATH> --model <MODEL_REF>` reads one native Definition from a local file, bounded at 448 KiB.
+
+Library IDs and revision IDs come from Library reads; fleet IDs and setup revisions come from fleet reads. `<PATH>` names your native JSON file.
 
 `--review` shows the full setup, access, readiness, and review digest; `--save` saves the reviewed setup as an independent fleet, and `--publish` creates a Library entry from it. The dashboard does the same through the same routes ([`api_resources.md`](./api_resources.md) N1–N17, C1–C7).
 
@@ -123,11 +126,13 @@ The user iterates in natural language:
 
 This keeps the operational logic editable by changing instructions, not by rewriting a typed workflow engine for every variation.
 
-Instructions are prose and grant nothing. What a run may do comes only from `config` and the grants a person approved ([`capabilities.md`](./capabilities.md) §1). Chat is the only authoring input: there is no file, GitHub, or template import, and no Markdown export. A Library entry is created only by explicitly publishing a chat-created candidate (C6).
+Instructions grant no access. Runs use only reviewed `config` and approved grants ([capabilities](capabilities.md#1-reasoning--tool-inventory-declared-in-the-fleets-own-files)).
+
+Native JSON may initialize a private draft. GitHub/template-bundle import and Markdown export remain unsupported. Library publication explicitly selects a draft candidate.
 
 ## §8.2 Creating the Fleet
 
-Once the files are ready, the user creates the Fleet in the workspace.
+Once the candidate is reviewed, the user saves the Fleet in the workspace.
 
 ### §8.2.1 Cold-machine bootstrap (run once per machine)
 
@@ -173,7 +178,7 @@ The **Library** holds reusable setup. An entry is created only when a person exp
 
 Two first scenarios anchor the product flow:
 
-- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events, reads diff/context through `api.github.com`, and posts review comments using the workspace `github` secret.
+- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events and reads diff/context through `api.github.com`. Posting review comments remains blocked by repository egress policy; see the [reviewer scenario](scenarios/github-pr-reviewer.md).
 - **Zoho Recruit outreach.** Reads Zoho Recruit data and optionally sends mail through a separate secret; its provider-specific guidance lives in its instructions.
 
 ## §8.3 Triggering the Fleet
@@ -229,7 +234,7 @@ The current `platform-ops` flow wakes when GitHub Actions reports a failed produ
 
 The approved target adds a bounded code fix and a draft Pull Request (PR). A human still reviews and merges the PR.
 
-The existing deployment pipeline deploys the merge. A later run checks production health and records the result.
+The existing deployment pipeline deploys the merge. A later production-health verifier remains a target, not implemented runtime behavior; see the [repair scenario](scenarios/production-deploy-repair.md).
 
 The full sequence and its proof boundary live in [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md).
 
@@ -256,6 +261,8 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 The draft selects a credentialed model, and Save pins its reference on the immutable revision as `runtime_model_ref`. Both platform-managed and self-managed execution resolve that reference at lease time. The selected row in `model.platform_models` supplies the model identity, endpoint, API format, physical context window and maximum output length. Authored `config` model text cannot replace that selection.
 
 The setup flow starts with `agentsfleet doctor --json` for connectivity and workspace health (§8.2.2 step 2). Model selection uses the workspace's available-model list: owner registrations with credentials and the enabled platform default. A catalogue row without saved inference settings or a matching credential is not an eligible model. `agentsfleet tenant provider show --json` describes the account's provider posture; it does not override a revision's selected model.
+
+The diagram's wrap-up branch records earlier behavior. Current behavior uses shared compaction at 90 percent by default, as described below.
 
 ```text
 Reviewed revision: runtime_model_ref
@@ -290,7 +297,10 @@ and saved maximum output
 
 **Model identity and context limits have separate jobs.** `afd_credential::Providers::resolve_reference` loads the exact owner registration or active platform default, its saved model metadata, and its vault credential. `afd_gate` carries that metadata into `ExecutionPolicy`; its context resolver always uses the selected model (`rustd/crates/afd_credential/src/provider/{runtime/resolve,registered/sql}.rs`, `rustd/crates/afd_gate/src/policy/{build/mod,context}.rs`). Credentials remain in the daemon and runner supervisor, outside the sandbox and browser.
 
-An absent or zero `context_cap_tokens` inherits the saved physical window. A nonzero authored cap sets the operating threshold for wrapping up; it leaves `ExecutionPolicy.model_context_tokens` unchanged. After tools stop, the final answer can use the remaining physical headroom, bounded by the saved maximum output length (`rustd/crates/afd_inference/src/budget.rs`). The other `x-agentsfleet.context.*` knobs retain their authored values or use the defaults in [`capabilities.md`](./capabilities.md) §4.
+An absent or zero `context_cap_tokens` inherits the saved physical window. A nonzero authored cap can trigger earlier [conversation compaction](context_lifecycle.md); it leaves `ExecutionPolicy.model_context_tokens` unchanged.
+
+A valid checkpoint lets the same run continue with tools. Output remains bounded by the saved maximum and remaining physical headroom (`rustd/crates/afd_context/src/window.rs`).
+The other `x-agentsfleet.context.*` settings retain their authored values or use the defaults in [`capabilities.md`](./capabilities.md) §4.
 
 The lease reads saved catalogue metadata instead of querying the inference provider for limits. Updating provider configuration is an explicit settings change; it does not require a deployment or a JSON routing file ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10).
 

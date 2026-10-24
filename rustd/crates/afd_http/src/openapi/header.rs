@@ -11,8 +11,8 @@ use utoipa::IntoParams;
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Header)]
 pub struct IfMatch {
-    /// Current strong tag from the resource's GET. A stale tag returns 412 with
-    /// the current `etag`; an absent one returns 428.
+    /// Current `ETag` from the resource's GET response. An outdated value returns 412 with
+    /// the current `etag`; omitting it returns 428.
     #[param(rename = "If-Match")]
     pub if_match: String,
 }

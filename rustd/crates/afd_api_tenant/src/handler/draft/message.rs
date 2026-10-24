@@ -23,8 +23,12 @@ use std::sync::Arc;
 /// Accepts a user request; execution and terminal answers happen separately.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages", operation_id = "send_workspace_draft_message",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Send a private authoring message",
-    description = "Requires fleet:write. Use only body operation_id; Idempotency-Key is refused. A 202 acknowledges durable acceptance.",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "Send a private setup message",
+    description = concat!(
+        "Sends a private setup message. Requires `fleet:write`. Use the body's ",
+        "`operation_id` for retries; `Idempotency-Key` is refused. A 202 response confirms ",
+        "the message is saved for processing.",
+    ),
     params(afd_http::openapi::path::Draft),
     request_body = MessageRequest,
     responses((status = 202, body = Accepted, description = "Durably queued or exact replay", headers(("Location" = String))),
@@ -62,10 +66,10 @@ pub(crate) async fn send<D: Services>(
 /// Reads a bounded role-ordered conversation after current creator authorization.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages", operation_id = "list_workspace_draft_messages",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Read your private authoring messages",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "Read your private setup messages",
     params(afd_http::openapi::path::Draft,
         ("limit" = Option<u32>, Query, description = "Page size, 1..25; default 20."),
-        ("starting_after" = Option<String>, Query, description = "Opaque creator/draft/page-size bound cursor.")),
+        ("starting_after" = Option<String>, Query, description = "Use the previous `next_cursor` unchanged, for the same creator, draft, and page size.")),
     responses((status = 200, body = CursorPage<Message>, description = "Sequence then role order"),
         (status = 400, description = "Invalid input or cursor"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = super::DRAFT_UNAVAILABLE),
@@ -92,7 +96,7 @@ pub(crate) async fn list<D: Services>(
 /// Advances the cutoff while leaving later accepted messages queued.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations", operation_id = "cancel_workspace_draft_messages",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Stop private authoring through a message sequence",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "Stop private setup through a message",
     params(afd_http::openapi::path::Draft),
     request_body = CancellationRequest,
     responses((status = 200, body = Cancellation, description = "Standing cutoff and newly cancelled requests"),

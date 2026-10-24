@@ -28,7 +28,7 @@ use super::{DETAIL_INVALID_BODY, EVENT_WRITE};
 /// What a create and an update both answer: the row as the scheduler now holds it.
 // Read only by the two annotations, which the default build compiles away.
 #[cfg(feature = "openapi")]
-const RECONCILED: &str = "The schedule as reconciled with the scheduler";
+const RECONCILED: &str = "Saved schedule with its registration status";
 
 /// `POST …/schedules`.
 ///
@@ -41,7 +41,11 @@ const RECONCILED: &str = "The schedule as reconciled with the scheduler";
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "create_fleet_schedule",
     summary = "Create a hosted schedule",
-    description = "Creates a schedule and synchronously registers it in Upstash QStash. ",
+    description = concat!(
+        "Saves a schedule and attempts registration with Upstash QStash. A 201 response ",
+        "can still contain a registration failure. Check `sync`, `last_error`, and ",
+        "`run_state`; use this schedule's `/sync` endpoint to retry registration.",
+    ),
     request_body = Create,
     params(
         afd_http::openapi::path::Fleet,
@@ -119,8 +123,9 @@ pub(crate) async fn create<D: Services>(
     operation_id = "update_fleet_schedule",
     summary = "Update a hosted schedule",
     description = concat!(
-        "Updates schedule fields and synchronously overwrites the QStash ",
-        "registration. ",
+        "Saves schedule changes and attempts to update the Upstash QStash registration. ",
+        "A 200 response can still contain a registration failure. Check `sync`, ",
+        "`last_error`, and `run_state`; use this schedule's `/sync` endpoint to retry registration.",
     ),
     request_body = Patch,
     params(
@@ -190,10 +195,7 @@ pub(crate) async fn patch<D: Services>(
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "delete_fleet_schedule",
     summary = "Delete a hosted schedule",
-    description = concat!(
-        "Deletes the QStash registration before removing the local schedule ",
-        "row. ",
-    ),
+    description = "Removes the schedule from Upstash QStash before deleting its saved record.",
     params(
         afd_http::openapi::path::Schedule,
     ),
@@ -252,8 +254,8 @@ pub(crate) async fn purge<D: Services>(
     operation_id = "sync_fleet_schedule",
     summary = "Sync a hosted schedule",
     description = concat!(
-        "Idempotently overwrites the QStash registration from the latest ",
-        "local generation. ",
+        "Replaces the Upstash QStash registration with the latest saved schedule. Repeating ",
+        "this request is safe.",
     ),
     params(
         afd_http::openapi::path::Schedule,

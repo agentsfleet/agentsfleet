@@ -46,10 +46,9 @@ use super::{
     operation_id = "create_tenant_model_entry",
     summary = "Register a model entry",
     description = concat!(
-        "Creates one `(model_id, secret_ref)` row. `secret_ref` must already ",
-        "name a vault secret in the tenant's primary workspace — store or ",
-        "reuse one via `/v1/workspaces/{workspace_id}/secrets` first. Does ",
-        "not activate the entry; activate via `PUT /v1/tenants/me/provider`. ",
+        "Adds a `(model_id, secret_ref)` entry. First store the secret in your account's ",
+        "primary workspace through `/v1/workspaces/{workspace_id}/secrets`. Select the new ",
+        "model through `PUT /v1/tenants/me/provider`; adding it does not activate it.",
     ),
     request_body = CreateModelEntryRequest,
     responses(
@@ -114,11 +113,8 @@ pub(crate) async fn create<D: Services>(
     path = "/v1/tenants/me/models/{id}",
     tag = afd_http::openapi::tag::TENANT,
     operation_id = "update_tenant_model_entry",
-    summary = "Change a model entry's model_id",
-    description = concat!(
-        "Model-only change; `secret_ref` is immutable on this endpoint — ",
-        "create a new entry to point at a different secret. ",
-    ),
+    summary = "Change the model on an entry",
+    description = "Changes only `model_id`. To use a different `secret_ref`, create another entry.",
     request_body = UpdateModelEntryRequest,
     params(
         afd_http::openapi::path::Id,
@@ -185,9 +181,8 @@ pub(crate) async fn update<D: Services>(
     operation_id = "delete_tenant_model_entry",
     summary = "Remove a model entry",
     description = concat!(
-        "Idempotent — deleting an id that doesn't exist (already removed, or ",
-        "never existed) still returns 204. The referenced vault secret is ",
-        "never touched; sibling entries sharing it survive. ",
+        "Removes a model entry; missing entries also return 204. Its stored secret and ",
+        "other models sharing that secret remain unchanged.",
     ),
     params(
         afd_http::openapi::path::Id,

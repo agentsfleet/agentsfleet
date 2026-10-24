@@ -6,8 +6,8 @@ import { ArrowDownIcon } from "lucide-react";
 import { Button, Section } from "@agentsfleet/design-system";
 
 /** The viewport owns scrolling; its capped footer keeps the composer reachable. */
-export function ChatThread({children, footer, after, label, testId, autoScroll = true}: {
-  children: ReactNode; footer: ReactNode; after?: ReactNode; label: string; testId?: string; autoScroll?: boolean;
+export function ChatThread({children, footer, label, testId, autoScroll = true}: {
+  children: ReactNode; footer: ReactNode; label: string; testId?: string; autoScroll?: boolean;
 }) {
   return <ThreadPrimitive.Root asChild data-testid={testId}>
     <Section aria-label={label} className="relative flex min-h-0 flex-1 flex-col overflow-clip bg-background">
@@ -24,7 +24,6 @@ export function ChatThread({children, footer, after, label, testId, autoScroll =
         </ThreadPrimitive.ScrollToBottom> : null}
         {footer}
       </ThreadPrimitive.ViewportFooter>
-      {after}
     </ThreadPrimitive.Viewport>
     </Section>
   </ThreadPrimitive.Root>;

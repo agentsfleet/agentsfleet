@@ -230,6 +230,28 @@ impl Leasing for NoWork {
         std::future::ready(Ok(now))
     }
 
+    fn context_load(
+        &self,
+        _runner: &Uuid7,
+        _lease: &Uuid7,
+        _branch: &Uuid7,
+        _fence: u64,
+    ) -> impl Future<Output = afd_fleet::Result<Option<afd_context::Checkpoint>>> + Send {
+        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    }
+
+    fn context_commit(
+        &self,
+        _runner: &Uuid7,
+        _lease: &Uuid7,
+        _branch: &Uuid7,
+        _fence: u64,
+        _expected: u64,
+        _checkpoint: afd_context::Checkpoint,
+    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    }
+
     /// Holds no lease, so every lease-addressed verb is refused as one this
     /// runner does not hold — the answer a plane with no rows gives.
     fn standing(

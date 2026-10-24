@@ -17,15 +17,17 @@ pub mod repository;
 /// drops the base URL.
 pub const CUSTOM_PROVIDER_PREFIX: &str = "custom:";
 
-/// Per-run egress policy. An outbound request must match an entry in
-/// `allow` by exact hostname; an empty `allow` denies everything.
+/// Allowed hosts for HTTP tools.
+///
+/// An empty `allow` list blocks these requests. Sandbox network access also depends on the
+/// runner's network policy and registry allowlist.
 // Keeps the bare name: `runner::NetworkPolicy` is a different shape with the
 // same Rust name and publishes as `RunnerNetworkPolicy`, the name the
 // hand-written contract gave it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkPolicy<'a> {
-    /// Exact hostnames the run may reach.
+    /// Exact hostnames HTTP tools may reach.
     #[serde(borrow)]
     pub allow: Vec<Cow<'a, str>>,
     /// Restrict tool requests to safe reads, keeping a credential from crossing
@@ -36,7 +38,7 @@ pub struct NetworkPolicy<'a> {
     pub read_post_paths: Vec<Cow<'a, str>>,
 }
 
-/// Methods a daemon-authored request rule may express.
+/// HTTP methods allowed by a server-defined request rule.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -74,12 +76,11 @@ pub struct HttpJsonFieldRule<'a> {
     pub boolean_value: Option<bool>,
 }
 
-/// One method and path admitted at an origin.
+/// An allowed HTTP method and path.
 ///
-/// A rule always checks the fields it locks. A rule that carries
-/// `permitted_fields` is also closed: it admits no top-level key beside its
-/// locked and permitted ones, and no query string. A rule without it admits
-/// any other key and any query string.
+/// Locked fields must match. When `permitted_fields` is present, only locked and listed
+/// fields are allowed; query strings are refused. When absent, other fields and query strings
+/// are allowed.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpRequestRule<'a> {
@@ -93,12 +94,8 @@ pub struct HttpRequestRule<'a> {
     /// Fields whose values the rule locks.
     #[serde(borrow)]
     pub json_fields: Vec<HttpJsonFieldRule<'a>>,
-    /// Fields the rule admits with any value beside the locked ones, and with
-    /// them the rule's whole key set. Present but empty closes the rule to
-    /// its locked fields alone.
-    ///
-    /// Absent on an open rule: a read, or a blob or tree write. The runner
-    /// then checks the rule's locked fields and nothing more.
+    /// Additional allowed field names. An empty list permits only locked fields. When
+    /// omitted, other fields and query strings are allowed.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub permitted_fields: Option<Vec<Cow<'a, str>>>,
 }
@@ -118,10 +115,8 @@ pub struct HttpOriginPolicy<'a> {
     pub requests: Vec<HttpRequestRule<'a>>,
 }
 
-/// One credential the lease grants the run permission to mint on demand.
-///
-/// Carries the integration id ONLY — never a stored handle and never a token.
-/// The child mints a short-lived token at the tool boundary through the runner.
+/// An integration this run may request a short-lived credential for. Contains its identifier,
+/// never a stored credential or token.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Mintable<'a> {
@@ -190,7 +185,7 @@ pub struct ExecutionPolicy<'a> {
     pub tools: Vec<Cow<'a, str>>,
     /// Static secrets substituted at the tool boundary. Free-form by design.
     pub secrets_map: Option<serde_json::Value>,
-    /// Credentials the run may mint on demand.
+    /// Integration credentials this run may request when needed.
     #[serde(borrow)]
     pub mintable: Vec<Mintable<'a>>,
     /// Inference provider name.

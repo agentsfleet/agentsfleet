@@ -191,7 +191,6 @@ export const withSigintAbort = <A, E, R>(
 // later CLI invocations inherit the same identity from telemetry.json.
 // Mirrors supabase login.handler.ts resolveAuthenticatedDistinctId.
 export const captureLoginCompleted = (
-  sessionId: string,
   token: string,
 ): Effect.Effect<void, never, Analytics | TelemetryRuntime> =>
   Effect.gen(function* () {
@@ -208,7 +207,6 @@ export const captureLoginCompleted = (
     }
     yield* analytics.capture(EVT_USER_AUTHENTICATED, { command: "login" });
     yield* analytics.capture(EVT_LOGIN_COMPLETED, {
-      session_id: sessionId,
       login_method: LOGIN_METHOD_BROWSER,
     });
   });

@@ -85,6 +85,8 @@ pub(super) fn built(
         tools,
         hosted,
         cache_key: CACHE_KEY,
+        max_output_tokens: None,
+        single_attempt: false,
     };
     request(wire, &turn).unwrap()
 }
@@ -203,6 +205,8 @@ fn should_refuse_a_result_that_answers_no_call() {
         tools: &[],
         hosted: &[],
         cache_key: CACHE_KEY,
+        max_output_tokens: None,
+        single_attempt: false,
     };
 
     let refused = request(Wire::Chat, &turn).unwrap_err();
@@ -270,6 +274,8 @@ fn should_refuse_a_call_that_names_no_tool() {
         tools: &[],
         hosted: &[],
         cache_key: CACHE_KEY,
+        max_output_tokens: None,
+        single_attempt: false,
     };
 
     let refused = request(Wire::Chat, &turn).unwrap_err();

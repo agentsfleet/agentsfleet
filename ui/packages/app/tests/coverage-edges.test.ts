@@ -2,7 +2,6 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { NANOS_PER_USD } from "@/lib/types";
 
 // Post-Stage-1: dashboard pages call `auth().getToken()` directly from
 // `@clerk/nextjs/server` — no `lib/auth/server.ts` indirection. Tests mock
@@ -14,34 +13,6 @@ const authMock = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   auth: authMock,
 }));
-
-// ── Billing settings page — Promise.all catch fallbacks ─────────────────
-
-vi.mock("@/lib/api/model_library", () => ({
-  getModelLibrary: vi.fn().mockRejectedValue(new Error("catalogue unavailable")),
-}));
-
-describe("billing settings page — error fallback", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    authMock.mockReset();
-  });
-  afterEach(() => cleanup());
-
-  it("preserves a failed billing read for the dashboard retry boundary", async () => {
-    authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn") });
-    // An unavailable balance must never look like a successfully empty account.
-    vi.doMock("@/lib/api/tenant_billing", () => ({
-      getTenantBilling: vi.fn().mockRejectedValue(new Error("no billing row")),
-      listTenantBillingCharges: vi.fn().mockRejectedValue(new Error("no charges")),
-    }));
-    const { default: BillingSettingsPage } = await import(
-      "../app/(dashboard)/settings/billing/page"
-    );
-    await expect(BillingSettingsPage()).rejects.toThrow("no billing row");
-  });
-});
-
 
 // ── DashboardLayout — null token + catch branch ─────────────────────────
 

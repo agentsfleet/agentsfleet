@@ -70,6 +70,7 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         // Ollama wires take no explicit cache control.
         Wire::Chat | Wire::Gemini | Wire::Ollama => {}
     }
+    built.max_tokens = request.max_output_tokens.map(u64::from);
     Ok(built
         .model(request.model)
         .preamble(request.instructions)
@@ -187,3 +188,13 @@ mod tests;
 
 #[cfg(test)]
 mod image_tests;
+
+/// Encode one complete source group as quoted data, including opaque replay.
+///
+/// # Errors
+/// A tool result lacks its assistant call, or the group cannot be encoded.
+pub fn context_document(messages: &[Message]) -> Result<String> {
+    Ok(serde_json::to_string(
+        &Conversation::default().map(messages)?,
+    )?)
+}

@@ -37,7 +37,7 @@ verification. A keyword hit or repeated test fixture is not itself a defect.
 | Secret text | `afd_crypto::secret::SecretString` centralizes the existing `zeroize` wrapper, explicit exposure and redacted formatting. Scheduler credentials and connector response bodies use it. Domain credential types remain distinct. |
 | Secret JSON | `SecretObject` guards owned JSON keys and string values, including displaced refresh tokens; canonical output enters `SecretBytes` immediately. Serde owns parsing and serialization. |
 | Encrypted rows | `afd_vault::StoredEnvelope`, using SQLx `FromRow`, owns named-column reconstruction for vault load, credential load and activation. The crypto crate validates envelope lengths and encryption metadata. Workspace additional authenticated data (AAD) remains mandatory. |
-| Migration grammar | PostgreSQL parses complete migration batches delivered through `sqlx::raw_sql`. The local statement scanner is removed. `afd_db` still owns the migration lock, version history, transaction, failure records and schema-ahead refusal. |
+| Migration grammar | The September audit removed the local statement scanner. Today SQLx Migrator applies complete slots with checksums; `afd_db` owns the bounded advisory lock. See §Migration checksum upgrade design. |
 | URL escapes | `percent-encoding` owns decoding. A small shared adapter preserves strict malformed-escape refusal, path-byte semantics and form `+`/UTF-8 behavior. Query selection remains application policy. |
 | Calendar dates | Jiff replaces local Gregorian arithmetic. Nonpositive times display the epoch date. Positive times outside Jiff's supported range display the original millisecond value as text. |
 | Universally unique identifiers (UUIDs) | The existing `uuid` implementation and `afd_core::id::Uuid7` remain. Repeated audit-ID adapters share `Entropy::uuid_randomness`; callers retain their original error conversion and injected clock. |
@@ -98,27 +98,14 @@ that evaluation should compare deleted code and the provider behaviour each adap
 
 ## Migration checksum upgrade design
 
-The existing ledger has no SQL checksum. Replacing its executor does not provide
-drift detection, and switching to SQLx's separate migration ledger would not
-preserve deployed history automatically. Keep that limitation explicit.
+The September upgrade proposal is superseded by the current SQLx migration owner.
+`afd_db` runs SQLx Migrator, which creates its checksum ledger at runtime.
+The [migration owner](../../rustd/crates/afd_db/src/migrate/mod.rs) configures its location and records each applied slot.
 
-A checksum upgrade needs these steps:
+An edited applied slot or a version unknown to the binary is refused.
 
-1. Reconcile `.orly/dispatch/write_sql.md`'s pre-2.0 prohibition on `ALTER TABLE` with
-   `.orly/docs/SCHEMA_CONVENTIONS.md`'s post-rebuild additive-migration policy. This
-   implementation changes neither the schema nor those rules.
-2. Introduce a real new migration version for the ledger upgrade, so older
-   binaries refuse the newer database through the existing schema-ahead check.
-3. Hash exact embedded SQL bytes using the existing `sha2` dependency. Under the
-   migration advisory lock, check schema-ahead status and all applied checksums
-   before clearing failures or changing history. A mismatch refuses startup.
-4. Commit each new SQL batch, version, timestamp and checksum in one transaction.
-5. Adopt existing rows explicitly against a known deployed artifact. Never fill
-   missing hashes silently from the new checkout: that would approve potentially
-   edited SQL. Record baseline provenance and the inability to prove earlier
-   history from a newly adopted baseline.
-6. Exercise fresh databases, adoption, mismatch without mutation, numbering gaps,
-   retired versions, failure/retry and older-binary refusal against PostgreSQL.
+The daemon retains its bounded advisory lock and disables SQLx's unbounded lock.
+Each slot applies in one transaction (`rustd/crates/afd_db/src/migrate/mod.rs`, `migration.rs`).
+Databases began empty under this ledger; no older-ledger adoption runs.
 
-This is a separate data-history transition. No destructive rebuild or silent
-adoption is part of the crate-reuse implementation.
+[Postgres schemas](postgres_schemas.md#layout) owns the current layout.

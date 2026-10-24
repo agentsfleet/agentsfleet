@@ -47,7 +47,7 @@ pub struct RunnerItem<'a> {
     pub degraded_reason: Option<Cow<'a, str>>,
 }
 
-/// A keyset page of runner list rows.
+/// One page of runners.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -199,7 +199,7 @@ pub struct RunnerLeaseItem<'a> {
     pub created_at: jiff::Timestamp,
 }
 
-/// A keyset page of one runner's lease history.
+/// One page of a runner's work-assignment history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

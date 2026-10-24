@@ -1,6 +1,8 @@
 "use client";
 
 import { EVENT_PROP_KEYS, type EventName, type EventProps } from "./events";
+import { filterAuthenticationEvent, onAuthenticationRoute } from "./auth-privacy";
+import { AnalyticsIdentityGate, type AnalyticsIdentityReader } from "./identity-gate";
 
 const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
 const EVENT_NAVIGATION_CLICKED = "navigation_clicked";
@@ -40,9 +42,7 @@ type PostHogLike = {
   reset?: () => void;
 };
 
-// Group type for PostHog group analytics — every event/pageview captured after a
-// group() call carries this group, so funnels can be sliced per workspace
-// (mirrors Supabase's `$groups: { organization, project }`).
+// Subsequent PostHog events carry the active workspace group.
 const GROUP_TYPE_WORKSPACE = "workspace";
 
 const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
@@ -70,7 +70,8 @@ let analyticsEnabled = false;
 // Distinguishes disabled config from a client that has not loaded yet.
 let analyticsConfigured = false;
 let posthogClient: PostHogLike | null = null;
-let initialized = false;
+let initialization: Promise<void> | null = null;
+const identityGate = new AnalyticsIdentityGate(() => { pendingContext = null; pendingEvents = []; });
 let identifiedUserId: string | null = null;
 // Identity work that raced the PostHog client load.
 let pendingIdentify: { id: string; email?: string | null } | null = null;
@@ -145,36 +146,51 @@ function waitForAnalyticsIdle(): Promise<void> {
 }
 
 function captureOrQueue(event: string, payload: Record<string, AnalyticsValue>): void {
-  if (posthogClient !== null) {
+  if (filterAuthenticationEvent(payload) === null || !identityGate.queueIsCurrent()) return;
+  if (posthogClient !== null && identityReady()) {
     posthogClient.capture(event, payload);
     return;
   }
   if (pendingEvents.length < MAX_PENDING_EVENTS) pendingEvents.push({ event, payload });
 }
 
-export async function initAnalytics(): Promise<void> {
-  if (initialized) return;
-  initialized = true;
+// The committed bootstrap owns identity; unresolved or cancelled effects hold telemetry.
+function identityReady(): boolean {
+  return identityGate.prepare((identity) => {
+    const priorId = identifiedUserId ?? pendingIdentify?.id;
+    if (pendingReset || (priorId && priorId !== identity?.id)) resetAnalyticsIdentity();
+    pendingIdentify = null;
+    if (identity) identifyAnalyticsUser(identity);
+    else if (hasStaleAnalyticsIdentity()) resetAnalyticsIdentity();
+  });
+}
 
-  if (typeof window === "undefined") return;
-
+export async function initAnalytics(prepare?: AnalyticsIdentityReader): Promise<void> {
+  identityGate.bind(prepare);
+  if (onAuthenticationRoute() || typeof window === "undefined") return;
+  if (posthogClient) { flushPending(); return; }
+  if (initialization) return initialization;
   const cfg = resolveConfig(process.env);
   analyticsEnabled = cfg.enabled;
   if (!cfg.enabled || !cfg.key) return;
   analyticsConfigured = true;
-  await waitForAnalyticsIdle();
+  initialization = initializeClient(cfg).catch(() => {
+    // A blocked SDK must not break navigation or disable an already loaded client.
+    if (!posthogClient) analyticsEnabled = false;
+  }).finally(() => { initialization = null; });
+  return initialization;
+}
 
-  let posthog: PostHogLike;
-  try {
-    const loaded = await import("posthog-js");
-    posthog = loaded.default as PostHogLike;
-  } catch {
-    // A blocked chunk disables this session; a deferred reset keeps its marker
-    // so the identity sweep retries on the next load.
-    analyticsEnabled = false;
-    return;
-  }
+async function initializeClient(cfg: ReturnType<typeof resolveConfig>): Promise<void> {
+  await waitForAnalyticsIdle();
+  if (onAuthenticationRoute() || !identityGate.ready()) return;
+  const loaded = await import("posthog-js");
+  if (onAuthenticationRoute() || !identityGate.ready()) return;
+  const posthog = loaded.default as PostHogLike;
   posthog.init(cfg.key, {
+    before_send: (event: unknown) => identityGate.allowsEvents() ? filterAuthenticationEvent(event) : null,
+    // PostHog invokes loaded before enabling its queue or capturing the initial pageview.
+    loaded: (client: PostHogLike) => { posthogClient = client; flushPending(); },
     api_host: cfg.host,
     person_profiles: "identified_only",
     autocapture: true,
@@ -182,33 +198,35 @@ export async function initAnalytics(): Promise<void> {
     capture_pageleave: true,
   });
   posthogClient = posthog;
-  // Capture identify before replaying reset: a queued identify is newer than
-  // the queued reset and must survive the replayed sign-out.
+  flushPending();
+}
+
+function flushPending(): void {
+  if (!posthogClient || !identityGate.queueIsCurrent() || !identityReady()) return;
+  // Newer queued identity survives an older sign-out reset.
   const queuedIdentify = pendingIdentify;
   pendingIdentify = null;
   if (pendingReset) resetAnalyticsIdentity();
   if (queuedIdentify !== null) identifyAnalyticsUser(queuedIdentify);
-  // Flush group/person context after identify so person props land on the
-  // identified user, not the pre-identify anonymous id.
+  // Person context must follow identity.
   const queuedContext = pendingContext;
   pendingContext = null;
   if (queuedContext !== null) setAnalyticsContext(queuedContext);
-  // Read after reset: reset clears pendingEvents so signed-out events cannot
-  // stitch to the next identity. Then flush after identify and context.
+  // Reset discards events from the prior session; remaining events follow context.
   const queuedEvents = pendingEvents;
   pendingEvents = [];
   for (const queued of queuedEvents) posthogClient.capture(queued.event, queued.payload);
 }
 
 export function identifyAnalyticsUser(user: { id: string; email?: string | null }): void {
+  if (onAuthenticationRoute()) return;
   if (!analyticsEnabled) return;
   if (posthogClient === null) {
-    // posthog-js is still loading: queue the identify — the effect deps never
-    // change again this session, so dropping it here would leave the whole
-    // single-page session anonymous. initAnalytics flushes it.
+    // Preserve identity work until the SDK loads.
     pendingIdentify = user;
     return;
   }
+  pendingIdentify = null;
   if (!posthogClient.identify) return;
   if (identifiedUserId === user.id) return;
 
@@ -228,14 +246,11 @@ export type AnalyticsContext = {
   plan?: string;
 };
 
-// Bind the active workspace as the PostHog group + set org-level person
-// properties (workspace_count / plan), so every subsequent event and pageview
-// is sliceable per workspace and the identified person carries org context.
-// Mirrors Supabase's group() + identify($set) split. Best-effort: queues until
-// posthog-js loads (initAnalytics flushes it after identify), no-ops when off.
+// Bind the workspace group and person context after the SDK and current identity
+// are ready. Disabled analytics is a no-op.
 export function setAnalyticsContext(ctx: AnalyticsContext): void {
-  if (!analyticsEnabled) return;
-  if (posthogClient === null) {
+  if (!analyticsEnabled || onAuthenticationRoute() || !identityGate.queueIsCurrent()) return;
+  if (posthogClient === null || !identityReady()) {
     pendingContext = { ...pendingContext, ...ctx };
     return;
   }
@@ -253,23 +268,17 @@ function applyAnalyticsContext(ctx: AnalyticsContext): void {
   }
 }
 
-// True when this browser still carries an identified analytics session —
-// identified during this page load, or flagged by the persisted marker from a
-// prior load (hard navigation / expired session).
+// Detect identity from this page load or its persisted marker.
 export function hasStaleAnalyticsIdentity(): boolean {
   if (identifiedUserId !== null) return true;
   return withMarkerStore((store) => store.getItem(IDENTIFIED_MARKER_KEY)) != null;
 }
 
-// Clears identity state (marker + cached user id) so a later sign-in
-// re-identifies. The marker is consumed only when the posthog reset can
-// actually run — burning it while the chunk is still loading would silently
-// re-open the cross-session stitching this exists to close.
+// Consume the marker only after reset succeeds, so failed resets remain retryable.
 export function resetAnalyticsIdentity(): void {
   identifiedUserId = null;
   pendingIdentify = null;
-  // posthog.reset() clears the bound groups too; drop our cache so the next
-  // session's setAnalyticsContext rebinds the workspace group.
+  // Reset also clears groups, so the next session must bind its workspace.
   groupedWorkspaceId = null;
   pendingContext = null;
   // Drop any product events buffered against the prior session — they must not
@@ -281,21 +290,17 @@ export function resetAnalyticsIdentity(): void {
     pendingReset = true;
     return;
   }
+  if (analyticsEnabled && posthogClient?.reset) {
+    pendingReset = true;
+    posthogClient.reset();
+  }
   pendingReset = false;
   withMarkerStore((store) => store.removeItem(IDENTIFIED_MARKER_KEY));
-  if (!analyticsEnabled || !posthogClient?.reset) return;
-  posthogClient.reset();
 }
 
-// Typed product-event capture. Catalog props deliberately bypass sanitizeProps
-// (its closed ALLOWED_PROP_KEYS allowlist would silently drop event-specific
-// keys like fleet_id); instead the payload is allowlisted against the
-// catalog's own EVENT_PROP_KEYS mirror — compile-time excess-property checks
-// only cover object literals, so a spread or widened argument must not be
-// able to smuggle extra fields (a raw token is one property away at several
-// call sites). Events that race the posthog-js chunk load are buffered (bounded
-// FIFO) and flushed on init — mount-fired call sites (fleet_viewed) can capture
-// before the chunk lands on a cold load; action-fired sites never do.
+// Runtime catalog allowlists prevent extra fields from escaping widened objects;
+// sanitizeProps would discard legitimate event-specific keys. Mount-time events
+// stay in a bounded queue until the SDK and current identity are ready.
 export function captureProductEvent<E extends EventName>(
   event: E,
   props: EventProps[E],

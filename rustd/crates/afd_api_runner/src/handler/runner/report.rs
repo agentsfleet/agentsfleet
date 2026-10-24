@@ -55,22 +55,15 @@ const EVENT: &str = "runner_report_failed";
 /// What [`handle`] documents, its caps spelled from their constants.
 #[cfg(feature = "openapi")]
 const DESCRIPTION: &str = const_format::concatcp!(
-    "The terminal result of one lease. A report from a holder the fleet ",
-    "has already superseded is refused by the fence and writes nothing. ",
-    "A stale writer therefore cannot land a partial finalize on the ",
-    "current holder's run. ",
-    "The lease id is this endpoint's idempotency key, so it takes no ",
-    "`Idempotency-Key` header. Send the same report again after a lost ",
-    "response and the stored outcome is returned. The repeat charges ",
-    "nothing and counts the run once. ",
-    "A body that will not read is refused with `UZ-REQ-001`. Its `detail` ",
-    "names a retired cumulative total (`input_tokens`, ",
-    "`cached_input_tokens` or `output_tokens`) when the body carries one. ",
-    "It also names the bound a body breaks: more than ",
+    "Saves the final result of a work assignment. Replaced assignments are refused ",
+    "without saving anything. Retry the same report safely using its lease ",
+    "identifier; no `Idempotency-Key` is accepted. Repeats return the saved result ",
+    "without another charge or run count. Invalid bodies return `UZ-REQ-001` with the ",
+    "rejected field or limit: retired cumulative totals, more than ",
     afd_wire::usage::LINES_MAX,
-    " `requests` lines, or a line `seq` above ",
+    " `requests`, or `seq` above ",
     afd_wire::usage::RUNNER_SEQ_MAX,
-    ". ",
+    ".",
 );
 
 /// Records one terminal execution result.
@@ -255,10 +248,12 @@ mod tests {
 
     use super::{delivery_of, spend_of};
 
+    const UNCACHED_INPUT_TOKENS: i64 = 1_000;
+
     /// One run's usage lines, summed: every prompt class non-zero and distinct,
     /// so a total that dropped or doubled any one of them cannot match.
     const TOKENS: RunTokens = RunTokens {
-        input_tokens: 1_000,
+        input_tokens: UNCACHED_INPUT_TOKENS,
         cached_input_tokens: 400,
         cache_write_tokens: 250,
         output_tokens: 90,

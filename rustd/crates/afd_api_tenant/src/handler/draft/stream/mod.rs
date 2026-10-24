@@ -19,7 +19,11 @@ use std::sync::Arc;
     get, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/events/stream",
     operation_id = "stream_workspace_draft", tag = afd_http::openapi::tag::DRAFTS,
     summary = "Stream your private setup progress",
-    description = "Private progress and provisional answer text. Reconcile the draft and messages on reconnect. Last-Event-ID is an ephemeral hint. Access is checked before every frame and at least every ten seconds while quiet.",
+    description = concat!(
+        "Streams private setup progress and partial replies. After reconnecting, reload the ",
+        "draft and messages; `Last-Event-ID` is only a temporary hint. Access is checked ",
+        "before each message and at least every ten seconds while idle.",
+    ),
     params(afd_http::openapi::path::Draft),
     responses((status=200, body=String, content_type="text/event-stream", description="Private progress"),
         (status=400, description="Invalid draft identifier"), (status=401, description=afd_http::openapi::UNAUTHORIZED),

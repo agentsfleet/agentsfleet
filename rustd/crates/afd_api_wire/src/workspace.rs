@@ -38,7 +38,7 @@ pub struct CreatedWorkspaceResponse<'a> {
     pub name: Cow<'a, str>,
     /// The correlation token for this request, repeated in the body.
     pub request_id: Cow<'a, str>,
-    /// The tenant it was created in — the daemon's resolution, never a claim.
+    /// Account identifier assigned by the server to the new workspace.
     pub tenant_id: Cow<'a, str>,
 }
 

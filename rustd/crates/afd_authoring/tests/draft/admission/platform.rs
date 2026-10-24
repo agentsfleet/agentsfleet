@@ -5,6 +5,8 @@ use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
 
+mod funding;
+
 async fn configured() -> Fixture {
     let f = fixture::fund(Fixture::isolated().await, 1).await;
     let raw = serde_json::value::RawValue::from_string(
@@ -70,7 +72,7 @@ async fn saved_platform_reference_resolves_the_platform_credential_and_billing_p
 // seam=isolated real Postgres and encrypted vault; no_claim=live inference.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn platform_admission_reserves_priced_input_output_and_runtime() {
+async fn platform_admission_reserves_output_and_runtime_before_rolling_input_funding() {
     let f = configured().await;
     let draft = queued(&f).await;
     let lease = claim(&f, &draft)
@@ -81,9 +83,9 @@ async fn platform_admission_reserves_priced_input_output_and_runtime() {
     let (reserved, managed): (i64, bool) = sqlx::query_as(
         "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM authoring.attempts WHERE id=$1::uuid",
     ).bind(&lease.attempt_id).fetch_one(&mut *f.connection().await).await.expect("durable priced bound");
-    // Eight 32,768-token inputs at $1/million, 8,192 output at $2/million,
-    // seven rounding units, plus the separately priced five-minute runtime.
-    assert_eq!(reserved, 30_000_000 + 8 * 32_768_000 + 16_384_000 + 7);
+    // Measured input is funded before each physical dispatch; admission reserves
+    // total output, rounding and the separately priced five-minute runtime.
+    assert_eq!(reserved, 30_000_000 + 16_384_000 + 7);
     assert!(managed);
     f.cleanup().await;
 }
@@ -137,11 +139,11 @@ async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
 // seam=isolated real Postgres; no_claim=production catalogue corruption.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn invalid_platform_prices_fail_without_creating_an_attempt() {
+async fn unaffordable_output_prices_fail_without_creating_an_attempt() {
     let f = configured().await;
     let draft = queued(&f).await;
     let model = f.catalogue.first().expect("owned catalogue model").as_str();
-    let negative = sqlx::query(SET_INPUT_PRICE)
+    let negative = sqlx::query(SET_OUTPUT_PRICE)
         .bind(model)
         .bind(-1_i64)
         .execute(&mut *f.connection().await)
@@ -150,7 +152,7 @@ async fn invalid_platform_prices_fail_without_creating_an_attempt() {
         negative.is_err(),
         "the price table refuses a negative rate, so no claim can read one"
     );
-    sqlx::query(SET_INPUT_PRICE)
+    sqlx::query(SET_OUTPUT_PRICE)
         .bind(model)
         .bind(i64::MAX)
         .execute(&mut *f.connection().await)
@@ -166,6 +168,6 @@ async fn invalid_platform_prices_fail_without_creating_an_attempt() {
     f.cleanup().await;
 }
 
-/// Rewrites every price tier of one catalogue model's input rate.
-const SET_INPUT_PRICE: &str = "UPDATE model.platform_model_prices SET input_nanos_per_mtok = $2 \
+/// Rewrites every price tier of one catalogue model's output rate.
+const SET_OUTPUT_PRICE: &str = "UPDATE model.platform_model_prices SET output_nanos_per_mtok = $2 \
      WHERE platform_model_id = $1::uuid";

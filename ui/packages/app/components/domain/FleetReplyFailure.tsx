@@ -3,7 +3,7 @@
 import { memo, useMemo } from "react";
 import { useAui, useAuiState, type MessageState } from "@assistant-ui/react";
 import { useCurrentUser } from "@/lib/auth/client";
-import { isSteerBy } from "@/lib/events/event-summary";
+import { isSteerBy, parsePayload } from "@/lib/events/event-summary";
 import { ChatFailure } from "./chat/ChatFailure";
 import { messageOutcome } from "./fleetFailureCopy";
 import { readFailureDetail, readFailureLabel, readReplyFigures, readRequestJson } from "./fleetMessageReaders";
@@ -34,10 +34,6 @@ export const FleetReplyFailure = memo(function FleetReplyFailure({message}: {mes
 
 function retryText(actor: unknown, json: string | null, userId: string | null | undefined): string | undefined {
   if (typeof actor !== "string" || !isSteerBy(actor, userId ?? null)) return undefined;
-  if (!json) return undefined;
-  try {
-    const body: unknown = JSON.parse(json);
-    if (typeof body === "object" && body !== null && "message" in body && typeof body.message === "string" && body.message.trim()) return body.message;
-  } catch { /* Older events can lack a usable original message. */ }
-  return undefined;
+  const text = parsePayload(json)?.message;
+  return typeof text === "string" && text.trim() ? text : undefined;
 }

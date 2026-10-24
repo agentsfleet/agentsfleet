@@ -8,7 +8,7 @@
 
 **Outcome under test:** a fact a user tells `@agentsfleet` in one Slack thread is recalled by the bot in a *different thread of the same channel* — because the memory namespace is the per-channel resident fleet, not the thread. The bot stays read-only and never acts unattended.
 
-Legend: ✅ shipped · ♻️ reused substrate · 🟡 shipped, gap open (§5).
+Legend: ✅ implemented · ♻️ existing substrate · 🟡 unavailable behavior (§5). Memory capture and cross-thread recall remain unproven with the resident’s empty tool list.
 
 ```mermaid
 sequenceDiagram
@@ -31,13 +31,14 @@ sequenceDiagram
   Runner->>API: run; GET /me/memory/{channel_fleet_id} (empty) ♻️
   Runner->>API: report "don't know yet — tell me?"
   API->>Slack: chat.postMessage thread_ts=A (outbound poster) ✅
-  Lead->>Slack: it's "aurora" (thread A)
-  Runner->>API: POST /me/memory/{channel_fleet_id} {prod: aurora} ♻️
+  Lead->>Slack: @agentsfleet it's "aurora" (thread A)
+  Note over Runner,API: 🟡 capture blocked: resident has no memory_store tool
   Note over Lead,Runner: …days later, a different thread…
   Lead->>Slack: @agentsfleet is aurora healthy? (thread B)
   API->>API: SAME channel_fleet_id (connector.channels)
-  Runner->>API: lease → GET /me/memory/{channel_fleet_id} → {prod: aurora} ✅
-  Runner->>API: report (uses "aurora")
+  Runner->>API: lease → GET /me/memory/{channel_fleet_id} ♻️
+  Note over Runner,API: 🟡 cross-thread recall needs the missing capture step
+  Runner->>API: report (no saved aurora fact guaranteed)
   API->>Slack: chat.postMessage thread_ts=B (outbound poster) ✅
 ```
 
@@ -49,7 +50,11 @@ A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs
 
 ## 2. The channel is the memory namespace
 
-The first `@mention` in `#support` materialises a **durable per-channel resident fleet** through the native setup path (`Creations::materialise`, `rustd/crates/afd_authoring/src/creation/system.rs`). Its Definition is built in code: the instructions come from `resident.md` (`rustd/crates/afd_ingress/src/slack/resident.md`), and the **code-set config** is one `api` trigger, `tools: []`, no hosts, and a one-dollar `daily_nanos` ceiling (`definition` in `rustd/crates/afd_ingress/src/slack/resident.rs`), never read from the instructions. The result is a normal `fleet.fleets` row whose revision 1 is recorded with a system review context (`review::Context::system`), so the lease, the fleet read, Kill and purge treat it like a saved fleet. It is bound once in `connector.channels (provider='slack', external_account_id=team_id, external_channel_id=channel_id → fleet_id, kind='resident')` (`schema/1620_connector_channels.sql`). Every later mention in *any thread* of `#support` that no subscribed fleet takes routes to this same fleet.
+The first `@mention` creates a durable fleet through `Creations::materialise` (`rustd/crates/afd_authoring/src/creation/system.rs`). Its first revision uses system review context, so fleet reads, Kill and purge follow the ordinary saved-fleet path.
+
+`rustd/crates/afd_ingress/src/slack/resident.rs` builds its Definition with `resident.md` instructions, empty triggers and tools, and a one-dollar daily ceiling. Ingress addresses residents directly through the channel binding; it does not match declared triggers.
+
+`connector.channels` binds Slack team and channel to `fleet_id` with `kind=resident` (`schema/1620_connector_channels.sql`). Later mentions in any thread reuse that fleet when no subscribed fleet takes the mention.
 
 | | Thread | Channel-resident fleet |
 |---|---|---|
@@ -62,11 +67,11 @@ A mention creates a `slack:<user>` event under producer `slack_mention`, keyed `
 
 On lease, the runner loads the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`). The [agent loop](../runner_execution.md#process-model) answers from that memory and the live thread context, with no tools or credentials. The daemon's outbound poster sends the answer with `chat.postMessage thread_ts=<originating>` (`afd_outbound/src/slack/mod.rs`).
 
-Before the report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The load/capture loop reuses [`../runner_fleet.md`](../runner_fleet.md) §"Memory continuity" unchanged.
+The generic runner can save changed memory before reporting; [memory continuity](../runner_fleet.md#memory-continuity) owns that flow. The resident cannot produce those changes without a memory tool (§5).
 
 ## 4. The cross-thread payoff
 
-Thread A stored `prod=aurora`. Thread B — a different thread, possibly days later — hydrates the **same** `channel_fleet_id` namespace and recalls `aurora`. Memory persists because the resident fleet owns the namespace and each run borrows it; nothing is stored in the thread. The run holds its memory in the runner's supervisor and pushes it, fenced, before the report ([`../runner_execution.md`](../runner_execution.md#crates)); the channel store is durable in Postgres. The capture half has an open gap for the resident (§5).
+The target stores `prod=aurora` from thread A, then recalls it in thread B through the resident fleet’s memory namespace. The current resident cannot capture that fact because it has no `memory_store` tool (§5). Shared fleet identity and durable memory storage alone do not prove this outcome.
 
 ## 5. Surface in `agentsfleetd`
 

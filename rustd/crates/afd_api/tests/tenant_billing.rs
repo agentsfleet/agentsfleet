@@ -34,20 +34,26 @@ const CHARGES: &str = "/v1/tenants/me/billing/charges";
 
 /// A tenant api-key, shaped as the authenticator classifies one — the marker
 /// plus sixty-four lower-case hex.
-const TENANT_KEY: &str = "agt_tfeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface";
+pub(super) const TENANT_KEY: &str =
+    "agt_tfeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface";
 
 /// An `afc_` credential — the same hex under the terminal's marker, so the
 /// only axis between the two fixtures is credential class.
-const TERMINAL: &str = "afc_feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface";
+pub(super) const TERMINAL: &str =
+    "afc_feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface";
 
 /// The subject the fixture credentials resolve to.
-const SUBJECT: &str = "user_2billing";
+pub(super) const SUBJECT: &str = "user_2billing";
 
 /// What the route table demands of both reads.
-const BILLING_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::BillingRead]);
+pub(super) const BILLING_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::BillingRead]);
 
 /// A GET at `path` presenting `credential`, against a fresh router.
-async fn read(scopes: ScopeSet, path: &str, credential: Option<&str>) -> axum::response::Response {
+pub(super) async fn read(
+    scopes: ScopeSet,
+    path: &str,
+    credential: Option<&str>,
+) -> axum::response::Response {
     let router = Fleet::new()
         .with_person(TENANT_KEY, SUBJECT, scopes)
         .router();

@@ -70,8 +70,8 @@ pub const DETAIL_RECORD_MIN_BYTES: usize = 256;
 // `text` and in `jsonb` alike.
 #[garde(custom(record_free_of_nul))]
 pub struct ToolCallRecord<'a> {
-    /// The call's number in its run, from 1: the `n` of the `{fence}:{n}`
-    /// call id the live frames and the trace carry.
+    /// Call number within its run, starting at 1. This is `n` in the `{fence}:{n}` identifier
+    /// used by activity and saved records.
     #[cfg_attr(
         feature = "openapi",
         schema(minimum = 1, maximum = 9_223_372_036_854_775_807_u64)
@@ -218,7 +218,7 @@ pub struct ToolCallRecordsStored {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallDetail<'a> {
-    /// The call, as the thread names it: `{fence}:{n}`.
+    /// Tool call identifier from the conversation, in `{fence}:{n}` format.
     #[serde(borrow)]
     pub call_id: Cow<'a, str>,
     /// Every argument the call was made with, secret values masked.

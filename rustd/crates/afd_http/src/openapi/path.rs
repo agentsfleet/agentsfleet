@@ -27,7 +27,7 @@ use utoipa::IntoParams;
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Id {
-    /// `UUIDv7` of the resource.
+    /// Resource identifier (version 7 universally unique identifier, or UUID).
     pub id: String,
 }
 
@@ -35,7 +35,7 @@ pub struct Id {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Workspace {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
 }
 
@@ -43,9 +43,9 @@ pub struct Workspace {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Fleet {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
 }
 
@@ -53,7 +53,7 @@ pub struct Fleet {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct FleetOnly {
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
 }
 
@@ -61,7 +61,7 @@ pub struct FleetOnly {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct FleetSource {
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
     /// The `source` of the fleet's webhook trigger, such as `linear`.
     pub source: String,
@@ -79,7 +79,7 @@ pub struct Provider {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct WorkspaceProvider {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
     /// Provider identifier, such as `slack` or `github`.
     pub provider: String,
@@ -89,7 +89,7 @@ pub struct WorkspaceProvider {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Session {
-    /// `UUIDv7` of the login session.
+    /// Login session identifier (version 7 universally unique identifier, or UUID).
     pub session_id: String,
 }
 
@@ -97,7 +97,7 @@ pub struct Session {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Invite {
-    /// `UUIDv7` of the invite.
+    /// Invite identifier (version 7 universally unique identifier, or UUID).
     pub invite_id: String,
 }
 
@@ -105,7 +105,7 @@ pub struct Invite {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Member {
-    /// `UUIDv7` of the member's user.
+    /// Member's user identifier (version 7 universally unique identifier, or UUID).
     pub user_id: String,
 }
 
@@ -113,7 +113,7 @@ pub struct Member {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Runner {
-    /// `UUIDv7` of the runner.
+    /// Runner identifier (version 7 universally unique identifier, or UUID).
     pub runner_id: String,
 }
 
@@ -121,7 +121,7 @@ pub struct Runner {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Lease {
-    /// `UUIDv7` of the lease.
+    /// Lease identifier (version 7 universally unique identifier, or UUID).
     pub lease_id: String,
 }
 
@@ -129,9 +129,9 @@ pub struct Lease {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct LeaseSchedule {
-    /// `UUIDv7` of the lease.
+    /// Lease identifier (version 7 universally unique identifier, or UUID).
     pub lease_id: String,
-    /// `UUIDv7` of the schedule.
+    /// Schedule identifier (version 7 universally unique identifier, or UUID).
     pub schedule_id: String,
 }
 
@@ -139,11 +139,11 @@ pub struct LeaseSchedule {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Schedule {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// `UUIDv7` of the schedule.
+    /// Schedule identifier (version 7 universally unique identifier, or UUID).
     pub schedule_id: String,
 }
 
@@ -151,11 +151,11 @@ pub struct Schedule {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Event {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// `UUIDv7` of the event.
+    /// Event identifier (version 7 universally unique identifier, or UUID).
     pub event_id: String,
 }
 
@@ -163,14 +163,14 @@ pub struct Event {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct ToolCall {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// `UUIDv7` of the event.
+    /// Event identifier (version 7 universally unique identifier, or UUID).
     pub event_id: String,
-    /// The call, as the thread names it: `{fence}:{n}`. Opaque; send it as
-    /// the thread gave it, percent-encoded.
+    /// Tool call identifier from the activity stream, in `{fence}:{n}` format. Keep it
+    /// unchanged and URL-encode it.
     pub call_id: String,
 }
 
@@ -178,9 +178,9 @@ pub struct ToolCall {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Memory {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
     /// Memory entry key.
     pub key: String,
@@ -190,11 +190,11 @@ pub struct Memory {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Grant {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the fleet.
+    /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// `UUIDv7` of the grant.
+    /// Grant identifier (version 7 universally unique identifier, or UUID).
     pub grant_id: String,
 }
 
@@ -202,7 +202,7 @@ pub struct Grant {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Secret {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
     /// The name the secret is stored under.
     pub name: String,
@@ -212,7 +212,7 @@ pub struct Secret {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Preference {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
     /// The preference key.
     pub pref_key: String,
@@ -222,9 +222,9 @@ pub struct Preference {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Gate {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the approval gate.
+    /// Approval gate identifier (version 7 universally unique identifier, or UUID).
     pub gate_id: String,
 }
 
@@ -235,9 +235,9 @@ pub struct Gate {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct GateDecision {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the approval gate.
+    /// Approval gate identifier (version 7 universally unique identifier, or UUID).
     pub gate_id: String,
     /// What to do with the gate: `approve` or `deny`.
     pub decision: String,
@@ -247,9 +247,9 @@ pub struct GateDecision {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Draft {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// `UUIDv7` of the draft.
+    /// Draft identifier (version 7 universally unique identifier, or UUID).
     pub draft_id: String,
 }
 
@@ -257,9 +257,10 @@ pub struct Draft {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct Library {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// Opaque Library identifier: a platform slug or an owned `UUIDv7`.
+    /// Library identifier: a platform slug or your Library entry's version 7 universally
+    /// unique identifier (UUID).
     pub library_id: String,
 }
 
@@ -267,11 +268,12 @@ pub struct Library {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct LibraryRevision {
-    /// `UUIDv7` of the workspace.
+    /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// Opaque Library identifier: a platform slug or an owned `UUIDv7`.
+    /// Library identifier: a platform slug or your Library entry's version 7 universally
+    /// unique identifier (UUID).
     pub library_id: String,
-    /// `UUIDv7` of the revision.
+    /// Revision identifier (version 7 universally unique identifier, or UUID).
     pub revision_id: String,
 }
 
@@ -279,8 +281,7 @@ pub struct LibraryRevision {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
 pub struct PlatformLibrary {
-    /// Stable platform slug. The bound is the one `afd_authoring` enforces on
-    /// it with garde, published so a client learns it before the 400.
+    /// Platform Library slug, 1 to 128 characters.
     #[param(min_length = 1, max_length = 128)]
     pub id: String,
 }

@@ -59,6 +59,32 @@ impl Billing {
         Self { database }
     }
 
+    /// Full-period settled totals and a bounded grouped activity page.
+    ///
+    /// # Errors
+    /// Reports an unavailable datastore or an unreadable ledger row.
+    pub async fn report(
+        &self,
+        tenant: &Uuid7,
+        request: &crate::report::Request,
+    ) -> Result<crate::report::Report> {
+        crate::report::read(&self.database, tenant, request).await
+    }
+
+    /// Individual settled charges for one scoped activity and reporting window.
+    ///
+    /// # Errors
+    /// Reports an unavailable datastore or an unreadable ledger row.
+    pub async fn activity_charges(
+        &self,
+        tenant: &Uuid7,
+        work: &crate::biller::WorkKey,
+        request: &crate::report::Request,
+        after: Option<i64>,
+    ) -> Result<Vec<crate::report::Charge>> {
+        crate::report::details(&self.database, tenant, work, request, after).await
+    }
+
     /// The wallet snapshot behind `GET /v1/tenants/me/billing`.
     ///
     /// # Errors

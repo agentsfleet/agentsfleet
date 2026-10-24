@@ -76,11 +76,19 @@ const POST_PORT_ADDITIONS: usize = 17;
 /// calls, its renewal and its report.
 const CHAT_AUTHORING_ADDITIONS: usize = 15;
 
+/// One route identity serves both reading and replacing private run working notes.
+const CONTEXT_CHECKPOINT_ADDITIONS: usize = 1;
+
+/// Settled period reports and one billed activity's individual charge lines.
+const BILLING_REPORT_ADDITIONS: usize = 2;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
     + POST_PORT_ADDITIONS
-    + CHAT_AUTHORING_ADDITIONS;
+    + CHAT_AUTHORING_ADDITIONS
+    + CONTEXT_CHECKPOINT_ADDITIONS
+    + BILLING_REPORT_ADDITIONS;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.

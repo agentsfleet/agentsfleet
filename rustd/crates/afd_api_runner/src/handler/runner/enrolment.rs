@@ -50,12 +50,10 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
     operation_id = "register_runner",
     summary = "Register a runner",
     description = concat!(
-        "Enrolls a runner into the fleet and assigns its policy. Requires ",
-        "an existing operator credential (a dashboard session token or an `agt_t` API key ",
-        "with admin role); there is no enrollment token. Mints a durable ",
-        "`agt_r` runner token, returned once, and stores only its SHA-256 ",
-        "hash. The host applies the policy assigned here and never declares ",
-        "its own. ",
+        "Registers a runner and assigns its policy. Requires an administrator's dashboard ",
+        "session or `agt_t` API key. No enrollment token is accepted. Save the returned ",
+        "`agt_r` token securely; it appears once. The runner must apply the assigned ",
+        "policy.",
     ),
     request_body = RegisterRequest,
     responses(

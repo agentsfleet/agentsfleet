@@ -1,26 +1,6 @@
-// Login handler — Effect-shaped device flow using the ECDH-encrypted handshake:
-//
-//   1. CLI generates an ephemeral P-256 keypair.
-//   2. POST /v1/auth/sessions { public_key, token_name } → session_id.
-//   3. CLI prints + opens the API-provided browser approval URL.
-//   4. Dashboard mints the JWT, AES-GCM-encrypts it to the CLI's public
-//      key, PATCHes the ciphertext + nonce + dashboard_public_key + a
-//      6-digit verification code to /v1/auth/sessions/{id}/approve.
-//   5. CLI polls GET /v1/auth/sessions/{id} until status is
-//      verification_pending; prompts the operator for the displayed
-//      code; POSTs to /verify; receives the ciphertext; decrypts.
-//   6. CLI spends the recovered JWT on POST /v1/cli-credentials and persists
-//      the durable credential that comes back. The JWT never reaches disk —
-//      it is valid for about a minute, so persisting it is what made a
-//      terminal go stale while the operator was still using it.
-//   7. CLI hydrates workspaces + captures the login-completed analytics
-//      event. Telemetry still reads the JWT's claims for the distinct id,
-//      because the credential is opaque and carries none.
-//
-// SIGINT during the poll or prompt aborts cleanly via the existing
-// AbortController pattern. Failures route through one AuthError taxonomy
-// on the error channel; the dispatcher's exit-code map keys all of them
-// to 1 (130 for interrupted).
+// Browser login delivers the encrypted session through a bound local callback.
+// Explicit --no-open retains human code entry for a browser on another device.
+// Both paths share verification, durable credential minting and identity checks.
 
 import { Effect, Redacted } from "effect";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
@@ -58,6 +38,8 @@ import {
   type MintedCredential,
 } from "./login-exchange.ts";
 import { rollbackOnIdentityFailure } from "./login-identity-rollback.ts";
+import { browserLogin } from "./login-browser-flow.ts";
+import { MAX_LOGIN_WAIT_MS } from "./login-callback-protocol.ts";
 import {
   readIdentity,
   type CallerIdentity,
@@ -87,28 +69,6 @@ const announceSession = Effect.fnUntraced(function* (
   if (output.format !== OUTPUT_FORMAT.text) return;
   yield* output.printSection("Login session");
   yield* output.printKeyValue({ session_id: sessionId, login_url: loginUrl });
-});
-
-const maybeOpenBrowser = Effect.fnUntraced(function* (
-  loginUrl: string,
-  noOpen: boolean,
-) {
-  const config = yield* CliConfig;
-  const output = yield* Output;
-  if (noOpen || config.noOpen) {
-    if (output.format === OUTPUT_FORMAT.text) {
-      yield* output.info(BROWSER_NOT_OPENED_MESSAGE);
-    }
-    return false;
-  }
-  const browser = yield* Browser;
-  const opened = yield* browser.open(loginUrl);
-  if (output.format === OUTPUT_FORMAT.text) {
-    yield* output.info(
-      opened ? "browser: opened" : BROWSER_NOT_OPENED_MESSAGE,
-    );
-  }
-  return opened;
 });
 
 // Success rendering. Every non-success path is an Effect failure routed
@@ -159,17 +119,11 @@ const persistSuccess = Effect.fnUntraced(function* (
   return minted.credential;
 });
 
-// Verify branch: prompt → /verify → decrypt → persist → /me ping → hydrate
-// → telemetry. SIGINT/EOF at the prompt aborts via `signal` before any
-// persist. Lives outside loginCore so the orchestrator stays linear (no
-// nested generators) under the 350-line cap.
-const completeVerificationBranch = Effect.fnUntraced(function* (
+// Only a verified, decrypted session reaches the shared persistence path.
+const completeLogin = Effect.fnUntraced(function* (
   sessionId: string,
-  keypair: import("../lib/cli-flow.ts").CliKeypair,
-  noInput: boolean,
-  signal: AbortSignal,
+  token: string,
 ) {
-  const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput, signal });
   // The exchange completes before anything is persisted. A failure here
   // leaves credentials.json untouched and reports a registered code, so a
   // failed login never leaves a dead-on-arrival value on disk.
@@ -181,7 +135,7 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
     Effect.catch(rollbackOnIdentityFailure),
   );
   yield* hydrateWorkspacesAfterLogin(redacted);
-  yield* captureLoginCompleted(sessionId, token);
+  yield* captureLoginCompleted(token);
   return identity;
 });
 
@@ -203,16 +157,12 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   const noInput = flags.noInput || !stdin.isTTY;
   yield* idempotencyCheck({ force: flags.force, noInput });
 
-  // Since §3 retired direct-token seeding, the device flow is the only path
-  // that writes a credential — and it needs a human to read a verification
-  // code off the screen and type it back. A non-TTY shell cannot do that, so
-  // it fails here naming the environment variable that serves unattended
-  // callers, rather than announcing a session nothing will ever approve.
+  // A person must start login in a terminal and deliberately authorize it.
   if (!stdin.isTTY) {
     return yield* Effect.fail(
       new InterruptedError({
         detail:
-          "`agentsfleet login` needs an interactive terminal — a human types the device flow's verification code",
+          "`agentsfleet login` needs an interactive terminal and browser authorization",
         suggestion: `set ${API_KEY_ENV} to a tenant API key for unattended use`,
       }),
     );
@@ -220,20 +170,27 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
 
   const keypair = yield* generateKeypair;
   const tokenName = flags.tokenName ?? defaultTokenName();
+  const deadlineMs = Date.now() + MAX_LOGIN_WAIT_MS;
   const created = yield* createSession(keypair.publicKeyBase64Url, tokenName);
   const serverLoginUrl = created.login_url?.trim();
   const loginUrl = serverLoginUrl ? serverLoginUrl : buildLoginUrl(config.dashboardUrl, created.session_id);
 
-  yield* announceSession(created.session_id, loginUrl);
-  yield* maybeOpenBrowser(loginUrl, flags.noOpen);
-
-  // Prompt for the code immediately — possessing it implies the dashboard
-  // approved, so there's no poll-gate to wait through. SIGINT/EOF at the
-  // prompt aborts cleanly (exit 130) with nothing persisted.
-  const identity = yield* withSigintAbort((signal) =>
-    completeVerificationBranch(created.session_id, keypair, flags.noInput, signal),
-  );
+  const identity = yield* flags.noOpen || config.noOpen
+    ? manualLogin(created.session_id, keypair, loginUrl, flags.noInput)
+    : browserLogin({ sessionId: created.session_id, keypair, dashboardUrl: config.dashboardUrl, loginUrl, deadlineMs },
+      (token) => completeLogin(created.session_id, token));
   yield* renderSuccess(created.session_id, identity);
+});
+
+const manualLogin = Effect.fnUntraced(function* (
+  sessionId: string, keypair: import("../lib/cli-flow.ts").CliKeypair, loginUrl: string, noInput: boolean,
+) {
+  const output = yield* Output;
+  yield* announceSession(sessionId, loginUrl);
+  if (output.format === OUTPUT_FORMAT.text) yield* output.info(BROWSER_NOT_OPENED_MESSAGE);
+  return yield* withSigintAbort((signal) => verifyAndDecryptWithRetry(sessionId, keypair, { noInput, signal }).pipe(
+    Effect.flatMap((token) => completeLogin(sessionId, token)),
+  ));
 });
 
 // Re-map transport errors during create-session so every login failure

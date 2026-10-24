@@ -65,16 +65,6 @@ vi.mock("@/lib/api/tenant_billing", async () =>
 vi.mock("@/lib/api/tenant_provider", async () =>
   (await import("./helpers/dashboard-app-mocks")).tenantProviderMock(),
 );
-vi.mock(
-  "@/app/(dashboard)/settings/billing/components/BillingBalanceCard",
-  async () =>
-    (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock(),
-);
-vi.mock(
-  "@/app/(dashboard)/settings/billing/components/BillingUsageTab",
-  async () =>
-    (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock(),
-);
 vi.mock("@/lib/api/events", async () =>
   (await import("./helpers/dashboard-app-mocks")).eventsMock(),
 );

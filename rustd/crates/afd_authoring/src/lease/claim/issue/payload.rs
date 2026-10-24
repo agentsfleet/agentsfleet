@@ -46,7 +46,7 @@ pub(super) fn build(
         candidate: context.candidate,
         messages: context.messages,
         limits: Limits {
-            input_per_call: budget::INPUT_PER_CALL,
+            input_per_call: i64::from(model.context_window_tokens),
             output_per_turn: budget::output_limit(model),
             max_calls: budget::MAX_CALLS,
             wall_seconds: seconds(budget::WALL),

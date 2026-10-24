@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct Renew {
-    /// Decimal current fence.
+    /// Current attempt number, as a decimal string. Rejects updates from replaced runners.
     #[garde(length(bytes, min = 1, max = super::DECIMAL_BYTES_MAX))]
     pub fence: String,
-    /// Monotone cumulative observations, verified by the daemon.
+    /// Cumulative usage counts that can only increase, verified by the server.
     #[garde(dive)]
     pub usage: super::Meter,
 }

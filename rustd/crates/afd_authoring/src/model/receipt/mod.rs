@@ -8,5 +8,6 @@ pub(in crate::model) use replay::prior;
 
 pub(in crate::model) struct Received {
     pub(in crate::model) decoded: crate::Result<super::provider::Decoded>,
+    pub(in crate::model) compaction: Option<afd_context::Compaction>,
     pub(in crate::model) cause: Option<crate::types::FailureCause>,
 }

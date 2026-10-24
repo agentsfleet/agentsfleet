@@ -53,18 +53,13 @@ const EVENT_BODY_RETIRED: &str = "renew_body_retired";
 /// What [`handle`] documents, its cap spelled from its constant.
 #[cfg(feature = "openapi")]
 const DESCRIPTION: &str = const_format::concatcp!(
-    "A run buying more time before its lease expires. The body is ",
-    "optional and carries one line per provider request since the last ",
-    "recorded renewal, at most ",
+    "Extends the current work assignment. The optional body includes up to ",
     afd_wire::usage::LINES_MAX,
-    ". The answer's `recorded_through` names the highest line recorded, ",
-    "and the runner sends the rest again. A body that will not parse, or ",
-    "breaks a bound, records no lines and is logged as ",
-    "`renew_body_parse_failed`. The lease is still extended, so a counting ",
-    "mistake never ends a run. One body is refused instead. A body ",
-    "carrying the retired cumulative totals (`input_tokens`, ",
-    "`cached_input_tokens`, `output_tokens`) answers 400 `UZ-RUN-013`. ",
-    "Its `detail` names the field, and the lease is not extended. ",
+    " provider usage records. `recorded_through` confirms the highest saved record; ",
+    "resend later records. Invalid bodies save no records but still renew, logging ",
+    "`renew_body_parse_failed`. Retired totals (`input_tokens`, ",
+    "`cached_input_tokens`, `output_tokens`) instead return 400 `UZ-RUN-013` without ",
+    "renewal; `detail` names the field.",
 );
 
 /// Extends one live lease's deadline.

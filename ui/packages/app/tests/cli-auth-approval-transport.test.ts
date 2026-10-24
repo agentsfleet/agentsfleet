@@ -42,7 +42,7 @@ async function approve(response: Response) {
     render(React.createElement(React.Suspense, { fallback: null },
       React.createElement(CliAuthPage, { params: Promise.resolve({ session_id: "session-id" }) })));
   });
-  const button = await screen.findByRole("button", { name: "Approve" });
+  const button = await screen.findByRole("button", { name: "Authorize" });
   await act(async () => { fireEvent.click(button); });
   return fetchMock;
 }

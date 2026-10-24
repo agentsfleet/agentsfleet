@@ -21,7 +21,11 @@ use std::sync::Arc;
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch, path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}", operation_id = "patch_fleet",
     tag = afd_http::openapi::tag::FLEETS, summary = "Change fleet lifecycle or name",
-    description = "Requires the current resource tag. Active on an installing fleet resumes checked setup. Kill cancels pending setup and restores its private draft to editing.",
+    description = concat!(
+        "Updates lifecycle state or name. Send the current `ETag` in `If-Match`. Setting an ",
+        "installing fleet to active resumes setup checks. Killing it cancels setup and ",
+        "makes its private draft editable again.",
+    ),
     params(afd_http::openapi::path::Fleet, ("If-Match" = String, Header, description = "Required current strong resource tag.")),
     request_body = afd_api_wire::fleet::PatchFleetRequest,
     responses((status = 200, body = afd_api_wire::fleet::FleetResponse, description = "Current fleet", headers(("ETag" = String))),

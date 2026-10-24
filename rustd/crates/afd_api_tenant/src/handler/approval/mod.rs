@@ -86,14 +86,11 @@ pub(crate) struct ResolvePath {
     path = "/v1/workspaces/{workspace_id}/approvals",
     tag = afd_http::openapi::tag::APPROVALS,
     operation_id = "list_workspace_approvals",
-    summary = "List approval gates for a workspace",
+    summary = "List workspace approval requests",
     description = concat!(
-        "Returns approval gates newest-first, in every state unless `status` ",
-        "narrows them. Each ",
-        "row surfaces the fleet's proposed action, gathered evidence, ",
-        "blast-radius assessment, and timeout countdown. Filter by fleet, gate ",
-        "kind, or status. Cursor pagination over (created_at, id) so ",
-        "concurrent inserts don't cause silent skips. ",
+        "Lists approval requests newest first, including proposed actions, evidence, ",
+        "potential impact, and time remaining. Filter by fleet, request kind, or status. ",
+        "All states are included by default. Follow the cursor to continue.",
     ),
     params(
         afd_http::openapi::path::Workspace,
@@ -166,11 +163,8 @@ fn next_cursor(gates: &[GateRow], limit: i64) -> Option<String> {
     path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
     tag = afd_http::openapi::tag::APPROVALS,
     operation_id = "get_workspace_approval",
-    summary = "Get a single approval gate by id",
-    description = concat!(
-        "Drives the dashboard detail page. 404 when the gate doesn't exist or ",
-        "belongs to a different workspace. ",
-    ),
+    summary = "Read an approval request",
+    description = "Returns an approval request. Missing requests and requests in another workspace return 404.",
     params(
         afd_http::openapi::path::Gate,
     ),

@@ -44,7 +44,7 @@ pub struct Item<R = serde_json::Value> {
     pub card: crate::library::Card<R>,
     /// Whether new tenant discovery and installation are allowed.
     pub published: bool,
-    /// Last metadata mutation, in Unix milliseconds.
+    /// Last metadata update timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "afd_wire::instant")]
     pub updated_at: jiff::Timestamp,
 }

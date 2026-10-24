@@ -15,12 +15,8 @@ use serde::Serialize;
 
 use crate::catalogue::CataloguePrice;
 
-/// One priced model as the catalogue shows it. Every rate is integer nanos per
-/// million tokens.
-///
-/// `id` is the MODEL identifier (`claude-sonnet-5`, `accounts/fireworks/…`),
-/// never the row's own id — that one is admin-plane identity and rides the
-/// cursor opaquely instead.
+/// A model with prices in billionths of a dollar per million tokens. `id` is the provider's
+/// model identifier, not the database record identifier.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogueModel<'a> {

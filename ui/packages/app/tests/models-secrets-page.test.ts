@@ -91,11 +91,9 @@ describe("Models page", () => {
     const { default: Page, ModelsRegistryData } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/page"
     );
-    // The shell paints the header immediately; the registry is an async child
-    // so renderToStaticMarkup renders the skeleton in its place.
     const shell = renderToStaticMarkup(await renderPage(Page));
-    expect(shell).toContain("Models");
-    expect(shell).toContain(MODELS_PAGE_DESCRIPTION);
+    expect(shell).toContain('aria-label="Loading page"');
+    expect(shell).not.toContain(MODELS_PAGE_DESCRIPTION);
     expect(shell).not.toContain('data-testid="models-registry-table"');
 
     const markup = renderToStaticMarkup(

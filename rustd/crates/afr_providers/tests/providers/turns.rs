@@ -42,6 +42,8 @@ async fn streamed(
         tools: &[],
         hosted: &[],
         cache_key: FLEET,
+        max_output_tokens: None,
+        single_attempt: false,
     };
     tokio::time::timeout(RUN_BUDGET, provider.stream(request).take(BOUND).collect())
         .await

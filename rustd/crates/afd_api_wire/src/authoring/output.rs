@@ -3,7 +3,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-/// Immutable normalized setup version, identified by the daemon.
+/// Saved setup version and its server-assigned identifier. This version cannot change.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Candidate<D = Value> {
@@ -34,7 +34,7 @@ pub struct Draft<D = Value, R = Value> {
     pub etag: String,
     /// Explicit model for future messages.
     pub authoring_model_ref: String,
-    /// Decimal standing cancellation watermark.
+    /// Highest cancelled message sequence, as a decimal string.
     pub cancelled_through: String,
     /// Latest accepted setup, absent before the first candidate.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -49,11 +49,11 @@ pub struct Draft<D = Value, R = Value> {
     /// Explicit publication receipt, never synthesized by Save.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publication: Option<Publication>,
-    /// Closing time in Unix milliseconds.
+    /// Closing timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "afd_wire::instant::option", default)]
     pub closed_at: Option<jiff::Timestamp>,
-    /// Private retention deadline in Unix milliseconds.
+    /// Private retention deadline, such as `2026-10-24T05:00:00.000Z`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "afd_wire::instant::option", default)]
     pub expires_at: Option<jiff::Timestamp>,
@@ -147,13 +147,13 @@ pub struct Message {
     /// Provider usage and cumulative runtime charge, when recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<afd_wire::authoring::Usage>,
-    /// Daemon-derived bounded failure and recovery action.
+    /// Server-reported failure reason and suggested recovery action.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<Failure>,
-    /// Acceptance time, Unix milliseconds.
+    /// Acceptance timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
-    /// Terminal time, Unix milliseconds.
+    /// Finish timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "afd_wire::instant::option", default)]
     pub finished_at: Option<jiff::Timestamp>,
@@ -163,18 +163,19 @@ pub struct Message {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Failure {
-    /// Bounded daemon-owned reason.
+    /// Server-reported failure reason.
     pub reason: afd_wire::authoring::FailureReason,
     /// Stable central registry code.
     pub error_code: String,
     /// Stable recovery action for the authorized client to render.
     pub recovery_action: String,
-    /// Content-free cause observed by the daemon's model stream.
+    /// Model-stream failure category, without request or response content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cause: Option<String>,
 }
 
-/// A bounded keyset page; unavailable totals and final cursors are null.
+/// One page of results. `total` is null when unavailable; `next_cursor` is null on the last
+/// page.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct CursorPage<T> {
@@ -182,7 +183,7 @@ pub struct CursorPage<T> {
     pub items: Vec<T>,
     /// Known total, or null.
     pub total: Option<u64>,
-    /// Opaque continuation, or null.
+    /// Use this value unchanged for the next page, or stop when null.
     pub next_cursor: Option<String>,
 }
 
@@ -196,11 +197,12 @@ pub struct Stopped {
     pub state: String,
 }
 
-/// Standing watermark and requests newly cancelled by this Stop.
+/// Cancellation result, including the latest cancelled message sequence and newly cancelled
+/// requests.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Cancellation {
-    /// Decimal standing watermark.
+    /// Highest cancelled message sequence, as a decimal string.
     pub cancelled_through: String,
     /// Newly transitioned requests.
     pub stopped: Vec<Stopped>,

@@ -3,83 +3,112 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { mockAuthOnce } from "./helpers/dashboard-mocks";
-import { NANOS_PER_USD } from "@/lib/types";
-import { MS_PER_SECOND } from "@/lib/utils";
+import { BILLING_AT, BILLING_CATALOGUE, BILLING_MODEL, BILLING_MODEL_NAME, BILLING_SELECTION, BILLING_WORK, billingActivity, billingCharge, billingReport } from "./helpers/billing-report";
+import type { BillingSearch } from "@/app/(dashboard)/settings/billing/lib/report-query";
+import { activityKey } from "@/app/(dashboard)/settings/billing/lib/report-query";
+import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing_report";
 
-vi.mock("@clerk/nextjs/server", async () =>
-  (await import("./helpers/dashboard-mocks")).clerkServerMock());
-vi.mock("next/navigation", async () =>
-  (await import("./helpers/dashboard-mocks")).nextNavigationMock());
-
+vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-mocks")).clerkServerMock());
+vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 import BillingSettingsPage from "@/app/(dashboard)/settings/billing/page";
 
-const MODEL = "accounts/fireworks/models/minimax-m3p1-flash";
-const DISPLAY_NAME = "MiniMax M3.1 Flash";
-const TIMESTAMP = "2026-10-23T10:00:00Z";
-const CHARGE_NANOS = "100000";
-const CONTEXT_TOKENS = 1_048_576;
-const CHARGE = {
-  id: "charge-1", tenant_id: "account-1", workspace_id: "workspace-1",
-  fleet_id: "fleet-1", fleet_name: "indy-preview", event_id: "event-1",
-  authoring_attempt_id: null, charge_type: "stage", posture: "platform", model: MODEL,
-  credit_deducted_nanos: CHARGE_NANOS, token_count_input: 40, token_count_output: 10,
-  wall_ms: MS_PER_SECOND, recorded_at: TIMESTAMP,
-};
-const CATALOGUE = {
-  version: "fixture", total: 1, next_cursor: null,
-  models: [{id: MODEL, provider: "fireworks", display_name: DISPLAY_NAME,
-    advanced: false, context_cap_tokens: CONTEXT_TOKENS, context_source_url: "https://example.test/model",
-    context_verified_at: TIMESTAMP, prices: [], input_nanos_per_mtok: "1",
-    cached_input_nanos_per_mtok: "1", output_nanos_per_mtok: "1"}],
-};
+type Backend = { catalogue?: unknown; catalogueStatus?: number; reportStatus?: number; report?: unknown; detailStatus?: number; detail?: unknown };
+const requests: URL[] = [];
 
-function backend(catalogue: unknown, catalogueStatus = 200, ledgerStatus = 200): void {
+function backend(options: Backend = {}) {
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
-    const path = new URL(typeof input === "string" || input instanceof URL ? input : input.url,
-      "https://example.test").pathname;
-    if (path.endsWith("/models")) return Response.json(catalogue, {status: catalogueStatus});
-    if (path.endsWith("/charges")) return Response.json({items: [CHARGE], next_cursor: null}, {status: ledgerStatus});
-    if (path.endsWith("/billing")) return Response.json({balance_nanos: String(NANOS_PER_USD),
-      updated_at: TIMESTAMP, is_exhausted: false, exhausted_at: null});
-    throw new Error(`Unexpected test request: ${path}`);
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url, "https://example.test");
+    requests.push(url);
+    if (url.pathname.endsWith("/models")) return Response.json(options.catalogue ?? BILLING_CATALOGUE, { status: options.catalogueStatus ?? 200 });
+    if (url.pathname.endsWith("/reports/current")) return Response.json(options.report ?? billingReport(), { status: options.reportStatus ?? 200 });
+    if (url.pathname.endsWith("/charges")) return Response.json(options.detail ?? { items: [billingCharge()], total: null, next_cursor: null }, { status: options.detailStatus ?? 200 });
+    throw new Error(`Unexpected test request: ${url.pathname}`);
   }));
 }
 
-async function markup(): Promise<string> {
-  return renderToStaticMarkup(React.createElement(TooltipProvider, null, await BillingSettingsPage()));
+async function markup(query?: BillingSearch): Promise<string> {
+  const page = await BillingSettingsPage(query ? { searchParams: Promise.resolve(query) } : {});
+  return renderToStaticMarkup(<TooltipProvider>{page}</TooltipProvider>);
 }
 
-beforeEach(() => {mockAuthOnce({token: "fixture-token"});});
-afterEach(() => {vi.unstubAllGlobals();vi.clearAllMocks();});
+beforeEach(() => { mockAuthOnce({ token: "fixture-token" }); requests.length = 0; });
+afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
-describe("billing catalogue enrichment", () => {
-  it("uses the published display name and preserves the ledger amount and fleet", async () => {
-    backend(CATALOGUE);
+describe("served billing page composition", () => {
+  it("enriches exact ledger identity and provides the existing Add credits action", async () => {
+    backend();
     const html = await markup();
-    expect(html).toContain(DISPLAY_NAME);
-    expect(html).toContain("indy-preview");
+    expect(html).toContain(BILLING_MODEL_NAME);
+    expect(html).toContain("Payment alerts");
     expect(html).toContain("−$0.0001");
-    expect(html).toContain("40 input · 10 output");
+    expect(html).toContain("Add credits");
+    expect(html).toContain("mailto:agentsfleet@agentmail.to");
+    expect(html).not.toContain("Available credits");
+    expect(requests.some(url => url.pathname.endsWith("/charges"))).toBe(false);
   });
 
-  it("keeps the successful ledger and exact model identifier when the catalogue refuses access", async () => {
-    backend({error: "Unavailable"}, 403);
+  it.each([{ catalogueStatus: 403 }, { catalogue: { models: [{ id: BILLING_MODEL }] } }])("keeps ledger data when catalogue enrichment fails: %j", async options => {
+    backend(options);
     const html = await markup();
-    expect(html).toContain(MODEL);
-    expect(html).toContain("indy-preview");
+    expect(html).toContain(BILLING_MODEL);
     expect(html).toContain("−$0.0001");
-    expect(html).not.toContain(DISPLAY_NAME);
+    expect(html).not.toContain(BILLING_MODEL_NAME);
   });
 
-  it("keeps the ledger visible when catalogue data is malformed", async () => {
-    backend({...CATALOGUE, models: [{id: MODEL}]});
+  it.each([{ reportStatus: 403 }, { report: { totals: {} } }])("a refused or malformed report shows recovery without claiming zero: %j", async options => {
+    backend(options);
     const html = await markup();
-    expect(html).toContain(MODEL);
-    expect(html).toContain("−$0.0001");
+    expect(html).toContain("Billing report unavailable");
+    expect(html).toContain("Retry report");
+    expect(html).toContain("Reset filters");
+    expect(html).not.toContain("No settled activity");
   });
 
-  it("propagates a failed ledger even when the catalogue loaded", async () => {
-    backend(CATALOGUE, 200, 403);
-    await expect(markup()).rejects.toMatchObject({name: "ApiError", status: 403});
+  it("threads exact filters, cutoff and page-size-bound continuation to the report", async () => {
+    backend();
+    await markup({ period: "today", model: BILLING_MODEL, fleet: "setup", through_at: BILLING_AT, c: ["previous", "current"], cps: "50", ps: "50" });
+    const params = requests.find(url => url.pathname.endsWith("/reports/current"))?.searchParams;
+    expect(params?.get("period")).toBe("today");
+    expect(params?.get("activity_type")).toBe("setup");
+    expect(params?.get("model")).toBe(BILLING_MODEL);
+    expect(params?.get("through_at")).toBe(BILLING_AT);
+    expect(params?.get("starting_after")).toBe("current");
+    expect(params?.get("limit")).toBe("50");
+  });
+
+  it("loads only an expanded activity in the visible page and uses the report cutoff", async () => {
+    backend();
+    const html = await markup({ activity: BILLING_SELECTION, dc: "detail-page" });
+    const url = requests.find(url => url.pathname.endsWith("/charges"));
+    expect(url?.pathname).toContain(BILLING_WORK);
+    expect(url?.searchParams.get("through_at")).toBe(BILLING_AT);
+    expect(url?.searchParams.get("activity_type")).toBe("runtime");
+    expect(url?.searchParams.get("starting_after")).toBe("detail-page");
+    expect(html).toContain("Page 2");
+  });
+
+  it("keeps runtime and setup disclosure identities separate when their identifiers overlap", async () => {
+    const setup = billingActivity({ activity_type: BILLING_ACTIVITY_SETUP, fleet_id: null, fleet_name: null });
+    backend({ report: billingReport({ activities: { items: [billingActivity(), setup], total: 2, next_cursor: null } }) });
+    const html = await markup({ activity: activityKey(setup) });
+    const details = requests.filter(url => url.pathname.endsWith("/charges"));
+    expect(details).toHaveLength(1);
+    expect(details[0]?.pathname).toContain(BILLING_WORK);
+    expect(details[0]?.searchParams.get("activity_type")).toBe(BILLING_ACTIVITY_SETUP);
+    expect(html).toContain("Individual settled charges");
+  });
+
+  it.each([{ detailStatus: 403 }, { detail: { items: [{ charged_nanos: "broken" }] } }])("detail failure retains period totals and provides retry: %j", async options => {
+    backend(options);
+    const html = await markup({ activity: BILLING_SELECTION });
+    expect(html).toContain("Charges unavailable");
+    expect(html).toContain("Retry charges");
+    expect(html).toContain("Settled spend");
+  });
+
+  it("ignores a disclosure naming a work item outside the visible page", async () => {
+    backend();
+    await markup({ activity: "foreign-work" });
+    expect(requests.some(url => url.pathname.endsWith("/charges"))).toBe(false);
   });
 });

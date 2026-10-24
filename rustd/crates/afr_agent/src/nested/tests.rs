@@ -22,7 +22,6 @@ use super::fixture::{
     SLOW_CALL, STATUS, SUMMARY, TASK, TIMEOUT_MS, events, offered, parsed, requests_opening_with,
     results, tools,
 };
-use crate::context::CAP_REACHED;
 use crate::fixture::{Script, Slow, budget, call, lease, say, spent, unbounded};
 use crate::harness::tests::{drive, engine};
 
@@ -208,11 +207,9 @@ async fn test_nested_depth_capped() {
     );
 }
 
-/// A child whose prompt reaches the run's context cap is asked for its
-/// answer with no tools, as its parent would be, and that answer is what the
-/// parent reads.
+/// Reported usage alone cannot remove a child's tools; preflight owns compaction.
 #[tokio::test]
-async fn test_a_child_at_the_context_cap_answers_with_no_tools() {
+async fn reported_usage_does_not_turn_off_child_tools() {
     let script = Script::new([
         vec![call("p1", DELEGATE.name(), json!({"task": READS}))],
         vec![say(DONE)],
@@ -237,16 +234,8 @@ async fn test_a_child_at_the_context_cap_answers_with_no_tools() {
     let child = requests_opening_with(&script, READS);
     assert!(child[0].tools.contains(&UPDATE_PLAN.name().to_owned()));
     assert_eq!(child[0].hosted, [WEB_SEARCH.name()]);
-    assert!(
-        child[1].tools.is_empty() && child[1].hosted.is_empty(),
-        "no tools once capped: {:?} {:?}",
-        child[1].tools,
-        child[1].hosted
-    );
-    assert_eq!(
-        child[1].messages.last(),
-        Some(&Message::User(CAP_REACHED.to_owned()))
-    );
+    assert!(child[1].tools.contains(&UPDATE_PLAN.name().to_owned()));
+    assert_eq!(child[1].hosted, [WEB_SEARCH.name()]);
     let root = requests_opening_with(&script, OPENING);
     assert_eq!(results(&root[1]), [SUMMARY], "the parent reads its answer");
     assert_eq!(output.result.content, DONE);

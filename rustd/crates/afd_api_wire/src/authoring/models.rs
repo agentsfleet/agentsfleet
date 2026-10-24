@@ -32,7 +32,8 @@ pub struct Pricing {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct WorkspaceModel {
-    /// Opaque registry reference, including an explicit platform default.
+    /// Model selection reference, including an explicit shared platform default. Use it
+    /// unchanged.
     #[serde(rename = "ref")]
     pub reference: String,
     /// Display label.
@@ -43,7 +44,7 @@ pub struct WorkspaceModel {
     pub model: String,
     /// Catalogue context bound.
     pub context_window_tokens: i32,
-    /// Saved output ceiling; omitted while inference settings are unconfigured.
+    /// Maximum output tokens; omitted when model settings are not configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<i64>,
     /// Supported purposes.

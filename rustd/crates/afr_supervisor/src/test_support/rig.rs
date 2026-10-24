@@ -218,6 +218,8 @@ pub(crate) fn daemon(
         Verb::Me,
         Verb::Activity,
         Verb::Report,
+        Verb::ContextLoad,
+        Verb::ContextCommit,
     ]
     .into_iter()
     .map(|verb| {

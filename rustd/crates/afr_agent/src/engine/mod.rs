@@ -1,5 +1,8 @@
 //! The seam between the supervisor and whatever runs a turn.
 
+mod context;
+pub use context::ContextCheckpoints;
+
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -74,6 +77,8 @@ pub struct AgentRun<'run> {
     pub verbs: &'run dyn LeaseVerbs,
     /// Writes the run's memory back every `memory_checkpoint_every` calls.
     pub checkpoint: &'run dyn Checkpoint,
+    /// Persists private model-window working notes under this run's fence.
+    pub context_checkpoints: &'run dyn ContextCheckpoints,
     /// Where activity frames go.
     pub events: &'run dyn EventSink,
     /// The tokens the run has spent so far, which the engine adds to after

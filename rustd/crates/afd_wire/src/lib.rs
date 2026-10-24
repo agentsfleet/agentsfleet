@@ -53,6 +53,7 @@
 
 pub mod activity;
 pub mod authoring;
+pub mod context;
 pub mod credentials;
 pub mod event;
 pub mod inference;
