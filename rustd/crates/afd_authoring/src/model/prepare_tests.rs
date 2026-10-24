@@ -85,10 +85,10 @@ fn fifty_short_turns_keep_every_message_within_the_existing_input_allowance() ->
     Ok(())
 }
 
-// Value: protects=long real setup replies retain every message with the original
-// token ceiling; fails_when=MiniMax admission substitutes UTF-8 bytes for tokens.
+// Value: protects=unrecognized providers cannot bypass the existing input ceiling;
+// seam=the complete setup request with its real tool schemas and history.
 #[test]
-fn fifty_longer_replies_use_native_tokens_while_unknown_models_keep_their_bound() -> Result<()> {
+fn fifty_longer_replies_exceed_the_same_reservation_for_unrecognized_providers() -> Result<()> {
     let mut call = fifty_turns();
     for message in &mut call.request.messages {
         if let ModelMessage::Assistant { text, .. } = message {
@@ -96,17 +96,17 @@ fn fifty_longer_replies_use_native_tokens_while_unknown_models_keep_their_bound(
         }
     }
     let call = request(call)?;
-    assert!(body(&call, &model("workspace/model-next")?, Vec::new(), true).is_err());
-    let prepared = body(
-        &call,
-        &model("accounts/fireworks/models/minimax-m3p1-flash")?,
-        Vec::new(),
-        true,
-    )?;
-    assert_eq!(
-        prepared.body.chat_history.len(),
-        call.request.messages.len() + 1
-    );
-    assert_eq!(prepared.output_limit, call.request.max_output_tokens);
+    for identifier in [
+        "workspace/model-next",
+        "accounts/fireworks/models/minimax-m3p1-flash",
+        "deepseek/model-next",
+        "kimi/model-next",
+    ] {
+        let refusal = body(&call, &model(identifier)?, Vec::new(), true)
+            .err()
+            .ok_or(crate::error::ErrorKind::Token)?;
+        assert_eq!(refusal.code(), afd_core::error_code::AUTHORING_TOKEN);
+        assert!(refusal.to_string().contains("context exceeds its bound"));
+    }
     Ok(())
 }
