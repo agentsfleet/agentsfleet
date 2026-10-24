@@ -15,7 +15,7 @@
  * env (resolved by global-setup); `setupClerkTestingToken` bypasses the dev
  * bot-protection on the sign-in form.
  *
- * Selector: approve button by accessible role (`button` named /approve/i).
+ * Selector: authorize button by accessible role (`button` named /Authorize/i).
  * Code: scraped from the `<output aria-label="Verification code">` the page
  * renders on success — the CLI's /verify call is the authoritative ack.
  */
@@ -29,7 +29,7 @@ import { CLERK_SECRET_KEY_ENV } from "./constants.ts";
 import { vercelBypassState } from "./vercel-bypass.ts";
 import type { Page } from "playwright";
 
-const APPROVE_BUTTON_NAME = /approve/i;
+const APPROVE_BUTTON_NAME = /Authorize/i;
 const VERIFICATION_CODE_LABEL = "Verification code";
 const VERIFICATION_CODE_RE = /^\d{6}$/;
 const SIGN_IN_PATH = "/sign-in";

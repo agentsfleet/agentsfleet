@@ -1,4 +1,4 @@
-//! Operating thresholds stop tools without spending the model's physical window.
+//! Operating thresholds compact tool data using the physical model headroom.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,21 +46,35 @@ fn tool_reply(wire: Wire) -> Reply {
     Reply::Stream(events)
 }
 
-// Value: protects=the final answer after a tool crosses the operating threshold;
+// Value: protects=compaction preserves tools after crossing the operating threshold;
 // fails_when=physical headroom is incorrectly clamped to the fleet operating cap;
-// why_new=existing provider bounds do not drive the agent's stop-tools transition;
+// why_new=existing provider bounds do not drive a tools-disabled summary and continuation;
 // seam=local HTTPS provider and real executor socket;
 // no_claim=live provider or sandbox acceptance.
 #[tokio::test]
-async fn a_tool_result_past_the_operating_cap_still_allows_the_final_answer() {
-    let (_scratch, client, text) = workspace().await;
+async fn a_tool_result_past_the_operating_cap_is_compacted_before_tools_continue() {
+    let (_scratch, client, _text) = workspace().await;
     let wire = Wire::Messages;
-    let mut fake = Fake::serve(vec![tool_reply(wire), wire.answer("Final answer")]).await;
+    let notes = json!({"goal":"Read context.txt, then answer.","constraints":[],"decisions":[],
+        "completed":["Read context.txt"],"remaining":["answer"],"references":["context.txt"]})
+    .to_string();
+    let mut fake = Fake::serve(vec![
+        tool_reply(wire),
+        wire.answer(&notes),
+        wire.answer("Final answer"),
+    ])
+    .await;
     let mut leased = lease(
         &wire.provider(),
         &[FILE_READ.name()],
         "Read context.txt, then answer.",
     );
+    leased.policy.inference = Some(afd_wire::inference::ModelInference {
+        api: afd_wire::inference::InferenceApi::Messages,
+        base_url: format!("{}/v1", fake.base),
+        dialect: None,
+        max_output_tokens: 4096,
+    });
     leased.policy.model_context_tokens = PHYSICAL;
     leased.policy.context.context_cap_tokens = OPERATING;
     let (transport, _sent) = RecordingTransport::replying(200, "");
@@ -74,24 +88,35 @@ async fn a_tool_result_past_the_operating_cap_still_allows_the_final_answer() {
         output.result.outcome
     );
     assert_eq!(output.result.content, "Final answer");
+    assert_requests(&mut fake, wire);
+}
+
+fn assert_requests(fake: &mut Fake, wire: Wire) {
     let seen = fake.seen();
-    assert_eq!(seen.len(), 2, "one provider request per turn");
-    assert!(seen[0].raw.len() < OPERATING as usize);
+    assert_eq!(
+        seen.len(),
+        3,
+        "tool turn, silent summary, then normal continuation"
+    );
     assert_eq!(wire.offered(&seen[0].body), [FILE_READ.name()]);
     assert!(
         wire.offered(&seen[1].body).is_empty(),
-        "the operating threshold removes tools"
+        "summary has no tools"
     );
-    // rig renders historical tool results as text once no tools are offered.
-    assert_eq!(
-        seen[1].body["messages"][2]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .strip_prefix("[tool file_read result] "),
-        Some(text.as_str())
+    assert_eq!(seen[1].body["max_tokens"], 2048);
+    assert!(seen[1].body.to_string().contains("bounded tool result"));
+    assert_eq!(wire.offered(&seen[2].body), [FILE_READ.name()]);
+    assert!(
+        seen[2]
+            .body
+            .to_string()
+            .contains("Read context.txt, then answer.")
     );
+    assert!(!seen[2].body.to_string().contains("bounded tool result"));
     assert!(seen[1].raw.len() > OPERATING as usize);
-    let output_cap = seen[1].body["max_tokens"].as_u64().unwrap();
-    assert!(output_cap > 0 && output_cap <= 4096, "saved output ceiling");
-    assert!(output_cap + seen[1].raw.len() as u64 <= u64::from(PHYSICAL));
+    for request in &seen {
+        let output_cap = request.body["max_tokens"].as_u64().unwrap();
+        assert!(output_cap > 0 && output_cap <= 4096);
+        assert!(output_cap + request.raw.len() as u64 <= u64::from(PHYSICAL));
+    }
 }

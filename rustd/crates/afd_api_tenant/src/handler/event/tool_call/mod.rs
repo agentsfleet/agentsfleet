@@ -75,13 +75,10 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
     operation_id = "get_fleet_event_tool_call",
     summary = "Read one tool call in full",
     description = concat!(
-        "Returns everything one tool call took and returned, with secret ",
-        "values masked. The event's `tool_calls` shows each call's first and ",
-        "last lines; read this for the rest. Use the `call_id` the event ",
-        "gives, percent-encoded. Arguments and output are each at most 65536 ",
-        "bytes, and `truncated_arguments` and `truncated` say when the runner ",
-        "cut one to fit. A call whose full output was not kept answers 404, ",
-        "as an unknown call and a call in another workspace do. ",
+        "Returns full tool arguments and output with secrets masked. URL-encode the event's ",
+        "`call_id`. Each may contain at most 65536 bytes; `truncated_arguments` and ",
+        "`truncated` indicate shortened content. Missing, unrecorded, or inaccessible calls ",
+        "return 404.",
     ),
     params(
         afd_http::openapi::path::ToolCall,

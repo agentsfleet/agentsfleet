@@ -4,37 +4,19 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
 use afd_wire::activity::ActivityFrame;
 use afr_egress::testing::CountingMint;
 use afr_providers::Message;
-use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN, WEB_SEARCH};
+use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use tokio_util::sync::CancellationToken;
 
-use super::EVENT_CAP_REACHED;
 use super::tests::{drive, engine};
-use crate::context::{CAP_REACHED, EVICTED};
 use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{
-    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, budget, call, lease, say, spent, unbounded,
+    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, call, lease, say, spent, unbounded,
 };
 use crate::testing::Discard;
-
-/// A cap no test here reaches.
-const WIDE_CAP: u32 = 1000;
-/// The window the capped tests run in, and a prompt past its 0.75 stage
-/// fraction that is still inside it, as a provider would answer it.
-const CAP: u32 = 100;
-const FILLED: u64 = 80;
-
-/// A turn that calls the plan tool once and reports `input` prompt tokens.
-fn one_call(id: &str, input: u64) -> Vec<afr_providers::Chunk> {
-    vec![
-        call(id, UPDATE_PLAN.name(), serde_json::json!({})),
-        spent(input, 0, 1),
-    ]
-}
 
 /// The outputs of every tool result in `messages`.
 fn results(messages: &[Message]) -> Vec<&str> {
@@ -45,116 +27,6 @@ fn results(messages: &[Message]) -> Vec<&str> {
             Message::User(_) | Message::Assistant { .. } => None,
         })
         .collect()
-}
-
-#[tokio::test]
-async fn test_loop_honours_context_budget() {
-    let script = Script::new([
-        one_call("a", 10),
-        one_call("b", 10),
-        one_call("c", 10),
-        one_call("d", 10),
-        vec![say("done")],
-    ]);
-    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
-
-    drive(
-        &engine,
-        &lease(&[UPDATE_PLAN.name()], budget(2, WIDE_CAP)),
-        &CancellationToken::new(),
-    )
-    .await;
-
-    let last = script.sent().pop().unwrap();
-    assert_eq!(results(&last.messages), [EVICTED, EVICTED, "4", "4"]);
-    assert_eq!(
-        last.tools,
-        [UPDATE_PLAN.name()],
-        "the cap was never reached"
-    );
-}
-
-#[tokio::test]
-async fn reaching_the_context_cap_offers_no_tools_and_asks_for_the_answer() {
-    let capture = Capture::install();
-    let script = Script::new([one_call("a", FILLED), vec![say("partial answer")]]);
-    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
-
-    let (output, _frames) = drive(
-        &engine,
-        &lease(&[UPDATE_PLAN.name(), "web_search"], budget(0, CAP)),
-        &CancellationToken::new(),
-    )
-    .await;
-
-    let sent = script.sent();
-    assert_eq!(sent[0].tools, [UPDATE_PLAN.name()]);
-    assert_eq!(sent[0].hosted, [WEB_SEARCH.name()]);
-    assert!(sent[1].tools.is_empty() && sent[1].hosted.is_empty());
-    assert_eq!(
-        sent[1].messages.last(),
-        Some(&Message::User(CAP_REACHED.to_owned()))
-    );
-    assert_eq!(output.result.content, "partial answer");
-    let reached = capture.only(EVENT_CAP_REACHED);
-    assert_eq!(reached.level, tracing::Level::INFO);
-    assert_eq!(reached.field("turns"), Some("1"));
-    assert_eq!(reached.field("tokens"), Some(FILLED.to_string().as_str()));
-    assert_eq!(reached.field("lease_id"), Some("lease-1"));
-}
-
-/// A prompt that fills the window as a fresh half and a cached half reaches
-/// the cap all the same: cache reads sit in the window too, so they are never
-/// free room, and the cap's log line counts them.
-#[tokio::test]
-async fn cache_reads_count_toward_the_cap_and_its_log_line() {
-    let capture = Capture::install();
-    let half = FILLED / 2;
-    let script = Script::new([
-        vec![
-            call("a", UPDATE_PLAN.name(), serde_json::json!({})),
-            spent(half, half, 1),
-        ],
-        vec![say("partial answer")],
-    ]);
-    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
-
-    drive(
-        &engine,
-        &lease(&[UPDATE_PLAN.name()], budget(0, CAP)),
-        &CancellationToken::new(),
-    )
-    .await;
-
-    let sent = script.sent();
-    assert!(
-        sent[1].tools.is_empty(),
-        "the cap was reached on the whole prompt, cached half included"
-    );
-    let reached = capture.only(EVENT_CAP_REACHED);
-    assert_eq!(reached.field("tokens"), Some(FILLED.to_string().as_str()));
-}
-
-#[tokio::test]
-async fn a_call_made_after_the_cap_ends_the_run_with_its_text() {
-    let script = Script::new([
-        one_call("a", FILLED),
-        vec![
-            say("enough"),
-            call("b", UPDATE_PLAN.name(), serde_json::json!({})),
-        ],
-    ]);
-    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
-
-    let (output, _frames) = drive(
-        &engine,
-        &lease(&[UPDATE_PLAN.name()], budget(0, CAP)),
-        &CancellationToken::new(),
-    )
-    .await;
-
-    assert_eq!(output.result.content, "enough");
-    assert_eq!(output.records.len(), 1, "the call past the cap never ran");
 }
 
 #[tokio::test]
@@ -219,6 +91,7 @@ async fn test_meter_holds_what_the_report_sums() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &meter,
             stop: &CancellationToken::new(),

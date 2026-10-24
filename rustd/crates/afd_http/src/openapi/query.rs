@@ -42,7 +42,7 @@ pub struct TenantPage {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OperatorPage {
-    /// An opaque cursor from a previous page's `next_cursor`.
+    /// Use the previous response's `next_cursor` unchanged.
     pub starting_after: Option<String>,
     /// Rows per page (1-100).
     pub limit: Option<String>,
@@ -55,7 +55,7 @@ pub struct OperatorPage {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct LibraryPage {
-    /// Opaque cursor from the previous page's `next_cursor`, bound to its collection.
+    /// Use this collection's previous `next_cursor` unchanged.
     pub starting_after: Option<String>,
     /// Page size, 1..100; default 50.
     pub limit: Option<u32>,
@@ -79,7 +79,7 @@ pub struct MemoryFilter {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct EventFilter {
-    /// Opaque base64url-no-pad cursor returned in `next_cursor`. Mutually exclusive with `since`.
+    /// Use the returned `next_cursor` unchanged. Cannot be combined with `since`.
     pub cursor: Option<String>,
     /// Glob filter against the row's actor. `*` is a wildcard.
     pub actor: Option<String>,
@@ -108,13 +108,12 @@ pub struct CatalogueFilter {
     /// Exact match on the normalized provider. At most 64 bytes once
     /// normalized; empty after normalization is treated as absent.
     pub provider: Option<String>,
-    /// `true` adds the advanced models a picker offers on request. The page
-    /// then lists the ordinary catalogue and the advanced models together.
-    /// `false` or absent lists the ordinary catalogue alone. No other spelling
-    /// is accepted.
+    /// `true` adds the advanced models a picker offers on request.
+    ///
+    /// The page then lists the ordinary catalogue and the advanced models together. `false`
+    /// or absent lists the ordinary catalogue alone. No other spelling is accepted.
     pub advanced: Option<bool>,
-    /// Opaque cursor from a previous page's `next_cursor`, bound to the filters
-    /// and page size that produced it.
+    /// Use the previous `next_cursor` unchanged, keeping the same filters and page size.
     pub starting_after: Option<String>,
     /// Rows per page, 1..100. Defaults to 50.
     pub limit: Option<String>,
@@ -144,7 +143,7 @@ pub struct ConnectorCallback {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct Fence {
-    /// The lease's fencing token. A holder the fleet has moved past is refused.
+    /// Attempt token returned with the lease. Replaced assignments are refused.
     pub fencing_token: u64,
 }
 
@@ -152,7 +151,7 @@ pub struct Fence {
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ScheduleRunsPage {
-    /// The lease's fencing token. A holder the fleet has moved past is refused.
+    /// Attempt token returned with the lease. Replaced assignments are refused.
     pub fencing_token: u64,
     /// The `next_cursor` of the previous page. Omit it for the first page.
     pub starting_after: Option<String>,

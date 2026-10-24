@@ -29,12 +29,11 @@ const EVENT: &str = "runner_self_read_failed";
     path = afd_wire::paths::RUNNER_SELF,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "get_runner_self",
-    summary = "Read this runner's own row",
+    summary = "Read this runner's status",
     description = concat!(
-        "Answers the row this host enrolled as: its status, its assigned ",
-        "policy, and what its kernel can actually enforce. Reading it does ",
-        "NOT bump liveness — the heartbeat writes that and nothing else does, ",
-        "so inspecting a host can never mask a dead runner. ",
+        "Returns this runner's status, assigned policy, and supported operating-system ",
+        "protections. Reading this endpoint does not mark the runner online; only ",
+        "heartbeats update its connection status.",
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = SelfResponse),

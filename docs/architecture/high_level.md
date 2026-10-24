@@ -162,7 +162,7 @@ For the MVP, that means:
 - the fleet gathers the right evidence
 - the fleet reasons over the situation using LLM + constrained tools
 - every step is persisted with actor provenance
-- the fleet context is bounded (rolling window + memory checkpoints + run chunking)
+- the fleet context is bounded through [shared conversation compaction](context_lifecycle.md); semantic memory checkpoints supply facts for later runs
 - risky steps are approval-gated
 - the fleet can resume after interruption
 - the operator resumes from state, not memory
@@ -193,7 +193,23 @@ All three flow through the same reasoning loop. The fleet does not branch on act
 
 ### 5.2 Slack-resident channel bot — the on-ramp (M106)
 
-The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired agent (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable agent, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. The hired-agent Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
+The first surface meets non-terminal users, including support and ops, where they already work.
+The first-party multi-tenant `@agentsfleet` Slack app uses one OAuth install per workspace.
+In any channel it is invited to, an `@mention` is answered in-thread, read-only.
+
+It is **reactive**: it answers and never acts unattended.
+This sets the boundary to the durable hired agent; §5.1's platform-ops is the active form.
+The reactive bot's job is to convert users to a durable agent.
+
+This is acquisition for that product rather than a second product.
+Agency, rather than memory, keeps v2 from becoming "just a chat UI over tools".
+This surface is specified in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002.
+
+The hired-agent Rung 1 is the follow-on.
+M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
+
+The built-in resident has no memory tools, so durable channel learning is unavailable.
+The [resident scenario](scenarios/slack-channel-resident.md#5-surface-in-agentsfleetd) records this boundary.
 
 ## 6. Where this points after v2
 
@@ -239,4 +255,16 @@ A customer-facing prebuilt fleet whose job is **security testing on the customer
 
 The same fleet lifecycle begins with privately authored setup. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet; explicit Library publication creates a reusable immutable revision. Authoring has bounded inference and proposal authority. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
 
-The common architecture pages own this sequence: [fleet_definitions.md](fleet_definitions.md#validated-definition) owns setup and revisions; [data_flow.md](data_flow.md#fleet-setup-and-runtime-sequence) owns activation/admission/recovery; [runner_fleet.md](runner_fleet.md#authoring-leases) owns leasing and scoped dispatch; [runner_execution.md](runner_execution.md#private-content-and-report-retention) owns private copies; [billing_and_provider_keys.md](billing_and_provider_keys.md#authoring-admission-and-settlement) owns money; [web_app.md](web_app.md#workspace-setup-and-runtime-subjects) owns the interface. [API resources](api_resources.md) specifies wire shapes. Active implementation and acceptance proofs remain pending in the owning spec.
+The common architecture pages own this sequence:
+
+| Topic | Owner |
+|---|---|
+| Setup and revisions | [Fleet definitions](fleet_definitions.md#validated-definition) |
+| Activation, admission and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
+| Leasing and scoped dispatch | [Runner protocol](runner_fleet.md#authoring-leases) |
+| Private copies | [Runner execution](runner_execution.md#private-content-and-report-retention) |
+| Money | [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) |
+| Interface | [Web app](web_app.md#workspace-setup-and-runtime-subjects) |
+| Wire shapes | [API resources](api_resources.md) |
+
+Implementation verification and deployment acceptance evidence belong to the owning spec and review ledger.

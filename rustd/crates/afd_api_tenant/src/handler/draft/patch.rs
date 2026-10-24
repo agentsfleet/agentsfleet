@@ -20,7 +20,7 @@ use std::sync::Arc;
 /// Applies one complete idle edit using the current strong version.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}", operation_id = "patch_workspace_draft",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Edit an idle private draft",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "Edit an idle private setup chat",
     params(afd_http::openapi::path::Draft, afd_http::openapi::header::IfMatch), request_body = DraftPatchRequest,
     responses((status = 200, body = Draft, description = "Updated private draft", headers(("ETag" = String))),
         (status = 400, description = "Invalid edit"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),

@@ -104,12 +104,9 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
     operation_id = "connector_callback_complete",
     summary = "Complete a provider connection",
     description = concat!(
-        "The dashboard calls this endpoint after the provider returns to the ",
-        "browser. The caller needs `connector:write` and must be the same ",
-        "person who started the signed connection state. The signed state ",
-        "binds the workspace, a keyed tag of the starter identity, a nonce, ",
-        "and expiry. The endpoint verifies identity and workspace access ",
-        "before consuming the nonce or exchanging a provider code. ",
+        "Completes browser authorization with a provider. Requires `connector:write`, ",
+        "workspace access, and the person who started the connection. The server checks ",
+        "these before using the one-time connection state or exchanging the provider code.",
     ),
     params(
         afd_http::openapi::path::Provider,

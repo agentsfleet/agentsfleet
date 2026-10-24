@@ -44,11 +44,8 @@ pub struct Turn<'a> {
     pub answer: Cow<'a, str>,
 }
 
-/// The work half of a lease.
-///
-/// `fencing_token` is a monotonic guard: a report must echo it, and a stale
-/// holder carrying an older token is rejected. That is what makes reporting safe
-/// under lease reclaim, beyond plain idempotency by event id.
+/// Work assigned to a runner. Return its `fencing_token` with updates; the server rejects
+/// older tokens after reassignment.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeasePayload<'a> {
@@ -79,10 +76,7 @@ pub struct LeasePayload<'a> {
     /// unless the event is a chat message.
     #[serde(borrow)]
     pub history: Vec<Turn<'a>>,
-    /// True when this runner's held sandbox is the fleet's latest and this
-    /// event has not run before. The slot's last lease ran here, its hold had
-    /// not lapsed at the claim, and the event is no reclaim. Anything else
-    /// builds a fresh sandbox, since the held one may predate another runner's
-    /// run or hold this event's first attempt.
+    /// True when the runner can reuse its latest held sandbox for a new event. Reassigned
+    /// events and expired or outdated sandboxes require a fresh sandbox.
     pub resume_hold: bool,
 }

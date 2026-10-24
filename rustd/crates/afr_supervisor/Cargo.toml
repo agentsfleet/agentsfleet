@@ -20,6 +20,7 @@ workspace = true
 test-util = []
 
 [dependencies]
+afd_context = { workspace = true }
 # Proves a lease's sandbox size within the wire's declared bounds before the
 # engine builds it.
 garde.workspace = true

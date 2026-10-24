@@ -132,6 +132,15 @@ impl Turns {
 }
 
 impl Provider for Turns {
+    fn measure(&self, request: Request<'_>) -> Result<u64> {
+        let body = request::request(self.settings.api, &request)?;
+        let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
+            .map_err(raise::configuration)?;
+        route
+            .measure_input(request.model, &body)
+            .map_err(raise::configuration)
+    }
+
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>> {
         stream::unfold(Pass::Opening(1), move |pass| pass.next(self, request)).boxed()
     }
@@ -174,6 +183,7 @@ impl Pass {
                         attempt,
                         stream,
                         shown: false,
+                        reopen: !request.single_attempt,
                     }))),
                     Err(failure) => Step::Break((Err(failure), Self::Done)),
                 },
@@ -198,6 +208,7 @@ struct Reading {
     attempt: usize,
     stream: StreamTurn,
     shown: bool,
+    reopen: bool,
 }
 
 impl Reading {
@@ -226,7 +237,11 @@ impl Reading {
                 result.response,
             )))),
             Some(failure)
-                if !known && !self.shown && self.attempt < ATTEMPTS && reopens(&failure) =>
+                if self.reopen
+                    && !known
+                    && !self.shown
+                    && self.attempt < ATTEMPTS
+                    && reopens(&failure) =>
             {
                 turns.reopened(self.attempt, &failure);
                 Step::Continue(Pass::Opening(self.attempt + 1))
@@ -288,7 +303,10 @@ fn reopens(failure: &ProviderError) -> bool {
 
 /// The chunks a finished turn on `api` ends on: what it spent, then its end.
 fn ending(api: InferenceApi, response: CompletionResponse) -> Ending {
-    let cut = response.finish_reason() == Some(FinishReason::Length);
+    let cut = !matches!(
+        response.finish_reason(),
+        Some(FinishReason::Stop | FinishReason::ToolCalls)
+    );
     let spent = usage::spent(api, &response.usage, &response.raw);
     let replay = Replay(response.head().with_content(response.choice));
     let end = End { replay, cut };

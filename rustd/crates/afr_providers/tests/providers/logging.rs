@@ -27,6 +27,8 @@ async fn recorded(reply: Reply, filtered: bool) -> String {
         tools: &[],
         hosted: &[],
         cache_key: "private-log-proof",
+        max_output_tokens: None,
+        single_attempt: false,
     };
     let _chunks: Vec<_> = provider.stream(request).collect().await;
     tracing::warn!(event = "provider_fixture_completed");

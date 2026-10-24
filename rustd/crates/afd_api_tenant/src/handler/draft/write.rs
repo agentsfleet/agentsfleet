@@ -21,8 +21,12 @@ use std::sync::Arc;
 /// Creates the draft and optional first message in one durable transaction.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = "/v1/workspaces/{workspace_id}/drafts", operation_id = "create_workspace_draft",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Start a private workspace conversation",
-    description = "Requires fleet:write. Use only body operation_id; Idempotency-Key is refused. Native sources pin their immutable revisions.",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "Start a private setup chat",
+    description = concat!(
+        "Starts a private setup chat. Requires `fleet:write`. Use the body's `operation_id` ",
+        "for retries; `Idempotency-Key` is refused. Imported native setups keep the ",
+        "selected revision.",
+    ),
     params(afd_http::openapi::path::Workspace), request_body = CreateDraftRequest,
     responses((status = 201, body = Created, description = "Created or exact replay", headers(("Location" = String), ("ETag" = String))),
         (status = 400, description = "Invalid native setup or input"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
@@ -68,7 +72,7 @@ pub(crate) async fn create<D: Services>(
 /// Deletes creator-private text and retains bounded content-free replay identity.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}", operation_id = "delete_workspace_draft",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Delete your private draft",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "Delete your private setup chat",
     params(afd_http::openapi::path::Draft),
     responses((status = 204, description = "Private durable text deleted"), (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED), (status = 403, description = afd_http::openapi::FORBIDDEN),

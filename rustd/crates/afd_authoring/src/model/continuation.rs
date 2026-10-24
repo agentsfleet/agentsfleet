@@ -31,6 +31,8 @@ struct Saved {
 #[derive(Serialize, Deserialize)]
 pub(super) struct Continuation {
     message_index: usize,
+    #[serde(default)]
+    pub(super) context_digest: String,
     digest: String,
     message: AssistantMessage,
 }
@@ -53,6 +55,7 @@ pub(super) fn save(
     let message = response.head().with_content(response.choice.clone());
     let continuation = Continuation {
         message_index: request.request.messages.len(),
+        context_digest: String::new(),
         digest: replay::digest(&(
             &request.request.messages,
             crate::message::normalize(&result.text),
@@ -119,4 +122,14 @@ pub(super) fn restore(
         *target = Message::Assistant(saved.message).into();
     }
     Ok(())
+}
+
+/// Bind native state to the exact daemon-assembled historical prefix before storage.
+pub(super) fn bind(decoded: &mut super::provider::Decoded, digest: &str) {
+    if let Some(serde_json::Value::Object(saved)) = decoded.continuation.as_mut() {
+        saved.insert(
+            "context_digest".into(),
+            serde_json::Value::String(digest.to_owned()),
+        );
+    }
 }

@@ -178,7 +178,8 @@ A four-node Dragonfly v1.40.2 cluster (two primaries, one replica each, one netw
 
 `afd_dragonfly` uses redis-rs `cluster_async` over version 3 of the Redis Serialization Protocol (RESP3). Boot refuses a non-cluster seed.
 
-Ordinary commands share one cluster connection per process. Blocking outbound consumers own separate connections, so parked reads cannot stall ordinary commands.
+Ordinary commands share one logical cluster client per process. Blocking outbound consumers own separate clients, so parked reads cannot stall ordinary commands.
+The [connection budget](scaling.md#connection-budget-after-the-cutover) distinguishes client owners from physical node sockets.
 
 ### The admissions ledger is the queue
 

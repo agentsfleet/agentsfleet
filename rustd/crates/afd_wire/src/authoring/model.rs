@@ -67,7 +67,7 @@ pub struct ModelCall<D = Value, C = Value, I = Value> {
     /// Admitted attempt identity, bound to this lease.
     #[garde(length(bytes, min = 36, max = 36))]
     pub attempt_id: String,
-    /// Current attempt fence.
+    /// Current attempt number. Rejects updates from replaced runners.
     #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
     pub fence: String,
     /// Fresh `UUIDv7` for this physical call.
@@ -96,10 +96,10 @@ impl<D, C, I> std::fmt::Debug for ModelCall<D, C, I> {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Validate)]
 #[serde(tag = "knowledge", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModelUsage {
-    /// Supplied by a validated daemon dispatch receipt.
+    /// Usage verified against the server's model-request record.
     Known {
         /// Includes all provider-reported input tokens.
-        #[garde(range(max = 32768))]
+        #[garde(range(max = u64::from(u32::MAX)))]
         input_tokens: u64,
         /// Includes reasoning and other nonvisible output tokens.
         #[garde(range(max = u64::from(u32::MAX)))]
@@ -126,13 +126,17 @@ pub struct ModelResult<D = Value, C = Value, I = Value> {
     /// Whether this acknowledgement came from the saved receipt.
     #[garde(skip)]
     pub replayed: bool,
+    /// A metered working-context summary completed; continue the same user turn.
+    #[garde(skip)]
+    #[serde(default)]
+    pub compacted: bool,
     /// Bounded assistant text.
     #[garde(length(bytes, max = ENVELOPE_BYTES_MAX), custom(afd_validate::rules::nul_free))]
     pub text: String,
     /// Empty when output was cut or malformed.
     #[garde(length(max = 8), dive)]
     pub proposal_calls: Vec<ProposalCall<D, C, I>>,
-    /// Daemon-authoritative usage only.
+    /// Usage measured by the server.
     #[garde(dive)]
     pub usage: ModelUsage,
     /// Incomplete proposals cannot run.

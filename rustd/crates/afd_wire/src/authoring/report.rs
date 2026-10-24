@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// Bounded daemon-owned failure vocabulary, without caller diagnostics or links.
+/// Allowed failure reasons, excluding user-supplied diagnostics and links.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,7 +44,8 @@ pub enum Outcome {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Accounting {
-    /// Decimal fence originally issued with the attempt.
+    /// Attempt number issued with this work assignment, as a decimal string. Rejects updates
+    /// from replaced runners.
     #[garde(length(bytes, min = 1, max = super::DECIMAL_BYTES_MAX))]
     pub fence: String,
     /// Stable UUID version 7 report identity, never a content digest.
@@ -56,7 +57,7 @@ pub struct Accounting {
     /// Required for `failed`/`timed_out` and absent otherwise.
     #[garde(skip)]
     pub failure_reason: Option<FailureReason>,
-    /// Cumulative observations checked against daemon dispatch receipts.
+    /// Cumulative usage verified against the server's model-request records.
     #[garde(dive)]
     pub usage: super::Meter,
 }

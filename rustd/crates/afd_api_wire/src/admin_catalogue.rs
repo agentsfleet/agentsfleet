@@ -73,7 +73,7 @@ pub struct PlatformKeysResponse<'a> {
     /// Every active and inactive provider row.
     #[serde(borrow)]
     pub keys: Vec<PlatformKeyItem<'a>>,
-    /// Server-generated support correlation id.
+    /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,
 }
@@ -94,7 +94,7 @@ pub struct PlatformKeySetResponse<'a> {
     pub source_workspace_id: Cow<'a, str>,
     /// Always true after activation.
     pub active: bool,
-    /// Server-generated support correlation id.
+    /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,
 }
@@ -109,7 +109,7 @@ pub struct PlatformKeyDeactivateResponse<'a> {
     pub provider: Cow<'a, str>,
     /// Always false after deactivation.
     pub active: bool,
-    /// Server-generated support correlation id.
+    /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,
 }
@@ -186,7 +186,7 @@ pub struct AdminModelPatch<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelItem<'a> {
-    /// Opaque `UUIDv7` row identity.
+    /// Model record's version 7 universally unique identifier (UUID).
     #[serde(borrow)]
     pub id: Cow<'a, str>,
     /// Provider identity.
@@ -214,7 +214,7 @@ pub struct AdminModelsResponse<'a> {
     /// Every priced row.
     #[serde(borrow)]
     pub models: Vec<AdminModelItem<'a>>,
-    /// Server-generated support correlation id.
+    /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,
 }
@@ -227,7 +227,7 @@ pub struct AdminModelCreated<'a> {
     /// The created model fields, flattened on the existing wire.
     #[serde(flatten, borrow)]
     pub model: AdminModelItem<'a>,
-    /// Server-generated support correlation id.
+    /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,
 }
@@ -242,7 +242,7 @@ pub struct AdminModelUpdated<'a> {
     pub id: Cow<'a, str>,
     /// Always true after an update.
     pub updated: bool,
-    /// Server-generated support correlation id.
+    /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,
 }

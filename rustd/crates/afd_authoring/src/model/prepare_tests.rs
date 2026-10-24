@@ -85,10 +85,10 @@ fn fifty_short_turns_keep_every_message_within_the_existing_input_allowance() ->
     Ok(())
 }
 
-// Value: protects=unrecognized providers cannot bypass the existing input ceiling;
+// Value: protects=the selected model window replaces the artificial input ceiling;
 // seam=the complete setup request with its real tool schemas and history.
 #[test]
-fn fifty_longer_replies_exceed_the_same_reservation_for_unrecognized_providers() -> Result<()> {
+fn fifty_longer_replies_use_the_selected_model_window_beyond_thirty_two_k() -> Result<()> {
     let mut call = fifty_turns();
     for message in &mut call.request.messages {
         if let ModelMessage::Assistant { text, .. } = message {
@@ -102,11 +102,13 @@ fn fifty_longer_replies_exceed_the_same_reservation_for_unrecognized_providers()
         "deepseek/model-next",
         "kimi/model-next",
     ] {
-        let refusal = body(&call, &model(identifier)?, Vec::new(), true)
-            .err()
-            .ok_or(crate::error::ErrorKind::Token)?;
-        assert_eq!(refusal.code(), afd_core::error_code::AUTHORING_TOKEN);
-        assert!(refusal.to_string().contains("context exceeds its bound"));
+        let prepared = body(&call, &model(identifier)?, Vec::new(), true)?;
+        assert!(prepared.input_tokens > 32_768);
+        assert_eq!(prepared.output_limit, OUTPUT_LIMIT);
+        assert_eq!(
+            prepared.body.chat_history.len(),
+            call.request.messages.len() + 1
+        );
     }
     Ok(())
 }

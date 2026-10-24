@@ -70,7 +70,7 @@ pub struct SelftestReport<'a> {
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = SELFTEST_POLICY_MAX_BYTES))]
     pub sandbox_tier: Cow<'a, str>,
-    /// The egress posture in force when the probe ran.
+    /// Outgoing network access policy in effect during the self-test.
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = SELFTEST_POLICY_MAX_BYTES))]
     pub network_policy: Cow<'a, str>,

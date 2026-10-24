@@ -44,3 +44,37 @@ impl Checkpoint for Recording {
         Ok(())
     }
 }
+
+/// A per-test private working-context store, with real generation semantics.
+#[derive(Debug, Default)]
+pub struct ContextMemory(
+    std::sync::Mutex<std::collections::HashMap<String, afd_context::Checkpoint>>,
+);
+
+#[async_trait::async_trait]
+impl crate::ContextCheckpoints for ContextMemory {
+    async fn load(&self, branch: &str) -> afd_context::Result<Option<afd_context::Checkpoint>> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_poisoned| afd_context::Error::stale())?
+            .get(branch)
+            .cloned())
+    }
+    async fn commit(
+        &self,
+        branch: &str,
+        expected: u64,
+        checkpoint: afd_context::Checkpoint,
+    ) -> afd_context::Result<()> {
+        let mut entries = self
+            .0
+            .lock()
+            .map_err(|_poisoned| afd_context::Error::stale())?;
+        if entries.get(branch).map_or(0, |entry| entry.generation) != expected {
+            return Err(afd_context::Error::stale());
+        }
+        entries.insert(branch.into(), checkpoint);
+        Ok(())
+    }
+}

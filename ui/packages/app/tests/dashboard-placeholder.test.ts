@@ -1,13 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
 import { mockAuthOnce as mockAuth } from "./helpers/dashboard-mocks";
 import {
   resetDashboardMocks,
   listWorkspaceEventsMock,
-  getTenantBillingMock,
-  listTenantBillingChargesMock,
 } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -52,16 +49,6 @@ vi.mock("@/lib/api/tenant_billing", async () =>
 );
 vi.mock("@/lib/api/tenant_provider", async () =>
   (await import("./helpers/dashboard-app-mocks")).tenantProviderMock(),
-);
-vi.mock(
-  "@/app/(dashboard)/settings/billing/components/BillingBalanceCard",
-  async () =>
-    (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock(),
-);
-vi.mock(
-  "@/app/(dashboard)/settings/billing/components/BillingUsageTab",
-  async () =>
-    (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock(),
 );
 vi.mock("@/lib/api/events", async () =>
   (await import("./helpers/dashboard-app-mocks")).eventsMock(),
@@ -132,18 +119,15 @@ describe("placeholder pages", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("events page shell streams the header + skeleton before data", async () => {
-    // EventsData is an async child, so renderToStaticMarkup renders the Suspense
-    // skeleton in its place — the events section stays absent until it streams
-    // in, but the header title paints immediately.
+  it("events page shows the shared loader before data", async () => {
     mockAuth({ token: "token_abc" });
     const { default: Page } =
       await import("../app/(dashboard)/w/[workspaceId]/events/page");
     const m = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
     );
-    expect(m).toContain("Workspace activity"); // PageTitle in the shell
-    expect(m).toContain("data-skeleton"); // Skeleton fallback
+    expect(m).not.toContain("<h1");
+    expect(m).toContain('aria-label="Loading page"');
     expect(m).not.toContain("No activity yet"); // data not yet resolved
   });
 
@@ -210,95 +194,6 @@ describe("placeholder pages", () => {
     await expect(
       Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
     ).rejects.toThrow("redirect:/sign-in");
-  });
-
-  it("billing settings page renders balance and real usage without placeholder payment tabs", async () => {
-    mockAuth({ token: "token_billing" });
-    getTenantBillingMock.mockResolvedValue({
-      balance_nanos: "4710000000",
-      updated_at: "1970-01-01T00:00:00.001Z",
-      is_exhausted: false,
-      exhausted_at: null,
-    });
-    listTenantBillingChargesMock.mockResolvedValue({
-      items: [
-        {
-          id: "tel_1",
-          tenant_id: "t",
-          workspace_id: "w",
-          fleet_id: "z",
-          event_id: "evt_1",
-          charge_type: CHARGE_TYPE.receive,
-          posture: PROVIDER_MODE.platform,
-          model: "kimi-k2.6",
-          credit_deducted_nanos: "1",
-          token_count_input: null,
-          token_count_output: null,
-          wall_ms: null,
-          recorded_at: "1970-01-01T00:00:00.001Z",
-        },
-      ],
-    });
-    const { default: Page } =
-      await import("../app/(dashboard)/settings/billing/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Billing");
-    expect(m).toContain('data-balance-card="1"');
-    expect(m).toContain('data-usage-tab="1"');
-    expect(m).toContain("Usage history");
-    expect(m).not.toContain(">Invoices</button>");
-    expect(m).not.toContain(">Payment method</button>");
-  });
-
-  it("billing settings page threads the URL cursor and page size into the charges fetch", async () => {
-    mockAuth({ token: "token_billing" });
-    getTenantBillingMock.mockResolvedValue({
-      balance_nanos: "1",
-      updated_at: "1970-01-01T00:00:00.001Z",
-      is_exhausted: false,
-      exhausted_at: null,
-    });
-    listTenantBillingChargesMock.mockResolvedValue({
-      items: [],
-      next_cursor: null,
-    });
-    const { default: Page } =
-      await import("../app/(dashboard)/settings/billing/page");
-    // searchParams present (the await branch) with a cursor (the cursor branch).
-    renderToStaticMarkup(
-      await Page({
-        searchParams: Promise.resolve({ c: "tok_bill", cps: "50", ps: "50" }),
-      }),
-    );
-    expect(listTenantBillingChargesMock).toHaveBeenCalledWith(
-      "token_billing",
-      expect.objectContaining({ cursor: "tok_bill", limit: 50 }),
-    );
-  });
-
-  it("billing settings page propagates a failed ledger read instead of claiming zero charges", async () => {
-    mockAuth({ token: "token_billing" });
-    getTenantBillingMock.mockResolvedValue({
-      balance_nanos: "0",
-      updated_at: "1970-01-01T00:00:00.001Z",
-      is_exhausted: true,
-      exhausted_at: "1970-01-01T00:00:00.002Z",
-    });
-    listTenantBillingChargesMock.mockRejectedValue(new Error("503"));
-    const { default: Page } =
-      await import("../app/(dashboard)/settings/billing/page");
-    await expect(Page()).rejects.toThrow("503");
-  });
-
-  it("billing settings page preserves a failed balance read for the retry boundary", async () => {
-    mockAuth({ token: "token_balance" });
-    const cause = new Error("Balance unavailable");
-    getTenantBillingMock.mockRejectedValueOnce(cause);
-    listTenantBillingChargesMock.mockResolvedValueOnce({ items: [], next_cursor: null });
-    const { default: Page } =
-      await import("../app/(dashboard)/settings/billing/page");
-    await expect(Page()).rejects.toBe(cause);
-    expect(listTenantBillingChargesMock).toHaveBeenCalledOnce();
   });
 
   it("billing settings page redirects to /sign-in when no token", async () => {

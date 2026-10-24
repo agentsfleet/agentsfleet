@@ -62,6 +62,7 @@ impl Error {
             ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Authoring { .. }
+            | ErrorKind::Context { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Gate { .. }

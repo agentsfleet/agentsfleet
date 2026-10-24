@@ -49,14 +49,11 @@ const STATE_RECONNECT_REQUIRED: &str = "reconnect_required";
     path = afd_wire::paths::RUNNER_CREDENTIALS_MINT,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_mint_credential",
-    summary = "Mint a credential for a declared tool",
+    summary = "Create a tool credential",
     description = concat!(
-        "Issued at the moment a tool needs one, scoped to what the lease ",
-        "already proved. The body names no workspace. The credential is ",
-        "minted against the lease the caller holds, so a runner cannot ask ",
-        "for material outside its own run. An uninstalled or revoked GitHub ",
-        "App returns 409 `UZ-GH-001` naming `reconnect_required`; reconnect ",
-        "GitHub before the next mint.",
+        "Creates a tool credential limited to the runner's current work assignment. The ",
+        "request cannot select another workspace. A removed or revoked GitHub App returns ",
+        "409 `UZ-GH-001` with `reconnect_required`; reconnect GitHub before retrying.",
     ),
     request_body = MintCredentialRequest,
     responses(

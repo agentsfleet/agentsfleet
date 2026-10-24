@@ -17,6 +17,7 @@ fn a_run_debugs_without_the_leases_secrets() {
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
+        context_checkpoints: &crate::testing::ContextMemory::default(),
         events: &sink,
         meter: &Meter::default(),
         stop: &CancellationToken::new(),
@@ -32,6 +33,8 @@ fn a_run_debugs_without_the_leases_secrets() {
         );
     }
 }
+
+const CACHE_WRITE_FIVE_MINUTE_TOKENS: u32 = 60;
 
 /// One provider turn's usage.
 const TURN: afr_providers::Usage = afr_providers::Usage {
@@ -105,7 +108,7 @@ fn a_meter_line_carries_cache_writes_by_lifetime() {
         input: 500,
         cached_input: 400,
         cache_write: 5,
-        cache_write_5m: 60,
+        cache_write_5m: u64::from(CACHE_WRITE_FIVE_MINUTE_TOKENS),
         cache_write_1h: 40,
         output: 200,
     };
@@ -117,7 +120,7 @@ fn a_meter_line_carries_cache_writes_by_lifetime() {
         input_tokens: 500,
         cached_input_tokens: 400,
         cache_write_tokens: 5,
-        cache_write_5m_tokens: 60,
+        cache_write_5m_tokens: CACHE_WRITE_FIVE_MINUTE_TOKENS,
         cache_write_1h_tokens: 40,
         output_tokens: 200,
     };

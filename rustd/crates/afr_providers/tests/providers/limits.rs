@@ -39,6 +39,8 @@ fn request(messages: &[Message]) -> Request<'_> {
         tools: &[],
         hosted: &[],
         cache_key: "fleet-context-proof",
+        max_output_tokens: None,
+        single_attempt: false,
     }
 }
 

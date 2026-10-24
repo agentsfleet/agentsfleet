@@ -30,6 +30,8 @@ use utoipa::OpenApi as _;
     crate::handler::runner::authoring::renew::handle,
     crate::handler::runner::authoring::report::handle,
     crate::handler::runner::credential::handle,
+    crate::handler::runner::context::load,
+    crate::handler::runner::context::put,
     crate::handler::runner::enrolment::handle,
     crate::handler::runner::heartbeat::handle,
     crate::handler::runner::lease::handle,

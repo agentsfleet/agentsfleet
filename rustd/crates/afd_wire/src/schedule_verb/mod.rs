@@ -36,9 +36,8 @@ pub struct ScheduleCreateRequest<'a> {
     pub once: bool,
 }
 
-/// `PATCH /v1/runners/me/leases/{lease_id}/schedules/{schedule_id}` request.
-///
-/// Every field but the fence is optional, and an absent one is left alone.
+/// Changes to a fleet-created schedule. The attempt number is required; omitted schedule
+/// fields keep their current values.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

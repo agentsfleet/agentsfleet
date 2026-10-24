@@ -32,7 +32,7 @@ const KEY_DESCRIPTION: &str = "description";
 const PROPOSAL_ARGUMENT: &str = "proposal";
 pub(super) use prompt::system;
 pub(super) use request::body;
-pub(super) use response::{Decoded, decode};
+pub(super) use response::{Decoded, decode, decode_summary};
 
 /// A request assembled by the daemon after authorization and durable intent.
 pub struct ProviderRequest {

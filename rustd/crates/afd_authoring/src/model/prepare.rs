@@ -1,10 +1,12 @@
 //! Validate the complete assembled request with its selected tokenizer before intent.
 
-use super::{ModelCallInput, budget, provider};
-use crate::{
-    Result,
-    error::{ErrorKind, raise::stored},
-};
+use super::ModelCallInput;
+#[cfg(test)]
+use super::provider;
+#[cfg(test)]
+use crate::error::ErrorKind;
+use crate::{Result, error::raise::stored};
+#[cfg(test)]
 use afd_credential::provider::RegisteredModel;
 use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
 
@@ -22,6 +24,9 @@ pub(super) struct Prepared {
     pub(super) inference: afd_wire::inference::ModelInference,
     /// The context window the body was measured against.
     pub(super) context_tokens: u32,
+    pub(super) compaction: Option<afd_context::Compaction>,
+    pub(super) input_tokens: u64,
+    pub(super) context_digest: String,
 }
 
 pub(super) fn request(mut request: ModelCallInput) -> Result<garde::Valid<ModelCallInput>> {
@@ -41,6 +46,7 @@ pub(super) fn request(mut request: ModelCallInput) -> Result<garde::Valid<ModelC
         .map_err(Into::into)
 }
 
+#[cfg(test)]
 pub(super) fn body(
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
@@ -56,7 +62,7 @@ pub(super) fn body(
     // Saved continuation indexes address conversation messages without the system prefix.
     canonical = canonical.preamble(provider::system(editing));
     let input = input_tokens(&route, &canonical, request, model)?;
-    if input > budget::INPUT_PER_CALL || input >= i64::from(context) {
+    if input >= i64::from(context) {
         return Err(ErrorKind::Token.into());
     }
     let remaining =
@@ -68,31 +74,22 @@ pub(super) fn body(
         output_limit,
         inference: settings.clone(),
         context_tokens: context,
+        compaction: None,
+        input_tokens: input.cast_unsigned(),
+        context_digest: String::new(),
     })
 }
 
+#[cfg(test)]
 fn input_tokens(
     route: &afd_inference::Configured,
     canonical: &rig_core::completion::CompletionRequest,
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
 ) -> Result<i64> {
-    let encoded = route.encode_stream(&model.model, canonical.clone())?;
-    let body = afd_inference::json_request(encoded.request)?.into_body();
-    garde::Unvalidated::new(Envelope { bytes: &body }).validate()?;
-    let text = std::str::from_utf8(&body).map_err(|_unreachable| ErrorKind::Token)?;
-    // Unknown tokenizers use a conservative UTF-8 byte bound; billing always uses reported usage.
-    let tokens = super::input_tokens(&model.model, text);
-    // JSON counts include schemas and escaped content. Reserve additional
-    // per-item framing rather than interpreting bytes as tokens.
-    let framing = request
-        .request
-        .messages
-        .len()
-        .checked_mul(32)
-        .ok_or(ErrorKind::Token)?;
-    let counted = tokens.checked_add(framing).ok_or(ErrorKind::Token)?;
-    i64::try_from(counted).map_err(|_overflow| ErrorKind::Token.into())
+    let _ = request;
+    i64::try_from(route.measure_input(&model.model, canonical)?)
+        .map_err(|_oversized| ErrorKind::Token.into())
 }
 
 #[cfg(test)]

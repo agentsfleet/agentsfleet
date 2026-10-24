@@ -45,6 +45,6 @@ pub struct FleetsResponse<'a> {
     pub items: Vec<FleetSummary<'a>>,
     /// Unknown without a separate count; always null.
     pub total: Option<usize>,
-    /// Next opaque boundary, null on the final page.
+    /// Use this value unchanged for the next page, or stop when null.
     pub next_cursor: Option<Cow<'a, str>>,
 }

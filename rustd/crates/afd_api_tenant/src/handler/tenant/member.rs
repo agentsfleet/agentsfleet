@@ -49,9 +49,8 @@ const STATE_LAST_OWNER: &str = "last_owner";
     operation_id = "list_members",
     summary = "List the people in your account",
     description = concat!(
-        "Returns every member of the caller's own account, oldest membership ",
-        "first, with each one's role: `owner` or `member`. One page: ",
-        "`next_cursor` is always `null` and `total` counts them all. ",
+        "Lists account members oldest first, with roles `owner` or `member`. Results use ",
+        "one page: `next_cursor` is null and `total` counts all members.",
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<MemberSummary>),
@@ -82,11 +81,9 @@ pub(crate) async fn list<D: Services>(
     operation_id = "remove_member",
     summary = "Remove a member",
     description = concat!(
-        "Removes one person from the caller's own account. Their open streams ",
-        "end within 15 seconds and their next request to the account's ",
-        "workspaces is refused. Idempotent: somebody who is not a member also ",
-        "answers 204. The account's last owner cannot be removed: 409 ",
-        "`UZ-INV-004`. ",
+        "Removes an account member. Open streams close within 15 seconds; later workspace ",
+        "requests are refused. Missing members return 204. Removing the last owner returns ",
+        "409 `UZ-INV-004`.",
     ),
     params(afd_http::openapi::path::Member),
     responses(
@@ -126,11 +123,8 @@ pub(crate) async fn remove<D: Services>(
     operation_id = "list_workspace_members",
     summary = "List who can work in a workspace",
     description = concat!(
-        "Returns the members of the account that owns the workspace, with ",
-        "each one's name and role, so a thread can name who sent each turn. ",
-        "Each `actor` equals the `actor` of the messages that member sends. ",
-        "No email addresses: every member of the account can read this list. ",
-        "One page: `next_cursor` is always `null`. ",
+        "Lists workspace account members with names, roles, and message `actor` values. ",
+        "Email addresses are excluded. Results use one page; `next_cursor` is null.",
     ),
     params(afd_http::openapi::path::Workspace),
     responses(

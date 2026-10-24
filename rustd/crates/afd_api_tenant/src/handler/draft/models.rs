@@ -18,12 +18,19 @@ use std::sync::Arc;
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get, path = "/v1/workspaces/{workspace_id}/models", operation_id = "list_workspace_models",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "List the workspace owner's supported model choices",
-    description = "Requires fleet:read and current membership. References and prices belong to the workspace billing owner; no key or key location is returned.",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "List workspace model choices",
+    description = concat!(
+        "Lists models available to this workspace's billing account. Requires `fleet:read` ",
+        "and current membership. Credentials and their storage locations are never ",
+        "returned.",
+    ),
     params(afd_http::openapi::path::Workspace,
         ("purpose" = Option<String>, Query, description = "authoring or runtime; omit for either"),
         ("limit" = Option<u32>, Query, description = "Rows scanned per page, 1..100; default 50"),
-        ("starting_after" = Option<String>, Query, description = "Opaque owner/workspace/person/purpose/page-size bound cursor")),
+        ("starting_after" = Option<String>, Query, description = concat!(
+            "Use the previous `next_cursor` unchanged, for the same owner, workspace, person, ",
+            "purpose, and page size.",
+        ))),
     responses((status = 200, body = CursorPage<WorkspaceModel>, description = "Configured priced choices"),
         (status = 400, description = "Invalid input or cursor"), (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"), (status = 404, description = "Workspace unavailable"),

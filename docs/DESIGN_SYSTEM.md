@@ -197,6 +197,12 @@ Use `Card interactive` only when the surface opens a destination. Static informa
 Primary controls press briefly; interactive cards lift by one small spacing step and move their Open cue toward the destination.
 These effects use shared styles in `interactions.css`. Reduced motion retains color and focus feedback without movement.
 
+### Page loading
+
+Use `RouteLoading` for page navigation and initial page data. It centers the shared Spinner with the accessible name “Loading page” and visible label “Loading…”. The first application load fills the viewport.
+
+Inside the dashboard it fills the content area while the header and sidebar remain visible. Do not add route-specific skeleton layouts. Buttons, table refreshes, and other local actions keep their own loading cues.
+
 ### Tables and record dates
 
 DataTable uses 13px sentence-case headings and 14px sans body cells. Mark the identity column with `primary` to strengthen its hierarchy.
@@ -372,7 +378,11 @@ Keep unfinished setup and first-run recovery, schedule registration warnings, an
 The saved result shares the conversation's scroll area so **Open fleet** remains reachable on narrow screens and short windows.
 
 Review dialogs use the shared viewport height limit and scroll within it.
-The current authoring context has a bounded model window. If it cannot fit, show the recorded failure and recovery action; do not silently discard earlier messages or imply that automatic compaction exists.
+Setup and runtime compact older conversation near 90 percent of the selected model window, or earlier when operating limits or output headroom require it.
+Keep the original history.
+
+If compaction fails or pinned input still cannot fit, show the recorded failure and recovery action.
+[Conversation compaction](architecture/context_lifecycle.md) owns the shared behavior and limits.
 
 These boundaries follow the [model instructions](../rustd/crates/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/afd_authoring/src/library/publish/persist.rs), and [resource reference](architecture/api_resources.md).
 

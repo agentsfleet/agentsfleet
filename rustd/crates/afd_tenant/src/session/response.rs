@@ -30,7 +30,7 @@ pub struct Redeemed {
     pub dashboard_public_key: String,
     /// The sealed credential.
     pub ciphertext: String,
-    /// The nonce it was sealed under.
+    /// The nonce used to encrypt this credential.
     pub nonce: String,
     /// Whether this was a repeat inside the replay window.
     ///

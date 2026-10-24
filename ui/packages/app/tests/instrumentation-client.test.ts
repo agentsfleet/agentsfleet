@@ -16,6 +16,7 @@ describe("instrumentation-client", () => {
 
     const listeners = new Map<string, EventListener>();
     vi.stubGlobal("window", {
+      location: { href: "https://app.example.test/", pathname: "/" },
       addEventListener: vi.fn((name: string, handler: EventListener) => {
         listeners.set(name, handler);
       }),
@@ -27,6 +28,7 @@ describe("instrumentation-client", () => {
     await import("../instrumentation-client");
 
     expect(initAnalytics).toHaveBeenCalledTimes(1);
+    expect(initAnalytics.mock.calls[0]![0]()).toBeUndefined(); // Bootstrap must replace the startup hold.
 
     const listeners = (window as typeof window & { __listeners: Map<string, EventListener> }).__listeners;
     listeners.get("error")?.({
@@ -78,12 +80,48 @@ describe("instrumentation-client", () => {
     });
   });
 
+  it.each(["/cli-auth/session", "/sign-in", "/sign-up/continue"])("keeps startup and runtime failures private on %s", async (path) => {
+    window.location.pathname = path;
+    const mod = await import("../instrumentation-client");
+    expect(initAnalytics).not.toHaveBeenCalled();
+    const listeners = (window as typeof window & { __listeners: Map<string, EventListener> }).__listeners;
+    const sensitiveError = vi.fn(() => { throw new Error("Auth error details must not be read"); });
+    const sensitiveRejection = vi.fn(() => { throw new Error("Auth rejection details must not be read"); });
+    listeners.get("error")?.({ get message() { return sensitiveError(); } } as unknown as Event);
+    listeners.get("unhandledrejection")?.({ get reason() { return sensitiveRejection(); } } as unknown as Event);
+    mod.onRouterTransitionStart("/workspaces", "replace");
+    expect(sensitiveError).not.toHaveBeenCalled(); expect(sensitiveRejection).not.toHaveBeenCalled();
+    expect(trackAppEvent).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the current route for existing listeners after dashboard-to-auth navigation", async () => {
+    await import("../instrumentation-client");
+    expect(initAnalytics.mock.calls[0]![0]()).toBeUndefined();
+    window.location.pathname = "/cli-auth/session";
+    const listeners = (window as typeof window & { __listeners: Map<string, EventListener> }).__listeners;
+    listeners.get("error")?.({ message: "private callback details" } as unknown as Event);
+    listeners.get("unhandledrejection")?.({ reason: "private rejection details" } as unknown as Event);
+    expect(trackAppEvent).not.toHaveBeenCalled();
+    window.location.pathname = "/workspaces";
+    listeners.get("error")?.({ message: "product failure" } as unknown as Event);
+    expect(trackAppEvent).toHaveBeenCalledExactlyOnceWith("ui_runtime_error", {
+      source: "window_error", surface: "browser_runtime", error_message: "product failure",
+    });
+  });
+
+  it.each(["/cli-auth/session?flow=loopback#state=private", "/sign-in", "%2Fsign-up%2Fcontinue"])("does not forward an auth destination from the dashboard: %s", async (target) => {
+    const mod = await import("../instrumentation-client");
+    mod.onRouterTransitionStart(target, "push");
+    expect(trackAppEvent).not.toHaveBeenCalled();
+  });
+
   it("swallows instrumentation startup failures", async () => {
     vi.resetModules();
     initAnalytics.mockImplementation(() => {
       throw new Error("init failed");
     });
     vi.stubGlobal("window", {
+      location: { href: "https://app.example.test/", pathname: "/" },
       addEventListener: vi.fn(() => {
         throw new Error("listener failed");
       }),

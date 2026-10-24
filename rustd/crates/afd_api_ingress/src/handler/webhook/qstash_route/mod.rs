@@ -83,14 +83,14 @@ const MAX_LOGGED_ID_BYTES: usize = 96;
     operation_id = "ingest_qstash_schedule",
     summary = "Receive a scheduled fire",
     description = concat!(
-        "Receives a signed fire from Upstash QStash and appends a `cron` ",
-        "event to the target Fleet. A valid duplicate, missing, inactive, or ",
-        "stale fire is accepted without appending an event. ",
+        "Receives signed schedule deliveries from Upstash QStash and queues a fleet event. ",
+        "Duplicate, missing, inactive, or outdated schedules are acknowledged without ",
+        "starting a run.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         ("Upstash-Signature" = String, Header, description = "QStash signature over the exact request body and destination URL."),
-        ("Upstash-Schedule-Id" = String, Header, description = "The identifier the daemon registered the schedule under, `fleet-schedule-{schedule_id}`, sent back by QStash."),
+        ("Upstash-Schedule-Id" = String, Header, description = "Schedule identifier returned by QStash: `fleet-schedule-{schedule_id}`."),
         ("Upstash-Message-Id" = String, Header, description = "QStash delivery identifier used for replay suppression."),
     ),
     responses(

@@ -97,6 +97,7 @@ dependencies = [
  "afd_authoring",
  "afd_billing",
  "afd_connector",
+ "afd_context",
  "afd_core",
  "afd_credential",
  "afd_cron",
@@ -207,6 +208,7 @@ dependencies = [
  "afd_api_wire",
  "afd_authoring",
  "afd_billing",
+ "afd_context",
  "afd_core",
  "afd_cron",
  "afd_events",
@@ -328,6 +330,7 @@ dependencies = [
  "afd_approval",
  "afd_billing",
  "afd_connector",
+ "afd_context",
  "afd_core",
  "afd_credential",
  "afd_cron",
@@ -453,6 +456,22 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "afd_context"
+version = "0.65.0"
+dependencies = [
+ "afd_core",
+ "afd_validate",
+ "garde",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -634,6 +653,7 @@ dependencies = [
  "afd_authoring",
  "afd_billing",
  "afd_connector",
+ "afd_context",
  "afd_core",
  "afd_credential",
  "afd_crypto",
@@ -758,6 +778,7 @@ dependencies = [
  "afd_authoring",
  "afd_billing",
  "afd_connector",
+ "afd_context",
  "afd_core",
  "afd_credential",
  "afd_cron",
@@ -826,7 +847,6 @@ dependencies = [
  "garde",
  "http",
  "rig-core",
- "serde",
  "serde_json",
  "thiserror",
  "tiktoken-rs",
@@ -1107,7 +1127,9 @@ dependencies = [
 name = "afr_agent"
 version = "0.65.0"
 dependencies = [
+ "afd_context",
  "afd_core",
+ "afd_crypto",
  "afd_observability",
  "afd_wire",
  "afr_egress",
@@ -1121,10 +1143,12 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures-util",
+ "hex",
  "jiff",
  "memmap2",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -1294,6 +1318,7 @@ dependencies = [
 name = "afr_supervisor"
 version = "0.65.0"
 dependencies = [
+ "afd_context",
  "afd_core",
  "afd_crypto",
  "afd_observability",

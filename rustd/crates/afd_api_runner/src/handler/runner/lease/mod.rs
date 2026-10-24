@@ -25,13 +25,12 @@ const EVENT: &str = "runner_lease_failed";
     path = afd_wire::paths::RUNNER_LEASES,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_lease",
-    summary = "Poll for the next lease",
+    summary = "Request the next work assignment",
     description = concat!(
-        "The poll a runner lives on. Answers either a lease to run or a ",
-        "backoff to wait out. The claim, the money, the gates and the policy ",
-        "are all decided before the answer is written. The body lists the ",
-        "fleets whose sandboxes the runner holds, which are tried first. ",
-        "accepted_kinds is required and selects fleet, authoring, or both. ",
+        "Returns the next work assignment, or how long to wait before polling again. ",
+        "Previously held fleet sandboxes are preferred. Required `accepted_kinds` selects ",
+        "fleet work, private setup work, or both. Budget, approval, and policy checks ",
+        "happen before assignment.",
     ),
     request_body = LeaseRequest,
     responses(

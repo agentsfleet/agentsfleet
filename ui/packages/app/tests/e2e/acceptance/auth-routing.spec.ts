@@ -16,6 +16,7 @@ import { getDefaultWorkspaceId } from "./fixtures/seed";
 const ROUTING_TEST_TIMEOUT_MS = 90_000;
 const ROUTING_TIMEOUT_MS = 30_000;
 const PUBLIC_AUTH_ROUTES = ["/sign-in", "/sign-up"] as const;
+const NO_INDEX_SELECTOR = 'meta[name="robots"][content*="noindex"]';
 // Post-M118 the workspace pages live under `/w/<id>/…`. clerkMiddleware gates
 // auth before routing, so a signed-out visit to any workspace-scoped path (a
 // synthetic id is fine — the auth bounce fires before the ownership guard) and
@@ -32,18 +33,22 @@ const PROTECTED_ROUTES = [
 test.describe("auth routing", () => {
   test.setTimeout(ROUTING_TEST_TIMEOUT_MS);
 
-  test("bare settings and workspace URLs return 404 while access notices remain available", async ({ page }) => {
+  test("bare settings and workspace URLs show missing pages while access notices remain available", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
     const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    for (const route of ["/settings", `/w/${workspace}`]) {
-      const response = await page.goto(route);
-      expect(response?.status()).toBe(404);
-      expect(new URL(page.url()).pathname).toBe(route);
+    // The settings page streams its loader before notFound(); an unmatched workspace never starts streaming.
+    // https://nextjs.org/docs/app/api-reference/file-conventions/not-found
+    for (const route of [{ path: "/settings", status: 200 }, { path: `/w/${workspace}`, status: 404 }]) {
+      const response = await page.goto(route.path);
+      expect(response?.status()).toBe(route.status);
+      expect(new URL(page.url()).pathname).toBe(route.path);
       await expect(page.getByRole("heading", { name: "Page not found", exact: true })).toBeVisible();
+      await expect(page.locator(NO_INDEX_SELECTOR).first()).toBeAttached();
     }
     const notice = await page.goto("/settings?notice=models-platform-admin-only");
     expect(notice?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: "Access restricted", exact: true })).toBeVisible();
+    await expect(page.locator(NO_INDEX_SELECTOR)).toHaveCount(0);
   });
 
   test("signed-in user can visit auth pages without losing dashboard access", async ({ page }) => {

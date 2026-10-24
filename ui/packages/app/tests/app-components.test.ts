@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { render, screen, cleanup } from "@testing-library/react";
+import { act, render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 const TOAST_FADE_MS = 240;
@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => ({
   identifyAnalyticsUser: vi.fn(), resetAnalyticsIdentity: vi.fn(),
   hasStaleAnalyticsIdentity: vi.fn(() => false), setAnalyticsContext: vi.fn(),
   captureProductEvent: vi.fn(), useUser: vi.fn(), usePathname: vi.fn(),
+  initAnalytics: vi.fn(async (read?: () => { id: string; email?: string | null } | null | undefined) => {
+    const identity = read?.();
+    if (identity) mocks.identifyAnalyticsUser(identity);
+    else if (identity === null && mocks.hasStaleAnalyticsIdentity()) mocks.resetAnalyticsIdentity();
+  }),
 }));
 
 vi.mock("@/lib/analytics/posthog", () => ({
@@ -17,6 +22,7 @@ vi.mock("@/lib/analytics/posthog", () => ({
   identifyAnalyticsUser: mocks.identifyAnalyticsUser, resetAnalyticsIdentity: mocks.resetAnalyticsIdentity,
   hasStaleAnalyticsIdentity: mocks.hasStaleAnalyticsIdentity, setAnalyticsContext: mocks.setAnalyticsContext,
   captureProductEvent: mocks.captureProductEvent,
+  initAnalytics: mocks.initAnalytics,
 }));
 vi.mock("@clerk/nextjs", () => ({
   SignOutButton: ({ children }: { children: React.ReactNode }) => children, UserProfile: () => null,
@@ -46,6 +52,8 @@ beforeEach(() => {
   mocks.setAnalyticsContext.mockReset();
   mocks.captureProductEvent.mockReset();
   mocks.usePathname.mockReturnValue("/workspaces");
+  window.history.replaceState(null, "", "/workspaces");
+  mocks.initAnalytics.mockClear();
 });
 
 afterEach(() => {
@@ -147,6 +155,7 @@ describe("app components", () => {
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
     const { container } = render(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
 
     expect(container.innerHTML).toBe("");
     expect(mocks.identifyAnalyticsUser).toHaveBeenCalledWith({
@@ -165,6 +174,7 @@ describe("app components", () => {
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
     render(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
 
     expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
     expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
@@ -176,6 +186,7 @@ describe("app components", () => {
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
     render(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
 
     expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
     expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
@@ -192,6 +203,7 @@ describe("app components", () => {
     // …and once reset clears it, repeated signed-out renders are no-ops.
     rerender(React.createElement(AnalyticsBootstrap));
     rerender(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
 
     expect(mocks.resetAnalyticsIdentity).toHaveBeenCalledTimes(1);
     expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
@@ -204,6 +216,7 @@ describe("app components", () => {
 
     const { rerender } = render(React.createElement(AnalyticsBootstrap));
     rerender(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
 
     expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
   });
@@ -217,12 +230,14 @@ describe("app components", () => {
       user: { id: "user_123", primaryEmailAddress: { emailAddress: "kishore@example.com" } },
     });
     const { rerender } = render(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
     expect(mocks.identifyAnalyticsUser).toHaveBeenCalledTimes(1);
 
     // Sign-out: the analytics module reports the identity as stale once.
     mocks.useUser.mockReturnValue({ isLoaded: true, isSignedIn: false, user: null });
     mocks.hasStaleAnalyticsIdentity.mockReturnValueOnce(true);
     rerender(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
     expect(mocks.resetAnalyticsIdentity).toHaveBeenCalledTimes(1);
 
     // Re-login: identify fires again for the new session.
@@ -232,6 +247,7 @@ describe("app components", () => {
       user: { id: "user_123", primaryEmailAddress: { emailAddress: "kishore@example.com" } },
     });
     rerender(React.createElement(AnalyticsBootstrap));
+    await act(async () => {});
     expect(mocks.identifyAnalyticsUser).toHaveBeenCalledTimes(2);
   });
 

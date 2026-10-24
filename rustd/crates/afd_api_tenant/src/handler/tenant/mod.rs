@@ -9,6 +9,7 @@
 
 pub(crate) mod api_key;
 pub(crate) mod billing;
+pub(crate) mod billing_report;
 pub(crate) mod cli_credential;
 pub(crate) mod identity;
 pub(crate) mod invite;

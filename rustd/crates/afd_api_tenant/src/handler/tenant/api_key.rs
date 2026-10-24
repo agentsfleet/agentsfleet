@@ -52,10 +52,10 @@ const DETAIL_NO_TENANT: &str =
     path = "/v1/api-keys",
     tag = afd_http::openapi::tag::API_KEYS,
     operation_id = "create_api_key",
-    summary = "Mint a tenant API key",
+    summary = "Create an account API key",
     description = concat!(
-        "Creates a tenant admin key with the `agt_t` prefix. The raw key is ",
-        "returned once. Only its SHA-256 hash is saved. ",
+        "Creates an account administrator API key beginning with `agt_t`. The key is ",
+        "returned once; save it securely. Only its hash is stored.",
     ),
     request_body = MintApiKeyRequest,
     params(
@@ -109,15 +109,13 @@ pub(crate) async fn mint<D: Services>(
     path = "/v1/api-keys",
     tag = afd_http::openapi::tag::API_KEYS,
     operation_id = "list_api_keys",
-    summary = "List tenant API keys",
+    summary = "List account API keys",
     description = concat!(
-        "Returns metadata for every tenant API key visible to the caller, ",
-        "under Stripe-style keyset pagination. The cursor carries the ",
-        "boundary sort value, so every allowlisted sort pages without loss. ",
-        "Results are always scoped to the caller's tenant; `key_hash` is never returned. ",
+        "Lists your account's API key details without key hashes. Continue with ",
+        "`next_cursor`, keeping the same sort order.",
     ),
     params(
-        ("starting_after" = Option<String>, Query, description = "An opaque cursor from a previous page's `next_cursor`, issued under the same sort."),
+        ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged, with the same sort order."),
         ("limit" = Option<String>, Query),
         ("sort" = Option<String>, Query),
     ),
@@ -157,11 +155,10 @@ pub(crate) async fn list<D: Services>(
     path = "/v1/api-keys/{id}",
     tag = afd_http::openapi::tag::API_KEYS,
     operation_id = "revoke_api_key",
-    summary = "Revoke a tenant API key",
+    summary = "Revoke an account API key",
     description = concat!(
-        "Partial lifecycle update. Body must be `{\"active\": false}` — re- ",
-        "activation is not supported; mint a new key instead. Sets ",
-        "`revoked_at` and `updated_at`. ",
+        "Set `active` to false to revoke a key and set `revoked_at` and `updated_at`. ",
+        "Revoked keys cannot be reactivated; create a new key instead.",
     ),
     request_body = PatchApiKeyRequest,
     params(
@@ -210,7 +207,7 @@ pub(crate) async fn revoke<D: Services>(
     path = "/v1/api-keys/{id}",
     tag = afd_http::openapi::tag::API_KEYS,
     operation_id = "delete_api_key",
-    summary = "Delete a revoked tenant API key",
+    summary = "Delete a revoked account API key",
     description = concat!(
         "Deletes a revoked tenant API key. An active key returns 409 ",
         "`UZ-APIKEY-008`. ",

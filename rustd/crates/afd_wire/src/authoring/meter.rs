@@ -26,7 +26,7 @@ pub struct Meter {
     #[garde(range(max = 8))]
     pub calls: u32,
     /// Known cumulative input tokens, when available.
-    #[garde(inner(range(max = 262_144)))]
+    #[garde(inner(range(max = u64::from(u32::MAX) * 8)))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<u64>,
     /// Known cumulative output tokens, when available.
@@ -36,7 +36,8 @@ pub struct Meter {
     /// Runtime from the attempt's monotonic timer.
     #[garde(range(max = 300_000))]
     pub runtime_ms: u64,
-    /// Canonical decimal nanos, checked against daemon receipts.
+    /// Provider cost in billionths of a dollar, as a decimal string. Verified against the
+    /// server's request records.
     #[garde(inner(length(bytes, min = 1, max = super::DECIMAL_BYTES_MAX), custom(afd_validate::ascii_digits)))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_cost_nanos: Option<String>,
@@ -46,7 +47,7 @@ pub struct Meter {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
-    /// Daemon-derived knowledge, independent of a runner estimate.
+    /// Context knowledge measured by the server, independent of runner estimates.
     pub knowledge: Knowledge,
     /// Cumulative input, absent while unknown.
     #[serde(skip_serializing_if = "Option::is_none")]

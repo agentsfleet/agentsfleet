@@ -114,12 +114,10 @@ pub(crate) async fn read<D: Services>(
     operation_id = "connector_disconnect",
     summary = "Disconnect a provider from a workspace",
     description = concat!(
-        "Removes the workspace's connector handle and event-routing records ",
-        "from `agentsfleet`. Provider authorization remains active outside ",
-        "`agentsfleet`. Repeating this request returns 204. Use Connect to ",
-        "authorize the provider again. A model entry that still names the ",
-        "connection's credential returns 409 `UZ-VAULT-004` and leaves the ",
-        "connection as it was.",
+        "Disconnects the provider and removes event routing from this workspace. Repeating ",
+        "the request returns 204. Authorization at the provider remains active. Choose ",
+        "Connect to reconnect. If a model still uses this credential, returns 409 ",
+        "`UZ-VAULT-004` without disconnecting.",
     ),
     params(
         afd_http::openapi::path::WorkspaceProvider,

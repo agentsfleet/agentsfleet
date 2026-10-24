@@ -69,6 +69,7 @@ impl Healthy {
                 | Verb::AuthoringRenew
                 | Verb::AuthoringReport,
             ) => Value::Null,
+            Some(Verb::ContextLoad | Verb::ContextCommit) => serde_json::json!({}),
             Some(Verb::Heartbeat) => self.heartbeat(),
             Some(Verb::Lease) => value(&LeaseResponse::<serde_json::Value> {
                 lease: None,

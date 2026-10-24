@@ -21,20 +21,18 @@ impl ModelCalls {
             authorized_at,
             output_limit,
             candidate,
+            compaction,
+            context_digest,
         } = intent;
         outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
-        let publisher = self.streams.as_ref().map(|streams| {
-            let (publisher, preview) = crate::model::progress::Publisher::start(
-                streams.clone(),
-                self.drafts.clone(),
-                runner.clone(),
-                lease.clone(),
-                counters.clone(),
-                dispatch,
-            );
-            outbound.progress = Some(preview);
-            publisher
-        });
+        let publisher = self.preview(
+            runner,
+            lease,
+            counters,
+            dispatch,
+            &mut outbound,
+            compaction.is_none(),
+        );
         let (decoded, cause) = if outbound.timeout.is_zero() {
             drop(outbound);
             (
@@ -44,14 +42,27 @@ impl ModelCalls {
         } else {
             match provider::complete(outbound, Arc::clone(&self.transport)).await {
                 Ok((status, response, cause)) => {
-                    let decoded = provider::decode(
-                        status,
-                        &response,
-                        request,
-                        &attempt.model_snapshot,
-                        output_limit,
-                        candidate.as_ref(),
-                    );
+                    let mut decoded = if compaction.is_some() {
+                        provider::decode_summary(
+                            status,
+                            &response,
+                            request,
+                            &attempt.model_snapshot,
+                            output_limit,
+                        )
+                    } else {
+                        provider::decode(
+                            status,
+                            &response,
+                            request,
+                            &attempt.model_snapshot,
+                            output_limit,
+                            candidate.as_ref(),
+                        )
+                    };
+                    if let Ok(decoded) = decoded.as_mut() {
+                        super::super::continuation::bind(decoded, &context_digest);
+                    }
                     received(decoded, cause)
                 }
                 Err(error) => (Err(error), None),
@@ -67,9 +78,36 @@ impl ModelCalls {
             request,
             counters,
             &attempt,
-            receipt::Received { decoded, cause },
+            receipt::Received {
+                decoded,
+                compaction,
+                cause,
+            },
         )
         .await
+    }
+
+    fn preview(
+        &self,
+        runner: &Uuid7,
+        lease: &Uuid7,
+        counters: &guard::Counters,
+        dispatch: Uuid7,
+        outbound: &mut provider::Outbound,
+        enabled: bool,
+    ) -> Option<crate::model::progress::Publisher> {
+        self.streams.as_ref().filter(|_| enabled).map(|streams| {
+            let (publisher, preview) = crate::model::progress::Publisher::start(
+                streams.clone(),
+                self.drafts.clone(),
+                runner.clone(),
+                lease.clone(),
+                counters.clone(),
+                dispatch,
+            );
+            outbound.progress = Some(preview);
+            publisher
+        })
     }
 }
 

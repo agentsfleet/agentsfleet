@@ -96,6 +96,34 @@
       "path": "/v1/webhooks/{fleet_id}/{source}",
       "description": "Deliver an inbound event to the Fleet's webhook trigger whose source the URL names; this is the URL Save returns for each webhook trigger. The body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching that trigger's source (e.g. vault row fleet:github, field webhook_secret); the provider-specific signature header is verified before the body is read. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
+    },
+    {
+      "operationId": "get_tenant_billing_report",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing/reports/current",
+      "description": "Read complete-period settled totals, spending groups and a bounded activity page for the caller tenant.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "get_tenant_billing_activity_charges",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing/activities/{activity_id}/charges",
+      "description": "Read a bounded page of settled charges for one activity within the caller tenant and selected filters.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "runner_load_context_checkpoint",
+      "method": "GET",
+      "path": "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}",
+      "description": "Load private working notes for one run branch under the current runner assignment.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "runner_put_context_checkpoint",
+      "method": "PUT",
+      "path": "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}",
+      "description": "Conditionally replace private working notes under the current assignment and expected generation. Identical retries acknowledge one write.",
+      "actionClass": "sensitive"
     }
   ],
   "authentication": {
@@ -105,7 +133,7 @@
   },
   "revenue": {
     "model": "self-managed + credit-pool runtime metering",
-    "description": "Users may supply their own Large Language Model (LLM) API keys. agentsfleet meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
+    "description": "Users may supply their own Large Language Model (LLM) API keys. agentsfleet meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Usage lines retain recorded token counts, model price references and combined runtime/token charges."
   },
   "policyClasses": {
     "safe": [
@@ -115,13 +143,17 @@
       "get_tenant_billing_charges",
       "get_model_library",
       "list_tenant_model_entries",
-      "list_workspace_libraries"
+      "list_workspace_libraries",
+      "get_tenant_billing_report",
+      "get_tenant_billing_activity_charges",
+      "runner_load_context_checkpoint"
     ],
     "sensitive": [
       "create_fleet",
       "patch_fleet",
       "post_fleet_message",
-      "receive_source_webhook"
+      "receive_source_webhook",
+      "runner_put_context_checkpoint"
     ],
     "critical": [
       "delete_fleet"

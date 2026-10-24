@@ -93,6 +93,7 @@ impl Error {
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Authoring { ref source } => source.code(),
+            ErrorKind::Context { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
             ErrorKind::Events { ref source } => source.code(),
@@ -157,7 +158,8 @@ impl Error {
             // database holding something this daemon cannot use, and a caller
             // is told the same thing because there is nothing it can do about
             // any of them.
-            ErrorKind::Query { .. }
+            ErrorKind::Context { .. }
+            | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
             // The obligation is a PostgreSQL row, so a ledger fault reads as a

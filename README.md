@@ -44,7 +44,7 @@ bun run build
 bun ./dist/bin/agentsfleet.js login
 ```
 
-Sign in in the browser, then enter the browser's verification code in the terminal. The CLI reports `login complete` after verification.
+Sign in, check that the browser and terminal show the same code, then select **Authorize**. The terminal completes sign-in automatically. If the browser is on another computer, restart with `login --no-open` and enter its verification code in the terminal.
 
 See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for installer and release instructions. The [quickstart](https://docs.agentsfleet.net/quickstart) covers writing a fleet in chat and connecting its tools and triggers.
 

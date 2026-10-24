@@ -34,6 +34,7 @@ afd_connector.workspace = true
 afd_cron.workspace = true
 afd_ingress.workspace = true
 afd_core.workspace = true
+afd_context.workspace = true
 afd_crypto.workspace = true
 afd_events.workspace = true
 afd_db.workspace = true

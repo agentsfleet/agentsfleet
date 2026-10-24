@@ -52,6 +52,9 @@ impl Turn<'_> {
             if matches!(result.usage, afd_wire::authoring::ModelUsage::Unknown) {
                 return Ok(Ending::unknown());
             }
+            if result.compacted {
+                continue;
+            }
             if result.cut || result.proposal_calls.is_empty() {
                 return Ok(Ending::completed(Some(result.text)));
             }

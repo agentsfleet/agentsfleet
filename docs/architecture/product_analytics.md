@@ -66,32 +66,30 @@ payload.
 
 ## Identity lifecycle
 
-`AnalyticsBootstrap` (root layout) identifies on Clerk sign-in and calls
-`resetAnalyticsIdentity()` exactly once when a signed-out render still carries
-a prior identity. Staleness is detected via the module cache plus a
-localStorage marker (`uz_analytics_identified`), which also covers hard
-navigations and session expiry — cases where the sign-out edge is never
-observable in-page. Anonymous visitors never carry the marker, so reset never
-churns anonymous ids. Identity work that races the lazy posthog-js chunk load
-is deferred, not dropped: a racing reset keeps its marker until the client can
-actually reset, and a racing identify is queued and flushed at init. Accepted
-residual risk: a user who clears localStorage but keeps cookies can retain a
-posthog identity with no marker (the app's default posthog persistence is
-localStorage+cookie).
+`AnalyticsBootstrap` supplies the committed Clerk identity and current route to
+[`posthog.ts`](../../ui/packages/app/lib/analytics/posthog.ts).
+An unresolved identity or expired component effect prevents event delivery.
+
+The PostHog software development kit (SDK) loads after an idle delay.
+Its loaded callback synchronizes the current identity before releasing workspace context, buffered events and the initial pageview.
+Authentication routes and sensitive navigation destinations are excluded during initialization, capture and delivery.
+
+[`AnalyticsIdentityGate`](../../ui/packages/app/lib/analytics/identity-gate.ts) records the owner before buffering events or workspace context.
+A different resolved owner discards both queues; same-account navigation retains owned data.
+Unresolved identities cannot add new unowned telemetry.
+
+A localStorage marker (`uz_analytics_identified`) detects a prior identity after a hard navigation or session expiry.
+A signed-out identity resets that state before telemetry resumes; failed resets retain the marker for retry.
+Clearing localStorage while keeping cookies can leave a PostHog identity without this marker, since PostHog uses both stores by default.
 
 ## Workspace group + person context
 
-`setAnalyticsContext` (bound from `ShellControls`) binds the active workspace as a
-PostHog **group** (`group("workspace", …)`), so every subsequent event and
-pageview is sliceable per workspace — mirroring Supabase Studio's
-`$groups: { organization, project }`. The same call sets org-level **person
-properties** (`workspace_count`, `workspace_plan`) on the identified user via
-`setPersonProperties`. Both are best-effort and ride the same pending-queue
-deferral as identify/reset: context that races the lazy posthog-js chunk load
-is queued and flushed at init *after* identify, so person properties attach to
-the identified user, never a pre-identify anonymous id. A redundant `group()`
-for the already-bound workspace is skipped; `resetAnalyticsIdentity()` rebinds
-on the next session.
+`setAnalyticsContext`, called from `ShellControls`, binds the active workspace through `group("workspace", …)`.
+It also supplies `workspace_count` and `workspace_plan` through `setPersonProperties`.
+Both operations wait for the current identity before buffered product events are released.
+
+Repeated context for the same workspace skips another `group()` call.
+Identity reset clears the group, so the next session binds its workspace again.
 
 ## Website (marketing)
 
@@ -125,7 +123,9 @@ Filter the explicit event by `source` to count a particular button or link.
 Automatic capture remains enabled for general website exploration; do not add
 its click count to the explicit count for the same action.
 The “$0 to start · $25 credit included” banner has no custom handler and uses `ph-no-capture`.
-The existing `header_early_access`, `source_early_access`, and `pricing_early_access` source identifiers remain stable for historical comparisons; their visible labels are Get started, Hosted ↗, and Create your first fleet.
+
+The `header_early_access`, `source_early_access`, and `pricing_early_access` identifiers remain stable for historical comparisons.
+Current hosted-access labels and destinations belong to [Website job entrance](website-job-entrance.md#signup-and-installer-boundaries).
 
 The website reads `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` from the existing deployment configuration.
 The [bootstrap mapping](../../playbooks/founding/01_bootstrap/02_vercel_env.sh) selects the same development and production PostHog projects as the app.

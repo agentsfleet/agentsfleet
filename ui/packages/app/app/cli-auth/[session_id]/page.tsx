@@ -2,321 +2,157 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  PageTitle,
-  CopyButton,
-  Skeleton,
-} from "@agentsfleet/design-system";
+import { RouteLoading } from "@/components/layout/RouteLoading";
 import {
   deriveSharedKey,
   encryptJwt,
   generateEphemeralKeypair,
   generateVerificationCode,
 } from "@/lib/auth/cli-flow";
-import { PageShell, VerificationCodeDisplay, sanitizeTokenName } from "./cli-auth-ui";
-
-// Discriminant + status tags are named per RULE UFS (no bare repeated string
-// literals); the `as const` objects keep them usable as discriminated-union
-// literal types so narrowing still works.
-const SESSION_STATUS = {
-  pending: "pending",
-  verification_pending: "verification_pending",
-} as const;
-type SessionStatus = (typeof SESSION_STATUS)[keyof typeof SESSION_STATUS];
-
-interface ActiveSession {
-  status: SessionStatus;
-  cli_public_key: string;
-  token_name: string;
-  /** RFC 3339 instant the session window closes. */
-  expires_at: string;
-}
-
-const LOAD = {
-  loading: "loading",
-  active: "active",
-  terminal: "terminal",
-  error: "error",
-} as const;
-
-type LoadState =
-  | { kind: typeof LOAD.loading }
-  | { kind: typeof LOAD.active; session: ActiveSession }
-  | { kind: typeof LOAD.terminal; message: string }
-  | { kind: typeof LOAD.error; message: string };
-
-const APPROVE = {
-  idle: "idle",
-  working: "working",
-  approved: "approved",
-  uncertain: "uncertain",
-  failed: "failed",
-} as const;
-
-type ApproveState =
-  | { kind: typeof APPROVE.idle }
-  | { kind: typeof APPROVE.working }
-  | { kind: typeof APPROVE.approved; verificationCode: string }
-  // PATCH threw before a response arrived: the approve may have landed
-  // server-side, so we surface the code with a caveat rather than stranding
-  // a user whose session is now waiting on exactly that code.
-  | { kind: typeof APPROVE.uncertain; verificationCode: string }
-  | { kind: typeof APPROVE.failed; message: string };
+import { APPROVE, LOAD, SESSION_STATUS, AuthNotice, ManualApprovalView,
+  type ActiveSession, type ApproveState, type LoadState } from "./cli-auth-ui";
+import { LOOPBACK_KIND, type BrowserHandoff, type LoopbackHandoff } from "@/lib/auth/cli-loopback";
+import { readBrowserHandoff } from "@/lib/auth/cli-loopback-store";
+import { CliLoopbackApproval, type ApprovalRequest, type ApprovalResult } from "./cli-loopback-approval";
 
 const JSON_CONTENT_TYPE = "application/json";
+const REQUEST_TIMEOUT_MS = 15_000;
 
-export default function CliAuthPage({
-  params,
-}: {
-  params: Promise<{ session_id: string }>;
-}) {
-  const { session_id } = use(params);
+type UpdateLoad = (state: LoadState) => void;
+type UpdateApproval = (state: ApproveState) => void;
+type GetToken = ReturnType<typeof useAuth>["getToken"];
+
+function ManualCliAuthPage({ session_id }: { session_id: string }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
-
   const [load, setLoad] = useState<LoadState>({ kind: LOAD.loading });
   const [approve, setApprove] = useState<ApproveState>({ kind: APPROVE.idle });
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(session_id)}`, {
-          method: "GET",
-          headers: { Accept: JSON_CONTENT_TYPE },
-        });
-        if (res.ok) {
-          const body = (await res.json()) as Partial<ActiveSession>;
-          if (
-            (body.status === SESSION_STATUS.pending || body.status === SESSION_STATUS.verification_pending) &&
-            typeof body.cli_public_key === "string" &&
-            typeof body.token_name === "string" &&
-            typeof body.expires_at === "string"
-          ) {
-            setLoad({
-              kind: LOAD.active,
-              session: {
-                status: body.status,
-                cli_public_key: body.cli_public_key,
-                token_name: body.token_name,
-                expires_at: body.expires_at,
-              },
-            });
-            if (body.status === SESSION_STATUS.verification_pending) {
-              setApprove({ kind: APPROVE.failed, message: "This session has already been approved on another tab." });
-            }
-            return;
-          }
-          setLoad({
-            kind: LOAD.error,
-            message: "Something went wrong loading this login session — start over from your terminal.",
-          });
-          return;
-        }
-        if (res.status === 404) {
-          setLoad({ kind: LOAD.terminal, message: "This login session is not recognized — start over from your terminal." });
-          return;
-        }
-        if (res.status === 410 || res.status === 409 || res.status === 400) {
-          setLoad({ kind: LOAD.terminal, message: "This login session is no longer accepting approval." });
-          return;
-        }
-        setLoad({
-          kind: LOAD.error,
-          message: "Couldn't load this login session. Try again, or start over from your terminal.",
-        });
-      } catch {
-        setLoad({ kind: LOAD.error, message: "Network error loading the login session." });
-      }
-    })();
-  }, [session_id]);
-
-  // `session` is supplied by the caller (the Approve button renders only in the
-  // active state), so no in-callback state check is needed.
-  const onApprove = useCallback(async (session: ActiveSession) => {
-    setApprove({ kind: APPROVE.working });
-    // Hoisted out of the try so the catch can still read it: once the PATCH is
-    // sent, the server may approve the session against this code even if the
-    // response never makes it back to us.
-    let pendingCode: string | null = null;
-    try {
-      // The session token authenticates the same-origin middleware. The api
-      // template lacks sid and is only encrypted for the terminal's exchange.
-      const sessionJwt = await getToken();
-      if (!sessionJwt) {
-        setApprove({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
-        return;
-      }
-      const jwt = await getToken({ template: "api" });
-      if (!jwt) {
-        setApprove({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
-        return;
-      }
-      const dash = await generateEphemeralKeypair();
-      const key = await deriveSharedKey(dash.privateKey, session.cli_public_key);
-      const { ciphertext, nonce } = await encryptJwt(jwt, key);
-      pendingCode = generateVerificationCode();
-
-      const res = await fetch(
-        `/backend/v1/auth/sessions/${encodeURIComponent(session_id)}/approve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": JSON_CONTENT_TYPE,
-            Authorization: `Bearer ${sessionJwt}`,
-          },
-          body: JSON.stringify({
-            dashboard_public_key: dash.publicKeyBase64Url,
-            ciphertext,
-            nonce,
-            verification_code: pendingCode,
-          }),
-        },
-      );
-
-      if (res.redirected) {
-        setApprove({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
-        return;
-      }
-      if (res.ok) {
-        setApprove({ kind: APPROVE.approved, verificationCode: pendingCode });
-        return;
-      }
-      if (res.status === 409) {
-        setApprove({ kind: APPROVE.failed, message: "This session is already approved — check your terminal." });
-        return;
-      }
-      if (res.status === 410) {
-        setApprove({ kind: APPROVE.failed, message: "This session is no longer accepting approval." });
-        return;
-      }
-      if (res.status === 401) {
-        setApprove({ kind: APPROVE.failed, message: "Your dashboard session is not authorized for this action." });
-        return;
-      }
-      setApprove({
-        kind: APPROVE.failed,
-        message: "Couldn't approve this login. Try again, or start over from your terminal.",
-      });
-    } catch {
-      // A thrown fetch means no response arrived — but the PATCH may have
-      // reached the server and approved against pendingCode. If we got far
-      // enough to generate it, show the code (with a caveat) instead of a
-      // dead-end error; otherwise the failure was before any approve attempt.
-      setApprove(
-        pendingCode
-          ? { kind: APPROVE.uncertain, verificationCode: pendingCode }
-          : { kind: APPROVE.failed, message: "Something went wrong while approving the CLI login." },
-      );
-    }
+  useEffect(() => { void loadManualSession(session_id, setLoad, setApprove); }, [session_id]);
+  const onApprove = useCallback((session: ActiveSession) => {
+    void approveManual(session_id, session, getToken, setApprove);
   }, [getToken, session_id]);
+  return <ManualApprovalView isLoaded={isLoaded} isSignedIn={isSignedIn} load={load} approve={approve}
+    onApprove={onApprove} />;
+}
 
-  if (!isLoaded || load.kind === LOAD.loading) {
-    return (
-      <PageShell>
-        <Card>
-          <CardHeader>
-            <PageTitle>Approve CLI login</PageTitle>
-            <CardDescription>Checking your terminal&apos;s login session…</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-6 w-full" />
-          </CardContent>
-        </Card>
-      </PageShell>
-    );
+function activeSession(body: unknown): body is ActiveSession {
+  if (typeof body !== "object" || body === null) return false;
+  return "status" in body && (body.status === SESSION_STATUS.pending || body.status === SESSION_STATUS.verification_pending) &&
+    "cli_public_key" in body && typeof body.cli_public_key === "string" &&
+    "token_name" in body && typeof body.token_name === "string" &&
+    "expires_at" in body && typeof body.expires_at === "string";
+}
+
+async function loadManualSession(sessionId: string, update: UpdateLoad, updateApproval: UpdateApproval): Promise<void> {
+  try {
+    const response = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "GET", headers: { Accept: JSON_CONTENT_TYPE },
+    });
+    if (response.ok) {
+      const body: unknown = await response.json();
+      if (activeSession(body)) {
+        update({ kind: LOAD.active, session: body });
+        if (body.status === SESSION_STATUS.verification_pending) {
+          updateApproval({ kind: APPROVE.failed, message: "This session has already been approved on another tab." });
+        }
+      } else update({ kind: LOAD.error, message: "Something went wrong loading this login session — start over from your terminal." });
+      return;
+    }
+    if (response.status === 404) {
+      update({ kind: LOAD.terminal, message: "This login session is not recognized — start over from your terminal." });
+    } else if ([410, 409, 400].includes(response.status)) {
+      update({ kind: LOAD.terminal, message: "This login session is no longer accepting approval." });
+    } else update({ kind: LOAD.error, message: "Couldn't load this login session. Try again, or start over from your terminal." });
+  } catch { update({ kind: LOAD.error, message: "Network error loading the login session." }); }
+}
+
+function showManualApproval(response: Response, verificationCode: string, update: UpdateApproval): void {
+  if (response.redirected) {
+    update({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
+  } else if (response.ok) {
+    update({ kind: APPROVE.approved, verificationCode });
+  } else {
+    const message = response.status === 409 ? "This session is already approved — check your terminal."
+      : response.status === 410 ? "This session is no longer accepting approval."
+      : response.status === 401 ? "Your dashboard session is not authorized for this action."
+      : "Couldn't approve this login. Try again, or start over from your terminal.";
+    update({ kind: APPROVE.failed, message });
   }
+}
 
-  if (!isSignedIn) {
-    return (
-      <PageShell>
-        <Card>
-          <CardHeader>
-            <PageTitle>Sign in to continue</PageTitle>
-            <CardDescription>You need to be signed in to approve a CLI login.</CardDescription>
-          </CardHeader>
-        </Card>
-      </PageShell>
-    );
+async function approveManual(sessionId: string, session: ActiveSession, getToken: GetToken,
+  update: UpdateApproval): Promise<void> {
+  update({ kind: APPROVE.working });
+  // A lost approval response can leave the server waiting for this code.
+  let pendingCode: string | null = null;
+  try {
+    const sessionJwt = await getToken();
+    const jwt = sessionJwt ? await getToken({ template: "api" }) : null;
+    if (!sessionJwt || !jwt) {
+      update({ kind: APPROVE.failed, message: "Your dashboard session expired. Refresh and try again." });
+      return;
+    }
+    const dash = await generateEphemeralKeypair();
+    const key = await deriveSharedKey(dash.privateKey, session.cli_public_key);
+    const encrypted = await encryptJwt(jwt, key);
+    pendingCode = generateVerificationCode();
+    const response = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(sessionId)}/approve`, {
+      method: "PATCH", headers: { "Content-Type": JSON_CONTENT_TYPE, Authorization: `Bearer ${sessionJwt}` },
+      body: JSON.stringify({ dashboard_public_key: dash.publicKeyBase64Url, ...encrypted, verification_code: pendingCode }),
+    });
+    showManualApproval(response, pendingCode, update);
+  } catch {
+    update(pendingCode ? { kind: APPROVE.uncertain, verificationCode: pendingCode }
+      : { kind: APPROVE.failed, message: "Something went wrong while approving the CLI login." });
   }
+}
 
-  if (load.kind === LOAD.terminal || load.kind === LOAD.error) {
-    return (
-      <PageShell>
-        <Card>
-          <CardHeader>
-            <PageTitle>Login session unavailable</PageTitle>
-            <CardDescription>{load.message}</CardDescription>
-          </CardHeader>
-        </Card>
-      </PageShell>
-    );
+export default function CliAuthPage({ params }: { params: Promise<{ session_id: string }> }) {
+  const { session_id } = use(params);
+  const { getToken } = useAuth();
+  const [handoff, setHandoff] = useState<BrowserHandoff | null>(null);
+  useEffect(() => setHandoff(readBrowserHandoff(session_id)), [session_id]);
+  if (!handoff) return <RouteLoading fullScreen />;
+  if (handoff.kind === LOOPBACK_KIND.manual) return <ManualCliAuthPage session_id={session_id} />;
+  if (handoff.kind === LOOPBACK_KIND.automatic) return <CliLoopbackApproval key={handoff.handoff.sessionId}
+    handoff={handoff.handoff} approve={request => approveLocal(handoff.handoff, request, getToken)} />;
+  return <AuthNotice title="Sign-in unavailable" message={handoff.message} />;
+}
+
+function tokenMatches(token: string, userId: string, sessionId?: string): boolean {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3 || !parts[1]) return false;
+    const claims: unknown = JSON.parse(atob(parts[1].replaceAll("-", "+").replaceAll("_", "/")));
+    return typeof claims === "object" && claims !== null && "sub" in claims && claims.sub === userId &&
+      (sessionId === undefined || ("sid" in claims && claims.sid === sessionId));
+  } catch { return false; }
+}
+
+async function approveLocal(handoff: LoopbackHandoff, request: ApprovalRequest,
+  getToken: ReturnType<typeof useAuth>["getToken"]): Promise<ApprovalResult> {
+  const { userId, sessionId, current, signal } = request;
+  const accountFailure: ApprovalResult = { ok: false, message: "Your signed-in account changed. Start a new sign-in from your terminal." };
+  let sent = false;
+  try {
+    if (!current()) return accountFailure;
+    const sessionToken = await getToken();
+    if (!sessionToken || !current() || !tokenMatches(sessionToken, userId, sessionId)) return accountFailure;
+    const token = await getToken({ template: "api" });
+    if (!token || !current() || !tokenMatches(token, userId)) return accountFailure;
+    const dashboard = await generateEphemeralKeypair();
+    const key = await deriveSharedKey(dashboard.privateKey, handoff.publicKey);
+    const encrypted = await encryptJwt(token, key);
+    const verificationCode = generateVerificationCode();
+    if (!current()) return accountFailure;
+    sent = true;
+    const response = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(handoff.sessionId)}/approve`, {
+      method: "PATCH", headers: { "Content-Type": JSON_CONTENT_TYPE, Authorization: `Bearer ${sessionToken}` },
+      body: JSON.stringify({ dashboard_public_key: dashboard.publicKeyBase64Url, ...encrypted, verification_code: verificationCode }),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]), redirect: "error",
+    });
+    if (response.ok && !response.redirected && !signal.aborted) return { ok: true, verificationCode };
+  } catch {
+    if (sent) return { ok: false, message: "Approval could not be confirmed. Start a new sign-in from your terminal." };
   }
-
-  const tokenLabel = sanitizeTokenName(load.session.token_name);
-
-  if (approve.kind === APPROVE.approved || approve.kind === APPROVE.uncertain) {
-    return (
-      <PageShell>
-        <Card>
-          <CardHeader>
-            <PageTitle>Type this code into your CLI</PageTitle>
-            <CardDescription>
-              {approve.kind === APPROVE.uncertain
-                ? "We couldn't confirm the approval over the network. If your terminal is asking for a code, enter this one; otherwise refresh and try again."
-                : "The terminal that started this login is waiting for a 6-digit verification code."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <VerificationCodeDisplay code={approve.verificationCode} />
-          </CardContent>
-          <CardFooter>
-            <CopyButton value={approve.verificationCode} label="Copy code" showLabel />
-          </CardFooter>
-        </Card>
-      </PageShell>
-    );
-  }
-
-  return (
-    <PageShell>
-      <Card>
-        <CardHeader>
-          <PageTitle>Approve CLI login for {tokenLabel}</PageTitle>
-          <CardDescription>
-            Approving will issue a short-lived API token to your terminal. Only continue if you
-            started this login.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {approve.kind === APPROVE.failed ? (
-            <Alert variant="destructive">
-              <AlertTitle>Could not approve</AlertTitle>
-              <AlertDescription>{approve.message}</AlertDescription>
-            </Alert>
-          ) : null}
-        </CardContent>
-        <CardFooter className="gap-2">
-          <Button
-            data-testid="cli-auth-approve"
-            onClick={() => void onApprove(load.session)}
-            disabled={
-              approve.kind === APPROVE.working ||
-              approve.kind === APPROVE.failed ||
-              load.session.status === SESSION_STATUS.verification_pending
-            }
-          >
-            {approve.kind === APPROVE.working ? "Approving…" : "Approve"}
-          </Button>
-        </CardFooter>
-      </Card>
-    </PageShell>
-  );
+  return { ok: false, message: "Start a new sign-in from your terminal. No code was sent to it." };
 }

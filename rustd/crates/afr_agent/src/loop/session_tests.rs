@@ -74,6 +74,7 @@ pub(super) async fn drive_in(
         executor: Some(executor),
         mint: &CountingMint::never(),
         checkpoint: &Discard,
+        context_checkpoints: &crate::testing::ContextMemory::default(),
         events: &sink,
         meter: &Meter::default(),
         verbs: &afr_tools::CLOSED,

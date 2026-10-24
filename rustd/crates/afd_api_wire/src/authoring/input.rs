@@ -24,7 +24,7 @@ pub enum Source<D = Value> {
         /// Decimal setup revision.
         setup_revision: String,
     },
-    /// Inline native Definition, validated by the daemon.
+    /// Inline fleet Definition, validated by the server.
     Definition {
         /// Schema version, description, `instructions_md` and config.
         #[cfg_attr(feature = "openapi", schema(value_type = afd_fleet_runtime::definition::DefinitionSchema))]
@@ -39,13 +39,16 @@ pub enum Source<D = Value> {
 pub struct CreateDraftRequest<D = Value> {
     /// Exact native source to capture.
     pub source: Source<D>,
-    /// Explicit workspace-owner model reference.
+    /// Copy an eligible `ref` from `GET /v1/workspaces/{workspace_id}/models?purpose=authoring`.
     pub authoring_model_ref: String,
     /// Optional initial user text; 1..32768 UTF-8 bytes when present.
     #[serde(default, deserialize_with = "super::present")]
     #[cfg_attr(feature = "openapi", schema(nullable = false))]
     pub message: Option<String>,
-    /// Required body `UUIDv7` operation identity.
+    /// Required retry identifier: a version 7 universally unique identifier (UUID).
+    ///
+    /// Retry within 24 hours with the same `operation_id` and unchanged request. After
+    /// that window, inspect existing resources before retrying.
     pub operation_id: String,
 }
 
@@ -87,11 +90,14 @@ pub struct DraftPatchRequest<C = Value, I = Value> {
 pub struct MessageRequest {
     /// 1..32768 UTF-8 bytes; line endings normalize to LF.
     pub message: String,
-    /// Required body `UUIDv7` operation identity.
+    /// Required retry identifier: a version 7 universally unique identifier (UUID).
+    ///
+    /// Retry within 24 hours with the same `operation_id` and unchanged request. After
+    /// that window, inspect existing messages before retrying.
     pub operation_id: String,
 }
 
-/// Advance the standing Stop watermark through an accepted user sequence.
+/// Stops work through the supplied accepted user-message sequence.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]

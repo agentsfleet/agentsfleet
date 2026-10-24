@@ -1,162 +1,380 @@
-# M230_003: Consistent page loading and terminal sign-in
+# M230_003: Consistent page loading and terminal authorization
 
 **Prototype:** v2.0.0
 **Milestone:** M230
 **Workstream:** 003
 **Date:** Oct 24, 2026
 **Status:** IN_PROGRESS
-**Priority:** P1 — navigation and human sign-in
-**Categories:** API | CLI | UI
+**Priority:** P1 — consistent page loading
+**Categories:** UI
 **Batch:** B1 — existing approved stream
 **Branch:** fix/approved-fleet-chat
 **Baseline revision:** 74a39c60ef260973894a68f29d0b6e4f6f1c6eda
-**Test Baseline:** pending — measure unit and integration before updating the Pull Request (PR)
-**Baseline evidence:** pending — revision and command output before PR update
+**Test Baseline:** unit=11270 integration=561
+**Baseline evidence:** /tmp/loader-baseline-report.md
+**Baseline notes:** Unit: 0 failed, 16 skipped, 1371 ignored. Integration: 1 failed; selection incomplete. The report retains both original logs.
 **Depends on:** none
 **Provenance:** LLM-drafted (Codex, Oct 24, 2026)
-**Canonical architecture:** `docs/architecture/api_resources.md` — authentication
+**Canonical architecture:** `docs/DESIGN_SYSTEM.md` — page loading
 
 ## Overview
 
-**Goal (testable):** Every page uses the same loader; browser approval connects its initiating terminal automatically and confirms only acknowledged completion.
-**Problem:** Loading pages show inconsistent skeletons, and sign-in needs a code copied back into the terminal.
-**Solution summary:** Shared centered spinner inside the persistent shell; key-derived visual comparison code and separate random private verifier; authenticated completion after credential persistence and identity validation.
+**Goal (testable):** Every page shows one shared accessible loader. A deliberate browser approval completes same-computer command-line interface (CLI) login automatically; explicit remote login retains manual verification.
+**Problem:** Route loading boundaries and page data use inconsistent skeleton layouts.
+**Solution summary:** Center the existing Spinner inside the persistent shell; fill the viewport before that shell resolves. Complete explicitly authorized local terminal sign-in through a bound loopback callback; retain manual verification for remote terminals.
+
+**Additional approved scope:** Shorten public API descriptions and reconcile contributor guides. Indy also approved shared setup/runtime compaction and the sidebar-aware Billing design. Complete compaction first; Billing reporting and integration follow. The compaction file inventory and design are in [Shared conversation compaction](../../architecture/context_lifecycle.md).
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Unify page loading and simplify terminal sign-in
-- **Intent (one sentence):** Preserve recognizable navigation and finish terminal sign-in with one informed browser approval.
-- **Handshake:** Indy approved both in PR #784 and requested eyeballing afterward. Assumptions: same branch/tree, shell persists, no artificial delays, comparison code is public, private verifier stays in terminal/server request bodies, human acceptance remains pending.
+- **PR title (eventual):** Share conversation compaction and add settled Billing reporting
+- **Intent (one sentence):** Continue setup and runtime conversations near the selected model's window, expose settled account spending, and retain the approved page-loading, local terminal-login and documentation changes.
+- **Handshake:** Indy approved the loader and Authorize wording, then requested the Muse-inspired login improvements with everything in PR #784. The later instruction supersedes the earlier manual-only scope. The unsafe experimental branch `fix/terminal-login-proof` supplies no implementation or proof for this design; §5 requires fresh binding and adversarial evidence.
 
 ## Implementing agent — read these first
 
 1. `ui/packages/app/components/layout/ShellFrame.tsx` — persistent navigation.
 2. `docs/DESIGN_SYSTEM.md` — tokens, motion and components.
-3. `docs/AUTH_DEVICE_LOGIN.md` — encryption, expiry and atomic replay.
-4. `cli/src/commands/login.ts` — credential persistence and identity rollback.
-5. `rustd/crates/afd_dragonfly/src/session/verify_consume.lua` — single redemption.
+3. `ui/packages/app/components/layout/RouteLoading.tsx` — shared indicator.
+4. `ui/packages/app/app/cli-auth/[session_id]/page.tsx` — existing sign-in behavior and button.
 
 ## Files Changed (blast radius)
 
-This approved stream covers the following source families; expand this inventory with exact edited paths before review. No unrelated files may change.
+The following inventory covers this delivery; no experimental authentication changes belong in it.
 
 | File | Action | Why |
 |---|---|---|
-| `ui/packages/app/components/layout/RouteLoading.tsx` | EDIT | Shared centered loading indicator. |
-| `ui/packages/app/components/layout/ShellFrame.tsx` | EDIT | Same indicator in empty shell slot. |
-| `ui/packages/app/app/**/loading.tsx` | CREATE / EDIT | All route loading boundaries, including first load. |
-| `ui/packages/app/app/cli-auth/[session_id]/*` | CREATE / EDIT | Compare, approve, cancel, account and completion. |
-| `ui/packages/app/lib/auth/cli-flow.ts` | EDIT | Key-derived public comparison code. |
-| `ui/packages/app/tests/*loading*` | EDIT | Common indicator render proofs. |
-| `ui/packages/app/tests/*cli-auth*` | EDIT | Browser approval and recovery proofs. |
-| `ui/packages/app/tests/fleets-routes/list-and-loading.test.ts` | EDIT | Updated loading behavior. |
-| `ui/packages/app/tests/app-shell-frame.test.ts` | EDIT | Shared shell fallback. |
-| `cli/src/commands/login*` | CREATE / EDIT | Private verifier, bounded wait and completion. |
-| `cli/src/lib/cli-flow.ts` | EDIT | Private random verifier and comparison code. |
-| `cli/test/*login*` | CREATE / EDIT | Automatic sign-in and failure proofs. |
-| `rustd/crates/afd_api_wire/src/auth.rs` | EDIT | Required verifier and completion wire types. |
-| `rustd/crates/afd_api_tenant/src/handler/auth/**` | CREATE / EDIT | Parse verifier and authenticated completion. |
-| `rustd/crates/afd_api_tenant/src/lib.rs` | EDIT | Register completion endpoint. |
-| `rustd/crates/afd_http/src/route/auth.rs` | EDIT | Completion route identity and bearer guard. |
-| `rustd/crates/afd_http/src/services/device_flow.rs` | EDIT | Completion service seam. |
-| `rustd/crates/afd_tenant/src/session/**` | CREATE / EDIT | Digest at creation and completion ownership. |
-| `rustd/crates/afd_tenant/tests/*device_flow*` | EDIT | Real dependency regression. |
-| `rustd/crates/afd_tenant/tests/support/device_flow_lane.rs` | EDIT | Updated session fixture. |
-| `rustd/crates/afd_dragonfly/src/session/**` | CREATE / EDIT | Preserve digest and atomic completion. |
-| `rustd/crates/afd_dragonfly/tests/integration_cluster_semantics/sessions.rs` | EDIT | Completion and race proofs. |
-| `docs/AUTH.md` | EDIT | Current login flow. |
-| `docs/AUTH_DEVICE_LOGIN.md` | EDIT | Current trust boundaries. |
-| `docs/DESIGN_SYSTEM.md` | EDIT | Shared page loader. |
-| `docs/architecture/api_resources.md` | EDIT | Completion resource. |
-| `docs/v2/active/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md` | EDIT | Scope and evidence. |
+| `README.md` | EDIT | Describe automatic same-computer approval and explicit manual login for a browser on another computer. |
+| `docs/DESIGN_SYSTEM.md`<br>`docs/v2/active/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `docs/architecture/sandbox_evaluation.md` | CREATE | Source-backed SPACE comparison, proposed coding journey, failure proofs and performance measurements; no backend adoption claim. |
+| `docs/architecture/billing_reporting.md` | CREATE | Approved Billing read flow, implementation scope, UI behavior and query-plan proofs. |
+| `concepts_brief.md` | CREATE | Working sandbox brainstorm based on owner inputs; native source reuse, performance ownership and unresolved recovery boundaries. |
+| `docs/reviews/space-sandbox/README.md` | CREATE | Preserve the concept-review state and delivery order; compaction and Billing remain in this stream. |
+| `docs/reviews/space-sandbox/review-evidence.json` | CREATE | Archive the original concept-review inputs, reports and digests without claiming a final implementation review. |
+| `docs/reviews/pr784-verification-history.json` | CREATE | Preserve the original verification results and failures verbatim outside the implementation spec. |
+| `docs/reviews/space-sandbox/sandbox-handoff-prompt.md` | CREATE | Restart the separately specified sandbox implementation only after pull request 784 merges. |
+| `docs/reviews/space-sandbox/orly-egm-jev-handoff-prompt.md` | CREATE | Hand a separate Orly agent the requested design-process and rubric-grading improvement. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/loading.tsx`<br>`ui/packages/app/app/(dashboard)/admin/models/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/loading.tsx`<br>`ui/packages/app/app/(dashboard)/admin/runners/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/invites/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/loading.tsx` | CREATE | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/settings/account/[[...account]]/page.tsx`<br>`ui/packages/app/app/(dashboard)/settings/account/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/loading.tsx`<br>`ui/packages/app/app/(dashboard)/settings/billing/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/settings/members/loading.tsx`<br>`ui/packages/app/app/(dashboard)/w/[workspaceId]/approvals/[gateId]/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/approvals/loading.tsx`<br>`ui/packages/app/app/(dashboard)/w/[workspaceId]/approvals/page.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/events/loading.tsx`<br>`ui/packages/app/app/(dashboard)/w/[workspaceId]/events/page.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/loading.tsx`<br>`ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/loading.tsx`<br>`ui/packages/app/app/(dashboard)/w/[workspaceId]/integrations/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/loading.tsx`<br>`ui/packages/app/app/(dashboard)/w/[workspaceId]/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/loading.tsx`<br>`ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/loading.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/page.tsx`<br>`ui/packages/app/app/cli-auth/[session_id]/page.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/app/loading.tsx` | CREATE | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/components/layout/RouteLoading.tsx`<br>`ui/packages/app/components/layout/ShellFrame.tsx` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/tests/cli-auth-approval-transport.test.ts`<br>`ui/packages/app/tests/cli-auth-page.test.ts` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/tests/fleets-routes/list-and-loading.test.ts` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/tests/api-keys-page.test.ts` | EDIT | Remove the obsolete duplicate skeleton assertion; the route is covered by the shared-loader table. |
+| `ui/packages/app/tests/loading-states.test.ts` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `ui/packages/app/tests/e2e/acceptance/dashboard-performance.spec.ts` | EDIT | Align loader assertions and wait for the sidebar's first fleet read before measuring hover script downloads. |
+| `ui/packages/app/tests/e2e/acceptance/auth-routing.spec.ts` | EDIT | Verify streamed missing-settings output and noindex while retaining unmatched workspace 404 and available access notices. |
+| `ui/packages/app/tests/e2e/acceptance/provider-credential-reference.spec.ts` | EDIT | Select a configured catalogue model and require successful credential storage, registration and activation. |
+| `ui/packages/app/tests/e2e/acceptance/multi-fleet-grant-journey.spec.ts` | EDIT | Await the approved fleet's active state before navigating to the next fleet, preserving strict grant and execution assertions. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog.tsx` | EDIT | Refresh the registry after successful activation while retaining the committed entry after activation refusal. |
+| `ui/packages/app/tests/models-registry-created-activation.test.tsx` | CREATE | Prove visible activation state and retained registration across success and refusal through the real table and HTTP boundary. |
+| `ui/packages/app/tests/e2e/acceptance/workspace-chat-privacy.spec.ts` | EDIT | Reload only after acknowledged message persistence while preserving exact privacy and recovery assertions. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/private-chat.ts` | EDIT IF NEEDED | Synchronize the actual composer submission with its server acknowledgement. |
+| `cli/src/commands/login.ts` | EDIT | Select local automatic handoff or explicit remote manual verification. |
+| `cli/src/commands/login-device-flow.ts` | EDIT | Reuse verification and decryption after a bound local handoff. |
+| `cli/src/commands/login-helpers.ts` | EDIT | Remove the secret session identifier from login-completed telemetry. |
+| `cli/src/commands/login-browser-flow.ts` | CREATE | Own callback lifetime, waiting cancellation and credential finalization. |
+| `cli/src/commands/login-callback.ts` | CREATE | Bound loopback listener with single-winner validation. |
+| `cli/src/commands/login-callback-protocol.ts` | CREATE | Validate the trusted destination and define matching-code encoding. |
+| `cli/src/commands/login-callback-page.ts` | CREATE | Static secret-free callback outcome page. |
+| `cli/test/login-callback.unit.test.ts` | CREATE | Attack listener validation, replay, races, expiry and cleanup. |
+| `cli/test/login-browser-flow.unit.test.ts` | CREATE | Prove automatic verification, cancellation and finalization through real helpers. |
+| `cli/test/login-effect.unit.test.ts` | EDIT | Retain manual behavior and cover automatic browser selection. |
+| `cli/test/helpers-login-effect.ts` | EDIT | Extend the external browser fixture for the local callback. |
+| `cli/test/login-logout-identity.unit.test.ts` | EDIT | Verify login analytics omits the secret session identifier. |
+| `cli/test/acceptance/fixtures/browser.ts` | EDIT | Select the approved Authorize label in the existing manual live journey. |
+| `ui/packages/app/lib/auth/cli-loopback.ts` | CREATE | Validate callback parameters and matching-code encoding. |
+| `ui/packages/app/lib/auth/cli-loopback-store.ts` | CREATE | Preserve a bounded expiring handoff across browser sign-in. |
+| `ui/packages/app/app/cli-auth/[session_id]/cli-loopback-approval.tsx` | CREATE | Display identity and comparison code before mutually exclusive Authorize or Deny. |
+| `ui/packages/app/app/(auth)/layout.tsx` | EDIT | Block session recording of sign-in and sign-up surfaces. |
+| `ui/packages/app/instrumentation-client.ts` | EDIT | Capture and strip sensitive fragments before instrumentation. |
+| `ui/packages/app/tests/instrumentation-client.test.ts` | EDIT | Supply browser location in the external instrumentation fixture. |
+| `ui/packages/app/lib/analytics/posthog.ts` | EDIT | Exclude authentication routes and destinations from collection. |
+| `ui/packages/app/lib/analytics/identity-gate.ts` | CREATE | Hold telemetry until the committed browser identity is ready and synchronize it before releasing events. |
+| `ui/packages/app/components/analytics/AnalyticsBootstrap.tsx` | EDIT | Resume safe analytics after committed navigation away from authentication. |
+| `ui/packages/app/tests/analytics-bootstrap.test.tsx` | CREATE | Prove authentication entry and interrupted initialization recover on dashboard navigation. |
+| `ui/packages/app/tests/app-components.test.ts` | EDIT | Preserve bootstrap identity assertions across asynchronous analytics initialization. |
+| `ui/packages/app/lib/analytics/auth-privacy.ts` | CREATE | Filter authentication URLs before analytics capture or delivery. |
+| `ui/packages/app/next.config.ts` | EDIT | Apply the callback form's route-specific origin referrer policy. |
+| `ui/packages/app/tests/cli-loopback.test.ts` | CREATE | Reject malformed, substituted, conflicting and expired browser handoffs. |
+| `ui/packages/app/tests/cli-loopback-analytics.test.ts` | CREATE | Prove authentication and secret-bearing telemetry is discarded. |
+| `ui/packages/app/tests/posthog.test.ts` | EDIT | Verify authentication exclusion with initialized and deferred analytics. |
+| `ui/packages/app/tests/cli-loopback-approval.test.tsx` | CREATE | Prove approval identity binding, denial and uncertain outcomes. |
+| `ui/packages/app/tests/cli-loopback-approval-errors.test.tsx` | CREATE | Prove browser transport, cancellation and malformed-response failures. |
+| `ui/packages/app/tests/helpers/cli-loopback-fixture.tsx` | CREATE | Share external identity and network fixtures while keeping internal approval code real. |
+| `ui/packages/app/tests/e2e/acceptance/cli-loopback-login.spec.ts` | CREATE | Exercise real browser form headers, sign-in continuity and automatic completion. |
+| `docs/v2/pending/M218_001_P2_API_DOCS_SHARED_CRATES_REPLACE_HANDROLLED_RUST.md` | DELETE | Remove the duplicate pending spec; the completed spec remains in done. |
+| `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | EDIT | Preserve the existing launch plan and update its release-version guidance. |
+| `docs/v2/pending/M232_001_P2_DOCS_INFRA_DAGGER_LOCAL_CI_PILOT.md` | CREATE | Include the approved Dagger evaluation spec in this PR; measurements and Cloud setup remain unimplemented. |
+| `ui/packages/app/tests/approvals-pages.test.ts`<br>`ui/packages/app/tests/dashboard-placeholder.test.ts` | EDIT | Assert the full page waits behind the shared loader. |
+| `ui/packages/app/tests/models-secrets-page.test.ts` | EDIT | Assert the full page waits behind the shared loader. |
+| `ui/packages/app/app/cli-auth/[session_id]/cli-auth-ui.tsx` | EDIT | Remove the unused terminal-name formatter after the copy update. |
+| `rustd/crates/afd_inference/Cargo.toml` | EDIT | Remove the unused direct serde dependency. |
+| `rustd/Cargo.lock` | EDIT | Regenerate dependency edges with Cargo metadata. |
+| `ui/packages/app/components/domain/chat/ChatThread.tsx` | EDIT | Remove the unused after prop. |
+| `ui/packages/app/components/domain/FleetReplyFailure.tsx` | EDIT | Reuse parsePayload while preserving the original request text. |
+| `public/openapi.json` | REGENERATE | Publish short, plain descriptions from their Rust sources. |
+| `public/llms.txt`<br>`public/agentsfleet-manifest.json` | EDIT | Add the approved Billing and private checkpoint operations to the discovery indexes; align stored-usage wording. |
+| `rustd/crates/afd_http/src/openapi/mod.rs` | EDIT | Explain shared responses in plain language. |
+| `rustd/crates/afd_http/src/openapi/path.rs` | EDIT | Clarify identifiers and path values. |
+| `rustd/crates/afd_http/src/openapi/query.rs` | EDIT | Clarify pagination and filters without changing their rules. |
+| `rustd/crates/afd_api/src/openapi/mod.rs` | EDIT | Correct authentication guidance and simplify the API title. |
+| `rustd/crates/afd_api/src/router/probes.rs`<br>`rustd/crates/afd_api_ingress/src/handler/events/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`<br>`rustd/crates/afd_api_ingress/src/handler/webhook/approval_route.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_ingress/src/handler/webhook/qstash_route/mod.rs`<br>`rustd/crates/afd_api_ingress/src/handler/webhook/source_route.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_operator/src/handler/admin/models/mod.rs`<br>`rustd/crates/afd_api_operator/src/handler/admin/platform_keys/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_operator/src/handler/operator/events.rs`<br>`rustd/crates/afd_api_operator/src/handler/operator/leases.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_operator/src/handler/operator/runner_delete.rs`<br>`rustd/crates/afd_api_operator/src/handler/operator/runner_patch.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_operator/src/handler/operator/runners.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/activity.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/authoring/activity.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/authoring/model_call.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/authoring/renew.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/authoring/report.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/credential.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/enrolment.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/lease/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/memory.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/schedule.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/schedule_edit.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/schedule_run.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/self_record.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/tool_call.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/approval/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/auth/session/dashboard.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/auth/session/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/connector/callback.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/connector/status.rs`<br>`rustd/crates/afd_api_tenant/src/handler/draft/message.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/draft/models.rs`<br>`rustd/crates/afd_api_tenant/src/handler/draft/read.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/draft/stream/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/draft/write.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/event/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/event/tool_call/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs`<br>`rustd/crates/afd_api_tenant/src/handler/fleet/memory_access.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/fleet/message/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/fleet/message_steer/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/fleet/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/fleet/native/create.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/fleet/native/patch.rs`<br>`rustd/crates/afd_api_tenant/src/handler/preference.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/schedule/read.rs`<br>`rustd/crates/afd_api_tenant/src/handler/schedule/write.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/secret/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/tenant/api_key.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/billing.rs`<br>`rustd/crates/afd_api_tenant/src/handler/tenant/cli_credential.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/identity.rs`<br>`rustd/crates/afd_api_tenant/src/handler/tenant/invite.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/invite_email.rs`<br>`rustd/crates/afd_api_tenant/src/handler/tenant/member.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/model_entry/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/tenant/model_entry/write.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs`<br>`rustd/crates/afd_api_tenant/src/handler/tenant/provider/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_tenant/src/handler/tenant/provider/write.rs`<br>`rustd/crates/afd_api_tenant/src/handler/tenant/workspace/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/admin/mod.rs`<br>`rustd/crates/afd_api_wire/src/admin_catalogue.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/admin_library_native.rs` | EDIT | Correct timestamp wording to match the existing string format. |
+| `rustd/crates/afd_api_wire/src/approval.rs`<br>`rustd/crates/afd_api_wire/src/auth.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/authoring/input.rs`<br>`rustd/crates/afd_api_wire/src/authoring/models.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/authoring/output.rs`<br>`rustd/crates/afd_api_wire/src/connector.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/fleet/collection.rs`<br>`rustd/crates/afd_api_wire/src/fleet/input.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/fleet/output.rs` | EDIT | Correct timestamp wording to match the existing string format. |
+| `rustd/crates/afd_api_wire/src/health.rs`<br>`rustd/crates/afd_api_wire/src/ingress/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/library/output.rs`<br>`rustd/crates/afd_api_wire/src/models.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/operator.rs`<br>`rustd/crates/afd_api_wire/src/schedule/view.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/secret.rs`<br>`rustd/crates/afd_api_wire/src/tenant.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_wire/src/workspace.rs`<br>`rustd/crates/afd_http/src/openapi/header.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_tenant/src/session/response.rs`<br>`rustd/crates/afd_wire/src/activity/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/authoring/activity.rs`<br>`rustd/crates/afd_wire/src/authoring/lease.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/authoring/meter.rs`<br>`rustd/crates/afd_wire/src/authoring/model.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/authoring/renew.rs`<br>`rustd/crates/afd_wire/src/authoring/report.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/credentials.rs`<br>`rustd/crates/afd_wire/src/event/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/event/steer.rs`<br>`rustd/crates/afd_wire/src/lease/limits.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/lease/payload.rs`<br>`rustd/crates/afd_wire/src/lease/request.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/lease/response.rs`<br>`rustd/crates/afd_wire/src/policy/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/report/mod.rs`<br>`rustd/crates/afd_wire/src/runner/capability.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/runner/mod.rs`<br>`rustd/crates/afd_wire/src/runner/selftest.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/schedule_verb/mod.rs`<br>`rustd/crates/afd_wire/src/tool_detail/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_wire/src/tool_trace/mod.rs`<br>`rustd/crates/afd_wire/src/usage/mod.rs` | EDIT | Shorten generated API prose; preserve behavior and field formats. |
+| `rustd/crates/afd_api_runner/src/handler/runner/message.rs`<br>`rustd/crates/afd_api_runner/src/handler/runner/renew.rs` | EDIT | Shorten API guidance while retaining limits and stream recovery. |
+| `rustd/crates/afd_api_runner/src/handler/runner/report.rs`<br>`rustd/crates/afd_api_tenant/src/handler/stream/mod.rs` | EDIT | Shorten API guidance while retaining limits and stream recovery. |
+| `rustd/crates/afd_api_tenant/src/handler/approval/resolve.rs`<br>`rustd/crates/afd_api_tenant/src/handler/draft/patch.rs` | EDIT | Use plain API titles and support references. |
+
+| `docs/architecture/README.md`<br>`docs/architecture/api_resources.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/billing_and_provider_keys.md`<br>`docs/architecture/capabilities.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/concurrency.md`<br>`docs/architecture/connectors.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/data_flow.md`<br>`docs/architecture/datastore_scaling.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/direction.md`<br>`docs/architecture/fleet_definitions.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/high_level.md`<br>`docs/architecture/lease_flow.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/memory.md`<br>`docs/architecture/observability.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/postgres_schemas.md`<br>`docs/architecture/product_analytics.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/runner_execution.md`<br>`docs/architecture/runner_fleet.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/rust-ownership.md`<br>`docs/architecture/scaling.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/scenarios/README.md`<br>`docs/architecture/scenarios/github-pr-reviewer.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/scenarios/production-deploy-repair.md`<br>`docs/architecture/scenarios/slack-channel-resident.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/scenarios/slack-incident-responder.md`<br>`docs/architecture/scenarios/two-fleets-github-slack.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/shared_chat_verification.md`<br>`docs/architecture/testing.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/user_flow.md`<br>`docs/architecture/web_app.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/architecture/website-job-entrance.md`<br>`docs/AUTH.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
+| `docs/AUTH_DEVICE_LOGIN.md`<br>`docs/RUST_ERROR_STANDARD.md` | REVIEW / EDIT IF NEEDED | Reconcile authoring scenarios and data flows with current source; apply Astra findings. |
 
 ## Applicable Rules
 
-- `.orly/docs/greptile-learnings/RULES.md` — NDC, NLR, NLG, UFS, FLL, CTM, ECL: remove replaced prompts, centralize constants, constant-time secret comparisons, distinguish waiting and failures.
-- `.orly/dispatch/write_ts_adhere_bun.md` — shared controls, tokens and effect cleanup.
-- `.orly/dispatch/write_auth.md`, `docs/AUTH.md`, `docs/RUST_ERROR_STANDARD.md` — human consent, typed boundaries and preserved causes.
-- `.orly/docs/REST_API_DESIGN_GUIDELINES.md` — ownership and complete route registration.
+- `.orly/dispatch/write_ts_adhere_bun.md` — shared controls, tokens and named constants.
+- `.orly/dispatch/write_auth.md`, `docs/AUTH.md` — preserve existing human authorization and credential handling.
+- `.orly/docs/greptile-learnings/RULES.md` — remove replaced skeletons; keep state transitions and errors explicit.
+- `.orly/docs/DOCUMENTATION_RULES.md` — document current behavior and distinguish pending evidence.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |---|---|---|
-| UI / Design Token | yes | Existing Spinner, Button and Card primitives. |
-| File & Function Length (≤350/≤50/≤70) | yes | Extract polling, browser hook and completion by concern. |
-| Auth / Error / Logging | yes | Validated private verifier, owner checks, secret-free analytics. |
-| Spec / UFS / Orphan | yes | Test mappings; delete replaced interactive prompt. |
+| UI / Design Token | yes | Reuse Spinner and layout spacing tokens. |
+| File & Function Length | yes | Small shared loader; remove page-specific skeleton helpers. |
+| Auth / Error / Logging | yes | Bind the local callback to the original key, session and trusted browser origin; exclude authentication data from telemetry and preserve manual verification. |
+| Spec / UFS / Orphan | yes | Exact file inventory, mapped proofs and unused-import cleanup. |
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** Existing session scripts provide atomic transitions on a single cluster key. Existing CLI output services, typed errors, replacement prompt, rollback and hydration remain authoritative.
-- **Reference:** ShellFrame and the design-system Spinner provide persistent navigation and reduced-motion rendering.
+- **Reference:** Existing `ShellFrame` keeps header and sidebar mounted during page navigation.
+- **Reference:** The design-system Spinner supplies the shared visual mark, accessible status and reduced-motion behavior.
+- **Reference:** Existing CLI authorization tests cover encryption, failures and code presentation; retain those assertions while changing the button selector.
 
 ## Sections (implementation slices)
 
-### §1 — Shared page loader
+### §1 — Shared page loader and authorization wording
 
-Use the same centered accessible indicator in every route boundary and empty shell fallback. Before the shell resolves it fills the viewport; afterward it fills main content. Component-sized refresh indicators stay local.
+Use the same centered accessible indicator in every route boundary and empty shell fallback. Before the shell resolves it fills the viewport; afterward it fills main content. Local refresh indicators remain local. The CLI page uses the same loader; its ready button reads Authorize and its busy button Authorizing….
 
-- **Dimension 1.1** — Common indicator on all page boundaries → Test `shared_route_loading`
-- **Dimension 1.2** — Slow navigation preserves shell and first load fills viewport → Test `loading_browser_walk`
+- **Dimension 1.1 — DONE** — Common indicator at every route boundary → Test `shared_route_loading`
+- **Dimension 1.2 — DONE** — First load fills viewport and slow navigation preserves shell → Test `loading_browser_walk`
+- **Dimension 1.3 — DONE** — Authorize appears only when ready; current sign-in behavior survives → Test `authorize_wording`
+- **Dimension 1.4 — DONE** — Indy reviews the local visual evidence → Test `indy_acceptance`
 
-### §2 — Compare and approve
+### §2 — Short, accurate API descriptions
 
-Terminal creates an ephemeral encryption key and independent 256-bit private verifier. Server stores its session-bound peppered digest at creation. Browser derives a six-digit visual code from the public key and requires deliberate human comparison and approval. Approval cannot overwrite the verifier. Required creation fields reject outdated clients immediately. CLI polls with bounded cancellation; after decrypting it persists and validates identity before acknowledging completion. An authenticated owner sees connected only after that acknowledgement.
+Update canonical Rust descriptions and regenerate the public API document. Preserve every non-prose value of the saved pre-wording input at `74a39c60ef260973894a68f29d0b6e4f6f1c6eda`. Earlier authoring schema changes remain part of PR #784.
 
-- **Dimension 2.1** — Private redemption, expiry, attempt bound and replay remain atomic → Test `private_redemption`
-- **Dimension 2.2** — Automatic login validates and saves before acknowledging; failed save/identity never acknowledges → Test `automatic_login`
-- **Dimension 2.3** — Browser comparison, account/environment, cancellation and recoverable errors → Test `terminal_login_ui`
-- **Dimension 2.4** — Indy eyeballs both experiences → Test `indy_acceptance`
+- **Dimension 2.1 — DONE** — Compare every non-prose value and retain all 140 operations → Test `openapi_prose_comparison`
+- **Dimension 2.2 — DONE** — Astra challenges user and operator guidance, then re-reviews supported corrections → Test `astra_api_accuracy`
+
+### §3 — Complete authoring architecture and scenarios
+
+Read all 31 architecture and scenario pages plus the three named authorization and Rust error guides. Compare their flows and guarantees with source.
+
+Repair supported gaps and keep current behavior separate from unimplemented scenarios. A different Astra reviewer checks each edited group before publication.
+
+- **Dimension 3.1 — DONE** — Complete the document coverage matrix and source-backed corrections → Test `astra_architecture_audit`
+- **Dimension 3.2 — IN_PROGRESS** — Validate edited documentation, links and final adversarial review → Test `architecture_documentation_checks`
+
+### §4 — Complete local acceptance
+
+Repair the observed model-status display and synchronize acceptance journeys with completed user actions. Keep exact activation, grant, hover and execution assertions.
+
+- **Dimension 4.1 — IN_PROGRESS** — Successful activation refreshes the visible registry; refusal retains the committed inactive entry and error → Test `created_model_activation`
+- **Dimension 4.2 — IN_PROGRESS** — Sidebar loading completes before the zero-download hover measurement; clicking still loads the editor → Test `intent_loading_client_capabilities`
+- **Dimension 4.3 — IN_PROGRESS** — Approval continuation reaches the exact fleet's active state before navigating away → Test `multi_fleet_grant_journey`
+
+### §5 — Bound local terminal authorization
+
+Default browser login binds only literal `127.0.0.1` on an operating-system-assigned port. The configured dashboard origin and exact session route are validated before appending `?flow=loopback` and a fragment containing version, session identifier, original public key, callback address and 256-bit random state. Both displays use the first eight uppercase hexadecimal digits of SHA-256 over UTF-8 `agentsfleet.cli.login.loopback.v1\n{session_id}\n{cli_public_key}`, grouped four-four. The full decoded key must match before authorization; the short code is a human aid.
+
+Capture recognized fragments synchronously before analytics or Clerk navigation, strip them even on refusal, and retain only validated handoff metadata in bounded per-tab session storage across sign-in. Bind sign-in capture to its same-origin marked return route; revalidate on restore, preserve original expiry, cap each record at 2 KiB and two records total. Never store a token, verification code or private key there. Authentication routes and navigation targets are excluded from analytics at initialization and capture. Missing, conflicting, malformed or unavailable storage fails visibly without manual downgrade.
+
+Authorize and Deny share a synchronous once-only guard. Show signed-in identity; require stable subject and browser session while acquiring both tokens. Approval retains existing encryption and single-write approval, then top-level form-POSTs the six-digit code to the local callback. Route-specific `Referrer-Policy: origin` preserves a non-null origin header on HTTPS-to-loopback POST. Deny sends only the bound denial; the unapproved API session expires normally. Uncertain approval requires a fresh session; no retry mint or fallback releases its code.
+
+The listener checks exact Host, non-null trusted Origin, method, path, content type, unique known fields, matching session and constant-time state before consuming its waiting slot. Bound headers, streamed body at 1 KiB and request lifetime; invalid or slow requests cannot win. Approval, denial, expiry and cancellation have one atomic winner. Esc and interrupt cancel only WAITING; approval moves to visible FINALIZING before verification, mint, persistence and identity validation. Keep the interrupt handler until finalization ends. Existing mint replacement and rollback limitations remain documented. Return static no-store secret-free HTML only after the actual outcome; a lost browser response never repeats exchange. Close listeners, timers and input modes on every exit. The maximum wait is the existing five-minute session window.
+
+Explicit `--no-open` or configured no-open retains the current six-digit manual flow for remote terminals. Browser-open failure offers same-computer URL or explicit restart with `--no-open`; callback failure never silently changes mode. No new backend endpoint, approval capability, token format or polling release is introduced. Reference: RFC 8252 §§7.3,8.3,8.9; Astra's source-backed design review requires actual browser proof for redirect and header behavior.
+
+- **Dimension 5.1 — IN_PROGRESS** — Local callback rejects forged and replayed handoffs and cleans every resource → Test `loopback_listener_security`
+- **Dimension 5.2 — IN_PROGRESS** — Browser code, key, account and session are bound before one approval or denial → Test `loopback_browser_binding`
+- **Dimension 5.3 — IN_PROGRESS** — Real sign-in and form navigation complete locally without secret telemetry; remote manual flow survives → Test `loopback_login_journey`
+
+### §6 — Shared compaction and checkpoint continuation
+
+**Status:** IN_PROGRESS. Use the approved shared `afd_context` engine for private setup and fleet execution, with traits, trait objects and correctly scoped `Fn`, `FnMut` and `FnOnce` callbacks. The [architecture scope](../../architecture/context_lifecycle.md#implementation-scope) extends Files Changed for this approved follow-up. Preserve original history, private ownership, immutable revisions, native replay integrity, guarded publication and metered physical calls. Remove the independent 32,768-token and 64-history-row refusals; compact near 90 percent of the selected physical window and continue.
+
+**Owner instructions:** “lets finish the compaction first” and “and you run the same test after compaction to prove we can test beyond the 47th or whatever 41st turn you stopped.” Run the unchanged full local acceptance lane after integration, retaining its 181-message/four-save assertions and the historical turn-42 failure evidence. Forced repeated-compaction tests for both hosts supplement that rerun.
+
+**Quality ceiling:** One shared lifecycle and checkpoint repository prevent divergent recovery and duplicate algorithms.
+**Surface area:** OpenAPI yes (runner checkpoint/protocol); CLI no new command; user guidance yes; release behavior yes; additive schema yes; no harness/hook changes, review-counter reset or merge.
+
+Preparation must grow linearly with history and keep independent conversations concurrent. The [context lifecycle](../../architecture/context_lifecycle.md#preparation-and-future-sandbox-boundary) records the approved implementation and failure requirements.
+
+**Subsequent sandbox agent:** After PR #784 merges, use [sandbox-handoff-prompt.md](../../reviews/space-sandbox/sandbox-handoff-prompt.md) for the SPACE-derived Firecracker migration. It carries the concept, detailed design/spec review requirements and separate implementation sequence.
+
+**Subsequent workflow agent:** Use [orly-egm-jev-handoff-prompt.md](../../reviews/space-sandbox/orly-egm-jev-handoff-prompt.md) in the Orly source repository. It covers the Elephant-Goldfish Model (EGM) workflow and TypeSafe Jev spec-rubric grading.
+
+- **Dimension 6.1 — DONE** — Storage-independent shared lifecycle and unchanged private checkpoint semantics → Test `checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or_replace_notes`.
+- **Dimension 6.2 — DONE** — Linear preparation work and bounded reads without a lifetime conversation cap → Test `cumulative_provider_encoding_grows_linearly_as_history_grows_tenfold`.
+- **Dimension 6.3 — DONE** — Independent conversations progress while another summary is blocked; cancellation stays local → Test `a_blocked_summary_does_not_block_another_conversations_checkpoint`.
+- **Dimension 6.4 — DONE** — One prepared authoring body is funded and revalidated before physical dispatch → Test `changed_history_after_funding_cannot_dispatch_the_previously_measured_body`.
+- **Dimension 6.5 — IN_PROGRESS** — Repeated compaction preserves goals, original history, tool groups and deletion ownership → Test `repeated_authoring_compaction_restores_notes_and_continues_with_all_181_messages_intact`.
+
+**Failure proofs:** Reject a wrong prefix digest before provider access. Rebuild the runtime index when pending child input changes. Reject source changes after funding. Keep the previous checkpoint after cancellation, stale generation, unknown usage or failed publication. Retain known charges after a model reply. A blocked conversation cannot hold another conversation's progress.
+
+**Signals:** No new product events. Test counters record page reads, encoded groups and concurrent progress without conversation text. Wall-time and throughput remain unverified until measured.
+
+### §7 — Settled Billing reporting and local review
+
+Implement the approved sidebar-aware page and the [Billing reporting design](../../architecture/billing_reporting.md), including its domain, handler, query, wire, component and test scope. Reuse the design system. Keep totals over the complete selected period, group billed work and retain paginated individual details. Existing balances and raw charges remain compatible; reporting never moves money.
+
+- **Dimension 7.1 — DONE** — Scoped settled aggregates, grouped paging and bounded detail reads → Test `settled_report_totals_cover_more_than_one_activity_page`
+- **Dimension 7.2 — DONE** — Real-query plans, concurrent reads and clean failure/resource paths → Test `report_queries_bound_scans_to_tenant_and_period`
+- **Dimension 7.3 — DONE** — Approved filters, exact amounts and disclosures render on the real local route → Test `renders full-period totals independently of the single displayed activity`
 
 ## Interfaces
 
-- Create requires `public_key`, `token_name`, `verification_code`: a private 43-character base64url verifier. Missing or invalid fields fail before storage. Update server and clients together; no parallel compatibility path.
-- Approve carries encrypted payload and dashboard public key; never private verifier.
-- Verify presents private `verification_code`; existing single-use and same-fingerprint replay remain atomic.
-- `GET /v1/auth/sessions/{session_id}/completion`: authenticated approving human reads `{completed: boolean}`.
-- `POST /v1/auth/sessions/{session_id}/completion`: approving human plus private verifier acknowledges a consumed session. Idempotent, no expiry extension.
+- `RouteLoading({ fullScreen?: boolean })`: content-sized by default, viewport-sized when requested.
+- Status accessible name: Loading page. Visible label: Loading….
+- Ready heading: Connect your terminal. Show identity and matching code before local authorization; offer Authorize and Deny. Explicit remote manual mode retains code entry. Existing API endpoint names and request bodies remain unchanged.
 
 ## Failure Modes
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |---|---|---|
-| Invalid / outdated client | Missing verifier, wrong shape | 400 before storage; update and restart guidance. |
-| Pending / competing approval | No approval or concurrent tabs | Wait while pending; first approval wins; no payload overwrite. |
-| Wrong secret / replay | Guess or different fingerprint | Existing bounded attempts and replay; no credential released. |
-| Timeout / cancel | Expiry or interrupt | Stop waiting, no new local credential; restart instructions. |
-| Network / unavailable dependency | Dropped response or server failure | Bounded retry; uncertain browser approval recovers via status, never false success. |
-| Persistence / identity failure | Cannot save or credential refused | Existing failure and rollback, no acknowledgement. |
-| Completion attack | Other owner, wrong verifier or premature acknowledgement | Refuse without setting completed. |
+| Slow initial load | Shell data unresolved | Viewport-sized shared loader. |
+| Slow navigation | Next page unresolved | Shared loader fills content; header and sidebar persist. |
+| Local refresh | Existing table or button request | Existing local indicator remains in place. |
+| Expired or refused login | Existing authentication failure | Existing error state and disabled action remain; no false success. |
+| Reduced motion | User accessibility preference | Existing Spinner styles reduce animation. |
+| Model activation refused after registration | Registration commits before the provider change | Retain the saved inactive entry and open dialog with its activation error. |
 
 ## Invariants
 
-1. Public comparison code cannot redeem — private verifier digest is fixed at creation and checked in atomic consume.
-2. Only browser-session identity approves — DashboardIdentity extractor.
-3. Completion requires consumed state, matching owner and private verifier in one script; CLI calls after saving and successful identity read.
-4. Private verifier never enters URL, browser or analytics; changed login events omit session identifiers.
-5. Existing workspace auth layouts guard resolved content; common loading never skips those checks.
+1. A page loader is a status indicator and cannot authorize a session or bypass page access checks.
+2. Loaded dashboard navigation remains mounted around pending page content.
+3. Every route boundary uses the same component; no route-specific skeleton layout remains.
+4. Login encryption, server code verification, credential persistence and identity validation retain their existing behavior; automatic delivery additionally requires the same-computer callback binding in §5.
 
 ## Metrics & Observability
 
-Keep existing terminal completion event after identity validation; omit session identifiers. Distinguish browser approval from saved terminal completion in authentication docs and event semantics. Navigation already records views; add no loading-view event.
+No new analytics events or identifiers. Use browser screenshots and DOM geometry for loading evidence; package tests prove indicator and action states. Record repository checks separately.
 
 ## Test Specification (tiered)
 
-| Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
+| Dimension | Tier | Test | Asserts |
 |---|---|---|---|
-| 1.1 | unit | `shared_route_loading` | Every route renders one accessible common status and no page-specific skeleton. |
-| 1.2 | e2e | `loading_browser_walk` | Slow first load and navigation show the common loader with expected shell. |
-| 2.1 | integration | `private_redemption` | Missing/wrong secret, no approval, wrong owner, expiry, competing consume and replay cannot release another credential or acknowledge prematurely. |
-| 2.2 | unit | `automatic_login` | Pending retries; cancellation, timeout, network, persistence and identity failures do not acknowledge; success orders save then identity then acknowledgement. |
-| 2.3 | e2e | `terminal_login_ui` | Compare/approve shows waiting; only authenticated completion shows connected; uncertain approval recovers. |
-| 2.4 | manual | `indy_acceptance` | Indy navigates preview and signs in from terminal; preserve his verdict in PR notes. |
+| 1.1 | unit | `shared_route_loading` | All route boundaries render one status with Loading page and Loading…; no pulse skeleton or page title. |
+| 1.2 | e2e | `loading_browser_walk` | Slow navigation leaves header and sidebar visible with a centered content indicator; initial loading fills viewport. |
+| 1.3 | unit | `authorize_wording` | Loading hides the action; pending session enables Authorize; approval, encryption and failure assertions still hold. |
+| 1.4 | manual | `indy_acceptance` | Indy reviews the local loader and renamed ready button; record his verdict separately. |
+| 2.1 | generated document | `openapi_prose_comparison` | Every non-prose value matches the saved pre-wording input at `74a39c60`; all 140 operation identifiers survive. |
+| 2.2 | manual review | `astra_api_accuracy` | Correctness findings are repaired and the focused Astra re-review is clean. |
+| 3.1 | manual review | `astra_architecture_audit` | All 34 documents are read; source evidence supports corrections and each scenario's implementation status. |
+| 3.2 | documentation | `architecture_documentation_checks` | Declared documentation checks pass and independent Astra reviews find no unresolved supported defect. |
+| 4.1 | unit / e2e | `created_model_activation` | The real table shows the newly active model after success; registration and activation refusals preserve the correct visible state. |
+| 4.2 | e2e | `intent_loading_client_capabilities` | After the sidebar's initial read, Save-Data hover downloads no scripts; opening the editor loads its scripts and dialog. |
+| 4.3 | e2e | `multi_fleet_grant_journey` | Each retained fleet reaches active after grant approval before another fleet is opened; exact ownership and execution assertions remain. |
+| 5.1 | unit / integration | `loopback_listener_security` | Real listener refuses malformed, forged, oversized, slow, expired, cross-session and replay requests; cancellation races have one winner and no leaks. |
+| 5.2 | unit | `loopback_browser_binding` | Full key, stable account/session and comparison code precede one decision; denial and uncertain approval never release a credential; storage and analytics refuse sensitive leakage. |
+| 5.3 | e2e | `loopback_login_journey` | Signed-in and signed-out login preserve marked handoff safely, real callback headers pass, terminal identity matches, and manual other-device verification remains supported. |
+| 6.1 | integration | `checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or_replace_notes` | Retries preserve one generation and stale authority cannot publish private notes; `one_of_one_hundred_conflicting_checkpoint_writers_publishes_exactly_one_generation` proves contention. |
+| 6.2 | unit | `cumulative_provider_encoding_grows_linearly_as_history_grows_tenfold` | Estimator group visits stay below three times source groups; `runtime_history_index_invalidates_changed_pending_input` proves tail refresh and the runtime encoding ladder bounds actual serializer input. |
+| 6.3 | unit | `a_blocked_summary_does_not_block_another_conversations_checkpoint` | A second conversation publishes while the first model response remains deliberately blocked. |
+| 6.4 | integration | `changed_history_after_funding_cannot_dispatch_the_previously_measured_body` | Funding releases datastore locks; changed source or authority rejects dispatch before provider access. `each_platform_send_funds_measured_input_and_keeps_prior_known_cost` proves reservation growth. |
+| 6.5 | unit / integration / e2e | `repeated_authoring_compaction_restores_notes_and_continues_with_all_181_messages_intact` | Runtime proof `repeated_compaction_continues_past_turn_forty_two_and_keeps_tools_and_goal` and unchanged `fleet-continuity-final.spec.ts` retain 181 messages and four saves, plus the separate ten-fleet journey. |
+| 7.1 | integration | `settled_report_totals_cover_more_than_one_activity_page` | Full-period sums and breakdowns include every filtered settled row; pending, foreign and private text stay out. Tied boundaries and mismatched continuations are proved. |
+| 7.2 | integration | `report_queries_bound_scans_to_tenant_and_period` | Production EXPLAIN plans retain tenant/time and work/sequence bounds across a history ladder; concurrent reads overlap and return connections; datastore failure changes no money. |
+| 7.3 | unit / e2e | `renders full-period totals independently of the single displayed activity` | The Billing component suite proves filter resets, exact tiny charges, customer-key wording, empty and failure states. `settings-billing.spec.ts` proves real reads, themes and sidebar widths; keyboard disclosure opens with Enter and closes with Space in the component proof. |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Both experiences work | Local browser and terminal acceptance walk | Navigation and login evidence, Indy verdict recorded separately | P0 | |
+| R1 | Loader and wording are reviewable | Local browser evidence walk | Screenshots and preview; Indy verdict recorded separately | P0 | |
 | S1 | Conform | `make harness-verify` | exit 0 | P0 | |
 | S2 | Lint | `make lint-all` | exit 0 | P0 | |
 | S3 | Unit | `make test-unit-all` | exit 0 | P0 | |
@@ -166,35 +384,46 @@ Keep existing terminal completion event after identity validation; omit session 
 
 ## Dead Code Sweep
 
-Remove browser-code prompt and route-specific skeleton bodies. Search `promptVerificationCode`, `verifyAndDecryptWithRetry`, `generateVerificationCode` and remove unused helpers and imports. No compatibility aliases.
+Remove page-specific skeleton bodies and their unused imports. Retain shared CLI verification helpers and explicit manual code entry; automatic mode reuses the encrypted exchange. Search route boundaries and page Suspense fallbacks for remaining page-specific skeletons.
 
 ## Out of Scope
 
-- Deployment, merging PR #784, and repeated paid fleet acceptance.
+- New backend approval capabilities, completion endpoints, token formats and automatic remote-device polling.
+- Remote deployment and merging PR #784. Indy subsequently requested the full local acceptance test; it remains required.
 - Component-sized loading for buttons or background refresh.
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — Recognizable navigation; terminal connected after comparison and one browser approval.
-2. **Preserved user behaviour** — Manual URL opening, credential replacement confirmation, identity rollback and workspace hydration.
-3. **Optimal-way check** — Remove code copying while preserving deliberate human approval.
-4. **Rebuild-vs-iterate** — Iterate on encrypted session relay and shell boundaries.
-5. **What we build** — Shared loader, private redemption, bounded waiting, confirmed completion and recovery.
-6. **What we do NOT build** — New account system or fleet runtime behavior.
-7. **Fit with existing features** — Preserve workspace access and durable credentials.
-8. **Surface order** — Shared loader and server safety before client integration; preview together.
-9. **Dashboard restraint** — Approval says waiting; connected requires acknowledgement.
-10. **Confused-user next step** — Compare codes, change account before approval, or restart `agentsfleet login` after cancellation/expiry.
+Consistent loading preserves recognizable navigation, human approval and terminal identity. Reuse shell, spacing tokens, Spinner and accessibility; avoid new loading dependencies or forced delays.
+
+Show the loader across the viewport before the shell and within content afterward. Persistent navigation and existing error recovery remain available. Remote manual verification stays explicit; loading never implies completion or approval.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Shared loader and focused login handshake update in existing PR, as requested.
-- **Alternatives considered:** Approval as success cannot prove persistence; public comparison code as redemption secret allows third-party consumption.
-- **Patch-vs-refactor verdict:** A refactor of login orchestration retaining encryption and atomic storage primitives.
+- **Chosen shape:** Small shared loader and wording update in the approved PR.
+- **Alternatives considered:** Route-specific skeletons preserve inconsistency. Server polling alone removes the manual human binding; §5 instead binds automatic delivery to a same-computer listener and original public key.
+- **Patch-vs-refactor verdict:** Reuse existing components and remove duplicated markup.
 
 ## Discovery (consult log)
 
-- **Consults** — Indy approved: “ys go on both signed off approved, fix that in this PR. let indy eyeball both experience when done”. Same branch/tree; visual acceptance remains pending. App-wide common loader supersedes fleet-only skeleton proposal.
-- **Metrics review** — Remove session identifiers from changed login events; document approval versus completion.
-- **Skill-chain outcomes** — Spec authored; unit, integration, review and post-push follow-up pending.
-- **Deferrals** — None.
+- **Visual acceptance** — Indy: “Okay we are fine on both loader and the cli - signed off approved”. He then requested no handrolled or duplicated code, including Rust, and checks for performance, concurrency and races.
+- **Consults** — Indy approved app-wide loading, then retained the current CLI flow and requested Authorize as the button label. He requested evidence he can inspect.
+- **Metrics review** — No event changes required.
+- **Skill-chain outcomes** — Visual acceptance recorded above. Focused loader and authorization checks: 110 passed across nine files. Shared-parser retry checks: 12 passed. Repository checks remain in progress.
+- **Scope separation** — The experimental CLI branch is local only. Its real-router attack proof reproduced unauthorized approval, HTTP 200 where refusal was expected. No experimental protocol code ships here.
+- **OpenAPI wording** — Indy requested a large review of `public/openapi.json`, with short descriptions and no cryptic terminology. Edit canonical Rust prose and regenerate the document. Preserve request and response shapes, permissions, limits, retry behavior, and deletion warnings; compare every non-prose value after generation.
+- **Astra review** — Indy requested an engineer and site reliability engineer review after the docs and OpenAPI changes. Its source checks identified six accuracy gaps. Correct the network-access scope, schedule registration outcomes, 24-hour retry window, required-value lookup instructions, timestamp wording, and published runner maintenance guidance. Runtime behavior remains outside this wording change.
+
+- **Architecture completeness** — Indy requested every `docs/architecture/*.md` page, its scenarios, `docs/AUTH.md`, `docs/AUTH_DEVICE_LOGIN.md`, and `docs/RUST_ERROR_STANDARD.md` be reviewed against recent authoring changes and pushed in PR #784. He then explicitly requested an adversarial review with Astra and corrections. Audit the complete set, repair supported gaps, and re-review the final edits.
+- **Dagger evaluation plan** — Indy directed: “the dagger spec must go in this PR”. Include pending M232 in PR #784; its local, cache-invalidation and Cloud measurements remain unimplemented.
+- **Later login scope** — The saved owner instruction includes Muse-style login improvements in this same PR. Fresh Astra design review supports the §5 loopback design subject to its explicit browser, race and privacy proofs. This supersedes the earlier manual-only implementation scope, without adopting the unsafe experimental branch.
+
+## Verification record
+
+[Historical verification](../../reviews/pr784-verification-history.json) preserves the original results, failed acceptance runs and terminal implementation-review disposition verbatim. Final compaction, Billing and repository checks remain required on the settled candidate.
+
+Dimensions 6.1 and 6.4 and Billing Dimensions 7.1–7.2 passed in `make test-integration-rustd`: 1,381 regular and three exclusive tests, exit 0 (`/private/tmp/pr784-billing-integration-2.log`). Dimensions 6.2–6.3 passed in the Rust portion of `make test-unit-all` (`/private/tmp/pr784-unit-all-2.log`); that whole command failed the app coverage threshold. Dimension 6.5 still requires both unchanged browser continuity journeys. Owner review and published-documentation approval remain open.
+
+Billing Dimension 7.3 passed the app component proofs in `make test-coverage-all`: 4,238 app tests and 100 percent branch coverage; all four package coverage gates passed (`/private/tmp/pr784-package-coverage-current.log`). The selected real-stack `settings-billing.spec.ts` run passed nine preflight and three Billing checks, including accessibility and horizontal-overflow assertions in both themes at desktop and mobile widths (`/private/tmp/pr784-billing-live-browser-2.log`). Its fixture account had no settled activity; populated amounts and disclosure behavior are proved by component and integration tests. `make acceptance-local SUITE=execution` separately passed all ten checks (`/private/tmp/pr784-local-execution-billing-build.log`). Neither selection replaces the full continuity acceptance.
+
+Final documentation attempt two of two is blocked (`/private/tmp/pr784-product-docs-final-report.json`): 109 paths were actually read or inspected, with ten partial document reads explicitly disclosed. Supported prose, error-census and discovery-index findings were repaired afterward; this does not create a fresh completed audit. Two older diagram blocks remain unchanged and are explicitly labeled historical. Broader source coverage, diagram replacement and published-documentation approval remain open; Dimension 3.2 is therefore IN_PROGRESS.

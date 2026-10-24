@@ -25,6 +25,8 @@ pub(crate) struct Turn {
     pub(crate) replay: Replay,
     /// The turn stopped at its output limit, so its calls must not run.
     pub(crate) cut: bool,
+    /// The stream supplied its complete final marker.
+    pub(crate) finished: bool,
 }
 
 /// Reads `stream` to its end. An error ends the turn there; dropping the
@@ -49,6 +51,7 @@ pub(crate) async fn take(
                 meter.add(usage);
             }
             Chunk::End(end) => {
+                turn.finished = true;
                 turn.replay = end.replay;
                 turn.cut = end.cut;
             }

@@ -22,6 +22,8 @@ const RUNNER_SELF: &[Scope] = &[Scope::RunnerSelf];
 pub enum RunnerRoute {
     /// The runner reading its own record.
     SelfRecord,
+    /// Private context checkpoint for a branch of a live lease.
+    ContextCheckpoint,
     /// The runner's heartbeat.
     Heartbeat,
     /// Claiming a lease.
@@ -65,6 +67,7 @@ impl RunnerRoute {
     /// Every runner-plane route.
     pub const ALL: &'static [Self] = &[
         Self::SelfRecord,
+        Self::ContextCheckpoint,
         Self::Heartbeat,
         Self::Lease,
         Self::Report,
@@ -95,6 +98,7 @@ impl RunnerRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
+            Self::ContextCheckpoint => &[Verb::Get, Verb::Put],
             Self::Schedules | Self::ScheduleRuns => &[Verb::Get, Verb::Post],
             Self::Schedule => &[Verb::Patch, Verb::Delete],
             Self::SelfRecord | Self::MemoryHydrate => &[Verb::Get],
@@ -123,6 +127,7 @@ impl RunnerRoute {
     pub const fn meta(self) -> RouteMeta {
         let template = match self {
             Self::SelfRecord => paths::RUNNER_SELF,
+            Self::ContextCheckpoint => paths::LEASE_CONTEXT,
             Self::Heartbeat => paths::RUNNER_HEARTBEATS,
             Self::Lease => paths::RUNNER_LEASES,
             Self::Report => paths::RUNNER_REPORTS,

@@ -38,6 +38,7 @@ pub mod limits;
 pub mod nanos;
 pub mod price;
 pub mod rates;
+pub mod report;
 pub mod sql;
 // The TENANT's read side of the same schema: a wallet snapshot and the paged
 // charge ledger a person reads in the console. It sat in `afd_tenant` while

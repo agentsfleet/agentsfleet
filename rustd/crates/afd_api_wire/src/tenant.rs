@@ -13,7 +13,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-/// `POST /v1/api-keys` — mint one tenant credential.
+/// Request to create an account API key.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -41,7 +41,7 @@ pub struct MintedApiKeyResponse<'a> {
     pub created_at: jiff::Timestamp,
 }
 
-/// `POST /v1/cli-credentials` — mint this machine's credential.
+/// Request to create this machine's command-line credential.
 //
 // Unknown fields are refused with a 400, as on [`MintApiKeyRequest`] beside it:
 // a field this daemon does not read is a client believing something about the
@@ -70,7 +70,7 @@ pub struct MintedCliCredentialResponse<'a> {
     pub credential: Cow<'a, str>,
     /// The terminal's label, echoed back as it was stored.
     pub machine_name: Cow<'a, str>,
-    /// The deployment that minted it — this daemon, never a caller's claim.
+    /// Deployment that issued this credential, assigned by the server.
     pub deployment: Cow<'a, str>,
 }
 
@@ -110,11 +110,7 @@ pub struct ApiKeySummary<'a> {
     /// When it was minted.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
-    /// When it stopped working, if it has.
-    ///
-    /// Emitted as `null` rather than omitted — here and on every optional in
-    /// this module — so a row is always the same set of keys. Omission would
-    /// be a shape change a dashboard's `"revoked_at" in row` check can feel.
+    /// When the key was revoked, or null while active.
     #[serde(with = "afd_wire::instant::option", default)]
     pub revoked_at: Option<jiff::Timestamp>,
 }
@@ -128,9 +124,10 @@ pub struct ApiKeySummary<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
-    /// What remains, in nanos — one thousand-millionth of a dollar. Negative
-    /// while the tenant owes a debt. A settlement takes its whole charge, and
-    /// the next grant repays the debt before any of it is spendable.
+    /// What remains, in nanos — one thousand-millionth of a dollar.
+    ///
+    /// Negative while the tenant owes a debt. A settlement takes its whole charge, and the
+    /// next grant repays the debt before any of it is spendable.
     #[serde(with = "afd_wire::nanos::signed")]
     #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::signed::SignedDecimal))]
     pub balance_nanos: i64,
@@ -159,16 +156,13 @@ pub struct ChargeSummary<'a> {
     /// The workspace it was incurred in. It survives that workspace's
     /// deletion, because a charge outlives what it was incurred on.
     pub workspace_id: Cow<'a, str>,
-    /// The fleet it was incurred by. A fleet run's charge always names it,
-    /// through the fleet's deletion; the dashboard derives the callsign from
-    /// it. A setup chat names the fleet its draft was saved as, or `null`
-    /// while the draft has none.
+    /// Fleet charged for this work. Run charges retain the identifier after deletion. Setup
+    /// chats use the saved fleet's identifier, or null before saving.
     pub fleet_id: Option<Cow<'a, str>>,
-    /// That fleet's name. A fleet run's charge keeps the name captured when it
-    /// was written, so a later rename never reaches it. A fleet purged before
-    /// its charge landed leaves its own identifier here. When this value equals
-    /// `fleet_id`, the charge captured no name. A setup chat shows the saved
-    /// fleet's current name, or `null` without one.
+    /// Fleet name captured when a run charge was recorded; later renames do not change it.
+    ///
+    /// A value equal to `fleet_id` means no name was captured. Setup chats show the saved
+    /// fleet's current name, or null before saving.
     pub fleet_name: Option<Cow<'a, str>>,
     /// The event that triggered the work, or `null` for a setup chat.
     pub event_id: Option<Cow<'a, str>>,
@@ -217,20 +211,15 @@ pub struct ChargesResponse<'a> {
 // resource on these planes and a per-resource copy is a per-resource chance
 // for the keys to drift apart. The three keys are pinned by the integration
 // test that counts them.
-/// One page of a list, in the envelope every list on this API shares.
-///
-/// Each page carries three keys: `items`, `total` and `next_cursor`. A
-/// `next_cursor` of `null` means you have reached the last page.
+/// One result page with `items`, `total`, and `next_cursor`. A null `next_cursor` means the
+/// last page.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageResponse<'a, T> {
     /// The rows on this page, in the requested order.
     pub items: Vec<T>,
-    /// How many rows the collection holds in total.
-    ///
-    /// Page-stable — the count carries no keyset predicate — so a client
-    /// walking pages sees one number rather than a shrinking one. Whether more
-    /// pages exist is answered by `next_cursor` being non-null, not by a flag.
+    /// Total matching records across all pages. Use `next_cursor` to determine whether
+    /// another page exists.
     pub total: i64,
     /// Where the next page resumes, or `null` on the last page.
     ///

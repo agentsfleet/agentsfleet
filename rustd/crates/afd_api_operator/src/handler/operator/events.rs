@@ -20,12 +20,10 @@ const EVENT: &str = "runner_events_failed";
     path = "/v1/fleets/runners/{runner_id}/events",
     tag = afd_http::openapi::tag::FLEET,
     operation_id = "list_fleet_runner_events",
-    summary = "List fleet runner events",
+    summary = "List runner activity",
     description = concat!(
-        "Platform-admin read of a single runner's append-only history, newest ",
-        "first over the composite (occurred_at, id) key. Optionally filtered ",
-        "by event type ",
-        "and an occurred-at millisecond window. ",
+        "Lists a runner's recorded activity newest first. Requires platform administrator ",
+        "access. Filter by event type or an occurrence-time range in milliseconds.",
     ),
     params(
         afd_http::openapi::path::Runner,

@@ -42,11 +42,10 @@ use super::{
     path = "/v1/tenants/me/provider",
     tag = afd_http::openapi::tag::TENANT,
     operation_id = "delete_tenant_provider",
-    summary = "Reset tenant LLM provider to platform default",
+    summary = "Reset the account model provider",
     description = concat!(
-        "Equivalent to `PUT {mode: \"platform\"}`. Writes an explicit ",
-        "platform selection so the dashboard can distinguish \"never ",
-        "configured\" from \"explicitly reset\". ",
+        "Selects the shared platform provider, equivalent to PUT with `mode` set to ",
+        "`platform`. The response records that you explicitly reset the choice.",
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),
@@ -94,11 +93,11 @@ pub(crate) async fn reset<D: Services>(
     path = "/v1/tenants/me/provider",
     tag = afd_http::openapi::tag::TENANT,
     operation_id = "put_tenant_provider",
-    summary = "Set tenant model provider",
+    summary = "Set account model provider",
     description = concat!(
-        "Sets the provider mode and model. Self-managed mode requires a ",
-        "`credential_ref` that names an existing secret. If the model entry ",
-        "does not exist, this request creates it. ",
+        "Sets your account's provider mode and model. Self-managed mode requires an ",
+        "existing secret named by `credential_ref`. Creates the model entry if it is ",
+        "missing.",
     ),
     request_body = TenantProviderRequest,
     responses(

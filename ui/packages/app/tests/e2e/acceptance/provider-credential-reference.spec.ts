@@ -10,13 +10,10 @@
  * tenant provider at it. The credential name is the typed Name, so cleanup
  * resets the provider and deletes that credential by the same name.
  *
- * Defensive by design: the form assembly is deterministic (client-side), but
- * the save+activate round-trip depends on the fixture backend accepting the
- * model, so the activation assertion tolerates an env-variance alert the same
- * way the prior credential-reference spec did. The exact action calls are
- * pinned by models-registry-add.test.tsx; this spec proves the real built
- * dialog wires them end to end.
+ * Choose a model from the fixture catalogue and require the stored reference
+ * and active entry to match it. The inert key never calls the model provider.
  */
+import type { LibraryModel } from "@/lib/api/model-library-types";
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
@@ -24,14 +21,14 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { gotoWorkspace } from "./fixtures/nav";
 import { tenantModelPageSchema } from "@/lib/api/tenant-model-schemas";
+import { modelLibrarySchema, providerLabel } from "@/lib/api/model-library-types";
+import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
 
 const ACTION_TIMEOUT_MS = 15_000;
 // The typed credential Name — free-form in the unified form, and the identity
 // cleanup keys off. Named for the provider it holds, by convention.
 const CREDENTIAL_NAME = `e2e-provider-${crypto.randomUUID()}`;
-const PROVIDER = "anthropic";
-const ANTHROPIC_KEY = "sk-ant-e2e-xxxxxxxx";
-const MODEL_FALLBACK = "claude-sonnet-4-6";
+const INERT_PROVIDER_KEY = "e2e-inert-key-no-provider-access";
 const MODELS = "/v1/tenants/me/models";
 const MODEL_PAGE_MAX = 100;
 
@@ -61,32 +58,39 @@ async function deleteFixtureModels(): Promise<void> {
   await Promise.all(ids.map(id => client.delete(`${MODELS}/${encodeURIComponent(id)}`)));
 }
 
-// The Provider field is a catalogue-backed <Select> when the fixture catalogue
-// has rows, and degrades to a free-text <Input> when it doesn't — handle both.
-async function pickProvider(page: Page): Promise<void> {
+async function catalogueChoice(): Promise<LibraryModel> {
+  const catalogue = modelLibrarySchema.parse(await clientFor(FIXTURE_KEY.regular).get("/v1/models"));
+  // Match the dialog's initial ordinary catalogue page; never add or change models.
+  const choice = catalogue.models.find((model) => !model.advanced && model.provider !== OPENAI_COMPATIBLE_PROVIDER);
+  if (!choice) throw new Error("The fixture catalogue needs an ordinary provider model for the credential journey");
+  return choice;
+}
+
+async function pickProvider(page: Page, provider: string): Promise<void> {
   const providerField = page.getByRole("dialog").getByLabel("Provider", { exact: true });
   await expect(providerField).toBeEnabled();
   const role = await providerField.getAttribute("role");
   if (role === "combobox") {
     await providerField.click();
-    await page.getByRole("option", { name: new RegExp(`^${PROVIDER}$`, "i") }).click({ timeout: 5_000 });
+    await page.getByRole("option", { name: providerLabel(provider), exact: true }).click({ timeout: 5_000 });
   } else {
-    await providerField.fill(PROVIDER);
+    await providerField.fill(provider);
   }
 }
 
 // The catalogue-backed model picker is a <Select> when the catalogue covers
 // the provider and degrades to a free-text <Input> when it doesn't — handle
 // both so the spec survives either fixture-catalogue state.
-async function pickModel(page: Page): Promise<void> {
+async function pickModel(page: Page, choice: LibraryModel): Promise<void> {
   const model = page.getByRole("dialog").getByLabel("Model", { exact: true });
   await expect(model).toBeEnabled();
   const role = await model.getAttribute("role");
   if (role === "combobox") {
     await model.click();
-    await page.getByRole("option").first().click({ timeout: 5_000 });
+    const label = choice.display_name === choice.id ? choice.id : `${choice.display_name} ${choice.id}`;
+    await page.getByRole("option", { name: label, exact: true }).click({ timeout: 5_000 });
   } else {
-    await model.fill(MODEL_FALLBACK);
+    await model.fill(choice.id);
   }
 }
 
@@ -101,6 +105,7 @@ test.describe("provider credential reference guard", () => {
     await resetProviderDirect();
     await deleteCredentialDirect(CREDENTIAL_NAME);
 
+    const choice = await catalogueChoice();
     await signInAs(page, FIXTURE_KEY.regular);
     await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
@@ -111,28 +116,30 @@ test.describe("provider credential reference guard", () => {
 
     // Fill the form in order: Name → Provider → Model → API key.
     await page.getByLabel("Name").fill(CREDENTIAL_NAME);
-    await pickProvider(page);
-    await pickModel(page);
-    await page.getByLabel("API key", { exact: true }).fill(ANTHROPIC_KEY);
+    await pickProvider(page, choice.provider);
+    await pickModel(page, choice);
+    await page.getByLabel("API key", { exact: true }).fill(INERT_PROVIDER_KEY);
 
     await page.getByRole("button", { name: "Save & make active" }).click();
 
-    // The store+create+activate round-trip either lands (the row shows Active
-    // referencing the anthropic credential) or surfaces a typed alert under
-    // fixture variance.
-    const activeRow = page.getByRole("row", { name: new RegExp(PROVIDER, "i") });
-    const outcome = await Promise.race([
-      activeRow.filter({ hasText: /active/i }).waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS }).then(() => "live" as const),
-      page.getByRole("alert").waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS }).then(() => "alert" as const),
-    ]).catch(() => "unknown" as const);
+    // Registration and activation do not call the model provider. The inert
+    // key must produce our exact stored reference and active model entry.
+    await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: ACTION_TIMEOUT_MS });
+    await expect.poll(async () => {
+      const result = tenantModelPageSchema.parse(await clientFor(FIXTURE_KEY.regular).get(`${MODELS}?limit=100`));
+      return result.models.find((entry) => entry.secret_ref === CREDENTIAL_NAME);
+    }, { timeout: ACTION_TIMEOUT_MS }).toMatchObject({
+      provider: choice.provider,
+      model_id: choice.id,
+      secret_ref: CREDENTIAL_NAME,
+      has_key: true,
+      active: true,
+    });
+    const activeRow = page.getByRole("row").filter({
+      has: page.getByRole("button", { name: `View details for ${choice.id}`, exact: true }),
+    }).filter({ has: page.getByText("Active", { exact: true }) });
+    await expect(activeRow).toContainText(providerLabel(choice.provider));
+    await expect(activeRow).toContainText(choice.display_name);
 
-    if (outcome === "live") {
-      await expect(activeRow).toContainText(/active/i);
-    } else if (outcome === "alert") {
-      await expect(page.getByRole("alert")).toBeVisible();
-    } else {
-      // Neither landmark resolved in time — fail loudly rather than silently pass.
-      throw new Error("save+activate produced neither an Active row nor a typed alert");
-    }
   });
 });

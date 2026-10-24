@@ -1,7 +1,8 @@
-import { DashboardShellHeader, Spinner } from "@agentsfleet/design-system";
+import { DashboardShellHeader } from "@agentsfleet/design-system";
 import type { WaitingInvite } from "@/lib/api/invites";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import type { TenantBilling } from "@/lib/types";
+import { RouteLoading } from "./RouteLoading";
 import { BalanceLink } from "./BalanceLink";
 import { InviteNotice } from "./InviteNotice";
 import {
@@ -68,8 +69,8 @@ export function ShellFrame({
             {children}
             {/* Next can briefly remove the outgoing route before its loader
                 mounts. CSS fills that empty slot in the same paint. */}
-            <div data-testid="shell-route-loading" className="hidden only:flex flex-1 items-center justify-center py-16">
-              <Spinner size="lg" label="Loading page…" />
+            <div data-testid="shell-route-loading" className="hidden only:flex flex-1">
+              <RouteLoading />
             </div>
           </div>
         </main>

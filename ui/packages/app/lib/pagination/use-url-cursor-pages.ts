@@ -38,6 +38,7 @@ export type UrlCursorPages = {
 export function useUrlCursorPages(
   nextCursor: string | null,
   pageSize: number,
+  fixedParams?: Readonly<Record<string, string>>,
 ): UrlCursorPages {
   const router = useRouter();
   const pathname = usePathname();
@@ -62,6 +63,7 @@ export function useUrlCursorPages(
       // Rebuilt from the live params so every OTHER query value — the fleet
       // page's open tab, most of all — survives a page turn untouched.
       const next = new URLSearchParams(params.toString());
+      for (const [key, value] of Object.entries(fixedParams ?? {})) next.set(key, value);
       next.delete(CURSOR_TRAIL_PARAM);
       next.delete(CURSOR_PAGE_SIZE_PARAM);
 
@@ -87,13 +89,14 @@ export function useUrlCursorPages(
         });
       });
     },
-    [nextCursor, pageSize, params, pathname, router],
+    [nextCursor, pageSize, params, pathname, router, fixedParams],
   );
 
   const changePageSize = useCallback(
     (pageSize: number) => {
       if (!TABLE_PAGE_SIZE_OPTIONS.includes(pageSize)) return;
       const next = new URLSearchParams(params.toString());
+      for (const [key, value] of Object.entries(fixedParams ?? {})) next.set(key, value);
       next.delete(CURSOR_TRAIL_PARAM);
       next.delete(CURSOR_PAGE_SIZE_PARAM);
       if (pageSize === DEFAULT_TABLE_PAGE_SIZE) next.delete(PAGE_SIZE_PARAM);
@@ -105,7 +108,7 @@ export function useUrlCursorPages(
         });
       });
     },
-    [params, pathname, router],
+    [params, pathname, router, fixedParams],
   );
 
   return {

@@ -4,20 +4,16 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-/// `POST /v1/runners/me/credentials/mint` request.
-///
-/// The runner forwards the sandboxed child's ask verbatim. `lease_id` binds the
-/// mint to the lease's workspace SERVER-SIDE — the child never names a
-/// workspace, so a prompt-injected child cannot mint for another tenant. The
-/// request carries no token.
+/// Requests a tool credential for the current work assignment. `lease_id` determines
+/// workspace access; the body cannot select another workspace and contains no token.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MintCredentialRequest<'a> {
-    /// The lease the mint is bound to.
+    /// Current work assignment authorizing this credential request.
     #[serde(borrow)]
     pub lease_id: Cow<'a, str>,
-    /// Which connected integration to mint for.
+    /// Connected integration that needs a credential.
     #[serde(borrow)]
     pub integration: Cow<'a, str>,
     /// An integration-specific narrowing the broker may honour.
@@ -25,7 +21,7 @@ pub struct MintCredentialRequest<'a> {
     pub scope: Option<Cow<'a, str>>,
 }
 
-/// `POST /v1/runners/me/credentials/mint` reply.
+/// Newly issued tool credential.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MintCredentialResponse<'a> {
@@ -33,10 +29,10 @@ pub struct MintCredentialResponse<'a> {
     /// never echoed into a frame.
     #[serde(borrow)]
     pub token: Cow<'a, str>,
-    /// When it stops working, so the caller re-mints before expiry rather than
-    /// on failure. A credential with no upstream expiry carries the far-future
-    /// instant `9999-12-30T22:00:00.999Z`, so the caller's one comparison covers
-    /// it.
+    /// When it stops working, so the caller re-mints before expiry rather than on failure.
+    ///
+    /// A credential with no upstream expiry carries the far-future instant
+    /// `9999-12-30T22:00:00.999Z`, so the caller's one comparison covers it.
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,
 }

@@ -34,11 +34,13 @@ pub(in crate::model) struct Decoded {
     pub(in crate::model) continuation: Option<serde_json::Value>,
     pub(in crate::model) usage: ModelUsage,
     pub(in crate::model) output: i64,
+    pub(in crate::model) summary: Option<afd_context::Summary>,
 }
 
 impl Decoded {
     pub(in crate::model) fn rejected() -> Self {
         Self {
+            summary: None,
             result: None,
             continuation: None,
             output: 0,
@@ -81,6 +83,7 @@ pub(in crate::model) fn decode(
         (Some(result), continuation)
     });
     Ok(Decoded {
+        summary: None,
         result,
         continuation,
         usage: known,
@@ -103,10 +106,7 @@ fn usage(
         .output_tokens
         .and_then(|value| i64::try_from(value).ok())
         .ok_or(ErrorKind::Unknown)?;
-    if input > budget::INPUT_PER_CALL
-        || output > i64::from(output_limit)
-        || input + output > i64::from(model.context_window_tokens)
-    {
+    if output > i64::from(output_limit) || input + output > i64::from(model.context_window_tokens) {
         return Err(ErrorKind::Unknown.into());
     }
     let cost = budget::cost(model, input, output)?;
@@ -145,6 +145,7 @@ fn content(
         dispatch_id: request.dispatch_id.clone(),
         call_index: request.call_index,
         replayed: false,
+        compacted: false,
         text,
         proposal_calls,
         usage,
@@ -221,4 +222,47 @@ fn proposal(
     };
     call.validate().map_err(|_untrusted| ErrorKind::Provider)?;
     Ok(call)
+}
+
+/// A summary is usable only after complete stop and strict notes validation.
+pub(in crate::model) fn decode_summary(
+    status: u16,
+    response: &CompletionResponse,
+    request: &garde::Valid<ModelCallInput>,
+    model: &RegisteredModel,
+    output_limit: u32,
+) -> Result<Decoded> {
+    let (known, output) = usage(response, model, output_limit)?;
+    let mut text = String::new();
+    let mut usable = (200..300).contains(&status)
+        && response.error.is_none()
+        && response.aborted.is_none()
+        && matches!(response.finish_reason(), Some(FinishReason::Stop));
+    for item in &response.choice {
+        match item {
+            AssistantContent::Text(part) => text.push_str(&part.text),
+            AssistantContent::Reasoning(_) => {}
+            _ => usable = false,
+        }
+    }
+    let summary = usable
+        .then(|| afd_context::Summary::decode(&text).ok())
+        .flatten();
+    let result = summary.as_ref().map(|_| ModelResult {
+        dispatch_id: request.dispatch_id.clone(),
+        call_index: request.call_index,
+        replayed: false,
+        compacted: true,
+        text: String::new(),
+        proposal_calls: Vec::new(),
+        usage: known.clone(),
+        cut: false,
+    });
+    Ok(Decoded {
+        result,
+        continuation: None,
+        usage: known,
+        output,
+        summary,
+    })
 }

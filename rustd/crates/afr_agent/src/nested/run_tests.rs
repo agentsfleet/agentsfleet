@@ -272,6 +272,7 @@ async fn test_a_child_writes_no_checkpoint_of_its_own() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &checkpoint,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),

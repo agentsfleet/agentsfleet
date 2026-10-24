@@ -34,6 +34,7 @@ pub mod workspace_clone;
 mod activity;
 mod authoring;
 mod client;
+mod context;
 mod credentials;
 mod deadline;
 mod drainer;
