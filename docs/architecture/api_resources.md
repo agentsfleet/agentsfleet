@@ -252,6 +252,10 @@ Native provider replies stay in `authoring.dispatches.native_reply`; the runner 
 5. Save bounded result and authoritative usage before returning 200. Exact completed replay rechecks live authorization and returns the same result without dispatch/debit. Changed-body reuse returns REPLAY. A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls; never redispatch that intent.
 6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
 
+Input reservation uses the shared tokenizer library, with no bundled model-specific tokenizer assets.
+Unrecognized models reserve one token per UTF-8 byte and can be refused earlier than their provider's tokenizer would require.
+Provider-reported usage determines settlement.
+
 Setup and runtime use `afd_inference::stream::StreamTurn` and Rig's native provider decoding.
 Purpose adapters retain their credential, authorization and tool boundaries.
 Dispatch intent records its deadline, bounded by the attempt expiry and the shared 300-second provider limit.

@@ -821,9 +821,7 @@ version = "0.65.0"
 dependencies = [
  "afd_core",
  "afd_wire",
- "base64 0.23.1",
  "bytes",
- "flate2",
  "futures-util",
  "garde",
  "http",
@@ -836,7 +834,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "unicode-normalization",
  "url",
 ]
 
