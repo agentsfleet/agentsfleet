@@ -7,10 +7,10 @@ import { billingActivity } from "./helpers/billing-report";
 
 describe("recorded billing amounts", () => {
   it.each([
-    ["0", "$0.00"], ["1", "<$0.0001"], ["49999", "<$0.0001"],
+    ["0", "$0.00"], ["1", "$0.000000001"], ["49999", "$0.000049999"],
     // pin test: literal is the contract
-    ["50000", "−$0.0001"], ["1000000", "−$0.001"], ["7111111", "−$0.0071"],
-    ["9000000000000000", "−$9,000,000.00"],
+    ["50000", "$0.00005"], ["1000000", "$0.001"], ["7111111", "$0.007111111"],
+    ["9000000000000000", "$9,000,000.00"], ["9007199254740993", "$9,007,199.254740993"],
   ])("keeps the served amount %s exact at the display boundary", (nanos, expected) => {
     expect(formatChargeAmount(nanos)).toBe(expected);
   });
@@ -28,7 +28,8 @@ describe("recorded billing amounts", () => {
   });
 
   it("distinguishes platform credits from a customer's provider bill", () => {
-    expect(providerLabel([PROVIDER_MODE.platform])).toBe("Model usage and runtime charged to credits.");
+    expect(providerLabel([PROVIDER_MODE.platform])).toBeNull();
+    expect(providerLabel([])).toBeNull();
     expect(providerLabel([PROVIDER_MODE.self_managed])).toContain("billed by your provider");
     expect(providerLabel([PROVIDER_MODE.platform, PROVIDER_MODE.self_managed])).toContain("recorded platform charges");
   });

@@ -1,8 +1,9 @@
 name: deploy-dev / acceptance
 
-# Called by deploy-dev.yml after verify goes green. Runs the three release
-# gates in parallel — browser smoke, browser acceptance, and CLI acceptance —
-# and reports each job's result as an output so the caller's verdict keeps
+# Called by deploy-dev.yml after verify goes green. Runs browser smoke, one
+# real fleet with prerequisites, and CLI acceptance in parallel. Full browser
+# acceptance stays local; ten concurrent fleets use acceptance-ten-fleets.yml.
+# Reports each result as an output so the caller's verdict keeps
 # per-gate granularity (a reusable workflow's own result collapses to one
 # success/failure, which would hide WHICH gate broke the release).
 #
@@ -62,8 +63,8 @@ jobs:
           retention-days: 7
 
   # ── Acceptance e2e against DEV ──────────────────────────────────────────
-  # Loads Clerk DEV credentials and runs the acceptance suite
-  # (tests/e2e/acceptance/**). Failures gate the notify step.
+  # Loads Clerk DEV credentials and runs preflight plus one execution test.
+  # Bulk browser coverage stays in acceptance-local. Failures gate notify.
   #
   # deploy-dev-dashboard builds app-dev.agentsfleet.net with the development
   # target. NEXT_PUBLIC_API_URL below configures fixture calls;
@@ -106,8 +107,8 @@ jobs:
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
-      - name: Run acceptance e2e against DEV
-        run: make acceptance-e2e
+      - name: Run short acceptance e2e against DEV
+        run: make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy
         env:
           BASE_URL: https://app-dev.agentsfleet.net
           NEXT_PUBLIC_API_URL: https://api-dev.agentsfleet.net

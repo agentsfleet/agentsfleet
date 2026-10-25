@@ -158,7 +158,7 @@ test.describe("fleet execution", () => {
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, SWEEP_PREFIX);
   });
 
-  test("a fleet installed from the gallery executes to a result the operator can read", async ({
+  test("a fleet installed from the gallery executes to a result the operator can read", {tag: "@post-deploy"}, async ({
     page,
     context,
   }, testInfo) => {

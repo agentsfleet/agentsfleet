@@ -36,6 +36,8 @@ use crate::provider::{Call, Chunk, End, Provider, Replay, Request};
 use crate::request;
 use crate::retry::ATTEMPTS;
 use crate::usage;
+use afd_crypto::secret::SecretString;
+use afd_inference::transport::HttpTransport;
 use afd_wire::inference::{InferenceApi, ModelInference};
 use afd_wire::policy::ExecutionPolicy;
 
@@ -50,6 +52,8 @@ pub(crate) struct Turns {
     lease_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
+    counting_key: SecretString,
+    counting_transport: HttpTransport,
 }
 
 impl fmt::Debug for Turns {
@@ -69,6 +73,7 @@ impl Turns {
         settings: &ModelInference,
         policy: &ExecutionPolicy<'_>,
         lease_id: &str,
+        counting_transport: HttpTransport,
     ) -> Self {
         Self {
             model,
@@ -76,6 +81,8 @@ impl Turns {
             model_context_tokens: policy.model_context_tokens,
             lease_id: lease_id.into(),
             provider: policy.provider.as_ref().into(),
+            counting_key: SecretString::new(policy.api_key.to_string()),
+            counting_transport,
         }
     }
 
@@ -102,18 +109,28 @@ impl Turns {
     ///
     /// # Errors
     /// The conversation cannot be sent, or rig could not start the reply.
-    fn open(&self, request: &Request<'_>) -> Result<StreamTurn> {
+    async fn open(&self, request: &Request<'_>) -> Result<StreamTurn> {
         let built = request::request(self.settings.api, request)?;
         let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
-            .map_err(raise::configuration)?;
-        let built = route
-            .bound_output(request.model, built)
             .map_err(raise::configuration)?;
         let control = TurnControl {
             correlation_id: self.lease_id.clone().into(),
             ..Default::default()
         };
-        StreamTurn::open(&route, &self.model, built, control)
+        let mut count = route
+            .confirm_input(
+                request.model,
+                self.counting_key.expose(),
+                &built,
+                &self.counting_transport,
+                &control,
+            )
+            .await
+            .map_err(|error| self.failed(error.into()))?;
+        let built = route
+            .bound_counted_output(request.model, built, &mut count)
+            .map_err(raise::configuration)?;
+        StreamTurn::open_counted(&route, &self.model, built, count, control)
             .map_err(|failure| self.failed(*failure))
     }
 
@@ -130,6 +147,10 @@ impl Turns {
         tracing::warn!(lease_id, attempt, reason, event, error_code);
     }
 }
+
+#[cfg(test)]
+#[path = "turn_tests.rs"]
+mod tests;
 
 impl Provider for Turns {
     fn measure(&self, request: Request<'_>) -> Result<u64> {
@@ -178,7 +199,7 @@ impl Pass {
         let mut pass = self;
         loop {
             let step = match pass {
-                Self::Opening(attempt) => match turns.open(&request) {
+                Self::Opening(attempt) => match turns.open(&request).await {
                     Ok(stream) => Step::Continue(Self::Reading(Box::new(Reading {
                         attempt,
                         stream,

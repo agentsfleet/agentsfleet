@@ -7,6 +7,7 @@ mod plan;
 mod ports;
 mod private_debug;
 mod summary;
+mod trace;
 mod window;
 
 #[cfg(feature = "postgres")]
@@ -18,4 +19,5 @@ pub use error::{Error, Result};
 pub use plan::{Group, HISTORY_PAGE_SIZE, Page, Plan, prepare};
 pub use ports::{CheckpointStore, HistorySource, PortFuture, Summarizer, TokenEstimator};
 pub use summary::{SUMMARY_INSTRUCTIONS, SUMMARY_OUTPUT_TOKENS, Summary};
+pub use trace::{Host, Trace};
 pub use window::{COMPACT_PERCENT, SAFE_PERCENT, Window};

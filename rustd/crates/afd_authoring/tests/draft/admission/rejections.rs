@@ -168,13 +168,13 @@ fn unknown_report(lease: &Claimed, calls: u32) -> Report {
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn should_release_unused_hold_when_key_contains_a_literal_newline() {
-    malformed_key(InferenceApi::Responses, "fixture-key\n").await;
+    Box::pin(malformed_key(InferenceApi::Responses, "fixture-key\n")).await;
 }
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn should_reject_before_intent_when_gemini_key_decodes_to_a_newline() {
-    malformed_key(InferenceApi::Gemini, "fixture-key%0A").await;
+    Box::pin(malformed_key(InferenceApi::Gemini, "fixture-key%0A")).await;
 }
 
 async fn malformed_key(api: InferenceApi, key: &str) {

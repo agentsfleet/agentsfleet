@@ -30,6 +30,7 @@ pub(in crate::model) struct Outbound {
     pub(in crate::model) context_tokens: u32,
     pub(in crate::model) timeout: Duration,
     pub(in crate::model) progress: Option<Preview>,
+    pub(in crate::model) measurement: Option<afd_inference::InputCount>,
 }
 
 pub(in crate::model) async fn complete(
@@ -47,8 +48,15 @@ pub(in crate::model) async fn complete(
         deadline: Some(Instant::now() + outbound.timeout),
         ..TurnControl::default()
     };
-    let mut turn = StreamTurn::open(&configured, &model, outbound.body, control)
-        .map_err(|source| crate::Error::from(crate::error::ErrorKind::Sdk { source: *source }))?;
+    let measurement = outbound.measurement.map_or_else(
+        || configured.input_count(&outbound.model, &outbound.body),
+        Ok,
+    )?;
+    let mut turn =
+        StreamTurn::open_counted(&configured, &model, outbound.body, measurement, control)
+            .map_err(|source| {
+                crate::Error::from(crate::error::ErrorKind::Sdk { source: *source })
+            })?;
     consume(&mut turn, &mut outbound.progress).await;
     let result = turn.finish().await;
     received(&configured, &outbound.model, transport.status(), result).await
@@ -119,9 +127,9 @@ async fn received(
 }
 
 #[derive(Clone)]
-struct Once {
-    physical: Arc<dyn Transport>,
-    timeout: Duration,
+pub(in crate::model) struct Once {
+    pub(in crate::model) physical: Arc<dyn Transport>,
+    pub(in crate::model) timeout: Duration,
 }
 
 impl SendRequest for Once {

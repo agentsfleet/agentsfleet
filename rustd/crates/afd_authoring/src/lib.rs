@@ -37,8 +37,8 @@ pub use self::lease::{ActivityInput, Claimed};
 pub use self::maintenance::Maintenance;
 pub use self::message::{Cancellation, Stopped};
 pub use self::model::{
-    DELTA_EVENT, Delta, ModelCallInput, ModelCallResult, ModelCalls, Network, ProviderRequest,
-    ProviderResponse, Transport, draft_channel,
+    CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, ModelCallInput, ModelCallResult, ModelCalls,
+    Network, ProviderRequest, ProviderResponse, Transport, draft_channel,
 };
 pub use self::observe::{Notice, Observation, View};
 pub use self::setup::Setup;

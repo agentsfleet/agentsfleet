@@ -9,8 +9,6 @@ import { loadBillingReport } from "./lib/load-report";
 
 export const dynamic = "force-dynamic";
 
-const BILLING_DESCRIPTION = "Settled spending across your account's setup chats and fleets.";
-
 export default async function BillingSettingsPage({
   searchParams,
 }: {
@@ -19,10 +17,10 @@ export default async function BillingSettingsPage({
   const query = searchParams ? await searchParams : {};
   const token = await requireCredential();
   const loaded = await loadBillingReport(token, query);
-  return <PageLayout>
-    <PageHeader description={BILLING_DESCRIPTION} actions={
-      <Button variant="outline" size="sm" asChild><a href={`mailto:${SUPPORT_EMAIL}`}>Add credits</a></Button>
-    }><PageTitle>Billing</PageTitle></PageHeader>
+  return <PageLayout className="billing-page gap-lg font-system [&_button]:font-system">
+    <PageHeader className="min-h-9 flex-row items-center gap-lg border-0 pb-0 sm:gap-lg" actions={
+      <Button size="sm" asChild><a href={`mailto:${SUPPORT_EMAIL}`}>Add credits</a></Button>
+    }><PageTitle className="font-system text-heading font-medium">Usage &amp; billing</PageTitle></PageHeader>
     {loaded.ok ? <BillingReportView report={loaded.report} modelNames={loaded.modelNames} pageSize={loaded.pageSize}
       selected={loaded.selected} detail={loaded.detail} /> :
       <UnavailableState title="Billing report unavailable" description="Your settled spending could not be loaded. Retry, or reset the filters and try again."

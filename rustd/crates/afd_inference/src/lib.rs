@@ -1,6 +1,7 @@
 //! Rig codecs for explicit persisted settings; authorization and key resolution stay with callers.
 
 mod budget;
+mod count;
 mod credential;
 mod document;
 mod error;
@@ -11,6 +12,7 @@ pub mod stream;
 pub mod transport;
 
 pub use budget::input_tokens;
+pub use count::InputCount;
 pub use credential::validate_key;
 pub use document::decode_failed_response;
 pub use json::json_request;
@@ -206,13 +208,25 @@ impl<'a> Configured<'a> {
     }
 
     fn encode_mode(&self, model: &str, request: CompletionRequest, mode: Mode) -> Result<Encoded> {
+        self.encode_key(model, "", request, mode)
+    }
+
+    fn encode_key(
+        &self,
+        model: &str,
+        key: &str,
+        request: CompletionRequest,
+        mode: Mode,
+    ) -> Result<Encoded> {
         match self.dialect {
             Dialect::Chat(dialect) | Dialect::Responses(dialect) => {
-                encode(&self.openai(dialect, model, ""), request, mode)
+                encode(&self.openai(dialect, model, key), request, mode)
             }
-            Dialect::Messages(dialect) => encode(&self.messages(dialect, model, ""), request, mode),
-            Dialect::Gemini => encode(&self.gemini(model, ""), request, mode),
-            Dialect::Ollama => encode(&self.ollama(model, ""), request, mode),
+            Dialect::Messages(dialect) => {
+                encode(&self.messages(dialect, model, key), request, mode)
+            }
+            Dialect::Gemini => encode(&self.gemini(model, key), request, mode),
+            Dialect::Ollama => encode(&self.ollama(model, key), request, mode),
         }
     }
 

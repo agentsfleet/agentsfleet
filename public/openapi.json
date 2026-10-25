@@ -11840,7 +11840,7 @@
           "Drafts"
         ],
         "summary": "Stream your private setup progress",
-        "description": "Streams private setup progress and partial replies. After reconnecting, reload the draft and messages; `Last-Event-ID` is only a temporary hint. Access is checked before each message and at least every ten seconds while idle.",
+        "description": "Streams private setup progress, partial replies and `context.progress` summary status. After reconnecting, reload the draft and messages; `Last-Event-ID` is only a temporary hint. Access is checked before each message and at least every ten seconds while idle.",
         "operationId": "stream_workspace_draft",
         "parameters": [
           {
@@ -14497,7 +14497,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, and `tool_call_completed`: live reply and tool activity. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
+        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -17918,6 +17918,19 @@
         "oneOf": [
           {
             "type": "object",
+            "description": "The root conversation is summarizing or continuing after a checkpoint.",
+            "required": [
+              "context_progress"
+            ],
+            "properties": {
+              "context_progress": {
+                "$ref": "#/components/schemas/ContextProgress",
+                "description": "The root conversation is summarizing or continuing after a checkpoint."
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "A tool call began.",
             "required": [
               "tool_call_started"
@@ -19810,6 +19823,27 @@
           }
         }
       },
+      "ContextProgress": {
+        "type": "object",
+        "description": "Progress never contains notes, source messages or model-generated prose.",
+        "required": [
+          "generation",
+          "state"
+        ],
+        "properties": {
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic checkpoint generation within this conversation branch.",
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContextState",
+            "description": "Only confirmed publication may report resuming."
+          }
+        },
+        "additionalProperties": false
+      },
       "ContextPut": {
         "type": "object",
         "description": "Replace a branch's complete notes against the generation read before sending.",
@@ -19843,6 +19877,15 @@
         "enum": [
           "user",
           "assistant"
+        ]
+      },
+      "ContextState": {
+        "type": "string",
+        "description": "Content-free state of one conversation summary.",
+        "enum": [
+          "summarizing",
+          "resuming",
+          "interrupted"
         ]
       },
       "CreateDraftRequest": {

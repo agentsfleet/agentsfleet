@@ -9,7 +9,12 @@ use crate::{
     fixture::{Canned, Frames, call, lease, say, spent, unbounded},
     testing::{ContextMemory, Discard},
 };
-use afd_wire::{lease::LeasePayload, policy::ExecutionPolicy};
+use afd_wire::{
+    activity::ActivityFrame,
+    context::{ContextProgress, ContextState},
+    lease::LeasePayload,
+    policy::ExecutionPolicy,
+};
 use afr_providers::{Chunk, Connect, End, Message, Provider, Request};
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::{StreamExt as _, stream::BoxStream};
@@ -144,11 +149,45 @@ async fn run(reject: bool) -> (crate::RunOutput, Arc<Seen>, ContextMemory, Meter
         })
         .await
         .unwrap();
+    let frames = frames.taken();
     assert!(
-        !format!("{:?}", frames.taken()).contains(GOAL_CONSTRAINT),
+        !format!("{frames:?}").contains(GOAL_CONSTRAINT),
         "private summary is never a visible answer frame"
     );
+    assert_progress(&frames, seen.summaries.load(Ordering::SeqCst), reject);
     (output, seen, contexts, meter)
+}
+
+fn assert_progress(frames: &[ActivityFrame<'_>], summaries: usize, reject: bool) {
+    let notices: Vec<_> = frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ActivityFrame::ContextProgress(progress) => Some(*progress),
+            _ => None,
+        })
+        .collect();
+    let expected: Vec<_> = (1..=summaries)
+        .flat_map(|generation| {
+            [
+                ContextProgress {
+                    generation: generation as u64,
+                    state: ContextState::Summarizing,
+                },
+                ContextProgress {
+                    generation: generation as u64,
+                    state: if reject {
+                        ContextState::Interrupted
+                    } else {
+                        ContextState::Resuming
+                    },
+                },
+            ]
+        })
+        .collect();
+    assert_eq!(
+        notices, expected,
+        "each root summary announces one guarded outcome"
+    );
 }
 
 #[tokio::test]

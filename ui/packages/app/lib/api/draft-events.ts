@@ -16,9 +16,10 @@ const ACCOUNTING_POLL_JITTER_MS = 1_000;
 const HintSchema = z.object({draft_id: z.uuidv7()});
 export const DRAFT_DELTA_EVENT = "message.delta";
 export const DRAFT_RESYNC_EVENT = "draft.resync";
-type Progress = {readonly delta: (data: string) => boolean; readonly gap: () => void};
+export const DRAFT_CONTEXT_EVENT = "context.progress";
+export type DraftProgressCallbacks = {readonly delta: (data: string) => boolean; readonly context?: (data: string) => boolean; readonly gap: () => void};
 
-export async function followDraft(path: string, draft: string, owner: AbortSignal, reconcile: () => Promise<boolean>, needsPolling: () => boolean = () => false, progress?: Progress): Promise<void> {
+export async function followDraft(path: string, draft: string, owner: AbortSignal, reconcile: () => Promise<boolean>, needsPolling: () => boolean = () => false, progress?: DraftProgressCallbacks): Promise<void> {
   owner.throwIfAborted();
   await new DraftProgress(path, draft, reconcile, needsPolling, progress).follow(owner);
 }
@@ -36,11 +37,11 @@ class DraftProgress {
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
   #pollTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(path: string, draft: string, reconcile: () => Promise<boolean>, needsPolling: () => boolean, progress?: Progress) {
+  constructor(path: string, draft: string, reconcile: () => Promise<boolean>, needsPolling: () => boolean, progress?: DraftProgressCallbacks) {
     this.#draft = draft; this.#reconcile = reconcile; this.#needsPolling = needsPolling;
     this.#source = new ChatConnection({
       url: `${path}/events/stream`,
-      events: [...Object.values(DRAFT_EVENT), DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT],
+      events: [...Object.values(DRAFT_EVENT), DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT, DRAFT_CONTEXT_EVENT],
       onOpen: () => {
         clearTimeout(this.#retryTimer); this.#retryTimer = undefined;
         void this.#refresh();
@@ -48,6 +49,7 @@ class DraftProgress {
       onInterrupted: () => { progress?.gap(); void this.#refresh(); },
       onFrame: (name, data) => {
         if (name === DRAFT_DELTA_EVENT) return progress?.delta(data) ?? false;
+        if (name === DRAFT_CONTEXT_EVENT) return progress?.context?.(data) ?? false;
         if (name === DRAFT_RESYNC_EVENT) { progress?.gap(); void this.#refresh(); return true; }
         return this.#hint(name, data);
       },

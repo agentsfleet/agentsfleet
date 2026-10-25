@@ -113,7 +113,7 @@ impl Transport for Provider {
     }
 }
 
-async fn history(f: &Fixture, attempt: &Attempt, prior: i64) {
+pub(super) async fn history(f: &Fixture, attempt: &Attempt, prior: i64) {
     let mut connection = f.connection().await;
     sqlx::query("UPDATE authoring.messages SET sequence=$2 WHERE draft_id=$1::uuid")
         .bind(attempt.draft.id.as_str())

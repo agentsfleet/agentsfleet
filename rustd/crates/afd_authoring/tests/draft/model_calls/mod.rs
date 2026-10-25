@@ -6,6 +6,7 @@ mod bounds;
 mod compaction;
 mod concurrency;
 mod corrections;
+mod counting;
 mod deadline;
 mod fixture;
 mod lapse;

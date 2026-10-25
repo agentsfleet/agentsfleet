@@ -77,7 +77,7 @@ pub(crate) fn path_swap(lane: &Lane) -> Result<(), Failed> {
             }
             Err(error) if is_decoy(&error) => refused += 1,
             Err(error) => {
-                outcome = Err(error.into());
+                outcome = Err(error.told().into());
                 break;
             }
         }

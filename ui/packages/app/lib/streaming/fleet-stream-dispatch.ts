@@ -4,6 +4,7 @@ import { backfillEntry } from "./fleet-stream-backfill";
 import type { Entry } from "./fleet-stream-entry";
 import { factsOf } from "./fleet-stream-facts";
 import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
+import { hideContextProgress } from "./fleet-stream-context";
 import {
   dispatchReplyFrame,
   settleRepliesFromBackfill,
@@ -25,11 +26,13 @@ export type LiveEntry = Entry & { apply: ApplyEvents; isCurrent: () => boolean }
 const RUNNER_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
   FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED,
   FRAME_KIND.TOOL_CALL_PROGRESS, FRAME_KIND.TOOL_CALL_COMPLETED,
+  FRAME_KIND.CONTEXT_PROGRESS,
 ]);
 
 // Reads back what the stream missed. A burst of gap signals during a walk
 // costs one more walk after it, not one each.
 export function recoverGap(entry: LiveEntry, fleetId: string): void {
+  setEvents(entry, hideContextProgress);
   void backfillEntry(entry, fleetId, {
     stillCurrent: entry.isCurrent,
     onPage: (rows) => {

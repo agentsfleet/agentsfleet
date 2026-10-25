@@ -23,6 +23,7 @@ import {
   type FleetEventStatus,
 } from "./fleet-stream-row";
 import { applyToolFrame } from "./fleet-stream-tool-frames";
+import { applyContextProgress } from "./fleet-stream-context";
 import { interruptOpenCalls, settleTools } from "./fleet-stream-tool-trace";
 import { applyEventAdmitted, receivedUpdate, startWaiting } from "./fleet-stream-admitted";
 
@@ -52,6 +53,8 @@ export function applyLiveFrame(
   nowMs: number = Date.now(),
 ): FleetEvent[] {
   switch (frame.kind) {
+    case FRAME_KIND.CONTEXT_PROGRESS:
+      return applyContextProgress(prev, frame);
     case FRAME_KIND.EVENT_ADMITTED:
       return applyEventAdmitted(prev, frame);
     case FRAME_KIND.EVENT_RECEIVED:
@@ -210,6 +213,7 @@ function applyEventComplete(
     createdAt: createdAt === null ? existing.createdAt : new Date(createdAt),
     clientTimestamp: createdAt === null ? existing.clientTimestamp : false,
     thinking: false,
+    contextProgress: undefined,
     tokens: figure(frame.tokens),
     wallMs: figure(frame.wall_ms),
     costNanos: readNanos(frame.cost_nanos),

@@ -53,6 +53,31 @@ Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.*
 
 The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`), the categories (`core` pinned, `daily` 72h auto-prune, `conversation` windowed), the byte-budget category-pinned hydration window, and cap eviction all live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. No vector search, no scoring — recall is a case-insensitive substring match on `key` and content, key matches first (`rustd/crates/afr_memory/src/hydrated.rs`, `rustd/crates/afd_memory/src/sql/mod.rs`).
 
+## 6. What reaches the model
+
+At run start, the supervisor loads the fleet's saved entries into the runner's memory tool store.
+Workspace entries join that store only when the reader holds the shared-memory grant.
+The prompt builder does not insert the entire store into each model request.
+
+The model reads entries through its allowed `memory_recall` and `memory_list` tools; returned content enters the conversation as tool output.
+
+The implemented scopes are fleet-private and workspace-shared. There is no account-wide memory scope in `memory.entries` or the runner's loading path.
+Private setup chat uses its own conversation history and checkpoint; its authoring tool set does not expose the runtime memory tools.
+
+## 7. Two checkpoint mechanisms
+
+| Mechanism | Trigger and content | Next run or request |
+|---|---|---|
+| Semantic memory capture | After every five completed tool calls by default, push pending `memory_store` changes; push again before the final report | A later run of the same fleet loads saved entries into its tool store; granted readers also load workspace-shared entries |
+| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `memory.context_checkpoints` | Preparation uses the owned draft or live runtime branch checkpoint, original source checks and retained conversation suffix |
+
+Semantic capture skips empty changes and makes no summary model call.
+A failed mid-run push is logged; final capture retries before reporting, as described in [runner transport](runner_fleet.md#memory-continuity).
+Child loops do not run the periodic capture counter.
+
+Conversation summaries remain separate from saved semantic entries and filesystem state.
+See [conversation compaction](context_lifecycle.md) for summary generation, token measurement, publication checks and the current progress-event gap.
+
 ## Code pointers
 
 | Concern | Path |

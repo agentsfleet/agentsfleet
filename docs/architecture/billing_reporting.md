@@ -41,6 +41,27 @@ Runtime labels use the ledger's fleet-name snapshot and survive fleet deletion.
   Compaction's metered calls contribute to ordinary settled totals.
 - A customer's own provider key means model usage is charged by that provider; the page distinguishes it from credits charged here. Missing provider usage does not mean free usage. Unsettled or unknown usage can arrive later and is excluded from settled totals.
 
+## Shared presentation
+
+The page uses the shared title, three equal-width filters, a UTC period label and unboxed period totals.
+Activity uses DataTable's plain surface, retaining its column headings and pagination when empty.
+Controlled row disclosure reads details only for the selected visible activity; native buttons expose the expanded state and support keyboard activation.
+
+The disclosure uses the shared DescriptionList, with left-aligned labels and right-aligned values on the card surface.
+Exact positive charge amounts preserve up to nine decimal places; the total always covers the entire activity, including undisplayed charge pages.
+
+Inference-only and runtime-only ledger lines receive their corresponding fixed labels. Combined lines retain an explicit combined label without inferred price splits.
+
+Spending uses the shared List and UsageBar primitives for full-period fleet and model groups.
+Money remains an exact integer until display; bar ratios are reduced with integer arithmetic before conversion to bounded percentages.
+
+Billing uses the shared `font-system` utility to match its approved mock.
+Activity text uses 12 pixels, names and totals use medium weight, and spending rows use 13 pixels with normal weight.
+
+The app imports date formatting from the design system's `time-utils.ts` exports.
+`Time` retains each timestamp's canonical value while the shared UTC helpers align period and activity labels.
+Page-local date formatters are rejected by the existing app source check.
+
 ## Public reads
 
 `GET /v1/tenants/me/billing/reports/current` returns the selected period, bounds, full-period summary, spending groups, available filters and a bounded activity page. The page uses the standard `items`, `total`, `next_cursor` envelope inside the report. The existing balance and raw-charge endpoints retain their behavior.
@@ -81,7 +102,7 @@ Report reads use a fixed number of queries, independent of page size. Concurrent
 | `ui/packages/app/lib/pagination/use-url-cursor-pages.ts` | Retain the captured report cutoff while moving between pages or changing page size. |
 | `ui/packages/app/lib/api/billing_report.ts` | Validate reporting responses and perform authorized reads. |
 | `ui/packages/app/app/(dashboard)/settings/billing/` | Integrate the approved page, URL filters, grouped activity and detail loading. |
-| `ui/packages/design-system/src/design-system/` | Add a reusable summary primitive only if the existing primitives cannot express it. |
+| `ui/packages/design-system/src/design-system/` | Share plain table surfaces, controlled accessible row disclosure and UTC reporting date helpers; reuse MetaGrid for totals. |
 | `ui/packages/app/components/domain/{EventsList,FleetReplyFigures}.tsx`; `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetStatusLine.tsx` | Import money formatting directly from the existing shared money module after removing the old Billing re-export. |
 | `ui/packages/app/tests/` | Whole-period totals, exact amounts, filter reset, details, failures and responsive page behavior. |
 | `public/openapi.json` | Generated public additions after source annotations are complete. |

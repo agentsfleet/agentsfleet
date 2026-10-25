@@ -18,7 +18,7 @@ use super::Target;
 use super::published::Published;
 
 /// How many variants [`ActivityFrame`] has: one per slot `slot` hands out.
-pub const ACTIVITY_VARIANTS: usize = 4;
+pub const ACTIVITY_VARIANTS: usize = 5;
 
 /// The tool every sample frame names.
 const TOOL: Cow<'static, str> = Cow::Borrowed("shell");
@@ -61,6 +61,7 @@ const fn slot(frame: &ActivityFrame<'_>) -> usize {
         ActivityFrame::FleetResponseChunk(_) => 1,
         ActivityFrame::ToolCallCompleted(_) => 2,
         ActivityFrame::ToolCallProgress(_) => 3,
+        ActivityFrame::ContextProgress(_) => 4,
     }
 }
 
@@ -94,6 +95,10 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
             name: TOOL,
             elapsed_ms: 0,
             call_id: CALL,
+        }),
+        ActivityFrame::ContextProgress(afd_wire::context::ContextProgress {
+            generation: 1,
+            state: afd_wire::context::ContextState::Summarizing,
         }),
     ]
 }

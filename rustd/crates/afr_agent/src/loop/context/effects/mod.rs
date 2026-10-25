@@ -2,6 +2,35 @@
 use super::super::shared::Shared;
 use afd_context::{Checkpoint, CheckpointStore, Compaction, PortFuture, Summarizer, Summary};
 use afr_providers::{Message, Request};
+use tracing::Instrument as _;
+
+mod progress;
+
+pub(super) async fn compact(
+    shared: &Shared<'_>,
+    stop: &tokio_util::sync::CancellationToken,
+    store: &mut Store<'_>,
+    task: Compaction,
+    visible: bool,
+) -> afd_context::Result<Checkpoint> {
+    let mut trace =
+        afd_context::Trace::start(shared.lease_id.into(), afd_context::Host::Runtime, &task);
+    let mut progress = progress::Notifications::new(shared.events, &task, visible);
+    let result = afd_context::execute(
+        task,
+        &mut Model { shared, stop },
+        store,
+        || stop.is_cancelled(),
+        |value| progress.observe(value),
+    )
+    .instrument(trace.span().clone())
+    .await;
+    match &result {
+        Ok(checkpoint) => trace.completed(checkpoint.generation),
+        Err(error) => trace.failed(error.code()),
+    }
+    result
+}
 
 pub(super) struct Model<'a, 'run> {
     pub(super) shared: &'a Shared<'run>,

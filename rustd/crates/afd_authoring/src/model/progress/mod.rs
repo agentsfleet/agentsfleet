@@ -1,5 +1,6 @@
 //! A bounded preview; durable receipts remain the only source of final answers.
 
+mod context;
 mod publish;
 #[cfg(test)]
 mod tests;
@@ -10,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use zeroize::Zeroizing;
 
+pub(in crate::model) use context::ContextPublisher;
+pub use context::{CONTEXT_EVENT, ContextNotice};
 pub(super) use publish::Publisher;
 pub(super) const CAPACITY: usize = 32;
 pub(super) const FLUSH: std::time::Duration = std::time::Duration::from_millis(50);

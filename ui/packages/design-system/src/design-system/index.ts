@@ -140,7 +140,7 @@ export {
   type TooltipProviderProps,
   type TooltipContentProps,
 } from "./Tooltip";
-export { EmptyState, type EmptyStateProps } from "./EmptyState";
+export { EmptyState, EMPTY_STATE_SURFACE, type EmptyStateProps, type EmptyStateSurface } from "./EmptyState";
 export { UnavailableState, type UnavailableStateProps } from "./UnavailableState";
 export { CopyButton, COPY_RESET_MS, type CopyButtonProps } from "./CopyButton";
 export { TabNav, type TabNavItem, type TabNavProps } from "./TabNav";
@@ -179,6 +179,9 @@ export { MONO_CLASS } from "./mono";
 export { DisplayXL, DisplayLG, type DisplayXLProps, type DisplayLGProps } from "./Display";
 export {
   DataTable,
+  DATA_TABLE_SURFACE,
+  type DataTableDisclosure,
+  type DataTableSurface,
   type ClientDataTablePagination,
   type DataTableColumn,
   type DataTablePagination,
@@ -210,6 +213,8 @@ export { Time, type TimeProps } from "./Time";
 export {
   formatTimeAbsolute,
   formatTimeClock,
+  formatTimeRangeUtc,
+  formatTimeCompactUtc,
   formatTimeRelative,
   TIME_INVALID_FALLBACK,
   type TimeFormat,

@@ -4,7 +4,7 @@ use rig_core::completion::CompletionRequest;
 
 use super::{Configured, Result, error::ErrorKind};
 
-/// Unknown tokenizers reserve one token per UTF-8 byte; billing uses actual usage.
+/// Unknown tokenizers estimate one token per UTF-8 byte; billing uses actual usage.
 #[must_use]
 pub fn input_tokens(model: &str, text: &str) -> usize {
     tiktoken_rs::bpe_for_model(model)
@@ -12,7 +12,7 @@ pub fn input_tokens(model: &str, text: &str) -> usize {
 }
 
 impl Configured<'_> {
-    /// Measure the complete streaming request, including schemas and opaque replay.
+    /// Estimate the complete streaming request, including schemas and opaque replay.
     ///
     /// # Errors
     /// The selected wire cannot encode the request.

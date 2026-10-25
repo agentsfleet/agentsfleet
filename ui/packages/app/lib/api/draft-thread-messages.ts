@@ -1,6 +1,7 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { DraftView } from "./draft-state";
 import type { Message } from "./draft-types";
+import type { ContextProgress } from "../context-progress";
 import { isRunning, MESSAGE_ROLE, MESSAGE_STATE } from "./draft-types";
 import { isStopped } from "./draft-recovery";
 
@@ -8,14 +9,15 @@ type ProjectMessage = typeof threadMessage;
 
 /** One conversation owns its cache; unchanged rows keep their runtime identity during streaming. */
 export function createDraftThreadProjection(): (view: DraftView) => ThreadMessageLike[] {
-  const cache = new WeakMap<Message, {live: string | undefined; stopped: boolean; request?: string; row: ThreadMessageLike}>();
+  const cache = new WeakMap<Message, {live: string | undefined; context: ContextProgress | undefined; stopped: boolean; request?: string; row: ThreadMessageLike}>();
   const project: ProjectMessage = (message, view, cutoff, request) => {
     const live = message.role === MESSAGE_ROLE.assistant && isRunning(message) && view.liveReply?.sequence === message.sequence ? view.liveReply.text : undefined;
     const stopped = isStopped(message, cutoff);
+    const context = compactionFor(message, view, cutoff);
     const old = cache.get(message);
-    if (old && old.live === live && old.stopped === stopped && old.request === request) return old.row;
+    if (old && old.live === live && old.context === context && old.stopped === stopped && old.request === request) return old.row;
     const row = threadMessage(message, view, cutoff, request);
-    cache.set(message, {live, stopped, request, row});
+    cache.set(message, {live, context, stopped, request, row});
     return row;
   };
   return view => draftThreadMessages(view, project);
@@ -54,6 +56,12 @@ function threadMessage(message: Message, view: DraftView, cutoff: string, reques
     message.role === MESSAGE_ROLE.assistant && (message.state === MESSAGE_STATE.cancelled || (stopped && isRunning(message))) ? "Request stopped." : ""].filter(Boolean).join("\n\n");
   return {id: `${message.sequence}:${message.role}`, role: message.role, content: [{type: "text", text}], createdAt: new Date(message.created_at),
     metadata: {custom: {queued: pending && message.state === MESSAGE_STATE.queued,
+      contextProgress: compactionFor(message, view, cutoff),
       failure: message.role === MESSAGE_ROLE.assistant ? failure : undefined, retryText: failure ? request : undefined}},
     ...(message.role === MESSAGE_ROLE.assistant ? {status: pending ? {type: "running"} : {type: "complete", reason: "stop"}} : {})};
+}
+
+function compactionFor(message: Message, view: DraftView, cutoff: string): ContextProgress | undefined {
+  return message.role === MESSAGE_ROLE.assistant && isRunning(message) && !isStopped(message, cutoff)
+    && view.contextProgress?.sequence === message.sequence ? view.contextProgress.progress : undefined;
 }

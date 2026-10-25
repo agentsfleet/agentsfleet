@@ -57,11 +57,28 @@ gh run watch "$run_id" \
 | `dashboard` | The dashboard and command-line outputs were built, their receipts assembled, and the prebuilt dashboard deployed. Acceptance depends on this job succeeding. |
 | `verify` | Public API health and readiness passed. |
 | `qa` | Dashboard smoke passed. |
-| `acceptance-e2e` | Browser acceptance passed. |
+| `acceptance-e2e` | Prerequisites and one real fleet check passed. |
 | `acceptance-cli` | The worktree command-line client passed live acceptance. |
+| `ten-fleets` | Ten concurrent fleets retained 1,810 messages and separate setup versions against api-dev. |
 
 The Agent records the workflow URL, commit, each job result, and any intentionally
 skipped runner job. A skipped enabled job is a failure.
+
+`make acceptance-local` retains the full browser and command-line suites.
+Deployment uses `make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy` for the short browser check.
+`ACCEPTANCE_SCOPE=ten-fleets` selects only ten concurrent fleets and prerequisites.
+
+The separate ten-fleet job runs after deployment with its own fixture accounts.
+Its failure or cancellation keeps the deployment verdict red.
+
+To request another ten-fleet check against the deployed development environment:
+
+```bash
+gh workflow run acceptance-ten-fleets.yml --ref main --repo agentsfleet/agentsfleet
+```
+
+GitHub returns after queuing the workflow. Inspect the resulting run and its
+`acceptance-ten-fleets-results` download for the test verdict and evidence.
 
 ## Failure handling
 

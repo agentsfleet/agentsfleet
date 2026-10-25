@@ -20,7 +20,7 @@ use std::sync::Arc;
     operation_id = "stream_workspace_draft", tag = afd_http::openapi::tag::DRAFTS,
     summary = "Stream your private setup progress",
     description = concat!(
-        "Streams private setup progress and partial replies. After reconnecting, reload the ",
+        "Streams private setup progress, partial replies and `context.progress` summary status. After reconnecting, reload the ",
         "draft and messages; `Last-Event-ID` is only a temporary hint. Access is checked ",
         "before each message and at least every ten seconds while idle.",
     ),

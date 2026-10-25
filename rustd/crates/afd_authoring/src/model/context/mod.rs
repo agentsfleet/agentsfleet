@@ -85,6 +85,7 @@ fn prepared(
         context_tokens: context,
         compaction,
         input_tokens,
+        measurement: None,
         context_digest,
     })
 }

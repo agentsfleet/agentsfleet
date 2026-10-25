@@ -3,6 +3,32 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Content-free state of one conversation summary.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextState {
+    /// One metered summary call is in progress.
+    Summarizing,
+    /// A validated checkpoint committed and preparation continues.
+    Resuming,
+    /// The operation stopped without a confirmed checkpoint.
+    Interrupted,
+}
+
+/// Progress never contains notes, source messages or model-generated prose.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct ContextProgress {
+    /// Monotonic checkpoint generation within this conversation branch.
+    #[garde(range(min = 1, max = i64::MAX as u64))]
+    pub generation: u64,
+    /// Only confirmed publication may report resuming.
+    #[garde(skip)]
+    pub state: ContextState,
+}
+
 /// Private notes belong to one conversation branch under one execution lease.
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 #[cfg_attr(feature = "openapi", into_params(parameter_in = Path))]

@@ -16,6 +16,7 @@ mod tests;
 use std::time::Duration;
 
 use crate::Result;
+pub(in crate::model) use dispatch::Once;
 pub(in crate::model) use dispatch::{Outbound, complete};
 pub(in crate::model) use rejections::validate_key;
 
@@ -34,7 +35,7 @@ pub(super) use prompt::system;
 pub(super) use request::body;
 pub(super) use response::{Decoded, decode, decode_summary};
 
-/// A request assembled by the daemon after authorization and durable intent.
+/// An authorized provider request: read-only counting precedes durable generation intent.
 pub struct ProviderRequest {
     pub(super) request: http::Request<Vec<u8>>,
     pub(super) timeout: Duration,
