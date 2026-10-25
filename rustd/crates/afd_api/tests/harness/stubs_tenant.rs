@@ -218,6 +218,9 @@ impl WorkspaceOwnership for OneWorkspace {
         if self.refusing.load(Ordering::Acquire) {
             return self.outage.tenant_of(principal).await;
         }
-        Ok(principal.tenant().cloned())
+        Ok(principal
+            .tenant()
+            .filter(|_| self.authorized.load(Ordering::Acquire))
+            .cloned())
     }
 }

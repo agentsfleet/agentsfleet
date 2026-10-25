@@ -1,11 +1,7 @@
 name: acceptance / ten concurrent fleets (api-dev)
 
 on:
-  workflow_call:
-    outputs:
-      result:
-        description: Ten-fleet acceptance result
-        value: ${{ jobs.results.outputs.result }}
+  # Indy starts this after merge and development deployment verification.
   workflow_dispatch:
 
 permissions:
@@ -71,15 +67,3 @@ jobs:
             ui/packages/app/playwright-acceptance-report/
           include-hidden-files: true
           retention-days: 7
-
-  results:
-    runs-on: ubuntu-latest
-    needs: ten-fleets
-    if: always()
-    outputs:
-      result: ${{ steps.report.outputs.result }}
-    steps:
-      - id: report
-        env:
-          RESULT: ${{ needs.ten-fleets.result }}
-        run: echo "result=$RESULT" >> "$GITHUB_OUTPUT"

@@ -114,31 +114,65 @@ impl Transport for Provider {
 }
 
 pub(super) async fn history(f: &Fixture, attempt: &Attempt, prior: i64) {
+    history_for(f, &attempt.draft.id, &attempt.id, prior).await;
+}
+
+pub(in crate::draft) async fn history_for(
+    f: &Fixture,
+    draft: &afd_core::id::Uuid7,
+    attempt: &afd_core::id::Uuid7,
+    prior: i64,
+) {
     let mut connection = f.connection().await;
     sqlx::query("UPDATE authoring.messages SET sequence=$2 WHERE draft_id=$1::uuid")
-        .bind(attempt.draft.id.as_str())
+        .bind(draft.as_str())
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("move current request");
     sqlx::query("UPDATE authoring.attempts SET message_sequence=$2 WHERE id=$1::uuid")
-        .bind(attempt.id.as_str())
+        .bind(attempt.as_str())
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin current request");
     sqlx::query("UPDATE authoring.drafts SET last_message_sequence=$2 WHERE id=$1::uuid")
-        .bind(attempt.draft.id.as_str())
+        .bind(draft.as_str())
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin draft sequence");
     for sequence in 1..=prior {
         sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3,$1::uuid,'completed',$4,$5,now(),now())")
-            .bind(mint().as_str()).bind(attempt.draft.id.as_str()).bind(sequence)
+            .bind(mint().as_str()).bind(draft.as_str()).bind(sequence)
             .bind(format!("initial-reference investigation step {sequence}: {}", "details ".repeat(20)))
             .bind("completed evidence ".repeat(10)).execute(&mut *connection).await.expect("owned complete exchange");
     }
+}
+
+pub(super) async fn competing(f: &Fixture, attempt: &Attempt) -> Value {
+    use afd_context::{
+        CheckpointStore as _,
+        repository::{Repository, Scope},
+    };
+    let document = json!({"format_version":1,"identity":{
+        "scope":format!("draft:{}",attempt.draft.id),"model":"competing-model","pinned":"competing-pinned"},
+        "generation":1,"covered_through":1,"source_digest":"a".repeat(64),"summary":{
+            "goal":"competing private notes","constraints":[],"decisions":[],"completed":[],
+            "remaining":[],"references":[]}});
+    let mut connection = f.connection().await;
+    Repository::new(
+        &mut connection,
+        Scope::Draft(attempt.draft.id.clone()),
+        mint(),
+    )
+    .commit(
+        0,
+        serde_json::from_value(document.clone()).expect("valid competing notes"),
+    )
+    .await
+    .expect("the competing writer commits");
+    document
 }
 
 #[tokio::test]

@@ -10,6 +10,27 @@ const REPORT: &str = "/v1/tenants/me/billing/reports/current";
 const DETAILS: &str =
     "/v1/tenants/me/billing/activities/01924f4e-0000-7000-8000-00000000c4a1/charges";
 
+// Value: a person with no resolved account cannot reach either billing read.
+#[tokio::test]
+async fn unresolved_tenant_authority_refuses_both_reporting_routes() {
+    let fleet = Fleet::new().with_person(TENANT_KEY, SUBJECT, BILLING_READ);
+    fleet.ownership().revoke();
+    let router = fleet.router();
+    for path in [REPORT.to_owned(), format!("{DETAILS}?activity_type=setup")] {
+        let response = harness::send(&router, Method::GET, &path, Some(TENANT_KEY), "").await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let problem = harness::json_body(response).await;
+        assert_eq!(
+            harness::error_code(&problem),
+            Some(error_code::AUTH_FORBIDDEN.as_str())
+        );
+        assert_eq!(
+            harness::text(&problem, "detail"),
+            Some(afd_api::handler::tenant::DETAIL_TENANT_REQUIRED)
+        );
+    }
+}
+
 #[tokio::test]
 async fn billing_read_reaches_each_reporting_verb() {
     for path in [REPORT.to_owned(), format!("{DETAILS}?activity_type=setup")] {

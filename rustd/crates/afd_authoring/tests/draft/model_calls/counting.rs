@@ -151,6 +151,7 @@ async fn native_count_releases_authoring_locks_and_fresh_result_can_commit() {
 #[derive(Clone, Copy)]
 enum Change {
     History,
+    Checkpoint,
     Stop,
     Credential,
     Rotation,
@@ -161,6 +162,7 @@ enum Change {
 async fn changed_source_stop_and_revoked_credential_during_count_prevent_paid_dispatch() {
     for change in [
         Change::History,
+        Change::Checkpoint,
         Change::Stop,
         Change::Credential,
         Change::Rotation,
@@ -176,6 +178,7 @@ async fn changed_source_stop_and_revoked_credential_during_count_prevent_paid_di
         provider.release.add_permits(1);
         let error = task.await.expect("dispatch task").expect_err(match change {
             Change::History => "changed history cannot authorize a paid call",
+            Change::Checkpoint => "changed notes cannot authorize a paid call",
             Change::Stop => "Stop cannot authorize a paid call",
             Change::Credential => "revoked credential cannot authorize a paid call",
             Change::Rotation => "rotated credential cannot authorize a paid call",
@@ -188,7 +191,15 @@ async fn changed_source_stop_and_revoked_credential_during_count_prevent_paid_di
                 error_code::AUTHORING_FENCE
             }
         );
-        assert_no_paid_state(&f, &attempt, &provider).await;
+        if matches!(change, Change::Checkpoint) {
+            assert_eq!(provider.paid.load(Ordering::Relaxed), 0);
+            assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
+            let goal: String = sqlx::query_scalar("SELECT document->'summary'->>'goal' FROM memory.context_checkpoints WHERE draft_id=$1::uuid")
+                .bind(attempt.draft.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("the competing notes survive");
+            assert_eq!(goal, "competing private notes");
+        } else {
+            assert_no_paid_state(&f, &attempt, &provider).await;
+        }
         f.cleanup().await;
     }
 }
@@ -204,6 +215,9 @@ async fn mutate(f: &Fixture, attempt: &Attempt, change: Change) {
                 .cancel(f.access(), &attempt.draft.id, PRIOR_EXCHANGES + 1)
                 .await
                 .expect("Stop commits while count waits");
+        }
+        Change::Checkpoint => {
+            compaction::competing(f, attempt).await;
         }
         Change::Credential => {
             sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")

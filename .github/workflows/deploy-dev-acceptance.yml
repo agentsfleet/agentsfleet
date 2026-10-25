@@ -2,7 +2,7 @@ name: deploy-dev / acceptance
 
 # Called by deploy-dev.yml after verify goes green. Runs browser smoke, one
 # real fleet with prerequisites, and CLI acceptance in parallel. Full browser
-# acceptance stays local; ten concurrent fleets use acceptance-ten-fleets.yml.
+# acceptance stays local; Indy dispatches acceptance-ten-fleets.yml after merge.
 # Reports each result as an output so the caller's verdict keeps
 # per-gate granularity (a reusable workflow's own result collapses to one
 # success/failure, which would hide WHICH gate broke the release).

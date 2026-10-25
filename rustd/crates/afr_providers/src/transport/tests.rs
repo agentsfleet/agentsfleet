@@ -121,3 +121,45 @@ fn a_transport_prints_whose_sends_it_makes_and_not_its_client() {
         r#"Transport { lease_id: "lease-1", provider: "fake", .. }"#
     );
 }
+
+// Value: a summary's single-attempt transport never retries a possibly charged rejection.
+#[tokio::test]
+async fn a_single_attempt_send_returns_the_first_failure_without_retrying() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&calls);
+    let app = axum::Router::new().fallback(move || {
+        seen.fetch_add(1, Ordering::SeqCst);
+        async { http::StatusCode::SERVICE_UNAVAILABLE }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let stop = tokio_util::sync::CancellationToken::new();
+    let stopping = stop.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(stopping.cancelled_owned())
+            .await
+            .unwrap();
+    });
+    let request = rig_http::Request::builder()
+        .method(Method::POST)
+        .uri(format!("http://{address}/summary"))
+        .body(Bytes::new())
+        .unwrap();
+    let response: rig_http::Response<rig_http::LazyBody<Bytes>> =
+        Transport::new(reqwest::Client::new(), "lease-1", "fake")
+            .once()
+            .http()
+            .send(request)
+            .await
+            .unwrap();
+    assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+    assert!(response.into_body().await.unwrap().is_empty());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    stop.cancel();
+    server.await.unwrap();
+}

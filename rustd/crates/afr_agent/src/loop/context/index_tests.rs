@@ -84,3 +84,18 @@ fn runtime_history_indexes_are_owned_by_independent_conversations() {
     assert_eq!(first.groups.len(), 1);
     assert_eq!(second.groups.len(), 0);
 }
+
+// Value: refuses a truncated conversation before stale group offsets can reach inference.
+#[test]
+fn runtime_history_refuses_truncation_before_the_pending_group() {
+    let mut index = Index::new(0);
+    let messages = [
+        Message::User("pinned".into()),
+        answer(),
+        Message::User("completed request".into()),
+        answer(),
+        Message::User("pending".into()),
+    ];
+    index.refresh(&messages).unwrap();
+    assert!(index.refresh(&messages[..2]).unwrap_err().is_stale());
+}

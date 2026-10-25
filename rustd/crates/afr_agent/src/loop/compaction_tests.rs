@@ -43,7 +43,14 @@ struct Seen {
 #[derive(Debug, Clone)]
 struct Model {
     seen: Arc<Seen>,
-    reject: bool,
+    failure: SummaryFailure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SummaryFailure {
+    None,
+    Invalid,
+    Truncated,
 }
 impl Connect for Model {
     fn admit(&self, _: &ExecutionPolicy<'_>) -> afr_providers::Result<()> {
@@ -74,7 +81,7 @@ impl Provider for Model {
             );
             let summary = summary();
             vec![
-                say(if self.reject {
+                say(if self.failure == SummaryFailure::Invalid {
                     "unusable notes"
                 } else {
                     &summary
@@ -103,7 +110,10 @@ impl Provider for Model {
                 ]
             }
         };
-        chunks.push(Chunk::End(End::default()));
+        chunks.push(Chunk::End(End {
+            cut: request.single_attempt && self.failure == SummaryFailure::Truncated,
+            ..End::default()
+        }));
         futures_util::stream::iter(chunks.into_iter().map(Ok)).boxed()
     }
     fn accepts_images(&self) -> bool {
@@ -111,13 +121,13 @@ impl Provider for Model {
     }
 }
 
-async fn run(reject: bool) -> (crate::RunOutput, Arc<Seen>, ContextMemory, Meter) {
+async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMemory, Meter) {
     let seen = Arc::new(Seen::default());
     let engine = Loop::new(
         afr_tools::Catalog::new(vec![Canned::boxed(&UPDATE_PLAN, "completed step")]),
         Model {
             seen: Arc::clone(&seen),
-            reject,
+            failure,
         },
     );
     let mut lease = lease(&[UPDATE_PLAN.name()], unbounded());
@@ -154,7 +164,11 @@ async fn run(reject: bool) -> (crate::RunOutput, Arc<Seen>, ContextMemory, Meter
         !format!("{frames:?}").contains(GOAL_CONSTRAINT),
         "private summary is never a visible answer frame"
     );
-    assert_progress(&frames, seen.summaries.load(Ordering::SeqCst), reject);
+    assert_progress(
+        &frames,
+        seen.summaries.load(Ordering::SeqCst),
+        failure != SummaryFailure::None,
+    );
     (output, seen, contexts, meter)
 }
 
@@ -192,7 +206,7 @@ fn assert_progress(frames: &[ActivityFrame<'_>], summaries: usize, reject: bool)
 
 #[tokio::test]
 async fn repeated_compaction_continues_past_turn_forty_two_and_keeps_tools_and_goal() {
-    let (output, seen, contexts, meter) = run(false).await;
+    let (output, seen, contexts, meter) = run(SummaryFailure::None).await;
     assert_eq!(output.result.content, "all steps finished");
     assert_eq!(output.records.len(), TURNS);
     assert_eq!(seen.normal.load(Ordering::SeqCst), TURNS + 1);
@@ -212,19 +226,21 @@ async fn repeated_compaction_continues_past_turn_forty_two_and_keeps_tools_and_g
 
 #[tokio::test]
 async fn unusable_summary_retains_known_charge_without_publishing_or_running_more_tools() {
-    let (output, seen, contexts, meter) = run(true).await;
-    assert_ne!(output.result.content, "all steps finished");
-    assert_eq!(seen.summaries.load(Ordering::SeqCst), 1);
-    assert!(
-        crate::ContextCheckpoints::load(&contexts, "01900000-0000-7000-8000-000000000001")
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert_eq!(meter.backlog(), seen.normal.load(Ordering::SeqCst) + 1);
-    assert_eq!(
-        meter.read().output,
-        seen.normal.load(Ordering::SeqCst) as u64 + 5
-    );
-    assert!(output.records.len() < TURNS);
+    for failure in [SummaryFailure::Invalid, SummaryFailure::Truncated] {
+        let (output, seen, contexts, meter) = run(failure).await;
+        assert_ne!(output.result.content, "all steps finished");
+        assert_eq!(seen.summaries.load(Ordering::SeqCst), 1);
+        assert!(
+            crate::ContextCheckpoints::load(&contexts, "01900000-0000-7000-8000-000000000001")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(meter.backlog(), seen.normal.load(Ordering::SeqCst) + 1);
+        assert_eq!(
+            meter.read().output,
+            seen.normal.load(Ordering::SeqCst) as u64 + 5
+        );
+        assert!(output.records.len() < TURNS);
+    }
 }
