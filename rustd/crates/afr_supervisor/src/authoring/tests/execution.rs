@@ -117,6 +117,6 @@ async fn a_refused_proposal_is_repaired_without_skipping_its_activity_sequence()
             .iter()
             .all(|request| request["activity_sequence"] == "1")
     );
-    assert_eq!(report["usage"]["calls"], 3);
-    assert_eq!(report["usage"]["provider_cost_nanos"], "3");
+    assert_eq!(report["usage"]["calls"], 2);
+    assert_eq!(report["usage"]["provider_cost_nanos"], "2");
 }

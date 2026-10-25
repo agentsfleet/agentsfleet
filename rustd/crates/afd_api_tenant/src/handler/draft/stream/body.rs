@@ -151,14 +151,19 @@ fn preview(
             })
             .validate()
             .ok()?;
+            if let Ok(frame) = serde_json::from_str::<afd_authoring::ContextNotice>(bounded.value) {
+                let frame = garde::Unvalidated::new(frame).validate().ok()?;
+                if !permitted(draft, view, &frame.draft_id, &frame.sequence) {
+                    return None;
+                }
+                return Event::default()
+                    .event(afd_authoring::CONTEXT_EVENT)
+                    .json_data(&*frame)
+                    .ok();
+            }
             let frame: afd_authoring::Delta = serde_json::from_str(bounded.value).ok()?;
             let frame = garde::Unvalidated::new(frame).validate().ok()?;
-            let sequence = frame.sequence.parse::<i64>().ok()?;
-            if &frame.draft_id != draft
-                || view.closed
-                || sequence <= view.cancelled_through_sequence
-                || view.running_sequence != Some(sequence)
-            {
+            if !permitted(draft, view, &frame.draft_id, &frame.sequence) {
                 return None;
             }
             Event::default()
@@ -167,6 +172,15 @@ fn preview(
                 .ok()
         }
     }
+}
+
+fn permitted(draft: &Uuid7, view: &afd_authoring::View, subject: &Uuid7, sequence: &str) -> bool {
+    sequence.parse::<i64>().is_ok_and(|sequence| {
+        subject == draft
+            && !view.closed
+            && sequence > view.cancelled_through_sequence
+            && view.running_sequence == Some(sequence)
+    })
 }
 
 fn changed(watch: &mut Watch, notices: Vec<afd_authoring::Notice>) -> Option<Event> {

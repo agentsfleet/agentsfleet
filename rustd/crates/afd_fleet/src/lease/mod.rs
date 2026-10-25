@@ -20,6 +20,7 @@ pub mod billing_sweep;
 pub mod bracket;
 mod claim;
 pub mod commit;
+mod context;
 pub mod coverage;
 mod deliver;
 pub mod envelope;

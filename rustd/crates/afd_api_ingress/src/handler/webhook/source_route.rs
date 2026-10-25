@@ -70,11 +70,9 @@ pub(crate) struct FleetSourcePath {
     operation_id = "receive_source_webhook",
     summary = "Send a signed event from one source to a fleet",
     description = concat!(
-        "Sends a signed event to the fleet's webhook trigger with this source. ",
-        "Every request requires a valid signature under that trigger's scheme. ",
-        "A new event returns 202. A duplicate within 24 hours returns ",
-        "`status: duplicate`. A paused fleet returns `ignored: fleet_paused`. ",
-        "Send the event again after resuming the fleet. ",
+        "Sends an event to a fleet's named webhook trigger. Requires the trigger's valid ",
+        "signature. New events return 202; repeats within 24 hours return `status: ",
+        "duplicate`. Paused fleets return `ignored: fleet_paused`; resend after resuming.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(

@@ -66,10 +66,8 @@ pub enum ToolCallStatus {
 // rather than a second rule beside each field's own.
 #[garde(custom(call_free_of_nul))]
 pub struct ToolTraceCall<'a> {
-    /// Which call this is: the decimal `call_number` the call's full record is
-    /// posted under, from 1. Anything else makes "show all" unable to find the
-    /// call, so the trace is dropped. The daemon stores and serves it as
-    /// `{fence}:{call_number}`, the id the call's live frames carry.
+    /// Call number starting at 1, as a decimal string. Other formats are dropped. The server
+    /// adds `{fence}:` to match the activity stream's identifier.
     #[serde(borrow)]
     #[garde(custom(call_number))]
     pub call_id: Cow<'a, str>,

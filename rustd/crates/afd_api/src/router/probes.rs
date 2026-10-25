@@ -92,9 +92,8 @@ pub trait Dependencies: Send + Sync + std::fmt::Debug + 'static {
     operation_id = "healthz",
     summary = "Liveness check",
     description = concat!(
-        "Returns 200 as long as the process is alive and able to serve ",
-        "HTTP. Does not probe dependencies — use /readyz for readiness ",
-        "(database + queue). ",
+        "Returns 200 when the server can answer HTTP requests. Use `/readyz` to check the ",
+        "database and event queue.",
     ),
     responses(
         (status = 200, description = "The process is alive", body = Liveness),
@@ -128,10 +127,8 @@ pub(super) async fn healthz() -> Response {
     operation_id = "readyz",
     summary = "Readiness probe",
     description = concat!(
-        "Returns 200 when the database and event queue are available, and ",
-        "503 when either is not. Never shed: an orchestrator that cannot ",
-        "reach this because the instance is busy learns nothing it can act ",
-        "on. ",
+        "Returns 200 when the database and event queue are available, or 503 otherwise. ",
+        "This check remains available when the server is busy.",
     ),
     responses(
         (status = 200, description = "Every dependency this instance needs is reachable", body = Readiness),

@@ -29,6 +29,7 @@ use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_authoring::Error => Authoring,
+    afd_context::Error => Context,
     afd_db::Error => Datastore,
     afd_runner::Error => Runner,
     afd_dragonfly::Error => Queue,

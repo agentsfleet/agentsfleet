@@ -8,10 +8,7 @@ use crate::tool_trace::RawToolTrace;
 #[cfg(feature = "openapi")]
 use crate::tool_trace::ToolTrace;
 
-/// The terminal verdict a runner reports.
-///
-/// Mirrors the event statuses a RUNNER can produce; the daemon-side statuses are
-/// never runner-reported.
+/// Final run outcome reported by the runner. Server-only statuses are excluded.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -77,21 +74,14 @@ pub struct RenewResponse {
     /// The new deadline.
     #[serde(with = "crate::instant")]
     pub lease_expires_at: jiff::Timestamp,
-    /// The highest request line this renewal recorded, when it recorded any.
-    ///
-    /// The runner forgets only the lines at or below it and sends the rest
-    /// again, with its next renewal or its report. A body the daemon could not
-    /// read records none, so its lines are never lost to a renewal that still
-    /// extended the lease.
+    /// Highest usage record saved. Discard records through this number and resend later ones.
+    /// An unreadable body saves no records, even when renewal succeeds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recorded_through: Option<u32>,
 }
 
-/// `POST /v1/runners/me/leases/{lease_id}/renew` request.
-///
-/// The provider requests the run made since its last acknowledged renewal,
-/// one line each. Lines are stored once per number, so a retry that re-sends
-/// them charges nothing new; the daemon measures the run's time itself.
+/// Usage since the last confirmed renewal, one record per provider request. Repeating records
+/// does not add charges. The server measures runtime separately.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default, garde::Validate)]
 #[serde(deny_unknown_fields)]

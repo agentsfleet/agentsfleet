@@ -6,7 +6,7 @@ import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
-import { SOURCE_KIND } from "@/lib/api/draft-types";
+import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 
 export const dynamic = "force-dynamic";
 const SearchSchema = z.union([

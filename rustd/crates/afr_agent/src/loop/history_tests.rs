@@ -11,8 +11,7 @@ use afr_tools::catalog::DELEGATE;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{Budget, EVICTED};
-use crate::fixture::{GITHUB_TOKEN, Script, budget, call, clean, lease, say, unbounded};
+use crate::fixture::{GITHUB_TOKEN, Script, call, clean, lease, say, unbounded};
 use crate::harness::tests::{drive, engine};
 use crate::prompt::Prompt;
 
@@ -103,37 +102,6 @@ fn test_history_message_matches_its_first_reading() {
         lease.event.request_json = request.into();
         assert_eq!(Prompt::new(&lease).message, message_of(request));
     }
-}
-
-/// Eviction rewrites old tool results only; every turn stays as it was.
-#[test]
-fn test_eviction_leaves_history_intact() {
-    let lease = lease(&[], budget(1, 0));
-    let turns = [
-        Message::User(ASKED.to_owned()),
-        Message::Assistant {
-            text: ANSWERED.to_owned(),
-            calls: Vec::new(),
-            replay: Replay::default(),
-        },
-        Message::User(CURRENT.to_owned()),
-    ];
-    let mut messages = turns.to_vec();
-    for call in ["1", "2", "3"] {
-        messages.push(Message::ToolResult {
-            call_id: call.to_owned(),
-            output: "large".to_owned(),
-            image: None,
-        });
-    }
-
-    Budget::new(&lease.policy.context).evict(&mut messages);
-
-    assert_eq!(messages[..3], turns, "the turns are untouched");
-    assert!(
-        matches!(&messages[3], Message::ToolResult { output, .. } if output == EVICTED),
-        "an old tool result is what eviction rewrites"
-    );
 }
 
 /// A turn's cache reads and writes ride its `chat` span beside the whole

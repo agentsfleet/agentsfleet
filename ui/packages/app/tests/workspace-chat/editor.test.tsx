@@ -12,9 +12,9 @@ afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 
 it("provides editable defaults and rejects malformed configuration without writing", () => {
   render(<DefinitionEditor client={client} view={client.getSnapshot()} onUpdated={vi.fn()} />);
-  expect(screen.getByLabelText("Instance name")).toHaveProperty("value", "my-fleet");
+  expect(screen.getByLabelText("Fleet name")).toHaveProperty("value", "my-fleet");
   expect(screen.getByText(/Defaults: chat and steer messages only/)).toBeTruthy();
-  fireEvent.change(screen.getByLabelText("Runtime config"), {target: {value: "{"}});
+  fireEvent.change(runtimeConfig(), {target: {value: "{"}});
   fireEvent.click(screen.getByRole("button", {name: "Update instructions"}));
   expect(screen.getByRole("alert").textContent).toBe("Config must be valid JSON.");
   expect(fixture.writes()).toHaveLength(0);
@@ -22,10 +22,10 @@ it("provides editable defaults and rejects malformed configuration without writi
 
 it("retains editable values when a valid JSON value has the wrong configuration shape", async () => {
   render(<DefinitionEditor client={client} view={client.getSnapshot()} onUpdated={vi.fn()} />);
-  fireEvent.change(screen.getByLabelText("Runtime config"), {target: {value: "[]"}});
+  fireEvent.change(runtimeConfig(), {target: {value: "[]"}});
   fireEvent.click(screen.getByRole("button", {name: "Update instructions"}));
   expect(screen.getByRole("alert").textContent).toBe("Runtime config must be a JSON object.");
-  expect(screen.getByLabelText("Runtime config")).toHaveProperty("value", "[]");
+  expect(runtimeConfig()).toHaveProperty("value", "[]");
   expect(fixture.writes()).toHaveLength(0);
 });
 
@@ -34,8 +34,8 @@ it("updates and reviews an existing candidate before announcing completion", asy
   const reviewed = vi.fn();
   render(<DefinitionEditor client={client} view={client.getSnapshot()} onUpdated={reviewed} />);
   fireEvent.change(screen.getByLabelText("Instructions"), {target: {value: "Investigate safely"}});
-  fireEvent.change(screen.getByLabelText("Instance name"), {target: {value: "safer-fleet"}});
-  fireEvent.change(screen.getByLabelText("Runtime config"), {target: {value: JSON.stringify({...REVIEW.effective.definition.config, name: "renamed-definition"})}});
+  fireEvent.change(screen.getByLabelText("Fleet name"), {target: {value: "safer-fleet"}});
+  fireEvent.change(runtimeConfig(), {target: {value: JSON.stringify({...REVIEW.effective.definition.config, name: "renamed-definition"})}});
   fireEvent.click(screen.getByRole("button", {name: "Update instructions"}));
   await waitFor(() => expect(reviewed).toHaveBeenCalledOnce());
   expect(fixture.writes()[0]?.body).toMatchObject({instance_name: "safer-fleet",
@@ -86,10 +86,10 @@ it.each([
   const reviewed = vi.fn();
   render(<DefinitionEditor client={client} view={client.getSnapshot()} onUpdated={reviewed} />);
   const config = JSON.stringify({...REVIEW.effective.definition.config, "x-agentsfleet": {triggers: [trigger]}});
-  fireEvent.change(screen.getByLabelText(CONFIG_LABEL), {target: {value: config}});
+  fireEvent.change(runtimeConfig(), {target: {value: config}});
   fireEvent.click(screen.getByRole("button", {name: UPDATE_BUTTON}));
   expect((await screen.findByRole("alert")).textContent).toMatch(/trigger|Webhook/i);
-  expect(screen.getByLabelText(CONFIG_LABEL)).toHaveProperty("value", config);
+  expect(runtimeConfig()).toHaveProperty("value", config);
   expect(reviewed).not.toHaveBeenCalled();
   expect(fixture.writes()).toHaveLength(0);
 });
@@ -106,7 +106,7 @@ it.each([
   await client.initialize(); await client.resume(DRAFT.id);
   const reviewed = vi.fn();
   render(<DefinitionEditor client={client} view={client.getSnapshot()} onUpdated={reviewed} />);
-  fireEvent.change(screen.getByLabelText(CONFIG_LABEL), {target: {value: JSON.stringify({...REVIEW.effective.definition.config,
+  fireEvent.change(runtimeConfig(), {target: {value: JSON.stringify({...REVIEW.effective.definition.config,
     "x-agentsfleet": {triggers}})}});
   fireEvent.click(screen.getByRole("button", {name: UPDATE_BUTTON}));
   await waitFor(() => expect(reviewed).toHaveBeenCalledOnce());
@@ -119,11 +119,11 @@ it("shows a daemon webhook refusal verbatim and retains the authored configurati
   render(<DefinitionEditor client={client} view={client.getSnapshot()} onUpdated={reviewed} />);
   const config = JSON.stringify({...REVIEW.effective.definition.config,
     "x-agentsfleet": {triggers: [{type: "webhook", source: "github"}]}});
-  fireEvent.change(screen.getByLabelText(CONFIG_LABEL), {target: {value: config}});
+  fireEvent.change(runtimeConfig(), {target: {value: config}});
   fixture.fetch.mockResolvedValueOnce(response({user_message: REFUSED_WEBHOOK}, 400));
   fireEvent.click(screen.getByRole("button", {name: UPDATE_BUTTON}));
   expect((await screen.findByRole("alert")).textContent).toBe(REFUSED_WEBHOOK);
-  expect(screen.getByLabelText(CONFIG_LABEL)).toHaveProperty("value", config);
+  expect(runtimeConfig()).toHaveProperty("value", config);
   expect(reviewed).not.toHaveBeenCalled();
   expect(client.getSnapshot().draft?.candidate).toEqual(DRAFT.candidate);
 });
@@ -132,8 +132,13 @@ it("accepts a configuration with no trigger extension", async () => {
   await client.initialize(); await client.resume(DRAFT.id);
   const reviewed = vi.fn();
   render(<DefinitionEditor client={client} view={client.getSnapshot()} onUpdated={reviewed} />);
-  fireEvent.change(screen.getByLabelText(CONFIG_LABEL), {target: {value: JSON.stringify({name: "repairer"})}});
+  fireEvent.change(runtimeConfig(), {target: {value: JSON.stringify({name: "repairer"})}});
   fireEvent.click(screen.getByRole("button", {name: UPDATE_BUTTON}));
   await waitFor(() => expect(reviewed).toHaveBeenCalledOnce());
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+function runtimeConfig() {
+  if (!screen.queryByLabelText(CONFIG_LABEL)) fireEvent.click(screen.getByRole("button", {name: "Advanced settings"}));
+  return screen.getByLabelText(CONFIG_LABEL);
+}

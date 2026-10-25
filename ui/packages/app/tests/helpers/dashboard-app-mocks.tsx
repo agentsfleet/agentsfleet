@@ -24,7 +24,6 @@ export const listFleetsMock = vi.fn();
 export const getTenantBillingMock = vi.fn();
 export const listWorkspaceEventsMock = vi.fn();
 export const listFleetEventsMock = vi.fn();
-export const listTenantBillingChargesMock = vi.fn();
 export const getTenantProviderMock = vi.fn();
 export const setTenantProviderSelfManagedMock = vi.fn();
 export const resetTenantProviderMock = vi.fn();
@@ -87,7 +86,6 @@ export function tenantBillingMock() {
     // M101: routes read billing through the cache()-wrapped reader; both names
     // resolve to the same mock fn so existing setups on `getTenantBillingMock` apply.
     getTenantBillingCached: getTenantBillingMock,
-    listTenantBillingCharges: listTenantBillingChargesMock,
   };
 }
 
@@ -99,16 +97,6 @@ export function tenantProviderMock() {
   };
 }
 
-export function billingBalanceCardMock() {
-  return { default: () => React.createElement("div", { "data-balance-card": "1" }) };
-}
-
-export function billingUsageTabMock() {
-  return {
-    default: ({ initialCharges, initialCursor }: { initialCharges: { id: string }[]; initialCursor: string | null }) =>
-      React.createElement("div", { "data-usage-tab": "1", "data-charge-count": initialCharges.length, "data-cursor": initialCursor ?? "" }),
-  };
-}
 
 export function eventsMock() {
   return { listWorkspaceEvents: listWorkspaceEventsMock, listFleetEvents: listFleetEventsMock };

@@ -20,12 +20,8 @@ use std::borrow::Cow;
 
 use serde::Serialize;
 
-/// The process is up and answering HTTP.
-///
-/// Reports the build and nothing about its dependencies. A liveness answer
-/// that went red when the database blinked would get the process killed and
-/// restarted. That does nothing about the database, and it drops every request
-/// the instance was serving.
+/// Server availability and build information. Does not check the database or event queue; use
+/// the readiness endpoint for those.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Liveness<'a> {
@@ -43,11 +39,8 @@ pub struct Liveness<'a> {
     pub build_id: Option<Cow<'a, str>>,
 }
 
-/// Whether this instance should take traffic, and if not, why.
-///
-/// One shape for the 200 and the 503: only the booleans differ. The fields
-/// stay separate all the way to the wire because an operator's next action
-/// does. A red database and a red queue are different incidents.
+/// Whether this server can accept traffic. Both 200 and 503 responses include separate
+/// database and event-queue checks.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Readiness {

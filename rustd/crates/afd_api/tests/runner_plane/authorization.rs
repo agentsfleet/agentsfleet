@@ -24,3 +24,43 @@ fn test_runner_scopes_satisfy_every_runner_route() {
         }
     }
 }
+
+#[tokio::test]
+async fn an_authorized_enrolment_reports_a_datastore_outage_without_minting_a_token() {
+    use super::{ENROL_PATH, Fleet, OPERATOR, Scope, ScopeSet, TENANT_KEY, send};
+    use afd_core::error_code;
+    use http::StatusCode;
+
+    let router = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            OPERATOR,
+            ScopeSet::from_scopes(&[Scope::RunnerEnroll]),
+        )
+        .router();
+    let payload = serde_json::json!({
+        "host_id": "refused-host",
+        "assigned_policy": {
+            "sandbox_tier": "dev_none", "network_policy": "allow_all",
+            "registry_allowlist": [], "worker_count": 1, "extra_binds": []
+        },
+        "labels": []
+    });
+    let response = send(
+        &router,
+        Method::POST,
+        ENROL_PATH,
+        Some(TENANT_KEY),
+        &payload.to_string(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let document = super::harness::json_body(response).await;
+    assert_eq!(
+        document
+            .get("error_code")
+            .and_then(serde_json::Value::as_str),
+        Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+    );
+    assert!(document.get("runner_token").is_none());
+}

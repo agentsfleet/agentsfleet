@@ -6,6 +6,30 @@ use afd_authoring::types::Source;
 use afd_core::error_code;
 use std::sync::Arc;
 
+// Value: an unknown lease or another runner cannot renew or meter the real attempt.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn an_unknown_lease_or_foreign_runner_cannot_renew_or_meter_an_attempt() {
+    let f = Fixture::create().await;
+    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
+    let before = snapshot(&f, &a).await;
+    for (runner, lease) in [
+        (f.runner.clone(), crate::draft::mint()),
+        (crate::draft::mint(), a.lease.clone()),
+    ] {
+        let error = f
+            .drafts
+            .renew(&runner, &lease, request())
+            .await
+            .expect_err("no lease authority");
+        assert_eq!(error.code(), error_code::AUTHORING_NOT_FOUND);
+        assert_eq!(snapshot(&f, &a).await, before);
+        assert_eq!(fixture::receipts(&f, &a).await, (0, 0, false));
+    }
+    f.cleanup().await;
+}
+
 // Value: protects=an unusable model cannot prolong a lease or lose its recovery action;
 // fails_when=renewal keeps a stale model or hides the saved daemon failure;
 // why_new=existing renewal proofs exercise only time and wallet lock contention;

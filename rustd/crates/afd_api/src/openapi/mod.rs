@@ -28,8 +28,7 @@ use crate::route::{Guard, RunnerOpsRoute, Verb};
 const BEARER_SCHEME: &str = "BearerAuth";
 
 /// How a caller obtains the bearer the tenant plane is read with.
-const BEARER_DESCRIPTION: &str =
-    "Obtain a token via the CLI auth flow (POST /v1/auth/sessions) or GitHub OAuth";
+const BEARER_DESCRIPTION: &str = "Send a dashboard session token, an account API key (`agt_t`), or a command-line credential (`afc_`) as a Bearer token. Each endpoint lists accepted credential types.";
 
 /// The scheme name every runner-plane operation refers to.
 ///
@@ -49,7 +48,7 @@ const PRODUCTION_DESCRIPTION: &str = "Production";
 #[derive(utoipa::OpenApi)]
 #[openapi(
     info(
-        title = "agentsfleet Control Plane API",
+        title = "agentsfleet API",
         version = "1.0.0",
         description = "API for managing workspaces, fleets, triggers, and runs.",
         contact(name = "agentsfleet", url = "https://agentsfleet.net"),
@@ -97,8 +96,7 @@ pub fn document() -> utoipa::openapi::OpenApi {
                 .bearer_format(RUNNER_TOKEN_PREFIX)
                 // How a runner obtains its bearer.
                 .description(Some(format!(
-                    "The opaque {RUNNER_TOKEN_PREFIX} token minted when the runner enrols \
-                     (POST {})",
+                    "Runner token beginning with {RUNNER_TOKEN_PREFIX}, returned once by POST {}",
                     RunnerOpsRoute::Register.meta().template
                 )))
                 .build(),

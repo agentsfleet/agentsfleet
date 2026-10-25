@@ -41,6 +41,7 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+afd_context = { workspace = true, features = ["postgres"] }
 # The shared poll admits private setup through its production-domain owner.
 afd_authoring.workspace = true
 # The thread a chat lease reads its turns from is a trait object, so a read

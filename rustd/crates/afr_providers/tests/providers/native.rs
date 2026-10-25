@@ -68,6 +68,8 @@ async fn streamed(connector: &Native, provider: &str, messages: &[Message]) -> V
         tools: &tools,
         hosted: &[],
         cache_key: CACHE_KEY,
+        max_output_tokens: None,
+        single_attempt: false,
     };
     model.stream(request).map(Result::unwrap).collect().await
 }

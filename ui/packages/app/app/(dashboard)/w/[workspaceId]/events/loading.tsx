@@ -1,5 +1,1 @@
-import RouteLoading from "@/components/layout/RouteLoading";
-
-export default function EventsLoading() {
-  return <RouteLoading title="Workspace activity" />;
-}
+export { RouteLoading as default } from "@/components/layout/RouteLoading";

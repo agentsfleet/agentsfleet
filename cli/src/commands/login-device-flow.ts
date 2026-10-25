@@ -231,7 +231,7 @@ const promptVerificationCode = (
     return code;
   });
 
-const verifyAndDecrypt = (
+export const verifyAndDecrypt = (
   sessionId: string,
   keypair: CliKeypair,
   code: string,

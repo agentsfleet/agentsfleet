@@ -59,6 +59,12 @@ async fn completed_stream_has_one_timing_pair_and_content_free_first_text() {
         Some("7")
     );
     let fields = format!("{:?}", captured.events());
+    let calibration = captured.only("model_input_calibration");
+    assert_eq!(calibration.field("actual_input_tokens"), Some("3"));
+    assert_eq!(calibration.field("method"), Some("utf8_estimate"));
+    assert!(calibration.field("measured_input_tokens").is_some());
+    assert!(calibration.field("revision").is_some());
+    assert_eq!(calibration.field("route_id").map(str::len), Some(64));
     for private in ["private prompt", "private-credential", "Hi 🌿"] {
         assert!(
             !fields.contains(private),
@@ -90,6 +96,12 @@ async fn deadline_has_exactly_one_failed_terminal_with_a_registry_code() {
     assert_eq!(failed.field("correlation_id"), Some(CORRELATION));
     assert_eq!(failed.field("reason"), Some("deadline"));
     assert_eq!(failed.field("duration_ms"), Some(DEADLINE_MILLIS));
+    assert!(
+        !captured
+            .events()
+            .iter()
+            .any(|event| event.field("event") == Some("model_input_calibration"))
+    );
     assert_eq!(
         failed.field("error_code"),
         Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())

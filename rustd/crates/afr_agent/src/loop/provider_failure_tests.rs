@@ -74,6 +74,7 @@ async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),

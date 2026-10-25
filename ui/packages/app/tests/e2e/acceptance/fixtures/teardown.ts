@@ -18,6 +18,7 @@ import { clientFor } from "./api-client";
 import type { ClientHandle } from "./api-client";
 import { listFleets, listWorkspaces } from "./seed";
 import { AGENTSFLEET_STATUS, FIXTURE_KEYS } from "./constants";
+import { CONTINUITY_FLEET_PREFIX } from "./continuity-scenario";
 
 /**
  * agentsfleetd enforces a state-machine transition before delete:
@@ -34,7 +35,7 @@ import { AGENTSFLEET_STATUS, FIXTURE_KEYS } from "./constants";
 // -dev / e2e host.
 const SAFE_API_HOST = /(^|\.)localhost$|(^|\.)(api-dev|e2e)[.-]|(^|\.)dev\./;
 
-function assertDestructiveTargetIsSafe(): void {
+export function assertDestructiveTargetIsSafe(): void {
   const url = process.env.NEXT_PUBLIC_API_URL ?? "";
   let host = "";
   try {
@@ -66,11 +67,8 @@ export async function cleanWorkspaceFleets(
   const fleets = await listFleets(handle, workspaceId);
   const counts: SweepCounts = { removed: 0, failed: 0 };
   for (const z of fleets) {
-    // Specs run in parallel workers against the shared fixture workspace;
-    // an unscoped cleanup deletes a sibling spec's fleet mid-test. Callers
-    // pass their seed prefix so each spec tears down only its own rows.
-    // The global-teardown sweep passes nothing: no spec is running then, so
-    // the reason for scoping does not hold and keeping nothing is the rule.
+    // Long journeys clean themselves after success; preserve failed live records.
+    if (namePrefix === undefined && z.name.startsWith(CONTINUITY_FLEET_PREFIX)) continue;
     if (namePrefix !== undefined && !z.name.startsWith(namePrefix)) continue;
     try {
       await purgeFixtureFleet(handle, workspaceId, z.id);

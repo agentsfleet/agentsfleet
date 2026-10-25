@@ -33,6 +33,8 @@ const FLOW_TIMEOUT_MS = 240_000;
 const NAME_PREFIX = "private-text-";
 const SERVICE_UNAVAILABLE = 503;
 const GET = "GET";
+const POST = "POST";
+const MESSAGE_ACCEPTED = 202;
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
 test.describe("a private setup chat stays with its creator", () => {
@@ -75,7 +77,12 @@ async function writePrivateChat(invitee: Invitee, workspaceId: string): Promise<
 // A sent message is durable before any reply: a reload brings it back from the server.
 async function aPendingSendSurvivesReload(page: Page, chat: PrivateChat): Promise<void> {
   await openDraft(page, chat.workspaceId, chat.draftId);
-  await sendFromComposer(page, chat.sentText);
+  const messagePath = `/live/v1/workspaces/${chat.workspaceId}/drafts/${chat.draftId}/messages`;
+  const [accepted] = await Promise.all([
+    page.waitForResponse(response => response.request().method() === POST && new URL(response.url()).pathname === messagePath),
+    sendFromComposer(page, chat.sentText),
+  ]);
+  expect(accepted.status(), "Private message persisted before reload").toBe(MESSAGE_ACCEPTED);
   const conversation = page.getByRole("log");
   await expect(conversation.getByText(chat.sentText)).toBeVisible();
   await page.reload();

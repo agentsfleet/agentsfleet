@@ -43,10 +43,9 @@ describe("conversation-first app navigation", () => {
   it("uses the compact centered New fleet icon button when collapsed", () => {
     render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId={WORKSPACE.id} operatorScopes={[]} collapsed onNavigate={() => {}} />);
     const action = screen.getByRole("link", {name: "New fleet"});
-    expect(action.classList.contains("w-9")).toBe(true);
-    expect(action.classList.contains("h-9")).toBe(true);
-    expect(action.classList.contains("self-center")).toBe(true);
-    expect(action.classList.contains("w-full")).toBe(false);
+    expect(action.classList.contains("justify-center")).toBe(true);
+    expect(action.querySelector("svg")?.getAttribute("width")).toBe("18");
+    expect(action.getAttribute("href")).toBe("/w/ws_1/fleets/new");
     expect(action.getAttribute("title")).toBe("New fleet");
   });
   it("keeps the expanded sidebar free of search and fleet recents", () => {

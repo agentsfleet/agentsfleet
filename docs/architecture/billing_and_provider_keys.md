@@ -37,7 +37,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired — `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, and stored on the lease | §7 |
-| Blocked rows | terminal | no automatic replay after top-up; resume writes a continuation event | §6 |
+| Blocked rows | terminal | no automatic replay after top-up; re-trigger the source (§6); continuation applies only to approval gates | §6 |
 | Live dollar values | never in this doc | served by the authenticated billing surface; the run fee is declared once, in `afd_billing` | preamble, §4.1 |
 
 ## Traps
@@ -89,15 +89,23 @@ Setup chat bills through the shared `Biller` lifecycle (§11), on the same `Arc<
 
 Resolve models and billing from `Owned.tenant`, the workspace owner's account, rather than the joined member's account. Send captures the selected reference; admission pins provider/model/inference settings/context/prices. Idle version-guarded draft PATCH can replace a disabled selection; earlier turns retain their pins. Model disable, wallet absence, membership removal, and policy-marker drift fail closed. Queue acceptance can precede admission; refusal records the durable bounded Message failure/action from the resource reference.
 
-**The bound.** An attempt's worst case is its ceiling: 8×32,768 input tokens, the selected model's saved maximum output tokens across the turn, and 300 seconds of runtime fees, rounded upward per token class with checked arithmetic (`afd_authoring::model::budget::bound`). It is stored as `authoring.attempts.reserved_nanos`, and it is what the attempt's hold reserves.
+**Admission.** Reserve the selected model's total output allowance, upward rounding for eight physical calls, and 300 seconds of runtime fees. `authoring.attempts.reserved_nanos` records that initial ceiling (`afd_authoring::model::budget::bound`).
+
+**Measured input.** Before each physical send, add its measured input cost and all known prior dispatch costs to the admission bound. Raise the hold before sending, with checked arithmetic and no independent 32,768-token input allowance. Summaries use this same funding path; [conversation compaction](context_lifecycle.md) owns window selection.
 
 **Claim.** The gate reads the owner's balance less every open hold, `afd_billing::ledger::balance`, on the claim's own transaction, and refuses an attempt whose bound it cannot cover. A tenant with no wallet is refused. After the attempt commits, its hold is placed: `reserve(AuthoringAttempt(id), ceiling = bound)`. A hold that comes back short, or a biller that cannot answer, leaves the attempt running unheld (`setup_chat_hold_unplaced`), and its first model call reserves again.
 
-**Renewal and each model call** raise the hold to that ceiling before their transaction opens. A biller call never runs inside a transaction: a third-party biller may be remote, and the built-in one takes its own pooled connection, so holding one while waiting for another starves the pool under concurrent saves. `Short` or `Closed` refuses as the wallet failure; under `OutagePolicy::Open` an unanswered biller admits (`Unconfirmed`).
+**Renewal** reestablishes the stored ceiling. Each model call measures its complete request under a guarded transaction, then releases the connection before raising the hold. A second guarded transaction checks the request digest and funding ceiling before recording dispatch intent.
+
+A biller call runs outside these transactions because the biller may take another connection or make a remote request. `Short` or `Closed` returns the wallet failure; `OutagePolicy::Open` admits an unanswered biller as `Unconfirmed`.
 
 **Report.** When the daemon knows the attempt's usage, the report's transaction logs its lines with `log_lines`: one per dispatch with known usage (completed, or failed with usage the provider still billed), at the instant it was dispatched, and one runtime line (`seq` 0; dispatch sequences start at 1). The `Rater` prices each line by its whole-request tier. The settled outcome is stamped on the attempt, and every later replay reads it there after private text is gone. After commit the report settles the lines and releases the hold (`Completed`, or `Failed` for any other outcome). A failure is logged (`setup_chat_settle_deferred`, `setup_chat_release_deferred`) and repaired by the sweeper. An attempt whose usage is still unknown logs nothing and keeps its hold until the replay that learns its usage settles it.
 
-**Locks.** Authoring transactions take subject → attempt; no authoring path locks the wallet row. Money moves in the biller's own transactions, which lock wallet → holds → lines, so the two orders never meet. Claim and renewal first take the runner guard. A renewal reads the clock after its attempt lock, so an attempt that expired while it waited is refused.
+**Locks.** Authoring renewal takes draft → attempt → runner, then refreshes database time after the runner lock.
+Claim holds the runner first and takes the draft `NOWAIT`.
+[Concurrency](concurrency.md#runner-capacity-and-authoring-lock-order) owns the complete lock order and exceptions.
+
+The biller moves money in separate transactions, locking wallet → holds → lines.
 
 Charge cumulative known usage once, with monotone counters and exact replay identity. Provider timeout/crash without trusted usage records `knowledge:"unknown"`, never an estimated zero. Its hold remains until accounting resolves, including after Stop.
 
@@ -138,7 +146,12 @@ There are two billing postures. A fleet's saved `runtime_model_ref` selects its 
 
 The platform administrator selects the default model and its credential. Its saved catalogue row supplies the endpoint, API format, physical context window and maximum output length (§9). Neither the provider name nor this document selects a model or route.
 
-The default is a **pointer, not a constant**: `model.platform_defaults` names `(provider, source_workspace_id)` and carries the model and its context cap; the admin credential supplies only the key. Changing it is an admin write, not a deploy. `(provider, model)` is a foreign key into `model.platform_models` with `ON DELETE RESTRICT` (`schema/1320_model_platform_defaults.sql`), so the default can never name an uncatalogued model. Naming a superseded model here left platform slices unpriced until M168. Both postures dial the selected model's saved endpoint (§9). Platform uses the admin workspace's key; self-managed uses the user's key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
+The default is a **pointer, not a constant**.
+`model.platform_defaults.platform_model_id` references `model.platform_models.id` with `ON DELETE RESTRICT`; the catalogue row supplies model identity, context and inference settings.
+`source_workspace_id` identifies the admin workspace holding the credential (`schema/1320_model_platform_defaults.sql`).
+
+Changing the default is an admin write, not a deployment.
+Both postures dial their selected model's saved endpoint (§9); platform uses the admin's key, and self-managed uses the owner's key.
 
 `model.tenant_selections` holds the separate account default. The tenant provider commands update that default; a missing row means `platform`. Runtime resolution uses the fleet's saved reference without consulting this default (`afd_credential/src/provider/runtime/resolve.rs`). Changing the account default does not rewrite saved fleets.
 
@@ -272,10 +285,11 @@ A worked example with hardcoded dollar amounts goes stale the moment a rate move
 
 ```
 total_nanos = Σ_lines [ ⌈runtime_ms × RUN_NANOS_PER_SEC / 1000⌉
-                      + ⌈Δinput  × rate.input_nanos_per_mtok        / 1_000_000⌉
-                      + ⌈Δcached × rate.cached_input_nanos_per_mtok / 1_000_000⌉
-                      + ⌈Δoutput × rate.output_nanos_per_mtok       / 1_000_000⌉ ]
+                      + Σ_priced_categories ⌈tokens_category × rate_category / 1_000_000⌉ ]
 ```
+
+Token categories are input, cache read, unspecified-lifetime cache write, five-minute cache write, one-hour cache write, and output.
+Each category rounds separately per line; an unpublished rate leaves its tokens visibly unpriced (§11).
 
 **Self-managed posture:**
 
@@ -293,14 +307,14 @@ The token component dominates a token-heavy run; the run fee dominates a long, q
 
 ```mermaid
 flowchart TD
-    A([Lease poll: readiness peek, claim, stream read]) --> B[INSERT fleet_events status=received]
+    A([Lease poll: claim unsettled admission]) --> B[INSERT fleet.events status=received]
     B --> C[Resolve saved runtime model and posture<br/>Providers::resolve_reference]
     C --> D[Estimate the run's floor<br/>Accounts::estimate through the Rater]
     D --> E{balance − open holds<br/>≥ floor?}
-    E -->|no| Block[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
-    Block --> X1([XACK — terminal])
+    E -->|no| Block[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_reason=balance_exhausted]
+    Block --> X1([Settle fenced admission — terminal])
     E -->|yes| BG{fleet budget<br/>gates::fleet_budget}
-    BG -->|breach| BB[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_label=budget_breach]
+    BG -->|breach| BB[UPDATE fleet.events<br/>SET status=gate_blocked<br/>failure_reason=budget_breach]
     BB --> X1
     BG -->|ok| G[Approval gate]
     G -->|blocked| Wait[gate_blocked until<br/>user resumes]
@@ -308,8 +322,8 @@ flowchart TD
     H --> J[Issue lease, then reserve its first hold]
     J --> Renew[Runner /renew ticks<br/>raise the hold, log and settle the slice §3]
     Renew --> K[Runner reports result]
-    K --> L[UPDATE fleet.events SET status=processed<br/>log the final slice, release affinity<br/>then settle and release the hold]
-    L --> X2([XACK])
+    K --> L[UPDATE fleet.events SET status=processed<br/>log the final slice, release affinity<br/>and settle fenced admission in the transaction]
+    L --> X2([After commit: settle usage and release hold])
 ```
 
 Properties:
@@ -363,9 +377,11 @@ When the gate blocks, the user's surfaces show:
 - **`agentsfleet events <fleet_id>`** — the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`.
 - **`agentsfleet billing show`** — balance reads `$0.00`, or a negative amount while the tenant owes a debt, and the CLI prints *⚠ Out of credits. See https://app.agentsfleet.net/settings/billing* (`cli/src/commands/billing.ts`); below it, the most recent charge rows showing where the credits went.
 - **Dashboard events list** (`/w/{workspaceId}/events`) — the row renders with an amber `gate_blocked` status (`ui/packages/app/components/domain/EventsList.tsx`).
-- **Dashboard `/settings/billing`** — a *Balance exhausted* alert says new fleet events are gate-blocked until a top-up. The *Buy credits* button is a mail link to support, with a tooltip saying so (`BillingBalanceCard.tsx`). The Usage tab still shows the historical drain.
+- **Dashboard `/settings/billing`** shows settled spending in **Activity** and **Spending** tabs. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters, detail reads and unavailable states.
 
-The blocked row is **terminal** (XACKed, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they re-trigger from the source (push another commit, send another steer). The `actor=continuation:<original>` resume belongs to the approval gate (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`); a balance-blocked row has no resume.
+The blocked row is **terminal** (admission settled, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they re-trigger from the source (push another commit, send another steer).
+
+The `actor=continuation:<original>` resume belongs to the approval gate (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`); a balance-blocked row has no resume.
 
 The reasoning is that a balance-exhausted event is usually evidence the user was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
 
@@ -472,7 +488,10 @@ The native Ollama API does not authorize local network access: a saved base URL 
 
 The daemon resolves the exact selected reference for runtime leases and includes non-secret settings in `ExecutionPolicy.inference`. The supervisor uses the resolved key outside the sandbox and sends inference through its guarded transport. An absent configuration refuses the lease. Authoring keeps credentials in the daemon and sends only its scoped capability to the runner. Neither path follows redirects; outbound address guards remain in force.
 
-The fleet's operating context cap stops tool use and requests a final answer. It does not replace the model's physical window. Every provider request bounds output by both the saved maximum output length and the physical space remaining after the complete encoded input; exhausted physical context refuses dispatch.
+The fleet's operating context cap can trigger earlier [conversation compaction](context_lifecycle.md). A valid checkpoint lets the same run continue with tools.
+
+The selected model still supplies the physical window. Each request bounds output by the saved maximum and remaining physical headroom after complete encoded input.
+Pinned input that cannot fit refuses dispatch.
 
 `rig-core` and `rig-http` are pinned to 0.44.0. The shared `afd_inference::log_filter` filters rig's request/reply traces and the warning containing a provider's private error text in both daemon and runner logging. Model keys and private prompts never become log fields.
 
@@ -481,8 +500,6 @@ The fleet's operating context cap stops tool use and requests a final answer. It
 ## 10. The model library — catalogue table + authenticated read
 
 `model.platform_models` holds each exact provider/model identity, display name, context evidence, advanced flag and inference settings. `model.platform_model_prices` holds its prompt-size tiers, effective date ranges, token rates and price evidence. Platform admins manage both through `POST/PATCH/DELETE /v1/admin/models`; authenticated tenants read them through **`GET /v1/models`**. Workspace chat lists only eligible owner registrations and the enabled platform default (§9), rather than every catalogue row. The setup and trigger resolution flow is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed).
-
-Section 8 of M229 remains in progress. Per-request billing and the HTTP representations still require integration; cache writes reach the lines split by lifetime (§11). [The integration handover](../reviews/model-catalogue/handover.md) records those gaps; this table split does not prove settlement uses the new rates.
 
 Read shape: API reference › Model Library (keyset-paged; `version` moves on every catalogue change).
 

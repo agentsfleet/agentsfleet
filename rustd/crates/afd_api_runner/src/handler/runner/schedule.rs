@@ -75,16 +75,12 @@ pub(super) const RECONCILED: &str = "The schedule as reconciled with the schedul
 /// What [`create`] documents, its cap spelled from the constant.
 #[cfg(feature = "openapi")]
 const CREATE_DESCRIPTION: &str = const_format::concatcp!(
-    "Creates a schedule for the fleet the lease runs, with source `fleet`, ",
-    "and registers it in QStash as a person's schedule is. The fleet comes ",
-    "from the lease and never from the body, and the fleet's declared secrets ",
-    "are masked out of the message. A fleet holds at most ",
+    "Creates a schedule for the assigned fleet and registers it with QStash. Source ",
+    "is `fleet`; secret values are masked in its message. A fleet may create ",
     afd_cron::FLEET_SCHEDULES_MAX,
-    " schedules it created, refused past that with `UZ-SCHED-009`. With ",
-    "`once` set, the schedule retires after its first fire. A schedule ",
-    "that saved and did not register answers 201 with its `sync` state. ",
-    "Takes no `Idempotency-Key`: the runner does not retry a call, and a ",
-    "model that repeats one has asked for a second schedule. ",
+    " schedules; excess returns `UZ-SCHED-009`. `once` retires the schedule after its ",
+    "first delivery. Registration failures still return 201 with `sync` state. Each ",
+    "request creates another schedule; `Idempotency-Key` is unsupported.",
 );
 
 /// Creates a schedule for the fleet the lease runs.
@@ -164,10 +160,9 @@ pub(crate) async fn create<D: Services>(
     operation_id = "runner_list_schedules",
     summary = "List the running fleet's schedules",
     description = concat!(
-        "Lists every schedule of the fleet the lease runs, oldest first. Each ",
-        "names its `source`: `api` for a person, `trigger` for the fleet's own ",
-        "document, `fleet` for the fleet itself. Only a `fleet` schedule can be ",
-        "changed through the lease. ",
+        "Lists the assigned fleet's schedules oldest first. `source` is `api` for ",
+        "user-created schedules, `trigger` for setup-defined schedules, or `fleet` for ",
+        "fleet-created schedules. This runner can change only `fleet` schedules.",
     ),
     params(afd_http::openapi::path::Lease, afd_http::openapi::query::Fence),
     responses(

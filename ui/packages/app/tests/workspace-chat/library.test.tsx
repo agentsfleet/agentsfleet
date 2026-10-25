@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LibraryBrowser } from "@/components/domain/chat/LibraryBrowser";
 import { LibraryWorkspace } from "@/components/domain/chat/LibraryWorkspace";
-import { SOURCE_KIND } from "@/lib/api/draft-types";
+import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { FLEET_ID, LIBRARY, LIBRARY_CARD, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
 const { removeEntry, push } = vi.hoisted(() => ({ removeEntry: vi.fn(), push: vi.fn() }));

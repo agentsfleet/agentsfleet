@@ -15,12 +15,12 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Capability layers | 2 | the Definition's `instructions_md` is advisory; its reviewed `config` plus approved grants are binding, enforced by the runner | §1 |
-| `trigger.type` vs `event_type` | orthogonal fields | different homes (the setup's `config` vs `fleet.events`), never the same value | §1.1 |
+| `trigger.type` vs `event_type` | orthogonal fields | different homes and meanings (the setup's `config` vs `fleet.events`); some values overlap | §1.1 |
 | Tool primitives | the runner's published catalog, e.g. `http_request` · the `file_*` tools · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | [`runner_execution.md`](./runner_execution.md) §"Tool catalog" |
 | Mintable integrations | short-lived tokens, minted per lease | GitHub App: daemon-signed RS256 JSON Web Token (JWT) exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
 | Vault secret shapes | 2 | static (stores the value, resolved at lease) vs mintable (stores a handle, never a token) | §3 |
-| Context lifecycle | 3 layers | `memory_checkpoint_every: 5` · `tool_window: auto` (30 / 20 / 10 by context cap, resolved per lease) · `stage_chunk_threshold: 0.75` | §4 |
-| Layer 3 authority | enforced | past the threshold the runner logs `context_cap_reached`, offers no more tools and asks for the answer; the fleet's prose owns the snapshot | §4 |
+| Context lifecycle | Shared conversation compaction; separate semantic memory | Compaction defaults to 90 percent; an authored operating threshold or output headroom can trigger earlier. Semantic memory pushes every five tool calls. `tool_window` remains accepted metadata. | §4 |
+| Continuation authority | guarded private checkpoint | Source and assignment checks guard saved working notes; valid compaction continues the same run with tool access. | §4 |
 | Runaway bound | `budget` caps + lease runtime deadline | there is no enforced continuation-chain counter | §4 |
 | Memory hygiene | `core` pinned; `daily` expires | `daily` rows older than 72 h are deleted on the next capture push; re-storing a key is an upsert | §4 |
 | Cap resolution | saved catalogue window, read per lease | the revision's `runtime_model_ref` selects the model; an absent or zero operating cap inherits its physical window | §4 |
@@ -30,7 +30,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 Each trap is enforced in its owner section; this list is the index — §5 (What the platform never does) is the binding never-list.
 
 - Instructions are advisory and `config` is binding; never treat prose as enforcement (§1).
-- `trigger.type` and `event_type` are never the same value and never the same table (§1.1).
+- `trigger.type` and `event_type` have different meanings and homes; values such as `webhook` overlap (§1.1).
 - A fleet's own schedules go through a runner verb onto `agentsfleetd`'s schedule plane — Upstash QStash, the hosted scheduler, still owns the clock, and the runner receives only the resulting event ([`runner_execution.md`](./runner_execution.md) §"Tool catalog").
 - The runtime cannot force a chunk; do not design as if a mid-loop interrupt exists (§4).
 - A fleet that hoards everything as `core` defeats the pinning — an over-cap all-`core` set evicts the coldest `core` (§4).
@@ -43,7 +43,7 @@ A fleet's setup is one reviewed Definition (`rustd/crates/afd_fleet_runtime/src/
 | Part | What it carries | Enforced by |
 |---|---|---|
 | `instructions_md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose, required before Save. | The language model reading its own prompt, which is soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
-| `config` | The policy document. Under `x-agentsfleet` it carries `triggers` (`webhook` / `api` / `cron` / `mention`), `tools`, `credentials`, `network`, `budget` caps, `gates`, `repositories`, `context`, and `model`. One parser validates it into `FleetConfig`. | Code-enforced by the runner, outside the model's reach. The language model cannot escape these. |
+| `config` | The policy document. Under `x-agentsfleet` it carries `triggers` (`webhook` / `cron` / `mention`), `tools`, `credentials`, `network`, `budget` caps, `gates`, `repositories`, `context`, and `model`. One parser validates it into `FleetConfig`. | Code-enforced by the runner, outside the model's reach. The language model cannot escape these. |
 | `description` | One required line of display text saying what the fleet does. The fleet's name is `config.name`. | Nothing. Display text grants nothing and places nothing. |
 
 The split matters. The instructions are *advisory*: the model reads them and tries to comply. The reviewed `config` and the grants a person approved are *binding*: the runner offers the model only the policy's tools and refuses any call outside them, regardless of what the model wants ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
@@ -57,7 +57,11 @@ These are two different fields on two different tables. Mixing them up is the mo
 | `trigger.type` | the setup's `config` (static, reviewed) | `webhook` / `cron` / `mention` | **How a Fleet gets triggered**: the wiring fixed at Save or a later reviewed revision. |
 | `event_type` | `fleet.events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual admitted event is** — the runtime label per delivery. |
 
-A fleet that declares no trigger receives only `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` fleet receives `event_type: webhook`. A continuation event, which `agentsfleetd` writes when an approval gate resolves (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`), carries `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
+A fleet needs no declared trigger to receive `event_type: chat` from the steer API.
+A `trigger.type: webhook` fleet receives `event_type: webhook`.
+The fields describe different things; values such as `webhook` overlap.
+
+Resolving an approval gate creates `event_type: continuation`, regardless of the original trigger type (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`).
 
 Source of truth: `rustd/crates/afd_fleet_runtime/src/config/trigger/mod.rs` (`Trigger`) for `trigger.type`; `rustd/crates/afd_wire/src/event/mod.rs` (`EventType`) for `event_type`.
 
@@ -82,15 +86,17 @@ The runner hosts every published tool; `tools:` selects which the model is offer
 | Provider config (self-managed) | A tenant chooses platform-managed inference or its own provider key. The api_key crosses vault → lease `ExecutionPolicy` → runner's supervisor → outbound HTTPS and never reaches a user-facing surface ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary"). | Provider resolution path |
 | Approval gating | A gated event parks at lease until a workspace member approves it in the dashboard, through the API, or with `agentsfleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`rustd/crates/afd_gate/src/gate/park.rs`, "No pending summary, no staged notification"). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
 | Budget caps | Daily and monthly hard caps in integer nanos (`daily_nanos`, `monthly_nanos`), configured per fleet in the reviewed `config`, block further runs at the first trip ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"5.1 The per-fleet budget gate — a second, independent ceiling"). | Billing gate |
-| Per-run context lifecycle | Rolling tool-result window, memory-store nudge, and the context-cap wrap-up. See §4. | Context lifecycle |
+| Per-run context lifecycle | Shared compaction and guarded working notes let the same run continue. See §4. | Context lifecycle |
 
 ---
 
 ## 4. Context lifecycle — keeping a long incident reasoning past the model's working-memory limit
 
-Every fleet reasoning loop lives inside one run of the runner's agent loop ([`runner_execution.md`](./runner_execution.md#process-model)). As the fleet makes tool calls, each result lands in the language model's context window. On a long-running incident (thirty-plus tool calls), this can exhaust the window. The platform layers three independent mechanisms — defence in depth, not override — to keep the fleet reasoning past the limit.
+The runner compacts older conversation before a model request exhausts its working window, then continues the same run.
+Private setup and fleet runtime share this policy.
+Semantic memory has its own save cadence for facts used by later runs.
 
-### The three knobs
+### Context settings
 
 ```json
 {
@@ -99,7 +105,7 @@ Every fleet reasoning loop lives inside one run of the runner's agent loop ([`ru
     "context": {
       "tool_window": "auto",
       "memory_checkpoint_every": 5,
-      "stage_chunk_threshold": 0.75,
+      "stage_chunk_threshold": 0.90,
       "context_cap_tokens": 200000
     }
   }
@@ -109,70 +115,54 @@ Every fleet reasoning loop lives inside one run of the runner's agent loop ([`ru
 The block sits in the fleet's `config`:
 
 - `model` is parsed as setup metadata. The revision's `runtime_model_ref` selects the execution model at lease time; authored model text cannot replace that identity.
-- `tool_window` is the rolling tool-result window size. `"auto"` and `0` are equivalent: both let the runtime pick.
-- `memory_checkpoint_every` calls `memory_store` every N tool calls.
-- `stage_chunk_threshold` is the fraction (0 to 1) of the context window at which a stage chunks.
-- `context_cap_tokens` is the operating cap used for wrap-up. `0` or absent inherits the selected model's saved physical window. Authored caps leave that physical window unchanged.
+- `tool_window` remains accepted setup metadata. Whole tool call/result groups now follow shared compaction instead of count-based eviction.
+- `memory_checkpoint_every` pushes already-stored semantic memory every N tool calls. It does not ask the model to create a snapshot.
+- `stage_chunk_threshold` selects an earlier compaction threshold; values above 0.90 use 0.90.
+- `context_cap_tokens` sets the operating threshold. Zero or absence inherits the selected model's physical window.
 
-**Wire-shape parser status.** The four `x-agentsfleet.context.*` knobs are parsed into `FleetConfig` and applied through the lease's `ContextBudget`. Absent or zero values use the runtime defaults below. The saved model supplies execution identity and the separate `ExecutionPolicy.model_context_tokens` physical window (`rustd/crates/afd_gate/src/policy/{context,build/mod}.rs`).
+### How continuation works
 
-### How the three layers compose (defence-in-depth, not override)
-
-```mermaid
-flowchart TD
-    Start([Run opens — the agent loop starts]) --> Tool1[tool call 1<br/>result added to context]
-    Tool1 --> Tool2[tool calls 2-4]
-    Tool2 --> L1{N tool calls?}
-    L1 -->|yes| Checkpoint[L1 fires:<br/>fleet calls memory_store<br/>'findings_so_far']
-    Checkpoint --> Tool3[more tool calls]
-    L1 -->|no| Tool3
-    Tool3 --> L2{result count<br/>over tool_window?}
-    L2 -->|yes| Drop[L2 fires:<br/>oldest results dropped<br/>from context<br/>still in event log]
-    L2 -->|no| Fill
-    Drop --> Fill[continue tool calls]
-    Fill --> L3{context fill<br/>over stage_chunk_threshold?}
-    L3 -->|yes| Chunk[L3 fires:<br/>runner logs context_cap_reached,<br/>offers no more tools and<br/>asks the fleet to answer now]
-    L3 -->|no| Tool4[tool call N+1]
-    Tool4 --> L1
-    Chunk --> NextStage([Next trigger:<br/>fleet recalls snapshot<br/>via memory hydration])
-    NextStage --> Tool1
+```text
+  Original history + current instructions + current request
+                            |
+                   Measure provider request
+                            |
+                    Fits working window?
+                      /             \
+                    yes              no
+                     |                |
+                Model turn      Summarize older groups
+                     |                |
+                Tool results    Save guarded checkpoint
+                     |                |
+                     +-------> measure again
 ```
 
-### What each layer catches
+Private setup and runtime use the same [conversation compaction engine](context_lifecycle.md).
+That page owns thresholds, summary validation, checkpoint ownership, source guards and native replay rules.
 
-- **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the fleet works. Forces the fleet to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
-- **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `fleet.events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every model turn the runner compares the prompt's tokens with that fraction of `context_cap_tokens`. Past it, the runner logs `context_cap_reached` and offers no more tools. It tells the model to answer with what it has and say what was not done (`rustd/crates/afr_agent/src/context/mod.rs`, `loop/mod.rs`). A cap of 0, which the daemon could not resolve, never trips. The fleet's instructions tell it to write a durable snapshot (`memory_store`) before then, as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner's supervisor loads that fleet's prior memory from `agentsfleetd` over the runner's authenticated API, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
+The runner keeps complete tool call/result groups together.
+A summary disables tools and contributes real usage to the run's meter.
+A valid checkpoint lets the current run continue with its goal, current request and tool access.
 
-The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
+### Semantic memory remains separate
 
-### Bounding a runaway run
+Every `memory_checkpoint_every` completed tool calls, the runner pushes entries the model already stored.
+An empty pending set writes nothing.
+A failed push is logged; the final push before the report carries the entries again (`afr_agent/src/loop/conversation.rs`).
 
-Layer 3 ends a run's tool calls once its context fills (above), but there is no enforced continuation-chain counter. A chain of runs that will not wrap up is bounded by the guards that *are* enforced: the fleet's `budget` caps (`daily_nanos` / `monthly_nanos`) and the lease's runtime kill-deadline. Those stop a runaway run regardless of whether the fleet chooses to snapshot.
+Semantic memory supplies facts for later runs.
+Conversation checkpoints retain working notes for the current run.
+Neither summary text nor quoted prior history can replace current instructions.
 
-`context_cap_reached` tells an operator a run hit its cap, and the answer that follows says what was not done. Resume a wrapped-up incident by steering a fresh message that calls `memory_recall` against whatever snapshot key the fleet's own instructions chose (the runtime never invents the key shape).
+### Limits and defaults
 
-### Defaults — the user shouldn't have to do token math
+The compaction threshold defaults to 90 percent; semantic memory pushes default to every five tool calls.
+An authored operating cap can trigger earlier compaction while the saved model still supplies physical headroom for the summary.
 
-The runtime ships with model-tier-aware defaults the user inherits without any configuration:
-
-- `memory_checkpoint_every: 5` and `stage_chunk_threshold: 0.75` for every model — checkpoint cadence and chunk-trigger fraction don't meaningfully change with context size.
-- `tool_window: auto` resolves per lease from the active model's context cap: **30** when the cap is at least one million tokens, **10** when it is at or below two hundred thousand, and **20** for every cap in between or an unknown cap (`rustd/crates/afd_gate/src/policy/context.rs`).
-
-Each lease reads the selected model's physical window from `model.platform_models`, for either an owner registration or the active `platform-default`. The setup's operating cap defaults to that window; an authored cap changes wrap-up behavior only (`rustd/crates/afd_credential/src/provider/registered/sql/mod.rs`, `rustd/crates/afd_gate/src/policy/build/mod.rs`). See [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read".
-
-### When a user does want to override (rare)
-
-| Goal | What to change | How to think about it |
-|---|---|---|
-| "My fleet loses important findings mid-incident" | `memory_checkpoint_every: 3` | Checkpoint more often. Cheap. Always safe. |
-| "My fleet hits context limits and chunks too aggressively" | `tool_window: 10` | Drop old results sooner so newer stuff fits. Loses older tool results earlier. |
-| "My fleet chunks too late and produces partial diagnoses" | `stage_chunk_threshold: 0.6` | Chunk earlier. More handoffs but less risk of being cut off mid-thought. |
-| "I'm on Kimi K2.7 Code (256k) and incidents are big" | `tool_window: 8` + `memory_checkpoint_every: 3` | Smaller windows + more checkpoints. Standard tight-context discipline. |
-
-### The 80/20 rule
-
-Eighty percent of users use the defaults forever and never see context errors. Twenty percent who run very deep incidents tweak `tool_window` once and forget. Almost nobody touches `stage_chunk_threshold`.
+Compaction consumes model calls and output tokens.
+Money, runtime, output and cancellation limits can still stop work.
+A pinned request that cannot fit the physical window fails before provider access.
 
 ### Memory hygiene — what to store so it survives
 

@@ -58,12 +58,29 @@ export type DataTablePagination =
   | ClientDataTablePagination
   | PagePaginationProps;
 
+export const DATA_TABLE_SURFACE = { panel: "panel", plain: "plain" } as const;
+export const DATA_TABLE_ROLE = {
+  table: "table", rowgroup: "rowgroup", row: "row", columnheader: "columnheader", cell: "cell",
+} as const;
+export type DataTableSurface = typeof DATA_TABLE_SURFACE[keyof typeof DATA_TABLE_SURFACE];
+
+/** One caller-owned disclosure; content is rendered only for the selected row. */
+export type DataTableDisclosure<T extends DataTableRowData> = {
+  expandedRow: string;
+  onExpandedRowChange: (key: string) => void;
+  label: (row: T) => string;
+  content: (row: T) => React.ReactNode;
+};
+
 export interface DataTableProps<T extends DataTableRowData> {
   columns: DataTableColumn<T>[];
   rows: T[];
   rowKey: (row: T) => string;
   caption?: string;
   onRowClick?: (row: T) => void;
+  rowDisclosure?: DataTableDisclosure<T>;
+  /** Plain keeps dividers and table semantics without a surrounding panel. */
+  surface?: DataTableSurface;
   /** Rendered when rows.length === 0. Supplying your own disables the default. */
   empty?: React.ReactNode;
   className?: string;

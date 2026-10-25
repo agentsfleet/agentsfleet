@@ -77,7 +77,7 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn oversized_native_context_fails_before_capacity_or_provider_obligation() {
+async fn a_large_current_request_is_transferred_for_exact_daemon_window_preflight() {
     let f = funded(1).await;
     let draft = queue(&f, &"語".repeat(10_000)).await;
     sqlx::query("UPDATE model.platform_models SET context_cap_tokens=8192 WHERE id=$1::uuid")
@@ -85,12 +85,21 @@ async fn oversized_native_context_fails_before_capacity_or_provider_obligation()
         .execute(&mut *f.connection().await)
         .await
         .expect("controlled context ceiling");
-    assert!(claim(&f, &draft).await.is_none());
-    let failed = fixture::failure(&f, &draft).await;
+    let lease = claim(&f, &draft)
+        .await
+        .expect("bounded request transferred");
+    assert_eq!(lease.limits.input_per_call, 8192);
     assert_eq!(
-        failed.failure.expect("bounded context failure").error_code,
-        error_code::AUTHORING_TOKEN
+        lease.messages.first().expect("current request").text,
+        "語".repeat(10_000)
     );
-    assert_eq!(fixture::attempts(&f).await, 0);
+    let dispatches: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1::uuid")
+            .bind(&lease.attempt_id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("no provider intent before preflight");
+    assert_eq!(dispatches, 0);
+    assert_eq!(fixture::attempts(&f).await, 1);
     f.cleanup().await;
 }

@@ -4,18 +4,23 @@ Read this when you want one lease's whole path on one page: a fleet installed, a
 
 Paths are under `rustd/crates/` unless they start with `docs/`, `schema/`, `deploy/`, `scripts/` or `tests/`. Expanded acronyms: Enhanced Read-Only File System (EROFS), Random Access Memory (RAM), Hash-based Message Authentication Code (HMAC), Server-Sent Events (SSE), Time To Live (TTL), Out Of Memory (OOM), Chrome DevTools Protocol (CDP), Kernel-based Virtual Machine (KVM).
 
-The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agentsfleet/linkwarden`. Section 1 is the daemon's side, section 2 the runner's, section 3 the whole example end to end, and sections 6 and 7 the sandbox and the host it sits on.
+This fleet-runtime example uses `github-pr-reviewer`, saved as “agent-bob-01” on `agentsfleet/linkwarden`.
+Private setup turns use [authoring leases](runner_fleet.md#authoring-leases), without runtime tools or a sandbox.
+
+Section 1 covers the daemon, section 2 the runner, and section 3 the complete example.
+Sections 6 and 7 cover the sandbox and host.
 
 ---
 
 ## 1. From "start a fleet" to a lease
 
 ```text
- SAVE (once)             fleet.fleets row (name = "AGENT BOB 01", installing) Postgres
+ SAVE (once)             fleet.fleets row (name = "agent-bob-01", installing) Postgres
                          fleet.revisions r1: description,
                            instructions_md, config (selected)                 Postgres
                          connector.integration_grants (fleet, "github") pending,
                            then approved by a person                          Postgres
+                         agentsfleet resume <FLEET_ID> retries setup
                          locked recheck, all checks ready ⇒ active            Postgres
                          start none: no admission, no event, no lease row
 
@@ -52,11 +57,16 @@ The example is the `github-pr-reviewer` setup saved as "AGENT BOB 01" on `agents
 
 Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `fleet.fleets` row as `installing` with the reviewed Definition as its first `fleet.revisions` row (`afd_authoring/src/creation/reserve.rs`). Nothing touches a queue or an approval before that commit. Setup then advances in bounded steps (`afd_authoring/src/creation/activate.rs`).
 
-A grant check that reads `missing` raises a pending approval card for that credential (`afd_approval/src/request/setup.rs`), and a person approves it. Once setup checks pass, a locked recheck activates the fleet. A requested initial admission commits in that same transaction.
+A missing grant raises a pending approval card (`afd_approval/src/request/setup.rs`).
+After approval, run `agentsfleet resume <FLEET_ID>` to retry setup.
+[Setup recovery](data_flow.md#fleet-creation-and-setup-recovery) covers bounded retries.
+
+Once setup checks pass, a locked recheck activates the fleet.
+A requested initial admission commits in that same transaction.
 
 With start `none` (`afd_authoring/src/types/creation.rs`), Save writes no admission, event, lease or affinity row.
 
-The fleet's display name ("AGENT BOB 01") is `fleet.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
+The fleet's display name ("agent-bob-01") is `fleet.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
 
 ### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
 
@@ -66,7 +76,12 @@ The fleet's display name ("AGENT BOB 01") is `fleet.fleets.name`, read at lease 
 
 `subscribers` (`afd_ingress/src/app/mod.rs`) runs `SELECT_APP_SUBSCRIBERS` (`afd_ingress/src/sql/mod.rs`): every `fleet.fleets` row in that workspace with `status = active` joined to `connector.integration_grants` where `service = 'github'` and `status = approved`. The document half is in Rust: `Binding::read_for_source` picks the webhook trigger whose `source` is `github` (`afd_ingress/src/binding/mod.rs`), then `serves_repository(repository)` and `admits(event)` (`app.rs`). `serves_repository` is fail-closed: a trigger with no `repositories` list subscribes to nothing, and the match is case-insensitive (`binding.rs`). `admits` is the opposite: no `events` list means every event. More than `MAX_FANOUT = 100` matches refuses the delivery (`app.rs`; `app_route.rs`).
 
-So "the fleet slug AGENT BOB 01 receives the request" is really: the installation that linkwarden lives under maps to Indy's workspace, and every active fleet there holding an approved `github` grant whose reviewed setup has a webhook trigger with `source: github`, `events: [pull_request]`, `repositories: [agentsfleet/linkwarden]` gets one admission. The test fixture's native setup says exactly that (`tests/fixtures/fleets/github-pr-reviewer/definition.json`). Two fleets so configured both run (`docs/architecture/connectors.md`).
+The fleet slug `agent-bob-01` receives the request through linkwarden's installation, which maps to Indy's workspace.
+Each active fleet there with an approved `github` grant receives one admission when its reviewed setup includes the following webhook trigger.
+
+The trigger uses `source: github`, `events: [pull_request]`, and `repositories: [agentsfleet/linkwarden]`.
+The test fixture's native setup says exactly that (`tests/fixtures/fleets/github-pr-reviewer/definition.json`).
+Two fleets so configured both run (`docs/architecture/connectors.md`).
 
 The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler/webhook/github/mod.rs`: action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha, received_at). Under `Policy::AppIngress` every `pull_request` action wakes the fleet except one on a repair branch (`is_repair_branch`, `github/mod.rs`); the manual per-fleet route narrows to opened/reopened/synchronize/ready_for_review.
 
@@ -168,7 +183,7 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
    │                      digest{action:"opened", repo:"agentsfleet/linkwarden", number, ...}
    │                      fleets in W: active ∩ github grant approved
    │                        ∩ setup repositories ∋ agentsfleet/linkwarden
-   │                        ∩ events ∋ pull_request          ⇒ AGENT BOB 01 (and any twin)
+   │                        ∩ events ∋ pull_request          ⇒ agent-bob-01 (and any twin)
    │                      commit admission + best-effort wake
    │◄──── 202 ────────────┤
    │                      │◄──── POST /v1/runners/me/leases ──────────────────────────────┤

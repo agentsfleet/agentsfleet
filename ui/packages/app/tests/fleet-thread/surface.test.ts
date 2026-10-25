@@ -1,4 +1,5 @@
 import { ev, mockStream, renderThread, renderThreadWithInitial, routerRefreshMock, serverEvent, threadElement } from "./harness";
+import { cloneElement } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/FleetThread";
@@ -16,6 +17,14 @@ describe("FleetThread — empty state", () => {
 });
 
 describe("FleetThread — header chrome", () => {
+  it("shows the saved setup revision without treating it as a new run", () => {
+    mockStream([]);
+    render(cloneElement(threadElement(), {setupRevision: "3"}));
+    expect(screen.getByText("Saved v3")).toBeTruthy();
+    expect(screen.getByText("New runs use this setup. Edit setup to change it.")).toBeTruthy();
+    expect(screen.getByPlaceholderText(/message your fleet/i)).toHaveProperty("disabled", false);
+    expect(routerRefreshMock).not.toHaveBeenCalled();
+  });
   // The panel header is gone in the steady state. It said "Chat" directly
   // beneath a tab reading "Chat", and a "Live" that was true on almost every
   // load — chrome restating what the operator can already see. The states that
@@ -46,7 +55,7 @@ describe("FleetThread — header chrome", () => {
     expect(composer?.getAttribute("id")).toBe("fleet-steer-composer");
     const footer = container.querySelector('[data-testid="fleet-chat-footer"]');
     expect(footer?.contains(composer)).toBe(true);
-    expect(footer?.className).toMatch(/max-w-measure/);
+    expect(footer?.className).toMatch(/max-w-chat/);
     // The footer may shrink in a short panel; FleetThreadViewport.test.tsx
     // pins the classes that keep Send in view there.
     expect(container.querySelector('[role="log"]')?.contains(composer)).toBe(
@@ -69,7 +78,7 @@ describe("FleetThread — header chrome", () => {
     renderThread();
     expect(screen.getByText(/^Not live$/)).toBeTruthy();
     const input = screen.getByPlaceholderText(
-      /message this fleet/i,
+      /message your fleet/i,
     ) as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
   });
@@ -108,7 +117,7 @@ describe("FleetThread — fluid composer", () => {
     );
     renderThread();
     const input = screen.getByPlaceholderText(
-      /message this fleet/i,
+      /message your fleet/i,
     ) as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     // A working fleet is not a reason to park a message in the browser: the
@@ -120,7 +129,7 @@ describe("FleetThread — fluid composer", () => {
   it("uses the idle placeholder when not running", () => {
     mockStream([], { isRunning: false });
     renderThread();
-    expect(screen.getByPlaceholderText(/message this fleet/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/message your fleet/i)).toBeTruthy();
   });
 });
 

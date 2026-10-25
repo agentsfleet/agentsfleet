@@ -32,6 +32,8 @@ const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
 const GRANTED_FOR: Duration = Duration::from_secs(60);
 pub(crate) const PROVIDER_TOKEN: &str = "provider-fixture-credential";
 pub(crate) const RUNNER_TOKEN: &str = "agt_r_kernel_fixture";
+/// Output allowance keeps the scripted model reachable through physical-window preflight.
+const MODEL_OUTPUT_TOKENS: u32 = 4_096;
 
 #[derive(Debug)]
 pub(crate) struct Received {
@@ -169,6 +171,10 @@ fn lease(tools: &[&str], repository: bool, expires: jiff::Timestamp) -> Result<V
     lease.policy.tools = tools.iter().map(|name| (*name).to_owned().into()).collect();
     lease.policy.context.tool_window = 32;
     lease.policy.context.context_cap_tokens = 65_536;
+    lease.policy.model_context_tokens = lease.policy.context.context_cap_tokens;
+    if let Some(inference) = &mut lease.policy.inference {
+        inference.max_output_tokens = MODEL_OUTPUT_TOKENS;
+    }
     lease.policy.api_key = PROVIDER_TOKEN.into();
     lease.policy.network_policy.allow = vec![GRAFANA.into(), "other.example.test".into()];
     lease.policy.secrets_map = Some(json!({ "grafana": { "host": GRAFANA, "token": TOKEN } }));

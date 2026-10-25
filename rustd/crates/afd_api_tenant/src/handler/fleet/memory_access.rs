@@ -36,12 +36,9 @@ const DETAIL_MALFORMED: &str = "Malformed memory access body";
     operation_id = "patch_fleet_memory_access",
     summary = "Set who reads and publishes shared memory",
     description = concat!(
-        "Sets the fleet's two shared-memory grants. `read` lets the fleet ",
-        "see entries other fleets in this workspace published, each naming ",
-        "its writer. `publish` lets the fleet store entries the workspace ",
-        "reads. Both start false. Omit a field to keep its value. The reply ",
-        "is both grants as they now stand, and the same body sent twice ",
-        "gives the same reply. ",
+        "Sets shared-memory permissions. `read` allows reading other fleets' published ",
+        "entries; `publish` allows sharing this fleet's entries within the workspace. Both ",
+        "default to false. Omitted fields keep their values. Repeating the body is safe.",
     ),
     request_body = MemoryAccessRequest,
     params(

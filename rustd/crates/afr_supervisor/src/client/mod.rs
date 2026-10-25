@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{self, Result};
 
 mod authoring;
+mod context;
 mod http;
 mod lease_verbs;
 mod verb;

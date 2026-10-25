@@ -47,7 +47,8 @@ fn first_shown<'a>(frames: &'a [ActivityFrame<'_>]) -> Option<(StreamTextKind, &
         ActivityFrame::FleetResponseChunk(chunk) => Some((chunk.text_kind, chunk.text.as_ref())),
         ActivityFrame::ToolCallStarted(_)
         | ActivityFrame::ToolCallCompleted(_)
-        | ActivityFrame::ToolCallProgress(_) => None,
+        | ActivityFrame::ToolCallProgress(_)
+        | ActivityFrame::ContextProgress(_) => None,
     })
 }
 

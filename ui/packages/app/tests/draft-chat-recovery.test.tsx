@@ -56,11 +56,11 @@ it("lets Stop unblock unknown usage with queued text while retaining the origina
   });
   await client.resume(DRAFT.id); render(<Live />);
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", true);
-  expect(screen.getByRole("log").textContent).toContain("The model request ended without confirmed usage");
+  expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   await waitFor(() => {
     expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
-    expect(screen.getByRole("log").textContent).toContain("earlier usage is still being reconciled");
+    expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
     expect(screen.queryByRole("status", {name: "Queued"})).toBeNull();
     expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
     expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
@@ -94,7 +94,7 @@ it("keeps unknown usage blocked after a failed Stop and permits another Stop", a
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   await waitFor(() => expect(client.getSnapshot().error).toBe("Stop could not be saved."));
   expect(client.getSnapshot().draft?.cancelled_through).toBe("0");
-  expect(screen.getByRole("log").textContent).toContain("The model request ended without confirmed usage");
+  expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", true);
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
@@ -200,4 +200,56 @@ it("leaves another control focused when a composer mounts or becomes ready", asy
   rendered.rerender(<DraftConversation client={client} view={view}><Button>Inspect answer</Button></DraftConversation>);
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
   expect(document.activeElement).toBe(inspect);
+});
+
+it.each([false, true])("retries unknown usage only after cancellation succeeds (stop fails: %s)", async (stopFails) => {
+  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"};
+  fixture.messages = [{...MESSAGE, state: "failed", failure}, {...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}];
+  const base = fixture.fetch.getMockImplementation()!;
+  const writes: string[] = [];
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith("/cancellations")) {
+      writes.push("stop");
+      if (stopFails) return response({user_message: "Stop could not be saved."}, 503);
+      fixture.draft = {...fixture.draft, cancelled_through: "1"};
+      return response({cancelled_through: "1", stopped: []});
+    }
+    if (path.endsWith("/messages") && init?.method === "POST") {
+      writes.push("send");
+      if (typeof init.body !== "string") throw new Error("Expected message JSON");
+      expect(JSON.parse(init.body)).toMatchObject({message: MESSAGE.text});
+      return response({status: "accepted", sequence: "2", replayed: false});
+    }
+    return base(input, init);
+  });
+  await client.resume(DRAFT.id); render(<Live />);
+  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  await waitFor(() => expect(writes).toEqual(stopFails ? ["stop"] : ["stop", "send"]));
+  await waitFor(() => expect(client.getSnapshot().busy).toBe(false));
+  expect(client.getSnapshot().error).toBe(stopFails ? "Stop could not be saved." : null);
+  expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
+});
+
+it("retries the failed turn's request instead of a newer message or composer text", async () => {
+  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  fixture.messages = [{...MESSAGE, state: "failed"}, {...MESSAGE, role: "assistant", state: "failed", text: undefined, failure},
+    {...MESSAGE, sequence: "2", text: "A different request"}];
+  const base = fixture.fetch.getMockImplementation()!;
+  const sent: string[] = [];
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith("/cancellations")) throw new Error("Known usage needs no cancellation");
+    if (path.endsWith("/messages") && init?.method === "POST") {
+      if (typeof init.body !== "string") throw new Error("Expected message JSON");
+      sent.push(JSON.parse(init.body).message);
+      return response({status: "accepted", sequence: "3", replayed: false});
+    }
+    return base(input, init);
+  });
+  await client.resume(DRAFT.id); render(<Live />);
+  fireEvent.change(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER}), {target: {value: "Unsent text"}});
+  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  await waitFor(() => expect(sent).toEqual([MESSAGE.text]));
+  expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("value", "Unsent text");
 });

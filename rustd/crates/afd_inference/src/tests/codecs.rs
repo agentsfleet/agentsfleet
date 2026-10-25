@@ -9,6 +9,24 @@ fn known_tokenizers_count_tokens_and_unknown_models_reserve_utf8_bytes() {
     assert_eq!(crate::input_tokens("unknown-tokenizer", "🌿"), 4);
 }
 
+// Value: protects=changing providers never bypasses the shared input reservation;
+// seam=the public counter used by both setup and runtime admission.
+#[test]
+fn providers_without_a_library_tokenizer_share_the_utf8_reservation() {
+    for model in [
+        "accounts/fireworks/models/minimax-m3p1-flash",
+        "minimax/minimax-m3.1-flash:free",
+        "MiniMaxAI/MiniMax-M3.1-Flash",
+        "MiniMax-M3.1-Flash",
+        "deepseek/model-next",
+        "kimi/model-next",
+    ] {
+        for text in ["", "hello world", "🌿", "Cafe\u{301}", "<tool_call>"] {
+            assert_eq!(crate::input_tokens(model, text), text.len(), "{model}");
+        }
+    }
+}
+
 #[test]
 fn native_routes_advertise_tool_support_through_the_sdk() {
     for api in [InferenceApi::Gemini, InferenceApi::Ollama] {
@@ -63,6 +81,31 @@ fn context_admission_reserves_complete_input_before_output() {
     assert_eq!(refusal.code(), afd_core::error_code::INVALID_REQUEST);
     assert!(!refusal.is_oversize());
     assert!(refusal.to_string().contains("context"));
+}
+
+// Value: protects=the byte reservation still clamps output and rejects exhausted
+// context after switching providers; seam=the real streaming request encoder.
+#[test]
+fn unrecognized_providers_reserve_input_before_the_remaining_output() {
+    let value = settings(InferenceApi::Chat);
+    for model in [
+        "accounts/fireworks/models/minimax-m3p1-flash",
+        "deepseek/model-next",
+        "kimi/model-next",
+    ] {
+        let request = CompletionRequest::new(Message::user("🌿 hello"));
+        let route = Configured::new(&value, 128_000).unwrap();
+        let encoded = route.encode_stream(model, request.clone()).unwrap();
+        let body = json_request(encoded.request).unwrap();
+        let input = u32::try_from(body.body().len() + 32).unwrap();
+        let route = Configured::new(&value, input + 7).unwrap();
+        let bounded = route.bound_output(model, request.clone()).unwrap();
+        assert_eq!(bounded.max_tokens, Some(7));
+        let route = Configured::new(&value, input).unwrap();
+        let refusal = route.bound_output(model, request).unwrap_err();
+        assert_eq!(refusal.code(), afd_core::error_code::INVALID_REQUEST);
+        assert!(refusal.to_string().contains("context"));
+    }
 }
 
 #[test]

@@ -153,7 +153,7 @@ function SecretTable({
   const matches = useMemo(() => secrets.filter((secret) => secret.name.toLowerCase().includes(query)), [secrets, query]);
   const columns = buildColumns({ pending, protectedSecretName, onEdit, onRename, onDelete });
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-xl">
+    <div className="flex min-h-0 flex-col gap-xl">
       <CollectionToolbar label="Search secrets" value={search} onChange={setSearch} summary={`${matches.length} of ${secrets.length} secrets`} />
       <DataTable
         className="flex min-h-0 flex-col"
@@ -227,7 +227,7 @@ export default function SecretsList({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-col gap-lg">
       {/* "No secrets" is the server's claim to make: the optimistic hide of the
           last row keeps the table shell until the delete is answered, so the
           status region never announces an emptiness the server may retract. */}

@@ -8,6 +8,7 @@ use sqlx::PgConnection;
 
 pub(crate) mod budget;
 mod capability;
+mod context;
 mod continuation;
 mod dispatch;
 mod prepare;
@@ -17,7 +18,7 @@ mod receipt;
 mod sql;
 
 pub use dispatch::ModelCalls;
-pub use progress::{DELTA_EVENT, Delta, draft_channel};
+pub use progress::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, draft_channel};
 pub use provider::{Network, ProviderRequest, ProviderResponse, Transport};
 
 /// Model proposals use the same native types as drawer and activity edits.
@@ -25,6 +26,7 @@ pub type ModelCallInput = afd_wire::authoring::ModelCall<Definition, ConfigOp, I
 /// A bounded result containing validated native proposal shapes.
 pub type ModelCallResult = afd_wire::authoring::ModelResult<Definition, ConfigOp, InstructionEdit>;
 
+#[cfg(test)]
 pub(crate) use afd_inference::input_tokens;
 
 /// The `authoring.dispatches.status` words, and the knowledge word a receipt's

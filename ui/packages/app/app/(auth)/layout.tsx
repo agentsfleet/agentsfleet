@@ -4,7 +4,7 @@ import { BrandMark, PageTitle } from "@agentsfleet/design-system";
 const STEPS = ["Describe the work", "Review the plan and access", "Let your fleet take it from here"] as const;
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  return <main className="app-surface flex min-h-dvh flex-col bg-background" data-surface="auth">
+  return <main className="ph-no-capture ph-no-record app-surface flex min-h-dvh flex-col bg-background" data-surface="auth">
     <div className="flex items-center gap-sm px-xl py-lg sm:px-3xl">
       <BrandMark className="size-6" /><span className="font-medium tracking-tight">agentsfleet</span>
     </div>

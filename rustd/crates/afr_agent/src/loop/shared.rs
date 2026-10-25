@@ -37,6 +37,10 @@ pub(crate) struct Shared<'run> {
     /// from it.
     pub(crate) stop: &'run CancellationToken,
     pub(crate) checkpoint: &'run dyn Checkpoint,
+    pub(crate) context_checkpoints: &'run dyn crate::ContextCheckpoints,
+    pub(crate) model_context_tokens: u32,
+    pub(crate) output_tokens: u32,
+    pub(crate) inference: Option<&'run afd_wire::inference::ModelInference>,
     pub(crate) context: &'run ContextBudget<'run>,
     /// Every tool the lease was offered; a child's selection narrows it.
     pub(crate) selection: &'run Selection<'run>,
@@ -77,6 +81,13 @@ impl<'run> Shared<'run> {
             provider,
             stop: run.stop,
             checkpoint: run.checkpoint,
+            context_checkpoints: run.context_checkpoints,
+            model_context_tokens: policy.model_context_tokens,
+            output_tokens: policy
+                .inference
+                .as_ref()
+                .map_or(1, |settings| settings.max_output_tokens),
+            inference: policy.inference.as_ref(),
             context: &policy.context,
             selection,
             executor: run.executor,

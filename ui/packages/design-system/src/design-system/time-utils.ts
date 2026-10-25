@@ -39,6 +39,10 @@ export const TIME_INVALID_FALLBACK = "—";
  * names another locale pays for one. */
 const ABSOLUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, ABSOLUTE_OPTIONS);
 const CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, CLOCK_OPTIONS);
+const UTC_DATE_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", year: "numeric", timeZone: "UTC"};
+const UTC_COMPACT_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
+const UTC_DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_DATE_OPTIONS);
+const UTC_COMPACT_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_COMPACT_OPTIONS);
 
 function formatterFor(
   locale: string,
@@ -72,6 +76,22 @@ export function formatTimeClock(
   const d = coerceDate(value);
   if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
   return formatterFor(locale, CLOCK_FORMAT, CLOCK_OPTIONS).format(d);
+}
+
+/** A reporting period in UTC, independent of server and browser timezones. */
+export function formatTimeRangeUtc(from: string | Date, through: string | Date, locale: string = DEFAULT_LOCALE): string {
+  const start = coerceDate(from);
+  const end = coerceDate(through);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return TIME_INVALID_FALLBACK;
+  // Intl versions differ on thin spaces; server and browser labels must agree.
+  return formatterFor(locale, UTC_DATE_FORMAT, UTC_DATE_OPTIONS).formatRange(start, end).replace(/\s/g, " ");
+}
+
+/** Compact activity timestamp in the same UTC timezone as its report period. */
+export function formatTimeCompactUtc(value: string | Date, locale: string = DEFAULT_LOCALE): string {
+  const date = coerceDate(value);
+  if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
+  return formatterFor(locale, UTC_COMPACT_FORMAT, UTC_COMPACT_OPTIONS).format(date);
 }
 
 /* The unit factors the relative label steps through. A month is 30 days and a

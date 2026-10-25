@@ -64,27 +64,28 @@ afterEach(() => {
 });
 
 describe("CliAuthPage — load states", () => {
-  it("shows the loading skeleton while Clerk is still loading", async () => {
+  it("shows the shared page loader while Clerk is still loading", async () => {
     useAuth.mockReturnValue({ isLoaded: false, isSignedIn: false, getToken: getTokenFn });
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    vi.mocked(globalThis.fetch).mockReturnValue(
       new Promise<Response>(() => undefined),
     );
     await renderPage();
-    expect(screen.getByText("Approve CLI login")).toBeTruthy();
-    expect(screen.getByText(/Checking your terminal/)).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Loading page" }).textContent).toBe("Loading…");
+    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
   });
 
-  it("renders the Approve card for a pending session", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, activeBody()));
+  it("renders the authorization card for a pending session", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(200, activeBody()));
     await renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Approve CLI login for/)).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Connect your terminal" })).toBeTruthy();
     });
-    expect(screen.getByText("Approve")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Authorize" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByText("Allow your terminal to use your agentsfleet account. Continue only if you started this sign-in.")).toBeTruthy();
   });
 
   it("treats verification_pending as already-approved on another tab", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       jsonResponse(200, activeBody({ status: "verification_pending" })),
     );
     await renderPage();
@@ -93,29 +94,29 @@ describe("CliAuthPage — load states", () => {
     });
   });
 
-  it("disables Approve when the session loaded as verification_pending", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+  it("disables Authorize when the session loaded as verification_pending", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       jsonResponse(200, activeBody({ status: "verification_pending" })),
     );
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText(/already been approved on another tab/)).toBeTruthy();
     });
-    expect((screen.getByRole("button", { name: /approve/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Authorize" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("falls back to 'your terminal' when token_name is blank/control-only", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+  it("keeps the sign-in message readable when the terminal name contains controls", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       jsonResponse(200, activeBody({ token_name: "\x00\x01\x7f" })),
     );
     await renderPage();
     await waitFor(() => {
-      expect(screen.getByText("Approve CLI login for your terminal")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Connect your terminal" })).toBeTruthy();
     });
   });
 
   it("rejects an unexpected payload shape as an error state with a plain sentence", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, { status: "weird" }));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(200, { status: "weird" }));
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText(/went wrong loading this login session/i)).toBeTruthy();
@@ -124,18 +125,18 @@ describe("CliAuthPage — load states", () => {
 
   it("refuses a session that names its window as an epoch-millisecond expires_at_ms", async () => {
     const { expires_at: _instant, ...rest } = activeBody();
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       jsonResponse(200, { ...rest, expires_at_ms: Date.now() + 300_000 }),
     );
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText(/went wrong loading this login session/i)).toBeTruthy();
     });
-    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
   });
 
   it("renders 404 as 'not recognized — start over'", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(404, { code: "not_found" }));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(404, { code: "not_found" }));
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText(/not recognized/)).toBeTruthy();
@@ -143,7 +144,7 @@ describe("CliAuthPage — load states", () => {
   });
 
   it.each([400, 409, 410])("renders %i as 'no longer accepting approval'", async (status) => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(status, { code: "x" }));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(status, { code: "x" }));
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText(/no longer accepting approval/)).toBeTruthy();
@@ -151,7 +152,7 @@ describe("CliAuthPage — load states", () => {
   });
 
   it("surfaces unexpected HTTP statuses as a plain sentence, never the raw status code", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(503, {}));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(503, {}));
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText(/Couldn't load this login session/i)).toBeTruthy();
@@ -160,7 +161,7 @@ describe("CliAuthPage — load states", () => {
   });
 
   it("surfaces fetch network errors", async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new TypeError("net"));
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError("net"));
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText("Network error loading the login session.")).toBeTruthy();
@@ -169,7 +170,7 @@ describe("CliAuthPage — load states", () => {
 
   it("renders the sign-in card when Clerk reports unauthenticated", async () => {
     useAuth.mockReturnValue({ isLoaded: true, isSignedIn: false, getToken: getTokenFn });
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, activeBody()));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(200, activeBody()));
     await renderPage();
     await waitFor(() => {
       expect(screen.getByText("Sign in to continue")).toBeTruthy();
@@ -185,14 +186,15 @@ describe("CliAuthPage — approve flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Type this code into your CLI")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Finish signing in" })).toBeTruthy();
+      expect(screen.getByText("Go back to the terminal where you started signing in and enter this code.")).toBeTruthy();
     });
     const code = screen.getByLabelText("Verification code").textContent ?? "";
     expect(code).toMatch(/^\d{6}$/);
@@ -227,9 +229,9 @@ describe("CliAuthPage — approve flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
     await waitFor(() => expect(screen.getByText("Copy code")).toBeTruthy());
 
@@ -261,9 +263,9 @@ describe("CliAuthPage — approve flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
     await waitFor(() => expect(screen.getByText("Copy code")).toBeTruthy());
     await act(async () => {
@@ -281,9 +283,9 @@ describe("CliAuthPage — approve flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
     await waitFor(() => expect(screen.getByText(/dashboard session expired/i)).toBeTruthy());
   });
@@ -300,9 +302,9 @@ describe("CliAuthPage — approve flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
     await waitFor(() => expect(screen.getByText(pattern)).toBeTruthy());
     if (status === 500) expect(screen.queryByText(/HTTP 500/)).toBeNull();
@@ -315,9 +317,9 @@ describe("CliAuthPage — approve flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
     await waitFor(() => expect(screen.getByText(/couldn't confirm the approval/i)).toBeTruthy());
     const code = screen.getByLabelText("Verification code").textContent ?? "";
@@ -332,27 +334,27 @@ describe("CliAuthPage — approve flow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
     await waitFor(() => expect(screen.getByText(/Something went wrong/i)).toBeTruthy());
     expect(screen.queryByLabelText("Verification code")).toBeNull();
   });
 
-  it("disables Approve after a failed attempt so a re-click can't re-trigger the round-trip", async () => {
+  it("disables Authorize after a failed attempt so a re-click can't re-trigger the round-trip", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, activeBody({ cli_public_key: await samplePeerSpkiBase64Url() })))
       .mockResolvedValueOnce(new Response(null, { status: 409 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await renderPage();
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Authorize")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Approve"));
+      fireEvent.click(screen.getByText("Authorize"));
     });
     await waitFor(() => expect(screen.getByText(/already approved/i)).toBeTruthy());
-    expect((screen.getByRole("button", { name: /approve/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Authorize" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

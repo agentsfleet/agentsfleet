@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum TaggedLease<'a, C = serde_json::Value> {
     /// Installed fleet work, with its runtime policy.
     Fleet(#[serde(borrow)] Box<LeasePayload<'a>>),
-    /// Private setup work, with bounded daemon model access only.
+    /// Private setup work with limited access to the server's model endpoint.
     Authoring(Box<crate::authoring::Lease<C>>),
 }
 

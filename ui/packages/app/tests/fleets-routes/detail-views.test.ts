@@ -1,8 +1,8 @@
-import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { FLEET_ID } from "../helpers/draft-fixtures";
-import { detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
+import { detailBody, detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { render } from "@testing-library/react";
 import { fetchMock, authMock as auth, listTenantWorkspacesCached } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail views", () => {
@@ -64,12 +64,11 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        searchParams: Promise.resolve({ view: "events", ps: "50" }),
-      }),
-    );
+    const page = await Page({
+      params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
+      searchParams: Promise.resolve({ view: "events", ps: "50" }),
+    });
+    const markup = renderToStaticMarkup(page);
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
     expect(urls).toContainEqual(
       expect.stringContaining(`/fleets/${FLEET_ID}/events?limit=50`),
@@ -78,6 +77,8 @@ describe("fleets routes — detail views", () => {
     expect(markup).toContain(
       `href="/w/ws_1/fleets/${FLEET_ID}?view=events" aria-current="page"`,
     );
+    const { findByText } = render(page);
+    expect(await findByText("Fleet activity appears here.")).toBeTruthy();
   });
 
   it("fleet Activity view threads the URL cursor into the events fetch", async () => {
@@ -184,7 +185,7 @@ describe("fleets routes — detail views", () => {
         params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
       }),
     );
-    expect(markup).toContain(agentDisplayName(FLEET_ID));
+    expect(markup).toContain(detailBody().name);
     expect(markup).toContain("Balance exhausted");
   });
 
@@ -207,12 +208,12 @@ describe("fleets routes — detail views", () => {
     expect(markup).not.toContain("Settings");
     // The panel paints in the same pass as the tabs. A skeleton between them
     // stays up at least 300 ms once shown, and made Chat land later than its reads.
-    expect(markup).toContain('aria-label="Fleet summary"');
+    expect(markup).not.toContain('aria-label="Fleet summary"');
     expect(markup).toContain('aria-label="Fleet lifecycle actions"');
     expect(markup).not.toContain("fleet-header-alignment-spacer");
     expect(markup).not.toContain("lg:w-56");
-    expect(markup).toContain("Stop");
-    expect(markup).toContain("Kill");
+    expect(markup).not.toContain(">Stop</button>");
+    expect(markup).toContain('aria-label="Fleet actions"');
     expect(markup).not.toContain("What it knows");
   });
 

@@ -35,11 +35,9 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
     operation_id = "runner_update_schedule",
     summary = "Change a schedule the fleet made",
     description = concat!(
-        "Changes the fields a body names on a schedule the running fleet ",
-        "created, and pushes the result to QStash. A new message has the ",
-        "fleet's declared secrets masked out. A schedule a person made ",
-        "answers `UZ-SCHED-010`. Sending the same body twice leaves the same ",
-        "schedule. ",
+        "Updates supplied fields on a fleet-created schedule and synchronizes it with the ",
+        "scheduler. Secret values are masked in the message. User-created schedules return ",
+        "`UZ-SCHED-010`. Repeating the same body is safe.",
     ),
     request_body = SchedulePatchRequest,
     params(afd_http::openapi::path::LeaseSchedule),
@@ -109,9 +107,9 @@ pub(crate) async fn update<D: Services>(
     operation_id = "runner_delete_schedule",
     summary = "Delete a schedule the fleet made",
     description = concat!(
-        "Removes a schedule the running fleet created from QStash, then ",
-        "deletes the row. It answers 204 once QStash agrees, or 200 with the ",
-        "schedule until then. A schedule a person made answers `UZ-SCHED-010`. ",
+        "Deletes a fleet-created schedule after the scheduler confirms removal. Returns 204 ",
+        "when complete, or 200 with the schedule while removal is pending. User-created ",
+        "schedules return `UZ-SCHED-010`.",
     ),
     params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::Fence),
     responses(

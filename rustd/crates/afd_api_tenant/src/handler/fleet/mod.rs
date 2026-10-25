@@ -71,7 +71,7 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
     ),
     params(
         afd_http::openapi::path::Workspace,
-        ("starting_after" = Option<String>, Query, description = "Opaque page token from a prior response's `next_cursor` field. Omit for the first page."),
+        ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged. Omit for the first page."),
         ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
     ),
     responses(

@@ -176,6 +176,24 @@ fn invalid_vault_data_is_the_only_payload_free_permanent_failure() {
     assert_error(&invalid);
 }
 
+// Value: checkpoint refusals retain their shared code rather than becoming bad requests.
+#[test]
+fn context_refusals_retain_their_code_and_typed_cause() -> Result<(), &'static str> {
+    let source = afd_context::Error::stale();
+    let code = source.code();
+    let error = Error::from(source);
+    assert_eq!(error.code(), code);
+    assert!(!error.is_rejected());
+    assert!(!error.is_datastore_unavailable());
+    assert!(
+        error
+            .source()
+            .ok_or("missing context cause")?
+            .is::<afd_context::Error>()
+    );
+    Ok(())
+}
+
 fn expected(error: Error, code: ErrorCode, detail: &'static str) -> Expected {
     Expected {
         error,

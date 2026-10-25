@@ -157,14 +157,14 @@ connection or transaction; there is no generic repository trait.
   a fleet never blocks on, or deletes, someone's private draft.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
   field); the sweeper deletes past `expires_at`. The sweep cascades messages, candidates and answer
-  receipts and keeps attempts, dispatches (result scrubbed) and settlements.
-- **Retry window.** A replay receipt answers its key for 24 hours from `created_at`
-  (`afd_authoring::replay::REPLAY_WINDOW`). Inside the window the same key and body return the first
-  result, a different body or user is refused, and a key whose resource was deleted returns Gone.
-  At the boundary and after it the key is new: the next claim deletes the expired receipt and files
-  its own, and `Drafts::maintain` sweeps the rest in bounded `SKIP LOCKED` batches. The draft
-  message API returns `operation_id` from `messages.operation_id`, written when the turn is
-  accepted, because the turn outlives its receipt.
+  receipts and keeps attempts, dispatches (result and native reply scrubbed) and settlements.
+- **Retry window.** A replay receipt answers its key for 24 hours from `created_at` (`afd_authoring::replay::REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
+
+  At or after the boundary, the key is new.
+  The next claim deletes the expired receipt and files its own.
+  `Drafts::maintain` sweeps the rest in bounded batches, waiting for concurrent receipt deletion.
+
+  The message API returns `messages.operation_id`, written at acceptance, because the turn outlives its receipt.
 - **Lapse sweep.** `idx_attempts_status_deadline_id` indexes `(status, LEAST(lease_expires_at,
   expires_at), id)`, the maintenance sweep's own filter and order, so the sweep reads lapsed
   attempts oldest first and stops at its batch limit without a sort
@@ -249,9 +249,11 @@ leaves the index once metering reaches its expiry, so the index holds only the b
 | `tenant_selections` | The tenant's default; NULL means platform default | `tenant_id (PK), tenant_model_id, created_at, updated_at` |
 
 `model_name` is the provider's name for a model and never a foreign key. `installs.scopes` is read
-by the setup review, which blocks a connection whose granted scopes fall short. `platform_defaults.base_url`
-is the custom endpoint the platform default calls. An `inference` column (endpoint, dialect, output
-limit) arrives only with the change that reads it.
+by the setup review, which blocks a connection whose granted scopes fall short.
+
+`platform_models.inference` holds the saved API format, endpoint, dialect and output limit.
+Routing follows those settings; credential endpoint restrictions must match them.
+[Billing §9](billing_and_provider_keys.md#9-provider-routing--saved-model-settings) owns provider routing.
 
 ## billing
 
@@ -271,12 +273,12 @@ or account therefore never deletes a charge. The slots name the export that read
 
 | Root deleted | Goes with it | Stays | Scrubbed immediately |
 |---|---|---|---|
-| Draft (user delete or 30-day sweep) | messages, candidates, answer receipts | attempts, dispatches, settlements, receipts | `dispatches.result` of its attempts |
-| User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, settlements | `dispatches.result` of their attempts |
+| Draft (user delete or 30-day sweep) | messages, candidates, answer receipts, draft context checkpoint | attempts, dispatches, settlements, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, settlements | `dispatches.result` and `dispatches.native_reply` of their attempts |
 | Library card | its revisions | fleets installed from it; drafts started from it (`source_library_revision_id` set NULL) | — |
 | Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases | charges; settled runner leases, for their own 30-day window (fleet and event shown as deleted); drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
-| Workspace | drafts, fleets (as above), installs, secrets, preferences | attempts, settlements, charges | `dispatches.result` of its attempts |
-| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` of its attempts |
+| Workspace | drafts, fleets (as above), installs, secrets, preferences | attempts, settlements, charges | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), settlements; slots (`last_runner_id` set NULL) | — |
 
 ## vault and memory
@@ -285,6 +287,7 @@ or account therefore never deletes a charge. The slots name the export that read
 |---|---|---|
 | `vault.secrets` | One encrypted secret per (workspace, key_name), with a plain projection | `id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, meta_kind, meta_provider, meta_base_url, meta_has_key, created_at, updated_at` |
 | `memory.entries` | A fleet's durable memory, behind role `memory_runtime` | `id, fleet_id, workspace_id, key, content, category, workspace_visible, created_at, updated_at` |
+| `memory.context_checkpoints` | Private working notes owned by a draft or a fleet lease and run branch; deleted with the owner | `id, draft_id, lease_id, fleet_id, branch_id, resource_version, document, created_at, updated_at` |
 
 ## Settled while implementing
 

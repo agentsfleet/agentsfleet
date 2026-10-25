@@ -161,7 +161,7 @@ describe("captureLoginCompleted", () => {
   test("token with sub claim → alias + identify + saveDistinctId writes telemetry.json", async () => {
     const rec = makeRecorder();
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_abc", tokenWithSub("user-distinct-9")).pipe(
+      captureLoginCompleted(tokenWithSub("user-distinct-9")).pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),
@@ -176,6 +176,8 @@ describe("captureLoginCompleted", () => {
     const events = rec.captured.map((c) => c.event);
     expect(events).toContain("user_authenticated");
     expect(events).toContain("login_completed");
+    expect(rec.captured.find((entry) => entry.event === "login_completed")?.props)
+      .toEqual({ login_method: "browser" });
   });
 
   test("token without sub claim → clearDistinctId, no alias/identify", async () => {
@@ -191,7 +193,7 @@ describe("captureLoginCompleted", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_xyz", tokenWithoutSub()).pipe(
+      captureLoginCompleted(tokenWithoutSub()).pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),

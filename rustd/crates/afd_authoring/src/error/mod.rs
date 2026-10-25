@@ -16,6 +16,11 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("the conversation working context could not be prepared")]
+    Context {
+        #[source]
+        source: afd_context::Error,
+    },
     #[error("inherited schedule update failed")]
     Cron {
         #[source]
@@ -144,6 +149,7 @@ pub(crate) enum ErrorKind {
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_cron::Error => Cron,
+    afd_context::Error => Context,
     afd_db::Error => Datastore,
     afd_credential::Error => Credential,
     afd_fleet_runtime::Error => Definition,
@@ -179,6 +185,8 @@ impl Error {
             ErrorKind::Model | ErrorKind::Inference { .. } => error_code::AUTHORING_MODEL,
             ErrorKind::Balance => error_code::AUTHORING_BALANCE,
             ErrorKind::Token => error_code::AUTHORING_TOKEN,
+            ErrorKind::Context { source } if source.is_window() => error_code::AUTHORING_TOKEN,
+            ErrorKind::Context { source } => source.code(),
             ErrorKind::Provider => error_code::AUTHORING_PROVIDER,
             ErrorKind::Unknown | ErrorKind::Transport { .. } | ErrorKind::Sdk { .. } => {
                 error_code::AUTHORING_UNKNOWN

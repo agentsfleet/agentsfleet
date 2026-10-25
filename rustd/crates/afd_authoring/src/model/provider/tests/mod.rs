@@ -5,6 +5,7 @@
     reason = "fixture construction and a refused request must fail the test if their outcome changes"
 )]
 
+mod admission;
 mod rejections;
 #[path = "../../../../tests/provider_wire.rs"]
 mod wire;
@@ -58,6 +59,7 @@ fn outbound(api: InferenceApi) -> Outbound {
     Outbound {
         dispatch_id: "fixture-dispatch".into(),
         progress: None,
+        measurement: None,
         key: SecretString::new("private-key".into()),
         body: CompletionRequest::new(Message::user("private-prompt")).max_tokens(37),
         inference: ModelInference {

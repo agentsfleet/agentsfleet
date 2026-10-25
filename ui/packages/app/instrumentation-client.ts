@@ -1,9 +1,13 @@
 import { initAnalytics, trackAppEvent } from "./lib/analytics/posthog";
+import { captureBrowserLoginFragment } from "./lib/auth/cli-loopback-store";
+import { isSensitiveAuthUrl, onAuthenticationRoute } from "./lib/analytics/auth-privacy";
 
+captureBrowserLoginFragment();
 try {
-  void initAnalytics();
+  if (!onAuthenticationRoute()) void initAnalytics(() => undefined);
 
   window.addEventListener("error", (event) => {
+    if (onAuthenticationRoute()) return;
     trackAppEvent(UI_RUNTIME_ERROR, {
       source: "window_error",
       surface: BROWSER_RUNTIME,
@@ -12,6 +16,7 @@ try {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
+    if (onAuthenticationRoute()) return;
     const reason = event.reason;
     const errorMessage =
       typeof reason === "string"
@@ -31,6 +36,7 @@ try {
 }
 
 export function onRouterTransitionStart(url: string, navigationType: "push" | "replace" | "traverse") {
+  if (onAuthenticationRoute() || isSensitiveAuthUrl(url)) return;
   trackAppEvent("page_navigation_started", {
     source: "app_router",
     surface: "navigation",

@@ -50,7 +50,7 @@ pub enum SandboxTier {
     DevNone,
 }
 
-/// Egress posture assigned per runner, named so the behaviour reads off the value.
+/// Outgoing network access policy assigned to a runner.
 // Published as `RunnerNetworkPolicy`, the name the hand-written contract gave
 // it: `policy::NetworkPolicy` is a different shape with the same Rust name,
 // and utoipa keys components by name alone, so the one registered second
@@ -103,7 +103,8 @@ pub struct ExtraBind<'a> {
     pub note: Cow<'a, str>,
 }
 
-/// The isolation, egress and concurrency settings assigned to one runner.
+/// Sandbox isolation, outgoing network access, and concurrency settings assigned to this
+/// runner.
 //
 // Everything a host was once told through its environment, now delivered with
 // its identity. The host never declares policy.
@@ -113,11 +114,11 @@ pub struct AssignedPolicy<'a> {
     /// Isolation strength to apply.
     #[garde(skip)]
     pub sandbox_tier: SandboxTier,
-    /// Egress posture to apply.
+    /// Outgoing network access policy to apply.
     #[garde(skip)]
     pub network_policy: NetworkPolicy,
-    /// Operator registry baseline merged into each lease's egress allowlist.
-    /// Empty means the runner substitutes its own default registry set.
+    /// Default package registries added to each assignment's allowed network hosts. An empty
+    /// list uses the runner's defaults.
     #[serde(borrow)]
     #[garde(
         length(max = REGISTRY_ENTRIES_MAX),
@@ -188,9 +189,8 @@ pub struct RegisterRequest<'a> {
     pub labels: Vec<Cow<'a, str>>,
 }
 
-/// `POST /v1/runners` reply: the durable identity plus its bearer token.
-///
-/// The token is returned ONCE — the daemon stores only its hash.
+/// Registered runner and its access token. Save the token securely; it is returned once and
+/// only its hash is stored.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -230,8 +230,8 @@ pub struct HeartbeatRequest<'a> {
         schema(value_type = Vec<String>, max_items = 64, min_length = 36, max_length = 36)
     )]
     pub holds: HeldFleets<'a>,
-    /// The runner holds nothing more and parks nothing more, so its `holds`
-    /// list is final. The daemon clears every hold that list leaves out at once.
+    /// True when the runner's held-sandbox list is final. Any previously held sandbox missing
+    /// from `holds` is released immediately.
     pub closing: bool,
 }
 
@@ -260,13 +260,8 @@ pub struct HeartbeatResponse<'a> {
     /// sandboxes.
     #[serde(borrow)]
     pub release_holds: Vec<Cow<'a, str>>,
-    /// How long the runner waits before its next beat, in milliseconds.
-    ///
-    /// Required rather than optional. The daemon owns
-    /// [`afd_core::timing::RUNNER_OFFLINE_AFTER_MS`], so it owns the cadence
-    /// that keeps a host ahead of it. A runner carrying its own copy could
-    /// not be told when that threshold moved. The assertion beside those
-    /// constants is what keeps the served value under the threshold.
+    /// Milliseconds to wait before the next heartbeat. Use this server-provided interval to
+    /// avoid being marked offline.
     pub heartbeat_interval_ms: u32,
 }
 

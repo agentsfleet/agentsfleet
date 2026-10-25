@@ -45,7 +45,7 @@ pub struct CapabilityReport<'a> {
     /// The sandbox launcher is available.
     #[garde(skip)]
     pub bubblewrap: bool,
-    /// Kernel-enforced egress allowlisting is available.
+    /// Whether the operating system can restrict outgoing network access to allowed hosts.
     #[garde(skip)]
     pub egress_enforcement: bool,
 }

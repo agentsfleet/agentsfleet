@@ -3,7 +3,8 @@
 import type { Fleet } from "@/lib/api/draft-types";
 import { lazy, Suspense } from "react";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { START_KIND, scheduleOwed } from "@/lib/api/draft-types";
+import { START_KIND } from "@/lib/api/draft-vocabulary";
+import { scheduleOwed } from "@/lib/api/schedule-status";
 
 // Healthy fleets do not need recovery controls or the summary's schedule parser.
 const FleetRecoveryContent = lazy(() => import("./FleetRecoveryContent").then((module) => ({default: module.FleetRecoveryContent})));

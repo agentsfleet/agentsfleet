@@ -1,12 +1,14 @@
 //! Daemon-owned credentials and a single physical send through the selected model API.
 
 mod dispatch;
+mod edits;
 mod network;
 mod prompt;
 mod rejections;
 mod request;
 mod resolver;
 mod response;
+mod schema;
 
 #[cfg(test)]
 mod tests;
@@ -14,6 +16,7 @@ mod tests;
 use std::time::Duration;
 
 use crate::Result;
+pub(in crate::model) use dispatch::Once;
 pub(in crate::model) use dispatch::{Outbound, complete};
 pub(in crate::model) use rejections::validate_key;
 
@@ -24,13 +27,15 @@ pub use network::Network;
 /// One spelling for the request builder, the tool schema and the decoder, so an
 /// item the daemon sends is recognised by the same name when it comes back.
 const KEY_TYPE: &str = "type";
-/// The single argument the proposal tool takes: the proposal as one JSON text.
-const PROPOSAL_ARGUMENT: &str = "proposal_json";
-pub(super) use prompt::SYSTEM;
+/// The JSON Schema keyword describing a tool, field, or policy object.
+const KEY_DESCRIPTION: &str = "description";
+/// The single argument carries the native proposal object without JSON-in-JSON.
+const PROPOSAL_ARGUMENT: &str = "proposal";
+pub(super) use prompt::system;
 pub(super) use request::body;
-pub(super) use response::{Decoded, decode};
+pub(super) use response::{Decoded, decode, decode_summary};
 
-/// A request assembled by the daemon after authorization and durable intent.
+/// An authorized provider request: read-only counting precedes durable generation intent.
 pub struct ProviderRequest {
     pub(super) request: http::Request<Vec<u8>>,
     pub(super) timeout: Duration,

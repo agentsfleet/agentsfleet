@@ -108,6 +108,7 @@ pub(super) fn request(attempt: &Attempt) -> ModelCallInput {
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {
+            supports_compaction: true,
             messages: vec![ModelMessage::User {
                 text: "Investigate the checkout".into(),
             }],

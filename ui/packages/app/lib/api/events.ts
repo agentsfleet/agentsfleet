@@ -3,6 +3,7 @@ import { EventsPageSchema, type EventRow, type EventsPage } from "./event-histor
 export type { EventRow, EventsPage } from "./event-history-schema";
 
 import type { RetryOptions } from "./retry";
+import type { ContextProgress } from "../context-progress";
 import { buildQuery } from "./events-types";
 import type { EventsQuery, FRAME_KIND } from "./events-types";
 
@@ -211,6 +212,7 @@ export type ActivityLiveFrame =
     }
 
   | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
+  | ({ kind: typeof FRAME_KIND.CONTEXT_PROGRESS; event_id: string } & ContextProgress)
 
   // Status is required; output edges and exit codes depend on the tool.
   | {

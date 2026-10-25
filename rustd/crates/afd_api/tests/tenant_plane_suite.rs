@@ -46,6 +46,8 @@ mod fleets;
 mod input_bounds;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
+#[path = "integration_billing_report.rs"]
+mod integration_billing_report;
 #[path = "integration_fleet_admitted.rs"]
 mod integration_fleet_admitted;
 #[path = "integration_fleet_memories.rs"]
@@ -96,6 +98,8 @@ mod list_limits;
 mod tenant_api_keys;
 #[path = "tenant_billing.rs"]
 mod tenant_billing;
+#[path = "tenant_billing_report.rs"]
+mod tenant_billing_report;
 #[path = "tenant_cli_credential.rs"]
 mod tenant_cli_credential;
 #[path = "tenant_model_entry_input.rs"]

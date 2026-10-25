@@ -153,6 +153,8 @@ export default function AddModelEntryDialog({
         return false;
       }
       captureModelActivated(activated.data);
+      // Registration's refresh may have completed before activation committed.
+      onCreated();
     }
     return true;
   }

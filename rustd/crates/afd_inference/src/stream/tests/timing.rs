@@ -21,6 +21,9 @@ async fn cancelled_next_poll_preserves_the_original_inactivity_deadline() {
 
 #[tokio::test]
 async fn clean_eof_without_a_provider_end_keeps_usage_but_refuses_completion() {
+    let captured = afd_core::test_util::trace::Capture::install_filtered(crate::logs::log_filter(
+        tracing_subscriber::filter::LevelFilter::TRACE,
+    ));
     let wire = format!("{TEXT}{USAGE}");
     let (turn, physical) = open(
         Box::pin(stream::once(async move { Ok(Bytes::from(wire)) })),
@@ -31,6 +34,13 @@ async fn clean_eof_without_a_provider_end_keeps_usage_but_refuses_completion() {
     assert!(result.failure.is_some());
     assert_eq!(result.response.usage.input_tokens, Some(3));
     assert_eq!(result.response.usage.output_tokens, Some(2));
+    let calibration = captured.only("model_input_calibration");
+    assert_eq!(calibration.field("actual_input_tokens"), Some("3"));
+    assert_eq!(calibration.field("method"), Some("utf8_estimate"));
+    assert!(
+        !format!("{:?}", captured.events()).contains("private prompt"),
+        "partial usage calibration contains no private request"
+    );
     assert!(matches!(
         *result.into_response().unwrap_err(),
         ProviderError::Truncated

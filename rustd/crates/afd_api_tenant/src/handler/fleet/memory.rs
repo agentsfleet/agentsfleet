@@ -61,13 +61,9 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
     operation_id = "list_fleet_memories",
     summary = "List or search memory entries for a fleet",
     description = concat!(
-        "Returns memory entries for the fleet, newest-created first. Without ",
-        "`query` this lists entries (optionally filtered by `category`). With ",
-        "`query`, performs case-insensitive LIKE search across both `key` and ",
-        "`content` (LIKE metacharacters in `query` are escaped — a query of ",
-        "`%` does NOT return every entry). Every shape pages by keyset: pass ",
-        "the previous response's `next_cursor` as `starting_after` to ",
-        "continue the walk. A null `next_cursor` marks the final page. ",
+        "Lists fleet memories newest first. Filter by `category` or search `key` and ",
+        "`content` with `query`, ignoring case. Characters such as `%` are searched ",
+        "literally. Pass `next_cursor` as `starting_after`; null means the last page.",
     ),
     params(
         afd_http::openapi::path::Fleet,

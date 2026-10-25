@@ -28,10 +28,10 @@ const Fenced = createContext(false);
 const REMARK_PLUGINS = [remarkGfm];
 
 const COMPONENTS: Components = {
-  p: ({ children }) => <p className="leading-reading">{children}</p>,
+  p: ({ children }) => <p className="leading-conversation">{children}</p>,
   ul: ({ children }) => <ul className="list-disc space-y-xs pl-lg">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal space-y-xs pl-lg">{children}</ol>,
-  li: ({ children }) => <li className="leading-reading">{children}</li>,
+  li: ({ children }) => <li className="leading-conversation">{children}</li>,
   strong: ({ children }) => <strong className="font-medium text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   h1: ({ children }) => <Heading>{children}</Heading>,
@@ -80,33 +80,8 @@ const COMPONENTS: Components = {
   td: ({ children }) => <td className="border border-border px-sm py-xs">{children}</td>,
 };
 
-/*
- * The transcript's own type: 16px, warm, and a shade lighter than it is drawn.
- *
- * `body` (15px) is the app's default for reading AND controls, and everywhere
- * else that dual duty is right: labels, table cells, form text, where compact
- * is a virtue. The transcript is the one surface that is sustained prose — the
- * fleet's actual output, read end to end — and it was set at the same size as
- * a dropdown label.
- *
- * 16px, not 18px, and not 15px. Measured 2026-09-13: Claude and ChatGPT both
- * set their transcripts at 16/400. Their chrome runs ~14px, so 16 buys them
- * one clear step; ours runs 15px, so 16 buys the same separation without
- * reaching `body-lg`, which belongs to website introductions. `--fs-reading`
- * exists for this one role — it is not the return of `text-base`, which was
- * removed the same week precisely because it had no role.
- *
- * `wght 380` rather than the nominal 400. Light-on-dark text blooms: the
- * strokes spread optically and read heavier than they measure, which is why
- * Claude runs its transcript at `wght 360` rather than 400. Instrument Sans is
- * already a variable face here (`instrument-sans-latin-wght-normal.woff2`), so
- * this costs no bytes — the axis ships whether or not we use it.
- *
- * `text-text-chat` is a warm off-white scoped to this surface alone. A cool
- * white glares against the graphite canvas at reading length; `--text` stays
- * cool for the rest of the product, which is interface rather than prose.
- */
-const BODY_CLASS = "space-y-md font-sans text-reading leading-reading text-text-chat [font-variation-settings:'wght'_380]";
+// Match the approved conversation type in setup and saved fleet chat.
+const BODY_CLASS = "space-y-lg font-sans text-conversation leading-conversation text-foreground";
 
 /** Defer text and completion together so the final parse sees the final text. */
 export const FleetReplyMarkdown = memo(function FleetReplyMarkdown({ text, streaming }: { text: string; streaming: boolean }) {

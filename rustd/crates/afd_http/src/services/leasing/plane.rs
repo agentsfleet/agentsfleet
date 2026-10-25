@@ -49,6 +49,29 @@ impl Leasing for Plane {
         Self::activity(self, runner_id, lease_id, frames)
     }
 
+    fn context_load(
+        &self,
+        runner: &Uuid7,
+        lease: &Uuid7,
+        branch: &Uuid7,
+        fence: u64,
+    ) -> impl Future<Output = afd_fleet::Result<Option<afd_context::Checkpoint>>> + Send {
+        self.leases.context_load(runner, lease, branch, fence)
+    }
+
+    fn context_commit(
+        &self,
+        runner: &Uuid7,
+        lease: &Uuid7,
+        branch: &Uuid7,
+        fence: u64,
+        expected: u64,
+        checkpoint: afd_context::Checkpoint,
+    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+        self.leases
+            .context_commit(runner, lease, branch, fence, expected, checkpoint)
+    }
+
     fn hydrate(
         &self,
         runner_id: &Uuid7,

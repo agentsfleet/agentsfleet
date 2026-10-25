@@ -44,11 +44,8 @@ pub const DETAIL_LIMIT_RANGE: &str = "limit must be between 1 and 200";
     path = "/v1/tenants/me/billing",
     tag = afd_http::openapi::tag::BILLING,
     operation_id = "get_tenant_billing",
-    summary = "Read the tenant balance",
-    description = concat!(
-        "Returns the balance shared by every workspace in the tenant. The ",
-        "response also shows whether the balance is empty. ",
-    ),
+    summary = "Read account balance",
+    description = "Returns your account's balance, shared across its workspaces, and whether the balance is empty.",
     params(
         afd_http::openapi::query::Page,
     ),
@@ -88,7 +85,7 @@ pub(crate) async fn snapshot<D: Services>(
     path = "/v1/tenants/me/billing/charges",
     tag = afd_http::openapi::tag::BILLING,
     operation_id = "get_tenant_billing_charges",
-    summary = "List tenant charges",
+    summary = "List account charges",
     description = concat!(
         "Returns fleet-run and settled setup-chat costs with the newest record first. Use `limit` and ",
         "`cursor` to read more records. ",

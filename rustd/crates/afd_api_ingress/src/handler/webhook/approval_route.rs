@@ -94,9 +94,8 @@ struct Answer {
     operation_id = "approval_webhook",
     summary = "Resolve a fleet approval gate",
     description = concat!(
-        "Called by a human (via email link or Slack action) to approve or ",
-        "reject a paused fleet. Body is HMAC-signed by the issuer; the ",
-        "signature is verified against the fleet's webhook secret. ",
+        "Approves or rejects a paused fleet's request through an email link or Slack ",
+        "action. The body requires a valid signature using the fleet's webhook secret.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(

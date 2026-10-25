@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { FleetRecovery } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecovery";
+import { FleetRecoveryContent } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecoveryContent";
 import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader";
 import { FLEET, FLEET_DETAIL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
@@ -11,6 +13,21 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({setFleetStat
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "creator", isLoaded: true})}));
 afterEach(() => {cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals();});
+
+it("keeps setup continuation disabled until client handlers can receive the click", async () => {
+  const server = document.createElement("div");
+  server.innerHTML = renderToStaticMarkup(<FleetRecoveryContent fleet={FLEET} workspace={WORKSPACE} setupPending />);
+  const control = [...server.querySelectorAll("button")].find((button) => button.textContent === "Continue setup");
+  expect(control).toHaveProperty("disabled", true);
+  expect(resume).not.toHaveBeenCalled();
+  resume.mockResolvedValue({ok: true});
+  render(<FleetRecoveryContent fleet={FLEET} workspace={WORKSPACE} setupPending />);
+  const ready = screen.getByRole("button", {name: "Continue setup"});
+  expect(ready).toHaveProperty("disabled", false);
+  fireEvent.click(ready);
+  await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  expect(resume).toHaveBeenCalledOnce();
+});
 
 it.each([200, 403, 412])("reconciles setup continuation status %i without hiding the fleet", async (status) => {
   resume.mockResolvedValue(status === 200 ? {ok: true} : {ok: false, error: "Denied", status});
@@ -49,15 +66,16 @@ it("keeps setup editing available while renewed access review is required", () =
   expect(screen.getByRole("button", {name: "Edit setup"}).getAttribute("aria-expanded")).toBe("false");
 });
 
-it("keeps Edit setup before Stop in the existing fleet workspace", () => {
+it("keeps Edit setup before Fleet actions in the existing fleet workspace", () => {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
   render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
     header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
   const edit = screen.getByRole("button", {name: "Edit setup"});
-  const stop = screen.getByRole("button", {name: "Stop"});
+  const actions = screen.getByRole("button", {name: "Fleet actions"});
   expect(edit).toHaveProperty("disabled", false);
   expect(edit.getAttribute("aria-expanded")).toBe("false");
-  expect(edit.compareDocumentPosition(stop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(edit.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Stop"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Saved instructions"})).toBeNull();
 });
 

@@ -24,6 +24,7 @@ export function applyReplyDelta(
     reply: event.reply + delta.answer,
     reasoning: (event.reasoning ?? "") + delta.reasoning,
     thinking: delta.thinking,
+    contextProgressHidden: event.contextProgress ? true : undefined,
   }, delta, nowMs) : event);
 }
 
@@ -40,6 +41,7 @@ export function applyReplyRecovery(
     reasoning: clearDraft ? "" : event.reasoning,
     thinking: false,
     replyRecovering: true,
+    contextProgress: undefined,
   }, nowMs) : event);
 }
 
@@ -53,6 +55,7 @@ export function applyReplyGone(prev: FleetEvent[], eventId: string, nowMs: numbe
     reply: "",
     thinking: false,
     replyRecovering: false,
+    contextProgress: undefined,
     outcome: OUTCOME.REPLY_GONE,
   }, nowMs) : event);
 }

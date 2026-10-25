@@ -66,7 +66,7 @@ describe("native platform Library curation", () => {
     show(); fireEvent.click(screen.getByRole("button", {name: "Delete"}));
     expect(screen.getByRole("alertdialog").textContent).toContain("Existing fleets keep their saved setup");
     fireEvent.click(screen.getAllByRole("button", {name: "Delete"}).at(-1)!);
-    await waitFor(() => expect(screen.getByText("No fleet setups yet")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Build your next fleet")).toBeTruthy());
     expect(remove).toHaveBeenCalledWith(ENTRY.id, ENTRY.etag);
   });
   it("retains the entry after refused deletion", async () => {
@@ -88,7 +88,7 @@ describe("native platform Library curation", () => {
     await screen.findByText("Draft");
     fireEvent.click(screen.getByRole("button", {name: "Delete"}));
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Delete"}));
-    await screen.findByText("No fleet setups yet");
+    await screen.findByText("Build your next fleet");
     expect(patch).toHaveBeenLastCalledWith(ENTRY.id, {published: false}, published.etag);
     expect(remove).toHaveBeenCalledWith(ENTRY.id, withdrawn.etag);
   });
@@ -125,7 +125,7 @@ it("opens editing deliberately on a device without hover", async () => {
 it("explains an empty platform library and provides a workspace destination", () => {
   show([]);
   expect(screen.getByText("Manage fleet setups shared across workspaces.")).toBeTruthy();
-  expect(screen.getByText("No fleet setups yet")).toBeTruthy();
+  expect(screen.getByText("Build your next fleet")).toBeTruthy();
   expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe("/");
   expect(screen.queryByText(/catalog entries|reviewed candidate|stage a/i)).toBeNull();
 });

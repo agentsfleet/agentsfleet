@@ -4,11 +4,8 @@ use crate::runner::HeldFleets;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// `POST /v1/runners/me/leases` request.
-///
-/// What a polling runner tells the daemon about itself: the fleets whose
-/// sandboxes it holds, so a held fleet's next event reaches it first. An empty
-/// list may be omitted. The accepted work kinds are always required.
+/// Runner's request for work. Lists held fleet sandboxes to prefer their next events; an
+/// empty list may be omitted. Accepted work kinds are required.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]

@@ -83,10 +83,8 @@ pub use self::steer::{
     OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerRequest,
 };
 
-/// One event on the wire, flat by convention.
-///
-/// `request_json` is opaque JSON carried verbatim. The runner parses it to run
-/// the event, and the read endpoints return it unchanged.
+/// An event and its original request body. The runner reads `request_json`; API responses
+/// return it unchanged.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventEnvelope<'a> {
@@ -105,7 +103,7 @@ pub struct EventEnvelope<'a> {
     pub actor: Cow<'a, str>,
     /// How the event entered the system.
     pub event_type: EventType,
-    /// Opaque request payload, carried verbatim.
+    /// Original request body, returned unchanged.
     #[serde(borrow)]
     pub request_json: Cow<'a, str>,
     /// When the event was created.
@@ -234,11 +232,8 @@ pub struct EventDetail<'a> {
     /// producing one.
     #[serde(borrow)]
     pub response_text: Option<Cow<'a, str>>,
-    /// Every tool call the run made, with its arguments and how it ended.
-    ///
-    /// `null` when nothing was recorded. That is a run older than this field,
-    /// a runner that does not record calls, or a trace dropped for breaking a
-    /// bound. `null` never means no tools ran.
+    /// Recorded tool calls, including arguments and outcomes. Null means records are
+    /// unavailable, not that no tools ran.
     #[serde(borrow)]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
     pub tool_calls: Option<RawToolTrace<'a>>,

@@ -29,7 +29,7 @@ pub(in crate::model) async fn finish(
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
     let mut owed = Owed::default();
-    let denied = authorization(&mut tx, runner, lease, counters, attempt, &mut owed).await?;
+    let mut denied = authorization(&mut tx, runner, lease, counters, attempt, &mut owed).await?;
     let (decoded, rejection) = rejection(received.decoded);
     let decoded = match decoded {
         Ok(known) => known,
@@ -37,15 +37,20 @@ pub(in crate::model) async fn finish(
             write(&mut tx, attempt, request, None, None, received.cause).await?;
             tx.commit().await.map_err(query(CONTEXT))?;
             owed.settle(&drafts.analytics);
-            return Err(denied.unwrap_or_else(|| {
-                if error.code() == error_code::AUTHORING_UNKNOWN {
-                    error
-                } else {
-                    ErrorKind::Unknown.into()
-                }
-            }));
+            return Err(denied.unwrap_or_else(|| public_failure(error)));
         }
     };
+    if denied.is_none()
+        && let (Some(task), Some(summary)) = (received.compaction, decoded.summary.clone())
+        && let Err(error) = super::super::context::publish(&mut tx, attempt, task, summary).await
+    {
+        // A stale guarded publication withholds notes while preserving known usage.
+        if error.code() == error_code::AUTHORING_FENCE {
+            denied = Some(error);
+        } else {
+            return Err(error);
+        }
+    }
     let private = decoded.result.as_ref().filter(|_| denied.is_none());
     write(
         &mut tx,
@@ -65,6 +70,14 @@ pub(in crate::model) async fn finish(
         return Err(error);
     }
     decoded.result.ok_or_else(|| ErrorKind::Provider.into())
+}
+
+fn public_failure(error: Error) -> Error {
+    if error.code() == error_code::AUTHORING_UNKNOWN {
+        error
+    } else {
+        ErrorKind::Unknown.into()
+    }
 }
 
 fn rejection(decoded: Result<Decoded>) -> (Result<Decoded>, Option<Error>) {

@@ -5,6 +5,8 @@
 .PHONY: acceptance-build acceptance-e2e acceptance-execution acceptance-cli
 .PHONY: acceptance-local
 
+ACCEPTANCE_SCOPE ?= full
+
 acceptance-local:  ## Build and start local services, then run acceptance (SUITE=e2e|cli|execution; default: both).
 	@bash deploy/local/acceptance.sh "$(SUITE)"
 
@@ -17,9 +19,15 @@ acceptance-local:  ## Build and start local services, then run acceptance (SUITE
 acceptance-build:  ## Build the daemon, runner, CLI and dashboard for acceptance.
 	@bun scripts/build-acceptance.ts
 
-acceptance-e2e:  ## Dashboard auth acceptance — Clerk sign-in + install + lifecycle (Playwright vs live API). Mirrors CI acceptance-e2e.
+acceptance-e2e:  ## Dashboard acceptance (ACCEPTANCE_SCOPE=full|post-deploy|ten-fleets; default: full).
 	@echo "→ [app] Running dashboard acceptance e2e (Clerk sign-in + lifecycle)..."
-	@cd ui/packages/app && bun run test:e2e:acceptance
+	@case "$(ACCEPTANCE_SCOPE)" in \
+	  full) set -- ;; \
+	  post-deploy) set -- --project=journeys --grep=@post-deploy ;; \
+	  ten-fleets) set -- --project=final-continuity --grep=@ten-fleets ;; \
+	  *) printf 'Unknown ACCEPTANCE_SCOPE: %s\n' "$(ACCEPTANCE_SCOPE)" >&2; exit 2 ;; \
+	esac; \
+	cd ui/packages/app && AGENTSFLEET_ACCEPTANCE_SCOPE="$(ACCEPTANCE_SCOPE)" bun run test:e2e:acceptance "$$@"
 	@echo "✓ [app] dashboard acceptance e2e passed"
 
 acceptance-execution:  ## The fleet-execution journey alone (install → lease → execute → observe vs live API). A slice of acceptance-e2e, never its replacement.

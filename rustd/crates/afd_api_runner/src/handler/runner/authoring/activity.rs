@@ -21,13 +21,13 @@ use afd_http::handler::{Refusal, authoring_refusal};
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = afd_wire::paths::AUTHORING_ACTIVITY,
     tag = afd_http::openapi::tag::RUNNERS, operation_id = "runner_publish_authoring_activity",
-    summary = "Submit private authoring activity", request_body = ActivityRequest,
+    summary = "Send private setup progress", request_body = ActivityRequest,
     params(afd_http::openapi::path::Lease),
     responses((status = 202, body = ActivityAccepted, description = "Durable proposal receipt or progress acknowledgement"),
         (status = 400, description = "Invalid activity"), (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"), (status = 404, description = "Lease unavailable"),
         (status = 409, description = "Lost lease or conflicting activity"),
-        (status = 412, description = "Candidate base changed"), (status = 413, description = "Envelope too large"),
+        (status = 412, description = "Candidate base changed"), (status = 413, description = "The request body exceeds the size limit"),
         (status = 429, description = "Too many requests"), (status = 500, description = "Internal failure"),
         (status = 503, description = "Dependency unavailable"))
 ))]

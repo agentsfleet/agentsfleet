@@ -4,8 +4,7 @@
 use afd_wire::memory::MemoryDelta;
 use afr_providers::{Call, Message, Replay};
 
-use super::{EVENT_CAP_REACHED, EVENT_CHECKPOINT_FAILED, Harness, INPUT_JOIN};
-use crate::context::CAP_REACHED;
+use super::{EVENT_CHECKPOINT_FAILED, Harness, INPUT_JOIN};
 
 impl Harness<'_, '_> {
     /// Reads what a parent sent since the last turn into the conversation,
@@ -70,13 +69,5 @@ impl Harness<'_, '_> {
             calls,
             replay,
         }
-    }
-
-    pub(super) fn cap_reached(&mut self, turns: u64, tokens: u64) {
-        let lease_id = self.shared.lease_id;
-        let depth = self.depth;
-        let event = EVENT_CAP_REACHED;
-        tracing::info!(lease_id, depth, turns, tokens, event);
-        self.messages.push(Message::User(CAP_REACHED.to_owned()));
     }
 }

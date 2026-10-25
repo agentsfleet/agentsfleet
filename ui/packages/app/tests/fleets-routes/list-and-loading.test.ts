@@ -9,12 +9,12 @@ import { fetchMock, authMock as auth } from "../helpers/dashboard-mocks";
 import { listSecretsMock } from "../helpers/dashboard-app-mocks";
 
 describe("fleets routes — list and loading", () => {
-  it("loading.tsx provides a stable accessible skeleton", async () => {
+  it("loading.tsx provides a common accessible page loader", async () => {
     const { default: Loading } = await import("../../app/(dashboard)/w/[workspaceId]/fleets/loading");
     render(React.createElement(Loading));
-    const el = screen.getByRole("status", { name: "Loading Fleets" });
-    expect(el.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
-    expect(el.querySelector("[data-spinner-orbit]")).toBeNull();
+    const el = screen.getByRole("status", { name: "Loading page" });
+    expect(el.textContent).toBe("Loading…");
+    expect(el.getAttribute("aria-busy")).toBe("true");
   });
 
   it("fleets list page redirects to /sign-in when no token", async () => {
@@ -26,7 +26,7 @@ describe("fleets routes — list and loading", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("fleets list page streams a skeleton before data", async () => {
+  it("fleets list page streams the common loader before data", async () => {
     // FleetsData is an async child, so renderToStaticMarkup renders the Suspense
     // skeleton in its place; the dashboard content waits for the fleet data.
     const { default: Page } =
@@ -34,7 +34,7 @@ describe("fleets routes — list and loading", () => {
     const markup = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
     );
-    expect(markup).toContain("animate-pulse"); // Skeleton fallback
+    expect(markup).toContain("Loading…");
     expect(markup).not.toContain("platform-ops"); // data not yet resolved
   });
 
@@ -96,7 +96,7 @@ describe("fleets routes — list and loading", () => {
     expect(markup).toContain(`href="/w/ws_1/fleets/${FLEET_ID}"`);
     expect(markup).toContain(agentDisplayName(FLEET_ID));
     expect(markup).toContain(FLEET_DETAIL.definition.description);
-    expect(markup).not.toContain("platform-ops");
+    expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
   });
 

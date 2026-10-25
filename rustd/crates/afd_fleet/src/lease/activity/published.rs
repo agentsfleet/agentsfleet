@@ -21,6 +21,11 @@ use super::Target;
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum Published<'a> {
+    ContextProgress {
+        event_id: &'a str,
+        #[serde(flatten)]
+        progress: afd_wire::context::ContextProgress,
+    },
     ToolCallStarted {
         event_id: &'a str,
         name: &'a str,
@@ -81,6 +86,10 @@ impl<'a> Published<'a> {
         let event_id = target.event_id.as_str();
         let call_id = |call: &str| fenced_call_id(target.fence, call);
         Ok(match frame {
+            ActivityFrame::ContextProgress(progress) => Self::ContextProgress {
+                event_id,
+                progress: *progress,
+            },
             ActivityFrame::ToolCallStarted(body) => Self::ToolCallStarted {
                 event_id,
                 name: &body.name,

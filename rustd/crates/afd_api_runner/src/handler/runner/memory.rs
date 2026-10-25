@@ -55,10 +55,8 @@ const STATE_SUPERSEDED: &str = "superseded";
     operation_id = "runner_hydrate_memory",
     summary = "Load what a fleet remembers",
     description = concat!(
-        "The memory a fleet carries between runs, read at the start of one. ",
-        "The runner names the fleet, and the lease it holds is what makes ",
-        "that name legitimate. A lease the fleet has moved past returns 409 ",
-        "`UZ-RUN-005` naming `superseded`.",
+        "Loads a fleet's saved memory at the start of a run. Requires its current work ",
+        "assignment. Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
     ),
     params(
         afd_http::openapi::path::FleetOnly,
@@ -98,11 +96,9 @@ pub(crate) async fn hydrate<D: Services>(
     operation_id = "runner_recall_memory",
     summary = "Search what a fleet remembers",
     description = concat!(
-        "Finds the fleet's entries whose key or content holds the query, ",
-        "ignoring case, key matches first. A fleet granted to read shared ",
-        "memory also gets the workspace's shared entries, each naming the ",
-        "fleet that wrote it. Fenced like a capture: a superseded holder gets ",
-        "409 `UZ-RUN-005` naming `superseded`.",
+        "Searches memory keys and content without case sensitivity, with key matches first. ",
+        "Shared entries are included when permitted and identify their authoring fleet. ",
+        "Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
     ),
     request_body = MemoryRecallRequest,
     params(
@@ -155,10 +151,9 @@ pub(crate) async fn recall<D: Services>(
     operation_id = "runner_capture_memory",
     summary = "Capture what a fleet learned",
     description = concat!(
-        "Writes back what the run decided is worth keeping. The reply names ",
-        "what was stored and what was skipped, so a runner learns which of ",
-        "its entries did not survive the bounds. A superseded lease, or a ",
-        "token not its own, returns 409 `UZ-RUN-005` naming `superseded`.",
+        "Saves memory learned during this run and reports stored and skipped entries. A ",
+        "replaced assignment or incorrect assignment token returns 409 `UZ-RUN-005` with ",
+        "`superseded`.",
     ),
     request_body = MemoryPushRequest,
     params(

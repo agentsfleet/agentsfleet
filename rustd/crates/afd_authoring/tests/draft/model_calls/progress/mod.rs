@@ -1,5 +1,6 @@
 //! Prove transport progress and private publication against live Postgres and Dragonfly.
 
+mod compaction;
 mod deadline;
 mod fixture;
 mod privacy;

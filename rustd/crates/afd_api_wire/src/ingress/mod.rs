@@ -23,33 +23,21 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-/// What an accepted delivery is answered with.
-///
-/// `202`, and the event id, so a provider's delivery log carries the identifier
-/// an operator can search the fleet's history by. A replayed delivery answers
-/// the FIRST attempt's id rather than a new one. That is the whole point of
-/// the at-most-once claim, and a sender comparing two responses should see the
-/// same event both times.
+/// An accepted delivery and its event identifier. Repeated deliveries return the original
+/// identifier without starting another run.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Accepted<'a> {
     /// The event the fleet will run, or already ran.
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
-    /// Whether an earlier delivery already produced it.
-    ///
-    /// Reported rather than hidden. A provider debugging a duplicate wants to
-    /// know this daemon saw the repeat and declined to run twice. That is a
-    /// different fact from the delivery having been lost.
+    /// True when an earlier delivery already created this event; no additional run was
+    /// started.
     pub replayed: bool,
 }
 
-/// What a delivery this daemon deliberately dropped is answered with.
-///
-/// `200` and a reason, never a 4xx. Every one of these is a real,
-/// correctly-signed delivery that simply does not wake this fleet — a green
-/// build, a label edit, a paused fleet. Answering an error would put it in the
-/// sender's retry queue forever, and retrying changes none of them.
+/// A signed delivery that starts no run, with its reason. Returns 200 so the provider does
+/// not retry an intentionally ignored event.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Ignored<'a> {
@@ -58,21 +46,14 @@ pub struct Ignored<'a> {
     pub ignored: Cow<'a, str>,
 }
 
-/// What an accepted App delivery is answered with.
-///
-/// Wider than a single acknowledgement, because one App delivery is many
-/// appends. A sender debugging its integration wants to know how many fleets
-/// this installation woke, and no single event id can show that number.
+/// Result of a provider delivery, including how many matching fleets received an event.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct FannedOut {
     /// How many fleets subscribed to this delivery.
     pub matched: usize,
-    /// How many of them this delivery actually appended an event for.
-    ///
-    /// Lower than `matched` when a fleet already ran this delivery. The claim
-    /// is per fleet. A retry that reaches a wider set than the first attempt
-    /// appends only for the fleets that had not seen it.
+    /// Fleets given a new event. May be lower than `matched` when some already received this
+    /// delivery. Retrying starts only newly matched fleets.
     pub enqueued: usize,
 }
 
@@ -149,18 +130,14 @@ pub struct EchoAnswer<'a> {
 pub enum EventsAnswer<'a> {
     /// The provider's challenge, echoed under the field name it arrived in.
     Echo(EchoAnswer<'a>),
-    /// A delivery this daemon deliberately did not act on, and why.
+    /// A signed delivery that was ignored, with the reason.
     Ignored(Ignored<'a>),
     /// A delivery that woke a fleet, and the event it runs as. A provider's
     /// retry answers the first delivery's event, with `replayed` set.
     Accepted(Accepted<'a>),
 }
 
-/// What `POST /v1/ingress/{provider}` answers with a 200.
-///
-/// A handshake is answered with the provider's own word. A delivery that
-/// wakes nothing is answered with its reason. Both are correct outcomes for a
-/// correctly signed request.
+/// A successful provider handshake or an ignored delivery with its reason.
 // Untagged, so the bytes are exactly the inner document's; the two shapes are
 // disjoint (one requires `status`, the other `ignored`), so `oneOf` is exact.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -169,7 +146,7 @@ pub enum EventsAnswer<'a> {
 pub enum AppIngressAnswer<'a> {
     /// The handshake, answered with the word the provider expects.
     Pong(Pong<'a>),
-    /// A delivery this daemon deliberately did not act on, and why.
+    /// A signed delivery that was ignored, with the reason.
     Ignored(Ignored<'a>),
 }
 
@@ -184,7 +161,7 @@ pub enum AppIngressAnswer<'a> {
 pub enum IdentityAnswer<'a> {
     /// The workspace the event opened, or the one it already had.
     Opened(AccountOpened<'a>),
-    /// A delivery this daemon deliberately did not act on, and why.
+    /// A signed delivery that was ignored, with the reason.
     Ignored(Ignored<'a>),
 }
 
@@ -312,11 +289,7 @@ pub struct PullRequestDigest<'a> {
     pub received_at: jiff::Timestamp,
 }
 
-/// What a signup event is answered with.
-///
-/// The workspace rather than the person. An operator reads the provider's
-/// delivery log to ask whether the signup landed. The workspace is what they
-/// can then go and look at. The subject is already in the request.
+/// The workspace created for the signup event.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountOpened<'a> {

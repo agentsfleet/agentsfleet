@@ -93,10 +93,10 @@ const NOT_CONFIGURED: &str = "";
     path = "/v1/tenants/me/provider",
     tag = afd_http::openapi::tag::TENANT,
     operation_id = "get_tenant_provider",
-    summary = "Read tenant model provider settings",
+    summary = "Read account model provider settings",
     description = concat!(
-        "Returns the tenant's provider mode, provider name, model, context ",
-        "limit, and credential reference. Secret values are never returned. ",
+        "Returns your account's provider mode, provider name, model, context limit, and ",
+        "credential reference. Secret values are never returned.",
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),

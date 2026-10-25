@@ -135,7 +135,7 @@ async function seedFailedLease(page: Page): Promise<SeededFailedLease> {
 
   const composer = page.getByLabel("Chat composer");
   await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-  await composer.getByPlaceholder(/message this fleet/i).fill(`fail-${tag}`);
+  await composer.getByPlaceholder(/message your fleet/i).fill(`fail-${tag}`);
   await composer.getByRole("button", { name: /send/i }).click();
 
   // The settle proves the new operator-plane lease read end-to-end: the

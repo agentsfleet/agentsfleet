@@ -1,7 +1,9 @@
 //! Usage is authoritative before any untrusted text or proposal is interpreted.
 
 use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall};
+use afd_wire::authoring::{
+    ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall, ProposalRejection,
+};
 use garde::Validate as _;
 use rig_core::{
     completion::{CompletionResponse, FinishReason},
@@ -13,10 +15,18 @@ use super::super::{ModelCallInput, ModelCallResult, budget};
 use super::prompt::TOOL;
 use crate::{Result, error::ErrorKind};
 
+#[cfg(test)]
+#[path = "tests/proposals.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests/corrections.rs"]
+mod corrections;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Arguments {
-    proposal_json: String,
+    proposal: super::edits::Suggestion,
 }
 
 pub(in crate::model) struct Decoded {
@@ -24,11 +34,13 @@ pub(in crate::model) struct Decoded {
     pub(in crate::model) continuation: Option<serde_json::Value>,
     pub(in crate::model) usage: ModelUsage,
     pub(in crate::model) output: i64,
+    pub(in crate::model) summary: Option<afd_context::Summary>,
 }
 
 impl Decoded {
     pub(in crate::model) fn rejected() -> Self {
         Self {
+            summary: None,
             result: None,
             continuation: None,
             output: 0,
@@ -47,6 +59,7 @@ pub(in crate::model) fn decode(
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,
     output_limit: u32,
+    candidate: Option<&crate::types::Candidate>,
 ) -> Result<Decoded> {
     let (known, output) = usage(response, model, output_limit)?;
     // Rig names an incomplete response without a reason as an error. It still
@@ -57,7 +70,7 @@ pub(in crate::model) fn decode(
         && response.aborted.is_none()
     {
         // Invalid private output retains known usage without executable tools.
-        content(response, request, known.clone())
+        content(response, request, known.clone(), candidate)
             .and_then(|result| {
                 let continuation = super::super::continuation::save(response, request, &result)?;
                 Ok((result, continuation))
@@ -70,6 +83,7 @@ pub(in crate::model) fn decode(
         (Some(result), continuation)
     });
     Ok(Decoded {
+        summary: None,
         result,
         continuation,
         usage: known,
@@ -92,10 +106,7 @@ fn usage(
         .output_tokens
         .and_then(|value| i64::try_from(value).ok())
         .ok_or(ErrorKind::Unknown)?;
-    if input > budget::INPUT_PER_CALL
-        || output > i64::from(output_limit)
-        || input + output > i64::from(model.context_window_tokens)
-    {
+    if output > i64::from(output_limit) || input + output > i64::from(model.context_window_tokens) {
         return Err(ErrorKind::Unknown.into());
     }
     let cost = budget::cost(model, input, output)?;
@@ -111,6 +122,7 @@ fn content(
     response: &CompletionResponse,
     request: &garde::Valid<ModelCallInput>,
     usage: ModelUsage,
+    candidate: Option<&crate::types::Candidate>,
 ) -> Result<ModelCallResult> {
     let cut = !matches!(
         response.finish_reason(),
@@ -121,7 +133,9 @@ fn content(
     for item in &response.choice {
         match item {
             AssistantContent::Text(part) => text.push_str(&part.text),
-            AssistantContent::ToolCall(call) if !cut => proposal_calls.push(proposal(call)?),
+            AssistantContent::ToolCall(call) if !cut => {
+                proposal_calls.push(proposal(call, candidate)?);
+            }
             AssistantContent::ToolCall(_) | AssistantContent::Reasoning(_) => {}
             _unexpected => return Err(ErrorKind::Provider.into()),
         }
@@ -131,6 +145,7 @@ fn content(
         dispatch_id: request.dispatch_id.clone(),
         call_index: request.call_index,
         replayed: false,
+        compacted: false,
         text,
         proposal_calls,
         usage,
@@ -160,11 +175,11 @@ fn unique_calls(
     let mut used = std::collections::HashSet::new();
     for message in &request.request.messages {
         if let afd_wire::authoring::ModelMessage::Assistant { proposal_calls, .. } = message {
-            used.extend(proposal_calls.iter().map(|call| call.id.as_str()));
+            used.extend(proposal_calls.iter().map(ProposalCall::id));
         }
     }
     for call in calls {
-        if !used.insert(call.id.as_str()) {
+        if !used.insert(call.id()) {
             return Err(ErrorKind::Provider.into());
         }
     }
@@ -173,6 +188,7 @@ fn unique_calls(
 
 fn proposal(
     item: &ToolCall,
+    candidate: Option<&crate::types::Candidate>,
 ) -> Result<
     ProposalCall<
         afd_fleet_runtime::Definition,
@@ -180,20 +196,73 @@ fn proposal(
         afd_fleet_runtime::definition::InstructionEdit,
     >,
 > {
-    if item.function.name.as_str() != TOOL || item.function.invalid_arguments.is_some() {
+    if item.function.name.as_str() != TOOL {
         return Err(ErrorKind::Provider.into());
     }
     // A locally generated SDK id is not a provider acknowledgement.
     let id = item.id.provider().ok_or(ErrorKind::Provider)?.as_str();
-    let arguments: Arguments =
-        serde_json::from_value(serde_json::Value::Object(item.function.arguments.clone()))
-            .map_err(|_untrusted| ErrorKind::Provider)?;
-    let proposal =
-        serde_json::from_str(&arguments.proposal_json).map_err(|_untrusted| ErrorKind::Provider)?;
-    let call = ProposalCall {
-        id: id.into(),
-        proposal,
+    let converted = if item.function.invalid_arguments.is_some() {
+        Err(ProposalRejection::InvalidArguments)
+    } else {
+        serde_json::from_value::<Arguments>(serde_json::Value::Object(
+            item.function.arguments.clone(),
+        ))
+        .map_err(|_untrusted| ProposalRejection::InvalidArguments)
+        .and_then(|arguments| super::edits::native(arguments.proposal, candidate))
+    };
+    let call = match converted {
+        Ok(proposal) => ProposalCall::Proposed {
+            id: id.into(),
+            proposal,
+        },
+        Err(reason) => ProposalCall::Refused {
+            id: id.into(),
+            reason,
+        },
     };
     call.validate().map_err(|_untrusted| ErrorKind::Provider)?;
     Ok(call)
+}
+
+/// A summary is usable only after complete stop and strict notes validation.
+pub(in crate::model) fn decode_summary(
+    status: u16,
+    response: &CompletionResponse,
+    request: &garde::Valid<ModelCallInput>,
+    model: &RegisteredModel,
+    output_limit: u32,
+) -> Result<Decoded> {
+    let (known, output) = usage(response, model, output_limit)?;
+    let mut text = String::new();
+    let mut usable = (200..300).contains(&status)
+        && response.error.is_none()
+        && response.aborted.is_none()
+        && matches!(response.finish_reason(), Some(FinishReason::Stop));
+    for item in &response.choice {
+        match item {
+            AssistantContent::Text(part) => text.push_str(&part.text),
+            AssistantContent::Reasoning(_) => {}
+            _ => usable = false,
+        }
+    }
+    let summary = usable
+        .then(|| afd_context::Summary::decode(&text).ok())
+        .flatten();
+    let result = summary.as_ref().map(|_| ModelResult {
+        dispatch_id: request.dispatch_id.clone(),
+        call_index: request.call_index,
+        replayed: false,
+        compacted: true,
+        text: String::new(),
+        proposal_calls: Vec::new(),
+        usage: known.clone(),
+        cut: false,
+    });
+    Ok(Decoded {
+        result,
+        continuation: None,
+        usage: known,
+        output,
+        summary,
+    })
 }

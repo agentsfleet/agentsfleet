@@ -1,4 +1,5 @@
 import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { ContextProgress } from "../context-progress";
 import { readNanos } from "@/lib/api/nanos";
 import {
   EVENT_STATUS,
@@ -100,6 +101,8 @@ export type FleetEvent = {
   reasoningEndedAtMs?: number;
   /** The streamed draft awaits the durable final event detail. */
   replyRecovering?: boolean;
+  contextProgress?: ContextProgress;
+  contextProgressHidden?: true;
   /**
    * What the reply bubble says when `reply` is empty — the honest floor that
    * keeps a completed turn from rendering blank. Recomputed on status change.

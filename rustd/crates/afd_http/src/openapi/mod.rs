@@ -33,28 +33,29 @@ pub const OK: &str = "OK";
 pub const CREATED: &str = "Created";
 
 /// Accepted for later work; a subscriber reading it is a separate event.
-pub const ACCEPTED: &str = "Accepted for publication; a subscriber reading it is a separate event";
+pub const ACCEPTED: &str = "Accepted for publication; delivery to subscribers is not yet confirmed";
 
 /// The work was done and there is nothing to return.
 pub const NO_CONTENT: &str = "No content";
 
 /// The caller is sent back to where the flow began.
-pub const FOUND: &str = "Redirect back to the caller that began the flow";
+pub const FOUND: &str = "Redirect to the page where you started";
 
 /// The entity tag the caller presented still holds.
-pub const NOT_MODIFIED: &str = "Not modified — the entity tag the caller presented still holds";
+pub const NOT_MODIFIED: &str = "Unchanged since your last request; use your cached response";
 
 /// The request could not be read.
-pub const BAD_REQUEST: &str = "The request could not be read";
+pub const BAD_REQUEST: &str = "The request is invalid";
 
 /// No credential, or one this route does not accept.
-pub const UNAUTHORIZED: &str = "No credential, or one this route does not accept";
+pub const UNAUTHORIZED: &str =
+    "Authentication is missing, invalid, or not accepted by this endpoint";
 
 /// The credential is good and does not carry what this route requires.
-pub const FORBIDDEN: &str = "The credential is good and lacks the capability this route requires";
+pub const FORBIDDEN: &str = "You do not have permission for this action";
 
 /// No such resource, or none this caller may see.
-pub const NOT_FOUND: &str = "No such resource, or none this caller may see";
+pub const NOT_FOUND: &str = "The resource was not found or is not accessible to you";
 
 /// The request disagrees with the resource's current state.
 pub const CONFLICT: &str = "The request conflicts with the resource's current state";
@@ -63,31 +64,33 @@ pub const CONFLICT: &str = "The request conflicts with the resource's current st
 pub const GONE: &str = "The resource is gone and will not return";
 
 /// The precondition the caller supplied does not hold.
-pub const PRECONDITION_FAILED: &str = "The precondition the caller supplied does not hold";
+pub const PRECONDITION_FAILED: &str =
+    "The resource no longer matches your request condition; reload it and try again";
 
 /// A conditional write arrived without the precondition it requires.
-pub const PRECONDITION_REQUIRED: &str = "The route requires a precondition the caller did not send";
+pub const PRECONDITION_REQUIRED: &str =
+    "A required request condition is missing; check this endpoint's headers";
 
 /// The payload is over this route's ceiling.
-pub const PAYLOAD_TOO_LARGE: &str = "The payload is over this route's ceiling";
+pub const PAYLOAD_TOO_LARGE: &str = "The request body exceeds this endpoint's size limit";
 
 /// The request was read and its content cannot be acted on.
-pub const UNPROCESSABLE: &str = "The request was read and its content cannot be acted on";
+pub const UNPROCESSABLE: &str = "The request format is valid, but its content cannot be processed";
 
 /// A dependency of this request failed.
 pub const FAILED_DEPENDENCY: &str = "A dependency of this request failed";
 
 /// The instance is at its ceiling.
-pub const TOO_MANY_REQUESTS: &str = "The instance is at its ceiling";
+pub const TOO_MANY_REQUESTS: &str = "A request or capacity limit has been reached";
 
 /// The daemon failed to answer.
-pub const INTERNAL: &str = "The daemon failed to answer";
+pub const INTERNAL: &str = "An internal server error occurred";
 
 /// An upstream this route depends on refused.
-pub const BAD_GATEWAY: &str = "An upstream this route depends on refused";
+pub const BAD_GATEWAY: &str = "A required external service rejected the request";
 
 /// A dependency this route needs is unreachable.
-pub const UNAVAILABLE: &str = "A dependency this route needs is unreachable";
+pub const UNAVAILABLE: &str = "A required service is unavailable";
 
 /// A signature-authenticated delivery that did not prove itself.
 pub const UNVERIFIED: &str =
@@ -97,14 +100,13 @@ pub const UNVERIFIED: &str =
 pub const SESSION_EXPIRED: &str = "The session has expired; start a new one";
 
 /// A credential whose person this tenant does not know.
-pub const UNKNOWN_SUBJECT: &str = "The caller is not a person this tenant knows";
+pub const UNKNOWN_SUBJECT: &str = "The user is not recognized in this account";
 
 /// A correctly signed delivery this fleet does not act on, and the reason.
-pub const IGNORED: &str = "A correctly signed delivery this fleet does not act on, and why";
+pub const IGNORED: &str = "The signed event was ignored; the response explains why";
 
 /// What a webhook receiver reads: the provider's own document.
-pub const DELIVERY: &str =
-    "The provider's delivery, verbatim; read only once its signature verifies";
+pub const DELIVERY: &str = "The provider's original event body; requires a valid signature";
 
 /// The tags an operation is grouped under, as the published document spells them.
 ///

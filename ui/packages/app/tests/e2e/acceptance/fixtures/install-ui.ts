@@ -23,8 +23,9 @@ export async function saveFleetViaUI(page: Page, name: string, auth: SaveAuth): 
   await expect(page).toHaveURL(workspaceUrlPattern(NEW_FLEET));
   await (await setupAction(page, CHAT_COPY.editSetup)).click();
   const editor = page.getByRole("dialog", {name: CHAT_COPY.editSetup, exact: true});
-  await editor.getByLabel("Instance name", { exact: true }).fill(name);
+  await editor.getByLabel("Fleet name", { exact: true }).fill(name);
   await editor.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(auth.instructions ?? executionInstructions());
+  await editor.getByRole("button", {name: "Advanced settings", exact: true}).click();
   await editor.getByLabel("Runtime config", { exact: true }).fill(JSON.stringify(auth.config ?? fixtureConfig(name)));
   await editor.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
   // Save validates the displayed candidate before creating a fleet.

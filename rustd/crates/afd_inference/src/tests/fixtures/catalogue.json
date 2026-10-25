@@ -1,0 +1,176 @@
+{
+  "snapshot_date": "2026-10-25",
+  "models": [
+    {
+      "model_name": "claude-fable-5-1",
+      "inference": {
+        "api": "messages",
+        "base_url": "https://api.anthropic.com/v1",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "claude-opus-5-5",
+      "inference": {
+        "api": "messages",
+        "base_url": "https://api.anthropic.com/v1",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "claude-sonnet-5-5",
+      "inference": {
+        "api": "messages",
+        "base_url": "https://api.anthropic.com/v1",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "claude-haiku-5-5",
+      "inference": {
+        "api": "messages",
+        "base_url": "https://api.anthropic.com/v1",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "gpt-6.1-sol",
+      "inference": {
+        "api": "responses",
+        "base_url": "https://api.openai.com/v1",
+        "dialect": "openai",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "gpt-6-astra",
+      "inference": {
+        "api": "responses",
+        "base_url": "https://api.openai.com/v1",
+        "dialect": "openai",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "gpt-6-luna",
+      "inference": {
+        "api": "responses",
+        "base_url": "https://api.openai.com/v1",
+        "dialect": "openai",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "gpt-5.6-terra",
+      "inference": {
+        "api": "responses",
+        "base_url": "https://api.openai.com/v1",
+        "dialect": "openai",
+        "max_output_tokens": 128000
+      }
+    },
+    {
+      "model_name": "accounts/fireworks/models/minimax-m3p1-flash",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://api.fireworks.ai/inference/v1",
+        "max_output_tokens": 32768
+      }
+    },
+    {
+      "model_name": "accounts/fireworks/models/glm-5p3-flash",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://api.fireworks.ai/inference/v1",
+        "max_output_tokens": 943718
+      }
+    },
+    {
+      "model_name": "accounts/fireworks/models/kimi-k3",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://api.fireworks.ai/inference/v1",
+        "max_output_tokens": 943718
+      }
+    },
+    {
+      "model_name": "accounts/fireworks/models/deepseek-v4p1-flash",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://api.fireworks.ai/inference/v1",
+        "max_output_tokens": 943718
+      }
+    },
+    {
+      "model_name": "meta/muse-wonder",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://openrouter.ai/api/v1",
+        "dialect": "openrouter",
+        "max_output_tokens": 943718
+      }
+    },
+    {
+      "model_name": "google/gemini-4-argon",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://openrouter.ai/api/v1",
+        "dialect": "openrouter",
+        "max_output_tokens": 943718
+      }
+    },
+    {
+      "model_name": "qwen/qwen3.8-max-0902",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://openrouter.ai/api/v1",
+        "dialect": "openrouter",
+        "max_output_tokens": 131072
+      }
+    },
+    {
+      "model_name": "minimax/minimax-m3.1-flash:free",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://openrouter.ai/api/v1",
+        "dialect": "openrouter",
+        "max_output_tokens": 524288
+      }
+    },
+    {
+      "model_name": "openai/gpt-oss-120b",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://api.groq.com/openai/v1",
+        "dialect": "groq",
+        "max_output_tokens": 65536
+      }
+    },
+    {
+      "model_name": "mistral-large-4",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://api.mistral.ai",
+        "dialect": "mistral",
+        "max_output_tokens": 262144
+      }
+    },
+    {
+      "model_name": "mistral-small-2603",
+      "inference": {
+        "api": "chat",
+        "base_url": "https://api.mistral.ai",
+        "dialect": "mistral",
+        "max_output_tokens": 209715
+      }
+    },
+    {
+      "model_name": "gemini-4-argon",
+      "inference": {
+        "api": "gemini",
+        "base_url": "https://generativelanguage.googleapis.com",
+        "max_output_tokens": 943718
+      }
+    }
+  ]
+}

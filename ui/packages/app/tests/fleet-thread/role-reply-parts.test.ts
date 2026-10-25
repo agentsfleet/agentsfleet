@@ -7,7 +7,7 @@ import { OUTCOME } from "@/lib/events/event-summary";
 // the operator's turn splits into its trigger and a reply message whose status
 // and parts drive every state below.
 
-const COMPOSER_NAME = "Message this fleet…";
+const COMPOSER_NAME = "Message your fleet…";
 const TOOL_CALLS = "Tool calls";
 const COPY_REPLY = "Copy reply";
 const TOOL_STARTED_AT_MS = 1_000;
@@ -21,10 +21,7 @@ function replyRow(): HTMLElement {
 }
 
 // The destructive icon beside a failed reply's own words.
-function failureMark(words: string): SVGElement | null {
-  const line = within(replyRow()).getByText(words).closest("[data-failed-outcome]");
-  return line?.querySelector("svg.text-destructive") ?? null;
-}
+
 
 function messageRoot(of: HTMLElement): HTMLElement {
   const root = of.closest<HTMLElement>('[data-testid="fleet-message"]');
@@ -96,10 +93,10 @@ describe("FleetThread — reply parts", () => {
 
     mockStream([ev({ role: "user", actor: "operator", text: "Anything?", status: "fleet_error", outcome: OUTCOME.FAILED })]);
     view.rerender(threadElement());
-    expect(within(replyRow()).getByText(OUTCOME.FAILED)).toBeTruthy();
+    expect(within(replyRow()).getByText("Couldn’t complete this request")).toBeTruthy();
     expect(replyRow().getAttribute("data-failed")).toBe("true");
     // The failure carries its own mark, so it never reads as a short reply.
-    expect(failureMark(OUTCOME.FAILED)).toBeTruthy();
+    expect(within(replyRow()).getByRole("button", {name: "View details"})).toBeTruthy();
   });
 
   it("should give an integration turn a reply row once it has only called tools", () => {
@@ -114,14 +111,13 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).getByText("read_file")).toBeTruthy();
   });
 
-  it("should render an errored reply's words as written, in the failed tone", () => {
+  it("preserves a partial answer and shows a separate actionable failure", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", status: "fleet_error", reply: "**429** from the provider" })]);
     renderThread();
-    // The dashboard's own sentence, not the model's markdown: no <strong>.
-    expect(within(replyRow()).getByText("**429** from the provider")).toBeTruthy();
-    expect(replyRow().querySelector("strong")).toBeNull();
+    expect(replyRow().textContent).toContain("429 from the provider");
+    expect(replyRow().querySelector("strong")?.textContent).toBe("429");
     expect(replyRow().getAttribute("data-failed")).toBe("true");
-    expect(failureMark("**429** from the provider")).toBeTruthy();
+    expect(within(replyRow()).getByText("Couldn’t complete this request")).toBeTruthy();
   });
 
   it("test_indicator_verb_and_accessible_name", () => {

@@ -27,8 +27,8 @@ Every row is extracted from the sections below; the owner column names the secti
 | Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet.admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet.events` (one row per delivery) · `fleet.obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet.sessions` (one row per fleet, UPSERT) · `billing.usage_lines` (one row per measured slice of a lease, UNIQUE `(work_type, work_id, seq)`, with the lease's money held in `billing.holds`) | §The five durable stores |
 | Replay safety | Stable producer and event identities | Admission deduplicates `(producer, producer_key)`; redelivery retains the event and billing identities. | §C. EXECUTE |
 | Stale-writer rejection | `UZ-RUN-005` | Slot, lease and admission fences guard the report transaction. | §C. EXECUTE |
-| Shared Dragonfly handle | One multiplexed connection per daemon | Outbound stream commands, wake notifications and live activity. Inbound queue reads use Postgres. | §Connection topology |
-| Dedicated Dragonfly connections | hub + outbound reader | refcounted `SSUBSCRIBE`; blocking outbound reads use a separate socket | §Connection topology |
+| Shared Dragonfly handle | One shared cluster command owner per daemon | Outbound stream commands, wake notifications and live activity. Inbound queue reads use Postgres. | §Connection topology |
+| Dedicated Dragonfly owners | hub + outbound reader | Refcounted `SSUBSCRIBE`; blocking outbound reads use a separate cluster owner | §Connection topology |
 | Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); one connection per handler (RULE CNX) | §The Postgres pool |
 | Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
 | Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
@@ -83,9 +83,9 @@ The same sequence told for two fleets at once, a Pull Request and a Slack thread
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
 | Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
 | QStash owns the clock | the runner owns no schedule timer | §B. TRIGGER |
-| Chat is the only authoring input | owner decision; file, GitHub, and template import and Markdown export were removed | [`user_flow.md`](./user_flow.md) §"§8.1 Authoring the Fleet" |
+| Private drafts own authoring | Native JSON can initialize a draft; GitHub/template-bundle import and Markdown export remain unsupported | [`user_flow.md`](./user_flow.md) §"§8.1 Authoring the Fleet" |
 | Retained setup identity | Retry resumes missing checks under the original creation identity | §The install failure scenario |
-| SSE auth is dual-accept with strict no-fallthrough | a stale cookie must not silently fall through to a valid Bearer | §D. WATCH |
+| Browser SSE uses the authenticated Next.js proxy | the server resolves the session and forwards a Bearer; the daemon authenticates Authorization ([AUTH](../AUTH.md)) | §D. WATCH |
 | Outbound answers ride a generic `connector:outbound` stream | the report path stays provider-agnostic (Invariant 9) | §C. EXECUTE; M106 |
 
 ---
@@ -231,13 +231,13 @@ Durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth co
 
 A page is up to two hundred rows, and the two body columns are unbounded — a trigger payload and a full agent answer. Selecting them per row bought a table that renders about a hundred and sixty characters per cell, so the list stops selecting them and the surfaces that used to quote an answer now state an outcome instead. A row that failed says why; a row that succeeded records that it did, without reproducing the reply. Postgres already keeps wide values in oversized-attribute storage, so the cost was never that the bodies existed — it was that the list **selected** them, which is why this is a read-path change and not a storage one.
 
-Three surfaces changed with it: the events table's prose cell, the fleet header's outcome line, and the fleet thread's transcript. The transcript is the one surface that genuinely wants the bodies, because it renders what was said rather than a summary of it — so it re-reads its turns as details, server-side and in parallel. A turn whose detail read fails keeps its list row and renders its header and outcome rather than taking the page down.
+The events table and fleet header use summaries. The chat transcript reads bodies through `GET /messages`; individual event detail remains a separate read. See [watch recovery](#d-watch--user-side-how-the-live-tail-surfaces) for reconnect behavior.
 
 `tool_calls`, the run's bounded tool trace (at most 200 calls and 64 KiB; [Runner Fleet, Live activity](./runner_fleet.md#live-activity-the-sse-tail)), is a third body column under the same rule. The transcript and the single-event read select it, and the list never does. A row from before the column existed holds `NULL`, which reads as "not recorded", never as "no tools ran".
 
 A call's full arguments and output are a fourth body that no page read selects. They live in `fleet.tool_calls` (`schema/1710_fleet_tool_calls.sql`), a child table of `fleet.events`, one row per saved call, cascading on `(fleet_id, event_id)`. The rows are keyed by the lease's fencing token and the runner's call number, and a page never reads them: "show all" reads one call through `GET …/events/{event_id}/tool-calls/{call_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
 
-The runner lease carries no second copy either. It used to hold its own `request_json`, a duplicate of the payload the event row already stored, written on every lease. Reclaim joins `fleet.events` on `(fleet_id, event_id)` to read the body instead; both tables cascade from the same parent, so the join cannot dangle.
+Runner leases keep no duplicate request body. Claim and reclaim read the payload from the admission row and join fleet events to identify prior leases. Settled leases can outlive deleted fleets or events; their identifiers then remain opaque history.
 
 **Partitioning is not done here.** A usage line's arbiter is `(work_type, work_id, seq)` and it is written once, so a later partition key by `created_at` never splits a line from its own conflict target; the machinery waits for a measurement that demands it.
 
@@ -258,29 +258,33 @@ Activity and wake notifications are ephemeral. Their loss cannot remove accepted
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
-The Rust daemon shares one multiplexed Dragonfly connection for ordinary commands.
+The Rust daemon shares one cluster command owner for ordinary Dragonfly commands.
 A lease request probes the Postgres ledger and never blocks on a Dragonfly stream.
 An empty response tells the runner when to poll again; the runner holds no Dragonfly connection.
 
 ```text
 agentsfleetd replica
   HTTP handlers and background writers
-    +-- shared ConnectionManager --> outbound XADD / XACK and activity / wake SPUBLISH
+    +-- shared cluster command owner --> outbound XADD / XACK and activity / wake SPUBLISH
   SubscriptionHub async pump
-    +-- dedicated pub/sub socket --> SSUBSCRIBE per watched fleet
+    +-- dedicated pub/sub owner --> SSUBSCRIBE per watched fleet
          +-- bounded broadcast --> per-fleet or workspace SSE response bodies
-    +-- the same socket --> SSUBSCRIBE fleet:wake:{shard}, sixteen --> bounded fleet hints
+    +-- the same owner --> SSUBSCRIBE fleet:wake:{shard}, sixteen --> bounded fleet hints
   connector:outbound worker
-    +-- dedicated command socket --> XREADGROUP BLOCK (up to 5 seconds)
+    +-- dedicated blocking owner --> XREADGROUP BLOCK (up to 5 seconds)
 ```
 
-Cloning `afd_dragonfly::Dragonfly` shares its socket; it does not open another connection.
-The outbound reader owns `afd_dragonfly::Dedicated`, so its blocking read cannot delay request-path commands.
-Normal boot opens three Dragonfly connections when both optional background surfaces start.
+Cloning `afd_dragonfly::Dragonfly` shares its command owner. The outbound reader owns `afd_dragonfly::Dedicated`, keeping blocking reads separate from request-path commands.
+
+Normal boot has three logical owners when both optional background surfaces start. Cluster topology determines physical sockets; see [datastore scaling](datastore_scaling.md#target-design).
 
 The hub refcounts subscribers and keeps one wire subscription per watched channel.
-Two tasks serve its one connection: a control task owns commands, re-subscribes and redials, and a dispatch task owns the pushes, so a slow subscribe never holds a frame.
-A connection that ends inside 5 s waits a climbing step before its redial, so a dead or flapping primary is not redialled at the first step forever; one that held 5 s is redialled at once.
+The control task owns commands, subscriptions and reconnects. A separate dispatch task receives pushes, so a slow subscription command cannot hold a frame.
+
+A connection that ends inside 5 s waits a climbing step before redial.
+This keeps a dead or flapping primary from being redialled at the first step forever.
+A connection that held 5 s is redialled at once.
+
 Recovery from a lost subscription: [datastore_scaling.md](./datastore_scaling.md) §"Target design".
 Each frame is one shared allocation, however many viewers read it.
 
@@ -367,7 +371,9 @@ Save preserves the watermark while the draft enters `saving`; activation closes 
 
 Already accepted candidate edits remain available for the person's review; Stop does not undo them. The [Stop implementation](../../rustd/crates/afd_authoring/src/message/cancel.rs), [publication guard](../../rustd/crates/afd_authoring/src/lease/guard/mod.rs), and [creation regression](../../rustd/crates/afd_authoring/tests/draft/creation/stopped.rs) define these boundaries.
 
-POST fleets carries a UUIDv7 `Idempotency-Key`, immutable candidate or Library revision, reviewed name, review digest, and start choice. Authorize first, then record key/body digest and one fleet identity in a short transaction. A different body for the accepted key returns409. A same-key retry resumes that fleet; a progress response may advance, but accepted inputs and identity never change. Keep the content-free key receipt while the fleet exists and a 24-hour tombstone after purge; tombstone replay returns 410.
+POST fleets includes a UUIDv7 `Idempotency-Key`, immutable source, reviewed name, digest and start choice. Authorization precedes recording the normalized body and fleet identity. Changed-body reuse returns 409.
+
+Within the [authoring replay window](api_resources.md#shared-wire-rules), the same key and body resume that fleet’s setup checks. Progress may advance; accepted inputs and identity remain unchanged. After expiry, inspect the linked fleet before another Save.
 
 The draft enters `saving` with the linked fleet identity. A previously published candidate's Library receipt remains a source pin; do not publish it again or change an existing revision. Save itself creates no Library entry. Publishing before Save and Save without publication both work.
 
@@ -422,6 +428,9 @@ The CLI displays `Fleet created: installing`, each missing check and its action,
 ### B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)
 
 Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: platform setup to fleet execution".
+
+The diagram's chunk-continuation entry records earlier behavior. Current [conversation compaction](context_lifecycle.md) continues the same run without adding an admission.
+Approval resolution still creates a continuation admission.
 
 ```
    Common admission fields, stored in fleet.admissions.
@@ -698,7 +707,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 
 - `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_token`. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently. The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
-- Continuity across runs lives in `agentsfleetd`, never in runner-local state, so any runner can pick up the next run. Today only fleet memory reaches the next lease; the session checkpoint is saved to `fleet.sessions` and handed to no lease ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). Sticky routing (prefer `last_runner_id`, random among the rest, `rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`) is a hint for warm-sandbox reuse, never ownership.
+- Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement remains a hint, never ownership.
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency and its bound: [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model".
 

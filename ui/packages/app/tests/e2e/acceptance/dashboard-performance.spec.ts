@@ -19,6 +19,7 @@ import {
 
 const ROUTE_TIMEOUT_MS = 10_000;
 const CHAT_ENTRANCE = "What should your fleet do?";
+const LOADING_LABEL = "Loading…";
 // The staged platform entry whose Edit dialog loads on intent.
 const INTENT_ENTRY = "e2e-intent-loading";
 const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex")}`;
@@ -69,8 +70,8 @@ async function expectShellLoadingFallback(page: Page): Promise<void> {
   });
   expect(emptySlot.visible).toBe(true);
   expect(emptySlot.statusVisible).toBe(true);
-  expect(emptySlot.text).toBe("Loading page…");
-  expect(emptySlot.mainText).toContain("Loading page…");
+  expect(emptySlot.text).toBe(LOADING_LABEL);
+  expect(emptySlot.mainText).toContain(LOADING_LABEL);
   await expect(fallback).toBeHidden();
   await expectFleetsRouteLoaded(page);
 }
@@ -193,7 +194,7 @@ test.describe("authenticated dashboard fluidity", () => {
 
   test(
     "test_intent_loading_respects_client_capabilities",
-    async ({ page }) => {
+    async ({ page, baseURL }) => {
       await page.addInitScript(() => {
         Object.defineProperty(navigator, "connection", {
           configurable: true,
@@ -214,12 +215,16 @@ test.describe("authenticated dashboard fluidity", () => {
       const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.operator);
       await withStagedPlatformEntry(workspace, INTENT_ENTRY, async () => {
         await signInAs(page, FIXTURE_KEY.operator);
+        applicationOrigin = new URL(ADMIN_FLEET_LIBRARIES_PATH, baseURL).origin;
+        const sidebarReady = page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return response.request().method() === "GET" && url.origin === applicationOrigin &&
+            url.pathname === `/live/v1/workspaces/${encodeURIComponent(workspace)}/fleets`;
+        });
         await page.goto(ADMIN_FLEET_LIBRARIES_PATH);
-        applicationOrigin = new URL(page.url()).origin;
-        // Gate on the staged row — the route's loading skeleton renders the
-        // same h1, and waiting for network silence is unreachable here (the
-        // Clerk testing proxy holds retried FAPI requests in-flight; the
-        // suite-hygiene test bans that wait).
+        // RecentFleetList's first read proves its lazy module has executed.
+        expect((await sidebarReady).ok()).toBe(true);
+        // The staged row proves route content has replaced the loader.
         const trigger = page.getByRole("row").filter({ hasText: INTENT_ENTRY })
           .getByRole("button", { name: EDIT, exact: true });
         await expect(trigger).toBeVisible();

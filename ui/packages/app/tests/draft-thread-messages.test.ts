@@ -1,40 +1,37 @@
 import { expect, it } from "vitest";
-import { draftThreadMessages } from "@/lib/api/draft-thread-messages";
+import { createDraftThreadProjection, draftThreadMessages } from "@/lib/api/draft-thread-messages";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
 import { DRAFT, MESSAGE } from "./helpers/draft-fixtures";
 
-const causes = [
-  {cause: "deadline", text: "The model did not finish before its request deadline."},
-  {cause: "cancelled", text: "The model request was stopped."},
-  {cause: "provider_interrupted", text: "The connection to the model ended before completion was confirmed."},
-  {cause: "completion_unverified", text: "The model reply did not confirm a completed answer."},
-] as const;
+const HISTORY_COUNTS = [100, 1_000];
 
-it.each(causes)("shows the recorded $cause without suggesting another model request", ({cause, text}) => {
-  for (const reason of ["provider_failed", UNKNOWN_USAGE_REASON]) {
-    const failure = {reason, cause, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"};
-    const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
-      messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}]});
-    const suffix = reason === UNKNOWN_USAGE_REASON ? " Usage is still being reconciled." : "";
-    expect(rows).toMatchObject([{content: [{type: "text", text: `UZ-AUTHOR-015: ${text}${suffix}`}], status: {type: "complete"}}]);
-  }
+it.each(["deadline", "cancelled", "provider_interrupted", "completion_unverified"] as const)("preserves the recorded %s in failure details without replacing a partial answer", (cause) => {
+  const failure = {reason: UNKNOWN_USAGE_REASON, cause, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"};
+  const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
+    messages: [MESSAGE, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
+  expect(rows[1]).toMatchObject({content: [{type: "text", text: "Partial answer"}], status: {type: "complete"},
+    metadata: {custom: {failure, retryText: MESSAGE.text}}});
 });
 
-it("retains the recorded cause after Stop while acknowledging unsettled earlier usage", () => {
+it("preserves unsettled usage after stopping without inventing a cause or retry text", () => {
+  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: {...DRAFT, cancelled_through: MESSAGE.sequence},
-    messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined,
-      failure: {reason: UNKNOWN_USAGE_REASON, cause: "cancelled", error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}]});
-  expect(rows).toMatchObject([{content: [{type: "text",
-    text: "UZ-AUTHOR-015: The model request was stopped. This turn is stopped; earlier usage is still being reconciled."}]}]);
+    messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}]});
+  expect(rows).toMatchObject([{content: [{type: "text", text: ""}], metadata: {custom: {failure, retryText: undefined}}}]);
 });
 
-it("uses the safe unknown-usage explanation for a stopped older turn without a recorded cause", () => {
-  const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: {...DRAFT, cancelled_through: MESSAGE.sequence},
-    messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined,
-      failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}]});
-  expect(rows).toMatchObject([{content: [{type: "text",
-    text: "UZ-AUTHOR-015: The model request ended without confirmed usage. This turn is stopped; earlier usage is still being reconciled."}]}]);
+it("keeps settled messages stable while another answer streams and keeps conversation caches separate", () => {
+  const project = createDraftThreadProjection();
+  const messages = [MESSAGE, {...MESSAGE, role: "assistant" as const, text: "Done"},
+    {...MESSAGE, sequence: "2", state: "running" as const}];
+  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, messages};
+  const first = project(view);
+  const next = project({...view, liveReply: {sequence: "2", stream: "stream", text: "Growing", gapped: false}});
+  expect(next[0]).toBe(first[0]);
+  expect(next[1]).toBe(first[1]);
+  expect(next[3]).toMatchObject({content: [{text: "Growing"}]});
+  expect(createDraftThreadProjection()(view)[0]).not.toBe(first[0]);
 });
 
 it("shows matching live text while running and preserves the durable answer after completion", () => {
@@ -46,4 +43,37 @@ it("shows matching live text while running and preserves the durable answer afte
   ]);
   expect(draftThreadMessages({...view, messages: [{...MESSAGE, role: "assistant", text: "Durable answer"}]}))
     .toMatchObject([{content: [{text: "Durable answer"}], status: {type: "complete"}}]);
+});
+
+it("does not invent retry text for a user row without recorded request text", () => {
+  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
+    messages: [{...MESSAGE, text: undefined}, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
+  expect(rows[1]).toMatchObject({content: [{text: "Partial answer"}], metadata: {custom: {failure, retryText: undefined}}});
+});
+
+it("invalidates a cached failure when its original request becomes available", () => {
+  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  const answer = {...MESSAGE, role: "assistant" as const, state: "failed" as const, failure};
+  const project = createDraftThreadProjection();
+  const before = project({...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [answer]});
+  const after = project({...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [MESSAGE, answer]});
+  expect(after[1]).not.toBe(before[0]);
+  expect(after[1]).toMatchObject({metadata: {custom: {retryText: MESSAGE.text}}});
+});
+
+it.each(HISTORY_COUNTS)("projects %s turns with linear history reads and stable settled rows", (count) => {
+  let reads = 0;
+  const messages = Array.from({length: count}, (_, index) => [
+    {...MESSAGE, get sequence() { reads++; return String(index); }},
+    {...MESSAGE, role: "assistant" as const, get sequence() { reads++; return String(index); }, text: "Done"},
+  ]).flat();
+  const project = createDraftThreadProjection();
+  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, messages};
+  const first = project(view);
+  expect(reads).toBeLessThanOrEqual(count * 20);
+  reads = 0;
+  const next = project({...view, liveReply: {sequence: String(count), stream: "stream", text: "Growing", gapped: false}});
+  expect(reads).toBeLessThanOrEqual(count * 20);
+  expect(next.every((row, index) => row === first[index])).toBe(true);
 });

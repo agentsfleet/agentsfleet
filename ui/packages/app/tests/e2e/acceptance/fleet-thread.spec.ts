@@ -86,7 +86,7 @@ test.describe("fleet thread surface", () => {
     // Scope to the breadcrumb — the sidebar carries its own Fleets link, so
     // the bare role query became ambiguous when the breadcrumb shipped.
     await expect(
-      page.getByLabel("Breadcrumb").getByRole("link", { name: "Fleets" }),
+      page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Your fleets", exact: true }),
     ).toBeVisible();
     await expect(page.getByText(fleet.name, { exact: true }).first()).toBeVisible();
 
@@ -109,7 +109,7 @@ test.describe("fleet thread surface", () => {
     // not depend on the live feed or on the fleet being idle.
     const composer = page.getByLabel(COMPOSER_LABEL);
     await expect(composer).toBeVisible();
-    const placeholder = composer.getByPlaceholder(/message this fleet/i);
+    const placeholder = composer.getByPlaceholder(/message your fleet/i);
     await expect(placeholder).toBeVisible();
     await expect(placeholder).toBeEnabled();
   });
@@ -271,7 +271,7 @@ test.describe("fleet thread surface", () => {
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     const composer = page.getByLabel(COMPOSER_LABEL);
-    const textarea = composer.getByPlaceholder(/message this fleet/i);
+    const textarea = composer.getByPlaceholder(/message your fleet/i);
     await expect(textarea).toBeVisible();
     await textarea.fill("acceptance steer probe");
     await composer.getByRole("button", { name: /send/i }).click();

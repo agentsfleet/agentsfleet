@@ -3,7 +3,8 @@
 import type { Definition, Fleet, Schedule } from "@/lib/api/draft-types";
 import Link from "next/link";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, DashboardPanel, DashboardPanelTitle } from "@agentsfleet/design-system";
-import { START_KIND, scheduleOwed } from "@/lib/api/draft-types";
+import { START_KIND } from "@/lib/api/draft-vocabulary";
+import { scheduleOwed } from "@/lib/api/schedule-status";
 import { SetupChecks } from "./SetupChecks";
 import { ScheduleSync } from "./ScheduleSync";
 import { SetupSummary } from "./SetupSummary";

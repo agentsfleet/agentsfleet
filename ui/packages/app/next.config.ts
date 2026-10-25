@@ -10,9 +10,13 @@ if (buildId && !/^[0-9a-f]{64}$/.test(buildId)) throw new Error("Invalid build s
 const nextConfig: NextConfig = {
   generateBuildId: async () => buildId ?? null,
   // Compiled into Next's routes manifest; changing the serving shell cannot restamp a build.
-  headers: async () => buildId ? [{
-    source: "/:path*", headers: [{ key: "x-agentsfleet-build", value: buildId }],
-  }] : [],
+  headers: async () => [
+    ...(buildId ? [{ source: "/:path*", headers: [{ key: "x-agentsfleet-build", value: buildId }] }] : []),
+    { source: "/cli-auth/:session_id", headers: [
+      { key: "Referrer-Policy", value: "origin" },
+      { key: "Cache-Control", value: "no-store" },
+    ] },
+  ],
   // Turbopack is the default bundler in Next.js 16.1.
   // File system cache (incremental computation) is stable and on-by-default —
   // dependency graphs, aggregation graphs, and value cells persist to disk.

@@ -72,11 +72,9 @@ export function FleetMessageRow({
   dimmed,
   failed,
   showSender,
-  createdAt,
 }: FleetMessageRowProps) {
   return <ChatMessageRow sender={sender} operator={tone === ROW_TONE.OPERATOR} messageRole={messageRole}
-    dimmed={dimmed} failed={failed} showSender={showSender}
-    footer={createdAt ? <span className="flex"><Timestamp createdAt={createdAt} /></span> : undefined}>
+    dimmed={dimmed} failed={failed} showSender={showSender}>
     {children}
   </ChatMessageRow>;
 }

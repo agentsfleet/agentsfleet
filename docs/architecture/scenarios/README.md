@@ -5,8 +5,8 @@ Each scenario follows one user outcome from its trigger to its result. Each page
 | File | What it proves |
 |---|---|
 | [`github-pr-reviewer.md`](./github-pr-reviewer.md) | Save the `github-pr-reviewer` setup and have it read a Pull Request (PR); the review post is refused at egress today. |
-| [`production-deploy-repair.md`](./production-deploy-repair.md) | Diagnose a failed production deployment, prepare a bounded fix, and hold the draft PR for human review. |
-| [`slack-channel-resident.md`](./slack-channel-resident.md) | **The Rung-0 on-ramp (M106).** A fact told to `@agentsfleet` in one Slack thread is recalled in another thread of the same channel, because memory belongs to the channel's resident fleet. The resident is read-only and answers only mentions. Shipped in `agentsfleetd` (M206_002). |
+| [`production-deploy-repair.md`](./production-deploy-repair.md) | Diagnose a failed deployment and prepare a bounded draft PR. Durable repair linkage and post-deploy verification remain unimplemented. |
+| [`slack-channel-resident.md`](./slack-channel-resident.md) | Mentions reuse one resident fleet per channel. Cross-thread fact recall remains blocked by missing memory capture; the resident has no tools. |
 | [`two-fleets-github-slack.md`](./two-fleets-github-slack.md) | Two fleets in one workspace, one picture per step: a PR wakes one, a Slack mention wakes the other, a steer queues behind the first; the Slack answer returns to its thread and the PR answer stays in the dashboard. |
 | [`slack-incident-responder.md`](./slack-incident-responder.md) | A mention in a failed Continuous Integration (CI) run's Slack thread reaches exactly one fleet, which answers in that thread with GitHub and Grafana evidence; asked to, the channel's repairer opens one draft fix Pull Request (PR). Zero, one, and several fleets per channel. Built in M206; the live drill is pending. |
 

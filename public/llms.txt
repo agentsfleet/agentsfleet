@@ -27,6 +27,10 @@ Status transitions ride PATCH on the fleet resource — body {status: "active"|"
 - receive_source_webhook: POST /v1/webhooks/{fleet_id}/{source}   # the URL Save returns per webhook trigger
 - get_tenant_billing:         GET /v1/tenants/me/billing
 - get_tenant_billing_charges: GET /v1/tenants/me/billing/charges
+- get_tenant_billing_report: GET /v1/tenants/me/billing/reports/current
+- get_tenant_billing_activity_charges: GET /v1/tenants/me/billing/activities/{activity_id}/charges
+- runner_load_context_checkpoint: GET /v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}
+- runner_put_context_checkpoint: PUT /v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}
 - get_model_library:      GET /v1/models    # paged; ?limit=&starting_after=&q=&provider= — ETag/If-None-Match
 - list_tenant_model_entries: GET /v1/tenants/me/models   # paged; the tenant's own model registry
 - list_workspace_libraries:     GET /v1/workspaces/{workspace_id}/fleet-libraries   # paged gallery: platform catalog ∪ this workspace's entries

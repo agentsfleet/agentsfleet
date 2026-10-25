@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import type { ReactTable } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "../utils";
 import { Button } from "./Button";
@@ -12,8 +12,12 @@ import {
 import type {
   DataTableColumn,
   DataTablePagination,
+  DataTableDisclosure,
   DataTableRowData,
+  DataTableSurface,
 } from "./DataTable.types";
+import { DATA_TABLE_ROLE, DATA_TABLE_SURFACE } from "./DataTable.types";
+import { DataTableRows } from "./DataTableRows";
 import {
   DEFAULT_PAGE_SIZE_OPTIONS,
   PAGINATION_KIND,
@@ -26,7 +30,6 @@ type TableHeader<T extends DataTableRowData> = ReturnType<ReactTable<DataTableFe
 // One nominal size across all three states, so the header does not resize as
 // sorting changes.
 const SORT_ICON_SIZE = 14;
-const INTERACTIVE_CELL_SELECTOR = "a, button, input, select, textarea, [role='button'], [role='link'], [role='checkbox'], [role='combobox'], [contenteditable='true']";
 
 // The unsorted state is a chevron pair, not a double-headed arrow: lucide draws
 // ArrowUpDown with two full shafts spanning 16 of its 24 units against the
@@ -45,6 +48,7 @@ function DataTableHead<T extends DataTableRowData>({
   isLoading,
   onSortChange,
   interactive,
+  surface,
 }: {
   table: ReactTable<DataTableFeatures, T>;
   columnsByKey: ColumnMap<T>;
@@ -52,15 +56,16 @@ function DataTableHead<T extends DataTableRowData>({
   isLoading?: boolean;
   onSortChange?: (key: string) => void;
   interactive: boolean;
+  surface: DataTableSurface;
 }) {
   return (
-    <thead className={cn("bg-table-header", sticky && "sticky top-0 z-10")}>
+    <thead role={DATA_TABLE_ROLE.rowgroup} className={cn(surface === DATA_TABLE_SURFACE.plain ? "bg-background" : "bg-table-header", sticky && "sticky top-0 z-10")}>
       {table.getHeaderGroups().map((group) => (
-        <tr key={group.id}>
+        <tr key={group.id} role={DATA_TABLE_ROLE.row}>
           {group.headers.map((header) => (
             <DataTableHeading key={header.id} header={header} definition={columnsByKey.get(header.column.id)} isLoading={isLoading} onSortChange={onSortChange} />
           ))}
-          {interactive ? <th scope="col" className="w-10 border-b border-border"><span className="sr-only">Open</span></th> : null}
+          {interactive ? <th role={DATA_TABLE_ROLE.columnheader} scope="col" className="w-10 border-b border-border"><span className="sr-only">Open</span></th> : null}
         </tr>
       ))}
     </thead>
@@ -78,6 +83,7 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
             const ariaSort = direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none";
             return (
               <th
+                role={DATA_TABLE_ROLE.columnheader}
                 key={header.id}
                 scope="col"
                 aria-sort={canSort ? ariaSort : undefined}
@@ -111,78 +117,22 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
             );
 }
 
-function DataTableBody<T extends DataTableRowData>({
-  table,
-  columnsByKey,
-  onRowClick,
-}: {
-  table: ReactTable<DataTableFeatures, T>;
-  columnsByKey: ColumnMap<T>;
-  onRowClick?: (row: T) => void;
-}) {
-  return (
-    <tbody>
-      {table.getRowModel().rows.map((row) => (
-        <tr
-          key={row.id}
-          className={cn(
-            "group/row border-b border-table-divider bg-table-row even:bg-table-row-alternate last:border-b-0 transition-colors duration-snap ease-snap hover:bg-table-row-hover focus-within:bg-table-row-hover motion-reduce:transition-none",
-            onRowClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          )}
-          onClick={onRowClick ? (event) => {
-            if (event.defaultPrevented || (event.target instanceof Element && event.target.closest(INTERACTIVE_CELL_SELECTOR))) return;
-            onRowClick(row.original);
-          } : undefined}
-          onKeyDown={onRowClick ? (event) => {
-            if (event.defaultPrevented || event.target !== event.currentTarget) return;
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onRowClick(row.original);
-            }
-          } : undefined}
-          tabIndex={onRowClick ? 0 : undefined}
-        >
-          {row.getAllCells().map((cell) => {
-            const definition = columnsByKey.get(cell.column.id);
-            return (
-              <td
-                key={cell.id}
-                className={cn(
-                  "h-12 px-table-inline py-table-block align-middle text-foreground",
-                  definition?.primary && "font-medium",
-                  definition?.numeric && "text-right tabular-nums",
-                  // The heading's trailing sort icon takes 14px plus a 6px
-                  // gap; reserve the same space so values end beneath labels.
-                  definition?.numeric && cell.column.getCanSort() && "pr-3xl",
-                  definition?.hideOnMobile && "hidden sm:table-cell",
-                )}
-              >
-                {/* These are render callbacks, not component types. Passing a
-                    freshly built callback to flexRender remounts the cell and
-                    discards its focus and local state on parent updates. */}
-                {definition!.cell(row.original)}
-              </td>
-            );
-          })}
-          {onRowClick ? <td className="w-10 pr-table-inline text-muted-foreground group-hover/row:text-pulse group-focus-within/row:text-pulse"><ChevronRight size={16} aria-hidden="true" /></td> : null}
-        </tr>
-      ))}
-    </tbody>
-  );
-}
-
 export function DataTableFooter<T extends DataTableRowData>({
   table,
   pagination,
   totalRows,
   isLoading,
+  surface = DATA_TABLE_SURFACE.panel,
 }: {
   table: ReactTable<DataTableFeatures, T>;
   pagination: DataTablePagination | undefined;
   totalRows: number;
   isLoading?: boolean;
+  surface?: DataTableSurface;
 }) {
   if (pagination === false) return null;
+  const className = surface === DATA_TABLE_SURFACE.plain
+    ? "border-t border-border" : "border-t border-border bg-table-header px-table-inline";
   if (isClientPagination(pagination)) {
     if (totalRows === 0) return null;
     const pageSize = table.state.pagination.pageSize;
@@ -199,16 +149,16 @@ export function DataTableFooter<T extends DataTableRowData>({
           table.setPageSize(nextPageSize);
           table.setPageIndex(0);
         }}
-        className="border-t border-border bg-table-header px-table-inline"
+        className={className}
       />
     );
   }
-  if (totalRows === 0 && !hasExternalPaginationNavigation(pagination)) return null;
+  if (surface !== DATA_TABLE_SURFACE.plain && totalRows === 0 && !hasExternalPaginationNavigation(pagination)) return null;
   return (
     <Pagination
       {...pagination}
       isLoading={isLoading || pagination.isLoading}
-      className={cn("border-t border-border bg-table-header px-table-inline", pagination.className)}
+      className={cn(className, pagination.className)}
     />
   );
 }
@@ -218,6 +168,9 @@ type DataTableViewProps<T extends DataTableRowData> = {
   columnsByKey: ColumnMap<T>;
   caption?: string;
   onRowClick?: (row: T) => void;
+  rowDisclosure?: DataTableDisclosure<T>;
+  surface: DataTableSurface;
+  empty: ReactNode;
   className?: string;
   isLoading?: boolean;
   stickyHeader: boolean;
@@ -256,10 +209,25 @@ function useTableViewport<T extends DataTableRowData>({ table, pagination }: Pic
   return viewportRef;
 }
 
-export function DataTableView<T extends DataTableRowData>({
-  table, columnsByKey, caption, onRowClick, className, isLoading,
-  stickyHeader, viewportClassName, onSortChange, pagination, totalRows,
+function DataTableContent<T extends DataTableRowData>({
+  table, columnsByKey, caption, onRowClick, isLoading, stickyHeader, onSortChange, surface, rowDisclosure, empty,
 }: DataTableViewProps<T>) {
+  return <table className={cn("w-full min-w-full border-collapse font-sans text-body-sm",
+    surface === DATA_TABLE_SURFACE.plain && "[&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0")}
+    role={DATA_TABLE_ROLE.table} aria-busy={isLoading ? "true" : "false"}>
+    {caption ? <caption className="sr-only">{caption}</caption> : null}
+    <DataTableHead table={table} columnsByKey={columnsByKey} sticky={stickyHeader}
+      isLoading={isLoading} onSortChange={onSortChange} interactive={Boolean(onRowClick)} surface={surface} />
+    <DataTableRows table={table} columnsByKey={columnsByKey} onRowClick={onRowClick}
+      rowDisclosure={rowDisclosure} surface={surface} isLoading={isLoading} empty={empty} />
+  </table>;
+}
+
+export function DataTableView<T extends DataTableRowData>(props: DataTableViewProps<T>) {
+  const {
+  table, columnsByKey, caption, onRowClick, className, isLoading,
+  viewportClassName, onSortChange, pagination, totalRows, surface,
+  } = props;
   const viewportRef = useTableViewport({ table, pagination });
   const handleSortChange = onSortChange
     ? (key: string) => {
@@ -271,30 +239,16 @@ export function DataTableView<T extends DataTableRowData>({
     <div
       data-slot="data-table"
       data-testid="data-table"
-      // A column that can shrink, so the viewport below it has something to
-      // bound against once a page constrains the height.
+      data-surface={surface}
       className={cn(
-        "flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-table-row",
+        "flex w-full min-h-0 flex-1 flex-col overflow-hidden",
+        surface === DATA_TABLE_SURFACE.panel && "rounded-lg border border-border bg-table-row",
         className,
       )}
     >
       <div
         ref={viewportRef}
-        // The ROWS scroll, not the page. Four call sites reached this by hand
-        // with `viewportClassName="min-h-0 flex-1 max-h-none"` and six did not,
-        // so Billing and Model library kept their headers while Fleet library,
-        // Secrets, Approvals and API keys scrolled the whole canvas away. A
-        // capability only the informed caller took up is the same drift that
-        // put a 12px <h2> on nine routes; the primitive owns it now.
-        //
-        // This bounds against an ancestor that constrains height — a page
-        // passing `fullHeight` to `PageLayout`. Where nothing constrains, the
-        // flex basis simply grows and the page scrolls as it always did, so an
-        // unconverted route is unchanged rather than broken.
-        //
-        // The old `max-h-96` default is still not what this is: that put a
-        // scrollbar inside the cell padding, moving header text 6px in from the
-        // right while the footer outside the box stayed put.
+        // Rows scroll inside a height-constrained page; other pages grow naturally.
         className={cn(
           "min-h-0 flex-1 overflow-x-auto overscroll-x-contain motion-safe:scroll-smooth",
           "overflow-y-auto focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
@@ -304,20 +258,9 @@ export function DataTableView<T extends DataTableRowData>({
         role="region"
         aria-label={caption ? `${caption}, scrollable` : "Scrollable table"}
       >
-        <table className="w-full min-w-full border-collapse font-sans text-body-sm" aria-busy={isLoading ? "true" : "false"}>
-          {caption ? <caption className="sr-only">{caption}</caption> : null}
-          <DataTableHead
-            table={table}
-            columnsByKey={columnsByKey}
-            sticky={stickyHeader}
-            isLoading={isLoading}
-            onSortChange={handleSortChange}
-            interactive={Boolean(onRowClick)}
-          />
-          <DataTableBody table={table} columnsByKey={columnsByKey} onRowClick={onRowClick} />
-        </table>
+        <DataTableContent {...props} columnsByKey={columnsByKey} onRowClick={onRowClick} onSortChange={handleSortChange} />
       </div>
-      <DataTableFooter table={table} pagination={pagination} totalRows={totalRows} isLoading={isLoading} />
+      <DataTableFooter table={table} pagination={pagination} totalRows={totalRows} isLoading={isLoading} surface={surface} />
     </div>
   );
 }
