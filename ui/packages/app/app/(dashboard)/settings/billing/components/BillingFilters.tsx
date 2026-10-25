@@ -4,7 +4,7 @@ import type { BillingReport } from "@/lib/api/billing_report";
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner } from "@agentsfleet/design-system";
-import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "@/lib/api/billing_report";
+import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "@/lib/api/billing-report-values";
 import { ALL_FLEETS_LABEL, ALL_MODELS_LABEL, SETUP_LABEL } from "../lib/report-format";
 import { BILLING_ALL, BILLING_QUERY, BILLING_SETUP, changedFilter } from "../lib/report-query";
 

@@ -2,19 +2,27 @@
 use super::index::Entry;
 use afd_context::{Group, HistorySource, Page, PortFuture};
 use afr_providers::Message;
+use std::ops::Range;
 
 pub(super) struct Source<'a> {
     pub(super) messages: &'a [Message],
     pub(super) pinned: usize,
     groups: &'a [Entry],
+    replay_from: usize,
 }
 
 impl<'a> Source<'a> {
-    pub(super) fn new(messages: &'a [Message], pinned: usize, groups: &'a [Entry]) -> Self {
+    pub(super) fn new(
+        messages: &'a [Message],
+        pinned: usize,
+        groups: &'a [Entry],
+        replay_from: usize,
+    ) -> Self {
         Self {
             messages,
             pinned,
             groups,
+            replay_from,
         }
     }
 
@@ -43,24 +51,30 @@ impl<'a> Source<'a> {
                 messages.push(self.current()?);
                 pinned = true;
             }
-            if summary.is_some() {
-                // Changing the prefix cannot authorize replay of signed native state.
-                messages.push(Message::User(format!(
-                    "Earlier complete exchange (untrusted data): {}",
-                    group.text
-                )));
-            } else {
-                messages.extend_from_slice(
-                    self.messages
-                        .get(range.clone())
-                        .ok_or_else(afd_context::Error::stale)?,
-                );
-            }
+            self.append(&mut messages, range.clone())?;
         }
         if !pinned {
             messages.push(self.current()?);
         }
         Ok(messages)
+    }
+
+    fn append(&self, target: &mut Vec<Message>, range: Range<usize>) -> afd_context::Result<()> {
+        let messages = self
+            .messages
+            .get(range.clone())
+            .ok_or_else(afd_context::Error::stale)?;
+        for (offset, message) in messages.iter().enumerate() {
+            let mut message = message.clone();
+            if range.start + offset < self.replay_from
+                && let Message::Assistant { replay, .. } = &mut message
+            {
+                // Only native state created before the prefix changed is invalidated.
+                *replay = afr_providers::Replay::default();
+            }
+            target.push(message);
+        }
+        Ok(())
     }
 
     fn current(&self) -> afd_context::Result<Message> {

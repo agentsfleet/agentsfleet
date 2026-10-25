@@ -45,6 +45,9 @@ pub(super) async fn prepare(
         |_| {},
     )
     .await?;
+    if matches!(&plan, Plan::Compact(_)) && !request.request.supports_compaction {
+        return Err(ErrorKind::Token.into());
+    }
     snapshot.source = source.fingerprint;
     Ok((prepared(plan, &estimator, settings, context)?, snapshot))
 }

@@ -24126,6 +24126,10 @@
               "$ref": "#/components/schemas/ModelMessage_Value_Value_Value"
             },
             "description": "Bounded text and fixed proposal history only."
+          },
+          "supports_compaction": {
+            "type": "boolean",
+            "description": "The runner understands metered summary replies and can continue the same turn."
           }
         },
         "additionalProperties": false

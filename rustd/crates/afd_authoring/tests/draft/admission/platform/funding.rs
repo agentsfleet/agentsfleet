@@ -48,6 +48,7 @@ fn request(lease: &Claimed, index: u32) -> ModelCallInput {
         dispatch_id: super::mint().to_string(),
         call_index: index,
         request: ModelRequest {
+            supports_compaction: true,
             messages: vec![ModelMessage::User {
                 text: "Use the configured platform model".into(),
             }],

@@ -46,6 +46,7 @@ fn fifty_turns() -> ModelCallInput {
         dispatch_id: "01900000-0000-7000-8000-000000000002".into(),
         call_index: 1,
         request: ModelRequest {
+            supports_compaction: true,
             messages,
             max_output_tokens: OUTPUT_LIMIT,
         },

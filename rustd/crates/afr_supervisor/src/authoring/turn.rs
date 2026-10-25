@@ -36,6 +36,7 @@ impl Turn<'_> {
                 dispatch_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
                 call_index,
                 request: ModelRequest {
+                    supports_compaction: true,
                     messages: messages.clone(),
                     max_output_tokens: u32::try_from(remaining).map_err(|_overflow| {
                         error::config("the authoring output allowance exceeds the wire bound")

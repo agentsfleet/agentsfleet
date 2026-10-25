@@ -11,6 +11,7 @@
 //! walk. Crates whose suites take `TestDatabase::shared` — `afd_runner` and
 //! `afd_tenant` — are deliberately NOT aggregated for that reason.
 
+mod authoring_compaction;
 mod claim_selection;
 
 #[path = "inference_images.rs"]

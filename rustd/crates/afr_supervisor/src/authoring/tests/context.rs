@@ -38,6 +38,7 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
         .find(|call| call.verb == Verb::AuthoringModel)
         .unwrap();
     let body: Value = serde_json::from_slice(model.body.as_ref().unwrap()).unwrap();
+    assert_eq!(body["request"]["supports_compaction"], true);
     let messages = body["request"]["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 4);
     assert_eq!(

@@ -33,6 +33,8 @@ Original history remains available. Current instructions, authoritative state an
 Summaries and quoted prior conversation are untrusted data.
 
 Whole tool call/result groups remain atomic; opaque native continuations never replay against a changed prefix.
+Retained tool results keep their image blocks. A prefix change clears native replay from existing assistant messages; replay produced afterward stays with its turn.
+
 Summarization disables tools and uses the normal physical-request meter.
 Unknown usage cannot become zero or authorize a resend.
 
@@ -55,6 +57,10 @@ An incurred charge survives a rejected publication.
 The daemon assembles authoring history; the bounded runner envelope carries current-turn work.
 Paging bounds each read without limiting conversation lifetime.
 Authoring records each compaction dispatch before provider access, then commits the result and checkpoint through its guarded receipt path.
+
+Setup runners opt into summary replies with `supports_compaction: true`.
+Ordinary replies omit `compacted` when false so older runners can read them during deployment.
+An older runner whose input needs a summary receives `AUTHORING_TOKEN` before summary funding or provider access.
 
 ## Implementation scope
 
