@@ -22,7 +22,7 @@ export function BillingFilters({ report, modelNames }: Props) {
     const next = changedFilter(new URLSearchParams(params.toString()), key, value);
     startTransition(() => router.push(`${pathname}?${next}`, { scroll: false }));
   };
-  return <div className="flex flex-wrap items-end gap-lg" aria-busy={pending}>
+  return <div className="relative flex flex-wrap items-end gap-lg" aria-busy={pending}>
     <Filter label="Period" value={report.period} disabled={pending}
       choices={[{ value: BILLING_PERIOD_MONTH, label: "Month to date" }, { value: BILLING_PERIOD_TODAY, label: "Today" }]}
       onChange={value => change(BILLING_QUERY.period, value)} />
@@ -32,19 +32,18 @@ export function BillingFilters({ report, modelNames }: Props) {
     <Filter label="Model" value={params.get(BILLING_QUERY.model) ?? BILLING_ALL} disabled={pending}
       choices={[{ value: BILLING_ALL, label: ALL_MODELS_LABEL }, ...report.filters.models.map(model => ({ value: model, label: modelNames[model] ?? model }))]}
       onChange={value => change(BILLING_QUERY.model, value)} />
-    {pending ? <Spinner size="sm" label="Updating report…" /> : null}
-    <p className="text-label text-muted-foreground">Exact-match filters · Coordinated Universal Time (UTC)</p>
+    {pending ? <span className="absolute right-0 top-0"><Spinner size="sm" label="Updating report…" /></span> : null}
   </div>;
 }
 
 function Filter({ label, value, choices, onChange, disabled }: {
   label: string; value: string; choices: Choice[]; onChange: (value: string) => void; disabled: boolean;
 }) {
-  return <div className="min-w-0 space-y-sm">
-    <Label>{label}</Label>
+  return <div className="flex min-w-0 flex-1 basis-32 flex-col gap-sm">
+    <Label className="mb-0 block font-system text-eyebrow font-normal leading-eyebrow">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger aria-label={label}><SelectValue /></SelectTrigger>
-      <SelectContent>{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
+      <SelectTrigger aria-label={label} className="w-full font-system text-label font-normal [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
+      <SelectContent className="font-system">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
     </Select>
   </div>;
 }

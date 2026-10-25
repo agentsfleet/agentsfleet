@@ -40,7 +40,8 @@ describe("served billing page composition", () => {
     const html = await markup();
     expect(html).toContain(BILLING_MODEL_NAME);
     expect(html).toContain("Payment alerts");
-    expect(html).toContain("−$0.0001");
+    expect(html).toContain("Charged this period");
+    expect(html).toContain("$0.0001");
     expect(html).toContain("Add credits");
     expect(html).toContain("mailto:agentsfleet@agentmail.to");
     expect(html).not.toContain("Available credits");
@@ -51,7 +52,8 @@ describe("served billing page composition", () => {
     backend(options);
     const html = await markup();
     expect(html).toContain(BILLING_MODEL);
-    expect(html).toContain("−$0.0001");
+    expect(html).toContain("Charged this period");
+    expect(html).toContain("$0.0001");
     expect(html).not.toContain(BILLING_MODEL_NAME);
   });
 
@@ -95,7 +97,9 @@ describe("served billing page composition", () => {
     expect(details).toHaveLength(1);
     expect(details[0]?.pathname).toContain(BILLING_WORK);
     expect(details[0]?.searchParams.get("activity_type")).toBe(BILLING_ACTIVITY_SETUP);
-    expect(html).toContain("Individual settled charges");
+    expect(html).toContain("Activity charge details");
+    expect(html.replaceAll(/<!--.*?-->/g, "")).toContain("Setup chat charge details");
+    expect(html).toContain("Total charged");
   });
 
   it.each([{ detailStatus: 403 }, { detail: { items: [{ charged_nanos: "broken" }] } }])("detail failure retains period totals and provides retry: %j", async options => {
@@ -103,7 +107,7 @@ describe("served billing page composition", () => {
     const html = await markup({ activity: BILLING_SELECTION });
     expect(html).toContain("Charges unavailable");
     expect(html).toContain("Retry charges");
-    expect(html).toContain("Settled spend");
+    expect(html).toContain("Charged this period");
   });
 
   it("ignores a disclosure naming a work item outside the visible page", async () => {

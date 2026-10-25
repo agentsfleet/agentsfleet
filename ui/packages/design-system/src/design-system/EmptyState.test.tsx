@@ -1,9 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { EmptyState } from "./EmptyState";
+import { EMPTY_STATE_SURFACE, EmptyState } from "./EmptyState";
 
 describe("EmptyState", () => {
+  it("keeps a plain empty result unboxed and its explanation unconstrained", () => {
+    render(<EmptyState title="No settled activity" description="Choose another period."
+      surface={EMPTY_STATE_SURFACE.plain} />);
+    const root = screen.getByRole("status");
+    expect(root).toHaveAttribute("aria-live", "polite");
+    expect(root).toHaveClass("items-start", "text-left");
+    expect(root).not.toHaveClass("border", "rounded-md", "items-center");
+    expect(screen.getByRole("heading", {name: "No settled activity"})).toHaveClass("font-medium");
+    expect(screen.getByText("Choose another period.")).not.toHaveClass("max-w-sm");
+  });
+
   it("renders title and sets role=status + aria-live=polite", () => {
     render(<EmptyState title="Nothing here" description="Add a agent to get started." />);
     expect(screen.getByText("Nothing here")).toBeInTheDocument();

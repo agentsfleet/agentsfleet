@@ -89,6 +89,7 @@ pub struct StreamTurn {
     cause: Option<FailureCause>,
     ended: bool,
     last_event: Instant,
+    measurement: crate::InputCount,
 }
 
 impl std::fmt::Debug for StreamTurn {
@@ -119,15 +120,49 @@ impl StreamTurn {
         request: CompletionRequest,
         control: TurnControl,
     ) -> Result<Self, Box<ProviderError>> {
+        let count = configured
+            .input_count(
+                request
+                    .model
+                    .as_deref()
+                    .or_else(|| model.id())
+                    .unwrap_or_default(),
+                &request,
+            )
+            .map_err(|error| Box::new(ProviderError::from(error)))?;
+        Self::open_counted(configured, model, request, count, control)
+    }
+
+    /// Opens the unchanged request associated with a fresh measurement.
+    ///
+    /// # Errors
+    /// A changed request invalidates its count before the SDK can send it.
+    pub fn open_counted(
+        configured: &Configured<'_>,
+        model: &DynModel<Completion>,
+        request: CompletionRequest,
+        count: crate::InputCount,
+        control: TurnControl,
+    ) -> Result<Self, Box<ProviderError>> {
+        let model_name = request
+            .model
+            .as_deref()
+            .or_else(|| model.id())
+            .unwrap_or_default();
+        configured
+            .verify_count(model_name, &request, &count)
+            .map_err(|error| Box::new(ProviderError::from(error)))?;
+        let recovery = Recovery::new(configured, model_name);
         Ok(Self {
             inner: model.stream(request)?,
-            recovery: Recovery::new(configured, model.id().unwrap_or_default()),
+            recovery,
             trace: TurnTrace::start(Arc::clone(&control.correlation_id)),
             control,
             failure: None,
             cause: None,
             ended: false,
             last_event: Instant::now(),
+            measurement: count,
         })
     }
 
@@ -188,22 +223,26 @@ impl StreamTurn {
     pub async fn finish(mut self) -> TurnResult {
         while self.next().await.is_some() {}
         let mut partial = self.inner.partial();
-        if let Some(failure) = self.failure {
+        let result = if let Some(failure) = self.failure {
             self.recovery.usage(&mut partial).await;
             self.trace.end(self.cause);
-            return TurnResult {
+            TurnResult {
                 response: partial,
                 failure: Some(failure),
                 cause: self.cause,
-            };
-        }
-        finish_response(
-            self.inner.finish().await,
-            partial,
-            self.recovery,
-            self.trace,
-        )
-        .await
+            }
+        } else {
+            finish_response(
+                self.inner.finish().await,
+                partial,
+                self.recovery,
+                self.trace,
+            )
+            .await
+        };
+        self.measurement
+            .observe(&result.response.usage, &self.control.correlation_id);
+        result
     }
 }
 

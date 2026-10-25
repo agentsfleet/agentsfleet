@@ -46,6 +46,7 @@ export const FRAME_KIND = {
   TOOL_CALL_STARTED: "tool_call_started",
   TOOL_CALL_PROGRESS: "tool_call_progress",
   CHUNK: "chunk",
+  CONTEXT_PROGRESS: "context_progress",
   TOOL_CALL_COMPLETED: "tool_call_completed",
   EVENT_COMPLETE: "event_complete",
   GATE_OPENED: "gate_opened",

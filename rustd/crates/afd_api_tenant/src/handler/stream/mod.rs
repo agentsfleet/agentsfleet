@@ -104,7 +104,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and ",
         "`pending_approvals`. Requests outside a run use null `event_id`. Resolutions add ",
         "`status` and `resolved_by`.\n",
-        "- `chunk`, `tool_call_started`, `tool_call_progress`, and `tool_call_completed`: ",
+        "- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: ",
         "live reply and tool activity. Tool messages include `event_id` and `name`. Newer ",
         "runners add a unique `call_id` per call, shared across its messages.\n",
         "- Completed tools from newer runners add `status` (`succeeded`, `failed`, or ",

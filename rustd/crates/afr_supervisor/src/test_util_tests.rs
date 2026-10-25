@@ -9,6 +9,7 @@
 use std::borrow::Cow;
 
 use afd_core::id::Uuid7;
+use afd_wire::context::ContextPut;
 use afd_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use afd_wire::report::RenewRequest;
 use afd_wire::runner::{AssignedPolicy, HeartbeatRequest, NetworkPolicy, SandboxTier};
@@ -81,6 +82,46 @@ async fn test_each_route_answers_as_its_verb() {
             "{:?} at {}",
             call.verb,
             call.path
+        );
+    }
+}
+
+#[tokio::test]
+async fn context_routes_answer_through_the_native_client() {
+    let answers = healthy();
+    let (plane, mut calls) =
+        plane(move |call| json(&answers.reply(call.verb.method().http().as_str(), &call.path)));
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    assert!(
+        plane
+            .context_load(&lease, LEASE_ID, 1)
+            .await
+            .unwrap()
+            .checkpoint
+            .is_none()
+    );
+    plane
+        .context_commit(
+            &lease,
+            LEASE_ID,
+            &ContextPut {
+                fencing_token: 1,
+                expected_generation: 0,
+                checkpoint: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let sent = drain(&mut calls);
+    assert_eq!(sent.len(), 2);
+    for call in sent {
+        assert_eq!(
+            healthy().reply(call.verb.method().http().as_str(), &call.path),
+            healthy().to(Some(call.verb))
+        );
+        assert_eq!(
+            healthy().reply("POST", &call.path),
+            serde_json::json!({"ok":true})
         );
     }
 }

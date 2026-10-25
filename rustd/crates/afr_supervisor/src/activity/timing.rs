@@ -121,7 +121,7 @@ impl RunClock {
                     clocked.busy += Duration::from_millis(ms);
                 }
             }
-            ActivityFrame::ToolCallProgress(_) => {}
+            ActivityFrame::ToolCallProgress(_) | ActivityFrame::ContextProgress(_) => {}
         }
     }
 

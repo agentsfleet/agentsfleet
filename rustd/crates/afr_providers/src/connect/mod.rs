@@ -94,8 +94,15 @@ impl Connect for Connector {
             .ok_or_else(|| raise::unhosted(&policy.provider))?;
         let lease_id = lease.lease_id.as_ref();
         let transport = Transport::new(self.client.clone(), lease_id, &policy.provider);
+        let counting_transport = transport.clone().once().http();
         let model = route.model(&policy.context.model, &policy.api_key, transport.http());
-        Ok(Box::new(Turns::new(model, settings, policy, lease_id)))
+        Ok(Box::new(Turns::new(
+            model,
+            settings,
+            policy,
+            lease_id,
+            counting_transport,
+        )))
     }
 }
 

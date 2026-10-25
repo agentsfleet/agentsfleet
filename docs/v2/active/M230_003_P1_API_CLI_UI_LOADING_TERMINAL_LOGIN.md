@@ -45,6 +45,10 @@ The following inventory covers this delivery; no experimental authentication cha
 | File | Action | Why |
 |---|---|---|
 | `README.md` | EDIT | Describe automatic same-computer approval and explicit manual login for a browser on another computer. |
+| `deploy/local/acceptance.sh`<br>`deploy/local/compose.yml` | EDIT | Owner-approved local HTTPS dashboard frontdoor for unchanged concurrent fleet acceptance. |
+| `make/acceptance.mk`<br>`.github/workflows/deploy-dev-acceptance.yml`<br>`.github/workflows/deploy-dev.yml` | EDIT | Keep full local acceptance and select a short deployment check; report the separate ten-fleet deployment result. |
+| `.github/workflows/acceptance-ten-fleets.yml` | CREATE | Run ten concurrent fleets against api-dev after deployment or on explicit dispatch. |
+| `ui/packages/app/playwright.acceptance.config.ts`<br>`ui/packages/app/tests/e2e/acceptance/fleet-execution.spec.ts`<br>`ui/packages/app/tests/e2e/acceptance/fleet-continuity-final.spec.ts`<br>`playbooks/deploy/dev/001_playbook.md` | EDIT | Use native tags, skip and project selection; document separate short and ten-fleet results. |
 | `docs/DESIGN_SYSTEM.md`<br>`docs/v2/active/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md` | EDIT | Shared loading, authorization button wording or its evidence. |
 | `docs/architecture/sandbox_evaluation.md` | CREATE | Source-backed SPACE comparison, proposed coding journey, failure proofs and performance measurements; no backend adoption claim. |
 | `docs/architecture/billing_reporting.md` | CREATE | Approved Billing read flow, implementation scope, UI behavior and query-plan proofs. |
@@ -265,6 +269,9 @@ Repair the observed model-status display and synchronize acceptance journeys wit
 - **Dimension 4.1 — IN_PROGRESS** — Successful activation refreshes the visible registry; refusal retains the committed inactive entry and error → Test `created_model_activation`
 - **Dimension 4.2 — IN_PROGRESS** — Sidebar loading completes before the zero-download hover measurement; clicking still loads the editor → Test `intent_loading_client_capabilities`
 - **Dimension 4.3 — IN_PROGRESS** — Approval continuation reaches the exact fleet's active state before navigating away → Test `multi_fleet_grant_journey`
+- **Dimension 4.4 — IN_PROGRESS** — Full local acceptance remains available; deployment selects one execution journey and preflight, with the ten-fleet journey in a separate api-dev job → Test `acceptance_scope_discovery`.
+
+The existing `acceptance-e2e` target accepts `ACCEPTANCE_SCOPE=full|post-deploy|ten-fleets`, defaulting to full. Native Playwright tags, skip and project filters select the requested tests. Both deployment jobs retain prerequisites, original assertions and zero retries. Ten pages remain concurrent. Separate fixture identities isolate setup and cleanup. Both results participate in the deployment verdict. Explicit workflow dispatch can run ten fleets against api-dev without deploying. No remote deployment is authorized by this configuration change.
 
 ### §5 — Bound local terminal authorization
 
@@ -288,6 +295,8 @@ Explicit `--no-open` or configured no-open retains the current six-digit manual 
 
 **Owner instructions:** “lets finish the compaction first” and “and you run the same test after compaction to prove we can test beyond the 47th or whatever 41st turn you stopped.” Run the unchanged full local acceptance lane after integration, retaining its 181-message/four-save assertions and the historical turn-42 failure evidence. Forced repeated-compaction tests for both hosts supplement that rerun.
 
+**Local transport approval, Oct 25:** Indy approved applying `/private/tmp/pr784-local-http2-proposal.patch`, limited to the two local deployment files above, with transport verification before paid model work. The applied patch's isolated transport smoke returned HTTP/2 and ten HTTP 200 responses on one connection, with no paid calls (`/private/tmp/pr784-local-http2-proof-20261025/result.json`). Full authenticated continuity remains open.
+
 **Quality ceiling:** One shared lifecycle and checkpoint repository prevent divergent recovery and duplicate algorithms.
 **Surface area:** OpenAPI yes (runner checkpoint/protocol); CLI no new command; user guidance yes; release behavior yes; additive schema yes; no harness/hook changes, review-counter reset or merge.
 
@@ -305,7 +314,34 @@ Preparation must grow linearly with history and keep independent conversations c
 
 **Failure proofs:** Reject a wrong prefix digest before provider access. Rebuild the runtime index when pending child input changes. Reject source changes after funding. Keep the previous checkpoint after cancellation, stale generation, unknown usage or failed publication. Retain known charges after a model reply. A blocked conversation cannot hold another conversation's progress.
 
-**Signals:** No new product events. Test counters record page reads, encoded groups and concurrent progress without conversation text. Wall-time and throughput remain unverified until measured.
+**Signals:** Content-free operational traces pair summary start with committed completion or failure. Authenticated progress notices announce summarization and continuation. No product analytics event is added. Test counters record page reads, encoded groups and concurrent progress without conversation text. Wall-time and throughput remain unverified until measured.
+
+**Compaction punch list:**
+
+- Document how the selected model generates the bounded JSON summary, `tiktoken-rs` measurement and the conservative byte fallback. Source-checked in `context_lifecycle.md`.
+- Document fleet-private and workspace-shared memory loading, tool access and semantic capture separately from conversation checkpoints. Source-checked in `memory.md`; no account-wide scope is implemented.
+- Verified locally: both hosts publish content-free summary status through authenticated streams. Trace pairing, runtime ordering, private setup delivery and React recovery tests pass; the final browser continuity journeys remain open. See the verification record below.
+- Open: review sensitive conversation and tokenizer buffer lifetimes, including ordinary strings, vectors, serialization and clones. Credential wiping exists; complete summary-buffer wiping is unproven. Recheck cross-tenant, private-draft and superseded-lease refusals through real storage before security signoff.
+- Keep cross-lease Git worktree recovery and the Go/Firecracker changes in the subsequent sandbox session requested by the owner.
+
+**Model counting follow-up, approved Oct 25:** Evaluate the experimental `tiktoken` crate alongside the installed `tiktoken-rs`, Hugging Face `tokenizers` and Kitoken. Keep the shared planner and its 90/95 percent policies. Measure the complete selected provider request before each physical call. Treat byte fallback and serialized-JSON counts as estimates, never proven request bounds.
+
+The evaluation must compare token identifiers against pinned reference vocabularies before comparing speed. Cover every configured model in `scripts/model-library-allowlist.json`, plus unknown and configured Ollama models. A family alias alone cannot prove compatibility. Pin vocabulary revisions, templates, checksums and licenses; model weights and remote model code are unnecessary.
+
+Keep local estimation synchronous. Any native count request must use the selected authorized provider route outside database transactions, then recheck the prepared request's freshness. Count failures must preserve cancellation, usage uncertainty and checkpoint authority. Never send a routed customer's input to another provider for counting.
+
+- **Dimension 6.6 — IN_PROGRESS** — Compare tokenizer correctness, retained private input, supported models and cold/warm performance → Test `tokenizer_candidate_evaluation`.
+- **Dimension 6.7 — IN_PROGRESS** — Exercise model changes, complete request shapes and finite output admission for supported routes → Test `supported_models_reserve_complete_requests_before_output`.
+- **Dimension 6.8 — IN_PROGRESS** — Replace unverified model approximations with proved local counts or scoped native confirmation; record estimate versus actual usage without prompt text → Test `native_count_requires_the_same_prepared_request_and_authorized_route`.
+
+The counting follow-up extends Files Changed to `afd_inference` counting modules and tests, host estimate adapters, pinned tokenizer configuration, their manifests/lockfile and the evaluation report. Both production hosts call near-capacity confirmation for documented native routes. Shared and runtime count/freshness/failure tests and real-storage authoring integration pass. Live-provider agreement and the complete model/request matrix remain open. No candidate is selected merely from its published performance claims.
+
+The existing runner verification follow-up includes `afr_supervisor/src/test_util.rs` and `test_util_tests.rs`. Its fake daemon must route checkpoint reads and writes to the checkpoint response shape. Test `context_routes_answer_through_the_native_client` must reproduce the strict-decoder failure before the routing repair. Keep all kernel assertions and trial counts unchanged; a local routing proof does not replace the Linux kernel run.
+
+> Indy (2026-10-25 21:36): "1. Approve diagnostice chage - Signed off approved by indy" — context: extend Files Changed to `rustd/crates/afr_sandbox/examples/kernel_lane/admission.rs` solely to report the source chain with `error.told().into()`; retain assertions, trial counts and timeouts.
+> Indy (2026-10-25 21:36): "2. Yes approve progres publication with these limits - Signed off approved by indy - we  can alway improve thi later." — context: permit progress publication to existing PR784 with the three-cycle implementation review incomplete, two-attempt documentation audit blocked, partial coverage and model-count estimates/live-accuracy gaps recorded. This does not waive failing tests, secret gates, merge review or deployment approval.
+
+**Counting failure proofs:** Unknown models and unsupported media retain an explicit approximate status. Switching model, provider, dialect, template or tokenizer revision invalidates old counts. Include prose, source, JSON, logs, Unicode, literal special tokens, tool schemas, tool results, image/file references and reasoning reservations. Refuse irreducible input. A provider context rejection permits at most one fresh recount/replan; unknown charged outcomes never authorize another request. Keep count errors, cancellation and rate limiting from becoming endless summary loops.
 
 ### §7 — Settled Billing reporting and local review
 
@@ -314,6 +350,15 @@ Implement the approved sidebar-aware page and the [Billing reporting design](../
 - **Dimension 7.1 — DONE** — Scoped settled aggregates, grouped paging and bounded detail reads → Test `settled_report_totals_cover_more_than_one_activity_page`
 - **Dimension 7.2 — DONE** — Real-query plans, concurrent reads and clean failure/resource paths → Test `report_queries_bound_scans_to_tenant_and_period`
 - **Dimension 7.3 — DONE** — Approved filters, exact amounts and disclosures render on the real local route → Test `renders full-period totals independently of the single displayed activity`
+- **Dimension 7.4 — DONE** — Correct the approved shared-component presentation and inspect populated Billing through the real runner → Test `settings-billing.spec.ts` and a scoped real setup/fleet charge walkthrough.
+
+**Owner visual approval, Oct 25:** “Okay approved both the spending and activity (empty) + prior approval holds”. Both separate empty previews are approved. Their sidebar now fills the viewport, with the account menu anchored at the bottom. Keep the original approved populated mock unchanged. Additional Billing rows and spending bars belong beneath the tabs; an empty result retains its explanatory message.
+
+**Owner correction, Oct 25:** “just adopt the same font and boldness”; “especially this area is messed up”; “You need to align with the mock billing you created”; “Also show me with 3 fleets”. Match the original system font, compact table text, medium-weight names and totals, darker detail surface and aligned label/value disclosure. Fleet names remain recorded data; Inference and Runtime remain fixed labels. Extend Files Changed to the shared theme font utility needed by that approved typography. Retain exact settled amounts and continuation boundaries; never invent separate prices for a combined historical charge. Populate the review account with three owned fleet fixtures through ordinary execution, without editing ledger rows.
+
+**Final Billing visual sign-off, Oct 25:** “I sign off / approve the Billing visual then.” This completes the manual visual evidence for Dimension 7.4 alongside the populated browser and real-runner charge evidence below. The later missing-balance and workspace question is being investigated separately; its account/session mapping remains unconfirmed.
+
+**Owner publishing approval, Oct 25:** “you have approval for publishing”. Publish the completed changes to the existing product and documentation pull requests after their required checks. This approval does not authorize merging or deployment.
 
 ## Interfaces
 
@@ -358,6 +403,7 @@ No new analytics events or identifiers. Use browser screenshots and DOM geometry
 | 4.1 | unit / e2e | `created_model_activation` | The real table shows the newly active model after success; registration and activation refusals preserve the correct visible state. |
 | 4.2 | e2e | `intent_loading_client_capabilities` | After the sidebar's initial read, Save-Data hover downloads no scripts; opening the editor loads its scripts and dialog. |
 | 4.3 | e2e | `multi_fleet_grant_journey` | Each retained fleet reaches active after grant approval before another fleet is opened; exact ownership and execution assertions remain. |
+| 4.4 | discovery / workflow | `acceptance_scope_discovery` | The existing make target's flag selects preflight and one execution test or only the concurrent ten-fleet test. Invalid flags refuse before browser startup. Full local discovery retains every project; deployment requires both results. |
 | 5.1 | unit / integration | `loopback_listener_security` | Real listener refuses malformed, forged, oversized, slow, expired, cross-session and replay requests; cancellation races have one winner and no leaks. |
 | 5.2 | unit | `loopback_browser_binding` | Full key, stable account/session and comparison code precede one decision; denial and uncertain approval never release a credential; storage and analytics refuse sensitive leakage. |
 | 5.3 | e2e | `loopback_login_journey` | Signed-in and signed-out login preserve marked handoff safely, real callback headers pass, terminal identity matches, and manual other-device verification remains supported. |
@@ -366,9 +412,13 @@ No new analytics events or identifiers. Use browser screenshots and DOM geometry
 | 6.3 | unit | `a_blocked_summary_does_not_block_another_conversations_checkpoint` | A second conversation publishes while the first model response remains deliberately blocked. |
 | 6.4 | integration | `changed_history_after_funding_cannot_dispatch_the_previously_measured_body` | Funding releases datastore locks; changed source or authority rejects dispatch before provider access. `each_platform_send_funds_measured_input_and_keeps_prior_known_cost` proves reservation growth. |
 | 6.5 | unit / integration / e2e | `repeated_authoring_compaction_restores_notes_and_continues_with_all_181_messages_intact` | Runtime proof `repeated_compaction_continues_past_turn_forty_two_and_keeps_tools_and_goal` and unchanged `fleet-continuity-final.spec.ts` retain 181 messages and four saves, plus the separate ten-fleet journey. |
+| 6.6 | isolated evaluation / source inspection | `tokenizer_candidate_evaluation` | Run the saved experiment described in `docs/reviews/pr784-tokenizer-evaluation.md`. Compare token identifiers, model mappings, private-input caches and cold/warm timings; incomplete model or timing coverage stays open. |
+| 6.7 | unit | `supported_models_reserve_complete_requests_before_output` | Every catalogue route and configured unknown/Ollama model reserves complete input before finite output. Tool schemas, results, inline media and selected reasoning replay reach native count requests unchanged. |
+| 6.8 | unit / integration | `native_count_requires_the_same_prepared_request_and_authorized_route` | Freshness binds body, model, route and window; count failures never become zero or generation retries. Both hosts compare measured input with authoritative usage without private text; authoring rechecks source and authority after releasing its locks. |
 | 7.1 | integration | `settled_report_totals_cover_more_than_one_activity_page` | Full-period sums and breakdowns include every filtered settled row; pending, foreign and private text stay out. Tied boundaries and mismatched continuations are proved. |
 | 7.2 | integration | `report_queries_bound_scans_to_tenant_and_period` | Production EXPLAIN plans retain tenant/time and work/sequence bounds across a history ladder; concurrent reads overlap and return connections; datastore failure changes no money. |
 | 7.3 | unit / e2e | `renders full-period totals independently of the single displayed activity` | The Billing component suite proves filter resets, exact tiny charges, customer-key wording, empty and failure states. `settings-billing.spec.ts` proves real reads, themes and sidebar widths; keyboard disclosure opens with Enter and closes with Space in the component proof. |
+| 7.4 | e2e / owner review | `settings-billing.spec.ts` | The populated account renders three real fleets and setup chat with exact settled values, keyboard disclosures and readable totals across themes, sidebar states and narrow screens. Compare spacing with the approved original mock and preserve the owner's recorded visual feedback. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -411,6 +461,7 @@ Show the loader across the viewport before the shell and within content afterwar
 - **Metrics review** — No event changes required.
 - **Skill-chain outcomes** — Visual acceptance recorded above. Focused loader and authorization checks: 110 passed across nine files. Shared-parser retry checks: 12 passed. Repository checks remain in progress.
 - **Scope separation** — The experimental CLI branch is local only. Its real-router attack proof reproduced unauthorized approval, HTTP 200 where refusal was expected. No experimental protocol code ships here.
+- **Acceptance routing** — Indy requested a small deployment check, full `acceptance-local`, and ten parallel fleets on api-dev. Latest direction: “I prefer to keep to accept this as a pass, the 10 fleet is move out to test upon deploy. So move on to next”. This accepts the local result described below; it does not change the stored test verdict or disposition either exhausted review.
 - **OpenAPI wording** — Indy requested a large review of `public/openapi.json`, with short descriptions and no cryptic terminology. Edit canonical Rust prose and regenerate the document. Preserve request and response shapes, permissions, limits, retry behavior, and deletion warnings; compare every non-prose value after generation.
 - **Astra review** — Indy requested an engineer and site reliability engineer review after the docs and OpenAPI changes. Its source checks identified six accuracy gaps. Correct the network-access scope, schedule registration outcomes, 24-hour retry window, required-value lookup instructions, timestamp wording, and published runner maintenance guidance. Runtime behavior remains outside this wording change.
 
@@ -422,8 +473,18 @@ Show the loader across the viewport before the shell and within content afterwar
 
 [Historical verification](../../reviews/pr784-verification-history.json) preserves the original results, failed acceptance runs and terminal implementation-review disposition verbatim. Final compaction, Billing and repository checks remain required on the settled candidate.
 
-Dimensions 6.1 and 6.4 and Billing Dimensions 7.1–7.2 passed in `make test-integration-rustd`: 1,381 regular and three exclusive tests, exit 0 (`/private/tmp/pr784-billing-integration-2.log`). Dimensions 6.2–6.3 passed in the Rust portion of `make test-unit-all` (`/private/tmp/pr784-unit-all-2.log`); that whole command failed the app coverage threshold. Dimension 6.5 still requires both unchanged browser continuity journeys. Owner review and published-documentation approval remain open.
+Final `make test-integration-rustd` passed 1,394 regular and three exclusive tests, exit 0 (`/private/tmp/pr784-resumed-test-integration-final.log`). It includes native-count lock release, stale source/Stop/credential refusal, clean count failure and private progress-stream proofs. Shared inference passed all 71 focused cases. Dimension 6.5 still requires both unchanged browser continuity journeys. Publication approval is recorded in §7; acceptance and exhausted review gates remain open.
 
-Billing Dimension 7.3 passed the app component proofs in `make test-coverage-all`: 4,238 app tests and 100 percent branch coverage; all four package coverage gates passed (`/private/tmp/pr784-package-coverage-current.log`). The selected real-stack `settings-billing.spec.ts` run passed nine preflight and three Billing checks, including accessibility and horizontal-overflow assertions in both themes at desktop and mobile widths (`/private/tmp/pr784-billing-live-browser-2.log`). Its fixture account had no settled activity; populated amounts and disclosure behavior are proved by component and integration tests. `make acceptance-local SUITE=execution` separately passed all ten checks (`/private/tmp/pr784-local-execution-billing-build.log`). Neither selection replaces the full continuity acceptance.
+Final `make test-unit-all` passed 11,666 tests, zero failures, 16 skipped and 1,402 ignored (`/private/tmp/pr784-resumed-test-unit-all-4.log`). Selections: Rust 4,756, local launcher 25, app 4,283, website 133, CLI 1,950 and design system 519; all four package coverage gates passed at 100 percent. The comparable unit baseline was 11,270, a net increase of 396. The incomplete integration baseline does not support a comparable total delta.
 
-Final documentation attempt two of two is blocked (`/private/tmp/pr784-product-docs-final-report.json`): 109 paths were actually read or inspected, with ten partial document reads explicitly disclosed. Supported prose, error-census and discovery-index findings were repaired afterward; this does not create a fresh completed audit. Two older diagram blocks remain unchanged and are explicitly labeled historical. Broader source coverage, diagram replacement and published-documentation approval remain open; Dimension 3.2 is therefore IN_PROGRESS.
+Billing browser recheck passed all three selected checks with populated settled activity, three real fleets and setup chat (`/private/tmp/pr784-billing-spacing-browser-results.json`). The eight themed layout observations had zero accessibility violations or horizontal overflow; keyboard disclosure and filter scope passed (`/private/tmp/pr784-billing-spacing-details.log`). The approved original mock remains unchanged. Final owner visual approval is recorded in §7; full continuity acceptance remains open.
+
+Final documentation attempt two of two is blocked (`/private/tmp/pr784-product-docs-final-report.json`): 109 paths were actually read or inspected, with ten partial document reads explicitly disclosed. Supported prose, error-census and discovery-index findings were repaired afterward; this does not create a fresh completed audit. Two older diagram blocks remain unchanged and are explicitly labeled historical. Broader source coverage, diagram replacement and the blocked audit disposition remain open; Dimension 3.2 is therefore IN_PROGRESS.
+
+The published-docs repository passed `make test` (25 tests), link checks and candidate OpenAPI drift checks. Its canonical `make lint` still fails because committed `docs.json` resolves new operations against the older main-branch OpenAPI (`/private/tmp/pr784-resumed-docs-lint-2.log`). Validation passed in an isolated copy using the generated candidate OpenAPI (`/private/tmp/pr784-docs-candidate-validate.log`); that does not clear the committed-config build dependency.
+
+The fresh unchanged single-fleet browser run verified 160 exchanges: 70 setup turns and 90 runtime replies, through three saved setups. Its original 30-minute overall deadline expired while runtime reply 91 remained received; the ten-fleet test was skipped (`/private/tmp/pr784-continuity-current/results.json`). Indy accepted this local result and moved ten-fleet verification to deployment. The raw timeout remains recorded; a complete 181-message result and deployed ten-fleet result have not been observed.
+
+Native test discovery selects nine prerequisite checks plus one real execution test for post-deploy, or nine prerequisites plus only the ten-fleet test. Full discovery retains 121 tests across 55 files (`/private/tmp/pr784-acceptance-{post-deploy,ten-fleets,full}-list.log`). An invalid scope refuses before browser startup. `make test-unit-app` passed 4,283 tests; `make lint-app` and `make check-gh-actions-valid` passed (`/private/tmp/pr784-acceptance-native-{unit,lint,workflows}.log`). This proves selection and configuration; deployed execution remains unobserved.
+
+Fresh `make acceptance-build` passed for the current daemon, Linux runner, command-line client and dashboard (`/private/tmp/pr784-current-acceptance-build-result.json`). Fresh `make test-runner-kernel` passed 60 trials and failed `test_toolbox_admission_survives_path_swap` with an input/output error; startup verification was not reached, and the owned local runner was restored (`/private/tmp/pr784-current-kernel-isolated.log`). Neither result clears the exhausted reviews.

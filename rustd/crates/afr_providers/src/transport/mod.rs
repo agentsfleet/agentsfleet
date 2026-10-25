@@ -22,6 +22,7 @@ const EVENT_RETRY: &str = "provider_retry";
 pub(crate) struct Transport {
     client: reqwest::Client,
     whose: Arc<Whose>,
+    retry: bool,
 }
 
 /// Whose sends a transport makes, for its retry line and its retry count.
@@ -66,12 +67,18 @@ impl Transport {
         Self {
             client,
             whose: Arc::new(whose),
+            retry: true,
         }
     }
 
     /// Reuses the daemon's SDK HTTP adapter and bounded byte reader.
     pub(crate) fn http(self) -> HttpTransport {
         HttpTransport::new(Arc::new(self))
+    }
+
+    pub(crate) fn once(mut self) -> Self {
+        self.retry = false;
+        self
     }
 
     /// Sends `parts` with `body` under the bounded retry. Each attempt gets
@@ -87,7 +94,11 @@ impl Transport {
                 .headers(parts.headers.clone())
                 .body(body.clone())
         };
-        retry::send(build, |retry| self.retrying(retry)).await
+        if self.retry {
+            retry::send(build, |retry| self.retrying(retry)).await
+        } else {
+            build().send().await
+        }
     }
 
     /// Logs and counts a send about to be retried.

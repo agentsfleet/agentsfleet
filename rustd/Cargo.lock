@@ -472,6 +472,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -845,9 +846,11 @@ dependencies = [
  "bytes",
  "futures-util",
  "garde",
+ "hex",
  "http",
  "rig-core",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror",
  "tiktoken-rs",
  "tokio",
@@ -1216,6 +1219,7 @@ name = "afr_providers"
 version = "0.65.0"
 dependencies = [
  "afd_core",
+ "afd_crypto",
  "afd_identity",
  "afd_inference",
  "afd_wire",

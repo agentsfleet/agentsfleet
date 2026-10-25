@@ -20,6 +20,8 @@ import { EXPLORE_TOOLS } from "./tool-call-explore";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
+import { ContextProgressStatus } from "./ContextProgressStatus";
+import { readContextProgress } from "@/lib/context-progress";
 
 const COPY_REPLY_LABEL = "Copy reply";
 const RECOVERING_LABEL = "Loading final reply; retrying if needed…";
@@ -78,6 +80,7 @@ export function FleetReply({
   const answer = readText(message).trim();
   const span = readReasoningSpan(message);
   const queued = readQueued(message);
+  const context = readContextProgress(message.metadata.custom.contextProgress);
   const eventId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
   useFirstVisiblePaint(eventId, readSubmittedAtMs(message), message.content.length > 0);
   const sender = senderLabel || DEFAULT_SENDER;
@@ -94,8 +97,10 @@ export function FleetReply({
         {(info) => renderReplyPart(info, {
           errored, running, queued, eventId, reasoning: reasoningText(message), span,
           content: message.content, startedAtMs: message.createdAt.getTime(),
+          contextProgress: context,
         })}
       </MessagePrimitive.GroupedParts>
+      {running ? <ContextProgressStatus value={context} /> : null}
       <OmittedCalls count={readOmittedCallCount(message)} />
       {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
       {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
@@ -117,6 +122,7 @@ export type ReplyContext = {
   content: MessageState["content"];
   /** When the turn began, for the waiting clock. */
   startedAtMs: number;
+  contextProgress?: unknown;
 };
 
 /** One switch over every node the library hands back: groups, leaves, the indicator. */
@@ -158,7 +164,7 @@ export function renderReplyPart(
     case "text":
       return <ReplyText text={part.text} streaming={reply.running} />;
     case "indicator":
-      return <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
+      return reply.contextProgress ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
     default:
       // A leaf that returns null gets the library's fallback UI; an empty
       // fragment keeps parts this reply never carries invisible.

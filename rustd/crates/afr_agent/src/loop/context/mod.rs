@@ -83,16 +83,12 @@ impl Harness<'_, '_> {
                     return Ok(());
                 }
                 Plan::Compact(task) => {
-                    let mut model = effects::Model {
-                        shared: self.shared,
-                        stop: &self.stop,
-                    };
-                    let checkpoint = afd_context::execute(
-                        task,
-                        &mut model,
+                    let checkpoint = effects::compact(
+                        self.shared,
+                        &self.stop,
                         &mut store,
-                        || self.stop.is_cancelled(),
-                        |_| {},
+                        task,
+                        self.depth == 0,
                     )
                     .await?;
                     self.context.checkpoint = Some(checkpoint);

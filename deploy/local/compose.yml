@@ -6,6 +6,7 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${LOCAL_ACCEPTANCE_TLS_PORT}:443"
+      - "127.0.0.1:${LOCAL_ACCEPTANCE_UI_TLS_PORT}:444"
     volumes:
       - ${LOCAL_ACCEPTANCE_STATE}/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${LOCAL_ACCEPTANCE_STATE}/caddy-data:/data

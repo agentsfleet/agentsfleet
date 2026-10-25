@@ -100,6 +100,7 @@ export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent, reque
       custom: {
         ...base.metadata?.custom,
         requestActor,
+        contextProgress: event.contextProgressHidden ? undefined : event.contextProgress,
         [REASONING_SPAN.STARTED]: event.reasoningStartedAtMs,
         [REASONING_SPAN.ENDED]: event.reasoningEndedAtMs,
         [REPLY_FIGURE.TOKENS]: event.tokens,

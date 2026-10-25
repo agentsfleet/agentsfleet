@@ -1,11 +1,11 @@
 // A stopped watcher cannot clear or report errors for its replacement.
-import { followDraft } from "./draft-events";
+import { followDraft, type DraftProgressCallbacks } from "./draft-events";
 
 const FOLLOW_LIMIT_MS = 330_000;
 type Following = {
   readonly id: string; readonly path: string; readonly owner: AbortSignal; readonly view: AbortSignal;
   readonly reconcile: () => Promise<boolean>; readonly needsPolling: () => boolean;
-  readonly progress: {readonly gap: () => void; readonly delta: (data: string) => boolean};
+  readonly progress: DraftProgressCallbacks;
   readonly finished: () => void; readonly failed: (cause: unknown) => void;
 };
 

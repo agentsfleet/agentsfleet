@@ -5,7 +5,7 @@ import type { CachedDraft } from "./draft-cache";
 import { DraftPublication, type PlatformPublisher } from "./draft-publication";
 export type { PlatformPublisher } from "./draft-publication";
 import type { Draft, Fleet, Review, Source, Start } from "./draft-types";
-import { DraftReplies } from "./draft-replies";
+import { DraftLive } from "./draft-live";
 import { DraftOperation } from "./draft-operation";
 import { DraftHistory } from "./draft-history";
 import { DraftWatch } from "./draft-watch";
@@ -29,7 +29,7 @@ export class DraftClient {
   readonly #listeners = new Set<() => void>();
   readonly #base: string;
   readonly #publication: DraftPublication;
-  readonly #replies = new DraftReplies(liveReply => this.#update({liveReply}));
+  readonly #replies = new DraftLive(patch => this.#update(patch));
   #view = new AbortController();
   #snapshot: DraftView = EMPTY;
   #source: Source = {kind: SOURCE_KIND.blank};
@@ -308,7 +308,8 @@ export class DraftClient {
       reconcile: async () => { await this.#read(id); return chatRecovery(this.#snapshot).canStop || Boolean(this.#snapshot.optimistic); },
       needsPolling: () => chatRecovery(this.#snapshot).blocked,
       progress: {gap: () => this.#replies.gap(), delta: data => this.#snapshot.draft?.id === id
-        && this.#replies.accept(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages)},
+        && this.#replies.accept(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages),
+        context: data => this.#snapshot.draft?.id === id && this.#replies.context(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages)},
       finished: () => { if (chatRecovery(this.#snapshot).pending) this.#update({notice: "Still waiting for a result."}); },
       failed: cause => this.#failed(cause),
     });
@@ -329,7 +330,7 @@ export class DraftClient {
   #reset(): void {
     this.#view.abort(); this.#view = new AbortController(); this.#history.clear(); this.#replies.clear(); this.#operation.clear();
     this.#continueSave = undefined; this.#setupTarget = undefined; this.#watching.stop();
-    this.#update({draft: null, messages: [], optimistic: null, liveReply: null, preview: null, fleet: null, savedSetupRevision: null, schedules: [], error: null, notice: null, truncated: false, focusRevision: this.#snapshot.focusRevision + 1});
+    this.#update({draft: null, messages: [], optimistic: null, liveReply: null, contextProgress: null, preview: null, fleet: null, savedSetupRevision: null, schedules: [], error: null, notice: null, truncated: false, focusRevision: this.#snapshot.focusRevision + 1});
   }
   #refreshSummary(id: string): Promise<void> {
     const signal = AbortSignal.any([this.#owner.signal, this.#view.signal]);

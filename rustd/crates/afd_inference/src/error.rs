@@ -53,6 +53,24 @@ pub(crate) enum ErrorKind {
     Multipart,
     #[error("complete inference input exhausts the model context window")]
     ContextLimit,
+    #[error("the input count belongs to a different prepared request or route")]
+    CountStale,
+    #[error("the provider count endpoint does not support this prepared input")]
+    CountUnsupported,
+    #[error("the provider input count is missing or invalid")]
+    CountReply,
+    #[error("the provider input count cannot be decoded")]
+    CountDocument {
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("the provider input count failed with HTTP status {status}")]
+    CountStatus { status: u16 },
+    #[error("the provider input count transport failed")]
+    CountTransport {
+        #[source]
+        source: rig_core::http_client::Error,
+    },
     #[error("the model API key is not a valid header value")]
     KeyHeader {
         #[source]
@@ -79,6 +97,7 @@ afd_core::error_lifts!(Error, ErrorKind:
     http::header::InvalidHeaderValue => KeyHeader,
     http::uri::InvalidUri => KeyPath,
     http::uri::InvalidUriParts => KeyUri,
+    rig_core::http_client::Error => CountTransport,
 );
 
 impl Error {
@@ -92,9 +111,13 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> afd_core::error_code::ErrorCode {
         match self.kind() {
-            ErrorKind::ReplyTooLarge | ErrorKind::StreamDeadline | ErrorKind::StreamCancelled => {
-                afd_core::error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::ReplyTooLarge
+            | ErrorKind::StreamDeadline
+            | ErrorKind::StreamCancelled
+            | ErrorKind::CountReply
+            | ErrorKind::CountDocument { .. }
+            | ErrorKind::CountStatus { .. }
+            | ErrorKind::CountTransport { .. } => afd_core::error_code::INTERNAL_OPERATION_FAILED,
             _ => afd_core::error_code::INVALID_REQUEST,
         }
     }

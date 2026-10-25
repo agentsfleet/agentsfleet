@@ -69,6 +69,7 @@ impl Intent {
             model: attempt.model_snapshot.model.clone(),
             context_tokens: prepared.context_tokens,
             progress: None,
+            measurement: prepared.measurement,
         };
         Self {
             outbound,
@@ -127,8 +128,7 @@ impl ModelCalls {
             Decision::Refused(error) => return Err(error),
             Decision::Send(intent) => intent,
         };
-        self.invoke(runner, lease, &request, &counters, *intent, dispatch)
-            .await
+        Box::pin(self.invoke(runner, lease, &request, &counters, *intent, dispatch)).await
     }
 
     async fn reserve(
@@ -204,7 +204,6 @@ impl ModelCalls {
             Some(id) => Some(crate::candidate::read(connection, &guarded.draft.id, id).await?),
             None => None,
         };
-        let prepared = funding.verify(connection, &guarded, request).await?;
         let key = self
             .providers
             .registered_key(
@@ -214,6 +213,7 @@ impl ModelCalls {
             )
             .await?
             .ok_or(ErrorKind::Model)?;
+        let prepared = funding.verify(connection, &guarded, request, &key).await?;
         provider::validate_key(prepared.inference.api, &key)?;
         let now = guard::refresh(connection, &guarded, counters).await?;
         let authorized_at = Instant::now();

@@ -17,6 +17,7 @@ async function recordJourney(journey: ContinuityJourney, label: string, page: Pa
 }
 
 test.describe("final real fleet continuity acceptance", () => {
+  test.skip(process.env.AGENTSFLEET_ACCEPTANCE_SCOPE === "post-deploy", "Long continuity runs locally or in the separate api-dev job");
   test("one fleet retains 181 messages through four saved setups and home navigation", async ({page}) => {
     test.setTimeout(CONTINUITY.singleTimeoutMs);
     const {id: workspace} = await ensureSecondWorkspace(FIXTURE_KEY.regular, WORKSPACE_NAME);
@@ -26,7 +27,7 @@ test.describe("final real fleet continuity acceptance", () => {
     await withContinuityEvidence([journey], () => journey.run(), async () => recordJourney(journey, "single", page));
   });
 
-  test("ten concurrent fleets preserve 1810 messages and separate setup versions", async ({context}) => {
+  test("ten concurrent fleets preserve 1810 messages and separate setup versions", {tag: "@ten-fleets"}, async ({context}) => {
     test.setTimeout(CONTINUITY.concurrentTimeoutMs);
     const {id: workspace} = await ensureSecondWorkspace(FIXTURE_KEY.regular, WORKSPACE_NAME);
     const tag = uniqueTag();

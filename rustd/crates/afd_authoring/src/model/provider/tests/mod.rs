@@ -58,6 +58,7 @@ fn outbound(api: InferenceApi) -> Outbound {
     Outbound {
         dispatch_id: "fixture-dispatch".into(),
         progress: None,
+        measurement: None,
         key: SecretString::new("private-key".into()),
         body: CompletionRequest::new(Message::user("private-prompt")).max_tokens(37),
         inference: ModelInference {

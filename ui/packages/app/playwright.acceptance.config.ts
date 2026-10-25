@@ -180,7 +180,9 @@ export default defineConfig({
     {
       name: PROJECT_CONTINUITY,
       testMatch: CONTINUITY_SPEC,
-      dependencies: [PROJECT_FETCH_AUDIT],
+      // A requested ten-fleet run needs preflight without replaying the bulk
+      // browser suite. Full local acceptance retains its original ordering.
+      dependencies: [process.env.AGENTSFLEET_ACCEPTANCE_SCOPE === "ten-fleets" ? PROJECT_PREFLIGHT : PROJECT_FETCH_AUDIT],
       use: CHROMIUM,
     },
   ],

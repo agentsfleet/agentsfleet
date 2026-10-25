@@ -26,6 +26,7 @@ pub(super) struct Prepared {
     pub(super) context_tokens: u32,
     pub(super) compaction: Option<afd_context::Compaction>,
     pub(super) input_tokens: u64,
+    pub(super) measurement: Option<afd_inference::InputCount>,
     pub(super) context_digest: String,
 }
 
@@ -76,6 +77,7 @@ pub(super) fn body(
         context_tokens: context,
         compaction: None,
         input_tokens: input.cast_unsigned(),
+        measurement: None,
         context_digest: String::new(),
     })
 }

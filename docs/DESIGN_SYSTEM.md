@@ -49,6 +49,10 @@ Fonts are bundled through Fontsource. Runtime font downloads from third-party do
 Use `font-display`, `font-sans`, and `font-mono` through the shared theme.
 Do not redefine a font family in a consumer stylesheet.
 
+Billing's approved compact surface uses the shared `font-system` utility for the platform system font.
+Its activity cells use 12px normal text, names and totals use medium weight, and spending rows use 13px normal text.
+Align disclosed labels left and values right through DescriptionList on the shared card surface.
+
 | Token | Size | Role |
 |---|---|---|
 | display-xl | 72px maximum | Responsive website hero |
@@ -210,6 +214,20 @@ Shared cell tokens provide 16px horizontal and 12px vertical padding. Pages must
 The table palette defines its header, alternating surfaces, dividers, and mint hover or focus treatment in `tokens.css`.
 Clickable rows expose an Open column and chevron. Nested buttons, links, and inputs retain their own pointer and keyboard actions.
 Stable row keys preserve focus and unfinished edits through refreshes.
+
+Use DataTable's `plain` surface for an approved borderless table. It retains column headings and pagination when empty.
+
+Use its controlled `rowDisclosure` for inline details. The caller owns the selected row, and the toggle exposes its expanded state.
+Only the selected row renders detail content.
+
+Keep navigation and disclosure behavior in the shared component rather than recreating it in a page.
+
+Date formatting belongs in `ui/packages/design-system/src/design-system/time-utils.ts` for both the app and shared components.
+Render visible timestamps through `Time`; use the exported helpers for plain-text labels and server-side formatting.
+Reporting periods use `formatTimeRangeUtc`, and their activity labels use `formatTimeCompactUtc` so both share Coordinated Universal Time (UTC).
+
+The helpers return the shared invalid-date fallback for malformed inputs; ranges also reject an end before the start.
+Extend these shared helpers when a reusable format is missing. Do not add a page-local formatter.
 
 Label creation timestamps Created across tables and detail views. Other timestamps name their event: Updated, Last used, Occurred, Expires, or Joined / invited. Use the shared app timestamp labels; avoid a generic Time or Date heading.
 Record lists place the timestamp after the record identity and before Actions.

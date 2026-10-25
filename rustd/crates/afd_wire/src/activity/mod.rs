@@ -147,6 +147,8 @@ pub struct ToolCallProgress<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFrame<'a> {
+    /// The root conversation is summarizing or continuing after a checkpoint.
+    ContextProgress(#[garde(dive)] crate::context::ContextProgress),
     /// A tool call began.
     #[serde(borrow)]
     ToolCallStarted(#[garde(dive)] ToolCallStarted<'a>),
@@ -169,7 +171,7 @@ impl ActivityFrame<'_> {
             Self::ToolCallStarted(body) => Some(&body.call_id),
             Self::ToolCallProgress(body) => Some(&body.call_id),
             Self::ToolCallCompleted(body) => Some(&body.call_id),
-            Self::FleetResponseChunk(_) => None,
+            Self::FleetResponseChunk(_) | Self::ContextProgress(_) => None,
         }
     }
 

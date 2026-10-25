@@ -1,12 +1,14 @@
 import type { Definition, Draft, DraftCard, Fleet, Message, Schedule, WorkspaceModel } from "./draft-types";
 import { DRAFT_LIST_STATUS } from "./draft-list-types";
 import type { DraftReply } from "./draft-replies";
+import type { DraftCompaction } from "./draft-live";
 
 export type DraftIdentity = {readonly account: string; readonly workspace: string; readonly subject: string};
 export type DraftView = {
   readonly draft: Draft | null;
   readonly messages: readonly Message[];
   readonly liveReply?: DraftReply | null;
+  readonly contextProgress?: DraftCompaction | null;
   readonly optimistic?: {readonly operation: string; readonly text: string; readonly createdAt: string} | null;
   readonly models: readonly WorkspaceModel[];
   readonly cards: readonly DraftCard[];

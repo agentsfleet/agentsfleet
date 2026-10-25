@@ -18,7 +18,7 @@ mod receipt;
 mod sql;
 
 pub use dispatch::ModelCalls;
-pub use progress::{DELTA_EVENT, Delta, draft_channel};
+pub use progress::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, draft_channel};
 pub use provider::{Network, ProviderRequest, ProviderResponse, Transport};
 
 /// Model proposals use the same native types as drawer and activity edits.
