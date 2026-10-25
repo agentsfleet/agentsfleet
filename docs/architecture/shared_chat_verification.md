@@ -311,7 +311,7 @@ The [Rust error standard](../RUST_ERROR_STANDARD.md) owns the crate exceptions a
 ## Historical verification evidence
 
 The table preserves results recorded before the later compaction and Billing changes. Its counts describe those earlier runs.
-The [active M230 verification record](../v2/active/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md#verification-record) carries current results and open checks.
+The [closed M230 verification record](../v2/done/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md#verification-record) carries results, owner deferrals and open checks.
 
 Whole local acceptance, owner review and current Continuous Integration (CI) results remain required. A narrower test selection does not satisfy those gates.
 

@@ -78,3 +78,51 @@ impl crate::ContextCheckpoints for ContextMemory {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "controlled poisoned-store fixture"
+    )]
+    use super::ContextMemory;
+    use crate::ContextCheckpoints as _;
+    use std::sync::Arc;
+
+    // Value: a poisoned store cannot expose or replace the last accepted checkpoint.
+    #[tokio::test]
+    async fn a_poisoned_context_store_refuses_both_reads_and_publication() {
+        let store = Arc::new(ContextMemory::default());
+        let checkpoint: afd_context::Checkpoint = serde_json::from_value(serde_json::json!({
+            "format_version":1,
+            "identity":{"scope":"private-run","model":"selected-model","pinned":"revision"},
+            "generation":1,"covered_through":2,"source_digest":"a".repeat(64),
+            "summary":{"goal":"private goal","constraints":[],"decisions":[],
+                "completed":[],"remaining":[],"references":[]}
+        }))
+        .unwrap();
+        store.commit("branch", 0, checkpoint.clone()).await.unwrap();
+        let poisoned = Arc::clone(&store);
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = poisoned.0.lock().unwrap();
+                panic!("controlled failure while holding the fixture store");
+            })
+            .join()
+            .is_err()
+        );
+        assert!(store.load("branch").await.unwrap_err().is_stale());
+        assert!(
+            store
+                .commit("branch", 1, checkpoint.clone())
+                .await
+                .unwrap_err()
+                .is_stale()
+        );
+        assert_eq!(
+            store.0.lock().unwrap_err().get_ref().get("branch"),
+            Some(&checkpoint)
+        );
+    }
+}

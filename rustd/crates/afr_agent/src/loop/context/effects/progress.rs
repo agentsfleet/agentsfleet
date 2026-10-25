@@ -87,6 +87,13 @@ mod tests {
         let sink = frames.sink();
         for visible in [true, false] {
             let mut notices = Notifications::new(&sink, &task(), visible);
+            notices.observe(Progress::Read(64));
+            if visible {
+                assert!(
+                    frames.taken().is_empty(),
+                    "history reads carry no user notice"
+                );
+            }
             notices.observe(Progress::Summarizing);
         }
         drop(Notifications::new(&sink, &task(), true));

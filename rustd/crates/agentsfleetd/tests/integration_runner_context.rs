@@ -133,3 +133,53 @@ async fn one_of_one_hundred_conflicting_checkpoint_writers_publishes_exactly_one
     assert_eq!(count, 1);
     held.finish(supervisor).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_private_notes() {
+    use afd_context::repository::{Repository, Scope};
+    use afd_core::id::Uuid7;
+    use afd_crypto::entropy::Entropy;
+
+    let mut supervisor = Supervisor::new();
+    let qstash = FakeQStash::start().await;
+    let held = Leased::boot(&mut supervisor, &qstash).await;
+    let leases = afd_fleet::lease::Leases::new(
+        held.run.booted.database.clone(),
+        held.run.booted.queue.clone(),
+        Entropy::new(),
+    );
+    let lease = Uuid7::parse(&held.lease_id).expect("the real lease identifier");
+    let invalid = serde_json::from_value(document(&held, 1, "   ")).expect("a typed document");
+    let error = leases
+        .context_commit(&held.run.runner_id, &lease, &lease, held.fence, 0, invalid)
+        .await
+        .expect_err("notes require a meaningful goal");
+    assert_eq!(
+        error.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert!(
+        std::error::Error::source(&error)
+            .is_some_and(<dyn std::error::Error>::is::<afd_context::Error>)
+    );
+    assert!(
+        leases
+            .context_load(&held.run.runner_id, &lease, &lease, held.fence)
+            .await
+            .expect("the live assignment can read")
+            .is_none()
+    );
+    let diagnostic = {
+        let mut connection = held.connection().await;
+        let scope = Scope::Run {
+            lease: lease.clone(),
+            fleet: Uuid7::parse(&held.run.fleet).expect("the owning fleet"),
+            branch: lease.clone(),
+        };
+        format!("{:?}", Repository::new(&mut connection, scope, lease))
+    };
+    assert!(diagnostic.contains("Repository") && diagnostic.contains(&held.lease_id));
+    assert!(!diagnostic.contains("connection") && !diagnostic.contains("password"));
+    held.finish(supervisor).await;
+}

@@ -13,6 +13,48 @@ use std::sync::{
 
 const ADMISSION: i64 = 46_384_007;
 
+// Value: admission never authorizes a paid send whose measured input price overflows.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
+    let f = configured().await;
+    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=$2 WHERE platform_model_id=$1::uuid")
+        .bind(f.catalogue.first().expect("owned model").as_str()).bind(i64::MAX)
+        .execute(&mut *f.connection().await).await.expect("an input price outside this wallet's capacity");
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=2000000 WHERE id=$1::uuid")
+        .bind(f.catalogue.first().expect("owned model").as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("a model that can retain this history");
+    let draft = queued(&f).await;
+    let lease = claim(&f, &draft)
+        .await
+        .expect("output and runtime remain fundable");
+    let provider = Arc::new(Provider::default());
+    let calls = calls(&f, Arc::clone(&provider));
+    crate::draft::model_calls::compaction::history_for(
+        &f,
+        &draft.id,
+        &Uuid7::parse(&lease.attempt_id).expect("attempt"),
+        12,
+    )
+    .await;
+    sqlx::query("UPDATE authoring.messages SET answer_text=repeat('private evidence ',7000) WHERE draft_id=$1::uuid AND sequence<=12")
+        .bind(draft.id.as_str()).execute(&mut *f.connection().await).await.expect("twelve valid prior exchanges");
+    let error = calls
+        .call(
+            &f.runner,
+            &Uuid7::parse(&lease.lease_id).expect("lease"),
+            request(&lease, 1),
+        )
+        .await
+        .expect_err("input cost cannot fit a signed ledger amount");
+    assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
+    assert_eq!(provider.0.load(Ordering::SeqCst), 0);
+    assert_eq!(durable(&f, &lease).await, (ADMISSION, ADMISSION, 0));
+    f.cleanup().await;
+}
+
 #[derive(Debug, Default)]
 struct Provider(AtomicUsize);
 #[async_trait::async_trait]

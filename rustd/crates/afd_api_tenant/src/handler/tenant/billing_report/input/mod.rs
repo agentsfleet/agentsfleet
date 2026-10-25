@@ -85,9 +85,6 @@ pub(super) fn read(
     }
     let position = cursor.map(|token| token.position);
     let after = activity_boundary(position.as_ref(), activity.is_some())?;
-    if activity.is_some() && kind.is_none() {
-        return Err(Refusal::malformed(DETAIL_QUERY));
-    }
     if let Some(id) = activity {
         identifier(id)?;
     }

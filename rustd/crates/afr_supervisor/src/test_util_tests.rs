@@ -125,3 +125,46 @@ async fn context_routes_answer_through_the_native_client() {
         );
     }
 }
+
+// Value: the runtime adapter validates restored notes and binds writes to the lease fence.
+#[tokio::test]
+async fn lease_context_restores_and_commits_through_the_native_client() {
+    use afr_agent::ContextCheckpoints as _;
+    let checkpoint: afd_context::Checkpoint = serde_json::from_value(serde_json::json!({
+        "format_version":1,
+        "identity":{"scope":"private-run","model":"selected-model","pinned":"revision"},
+        "generation":1,"covered_through":2,"source_digest":"a".repeat(64),
+        "summary":{"goal":"private goal","constraints":[],"decisions":[],
+            "completed":[],"remaining":[],"references":[]}
+    }))
+    .unwrap();
+    let document = serde_json::to_value(&checkpoint).unwrap();
+    let restored = document.clone();
+    let (plane, mut calls) = plane(move |call| {
+        if call.verb == crate::client::Verb::ContextLoad {
+            json(&serde_json::json!({"checkpoint":restored}))
+        } else {
+            json(&healthy().reply(call.verb.method().http().as_str(), &call.path))
+        }
+    });
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let context = crate::context::LeaseContext::new(&plane, &lease, super::FENCING);
+    assert_eq!(
+        context.load(LEASE_ID).await.unwrap(),
+        Some(checkpoint.clone())
+    );
+    context.commit(LEASE_ID, 0, checkpoint).await.unwrap();
+    let sent = drain(&mut calls);
+    assert_eq!(sent.len(), 2);
+    let write = sent
+        .iter()
+        .find(|call| call.verb == crate::client::Verb::ContextCommit)
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(write.body.as_ref().unwrap()).unwrap();
+    assert_eq!(
+        body.get("fencing_token"),
+        Some(&serde_json::json!(super::FENCING))
+    );
+    assert_eq!(body.get("expected_generation"), Some(&serde_json::json!(0)));
+    assert_eq!(body.get("checkpoint"), Some(&document));
+}

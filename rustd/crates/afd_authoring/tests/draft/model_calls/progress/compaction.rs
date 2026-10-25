@@ -7,8 +7,14 @@ use serde_json::{Value, json};
 
 const SUMMARY: &str = r#"{"goal":"private summary goal","constraints":[],"decisions":[],"completed":[],"remaining":["continue"],"references":[]}"#;
 
+mod content;
+mod publication;
+
 async fn ready() -> (Fixture, Attempt, Live) {
-    let f = Fixture::create().await;
+    ready_in(Fixture::create().await).await
+}
+
+async fn ready_in(f: Fixture) -> (Fixture, Attempt, Live) {
     sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1::uuid")
         .bind(f.catalogue.first().expect("owned model").as_str())
         .execute(&mut *f.connection().await)
@@ -138,4 +144,47 @@ async fn stop_withholds_the_summary_ending_while_its_known_usage_still_settles()
     live.drained().await;
     drop(live.reader);
     f.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+async fn changed_or_removed_history_withholds_late_notes_but_settles_known_usage() {
+    for remove in [false, true] {
+        let (f, attempt, mut live) = ready().await;
+        let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
+        live.arrived().await;
+        assert_eq!(
+            live.context().await.progress.state,
+            ContextState::Summarizing
+        );
+        let mutation = if remove {
+            "DELETE FROM authoring.messages WHERE draft_id=$1::uuid AND sequence < 181"
+        } else {
+            "UPDATE authoring.messages SET answer_text='changed-private-history' WHERE draft_id=$1::uuid AND sequence=1"
+        };
+        sqlx::query(mutation)
+            .bind(attempt.draft.id.as_str())
+            .execute(&mut *f.connection().await)
+            .await
+            .expect("change only this private history while its model is waiting");
+        finish(&live, SUMMARY).await;
+        assert_eq!(
+            live.context().await.progress.state,
+            ContextState::Interrupted
+        );
+        let error = tokio::time::timeout(WAIT, task)
+            .await
+            .expect("late history verification")
+            .expect("dispatch task")
+            .expect_err("stale summary cannot replace notes");
+        assert_eq!(error.code(), afd_core::error_code::AUTHORING_FENCE);
+        assert!(checkpoint(&f, &attempt).await.is_none());
+        assert_eq!(
+            model_calls::fixture::receipts(&f, &attempt).await,
+            (1, 1, false)
+        );
+        live.drained().await;
+        drop(live.reader);
+        f.cleanup().await;
+    }
 }

@@ -46,9 +46,8 @@ impl HistorySource for Source<'_> {
                     Ok(Group {
                         sequence: u64::try_from(row.sequence)
                             .map_err(afd_context::Error::boundary)?,
-                        text: serde_json::to_string(
-                            &serde_json::json!({"user":row.user_text,"assistant":row.answer_text}),
-                        )?,
+                        text: serde_json::json!({"user":row.user_text,"assistant":row.answer_text})
+                            .to_string(),
                     })
                 })
                 .collect::<afd_context::Result<Vec<_>>>()?;

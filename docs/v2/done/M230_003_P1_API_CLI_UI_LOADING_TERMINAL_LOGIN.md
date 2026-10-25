@@ -4,7 +4,8 @@
 **Milestone:** M230
 **Workstream:** 003
 **Date:** Oct 24, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
+**Closure:** Indy requested archival on 2026-10-25. Open evidence below remains recorded; PR #784 still requires green Continuous Integration (CI) and review.
 **Priority:** P1 — consistent page loading
 **Categories:** UI
 **Batch:** B1 — existing approved stream
@@ -46,10 +47,10 @@ The following inventory covers this delivery; no experimental authentication cha
 |---|---|---|
 | `README.md` | EDIT | Describe automatic same-computer approval and explicit manual login for a browser on another computer. |
 | `deploy/local/acceptance.sh`<br>`deploy/local/compose.yml` | EDIT | Owner-approved local HTTPS dashboard frontdoor for unchanged concurrent fleet acceptance. |
-| `make/acceptance.mk`<br>`.github/workflows/deploy-dev-acceptance.yml`<br>`.github/workflows/deploy-dev.yml` | EDIT | Keep full local acceptance and select a short deployment check; report the separate ten-fleet deployment result. |
-| `.github/workflows/acceptance-ten-fleets.yml` | CREATE | Run ten concurrent fleets against api-dev after deployment or on explicit dispatch. |
+| `make/acceptance.mk`<br>`.github/workflows/deploy-dev-acceptance.yml`<br>`.github/workflows/deploy-dev.yml` | EDIT | Keep full local acceptance and the short deployment check; report the owner-deferred manual ten-fleet check. |
+| `.github/workflows/acceptance-ten-fleets.yml` | CREATE | Run ten concurrent fleets against api-dev only on Indy's manual dispatch after merge. |
 | `ui/packages/app/playwright.acceptance.config.ts`<br>`ui/packages/app/tests/e2e/acceptance/fleet-execution.spec.ts`<br>`ui/packages/app/tests/e2e/acceptance/fleet-continuity-final.spec.ts`<br>`playbooks/deploy/dev/001_playbook.md` | EDIT | Use native tags, skip and project selection; document separate short and ten-fleet results. |
-| `docs/DESIGN_SYSTEM.md`<br>`docs/v2/active/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md` | EDIT | Shared loading, authorization button wording or its evidence. |
+| `docs/DESIGN_SYSTEM.md`<br>`docs/v2/done/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md` | EDIT | Shared loading, authorization button wording or its evidence; owner-requested spec closure. |
 | `docs/architecture/sandbox_evaluation.md` | CREATE | Source-backed SPACE comparison, proposed coding journey, failure proofs and performance measurements; no backend adoption claim. |
 | `docs/architecture/billing_reporting.md` | CREATE | Approved Billing read flow, implementation scope, UI behavior and query-plan proofs. |
 | `concepts_brief.md` | CREATE | Working sandbox brainstorm based on owner inputs; native source reuse, performance ownership and unresolved recovery boundaries. |
@@ -269,9 +270,12 @@ Repair the observed model-status display and synchronize acceptance journeys wit
 - **Dimension 4.1 — IN_PROGRESS** — Successful activation refreshes the visible registry; refusal retains the committed inactive entry and error → Test `created_model_activation`
 - **Dimension 4.2 — IN_PROGRESS** — Sidebar loading completes before the zero-download hover measurement; clicking still loads the editor → Test `intent_loading_client_capabilities`
 - **Dimension 4.3 — IN_PROGRESS** — Approval continuation reaches the exact fleet's active state before navigating away → Test `multi_fleet_grant_journey`
-- **Dimension 4.4 — IN_PROGRESS** — Full local acceptance remains available; deployment selects one execution journey and preflight, with the ten-fleet journey in a separate api-dev job → Test `acceptance_scope_discovery`.
+- **Dimension 4.4 — IN_PROGRESS** — Full local acceptance remains available; deployment selects one execution journey and preflight, with ten fleets available by manual api-dev dispatch → Test `acceptance_scope_discovery`.
 
-The existing `acceptance-e2e` target accepts `ACCEPTANCE_SCOPE=full|post-deploy|ten-fleets`, defaulting to full. Native Playwright tags, skip and project filters select the requested tests. Both deployment jobs retain prerequisites, original assertions and zero retries. Ten pages remain concurrent. Separate fixture identities isolate setup and cleanup. Both results participate in the deployment verdict. Explicit workflow dispatch can run ten fleets against api-dev without deploying. No remote deployment is authorized by this configuration change.
+The existing `acceptance-e2e` target accepts `ACCEPTANCE_SCOPE=full|post-deploy|ten-fleets`, defaulting to full. Native Playwright tags, skip and project filters select the requested tests. Both selections retain prerequisites, original assertions and zero retries. Ten pages remain concurrent. Separate fixture identities isolate setup and cleanup. Indy manually dispatches ten fleets against api-dev after merge and deployment verification. The deployment verdict records this check as deferred. No remote deployment is authorized by this configuration change.
+
+> Indy (2026-10-25 22:20): "I think defer the ten-fleet on indy's signoff, indy will deal with it upon merge manual." — context: remove automatic ten-fleet deployment execution and its release dependency; retain the manual workflow and unchanged test.
+> Indy (2026-10-25 22:20): "and move the spec to done." — context: archive this spec under `done/`; retain incomplete evidence and continue repairing PR #784's failing checks. Archival does not claim a manual login test, complete model-count accuracy, exhausted reviews or documentation checks have passed.
 
 ### §5 — Bound local terminal authorization
 
@@ -403,7 +407,7 @@ No new analytics events or identifiers. Use browser screenshots and DOM geometry
 | 4.1 | unit / e2e | `created_model_activation` | The real table shows the newly active model after success; registration and activation refusals preserve the correct visible state. |
 | 4.2 | e2e | `intent_loading_client_capabilities` | After the sidebar's initial read, Save-Data hover downloads no scripts; opening the editor loads its scripts and dialog. |
 | 4.3 | e2e | `multi_fleet_grant_journey` | Each retained fleet reaches active after grant approval before another fleet is opened; exact ownership and execution assertions remain. |
-| 4.4 | discovery / workflow | `acceptance_scope_discovery` | The existing make target's flag selects preflight and one execution test or only the concurrent ten-fleet test. Invalid flags refuse before browser startup. Full local discovery retains every project; deployment requires both results. |
+| 4.4 | discovery / workflow | `acceptance_scope_discovery` | The existing make target's flag selects preflight and one execution test or only the concurrent ten-fleet test. Invalid flags refuse before browser startup. Full local discovery retains every project; deployment requires the short check and records Indy's manual ten-fleet deferral. |
 | 5.1 | unit / integration | `loopback_listener_security` | Real listener refuses malformed, forged, oversized, slow, expired, cross-session and replay requests; cancellation races have one winner and no leaks. |
 | 5.2 | unit | `loopback_browser_binding` | Full key, stable account/session and comparison code precede one decision; denial and uncertain approval never release a credential; storage and analytics refuse sensitive leakage. |
 | 5.3 | e2e | `loopback_login_journey` | Signed-in and signed-out login preserve marked handoff safely, real callback headers pass, terminal identity matches, and manual other-device verification remains supported. |
@@ -481,10 +485,12 @@ Billing browser recheck passed all three selected checks with populated settled 
 
 Final documentation attempt two of two is blocked (`/private/tmp/pr784-product-docs-final-report.json`): 109 paths were actually read or inspected, with ten partial document reads explicitly disclosed. Supported prose, error-census and discovery-index findings were repaired afterward; this does not create a fresh completed audit. Two older diagram blocks remain unchanged and are explicitly labeled historical. Broader source coverage, diagram replacement and the blocked audit disposition remain open; Dimension 3.2 is therefore IN_PROGRESS.
 
-The published-docs repository passed `make test` (25 tests), link checks and candidate OpenAPI drift checks. Its canonical `make lint` still fails because committed `docs.json` resolves new operations against the older main-branch OpenAPI (`/private/tmp/pr784-resumed-docs-lint-2.log`). Validation passed in an isolated copy using the generated candidate OpenAPI (`/private/tmp/pr784-docs-candidate-validate.log`); that does not clear the committed-config build dependency.
+Docs PR #228 merged at `d12ed66` after the login exit-code correction passed `make lint`, 25 documentation tests and normal publication hooks. Its Greptile thread is resolved. The docs checkout is clean on `main`; four pending Billing/context edits are preserved in stash `bbcb780238b852fc62d6450e7aff4736b68ea4d3`. Those operations still depend on the product's new OpenAPI and are not published by that merge.
 
 The fresh unchanged single-fleet browser run verified 160 exchanges: 70 setup turns and 90 runtime replies, through three saved setups. Its original 30-minute overall deadline expired while runtime reply 91 remained received; the ten-fleet test was skipped (`/private/tmp/pr784-continuity-current/results.json`). Indy accepted this local result and moved ten-fleet verification to deployment. The raw timeout remains recorded; a complete 181-message result and deployed ten-fleet result have not been observed.
 
 Native test discovery selects nine prerequisite checks plus one real execution test for post-deploy, or nine prerequisites plus only the ten-fleet test. Full discovery retains 121 tests across 55 files (`/private/tmp/pr784-acceptance-{post-deploy,ten-fleets,full}-list.log`). An invalid scope refuses before browser startup. `make test-unit-app` passed 4,283 tests; `make lint-app` and `make check-gh-actions-valid` passed (`/private/tmp/pr784-acceptance-native-{unit,lint,workflows}.log`). This proves selection and configuration; deployed execution remains unobserved.
 
-Fresh `make acceptance-build` passed for the current daemon, Linux runner, command-line client and dashboard (`/private/tmp/pr784-current-acceptance-build-result.json`). Fresh `make test-runner-kernel` passed 60 trials and failed `test_toolbox_admission_survives_path_swap` with an input/output error; startup verification was not reached, and the owned local runner was restored (`/private/tmp/pr784-current-kernel-isolated.log`). Neither result clears the exhausted reviews.
+Fresh `make acceptance-build` passed for the current daemon, Linux runner, command-line client and dashboard (`/private/tmp/pr784-current-acceptance-build-result.json`). The earlier kernel run passed 60 tests and failed `test_toolbox_admission_survives_path_swap` with an input/output error (`/private/tmp/pr784-current-kernel-isolated.log`). The approved source-chain diagnostic preceded a fresh canonical kernel pass: 61 tests, zero failures, plus 31 startup checks (`/private/tmp/pr784-approved-kernel-diagnostic-canonical.log`). Hosted kernel verification also passed all 61 tests for commit `07672e528`; the original intermittent cause remains unproved.
+
+Hosted aggregate coverage at `07672e528` failed despite all four Rust shard suites passing: lines 99.4732 percent against 99.5; changed lines 96.6667 against 99; 36 touched files below 99. The [coverage repair record](../../reviews/pr784-coverage-repair.md) maps added failure/privacy cases and current verification without changing thresholds. The exhausted reviews remain recorded above.

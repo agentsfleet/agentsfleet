@@ -59,7 +59,6 @@ gh run watch "$run_id" \
 | `qa` | Dashboard smoke passed. |
 | `acceptance-e2e` | Prerequisites and one real fleet check passed. |
 | `acceptance-cli` | The worktree command-line client passed live acceptance. |
-| `ten-fleets` | Ten concurrent fleets retained 1,810 messages and separate setup versions against api-dev. |
 
 The Agent records the workflow URL, commit, each job result, and any intentionally
 skipped runner job. A skipped enabled job is a failure.
@@ -68,10 +67,11 @@ skipped runner job. A skipped enabled job is a failure.
 Deployment uses `make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy` for the short browser check.
 `ACCEPTANCE_SCOPE=ten-fleets` selects only ten concurrent fleets and prerequisites.
 
-The separate ten-fleet job runs after deployment with its own fixture accounts.
-Its failure or cancellation keeps the deployment verdict red.
+Indy deferred ten-fleet acceptance to a manual run after merge and development deployment verification on 2026-10-25.
+The deployment summary reports `deferred-manual-by-Indy`; it does not report a ten-fleet pass.
+The manual workflow keeps its own fixture accounts, assertions, time limits and evidence uploads.
 
-To request another ten-fleet check against the deployed development environment:
+After verifying the development deployment, Indy can start the ten-fleet check:
 
 ```bash
 gh workflow run acceptance-ten-fleets.yml --ref main --repo agentsfleet/agentsfleet

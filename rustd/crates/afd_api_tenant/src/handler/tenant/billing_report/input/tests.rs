@@ -219,8 +219,7 @@ fn cursor_scope_refuses_changed_filters_size_cutoff_and_tenant() {
 }
 
 #[test]
-fn detail_reads_require_an_explicit_work_type_and_valid_identifier() {
-    assert!(read("", &tenant(TENANT), Some(ACTIVITY), instant(NOW)).is_err());
+fn detail_filters_validate_the_identifier_and_retain_the_selected_work_type() {
     assert!(
         read(
             "activity_type=setup",

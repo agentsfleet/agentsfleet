@@ -28,7 +28,7 @@ This handoff keeps that future backend separate from the unfinished work in pull
 
 ### Delivery order
 
-1. Finish shared compaction in the [existing active spec](../../v2/active/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md#6--shared-compaction-and-checkpoint-continuation).
+1. Review shared compaction and its remaining evidence in the [closed M230 spec](../../v2/done/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md#6--shared-compaction-and-checkpoint-continuation).
 2. Complete the unchanged continuity acceptance and forced compaction proofs on the existing bubblewrap backend.
 3. Complete the already approved Billing work, then final verification and the recorded implementation-review disposition for pull request 784.
 4. Merge pull request 784 through its normal approval process and verify the development deployment.

@@ -10,6 +10,9 @@ use afd_db::test_util::mint_id;
 use http::{Method, StatusCode, header};
 use jiff::Timestamp;
 
+#[path = "integration_billing_report_paging.rs"]
+mod paging;
+
 const REPORT: &str = "/v1/tenants/me/billing/reports/current";
 const MODEL: &str = "billing-report-model";
 const NOW: &str = "2026-10-25T12:01:00Z";

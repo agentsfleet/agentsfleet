@@ -113,3 +113,21 @@ fn fifty_longer_replies_use_the_selected_model_window_beyond_thirty_two_k() -> R
     }
     Ok(())
 }
+
+// Value: mandatory history and tool schemas cannot consume the selected physical window.
+#[test]
+fn an_irreducible_request_refuses_before_any_output_is_admitted() -> Result<()> {
+    let call = request(fifty_turns())?;
+    let mut selected = model("workspace/model-next")?;
+    selected.context_window_tokens = 1_024;
+    selected
+        .inference
+        .as_mut()
+        .ok_or(crate::error::ErrorKind::Model)?
+        .max_output_tokens = OUTPUT_LIMIT;
+    let error = body(&call, &selected, Vec::new(), true)
+        .err()
+        .ok_or(crate::error::ErrorKind::Provider)?;
+    assert_eq!(error.code(), afd_core::error_code::AUTHORING_TOKEN);
+    Ok(())
+}

@@ -137,3 +137,44 @@ async fn an_output_allowance_beyond_the_wire_range_never_calls_the_model() {
         assert!(report["answer"].is_null());
     }
 }
+
+// Value: compaction consumes a physical call and usage without replacing user context.
+#[tokio::test]
+async fn a_compaction_receipt_continues_the_same_turn_and_counts_both_calls() {
+    let mut rig = rig(|call| match call.verb {
+        Verb::AuthoringModel => {
+            let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            let Answer::Reply(bytes) = result(call, &json!([]), false) else {
+                unreachable!()
+            };
+            let mut reply: Value = serde_json::from_slice(&bytes).unwrap();
+            if request["call_index"] == 1 {
+                reply["compacted"] = json!(true);
+                reply["text"] = json!("");
+            }
+            json(&reply)
+        }
+        Verb::AuthoringReport => ack(),
+        other => panic!("unexpected authority {other:?}"),
+    });
+    let (calls, report) = run(&mut rig, lease()).await;
+    let requests: Vec<Value> = calls
+        .iter()
+        .filter(|call| call.verb == Verb::AuthoringModel)
+        .map(|call| serde_json::from_slice(call.body.as_ref().unwrap()).unwrap())
+        .collect();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[0]["request"]["messages"],
+        requests[1]["request"]["messages"]
+    );
+    assert_eq!(requests[1]["request"]["supports_compaction"], true);
+    assert_eq!(requests[1]["request"]["max_output_tokens"], 8_190);
+    assert_ne!(requests[0]["dispatch_id"], requests[1]["dispatch_id"]);
+    assert_eq!(requests[1]["call_index"], 2);
+    assert_eq!(report["answer"], "Private result");
+    assert_eq!(report["outcome"], "completed");
+    assert_eq!(report["usage"]["input_tokens"], 6);
+    assert_eq!(report["usage"]["output_tokens"], 4);
+    assert_eq!(report["usage"]["provider_cost_nanos"], "2");
+}

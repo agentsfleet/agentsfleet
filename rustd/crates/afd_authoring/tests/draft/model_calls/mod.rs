@@ -3,7 +3,7 @@
 mod arithmetic;
 mod authorization;
 mod bounds;
-mod compaction;
+pub(super) mod compaction;
 mod concurrency;
 mod corrections;
 mod counting;
@@ -17,6 +17,7 @@ mod preamble;
 mod progress;
 mod provider_failures;
 mod reasoning;
+mod reasoning_context;
 mod reasoning_safety;
 mod receipt_races;
 mod recovery;
