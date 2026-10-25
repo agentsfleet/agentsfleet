@@ -51,6 +51,10 @@ pub struct ModelRequest<D = Value, C = Value, I = Value> {
     /// Also capped against the attempt's remaining output allowance.
     #[garde(range(min = 1))]
     pub max_output_tokens: u32,
+    /// The runner understands metered summary replies and can continue the same turn.
+    #[garde(skip)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub supports_compaction: bool,
 }
 
 /// A lease-scoped request; diagnostics deliberately omit the token and context.
@@ -128,7 +132,7 @@ pub struct ModelResult<D = Value, C = Value, I = Value> {
     pub replayed: bool,
     /// A metered working-context summary completed; continue the same user turn.
     #[garde(skip)]
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub compacted: bool,
     /// Bounded assistant text.
     #[garde(length(bytes, max = ENVELOPE_BYTES_MAX), custom(afd_validate::rules::nul_free))]

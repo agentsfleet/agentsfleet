@@ -1,5 +1,5 @@
 import type { BillingActivity, BillingReportOptions } from "@/lib/api/billing_report";
-import { BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH } from "@/lib/api/billing_report";
+import { BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH } from "@/lib/api/billing-report-values";
 import {
   CURSOR_PAGE_SIZE_PARAM, CURSOR_TRAIL_PARAM, PAGE_SIZE_PARAM,
   cursorForTrail, cursorTrailFrom, pageSizeFrom,

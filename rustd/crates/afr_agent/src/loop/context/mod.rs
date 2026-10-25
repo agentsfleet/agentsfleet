@@ -15,6 +15,7 @@ pub(super) struct State {
     pub(super) branch: Option<String>,
     checkpoint: Option<Checkpoint>,
     loaded: bool,
+    replay_from: usize,
     index: index::Index,
     pub(super) working: Vec<Message>,
     pub(super) output: Option<u32>,
@@ -26,6 +27,7 @@ impl State {
             branch: None,
             checkpoint: None,
             loaded: false,
+            replay_from: 0,
             index: index::Index::new(pinned),
             working: Vec::new(),
             output: None,
@@ -53,6 +55,7 @@ impl Harness<'_, '_> {
                 &self.messages,
                 self.context.pinned,
                 &self.context.index.groups,
+                self.context.replay_from,
             );
             let mut estimator = estimate::Estimator {
                 source: &source,
@@ -93,6 +96,7 @@ impl Harness<'_, '_> {
                     )
                     .await?;
                     self.context.checkpoint = Some(checkpoint);
+                    self.context.replay_from = self.messages.len();
                 }
             }
         }
@@ -119,6 +123,9 @@ impl Harness<'_, '_> {
         };
         if !self.context.loaded {
             self.context.checkpoint = store.load().await?;
+            if self.context.checkpoint.is_some() {
+                self.context.replay_from = self.messages.len();
+            }
             self.context.loaded = true;
         }
         let identity = Identity {

@@ -68,7 +68,9 @@ impl Snapshot {
             let page = source
                 .page(source.fingerprint.through, afd_context::HISTORY_PAGE_SIZE)
                 .await?;
-            if source.fingerprint.through >= self.source.through || !page.has_more {
+            if !page.has_more
+                || (self.source.has_more && source.fingerprint.through >= self.source.through)
+            {
                 break;
             }
         }

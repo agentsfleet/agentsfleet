@@ -197,6 +197,7 @@ fn should_redact_authoring_call_capability_and_context_but_keep_dispatch_diagnos
         fence: "7".into(),
         call_index: 2,
         request: ModelRequest {
+            supports_compaction: true,
             messages: vec![ModelMessage::User {
                 text: SECRET.into(),
             }],

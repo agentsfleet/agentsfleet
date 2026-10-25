@@ -87,6 +87,7 @@ async fn call<T: Transport + 'static>(
                 dispatch_id: mint().to_string(),
                 call_index: 1,
                 request: ModelRequest {
+                    supports_compaction: true,
                     messages: vec![ModelMessage::User { text: TEXT.into() }],
                     max_output_tokens: 64,
                 },

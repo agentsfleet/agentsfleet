@@ -12,6 +12,8 @@ use afd_crypto::entropy::Entropy;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
+mod paging;
+
 const CHECKPOINT_COUNT: &str =
     "SELECT count(*) FROM memory.context_checkpoints WHERE draft_id=$1::uuid";
 
@@ -50,7 +52,7 @@ impl Biller for ChangedHistory {
 async fn changed_history_after_funding_cannot_dispatch_the_previously_measured_body() {
     let mut f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
-    history(&f, &attempt).await;
+    history(&f, &attempt, 180).await;
     f.drafts = Drafts::new(
         f.db.clone(),
         Entropy::new(),
@@ -111,24 +113,27 @@ impl Transport for Provider {
     }
 }
 
-async fn history(f: &Fixture, attempt: &Attempt) {
+async fn history(f: &Fixture, attempt: &Attempt, prior: i64) {
     let mut connection = f.connection().await;
-    sqlx::query("UPDATE authoring.messages SET sequence=181 WHERE draft_id=$1::uuid")
+    sqlx::query("UPDATE authoring.messages SET sequence=$2 WHERE draft_id=$1::uuid")
         .bind(attempt.draft.id.as_str())
+        .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("move current request");
-    sqlx::query("UPDATE authoring.attempts SET message_sequence=181 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET message_sequence=$2 WHERE id=$1::uuid")
         .bind(attempt.id.as_str())
+        .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin current request");
-    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=181 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=$2 WHERE id=$1::uuid")
         .bind(attempt.draft.id.as_str())
+        .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin draft sequence");
-    for sequence in 1..181_i64 {
+    for sequence in 1..=prior {
         sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3,$1::uuid,'completed',$4,$5,now(),now())")
             .bind(mint().as_str()).bind(attempt.draft.id.as_str()).bind(sequence)
             .bind(format!("initial-reference investigation step {sequence}: {}", "details ".repeat(20)))
@@ -146,7 +151,7 @@ async fn repeated_authoring_compaction_restores_notes_and_continues_with_all_181
         .await
         .expect("force a small physical window");
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
-    history(&f, &attempt).await;
+    history(&f, &attempt, 180).await;
     let provider = Arc::new(Provider::default());
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let mut summaries = 0;

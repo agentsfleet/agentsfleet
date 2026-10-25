@@ -4,11 +4,9 @@ import { request } from "./client";
 import { Instant } from "./decode";
 import { nanosSchema } from "./nanos";
 import { HTTP_METHOD } from "./retry";
+import { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "./billing-report-values";
 
-export const BILLING_PERIOD_MONTH = "month";
-export const BILLING_PERIOD_TODAY = "today";
-export const BILLING_ACTIVITY_RUNTIME = "runtime";
-export const BILLING_ACTIVITY_SETUP = "setup";
+export { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "./billing-report-values";
 
 const Count = z.number().int().nonnegative();
 const Totals = z.object({

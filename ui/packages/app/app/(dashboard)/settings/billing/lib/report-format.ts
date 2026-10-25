@@ -1,7 +1,7 @@
 import type { BillingActivity } from "@/lib/api/billing_report";
 import { formatCount } from "@/lib/events/run-figures-format";
 import { PROVIDER_MODE } from "@/lib/types";
-import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing_report";
+import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing-report-values";
 import { MS_PER_SECOND } from "@/lib/utils";
 
 export const SETUP_LABEL = "Setup chat";
