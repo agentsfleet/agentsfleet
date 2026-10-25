@@ -66,7 +66,7 @@ impl Model {
             .get("event")
             .and_then(|event| event.get("proposal"))
             .expect("native proposal");
-        let arguments = json!({"proposal_json":proposal.to_string()}).to_string();
+        let arguments = json!({"proposal":proposal}).to_string();
         let provider = Arc::new(Provider {
             effects: AtomicUsize::new(0),
             response: json!({"status":"completed",

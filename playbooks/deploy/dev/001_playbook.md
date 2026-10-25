@@ -57,11 +57,28 @@ gh run watch "$run_id" \
 | `dashboard` | The dashboard and command-line outputs were built, their receipts assembled, and the prebuilt dashboard deployed. Acceptance depends on this job succeeding. |
 | `verify` | Public API health and readiness passed. |
 | `qa` | Dashboard smoke passed. |
-| `acceptance-e2e` | Browser acceptance passed. |
+| `acceptance-e2e` | Prerequisites and one real fleet check passed. |
 | `acceptance-cli` | The worktree command-line client passed live acceptance. |
 
 The Agent records the workflow URL, commit, each job result, and any intentionally
 skipped runner job. A skipped enabled job is a failure.
+
+`make acceptance-local` retains the full browser and command-line suites.
+Deployment uses `make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy` for the short browser check.
+`ACCEPTANCE_SCOPE=ten-fleets` selects only ten concurrent fleets and prerequisites.
+
+Indy deferred ten-fleet acceptance to a manual run after merge and development deployment verification on 2026-10-25.
+The deployment summary reports `deferred-manual-by-Indy`; it does not report a ten-fleet pass.
+The manual workflow keeps its own fixture accounts, assertions, time limits and evidence uploads.
+
+After verifying the development deployment, Indy can start the ten-fleet check:
+
+```bash
+gh workflow run acceptance-ten-fleets.yml --ref main --repo agentsfleet/agentsfleet
+```
+
+GitHub returns after queuing the workflow. Inspect the resulting run and its
+`acceptance-ten-fleets-results` download for the test verdict and evidence.
 
 ## Failure handling
 

@@ -225,6 +225,6 @@ test.describe("teammates join an account", () => {
 // Types `text` into the fleet's composer and sends it.
 async function send(page: Page, text: string): Promise<void> {
   const composer = page.getByLabel(COMPOSER_LABEL);
-  await composer.getByPlaceholder(/message this fleet/i).fill(text);
+  await composer.getByPlaceholder(/message your fleet/i).fill(text);
   await composer.getByRole("button", { name: /send/i }).click();
 }

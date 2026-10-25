@@ -35,14 +35,14 @@
 #   check was blind to a fix the agent staged but had not yet committed.
 #
 # orly materialises shared gate scripts in .orly/audits/; repository-owned
-# gates remain in audits/. Both live in this checkout, so a clone runs the
+# gates remain in scripts/checks/. Both live in this checkout, so a clone runs the
 # gates with nothing else checked out:
 #   make harness-verify ORLY_ROOT=/path/to/another/checkout/.orly
 ORLY_ROOT ?= $(CURDIR)/.orly
 
 # Adding a gate:
 #   1. Land shared gate scripts in the orly pack source; land repository-owned
-#      gate scripts in audits/.
+#      gate scripts in scripts/checks/.
 #   2. Add a row in HARNESS_GATES below with the gate's short label + the
 #      command that runs the audit.
 #   3. Update docs/gates/<gate>.md with "Fires in: make harness-verify".
@@ -88,7 +88,7 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	$(ORLY_PREFLIGHT)
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope (pre-commit lens)$(C_RESET)\n"
 	$(call HARNESS_RUN,UFS,$(ORLY_ROOT)/audits/ufs.sh --staged)
-	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
+	$(call HARNESS_RUN,GITLEAKS CONFIG,scripts/checks/gitleaks-config.sh)
 	$(call HARNESS_RUN,DESIGN TOKEN,$(ORLY_ROOT)/audits/design-tokens.sh --staged)
 	$(call HARNESS_RUN,SPEC TEMPLATE,$(ORLY_ROOT)/audits/spec-template.sh --staged)
 	$(call HARNESS_RUN,LOGGING,$(ORLY_ROOT)/audits/logging.sh --staged)
@@ -104,7 +104,7 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	# `--diff` (vs origin/main) is the broadest meaningful scope for that
 	# diff-shaped script.
 	$(call HARNESS_RUN,UFS,$(ORLY_ROOT)/audits/ufs.sh)
-	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
+	$(call HARNESS_RUN,GITLEAKS CONFIG,scripts/checks/gitleaks-config.sh)
 	$(call HARNESS_RUN,DESIGN TOKEN,$(ORLY_ROOT)/audits/design-tokens.sh)
 	$(call HARNESS_RUN,SPEC TEMPLATE,$(ORLY_ROOT)/audits/spec-template.sh)
 	$(call HARNESS_RUN,LOGGING,$(ORLY_ROOT)/audits/logging.sh)

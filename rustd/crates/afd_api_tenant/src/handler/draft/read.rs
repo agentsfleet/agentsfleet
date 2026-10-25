@@ -19,10 +19,10 @@ use std::sync::Arc;
 /// Lists only the authenticated creator's drafts in this workspace.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get, path = "/v1/workspaces/{workspace_id}/drafts", operation_id = "list_workspace_drafts",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "List your private workspace drafts",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "List your private setup chats",
     params(afd_http::openapi::path::Workspace,
         ("limit" = Option<u32>, Query, description = "Page size, 1..100; default 50."),
-        ("starting_after" = Option<String>, Query, description = "Opaque creator/filter-bound cursor."),
+        ("starting_after" = Option<String>, Query, description = "Use the previous `next_cursor` unchanged, for the same creator and filters."),
         ("state" = Option<String>, Query, description = "editing, saving or closed."),
         ("linked_fleet_id" = Option<String>, Query, description = "Related fleet UUIDv7."),
         ("q" = Option<String>, Query, description = "Case-insensitive search of your chat titles and message text, 1..200 characters after trimming. Bound into the cursor.")),
@@ -50,7 +50,7 @@ pub(crate) async fn list<D: Services>(
 /// Reads only the authenticated creator's private candidate.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}", operation_id = "read_workspace_draft",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Read your private workspace draft",
+    tag = afd_http::openapi::tag::DRAFTS, summary = "Read your private setup chat",
     params(afd_http::openapi::path::Draft),
     responses((status = 200, body = Draft, description = "Private draft", headers(("ETag" = String))),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),

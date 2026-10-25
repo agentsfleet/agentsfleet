@@ -143,14 +143,9 @@ fn send_of<'a>(invite: &'a Uuid7, attempt: &'a EmailAttempt, link: &'a str) -> I
     operation_id = "send_invite_email",
     summary = "Send an invite's email again",
     description = concat!(
-        "Sends the invite email for one pending invite into the caller's own ",
-        "account, as a new attempt. An operation, in the side-effecting RPC ",
-        "category. Each call sends one more email and takes no `Idempotency-Key`. ",
-        "Use it when the invite's `email_status` is ",
-        "`failed`. When the mail relay is not set up, refuses, or does not ",
-        "answer, the route answers 503 `UZ-INV-005`. The invite stays valid ",
-        "either way, so its `link` can be shared by hand. An invite that ",
-        "expired, was revoked, or was accepted answers 404 `UZ-INV-001`. ",
+        "Resends a pending invite email. Each call sends another email; `Idempotency-Key` ",
+        "is not supported. Delivery failures return 503 `UZ-INV-005`; the invite link ",
+        "remains usable. Expired, revoked, or accepted invites return 404 `UZ-INV-001`.",
     ),
     params(afd_http::openapi::path::Invite),
     responses(

@@ -1,10 +1,10 @@
+import { RouteLoading } from "@/components/layout/RouteLoading";
 import { Suspense } from "react";
 import {
   PageHeader,
   PageLayout,
   PageTitle,
   Section,
-  Skeleton,
 } from "@agentsfleet/design-system";
 
 import { requireCredential } from "@/lib/auth/credential";
@@ -26,17 +26,16 @@ export default async function ApprovalsPage({
   const { fleetId } = searchParams ? await searchParams : { fleetId: undefined };
   const token = await requireCredential();
 
-  // Header streams first; the inbox loads inside ApprovalsData under Suspense.
   return (
-    <PageLayout>
-      <PageHeader description={APPROVALS_PAGE_DESCRIPTION}>
-        <PageTitle>Approvals</PageTitle>
-      </PageHeader>
+    <Suspense fallback={<RouteLoading />}>
+      <PageLayout>
+        <PageHeader description={APPROVALS_PAGE_DESCRIPTION}>
+          <PageTitle>Approvals</PageTitle>
+        </PageHeader>
 
-      <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
         <ApprovalsData workspaceId={workspaceId} fleetId={fleetId} token={token} />
-      </Suspense>
-    </PageLayout>
+      </PageLayout>
+    </Suspense>
   );
 }
 

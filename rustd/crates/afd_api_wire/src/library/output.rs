@@ -15,7 +15,7 @@ pub struct Card<Q = Value> {
     pub description: String,
     /// platform or tenant.
     pub visibility: String,
-    /// UTC milliseconds.
+    /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// Declarative needs of the head revision.
@@ -49,7 +49,7 @@ pub struct Revision<D = Value, Q = Value> {
     pub requirements: Q,
     /// Pinned policy meaning.
     pub policy_semantics: String,
-    /// UTC milliseconds.
+    /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
@@ -79,7 +79,7 @@ pub struct Published {
     pub revision_id: String,
     /// Current head `UUIDv7`.
     pub head_revision_id: String,
-    /// Current Library strong tag.
+    /// Current Library `ETag` for conditional updates.
     pub etag: String,
 }
 
@@ -93,7 +93,7 @@ pub struct RevisionSummary {
     pub revision: String,
     /// Content identity.
     pub canonical_digest: String,
-    /// UTC milliseconds.
+    /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "afd_wire::instant")]
     pub created_at: jiff::Timestamp,
 }

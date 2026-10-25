@@ -43,3 +43,5 @@ pub use self::router::Router;
 // The seam a run's schedule and message tools reach `agentsfleetd` through,
 // re-exported so the supervisor implements it through the crate it drives.
 pub use afr_tools::{LeaseVerbs, ScheduleCall, Unanswered};
+
+pub use engine::ContextCheckpoints;

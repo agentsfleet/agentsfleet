@@ -129,6 +129,10 @@ pub struct Request<'a> {
     /// conversation, and every child run in it, shares a cache. Only the
     /// Responses wire sends it.
     pub cache_key: &'a str,
+    /// Physical output allowance, further clipped by the selected model.
+    pub max_output_tokens: Option<u32>,
+    /// Summary calls never reopen an uncertain physical request.
+    pub single_attempt: bool,
 }
 
 /// Tokens one turn spent, or a run summed over its turns.
@@ -211,6 +215,18 @@ pub enum Chunk {
 
 /// A model provider.
 pub trait Provider: Send + Sync + fmt::Debug {
+    /// Measure a complete request before sending it. Production overrides this
+    /// with its selected wire; scripted providers use the canonical chat shape.
+    ///
+    /// # Errors
+    /// The request cannot be encoded.
+    fn measure(&self, request: Request<'_>) -> Result<u64> {
+        let body = crate::request::request(afd_wire::inference::InferenceApi::Chat, &request)?;
+        let text = serde_json::to_string(&body)?;
+        Ok(afd_inference::input_tokens(request.model, &text)
+            .saturating_add(body.chat_history.len().saturating_mul(32)) as u64)
+    }
+
     /// Streams one turn. The stream ends when the turn does; an error ends it
     /// early, and the run with it.
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>>;

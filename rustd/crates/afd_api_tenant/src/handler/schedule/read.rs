@@ -50,9 +50,8 @@ pub(crate) fn views(
     operation_id = "list_fleet_schedules",
     summary = "List hosted schedules",
     description = concat!(
-        "Lists the hosted schedules for a Fleet. The result is bounded by the ",
-        "per-Fleet schedule cap. An unknown Fleet, or one in another ",
-        "workspace, lists empty rather than answering 404. ",
+        "Lists the fleet's hosted schedules, limited by its schedule cap. Missing fleets ",
+        "and fleets in other workspaces return an empty list.",
     ),
     params(
         afd_http::openapi::path::Fleet,
@@ -105,7 +104,7 @@ pub(crate) async fn list<D: Services>(
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "get_fleet_schedule",
     summary = "Get a hosted schedule",
-    description = "One schedule, as it is currently registered for this fleet.",
+    description = "Returns the saved schedule, including its registration status and any registration failure.",
     params(
         afd_http::openapi::path::Schedule,
     ),

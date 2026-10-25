@@ -74,14 +74,11 @@ describe("ApprovalsPage (workspace inbox)", () => {
     );
   });
 
-  it("page shell streams the header + skeleton before the inbox", async () => {
-    // ApprovalsData is an async child, so renderToStaticMarkup renders the
-    // Suspense skeleton in its place — the list stub stays absent until it
-    // streams in, but the header title paints immediately.
+  it("shows the shared page loader before the inbox", async () => {
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
     const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID }) }));
-    expect(markup).toContain("Approvals"); // PageTitle in the shell
-    expect(markup).toContain("animate-pulse"); // Skeleton fallback
+    expect(markup).not.toContain("<h1");
+    expect(markup).toContain('aria-label="Loading page"');
     expect(markup).not.toContain("approvals-list-stub"); // data not yet resolved
   });
 
@@ -93,7 +90,7 @@ describe("ApprovalsPage (workspace inbox)", () => {
         searchParams: Promise.resolve({ fleetId: FLEET_ID }),
       }),
     );
-    expect(markup).toContain("Approvals");
+    expect(markup).toContain('aria-label="Loading page"');
   });
 
   it("mints one token for the whole page, not one per region", async () => {

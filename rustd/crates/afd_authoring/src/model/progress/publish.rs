@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use tokio_util::task::AbortOnDropHandle;
 use zeroize::Zeroizing;
 
-const DEADLINE: Duration = Duration::from_secs(2);
+pub(super) const DEADLINE: Duration = Duration::from_secs(2);
 const CONTEXT: &str = "authorize private answer preview";
 
 pub(in crate::model) struct Publisher(AbortOnDropHandle<()>);
@@ -77,21 +77,17 @@ impl Worker {
     }
 
     async fn publish(&self, piece: &Piece) -> crate::Result<()> {
-        let mut connection = self.drafts.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let guarded =
-            guard::publication(&mut tx, &self.runner, &self.lease, &self.counters).await?;
+        let (draft_id, sequence) =
+            authorize(&self.drafts, &self.runner, &self.lease, &self.counters).await?;
         let frame = Delta {
-            draft_id: guarded.attempt.draft_id,
-            sequence: guarded.attempt.message_sequence.to_string(),
+            draft_id,
+            sequence: sequence.to_string(),
             stream_id: self.dispatch.clone(),
             stream_seq: piece.sequence,
             stream_start: piece.sequence == 1,
             text_kind: TextKind::Answer,
             text: piece.text.to_string(),
         };
-        tx.commit().await.map_err(query(CONTEXT))?;
-        drop(connection);
         let payload =
             Zeroizing::new(serde_json::to_string(&frame).map_err(crate::error::raise::stored)?);
         self.streams
@@ -100,4 +96,19 @@ impl Worker {
             .map(|_subscribers| ())
             .map_err(|source| crate::error::ErrorKind::Preview { source }.into())
     }
+}
+
+pub(super) async fn authorize(
+    drafts: &Drafts,
+    runner: &Uuid7,
+    lease: &Uuid7,
+    counters: &guard::Counters,
+) -> crate::Result<(Uuid7, i64)> {
+    let mut connection = drafts.database.acquire().await?;
+    let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+    let guarded = guard::publication(&mut tx, runner, lease, counters).await?;
+    let identity = (guarded.attempt.draft_id, guarded.attempt.message_sequence);
+    tx.commit().await.map_err(query(CONTEXT))?;
+    drop(connection);
+    Ok(identity)
 }

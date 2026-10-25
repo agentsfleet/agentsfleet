@@ -42,7 +42,8 @@ import {
 } from "./fixtures/grants";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import { workspaceUrlPattern } from "./fixtures/nav";
-import { getDefaultWorkspaceId, readFleetCounters, waitForFleetActive } from "./fixtures/seed";
+import { ensureSecondWorkspace, readFleetCounters, waitForFleetActive } from "./fixtures/seed";
+import { clientFor } from "./fixtures/api-client";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 // Two stable template names — the server suffixes a repeat, and a per-run
@@ -51,6 +52,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 const TEMPLATE_FIRST = "grant-walk-alpha";
 const TEMPLATE_SECOND = "grant-walk-beta";
 const SWEEP_PREFIX = "grant-walk";
+const GRANT_WORKSPACE = "fixture-browser-connector-grants";
 
 const RENDER_TIMEOUT_MS = 15_000;
 // How long a delivery may take to reach a runner before the lease is called
@@ -135,17 +137,21 @@ async function approveAndContinue(page: Page, fleetId: string, setupUrl: string)
   await page.goto(setupUrl);
   await page.getByRole("button", {name: "Continue setup", exact: true}).click();
   await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`), {timeout: GRANT_TIMEOUT_MS});
+  // This detail URL already identifies the saved fleet. Finish continuation
+  // before another navigation can cancel its request.
+  await activated(fleetId);
 }
 
 test.describe.serial("multi-fleet grant journey", () => {
   test.afterAll(async () => {
-    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, SWEEP_PREFIX);
+    if (!workspaceId) return;
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, SWEEP_PREFIX);
+    await clientFor(FIXTURE_KEY.regular).delete(`/v1/workspaces/${workspaceId}/secrets/linear`);
   });
 
   test("two saved fleets each require their own approval and continuation", async ({ page }) => {
     test.setTimeout(INSTALL_TEST_TIMEOUT_MS);
-    workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    workspaceId = (await ensureSecondWorkspace(FIXTURE_KEY.regular, GRANT_WORKSPACE)).id;
     await observed(JOURNEY_LEG.install, () =>
       ensureConnectorHandle(FIXTURE_KEY.regular, workspaceId),
     );

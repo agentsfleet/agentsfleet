@@ -8,6 +8,8 @@ import type { SenderName } from "@/lib/events/sender-names";
 import FleetStatusLine from "./FleetStatusLine";
 
 type Props = {
+  modelLabel?: string;
+  setupRevision?: string;
   workspaceId: string;
   fleetId: string;
   senderLabel: string;
@@ -37,13 +39,13 @@ export function ChatView({
   initialSummary,
   approvalsHref,
   viewer,
-  senderNames,
+  senderNames, modelLabel, setupRevision,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
-      <FleetThreadDynamic
+      <FleetThreadDynamic modelLabel={modelLabel} setupRevision={setupRevision}
         workspaceId={workspaceId}
         fleetId={fleetId}
         senderLabel={senderLabel}
@@ -51,7 +53,7 @@ export function ChatView({
         viewer={viewer}
         senderNames={senderNames}
       />
-      <div className="mx-auto w-full max-w-measure shrink-0">
+      {summary.pendingApprovals > 0 || !summary.latestAvailable ? <div className="mx-auto w-full max-w-chat shrink-0 px-md">
         <FleetStatusLine
           status={summary.status}
           latest={summary.latest}
@@ -59,7 +61,7 @@ export function ChatView({
           approvalsHref={approvalsHref}
           summaryAvailable={summary.latestAvailable}
         />
-      </div>
+      </div> : null}
     </div>
   );
 }

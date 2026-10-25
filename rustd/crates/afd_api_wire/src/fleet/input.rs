@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub enum SaveSource {
     /// Current creator-owned idle candidate.
     Draft {
-        /// Candidate identity, validated as a `UUIDv7` by the daemon.
+        /// Copy `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`.
         draft_candidate_id: String,
     },
     /// Pinned accessible Library revision.
@@ -44,7 +44,10 @@ pub struct SaveFleetRequest {
     pub source: SaveSource,
     /// Validated instance slug.
     pub name: String,
-    /// Fresh daemon-computed setup digest.
+    /// Copy `review.review_digest` from the source review after inspecting it.
+    ///
+    /// For a draft, read `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. Reload the
+    /// review before saving if it changes.
     pub review_digest: String,
     /// Explicit initial-run choice.
     pub start: Start,

@@ -17,7 +17,7 @@ use tracing::Instrument as _;
 
 use self::children::Children;
 use self::shared::Shared;
-use crate::context::{Budget, Checkpoints};
+use crate::context::Checkpoints;
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
@@ -27,7 +27,6 @@ use crate::prompt::Prompt;
 use crate::router::{self, Router};
 use crate::spans;
 
-const EVENT_CAP_REACHED: &str = "context_cap_reached";
 const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
 const EVENT_TURN_STARTED: &str = "provider_turn_started";
 const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
@@ -133,7 +132,7 @@ pub(crate) struct Harness<'s, 'run> {
     hosted: Vec<Hosted>,
     live: Live<'s>,
     checkpoints: Checkpoints,
-    budget: Budget,
+    context: context::State,
     messages: Vec<Message>,
     /// The child this loop is, when it is one: its guard, and what its
     /// parent sent, read into its next turn.
@@ -155,7 +154,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             hosted: offer::hosted(selection),
             live: Live::new(shared.events, shared.scrub, shared.started),
             checkpoints: Checkpoints::new(shared.context),
-            budget: Budget::new(shared.context),
+            context: context::State::new(opening.len().saturating_sub(1)),
             messages: opening,
             child: None,
         }
@@ -181,7 +180,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             hosted: offer::hosted(selection),
             live: Live::silent(shared.scrub, shared.started),
             checkpoints: Checkpoints::never(),
-            budget: Budget::new(shared.context),
+            context: context::State::new(0),
             messages: vec![Message::User(shared.scrub.clean(seat.task).into_inner())],
             child: Some(Tether {
                 guard,
@@ -192,17 +191,22 @@ impl<'s, 'run> Harness<'s, 'run> {
 
     /// Runs the loop's turns to their end.
     pub(crate) async fn drive(&mut self) -> Ending {
-        let mut capped = false;
         let mut turns: u64 = 0;
         loop {
             turns += 1;
             self.read_input();
-            let turn = match self.turn(turns, capped).await {
+            if let Err(error) = self.preflight().await {
+                if self.stop.is_cancelled() {
+                    break Ending::Stopped;
+                }
+                break Ending::Failed(afr_providers::Error::lost(error));
+            }
+            let turn = match self.turn(turns, false).await {
                 Some(Ok(turn)) => turn,
                 Some(Err(failure)) => break Ending::Failed(failure),
                 None => break Ending::Stopped,
             };
-            if capped || turn.calls.is_empty() {
+            if turn.calls.is_empty() {
                 break Ending::Answered(turn.text);
             }
             let mut results = Vec::with_capacity(turn.calls.len());
@@ -220,12 +224,6 @@ impl<'s, 'run> Harness<'s, 'run> {
             self.messages.extend(results);
             if self.stop.is_cancelled() {
                 break Ending::Stopped;
-            }
-            self.budget.evict(&mut self.messages);
-            // The whole prompt fills the window, cache reads included.
-            if self.budget.reached(turn.usage.prompt()) {
-                capped = true;
-                self.cap_reached(turns, turn.usage.prompt());
             }
         }
     }
@@ -268,6 +266,7 @@ impl<'s, 'run> Harness<'s, 'run> {
 
 mod attach;
 mod children;
+mod context;
 mod conversation;
 mod finish;
 mod model_turn;
@@ -302,3 +301,6 @@ mod session_tests;
 
 #[cfg(test)]
 mod checkout_tests;
+
+#[cfg(test)]
+mod compaction_tests;

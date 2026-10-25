@@ -152,11 +152,10 @@ fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer
     operation_id = "slack_events",
     summary = "Receive Slack events",
     description = concat!(
-        "Slack sends signed events to this route. Users do not call this ",
-        "route. An invalid signature returns 401 `UZ-WH-010`. A timestamp ",
-        "outside 5 minutes returns 401 `UZ-WH-011`. When `agentsfleet` accepts ",
-        "a mention of the bot, it returns the event identifier. For any other ",
-        "delivery, `agentsfleet` returns the reason it ignored the delivery.",
+        "Receives Slack events; users do not call this endpoint. Invalid signatures return ",
+        "401 `UZ-WH-010`; timestamps outside five minutes return `UZ-WH-011`. Accepted bot ",
+        "mentions return an event identifier. Other deliveries return their reason for ",
+        "being ignored.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(

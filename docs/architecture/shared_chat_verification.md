@@ -1,8 +1,8 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-10-22
-product_version: 0.64.0
+verified: 2026-10-24
+product_version: 0.65.0
 executable: false
 ---
 
@@ -188,13 +188,29 @@ The mounted private identity owns the cache and clears it after lost access.
 
 The private transcript stays out of browser storage.
 
+The sidebar reads saved fleets only. Creator-private drafts remain in **Unfinished setups** on **New fleet**.
+Both lists remain scoped to the account, workspace, and signed-in person.
+
+Draft projection indexes original requests by sequence once per snapshot.
+A conversation-owned weak cache preserves unchanged message objects while the latest reply streams.
+Settled rows receive message data without scanning the transcript again.
+
+Setup retry reads current client state, stops uncertain work when required, then submits the original request.
+Saved-chat retry uses the normal delivery queue and requires the original request's actor to match the signed-in person.
+Partial answers and unknown usage remain visible after failure.
+
 ### Setup and runtime stay together
 
 New fleet supports multiple setup messages before explicit **Save fleet**.
 Saving opens that fleet's Chat.
 **Edit setup** opens a private chat panel beside the mounted runtime conversation.
 
-Manual instructions are optional, and **Save changes** remains reachable below the editor.
+Manual instructions are optional, and **Save changes** remains reachable in the setup footer, above its composer.
+Unapplied manual edits disable Save. Folding or hiding the editor retains local text while its subject remains mounted; reload or subject disposal loses unsent changes.
+
+A newer candidate preserves dirty text but blocks Update instructions until the conflict is resolved. Copy changes you want to keep, choose **Discard manual changes and load latest**, then reapply and review. Pristine fields follow the latest candidate without a discard step.
+
+Model edits follow the separate [exact-text correction path](fleet_definitions.md#small-atomic-edits); manual text is never silently merged with them.
 
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.
@@ -202,6 +218,33 @@ A successful save closes the panel and refreshes server data.
 
 The mounted runtime composer retains its unsent text.
 New runs use the saved revision; existing runs keep their pinned version.
+
+Fleet Activity keeps server rendering through `FleetActivity` while its table loads at the selected-view boundary.
+Setup constants and schedule-status checks do not initialize setup schemas.
+
+### Retaining long acceptance evidence
+
+The final continuity checks send 181 messages through one fleet and repeat those steps across ten concurrent fleets.
+A failed check or evidence read preserves every related fleet and private draft.
+The shared teardown also preserves the `continuity-` fleet prefix.
+
+Identifier attachments record the workspace, fleet, and private draft identifiers before history reads.
+Successful runs clean up only after every history and isolation check and every evidence capture succeeds.
+These retention tests do not establish that the full live acceptance checks passed.
+
+Cleanup deletes the supplied fleet and drafts, including their saved messages.
+Use the identifier attachment against the same development backend with a current fixture session:
+
+```sh
+cd ui/packages/app
+bun tests/e2e/acceptance/fixtures/continuity-cleanup.ts /path/to/single-identifiers.json
+```
+
+Successful cleanup exits with status 0 and no output.
+The command refuses production hosts and invalid attachments.
+
+It checks the live fleet name and deletes only the supplied fleet and drafts.
+Failed deletions remain errors; they never count as successful cleanup.
 
 ## Tracing and memory
 
@@ -265,11 +308,12 @@ It does not claim that every unchanged operation has a new tracing span.
 The error hull remains `afd_core::error_shell!` with typed causes.
 The [Rust error standard](../RUST_ERROR_STANDARD.md) owns the crate exceptions and registry mapping.
 
-## Verification evidence
+## Historical verification evidence
 
-Rust coverage, focused mutation checks, and the latest canonical unit and integration commands passed.
-Complete local acceptance, Indy's live visual review and hosted Continuous Integration (CI) results remain pending.
-Passing an inner-loop test does not satisfy those gates.
+The table preserves results recorded before the later compaction and Billing changes. Its counts describe those earlier runs.
+The [closed M230 verification record](../v2/done/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md#verification-record) carries results, owner deferrals and open checks.
+
+Whole local acceptance, owner review and current Continuous Integration (CI) results remain required. A narrower test selection does not satisfy those gates.
 
 | Proof | Observed result |
 |---|---|
@@ -289,7 +333,7 @@ Passing an inner-loop test does not satisfy those gates.
 | `make test-unit-all` | Rust runner 1,316, daemon 137 and daemon libraries 3,293; Python 25; app 3,973, website 133, command line 1,887 and design system 499 passed. The command-line suite retained 16 existing skips; all four package coverage gates passed at 100% |
 | `make test-integration-rustd` | 1,400 regular and three exclusive tests passed against isolated real Postgres and Dragonfly |
 | tsrs migration | Six existing configurations passed with both compilers; both rejected the temporary type error. All 156 emitted command-line JavaScript files were byte-identical; the built command reports version 0.64.0 |
-| `make acceptance-local` | Latest complete browser attempt: 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals; the workspace-navigation failure passed its focused rerun after the existing helper awaited navigation |
+| `make acceptance-local` | Recorded browser attempt: 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals; the workspace-navigation failure passed its focused rerun after the existing helper awaited navigation |
 | `make acceptance-cli` | Deterministic lane: 209 passed. Live lane: 171 passed, three failed. Two turns reached provider refusals; the missing-model setup assertion passed its focused rerun after matching setup's `pending` state |
 | Local provider prerequisite | The configured free model was absent from the live catalogue. The replacement free model is available, but a minimal live request returned HTTP 429 with `free-models-per-day`; complete acceptance requires restored account quota |
 | Guarded smoke checks | Built version and invalid-command refusal passed; a real browser rendered sign-in and redirected a synthetic private workspace URL back to sign-in without workspace controls. Authenticated exploratory flows remain blocked by the smoke browser's absent session |

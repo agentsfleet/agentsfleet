@@ -73,7 +73,7 @@ fn blocked_proposal() -> Provider {
     stub.response.as_object_mut().expect("response object").insert("output".into(), serde_json::json!([
         {"type":"reasoning","id":"rs_private","summary":[],"encrypted_content":"opaque-private-reasoning"},
         {"type":"function_call","id":"fc_private","call_id":"call_proposal","name":"propose_setup",
-         "arguments":serde_json::json!({"proposal_json":proposal.to_string()}).to_string()}
+         "arguments":serde_json::json!({"proposal":proposal}).to_string()}
     ]));
     stub.blocked = true;
     stub

@@ -197,6 +197,7 @@ fn should_redact_authoring_call_capability_and_context_but_keep_dispatch_diagnos
         fence: "7".into(),
         call_index: 2,
         request: ModelRequest {
+            supports_compaction: true,
             messages: vec![ModelMessage::User {
                 text: SECRET.into(),
             }],
@@ -229,4 +230,38 @@ fn should_redact_authoring_call_capability_and_context_but_keep_dispatch_diagnos
         wire.pointer("/request/max_output_tokens"),
         Some(&serde_json::json!(37))
     );
+}
+
+// Value: checkpoint diagnostics expose generation/presence without private notes or fences.
+#[test]
+fn should_redact_private_checkpoints_without_changing_their_wire_documents() {
+    use afd_wire::context::{ContextLoaded, ContextPut};
+
+    let checkpoint = serde_json::json!({"goal": SECRET});
+    let put = ContextPut {
+        fencing_token: 654_321,
+        expected_generation: 7,
+        checkpoint: checkpoint.clone(),
+    };
+    for rendered in [format!("{put:?}"), format!("{put:#?}")] {
+        assert!(!rendered.contains(SECRET));
+        assert!(!rendered.contains("654321"));
+        assert!(rendered.contains("expected_generation: 7"));
+    }
+    assert_eq!(
+        serde_json::to_value(&put).unwrap(),
+        serde_json::json!({
+            "fencing_token": 654_321, "expected_generation": 7, "checkpoint": checkpoint
+        })
+    );
+    for present in [false, true] {
+        let loaded = ContextLoaded {
+            checkpoint: present.then(|| checkpoint.clone()),
+        };
+        let rendered = format!("{loaded:?}");
+        assert!(!rendered.contains(SECRET));
+        assert!(rendered.contains(&format!("present: {present}")));
+        let wire = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(wire.get("checkpoint"), present.then_some(&checkpoint));
+    }
 }

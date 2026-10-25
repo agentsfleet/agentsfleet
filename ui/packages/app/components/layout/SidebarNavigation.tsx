@@ -54,14 +54,14 @@ export function DesktopSidebarNavigation({
 }
 
 export function SidebarNavigation({ pathname, workspaceId, operatorScopes, collapsed, onNavigate, workspaces = [] }: SidebarNavigationProps) {
-  const activeHref = resolveActiveHref(PRIMARY_NAV.map((entry) => resolveHref(entry, workspaceId)), pathname);
+  const activeHref = resolveActiveHref(PRIMARY_NAV.filter(entry => entry.path !== "fleets" || pathname === resolveHref(entry, workspaceId)).map((entry) => resolveHref(entry, workspaceId)), pathname);
   const shared = { activeHref, workspaceId, onNavigate, collapsed };
   return <Nav aria-label="Primary" className="flex h-full min-h-0 flex-col py-sm">
     <NavSection items={PRIMARY_NAV} {...shared} />
     {!collapsed ? <div className="min-h-0 flex-1 overflow-y-auto">
       <Suspense><DraftSidebarHistory account={workspaces.find(item => item.id === workspaceId)?.account.tenant_id ?? null} workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
     </div> : <div className="flex-1" />}
-    <div className="mt-auto shrink-0 border-t border-border px-sm pt-sm">
+    <div className="mt-auto shrink-0 border-t border-border px-md pb-sm pt-lg">
       <WorkspaceSwitcher workspaces={workspaces} operatorScopes={operatorScopes} collapsed={collapsed} />
     </div>
   </Nav>;

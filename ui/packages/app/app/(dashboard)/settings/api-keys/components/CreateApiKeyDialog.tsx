@@ -117,7 +117,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
                       <FormControl>
                         <Input placeholder="ci-runner" autoComplete="off" {...field} />
                       </FormControl>
-                      <FormDescription>Unique within your tenant.</FormDescription>
+                      <FormDescription>Name must be unique across your account.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

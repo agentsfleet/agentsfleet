@@ -1,0 +1,69 @@
+name: acceptance / ten concurrent fleets (api-dev)
+
+on:
+  # Indy starts this after merge and development deployment verification.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A fixed fixture identity belongs to this job. Another request waits for it.
+concurrency:
+  group: acceptance-ten-fleets-api-dev
+  cancel-in-progress: false
+
+jobs:
+  ten-fleets:
+    runs-on: ubuntu-latest
+    # The unchanged concurrent test has a 60-minute deadline. Setup, preflight
+    # and evidence upload have their own headroom outside that test deadline.
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-bun-playwright
+        with:
+          working-directory: ui/packages/app
+          cache-prefix: playwright-app
+          lock-file: bun.lock
+
+      - name: Build the command-line application before credentials
+        run: bun install --frozen-lockfile && bun run build
+        working-directory: cli
+
+      - name: Load Clerk DEV credentials after installation
+        uses: 1password/load-secrets-action@v5
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
+
+      - name: Run ten concurrent fleets against api-dev
+        run: make acceptance-e2e ACCEPTANCE_SCOPE=ten-fleets
+        env:
+          BASE_URL: https://app-dev.agentsfleet.net
+          NEXT_PUBLIC_API_URL: https://api-dev.agentsfleet.net
+          AUTH_E2E_REGULAR_EMAIL: regular-ten-fleets+clerk_test@e2e.agentsfleet.net
+          AUTH_E2E_ADMIN_EMAIL: admin-ten-fleets+clerk_test@e2e.agentsfleet.net
+          AUTH_E2E_OPERATOR_EMAIL: operator-ten-fleets+clerk_test@e2e.agentsfleet.net
+          AUTH_E2E_POLICY_EDITOR_EMAIL: policy-editor-ten-fleets+clerk_test@e2e.agentsfleet.net
+          CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
+          CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
+
+      - name: Upload ten-fleet acceptance evidence
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: acceptance-ten-fleets-results
+          overwrite: true
+          path: |
+            ui/packages/app/playwright-acceptance-results/
+            ui/packages/app/playwright-acceptance-report/
+          include-hidden-files: true
+          retention-days: 7

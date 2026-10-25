@@ -42,7 +42,7 @@ const CAP_SMALL_TOKENS: u32 = 200_000;
 pub const DEFAULT_MEMORY_CHECKPOINT_EVERY: u32 = 5;
 
 /// The fill fraction at which a stage chunks when the fleet does not say.
-pub const DEFAULT_STAGE_CHUNK_THRESHOLD: f32 = 0.75;
+pub const DEFAULT_STAGE_CHUNK_THRESHOLD: f32 = 0.90;
 
 /// What the tenant's resolved provider offers a sentinel knob.
 ///

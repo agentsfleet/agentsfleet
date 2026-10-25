@@ -20,10 +20,8 @@ use crate::tool_trace::{ToolCallStatus, edge_fits};
 /// and a constant's name means nothing to a runner's author.
 pub const CALL_ID_MAX_BYTES: usize = 64;
 
-/// A tool call began.
-///
-/// `args_redacted` is opaque, pre-stringified JSON built runner-side AFTER
-/// substitution — never the resolved bytes.
+/// A tool call started. `args_redacted` contains JSON text with secret values masked, never
+/// the resolved secrets.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -149,6 +147,8 @@ pub struct ToolCallProgress<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFrame<'a> {
+    /// The root conversation is summarizing or continuing after a checkpoint.
+    ContextProgress(#[garde(dive)] crate::context::ContextProgress),
     /// A tool call began.
     #[serde(borrow)]
     ToolCallStarted(#[garde(dive)] ToolCallStarted<'a>),
@@ -171,7 +171,7 @@ impl ActivityFrame<'_> {
             Self::ToolCallStarted(body) => Some(&body.call_id),
             Self::ToolCallProgress(body) => Some(&body.call_id),
             Self::ToolCallCompleted(body) => Some(&body.call_id),
-            Self::FleetResponseChunk(_) => None,
+            Self::FleetResponseChunk(_) | Self::ContextProgress(_) => None,
         }
     }
 
@@ -219,8 +219,7 @@ pub struct ActivityRequest<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivityAccepted {
-    /// Always `true`: a batch this daemon could not accept is refused with a
-    /// problem document, never acknowledged with `false`.
+    /// Always true. Rejected batches return an error response instead.
     pub ok: bool,
 }
 

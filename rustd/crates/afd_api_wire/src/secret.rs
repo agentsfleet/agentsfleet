@@ -61,10 +61,8 @@ pub struct StoreSecretRequest<'a> {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReplaceSecretRequest<'a> {
-    /// The complete replacement body.
-    ///
-    /// Opaque for the same reason create's is: an unparsed slice in Rust, an
-    /// object on the wire. `value_type` names the difference.
+    /// Complete replacement JSON object. Fields omitted from this object are removed from the
+    /// secret.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     #[serde(borrow)]
     pub data: &'a RawValue,

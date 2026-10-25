@@ -30,7 +30,7 @@ const LEDGER_SCHEMA: &str = "audit";
 const LEDGER_TABLE: &str = "audit._sqlx_migrations";
 
 /// How many tables the slots build.
-const TABLE_COUNT: usize = 48;
+const TABLE_COUNT: usize = 49;
 
 /// Every table the slots build, one per line as `schema.table: column, ...`,
 /// columns in any order. A line ending in `\` continues on the next.
@@ -142,6 +142,8 @@ vault.secrets: id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonc
     meta_has_key, created_at, updated_at
 memory.entries: id, fleet_id, workspace_id, key, content, category, workspace_visible, \
     created_at, updated_at
+memory.context_checkpoints: id, draft_id, lease_id, fleet_id, branch_id, resource_version, \
+    document, created_at, updated_at
 ";
 
 /// Every table outside the system schemas, with its columns in any order.

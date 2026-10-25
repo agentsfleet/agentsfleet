@@ -94,6 +94,7 @@ pub(super) async fn unknown(f: &Fixture, lease: &Claimed) {
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {
+            supports_compaction: true,
             messages: vec![ModelMessage::User { text: FIRST.into() }],
             max_output_tokens: 64,
         },

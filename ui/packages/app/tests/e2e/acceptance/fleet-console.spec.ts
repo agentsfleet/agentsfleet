@@ -74,7 +74,7 @@ test.describe("fleet console", () => {
     await expect(conversation).toBeVisible();
 
     // A message leaves the composer and lands in the conversation.
-    const textarea = composer.getByPlaceholder(/message this fleet/i);
+    const textarea = composer.getByPlaceholder(/message your fleet/i);
     await expect(textarea).toBeEnabled();
     await expect(textarea).toBeFocused();
     await textarea.fill("console acceptance steer");
@@ -91,10 +91,9 @@ test.describe("fleet console", () => {
     await expect(page).toHaveURL(new RegExp(`fleets/${fleet.id}\\?view=memory$`));
     await expect(page.getByRole("button", {name: "Edit setup", exact: true})).toBeVisible();
 
-    // The way back to the wall — the breadcrumb's first crumb, scoped to its
-    // own landmark so it is not confused with the sidebar destination.
-    await page.getByRole("navigation", { name: "Breadcrumb" })
-      .getByRole("link", { name: "Fleets" })
+    // The shared sidebar returns to all saved fleets from every fleet section.
+    await page.getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Your fleets", exact: true })
       .click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
   });

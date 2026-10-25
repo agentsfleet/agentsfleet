@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@agentsfleet/design-system": "workspace:*",
-    "@assistant-ui/react": "^0.15.30",
+    "@assistant-ui/react": "^0.15.31",
     "@clerk/nextjs": "^7.9.19",
     "@clerk/ui": "^1.41.1",
     "@hookform/resolvers": "^6.0.0",
@@ -40,7 +40,7 @@
     "@radix-ui/react-tooltip": "1.4.1",
     "class-variance-authority": "0.7.1",
     "diff": "^9.0.0",
-    "effect": "4.0.5",
+    "effect": "4.0.6",
     "lucide-react": "^1.61.0",
     "next": "16.4.2",
     "posthog-js": "^1.438.13",

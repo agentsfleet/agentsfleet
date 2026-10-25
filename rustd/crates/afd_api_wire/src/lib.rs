@@ -23,6 +23,7 @@ pub mod admin_library_native;
 pub mod approval;
 pub mod auth;
 pub mod authoring;
+pub mod billing;
 pub mod catalogue;
 pub mod connector;
 pub mod fleet;

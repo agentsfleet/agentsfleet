@@ -37,6 +37,7 @@ type MidRunFrame = Extract<
   {
     kind:
       | typeof FRAME_KIND.CHUNK
+      | typeof FRAME_KIND.CONTEXT_PROGRESS
       | typeof FRAME_KIND.TOOL_CALL_STARTED
       | typeof FRAME_KIND.TOOL_CALL_PROGRESS
       | typeof FRAME_KIND.TOOL_CALL_COMPLETED;
@@ -45,6 +46,7 @@ type MidRunFrame = Extract<
 
 const MID_RUN_KINDS: ReadonlySet<string> = new Set([
   FRAME_KIND.CHUNK,
+  FRAME_KIND.CONTEXT_PROGRESS,
   FRAME_KIND.TOOL_CALL_STARTED,
   FRAME_KIND.TOOL_CALL_PROGRESS,
   FRAME_KIND.TOOL_CALL_COMPLETED,

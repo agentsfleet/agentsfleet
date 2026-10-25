@@ -83,6 +83,8 @@ async fn turn(connector: &impl Connect, provider: &str) -> Vec<afr_providers::Re
         tools: &tools,
         hosted: &[],
         cache_key: FLEET,
+        max_output_tokens: None,
+        single_attempt: false,
     };
     provider.stream(request).collect().await
 }

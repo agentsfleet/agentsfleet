@@ -17,7 +17,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Trust anchors | 6 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures · signature proves origin, not producer · the standing integration grant | §Trust anchors |
 | GitHub App URLs | 2, different jobs | `/api/connectors/github/callback` on the dashboard (browser install) vs `/v1/ingress/github` on the API (machine events) | §GitHub App |
 | Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
-| Binding writes | callback and Disconnect atomic | each commits the sealed grant and the routing rows in one transaction, taking the workspace row lock first, so the two serialise even before a grant exists | §The registry |
+| Binding writes | each operation is atomic; concurrent Connect and Disconnect are unordered | each commits its vault and routing changes together; a first-connect race can leave a partial binding | §The registry |
 | App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
 | Outbound HTTP | a deadline on every vendor call | refusal is `UZ-CONN-003` (502); token exchange 10 s · Slack post 5 s · thread re-read 1.5 s · answer check 3 s | §Bounded outbound |
 | Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
@@ -71,7 +71,11 @@ The connector registry is the closed `Provider` enum (`rustd/crates/afd_connecto
 - **Routes are generic over `{provider}`** (API reference › Connectors). The dashboard owns `/api/connectors/{provider}/callback`; Disconnect removes only `agentsfleet` state.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers match exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name and a variant with a missing arm does not compile. Unit tests pin the rest: every id parses back to its variant, no two display names match, every OAuth connector asks for at least one scope, and no two providers share a signed-state domain or nonce namespace (`provider.rs`, `registry/tests.rs`).
-- **A callback and a Disconnect each write both rows in one transaction.** A completing callback commits its sealed grant and its routing row together, so a connect that cannot seal its grant leaves no routing row behind. Disconnect deletes the grant and the routing rows together, so a refused delete leaves both (`afd_connector/src/grant/holding.rs`). Both lock the workspace row first (`identity.workspaces`, `FOR NO KEY UPDATE`, `afd_connector/src/sql.rs`), so a callback and a Disconnect take turns even on a first connect, before the grant's row exists, and end with both rows or neither. The vault and the routing table share one Postgres, so no advisory lock is needed.
+- **Each callback and Disconnect commits its own vault and routing changes together.** A failure rolls back that operation's changes. Neither takes a shared workspace lock (`afd_connector/src/grant/mod.rs`, `grant/holding.rs`).
+
+Concurrent first Connect and Disconnect can leave a vaulted handle without its routing row.
+Complete a fresh Connect to restore the binding, or Disconnect again when removal is intended.
+
 - **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live in `rustd/crates/afd_ingress/src/app/mod.rs`. Slack keeps `POST /v1/connectors/slack/events` (the `/v1/connectors/{provider}/events` route) because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention once, under the `slack_mention` admission producer, on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention/mod.rs`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
@@ -154,7 +158,11 @@ one-time code → GitHub user token
                          other workspace: 403, no mutation
 ```
 
-A callback completion writes the vault handle and the reverse-routing rows in one transaction. **Disconnect** deletes both in one transaction too, and the two serialise on the workspace row, which exists before a first Connect writes a handle (§"The registry: a provider is a data entry"). A handle a model entry still names is not deleted: Disconnect answers 409 `UZ-VAULT-004` with `current_state: "referenced"`. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
+A callback completion writes the vault handle and reverse-routing rows in one transaction.
+**Disconnect** deletes both in one transaction too.
+Concurrent operations remain unordered; see §"The registry: a provider is a data entry" for the partial-binding risk and recovery.
+
+A handle a model entry still names is not deleted: Disconnect answers 409 `UZ-VAULT-004` with `current_state: "referenced"`. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
 
 The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page, as M187_001's Discovery records. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
 
@@ -166,7 +174,9 @@ github = {                               provider = github
 }                                        credentials = NONE
 ```
 
-The encrypted handle supports outbound token minting. The connector-install row is deliberately non-secret and supports inbound `installation.id → workspace` routing. Neither row alone is sufficient. A callback completion failure rolls back both rows and leaves the workspace disconnected.
+The encrypted handle supports outbound token minting. The connector-install row is deliberately non-secret and supports inbound `installation.id → workspace` routing. Neither row alone is sufficient.
+
+A callback failure rolls back its changes, preserving the preceding state.
 
 ### Repository and event subscriptions belong to fleets
 

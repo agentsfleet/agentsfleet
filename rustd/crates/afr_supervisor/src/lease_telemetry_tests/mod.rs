@@ -101,7 +101,11 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
     let lessee = scripted_lessee(&home);
     let (turns, coordinator) = FleetTurns::start();
     tokio::spawn(coordinator);
-    let leased = lease(LEASE_ID, FLEET_ID);
+    let mut leased = lease(LEASE_ID, FLEET_ID);
+    // This test sends real tool schemas through window preflight; the canned
+    // one-token policy cannot hold those schemas and its pinned instructions.
+    leased.policy.model_context_tokens = 32_768;
+    leased.policy.context.context_cap_tokens = 32_768;
     lessee
         .run(&turns, &leased, &Egress::closed())
         .await

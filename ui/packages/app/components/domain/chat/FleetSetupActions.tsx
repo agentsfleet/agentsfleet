@@ -5,7 +5,8 @@ import type { DraftView } from "@/lib/api/draft-state";
 import type { Review } from "@/lib/api/draft-types";
 import { useId, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Input, Label } from "@agentsfleet/design-system";
-import { DRAFT_STATE, START_KIND, isRunning } from "@/lib/api/draft-types";
+import { DRAFT_STATE, isRunning } from "@/lib/api/draft-types";
+import { START_KIND } from "@/lib/api/draft-vocabulary";
 
 type Props = {client: DraftClient; view: DraftView; setup: Review; dirty: boolean};
 const ignore = (): void => undefined;

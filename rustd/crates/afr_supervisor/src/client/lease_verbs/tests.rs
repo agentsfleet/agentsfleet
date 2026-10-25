@@ -119,7 +119,7 @@ async fn every_lease_verb_body_carries_its_fence_and_fields() {
     for (verb, method, _path, body) in &calls {
         match method {
             Method::Get | Method::Delete => assert!(body.is_none(), "{verb:?}"),
-            Method::Post | Method::Patch => {
+            Method::Post | Method::Patch | Method::Put => {
                 let token = body
                     .as_ref()
                     .and_then(|body| body["fencing_token"].as_u64());
@@ -143,6 +143,7 @@ fn every_method_is_sent_as_itself() {
     let cases = [
         (Method::Get, reqwest::Method::GET),
         (Method::Post, reqwest::Method::POST),
+        (Method::Put, reqwest::Method::PUT),
         (Method::Patch, reqwest::Method::PATCH),
         (Method::Delete, reqwest::Method::DELETE),
     ];

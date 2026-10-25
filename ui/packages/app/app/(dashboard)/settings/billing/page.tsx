@@ -1,62 +1,29 @@
-import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
+import type { BillingSearch } from "./lib/report-query";
+import Link from "next/link";
+import { Button, PageHeader, PageLayout, PageTitle, UnavailableState } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
-import {
-  getTenantBilling,
-  listTenantBillingCharges,
-} from "@/lib/api/tenant_billing";
-import {
-  CURSOR_PAGE_SIZE_PARAM,
-  CURSOR_TRAIL_PARAM,
-  PAGE_SIZE_PARAM,
-  cursorForTrail,
-  cursorTrailFrom,
-  pageSizeFrom,
-} from "@/lib/pagination/cursor-trail";
-import BillingBalanceCard from "./components/BillingBalanceCard";
-import BillingUsageTab from "./components/BillingUsageTab";
+import { SUPPORT_EMAIL } from "@/lib/contact";
+import { RouteRetryButton } from "@/components/domain/RouteRetryButton";
+import { BillingReportView } from "./components/BillingReportView";
+import { loadBillingReport } from "./lib/load-report";
 
 export const dynamic = "force-dynamic";
-
-const BILLING_DESCRIPTION = "Your credit balance and a clear record of what your fleets use.";
 
 export default async function BillingSettingsPage({
   searchParams,
 }: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: Promise<BillingSearch>;
 } = {}) {
   const query = searchParams ? await searchParams : {};
-  const pageSize = pageSizeFrom(query[PAGE_SIZE_PARAM]);
-  const cursor = cursorForTrail(
-    cursorTrailFrom(
-      query[CURSOR_TRAIL_PARAM],
-      pageSize,
-      query[CURSOR_PAGE_SIZE_PARAM],
-    ),
-  );
   const token = await requireCredential();
-
-  // Both reads are independent. Failures reach the shared retry boundary so an
-  // unavailable ledger never becomes a successful "No charges yet" result.
-  const [billing, chargesResp] = await Promise.all([
-    getTenantBilling(token),
-    // The ledger page comes from the URL, so a reload or a shared link opens
-    // the page the operator meant rather than resetting to the newest.
-    listTenantBillingCharges(token, {
-      limit: pageSize,
-      ...(cursor ? { cursor } : {}),
-    }),
-  ]);
-
-  const charges = chargesResp.items;
-
-  return (
-    <PageLayout fullHeight className="h-full overflow-hidden">
-      <PageHeader description={BILLING_DESCRIPTION}><PageTitle>Billing</PageTitle></PageHeader>
-      <BillingBalanceCard billing={billing} />
-      <Section className="flex min-h-0 flex-1 flex-col gap-xl" aria-label="Usage history">
-        <SectionHeader as="h2">Usage history</SectionHeader>
-        <BillingUsageTab initialCharges={charges} initialCursor={chargesResp.next_cursor} pageSize={pageSize} />
-      </Section>
-    </PageLayout>
-  );
+  const loaded = await loadBillingReport(token, query);
+  return <PageLayout className="billing-page gap-lg font-system [&_button]:font-system">
+    <PageHeader className="min-h-9 flex-row items-center gap-lg border-0 pb-0 sm:gap-lg" actions={
+      <Button size="sm" asChild><a href={`mailto:${SUPPORT_EMAIL}`}>Add credits</a></Button>
+    }><PageTitle className="font-system text-heading font-medium">Usage &amp; billing</PageTitle></PageHeader>
+    {loaded.ok ? <BillingReportView report={loaded.report} modelNames={loaded.modelNames} pageSize={loaded.pageSize}
+      selected={loaded.selected} detail={loaded.detail} /> :
+      <UnavailableState title="Billing report unavailable" description="Your settled spending could not be loaded. Retry, or reset the filters and try again."
+        actions={<><RouteRetryButton label="Retry report" /><Button variant="ghost" size="sm" asChild><Link href="/settings/billing">Reset filters</Link></Button></>} />}
+  </PageLayout>;
 }

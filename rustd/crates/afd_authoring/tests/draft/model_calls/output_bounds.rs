@@ -15,7 +15,7 @@ const NATIVE_ENVELOPE_HEADROOM: usize = 1024;
 fn proposal(id: &str) -> Value {
     let proposal = json!({"kind":"initialize","definition":definition()});
     json!({"type":"function_call","name":"propose_setup","call_id":id,
-        "arguments":json!({"proposal_json":proposal.to_string()}).to_string()})
+        "arguments":json!({"proposal":proposal}).to_string()})
 }
 
 #[tokio::test]
@@ -24,7 +24,6 @@ async fn unsupported_output_call_bounds_and_native_overflow_keep_known_usage() {
     for output in [
         json!([{"type":"web_search_call","id":"unexpected","status":"completed"}]),
         json!([{"type":"function_call","name":"grant_access","call_id":"wrong-tool","arguments":"{}"}]),
-        json!([{"type":"function_call","name":"propose_setup","call_id":"bad-arguments","arguments":"incomplete JSON"}]),
         json!([proposal(&"x".repeat(129))]),
         json!([{"type":"message","content":[{"type":"output_text","text":"x".repeat(ENVELOPE_BYTES_MAX - 190)}]}]),
         json!([
@@ -74,7 +73,7 @@ async fn a_provider_cannot_reuse_a_call_identity_already_in_the_conversation() {
     request.request.messages.extend([
         ModelMessage::Assistant {
             text: "Prior proposal".into(),
-            proposal_calls: vec![ProposalCall {
+            proposal_calls: vec![ProposalCall::Proposed {
                 id: "prior-call".into(),
                 proposal: Proposal::Initialize {
                     definition: Box::new(definition()),

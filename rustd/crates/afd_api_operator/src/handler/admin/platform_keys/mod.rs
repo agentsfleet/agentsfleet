@@ -39,12 +39,8 @@ const DETAIL_MODEL_UNKNOWN: &str =
     path = "/v1/admin/platform-keys",
     tag = afd_http::openapi::tag::ADMIN,
     operation_id = "list_platform_keys",
-    summary = "List platform LLM keys",
-    description = concat!(
-        "Lists all configured platform-wide LLM provider keys. These are ",
-        "shared keys that workspaces fall back to when no self-managed key is ",
-        "configured. ",
-    ),
+    summary = "List shared model-provider credentials",
+    description = "Lists shared model-provider credentials used by workspaces without their own credentials.",
     params(
     ),
     responses(
@@ -73,12 +69,8 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     path = "/v1/admin/platform-keys",
     tag = afd_http::openapi::tag::ADMIN,
     operation_id = "put_platform_key",
-    summary = "Set a platform LLM key",
-    description = concat!(
-        "Configures a platform-wide LLM provider key by referencing a ",
-        "workspace that has a self-managed key stored. The platform key ",
-        "proxies through the referenced workspace's credential. ",
-    ),
+    summary = "Set a shared model-provider credential",
+    description = "Selects a workspace's stored provider credential for shared use across workspaces.",
     request_body = PlatformKeyPut,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PlatformKeySetResponse),
@@ -148,10 +140,10 @@ pub(crate) async fn set<D: Services>(
     path = "/v1/admin/platform-keys/{provider}",
     tag = afd_http::openapi::tag::ADMIN,
     operation_id = "delete_platform_key",
-    summary = "Delete a platform LLM key",
+    summary = "Remove a shared model-provider credential",
     description = concat!(
-        "Removes a platform-wide LLM provider key. Workspaces without ",
-        "self-managed keys will no longer be able to use this provider. ",
+        "Removes a shared model-provider credential. Workspaces without their own ",
+        "credential will lose access to this provider.",
     ),
     params(
         afd_http::openapi::path::Provider,

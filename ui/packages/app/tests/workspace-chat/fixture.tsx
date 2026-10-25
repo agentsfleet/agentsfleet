@@ -11,7 +11,7 @@ export type Call = {path: string; method: string; body: unknown; headers: Header
 const auth = vi.hoisted(() => ({isLoaded: true, isSignedIn: true, userId: "creator"}));
 const navigation = vi.hoisted(() => ({push: vi.fn(), refresh: vi.fn()}));
 export const chatRouter = navigation;
-vi.mock("next/navigation", () => ({useRouter: () => navigation}));
+vi.mock("next/navigation", () => ({useRouter: () => navigation, useSearchParams: () => new URLSearchParams()}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => auth}));
 vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({stagePlatformLibraryAction: vi.fn()}));
 

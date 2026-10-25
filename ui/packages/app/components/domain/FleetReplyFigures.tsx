@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { SignalSpinner } from "@agentsfleet/design-system";
 
-import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
+import { formatDollars } from "@/lib/money";
 import { formatCompactCount, formatElapsed, runFigure } from "@/lib/events/run-figures-format";
 import type { ReplyFigures } from "./fleetMessageReaders";
 

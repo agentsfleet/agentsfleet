@@ -16,7 +16,7 @@ vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks"
 vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
 vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
-  return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemDropdown() };
+  return h.designSystemCore(await orig<Record<string, unknown>>());
 });
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
@@ -24,8 +24,6 @@ vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-m
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
-vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
-vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
 vi.mock("@/lib/api/secrets", async () => (await import("./helpers/dashboard-app-mocks")).secretsApiMock());
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", async () => (await import("./helpers/dashboard-app-mocks")).addSecretFormMock());
@@ -60,28 +58,32 @@ describe("KillSwitch component", () => {
 
   it("offers Resume + Kill when fleet is stopped", async () => {
     await renderSwitch("stopped");
-    expect(screen.getByRole("button", { name: /^resume$/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^resume$/i })).toBeNull();
+    await userEvent.click(screen.getByRole("button", {name: "Fleet actions"}));
+    expect(screen.getByRole("menuitem", {name: /^resume$/i})).toBeTruthy();
+    expect(screen.getByRole("menuitem", {name: /^kill$/i})).toBeTruthy();
   });
 
   it("offers Resume + Kill when fleet is paused (auto-halt)", async () => {
     await renderSwitch("paused");
-    expect(screen.getByRole("button", { name: /^resume$/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^resume$/i })).toBeNull();
+    await userEvent.click(screen.getByRole("button", {name: "Fleet actions"}));
+    expect(screen.getByRole("menuitem", {name: /^resume$/i})).toBeTruthy();
+    expect(screen.getByRole("menuitem", {name: /^kill$/i})).toBeTruthy();
   });
 
-  // The label already names the action; the glyph must not be read out twice.
-  it("hides each lifecycle action's glyph from its accessible name", async () => {
+  it("keeps the terminal action in an accessible menu and retains its confirmation", async () => {
     await renderSwitch("active");
-    for (const name of [/^stop$/i, /^kill$/i]) {
-      const button = screen.getByRole("button", { name });
-      expect(button.querySelector("[data-icon]")?.getAttribute("aria-hidden")).toBe("true");
-    }
+    expect(screen.queryByRole("button", {name: /^kill$/i})).toBeNull();
+    expect(screen.queryByRole("button", {name: /^stop$/i})).toBeNull();
+    const trigger = screen.getByRole("button", {name: "Fleet actions"});
+    expect(trigger.querySelector("[data-icon]")?.getAttribute("aria-hidden")).toBe("true");
+    await userEvent.click(trigger);
+    expect(screen.getByRole("menuitem", {name: /^kill$/i})).toBeTruthy();
+    expect(setFleetStatusActionMock).not.toHaveBeenCalled();
   });
 
-  // After opening the action dialog, both the trigger button and the
-  // ConfirmDialog confirm button carry the same accessible name. Scope the
-  // confirm-click to the alertdialog subtree to disambiguate.
+  // Scope confirmation to the dialog so a menu action can never bypass it.
   async function clickConfirmInDialog(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
     const dialog = await screen.findByRole("alertdialog");
     const { within } = await import("@testing-library/react");
@@ -91,7 +93,8 @@ describe("KillSwitch component", () => {
   it("active → Stop happy path: click → confirm → setFleetStatusAction(stopped) → refresh", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
       expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped", '"displayed-fleet"'),
@@ -102,7 +105,8 @@ describe("KillSwitch component", () => {
   it("stopped → Resume sends status='active'", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitch("stopped");
-    await user.click(screen.getByRole("button", { name: /^resume$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^resume$/i}));
     await clickConfirmInDialog(user, /^resume$/i);
     await waitFor(() =>
       expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "active", '"displayed-fleet"'),
@@ -112,7 +116,8 @@ describe("KillSwitch component", () => {
   it("active → Kill sends status='killed'", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
       expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed", '"displayed-fleet"'),
@@ -126,7 +131,8 @@ describe("KillSwitch component", () => {
     }));
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
     const dialog = await screen.findByRole("alertdialog");
     const confirm = within(dialog).getByRole("button", { name: /^kill$/i });
 
@@ -145,7 +151,8 @@ describe("KillSwitch component", () => {
     setFleetStatusActionMock.mockRejectedValueOnce(new Error("network down"));
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
     await clickConfirmInDialog(user, /^kill$/i);
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/network down/i));
@@ -159,7 +166,8 @@ describe("KillSwitch component", () => {
     setFleetStatusActionMock.mockRejectedValueOnce(null);
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
     await clickConfirmInDialog(user, /^kill$/i);
 
     await waitFor(() =>
@@ -173,7 +181,8 @@ describe("KillSwitch component", () => {
     stopFleetMock.mockRejectedValue(new ApiError("transition not allowed", 409, "UZ-AGT-010", "req_x"));
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
@@ -182,7 +191,8 @@ describe("KillSwitch component", () => {
     stopFleetMock.mockRejectedValue(new Error("network down"));
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() => expect(stopFleetMock).toHaveBeenCalled());
     expect(screen.queryByRole("alertdialog")).toBeTruthy();
@@ -196,7 +206,8 @@ describe("KillSwitch component", () => {
     });
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
@@ -212,7 +223,8 @@ describe("KillSwitch component", () => {
     });
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this fleet/i),
@@ -227,7 +239,8 @@ describe("KillSwitch component", () => {
     });
     const user = userEvent.setup({ delay: null });
     await renderSwitch("stopped");
-    await user.click(screen.getByRole("button", { name: /^resume$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^resume$/i}));
     await clickConfirmInDialog(user, /^resume$/i);
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't resume this fleet/i),
@@ -242,7 +255,8 @@ describe("KillSwitch component", () => {
     });
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(KILL_FAILURE_PATTERN),
@@ -255,7 +269,8 @@ describe("KillSwitch component", () => {
   it("Cancel dismisses the confirm dialog and clears pendingAction", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
     const dialog = await screen.findByRole("alertdialog");
     const { within } = await import("@testing-library/react");
     await user.click(within(dialog).getByRole("button", { name: /cancel/i }));

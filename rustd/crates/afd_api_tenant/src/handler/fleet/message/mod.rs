@@ -84,18 +84,14 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
     operation_id = "list_fleet_messages",
     summary = "List a fleet's chat thread with bodies",
     description = concat!(
-        "Returns the newest chat events first. Each item carries the trigger ",
-        "payload (`request_json`) and the agent's full answer ",
-        "(`response_text`). One request replaces reading the event list and ",
-        "then each event's detail. A page holds at most `limit` items and at ",
-        "most 512 KiB of encoded items. The newest item always ships, even ",
-        "alone. Follow `next_cursor` to read the rest. ",
-        "Any page can also list messages still waiting for a runner, older ",
-        "than its cursor, with status `queued` and no answer yet. ",
+        "Lists chat events newest first with request bodies and full replies. Pages hold at ",
+        "most `limit` items and 512 KiB; the newest item is always included. Follow ",
+        "`next_cursor` for more. Older waiting messages may also appear with status ",
+        "`queued` and no reply.",
     ),
     params(
         afd_http::openapi::path::Fleet,
-        ("starting_after" = Option<String>, Query, description = "Opaque continuation cursor from a previous page's `next_cursor`."),
+        ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged."),
         ("limit" = Option<String>, Query),
     ),
     responses(

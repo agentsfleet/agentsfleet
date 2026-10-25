@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { DRAFT_EVENT, DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT, followDraft } from "@/lib/api/draft-events";
+import { DRAFT_CONTEXT_EVENT, DRAFT_EVENT, DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT, followDraft } from "@/lib/api/draft-events";
 import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DRAFT_ID, FLEET_ID } from "./helpers/draft-fixtures";
 import { FakeEventSource } from "./helpers/fake-event-source";
@@ -36,6 +36,10 @@ it.each([false, true])("keeps preview gaps separate from authoritative reads (pr
   if (!source) throw new Error("Private connection was not opened");
   source.emitNamed(DRAFT_DELTA_EVENT, "private preview");
   expect(progress.delta).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  source.emitNamed(DRAFT_CONTEXT_EVENT, "unsubscribed context notice");
+  expect(progress.delta).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  expect(progress.gap).not.toHaveBeenCalled();
+  expect(source.closed).toBe(false);
   expect(reconcile).not.toHaveBeenCalled();
   source.emitNamed(DRAFT_RESYNC_EVENT, "{}");
   await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());

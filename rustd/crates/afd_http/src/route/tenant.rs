@@ -28,6 +28,10 @@ pub enum TenantRoute {
     Billing,
     /// Credit-pool charges, as the Usage tab renders them.
     BillingCharges,
+    /// Complete-period settled usage reporting.
+    BillingReport,
+    /// Individually settled charges of one billed activity.
+    BillingActivityCharges,
     /// The tenant's workspaces.
     Workspaces,
     /// The tenant's LLM provider configuration, which holds a credential.
@@ -69,6 +73,8 @@ impl TenantRoute {
         Self::CreateWorkspace,
         Self::Billing,
         Self::BillingCharges,
+        Self::BillingReport,
+        Self::BillingActivityCharges,
         Self::Workspaces,
         Self::Provider,
         Self::ModelEntries,
@@ -99,6 +105,8 @@ impl TenantRoute {
         match self {
             Self::Billing
             | Self::BillingCharges
+            | Self::BillingReport
+            | Self::BillingActivityCharges
             | Self::Workspaces
             | Self::ModelLibrary
             | Self::CurrentUser
@@ -132,6 +140,14 @@ impl TenantRoute {
             Self::Billing => ("/v1/tenants/me/billing", Scopes::Always(BILLING_READ)),
             Self::BillingCharges => (
                 "/v1/tenants/me/billing/charges",
+                Scopes::Always(BILLING_READ),
+            ),
+            Self::BillingReport => (
+                "/v1/tenants/me/billing/reports/current",
+                Scopes::Always(BILLING_READ),
+            ),
+            Self::BillingActivityCharges => (
+                "/v1/tenants/me/billing/activities/{activity_id}/charges",
                 Scopes::Always(BILLING_READ),
             ),
             Self::Workspaces => ("/v1/tenants/me/workspaces", Scopes::Always(WORKSPACE_ADMIN)),

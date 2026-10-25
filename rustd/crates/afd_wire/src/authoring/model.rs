@@ -4,23 +4,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{DECIMAL_BYTES_MAX, ENVELOPE_BYTES_MAX, Proposal};
-
-/// A fixed proposal call, still untrusted until activity accepts its edit.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct ProposalCall<D = Value, C = Value, I = Value> {
-    /// Provider call identity, with no tool authority of its own.
-    #[garde(
-        length(bytes, min = 1, max = 128),
-        custom(afd_validate::rules::nul_free)
-    )]
-    pub id: String,
-    /// The one tool this protocol supports.
-    #[garde(dive)]
-    pub proposal: Proposal<D, C, I>,
-}
+use super::{DECIMAL_BYTES_MAX, ENVELOPE_BYTES_MAX, ProposalCall};
 
 /// Roles cannot introduce system instructions or other tools.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -38,11 +22,11 @@ pub enum ModelMessage<D = Value, C = Value, I = Value> {
         /// Untrusted prior text.
         #[garde(length(bytes, max = ENVELOPE_BYTES_MAX), custom(afd_validate::rules::nul_free))]
         text: String,
-        /// Only proposals can appear in prior tool calls.
+        /// Only fixed proposal calls or their bounded refusals can appear here.
         #[garde(length(max = 8), dive)]
         proposal_calls: Vec<ProposalCall<D, C, I>>,
     },
-    /// Outcome of applying a proposal through activity.
+    /// Outcome of applying a proposal or rejecting its arguments.
     Tool {
         /// A prior fixed-tool call.
         #[garde(
@@ -67,6 +51,10 @@ pub struct ModelRequest<D = Value, C = Value, I = Value> {
     /// Also capped against the attempt's remaining output allowance.
     #[garde(range(min = 1))]
     pub max_output_tokens: u32,
+    /// The runner understands metered summary replies and can continue the same turn.
+    #[garde(skip)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub supports_compaction: bool,
 }
 
 /// A lease-scoped request; diagnostics deliberately omit the token and context.
@@ -83,7 +71,7 @@ pub struct ModelCall<D = Value, C = Value, I = Value> {
     /// Admitted attempt identity, bound to this lease.
     #[garde(length(bytes, min = 36, max = 36))]
     pub attempt_id: String,
-    /// Current attempt fence.
+    /// Current attempt number. Rejects updates from replaced runners.
     #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
     pub fence: String,
     /// Fresh `UUIDv7` for this physical call.
@@ -112,10 +100,10 @@ impl<D, C, I> std::fmt::Debug for ModelCall<D, C, I> {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Validate)]
 #[serde(tag = "knowledge", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModelUsage {
-    /// Supplied by a validated daemon dispatch receipt.
+    /// Usage verified against the server's model-request record.
     Known {
         /// Includes all provider-reported input tokens.
-        #[garde(range(max = 32768))]
+        #[garde(range(max = u64::from(u32::MAX)))]
         input_tokens: u64,
         /// Includes reasoning and other nonvisible output tokens.
         #[garde(range(max = u64::from(u32::MAX)))]
@@ -142,13 +130,17 @@ pub struct ModelResult<D = Value, C = Value, I = Value> {
     /// Whether this acknowledgement came from the saved receipt.
     #[garde(skip)]
     pub replayed: bool,
+    /// A metered working-context summary completed; continue the same user turn.
+    #[garde(skip)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub compacted: bool,
     /// Bounded assistant text.
     #[garde(length(bytes, max = ENVELOPE_BYTES_MAX), custom(afd_validate::rules::nul_free))]
     pub text: String,
     /// Empty when output was cut or malformed.
     #[garde(length(max = 8), dive)]
     pub proposal_calls: Vec<ProposalCall<D, C, I>>,
-    /// Daemon-authoritative usage only.
+    /// Usage measured by the server.
     #[garde(dive)]
     pub usage: ModelUsage,
     /// Incomplete proposals cannot run.

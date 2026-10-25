@@ -43,11 +43,10 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
     path = afd_wire::paths::LEASE_ACTIVITY,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_publish_activity",
-    summary = "Publish live-tail activity frames",
+    summary = "Publish live activity",
     description = concat!(
-        "Frames for the workspace event stream. Answers 202 rather than 200: ",
-        "the frame is accepted for publication, and a subscriber reading it ",
-        "is a separate event from this call returning. ",
+        "Publishes live activity to the workspace stream. A 202 response confirms ",
+        "acceptance for publication, not delivery to a subscriber.",
     ),
     request_body = ActivityRequest,
     params(

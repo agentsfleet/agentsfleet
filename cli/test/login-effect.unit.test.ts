@@ -21,6 +21,7 @@ import {
   InterruptedError,
   NetworkError,
   ServerError,
+  SessionAbortedError,
   type CliError,
 } from "../src/errors/index.ts";
 import {
@@ -137,9 +138,12 @@ describe("loginEffect — browser open + outcome rendering", () => {
         loginEffect({ ...DEFAULT_FLAGS, noOpen: false, force: true }),
       ),
     );
-    // The flow still aborts at the --no-input verify prompt; we only assert
-    // the browser-open branch ran before that.
-    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+    // The real callback receives the browser double's denial before any
+    // verification or credential write. The manual prompt is never used.
+    expect(failureValue(exit)).toBeInstanceOf(SessionAbortedError);
+    expect(failureValue(exit)?.detail).toBe("login was denied in your browser");
+    expect(rec.stdout.some((line) => line.includes("?flow=loopback#"))).toBe(true);
+    expect(rec.stdout.some((line) => /Check code: [A-F0-9]{4}-[A-F0-9]{4}/.test(line))).toBe(true);
     expect(rec.stdout.some((l) => l.includes("browser: opened"))).toBe(true);
   });
 });

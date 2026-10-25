@@ -36,7 +36,7 @@ type TriggerEntry = { kind: typeof SPLIT.TRIGGER; key: string; event: FleetEvent
 export type FleetThreadEntry =
   | ThreadEntry
   | TriggerEntry
-  | { kind: typeof SPLIT.REPLY; key: string; event: FleetEvent };
+  | { kind: typeof SPLIT.REPLY; key: string; event: FleetEvent; requestActor: string };
 
 export type FleetThreadEntries = {
   entries: FleetThreadEntry[];
@@ -78,7 +78,7 @@ export function useFleetThreadEntries(
         case SPLIT.TRIGGER:
           return withRenderKind(convertEvent(entry.event), RENDER_KIND.TRIGGER);
         case SPLIT.REPLY:
-          return toReplyMessage(convertEvent(entry.event), entry.event);
+          return toReplyMessage(convertEvent(entry.event), entry.event, entry.requestActor);
         case ENTRY_KIND.GROUP:
           return groupMessage(entry.events, entry.key, convertEvent);
         default:
@@ -130,6 +130,7 @@ function expandEntry(
     {
       kind: SPLIT.REPLY,
       key: `${entry.key}${REPLY_ID_SUFFIX}`,
+      requestActor: event.actor,
       event: {
         ...event,
         id: `${event.id}${REPLY_ID_SUFFIX}`,

@@ -44,7 +44,7 @@ bun run build
 bun ./dist/bin/agentsfleet.js login
 ```
 
-Sign in in the browser, then enter the browser's verification code in the terminal. The CLI reports `login complete` after verification.
+Sign in, check that the browser and terminal show the same code, then select **Authorize**. The terminal completes sign-in automatically. If the browser is on another computer, restart with `login --no-open` and enter its verification code in the terminal.
 
 See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for installer and release instructions. The [quickstart](https://docs.agentsfleet.net/quickstart) covers writing a fleet in chat and connecting its tools and triggers.
 
@@ -147,7 +147,7 @@ orly gate work                  # what the pre-commit hook runs
 and `.githooks/pre-push`, and orly declines to overwrite hooks it did not
 write.
 
-`make harness-verify` runs shared gates from `.orly/audits/` and repository-owned checks from `audits/`.
+`make harness-verify` runs shared gates from `.orly/audits/` and repository-owned checks from `scripts/checks/`.
 
 Read about [architecture](docs/architecture/), start with the
 [operator playbooks](playbooks/README.md), or jump into

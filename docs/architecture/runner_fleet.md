@@ -158,7 +158,7 @@ A renewal pushes the kill-deadline forward while the runner's lease task lives. 
    └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Fail-safe by construction: a transient `/renew` failure retries on the next tick (the window leaves slack); if it cannot renew by the deadline the run is cut and the event reclaimed + redone elsewhere — never double-run.
+A transient renewal failure retries on the next tick. At the last granted deadline, the runner stops and another runner can reclaim unsettled work. Fences reject stale durable writes; external effects retain their own retry and idempotency limits.
 
 ## Scope — an execution plane, deliberately not a control plane
 
@@ -193,7 +193,7 @@ The BEFORE/NOW split diagram is front-loaded in §Topology.
 
 ### Where the code lives
 
-The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**. The two build graphs share only the crates both planes need: `afd_wire` (the `/v1/runners` wire), `afd_core`, `afd_validate`, `afd_observability`, `afd_inference` and `afd_otlp` (the OpenTelemetry export, which `afr_telemetry` links). No runner crate links a datastore crate ([Runner execution](./runner_execution.md) §Crates).
+The build graph keeps datastore crates outside the runner. [Runner process model](runner_execution.md#crates) owns the shared crate list, including cryptography for encrypted private reports.
 
 | Layer | Path | Build graph | Links | Role |
 |---|---|---|---|---|
@@ -274,7 +274,14 @@ Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connect
 
 ### Operator plane + reassignment
 
-The read of the fleet — `GET /v1/fleets/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — landed in **M84_001**. The **mutation** half — `PATCH /v1/fleets/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `runner.events` log, and the **liveness sweeper** that marks stale runners offline and expires affinity for admin-driven reassignment — landed in **M84_002**. "Busy" stays **derived** from `runner.leases` — a runner holds **0..N** active leases under the M88_002 worker pool, so there is no singular live-lease column: `busy = EXISTS(active lease)` and `active = COUNT(active)` derive server-side, and reassignment targets a specific lease row. Capacity-aware scheduling (`available = worker_count − active`) stays out of scope (M85_001 shipped label placement only, not capacity) because no runner-reported `worker_count` exists today. Heartbeat-lapse recovery remains bounded by the lease-expiry backstop first; M84_002 adds the offline audit event and admin-driven affinity expiry.
+Operators read runners through `GET /v1/fleets/runners` and change them through `PATCH /v1/fleets/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
+
+A runner can hold multiple active leases. Busy status derives from live leases; the server counts fleet and authoring occupancy under the runner-row lock before granting capacity. [Authoring leases](#authoring-leases) describes the shared limit.
+
+> [!WARNING]
+> Cordon and drain currently block every authenticated runner request, including renewal and reports.
+> The capacity layer permits cordoned or draining renewals, but authentication accepts only `active` tokens (`afd_state/src/credentials/rows.rs`; `afd_auth/src/authenticate.rs`).
+> Do not rely on these actions for graceful completion; existing work can stop and reports can remain spooled.
 
 ### Operator plane — the read surface
 
@@ -313,7 +320,7 @@ Pagination: [REST API design guidelines](../../.orly/docs/REST_API_DESIGN_GUIDEL
 The surface shipped; what it should *do* in these four cases did not.
 
 - **All-runners-down.** If every healthy runner is gone, where does cordoned/lapsed work drain to? There is no eligible target — the work must **hold** (not thrash or fail) until capacity returns.
-- **Eligibility — which runner can take it?** A cordoned/lapsed runner's work can't route anywhere: the target must satisfy every shipped eligibility gate before sticky routing. Today that means the **M85_001 label gate** (`required_tags ⊆ labels`) plus admin-state/liveness checks; M84_002 reassignment composes with that filter. Trust class, tenant/workspace scope, sandbox-tier requirements, and capacity-aware placement remain future work: the runner has a local `worker_count`, but the control plane does not receive it yet, so `available = worker_count - active` is not enforceable server-side.
+- **Eligibility.** Label, state, liveness and shared host-capacity checks precede placement. Trust class, tenant/workspace scope and sandbox-engine eligibility remain future work.
 - **Cordon rules.** When to cordon; partial vs full drain; the drain deadline; what happens if drain never completes (escalate cordon → revoke?).
 - **Drain rules.** How long to wait for in-flight work before reclaiming; how the heartbeat `drain` reply composes with renewal.
 
@@ -386,7 +393,8 @@ bubblewrap, Landlock, seccomp, the lease's cgroup and the process boundary under
 
 ### Multi-run events
 
-One lease is one run. The agent loop does not split a run across leases: at `stage_chunk_threshold` of the model's context window it stops offering tools and asks the model to answer with what it has (`rustd/crates/afr_agent/src/context/mod.rs`). A report's outcome is `processed` or `fleet_error` and never asks to be resumed (`rustd/crates/afd_wire/src/report/mod.rs`).
+One lease is one run. [Conversation compaction](context_lifecycle.md) saves working notes and continues within that lease, retaining tool access.
+A report's outcome is `processed` or `fleet_error`; context pressure does not request another lease (`rustd/crates/afd_wire/src/report/mod.rs`).
 
 A continuation event still exists, chained by `resumes_event_id`: an approval's answer writes one, and the next lease runs it (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event. Sticky routing (below) prefers the runner that ran the previous one, but correctness never depends on it.
 
@@ -679,11 +687,17 @@ The exact, restart-resilient form of the two gauges is a read-only background th
 
 ## Authoring leases
 
-Active implementation requirements; focused and repository proofs remain pending.
+Private setup work shares runner capacity with fleet runs. The sections below describe the implemented protocol; verification evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
 
-POST `/v1/runners/me/leases` requires `accepted_kinds` and returns `kind:"fleet"` or `kind:"authoring"`. All claim paths lock the runner row before checking unexpired active leases across both kinds, and insert the selected lease in that same transaction. A host's authenticated worker_count is server-owned registration/heartbeat data, not a per-poll capacity override. Reducing it stops new claims while old leases drain. Migration 944 adds a host claim revision and last successful kind. The shared poll reads an optimistic choice; each lease write rechecks its revision under the host lock and advances it with the lease. Successful mixed placements alternate preference across daemon replicas. An empty kind tries the other; a competing placement invalidates the old offer.
+POST `/v1/runners/me/leases` requires `accepted_kinds` and returns `kind:"fleet"` or `kind:"authoring"`. Claims lock the runner row, count unexpired active leases across both kinds, and insert the selected lease within that transaction.
 
-Both fleet and authoring renewal also take that runner-row guard before their lease/affinity or authoring locks. Sample authoritative database time after acquiring the guard. Require the original lease and matching affinity deadline to exceed that time; equality or expiry loses the lease. Extend both deadlines atomically, then commit before releasing the host guard. Expired work requires a new capacity-checked claim. Runtime issue and renewal now use `afd_runner/src/capacity/` and strict original-expiry checks in `afd_fleet/src/lease/renew/mod.rs` and `src/lease/sql/renew.rs`. The focused ledger records their tests; authoring admission and renewal remain pending. A two-replica barrier test orders expiry → authoring admission → delayed runtime renewal and asserts rejection, one live slot, and no deadlock.
+The server owns `worker_count`; a poll cannot override it. Reducing it below current occupancy stops new claims and refuses renewals until occupancy fits (`afd_runner/src/capacity/mod.rs`). Existing leases can therefore be interrupted.
+
+The shared poll reads an optimistic kind choice. Under the host lock, each successful placement rechecks and advances the claim revision and last successful kind. Mixed placements alternate preference across daemon replicas; an empty kind tries the other, and a competing placement invalidates the old offer.
+
+Both renewal kinds hold the runner guard before extending a live deadline. Fleet renewal locks runner → lease/affinity; authoring renewal locks draft → attempt → runner. [Concurrency](concurrency.md#runner-capacity-and-authoring-lock-order) owns the ordering and nonblocking claim exception.
+
+Renewals sample database time after acquiring the host guard. Expired work requires a new capacity-checked claim; renewal cannot revive it. Runtime renewal extends the lease and affinity deadlines atomically under their original fences.
 
 Authoring is creator-private work. Resolve its workspace owner, recheck creator membership, choose the oldest eligible queued message within that draft, and refuse another live attempt for the same draft. Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; Dragonfly publishes wake/progress hints, not another authoritative message copy.
 
@@ -709,18 +723,25 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 
 | Bound | Value | Enforcement |
 |---|---|---|
-| Input per model call | 32,768 tokens | A known model tokenizer counts the assembled request; other configured models reserve one token per UTF-8 byte. Both include system instructions, tool schemas, history and current text. |
+| Input per model call | Selected model's physical window | Shared compaction measures the assembled request, including instructions, schemas, history and current text, while reserving output and framing headroom. |
 | Output across a turn | Saved model maximum output tokens | Sum provider output over all calls; reserve only remaining output for each next call. |
 | Calls per attempt | 8 | Daemon and runner counters; no tool loop beyond this count. |
 | Wall time per attempt | 300 seconds | Monotonic runner timer plus daemon expiry/fence; timeouts become timed_out. |
 | Provider request | Up to 300 seconds | Recorded dispatch deadline, clipped to attempt expiry; replay never starts another send. Upstream cancellation remains unconfirmed. |
 | Runner model-call HTTP wait | 310 seconds | Allows the bounded provider call and receipt settlement. |
 | Lease TTL / renewal | 30 seconds /10 seconds | No overlapping admitted lease while the prior live attempt remains counted. |
-| First instructions / edited | 12 KiB /32 KiB | Shared validated text bounds, independently of tokenizer counts. |
-| System / tool schemas | 2,048 /4,096 tokens maximum | Pin assembled prompt version; validate these counts on model eligibility and before each call. |
+| First instructions / edited | 12,288 /32,768 characters | Shared validated text bounds, independently of tokenizer counts. |
 | Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
 
-The model's context window must also cover the counted input plus remaining output reservation. Reject ineligible models rather than choosing a fallback. If context cannot fit, trim only disclosed eligible history with a recorded summary boundary, or fail before calling the provider; never truncate the policy or tool schema. Output includes hidden/reasoning tokens if the provider charges/counts them. Eligibility requires a provider-supported hard output bound and reliable usage semantics. The byte fallback is deliberately conservative and may refuse a request that a provider-specific tokenizer would fit; provider-reported usage remains authoritative for settlement. Count every physical provider dispatch, including retries, against the call limit; disable hidden SDK retries. An uncertain provider call ends the attempt instead of allowing another call to consume an unknown output remainder.
+Original history remains creator-private and is read in bounded pages. [Conversation compaction](context_lifecycle.md) retains working notes without a fixed 64-message or 32,768-token conversation allowance.
+
+Before each physical send, the daemon funds the complete measured request and known prior costs. It releases database locks while funding, then rechecks source and authority before recording dispatch intent (`afd_authoring/src/model/dispatch/funding.rs`).
+
+The shared window planner reserves output and framing headroom. The turn's remaining output allowance and selected model's physical window still bound every request (`afd_context/src/window.rs`).
+
+The byte fallback can refuse input that a provider-specific tokenizer would fit. Provider-reported usage remains authoritative for settlement, including charged reasoning tokens.
+
+Every physical dispatch spends the call allowance; automatic transport retries are disabled. Uncertain usage ends the attempt before another dispatch can spend an unknown output remainder. [Proposal correction](runner_execution.md#proposal-correction-and-failure) describes bounded retries after rejected edits.
 
 The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. Claim includes the current candidate; every proposal acknowledgement returns its accepted version. Exact replay returns that original version, even after later edits. It may ask clarifying questions. It cannot grant access, publish, Save, call arbitrary functions, or choose different credentials. Tool operations pass the same validator as drawer edits. Assistant answer and candidate changes are separate records; terminal report does not re-emit the whole definition.
 
@@ -736,6 +757,8 @@ The model has one proposal tool: initialize once when no candidate exists, then 
 
 The 24-hour limit is logical expiry enforced by the supervisor. Physical files can remain while a machine is powered off. A holder of retained ciphertext and its local key can decrypt offline; storage snapshots follow their own retention.
 
-Authenticate attempt, generation, first-write time and deadline metadata before reading encrypted content. Keep a separate `kind:"accounting"` report without text, content digests or capabilities. Startup scans every spool category before decrypting or uploading private bytes. Remove expired, corrupt, orphaned and clock-uncertain content and keys while preserving content-free settlement. During uptime a monotonic deadline prevents wall-clock changes from extending retention. Across restarts compare UTC with the saved high-water clock and fail closed on rollback. Cleanup failure stops private draining. Retry, quarantine and rename never extend expiry.
+[Private content and report retention](runner_execution.md#private-content-and-report-retention) owns encryption, clock rollback, startup cleanup and per-entry failure behavior. These rules apply to the supervisor's private spool.
 
-Accounting-only replay uses the original report identity and normalized accounting fields. It settles once against daemon receipts whether the original terminal report committed, its acknowledgement was lost, it never arrived, or the draft was deleted. Altered usage conflicts. No accounting retry restores a message, answer or candidate. This section states implementation requirements; focused evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
+Accounting-only replay uses the original report identity and normalized accounting fields. Receipts prevent duplicate settlement after lost acknowledgements or draft deletion. A report never received can also settle without restoring private content.
+
+Altered usage conflicts; no accounting retry restores a message, answer or candidate. The [check ledger](../reviews/workspace-setup/checks.md) records verification evidence.

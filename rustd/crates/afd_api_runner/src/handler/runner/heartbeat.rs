@@ -51,13 +51,11 @@ const EVENT: &str = "runner_heartbeat_failed";
     path = afd_wire::paths::RUNNER_HEARTBEATS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_heartbeat",
-    summary = "Report liveness, receive assignment",
+    summary = "Send a heartbeat and receive settings",
     description = concat!(
-        "Liveness up, configuration down. The assignment rides every reply. ",
-        "An operator's dashboard change therefore reaches the host within one ",
-        "interval, and nobody visits the host. An unreadable body is read as ",
-        "`no report this beat` and the beat still counts. A host must not be ",
-        "able to fail its own liveness by sending nonsense. ",
+        "Marks the runner online and returns its assigned settings. Dashboard changes reach ",
+        "the runner on its next heartbeat. An unreadable report is ignored, but the ",
+        "heartbeat still counts.",
     ),
     request_body = Option<HeartbeatRequest>,
     responses(

@@ -1,5 +1,6 @@
+import { RouteLoading } from "@/components/layout/RouteLoading";
 import { Suspense } from "react";
-import { PageHeader, PageLayout, PageTitle, Skeleton } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { credential, requireCredential } from "@/lib/auth/credential";
 import { listTenantModelEntriesCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
@@ -8,21 +9,6 @@ import { MODELS_PAGE_DESCRIPTION, MODELS_PAGE_TITLE } from "./copy";
 import { libraryErrorFromCause, type LibraryError } from "@/lib/api/library-types";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Stable loading region for the registry table. Fixed shape so the shell does
- * not reflow when real rows arrive; `Skeleton` owns motion and honours
- * reduced-motion, which a bespoke animated placeholder would not.
- */
-function ModelsRegistrySkeleton() {
-  return (
-    <div className="space-y-sm" aria-busy="true">
-      <output className="sr-only">Loading model registry</output>
-      <Skeleton className="h-5 w-32" />
-      <Skeleton className="h-48 rounded-lg" />
-    </div>
-  );
-}
 
 /**
  * An ordinary visit reads the FIRST registry page and nothing
@@ -40,20 +26,16 @@ export default async function ModelsKeysPage({
   const { workspaceId } = await params;
   await requireCredential();
 
-  // Header paints immediately; the registry streams in beneath it, matching
-  // the Approvals/Events/Fleets routes. This used to await the registry read
-  // before rendering anything, so an empty page was held on screen for the
-  // whole round-trip.
   return (
-    <PageLayout fullHeight className="h-full overflow-hidden">
-      <PageHeader description={MODELS_PAGE_DESCRIPTION}>
-        <PageTitle>{MODELS_PAGE_TITLE}</PageTitle>
-      </PageHeader>
+    <Suspense fallback={<RouteLoading />}>
+      <PageLayout fullHeight className="h-full overflow-hidden">
+        <PageHeader description={MODELS_PAGE_DESCRIPTION}>
+          <PageTitle>{MODELS_PAGE_TITLE}</PageTitle>
+        </PageHeader>
 
-      <Suspense fallback={<ModelsRegistrySkeleton />}>
         <ModelsRegistryData workspaceId={workspaceId} />
-      </Suspense>
-    </PageLayout>
+      </PageLayout>
+    </Suspense>
   );
 }
 

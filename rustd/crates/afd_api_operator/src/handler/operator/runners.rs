@@ -22,13 +22,11 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
     path = "/v1/fleets/runners",
     tag = afd_http::openapi::tag::FLEET,
     operation_id = "list_fleet_runners",
-    summary = "List fleet runners",
+    summary = "List runners",
     description = concat!(
-        "Platform-admin operator-plane read of the whole fleet, newest first ",
-        "over the composite (created_at, id) key. Under keyset pagination a ",
-        "runner enrolled mid-traversal never repeats or hides a row. Each row ",
-        "carries a derived `liveness` — never the stored auth state, never ",
-        "the token hash. ",
+        "Lists runners newest first. Requires platform administrator access. Each item ",
+        "includes its current connection status, without authentication state or token ",
+        "hashes. Use `next_cursor` to continue.",
     ),
     params(
         afd_http::openapi::query::OperatorPage,
@@ -73,12 +71,10 @@ pub(crate) async fn list<D: Services>(
     path = "/v1/fleets/runners/{runner_id}",
     tag = afd_http::openapi::tag::FLEET,
     operation_id = "get_fleet_runner",
-    summary = "Get a fleet runner",
+    summary = "Read a runner",
     description = concat!(
-        "Platform-admin read of a single runner. Carries the summary fields, ",
-        "a live-work snapshot, and lifetime counters from durable lease and ",
-        "event rows — never from in-memory metrics. The runner detail page ",
-        "loads from this read. ",
+        "Returns a runner's details, current work, and lifetime counters. Requires platform ",
+        "administrator access.",
     ),
     params(
         afd_http::openapi::path::Runner,

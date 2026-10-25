@@ -13,8 +13,7 @@ pub use crate::admin_catalogue::{
 use afd_wire::runner::{AssignedPolicy, label_list};
 use garde::Validate;
 
-/// Operator intent for a runner. Only `Active` admits a runner-plane call;
-/// every other value rejects one.
+/// Administrator-selected runner state. Only `Active` permits runner API requests.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -84,10 +83,8 @@ pub struct RunnerAdminPatchRequest<'a> {
     #[serde(borrow)]
     #[garde(skip)]
     pub assigned_policy: Option<AssignedPolicy<'a>>,
-    /// The runner's whole placement label set, replacing the stored one: at
-    /// most 32 labels of at most 64 bytes each, the bounds enrolment applies.
-    /// A label given twice is stored once, in the order first given. An empty
-    /// list clears every label.
+    /// Replaces all runner labels: at most 32 labels of 64 bytes each. Duplicates are removed
+    /// in their original order. An empty list clears labels.
     #[serde(borrow)]
     #[garde(inner(custom(label_list)))]
     pub labels: Option<Vec<Cow<'a, str>>>,
@@ -109,11 +106,8 @@ pub struct RunnerAdminPatchResponse<'a> {
     /// The labels as stored, each once, when the request carried labels.
     #[serde(borrow)]
     pub labels: Option<Vec<Cow<'a, str>>>,
-    /// When the self-test request was recorded.
-    ///
-    /// The reply is the REQUEST, never a verdict — the daemon picks the ask up
-    /// on its next beat, so a result cannot exist yet. Returning the instant
-    /// lets a reader age the pending state instead of spinning with no clock.
+    /// When the self-test was requested. The runner receives it on its next heartbeat and
+    /// reports later; this timestamp does not indicate success.
     #[serde(with = "afd_wire::instant::option", default)]
     pub selftest_requested_at: Option<jiff::Timestamp>,
 }

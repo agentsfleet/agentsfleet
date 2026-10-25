@@ -166,13 +166,21 @@ impl Live {
     }
 
     pub(super) async fn next(&mut self) -> afd_authoring::Delta {
+        serde_json::from_str(&self.next_payload().await).expect("private delta schema")
+    }
+
+    pub(super) async fn context(&mut self) -> afd_authoring::ContextNotice {
+        serde_json::from_str(&self.next_payload().await).expect("private context schema")
+    }
+
+    async fn next_payload(&mut self) -> String {
         tokio::time::timeout(WAIT, async {
             loop {
                 let message = message(self.reader.recv().await.expect("bus stays live"));
                 if message.payload == HELLO {
                     continue;
                 }
-                return serde_json::from_str(&message.payload).expect("private frame schema");
+                return message.payload.clone();
             }
         })
         .await

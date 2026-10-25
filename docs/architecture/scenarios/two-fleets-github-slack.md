@@ -18,7 +18,7 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
 |---|---|
 | **Workspace** | Your team's space; every fleet, secret and connection lives in one. |
 | **Fleet** | One saved agent: its reviewed setup, meaning its instructions and the triggers, tools, secrets, network and budget it may use. A `fleet.fleets` row that selects one immutable `fleet.revisions` row. |
-| **`agentsfleetd`** | The control plane. Owns Postgres, Dragonfly, the vault and the HTTP API; never runs the model. |
+| **`agentsfleetd`** | The control plane. Owns Postgres, Dragonfly, the vault, HTTP and private authoring model dispatch. Fleet runtime model calls run on the runner. |
 | **`agentsfleet-runner`** | The worker on a host. Asks for work, runs the agent loop, reports back; holds no datastore credential. |
 | **Admission** | "We accepted this job", a `fleet.admissions` row committed **before** the sender hears yes. |
 | **Queue** | Unsettled `fleet.admissions` rows, oldest first within each fleet. |
@@ -270,7 +270,7 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"D. WATCH".
                                                        ▲                                │
   CLI steer ── Server-Sent Events (SSE), Bearer ───────┘                                │
                                                                                         │
-          one shared Dragonfly pub/sub socket: SSUBSCRIBE fleet:{id}:activity           │
+          shared Dragonfly pub/sub owner: SSUBSCRIBE fleet:{id}:activity                │
           frames copied into each viewer's bounded queue ◄──────────────────────────────┘
 
    frames: event_admitted → event_received → tool_call_started →

@@ -1,5 +1,6 @@
 //! Real sockets prove private frame delivery, deletion and revocation boundaries.
 
+mod context;
 mod fixture;
 mod live;
 mod preview;

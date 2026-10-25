@@ -19,6 +19,9 @@ use serde_json::Value;
 
 use self::harness::{Fleet, json_body, send};
 
+#[path = "integration_operator_runner_retirement.rs"]
+mod retirement;
+
 pub(crate) const SUBJECT: &str = "user_live_runner_operator";
 const NOW: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 const POLICY: &str = r#"{"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":99,"extra_binds":[]}}"#;
@@ -41,6 +44,7 @@ async fn operator_reads_and_mutates_a_real_runner() {
     assert_runner_policy_and_actions(&router, &fixture.token, &runner_path).await;
     assert_runner_events(&router, &fixture.token, &runner_path).await;
     assert_terminal_and_missing(&router, &fixture, &runner_path).await;
+    retirement::assert_retired(&router, &fixture, &runner_path).await;
     fixture.cleanup(&enrolled_runner).await;
 }
 

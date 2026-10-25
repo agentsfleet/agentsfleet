@@ -177,7 +177,7 @@ Both channels subscribe to `agentsfleet/linkwarden`: development selects pull re
 - A fleet answers in a channel only when its own reviewed setup names that channel's ID.
 - A delivery is owed only to a destination its producer recorded; a model provider never reaches the delivery ledger.
 - An obligation the destination permanently refuses is abandoned and never re-offered.
-- The resident's memory is the channel's; a subscribed fleet never reads another fleet's memory.
+- Memory is private by default. This scenario grants no shared-memory access; explicit read grants can expose workspace-visible memory from other fleets. See [memory grants](../memory.md).
 - A Slack-requested write run reaches one daemon-issued branch and one draft PR, and never merges or deploys.
 - A write-bound fleet never receives an unaddressed mention.
 - A fleet reads CI evidence only inside its bound repository.

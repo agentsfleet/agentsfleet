@@ -11,7 +11,7 @@ import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/
 import { signInPath } from "@/lib/auth/sign-in-redirect";
 import { ChatComposerFrame } from "./chat/ChatComposerFrame";
 
-const PLACEHOLDER = "Message this fleet…";
+const PLACEHOLDER = "Message your fleet…";
 const SEND_LABEL = "Send";
 const COMPOSER_LABEL = "Chat composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
@@ -35,6 +35,7 @@ const NOT_NOTICED: ReadonlySet<PendingSend["state"]> = new Set([PENDING_SEND_STA
 // place. It never disables itself on the live feed's state — sending is an
 // authenticated write that does not touch the stream.
 export type SteerComposerProps = {
+  modelLabel?: string;
   /** The fleet's ledger of unresolved sends; the notice lists every one not in flight. */
   pending: readonly PendingSend[];
   onResend: (operationId: string) => void;
@@ -45,7 +46,7 @@ export type SteerComposerProps = {
   onDraft: (text: string) => void;
 };
 
-export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft }: SteerComposerProps) {
+export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, modelLabel = "Saved model" }: SteerComposerProps) {
   const unresolved = useMemo(
     () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
     [pending],
@@ -58,13 +59,17 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   // notification — every reply flush — so the count is kept for its draft.
   const draftBytes = useMemo(() => lastDraftBytes(), []);
   return (
+    <>
     <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef}
+      toolbar={<span className="truncate text-eyebrow text-muted-foreground">{modelLabel}</span>}
       actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftSize draftBytes={draftBytes} />
         <DraftReporter onDraft={onDraft} />
 
     </ChatComposerFrame>
+    <p className="mt-sm text-center text-eyebrow text-muted-foreground">New messages use the saved setup. Edit setup to change it.</p>
+    </>
   );
 }
 
@@ -116,7 +121,7 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
         variant="default"
         size="icon"
         aria-label={SEND_LABEL}
-        className="shrink-0 self-end rounded-full"
+        className="shrink-0 self-end rounded-lg"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
         {...(tooLong ? { disabled: true } : {})}
       >

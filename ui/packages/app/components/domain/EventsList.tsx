@@ -13,8 +13,7 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { ActivityIcon, ChevronRightIcon } from "lucide-react";
-import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
-import { compareNanos } from "@/lib/money";
+import { compareNanos, formatDollars } from "@/lib/money";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { senderLabelFor } from "@/lib/events/event-summary";
 import { agentDisplayName } from "@/lib/fleets/agent-label";

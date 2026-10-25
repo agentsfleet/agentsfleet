@@ -23,7 +23,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
 | Long-lived work | supervised control-plane tasks, async connections, and runner tasks | each with a declared spawn point, protection, and stop path | §Thread map |
 | Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
-| Registered locks | 20 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
+| Shared-state locks | inventoried below | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
 | Deadline ownership | one deadline per call site, on both planes | `tokio::time::timeout` or the HTTP client's own timeout; no shared registration map | §The deadline-ownership invariant |
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
@@ -35,7 +35,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 Each trap is enforced in its owner section; this list is the index.
 
-- Never `tokio::spawn` outside the supervisor, the accept loop's per-connection arm, or the hub-owned tasks `afd_dragonfly` starts — a detached task outlives the pools it reads through (§Thread map).
+- Every spawned task needs a lifetime owner and stop path, including request-owned private preview publishers (§Thread map).
 - Never issue an `SSUBSCRIBE`/`SUNSUBSCRIBE` from anywhere but the hub's control task; a subscriber enqueues a command and the dispatch task sends a signal instead, and the enqueue is what may happen under the channel map's lock because it cannot block (§Lock-invariant registry).
 - Never await a round trip on the hub's dispatch task; a subscribe that waits there holds every frame behind it (§Thread map).
 - Never do a blocking wire send while holding the map lock — the C3 fix that ended the hub hazard (§Lock-invariant registry).
@@ -81,15 +81,11 @@ how that state is protected, and how it is stopped and joined.
 
 ### `agentsfleetd` (control plane)
 
-Nothing runs outside the supervisor. `Supervisor::spawn`
-(`rustd/crates/agentsfleetd/src/supervisor/mod.rs`) is the only caller of
-`tokio::spawn` in the daemon apart from the accept loop's per-connection arm and
-the tasks `afd_dragonfly` starts for the hub (its control task, its dispatch task
-and the sixteen doorbell listeners), which all end when the supervised
-`hub_pump` task shuts the hub down. It hands each task a `CancellationToken`, keeps its
-`JoinHandle`, and `shutdown` consumes the supervisor so nothing a task borrowed
-can be dropped until every handle has been joined. A task that will not stop
-inside `JOIN_TIMEOUT` (10 s) is reported by name rather than hanging the process.
+The supervisor owns process-lifetime daemon tasks (`agentsfleetd/src/supervisor/mod.rs`). Connection handlers, hub workers and bounded request-owned work have their own owners.
+
+`Supervisor::spawn` supplies a cancellation token and retains each handle. Shutdown waits for each handle and reports tasks exceeding the ten-second join deadline. The supervised `hub_pump` shuts down the hub and its listeners.
+
+Private answer previews use a request-owned publisher (`afd_authoring/src/model/progress/publish.rs`). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
 
 The inventory is asserted, not described: `test_boot_to_ready_on_compose`
 (`rustd/crates/agentsfleetd/tests/integration_serve.rs`) compares a booted
@@ -116,22 +112,19 @@ A sweep that fails is reported and retried on the next pass: every pass here is
 idempotent and bounded, and a sweeper that exited on a datastore blip would need
 a daemon restart to get liveness back.
 
-The fleet runtime's remaining background work — an in-process event bus,
-install-step workers, the signup metadata fetch —
-arrives as supervised tasks with bounded drains when it arrives, because there is
-no unsupervised spawn path here to arrive as anything else.
+New process-lifetime background work belongs to the supervisor. Request-owned work must retain an abortable handle and a bounded completion path.
 
 ### `agentsfleet-runner` (execution plane)
 
 Rooted at `rustd/crates/agentsfleet_runner/src/main.rs`; no runner crate links a
 datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
-`afr_supervisor::run` composes the long-lived work, and no state is shared behind
-a lock between those tasks (`rustd/crates/afr_supervisor/src/lib.rs`).
+`afr_supervisor::run` composes the long-lived work (`rustd/crates/afr_supervisor/src/lib.rs`). The private report spool protects shared clock and deadline state with its own mutex.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| heartbeat | `afr_supervisor::run`, beside the drain and the pool under one `tokio::join!` | the assignment it publishes | a `watch` channel; no lock | the halt token → returns → joined |
-| report spool drain | `afr_supervisor::run` | the storage home's `spool/` | file work on the blocking pool | the halt token → returns → joined |
+| heartbeat | `afr_supervisor::run`, beside both drains and the pool under one `tokio::join!` | the assignment it publishes | a `watch` channel; no lock | the halt token → returns → joined |
+| runtime report spool drain | `afr_supervisor::run` | the storage home's runtime reports | file work on the blocking pool | the halt token → returns → joined |
+| private report spool drain | `afr_supervisor::run` | encrypted authoring answers and separate accounting envelopes | private spool state mutex; filesystem work on the blocking pool | serving halt ends the drain; startup cleanup precedes workers |
 | workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its lease and that lease's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | leasing stops → polling stops → leases in flight run to their reports → the set drains |
 | hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next lease | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
 | executor link (one per sandbox) | `afr_executor`'s client | one sandbox's executor connection | owned by the link task | ends with its sandbox |
@@ -193,6 +186,7 @@ constraint. Each is documented at its declaration (C4).
 | exec sessions | `afr_tools`'s `Sessions` | one lease's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
 | mirror locks | `afr_supervisor`'s `Mirrors` | the map of one lock per repository mirror | held only to fetch that mirror's tokio lock, which is held across the mirror's fetch and checkout |
 | run clock and lease timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one lease's segment timings | each a leaf — held alone |
+| private report state | `afr_supervisor`'s authoring spool | clock high-water mark, uncertainty flag and monotonic report deadlines | shared by writes and cleanup; filesystem work runs on the blocking pool |
 | egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf — held alone |
 
 The load-bearing ordering rule (the C3 fix that ended the hub's
@@ -245,17 +239,15 @@ that a teardown had to hold by hand.
    too: `hub.shutdown()` clears the channel map, so a reader parked on the hub
    gets a hub-closed error it can act on rather than waiting on a socket nobody
    is pumping.
-3. **Drop last.** `shutdown` consumes the supervisor, so what the tasks borrowed
-   cannot be dropped until it returns, and the pools are dropped by the caller
-   after that. Invariant C2 becomes a borrow-checker fact rather than a teardown
-   ordering — asserted as an observation by `Arc::strong_count` after teardown in
-   `test_shutdown_joins_all_tasks`.
+3. **Drop after shutdown returns.** The caller drops its pools after `Supervisor::shutdown` finishes.
+   Successful joins establish stopped tasks; timeout records an abandoned task and drops its join handle (`agentsfleetd/src/supervisor/mod.rs`).
+   Dropping that handle detaches the task, so timeout does not prove every task stopped.
 
-On the runner the same three steps are `afr_supervisor::run`. The heartbeat, the
-spool drain and the worker pool run under one `tokio::join!` until the halt token
-fires, and leases in flight run to their reports. Then every held sandbox is
-destroyed, and only after that does `run` return
-(`rustd/crates/afr_supervisor/src/lib.rs`).
+A detached task retains its owned references until it ends. The intended C2 discipline therefore requires tasks to observe cancellation before the join deadline. Treat an abandoned-task report as incomplete shutdown, even though the supervisor returns.
+
+The runner joins its heartbeat, runtime report drain, private report drain and worker pool (`afr_supervisor/src/lib.rs`). Private spool cleanup completes before those components start. After they return, shutdown destroys every held sandbox.
+
+Workers finish their current lease before leaving the pool. Lease deadlines, renewal refusals and the running halt token can interrupt that work.
 
 Handshakes, not sleeps, in every one of these tests: channels, `Notify` and
 `CancellationToken` on both planes. The abandoned-task assertions run under `#[tokio::test(start_paused)]`, so a
@@ -303,7 +295,7 @@ Integration (CI) job that runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims and both lease renewal kinds acquire the runner row before counting or extending live capacity. Sample database time after this guard, so an expired lease or affinity cannot revive. Runtime renewal takes runner → lease/affinity → wallet.
+All claims hold the runner row while counting live capacity and writing a lease. Both renewal kinds hold it before extending deadlines and sample database time after acquiring it. Runtime renewal takes runner → lease/affinity → wallet.
 
 A setup chat renewal takes draft → attempt → runner instead (`afd_authoring/src/lease/renew.rs`). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 

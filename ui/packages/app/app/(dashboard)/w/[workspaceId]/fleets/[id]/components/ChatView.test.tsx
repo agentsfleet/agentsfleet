@@ -23,6 +23,8 @@ vi.mock("@/components/domain/FleetThreadDynamic", () => ({
 }));
 
 import { ChatView } from "./ChatView";
+import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
+import FleetStatusLine from "./FleetStatusLine";
 
 const STATUS_ACTIVE = "active";
 const STATUS_PAUSED = "paused";
@@ -95,11 +97,11 @@ function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>
 // layout, so the ancestor has to be supplied here; the alternative, making
 // `Time` provide its own, would give each cell a private delay and break the
 // coordination the single provider exists for.
-function view(initialSummary: FleetRunSummary, initial: EventDetail[] = [turn()]) {
+function view(initialSummary: FleetRunSummary, initial: EventDetail[] = [turn()], Content = SummaryProbe) {
   return React.createElement(
     StreamOwner,
     null,
-    React.createElement(TooltipProvider, null, React.createElement(ChatView, {
+    React.createElement(TooltipProvider, null, React.createElement(Content, {
       workspaceId: WORKSPACE_ID,
       fleetId: FLEET_ID,
       senderLabel: "Agent Finch",
@@ -137,7 +139,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ChatView — the run summary as a view over the stream", () => {
+describe("useFleetRunSummary — facts from the shared stream", () => {
   it("the strip shows the new run figures when the completion frame arrives, with no read", async () => {
     render(view(summary()));
     expect(screen.getByText("1,500")).toBeTruthy();
@@ -263,4 +265,20 @@ describe("ChatView — the run summary as a view over the stream", () => {
     await act(async () => {});
     expect(screen.getByText("1,500")).toBeTruthy();
   });
+});
+
+function SummaryProbe(props: Parameters<typeof ChatView>[0]) {
+  const result = useFleetRunSummary(props.workspaceId, props.fleetId, props.initial, props.initialSummary);
+  return <FleetStatusLine status={result.status} latest={result.latest} pendingApprovals={result.pendingApprovals}
+    approvalsHref={props.approvalsHref} summaryAvailable={result.latestAvailable} />;
+}
+
+it("keeps ordinary chat free of the metrics strip and reveals approvals when attention is needed", () => {
+  render(view(summary(), [turn()], ChatView));
+  expect(screen.queryByLabelText("Fleet summary")).toBeNull();
+  emit(completion({pending_approvals: 2}));
+  expect(screen.getByRole("link", {name: /2 approvals/}).getAttribute("href")).toBe(APPROVALS_HREF);
+  emit(completion({pending_approvals: 0}));
+  expect(screen.queryByRole("link", {name: /approvals/})).toBeNull();
+  expect(fetchSpy).not.toHaveBeenCalled();
 });

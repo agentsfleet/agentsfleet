@@ -158,8 +158,7 @@ export type TenantBillingChargesResponse = {
      * still name themselves; the callsign derives from it. A setup chat uses
      * its draft's saved fleet, or null while the draft has none. */
     fleet_id: string | null;
-    /** The saved fleet name for historical context. Display identity derives
-     * from fleet_id; an unsaved setup chat has no fleet name. */
+    /** The saved fleet name; an unsaved setup chat has no fleet name. */
     fleet_name: string | null;
     event_id: string | null;
     authoring_attempt_id: string | null;

@@ -21,6 +21,7 @@ use crate::{
     replay,
 };
 
+mod funding;
 mod invoke;
 
 pub(super) const CONTEXT: &str = "reserve authoring model dispatch";
@@ -39,6 +40,9 @@ pub(super) struct Intent {
     pub(super) outbound: provider::Outbound,
     pub(super) authorized_at: Instant,
     pub(super) output_limit: u32,
+    pub(super) candidate: Option<crate::types::Candidate>,
+    pub(super) compaction: Option<afd_context::Compaction>,
+    pub(super) context_digest: String,
 }
 
 impl Intent {
@@ -49,6 +53,7 @@ impl Intent {
         dispatch_id: &str,
         now: Timestamp,
         authorized_at: Instant,
+        candidate: Option<crate::types::Candidate>,
     ) -> Self {
         let remaining = attempt
             .expires_at
@@ -64,12 +69,16 @@ impl Intent {
             model: attempt.model_snapshot.model.clone(),
             context_tokens: prepared.context_tokens,
             progress: None,
+            measurement: prepared.measurement,
         };
         Self {
             outbound,
             attempt,
             authorized_at,
             output_limit: prepared.output_limit,
+            candidate,
+            compaction: prepared.compaction,
+            context_digest: prepared.context_digest,
         }
     }
 }
@@ -119,8 +128,7 @@ impl ModelCalls {
             Decision::Refused(error) => return Err(error),
             Decision::Send(intent) => intent,
         };
-        self.invoke(runner, lease, &request, &counters, *intent, dispatch)
-            .await
+        Box::pin(self.invoke(runner, lease, &request, &counters, *intent, dispatch)).await
     }
 
     async fn reserve(
@@ -137,7 +145,7 @@ impl ModelCalls {
             request.call_index,
             &request.request,
         ))?;
-        let held = budget::held(&self.drafts, runner, lease).await;
+        let held = self.funding(runner, lease, request, counters).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let guarded = guard::bound(&mut tx, runner, lease, counters).await?;
@@ -178,7 +186,7 @@ impl ModelCalls {
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         digest: &str,
-        held: Result<()>,
+        held: Result<Option<funding::Funding>>,
     ) -> Result<Decision> {
         if guarded.attempt.call_count.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
@@ -191,10 +199,11 @@ impl ModelCalls {
         {
             return Err(ErrorKind::Token.into());
         }
-        held?;
-        let continuations =
-            super::continuation::read(connection, &guarded.attempt, request, guarded.now).await?;
-        let prepared = prepare::body(request, &guarded.attempt.model_snapshot, continuations)?;
+        let funding = held?.ok_or(ErrorKind::Balance)?;
+        let candidate = match &guarded.draft.head_candidate_id {
+            Some(id) => Some(crate::candidate::read(connection, &guarded.draft.id, id).await?),
+            None => None,
+        };
         let key = self
             .providers
             .registered_key(
@@ -204,6 +213,7 @@ impl ModelCalls {
             )
             .await?
             .ok_or(ErrorKind::Model)?;
+        let prepared = funding.verify(connection, &guarded, request, &key).await?;
         provider::validate_key(prepared.inference.api, &key)?;
         let now = guard::refresh(connection, &guarded, counters).await?;
         let authorized_at = Instant::now();
@@ -215,6 +225,7 @@ impl ModelCalls {
             &request.dispatch_id,
             now,
             authorized_at,
+            candidate,
         ))))
     }
 }

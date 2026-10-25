@@ -11,7 +11,7 @@ Read this when changing reusable setup, fleet setup revisions, or Definition val
 
 ## Setup authority
 
-One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. End-to-end and migration proofs remain pending under the active cutover spec.
+One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#verification-evidence).
 
 ### Drafts, Library and fleets
 
@@ -21,11 +21,15 @@ Save creates a fleet and closes its setup draft after successful activation. Sav
 
 ### Explicit Library publication
 
-Publishing is a separate human action against the reviewed candidate. It either creates a Library entry or appends an immutable revision to an explicitly selected entry. A failed or retried publication cannot create a second revision for the same operation. Publication does not create a fleet, close its source draft, or change any installed fleet.
+Publishing creates a Library entry or appends an immutable revision to a selected entry. Retry the same key and body within the [authoring replay window](api_resources.md#shared-wire-rules). Publication creates no fleet, leaves its draft open and changes no installed fleet.
 
 ## Storage and runtime reads
 
-Postgres stores normalized Definitions, immutable candidate/Library/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision. Library removal hides the entry while retaining revisions referenced by installed fleets. No object-store bundle is needed for this path.
+Postgres stores normalized Definitions, immutable candidate/Library/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision.
+
+Library removal deletes the entry and its Library history. Installed fleets retain their own frozen revisions; draft source and publication references become null.
+
+No object-store bundle is needed for this path.
 
 Bundle upload, GitHub archive import, export, tar snapshots, runner bundle download, the `SKILL.md`/`TRIGGER.md` parser and source-Markdown setup writers are removed. Shared tools, vault storage, connector ingress and repository checkout keep their independent uses. `fleet.fleets` (`schema/1500_fleet_fleets.sql`) has no instruction or bundle columns, so a fleet row carries no instructions of its own; they live only in its pinned revision (`fleet.revisions`).
 
@@ -65,7 +69,17 @@ Retain approval gates, anomaly rules, monthly ceilings, repository write access,
 
 ### Small atomic edits
 
-Drawer and model proposal tool use the same bounded edit operations. The first model proposal may initialize a full definition only when no candidate exists; first drawer mutation sends a typed definition source with explicit shown defaults. An editable definition can have empty instructions; Save/publication refuses it until complete. There is one configuration schema and validator. Configuration operations are JSON Patch `add`, `remove`, or `replace` below `/config`, plus `replace` of `/description`, a leaf that is never added or removed; preserve array order. Instruction edits are non-overlapping UTF-8 byte ranges `{start_byte,end_byte,text}` against the exact candidate revision. Validate boundaries before editing. Apply the entire batch to a copy, validate once, and replace it under a version guard. Drawer uses If-Match; runner proposals name both base candidate ID and revision. Each accepted change gets a fresh immutable ID and next revision. Lease and proposal receipts expose those versions; exact retry returns its original accepted version. A stale or invalid batch changes nothing.
+Native edits apply atomically to one candidate revision. Configuration operations use JSON Patch `add`, `remove`, or `replace` below `/config`, plus replacement of `/description`; array order is preserved. Instruction ranges use UTF-8 byte offsets against the unmodified instructions.
+
+The drawer supplies native edits with `If-Match`; runner proposals name both candidate ID and revision. Invalid boundaries, overlap, stale versions or invalid final setup change nothing. Accepted changes create a fresh immutable candidate ID and next revision; exact activity retries return their originally accepted version.
+
+The model instead proposes `append {text}` or `replace {old_text,text}` instruction edits. The daemon resolves exact text against the pinned candidate and converts unique matches into native byte ranges. Missing or ambiguous matches become typed refusals; the model never counts Unicode bytes.
+
+The runner returns bounded corrective feedback for refused arguments or rejected native edits. Corrections share the admitted turn’s output allowance and maximum eight model calls; exhaustion ends without claiming the setup is ready. Usage remains charged for observed calls, including rejected proposals.
+
+Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save and publication.
+
+Implementation: `afd_authoring/src/model/provider/edits.rs`, `afd_fleet_runtime/src/definition/edit/mod.rs`, and `afr_supervisor/src/authoring/{proposal,turn}.rs` under `rustd/crates`.
 
 First generated instructions are at most 12,288 characters; later edited instructions at most 32,768 characters. These character ceilings never replace L9's tokenizer checks. Count system instructions, tools, history, and reserved output against the model window. Long instructions are changed through small edits rather than repeated full rewrites.
 
@@ -79,9 +93,11 @@ A Library revision holds reusable setup and immutable requirements. A fleet sepa
 
 ### Native storage and terminal chat
 
-Chat is the authoring path in both the browser and terminal. The daemon stores typed setup and instructions in native revisions. Authoring reads and writes no `SKILL.md`/`TRIGGER.md` files, bundle manifests, support files, tar snapshots or import/export adapters. To reuse an older prompt, paste it into a draft chat and publish the reviewed result. Runtime repository access is configured policy and remains subject to grants; it is separate from importing a fleet definition.
+Private drafts are the authoring path in browser and terminal. [Source selection](user_flow.md#80-the-wedge-surface) covers blank, native JSON, Library and fleet inputs. The daemon stores typed setup and instructions in native revisions.
 
-Serialization round trips cover the description, gates, anomaly rules, network read_only/read_post_paths, repository writes/base, context, trigger options, monthly budgets, and the runtime model reference. A missing description and uppercase/spaced slugs fail. Initialize → edit → edit, lost acknowledgements, stale/reordered proposals, and a small edit to 32 KiB instructions must work without retransmitting the definition.
+Authoring does not load `SKILL.md`, `TRIGGER.md`, bundle manifests or tar snapshots. Paste older prompts into chat or supply native JSON, then review before publication. Runtime repository access remains separate and requires grants.
+
+Serialization round trips cover the description, gates, anomaly rules, network read_only/read_post_paths, repository writes/base, context, trigger options, monthly budgets, and the runtime model reference. A missing description and uppercase/spaced slugs fail. Initialize → edit → edit, lost acknowledgements, stale/reordered proposals, and a small edit to 32,768-character instructions must work without retransmitting the definition.
 
 The terminal client creates or resumes a private draft and sends ordinary chat messages. It displays the same reviewed candidate and readiness checks before explicit Save or Library publication. Reusing a Library revision creates an independent fleet with that revision pinned. Library updates never propagate to existing fleets without Improve and explicit Apply.
 

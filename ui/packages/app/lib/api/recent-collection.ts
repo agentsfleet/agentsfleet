@@ -44,7 +44,7 @@ export class RecentCollection<T extends {id: string}> {
     } catch (cause) {
       if (this.#owner.signal.aborted) return;
       if (losesAccess(cause)) {this.#cursor = null; this.#update({items: [], more: false});}
-      this.#update({error: "Recent chats could not be loaded."});
+      this.#update({error: "Fleets could not be loaded."});
     } finally {this.#update({loading: false});}
   }
 

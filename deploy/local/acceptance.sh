@@ -39,6 +39,7 @@ trap 'exit 143' TERM
 export LOCAL_ACCEPTANCE_STATE="$DEV_STATE/acceptance"
 export LOCAL_ACCEPTANCE_UI_PORT="${ACCEPTANCE_LOCAL_UI_PORT:-$((DEV_PORT + 9000))}"
 export LOCAL_ACCEPTANCE_TLS_PORT="${ACCEPTANCE_LOCAL_TLS_PORT:-$((DEV_PORT + 10000))}"
+export LOCAL_ACCEPTANCE_UI_TLS_PORT="${ACCEPTANCE_LOCAL_UI_TLS_PORT:-$((DEV_PORT + 10001))}"
 export LOCAL_ACCEPTANCE_CA="$LOCAL_ACCEPTANCE_STATE/caddy-data/caddy/pki/authorities/local/root.crt"
 export NEXT_PUBLIC_API_URL="https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT"
 export ACCEPTANCE_RUNNER_MACHINE="$ACCEPTANCE_LOCAL_RUNNER_MACHINE" CARGO_TARGET_DIR="$DEV_SHARED/build"
@@ -96,7 +97,8 @@ make --no-print-directory acceptance-build
 export LOCAL_DEV_BINARY="$DEV_ROOT/dist/acceptance/agentsfleetd"
 make --no-print-directory _ensure-local-daemon
 mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config"
-printf 'https://localhost {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\n' "$DEV_PORT" >"$LOCAL_ACCEPTANCE_STATE/Caddyfile"
+printf 'https://localhost:443 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\nhttps://localhost:444 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\n' \
+  "$DEV_PORT" "$LOCAL_ACCEPTANCE_UI_PORT" >"$LOCAL_ACCEPTANCE_STATE/Caddyfile"
 docker compose --project-name "$DEV_PROJECT-$DEV_ID-acceptance" --file deploy/local/compose.yml up --detach --wait
 deadline=$(( $(date +%s) + DEV_READY_SECONDS ))
 until curl --silent --fail --max-time 2 --cacert "$LOCAL_ACCEPTANCE_CA" "https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT/readyz" >/dev/null; do
@@ -109,7 +111,7 @@ printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nS
   "$LOCAL_ACCEPTANCE_TLS_PORT" "$ACCEPTANCE_RUNNER_TOKEN" >"$LOCAL_ACCEPTANCE_STATE/runner.env"
 start_runner
 
-export BASE_URL="http://localhost:$LOCAL_ACCEPTANCE_UI_PORT"
+export BASE_URL="https://localhost:$LOCAL_ACCEPTANCE_UI_TLS_PORT"
 export NEXT_PUBLIC_API_URL="https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT"
 export AGENTSFLEET_ACCEPTANCE_TARGET="$NEXT_PUBLIC_API_URL" AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL="$BASE_URL"
 export AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1 CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"

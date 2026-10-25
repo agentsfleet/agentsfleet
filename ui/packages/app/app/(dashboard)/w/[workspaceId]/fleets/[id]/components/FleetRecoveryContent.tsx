@@ -10,12 +10,15 @@ import { scheduleSyncPath } from "@/lib/api/draft-schedules";
 import { REQUEST_METHOD, setupErrorMessage, setupRequest } from "@/lib/api/draft-request";
 import { SetupProgress } from "@/components/domain/chat/SetupProgress";
 import { ScheduleSync } from "@/components/domain/chat/ScheduleSync";
+import { useMounted } from "@/hooks/use-mounted";
 import { setFleetStatusAction } from "../../actions";
 
 export function FleetRecoveryContent({workspace, fleet, setupPending}: {workspace: string; fleet: Fleet; setupPending: boolean}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Server-rendered controls must wait until their client handlers can respond.
+  const unavailable = !useMounted() || busy;
   const resume = async (): Promise<void> => {
     setBusy(true); setError(null);
     try {
@@ -36,8 +39,8 @@ export function FleetRecoveryContent({workspace, fleet, setupPending}: {workspac
   };
   return <div className="mb-lg min-h-0 overflow-y-auto space-y-md">
     {error ? <Alert variant="destructive">{error}</Alert> : null}
-    {setupPending ? <SetupProgress fleet={fleet} workspace={workspace} busy={busy} onContinue={() => { void resume(); }}
+    {setupPending ? <SetupProgress fleet={fleet} workspace={workspace} busy={unavailable} onContinue={() => { void resume(); }}
       onRetrySchedule={(schedule) => { void retrySchedule(schedule); }} />
-      : <ScheduleSync schedules={fleet.schedules} busy={busy} onRetry={(schedule) => { void retrySchedule(schedule); }} />}
+      : <ScheduleSync schedules={fleet.schedules} busy={unavailable} onRetry={(schedule) => { void retrySchedule(schedule); }} />}
   </div>;
 }

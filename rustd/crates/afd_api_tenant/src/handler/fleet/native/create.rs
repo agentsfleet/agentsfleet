@@ -13,7 +13,15 @@ use std::sync::Arc;
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = "/v1/workspaces/{workspace_id}/fleets", operation_id = "create_fleet",
     tag = afd_http::openapi::tag::FLEETS, summary = "Save a reviewed fleet",
-    description = "Saves an idle private candidate or pinned Library revision. Exact retries resume one retained fleet. Installing progress names live prerequisites. Run-now acceptance requires a committed initial admission. Retrying Save keeps the same fleet and initial event.",
+    description = concat!(
+        "Saves a reviewed private draft or selected Library revision as a fleet. Inspect ",
+        "the source's complete `review` before copying `review.review_digest`. For a ",
+        "draft, read `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. ",
+        "Setup progress names missing prerequisites. Retry within 24 hours using the same ",
+        "`Idempotency-Key` and unchanged request to recover the same fleet and initial event. ",
+        "After that window, inspect existing resources before creating again. A requested ",
+        "immediate run must be accepted before Save completes.",
+    ),
     params(afd_http::openapi::path::Workspace, ("Idempotency-Key" = String, Header, description = "Required UUIDv7 creation key.")),
     request_body = afd_api_wire::fleet::SaveFleetRequest,
     responses((status = 201, body = afd_api_wire::fleet::FleetResponse, description = "Retained fleet", headers(("Location" = String), ("ETag" = String))),

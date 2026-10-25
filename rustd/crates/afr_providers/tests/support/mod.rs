@@ -281,6 +281,7 @@ pub(crate) async fn run_with(
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
+        context_checkpoints: &afr_agent::testing::ContextMemory::default(),
         events: &sink,
         meter: &Meter::default(),
         stop: &stop,

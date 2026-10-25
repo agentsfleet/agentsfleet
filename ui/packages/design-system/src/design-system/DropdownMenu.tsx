@@ -57,6 +57,7 @@ export function DropdownMenuItem({ className, inset, ref, ...props }: DropdownMe
       ref={ref}
       className={cn(
         "relative flex min-h-9 cursor-pointer select-none items-center gap-2 rounded-md px-2.5 py-2 text-body-sm leading-body-sm outline-none transition-colors pointer-coarse:min-h-11",
+        "[&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
         "text-foreground hover:bg-accent",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         "focus:bg-accent focus:text-foreground",

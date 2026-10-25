@@ -157,25 +157,17 @@ it("CatalogueList — rows + rates + empty state > shows exact prices, the model
   expect(cell.textContent).toBe("GLM 5.2");
   // Actions still name the row by its id, which is what a reader acts on.
   expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
-  // Touch and keyboard reach the id through its copy button, as on the workspace table.
-  expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Copy model id: glm-5.2" })).toBeTruthy();
+  expect(within(rowFor("glm-5.2")).queryByRole("button", { name: "Copy model id: glm-5.2" })).toBeNull();
 });
 
-it("CatalogueList > keeps complete pricing and context evidence inside the phone-visible rates cell", () => {
+it("CatalogueList > keeps the summary compact with pricing changes available through Edit", () => {
   renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
   const rates = screen.getByText("0.55 / 0.14 / 2.19").closest("td")!;
   expect(rates.classList.contains("hidden")).toBe(false);
-  const details = within(rates);
-  expect(details.getByRole("link", { name: "Source" }).getAttribute("href")).toBe(SOURCE_URL);
-  const disclosure = details.getByRole("button", { name: "Price schedule (1)" });
-  expect(disclosure.closest(".hidden")).toBeNull();
-  fireEvent.click(disclosure);
-  expect(details.getByText("Base tier")).toBeTruthy();
-  expect(details.getByText("Effective from")).toBeTruthy();
-  expect(details.getByText("Cache write, 1-hour ($/1M)")).toBeTruthy();
-  expect(details.getAllByRole("link", { name: "Source" })).toHaveLength(2);
-  expect(screen.getByRole("columnheader", { name: "Context source" })).toBeTruthy();
-  expect(screen.getByRole("columnheader", { name: "Pricing details" })).toBeTruthy();
+  expect(screen.getAllByRole("columnheader")).toHaveLength(5);
+  expect(screen.queryByRole("columnheader", { name: "Context source" })).toBeNull();
+  expect(screen.queryByRole("columnheader", { name: "Pricing details" })).toBeNull();
+  expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
 });
 
 it("CatalogueList — rows + rates + empty state > sorts each catalogue data column from its header arrow", () => {

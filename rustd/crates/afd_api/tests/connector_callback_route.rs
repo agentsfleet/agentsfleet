@@ -103,6 +103,17 @@ async fn a_completion_carrying_no_code_is_refused() {
 }
 
 #[tokio::test]
+async fn a_complete_callback_refuses_a_deployment_without_a_platform_workspace() {
+    let response = dashboard(SHIPPED, &format!("code={CODE}&state={FORGED_STATE}")).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let document = harness::json_body(response).await;
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::CONNECTOR_NOT_CONFIGURED.as_str())
+    );
+}
+
+#[tokio::test]
 async fn a_person_without_the_connector_write_scope_cannot_complete() {
     let router = Fleet::new()
         .with_person(

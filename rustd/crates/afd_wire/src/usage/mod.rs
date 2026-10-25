@@ -57,13 +57,11 @@ pub const DAEMON_SEQ_BASE: u32 = 1 << 31;
 /// The highest number a runner's request line may take.
 pub const RUNNER_SEQ_MAX: u32 = DAEMON_SEQ_BASE - 1;
 
-/// One provider request's token counts, as the runner reports it.
+/// Token counts for one provider request, without double counting.
 ///
-/// Each token is counted once: cached reads are not also input, cache writes
-/// are not also input, and reasoning is part of `output_tokens` exactly once.
-/// Cache writes split by the lifetime the provider reported; a write with no
-/// reported lifetime is `cache_write_tokens`, never folded into either
-/// lifetime. Runtime is not here: the daemon measures it.
+/// Cached reads and writes are excluded from input. Reasoning counts once within output.
+/// Cache writes with known lifetimes use their respective fields; unknown lifetimes use
+/// `cache_write_tokens`. Runtime is measured separately by the server.
 //
 // Every count is a `u32`, published as `int64` with a maximum of `u32::MAX`:
 // utoipa's default `int32` would tell a generated client the top half of the
@@ -76,8 +74,8 @@ pub struct RequestUsage {
     /// This request's number within its run, from zero.
     #[garde(range(max = RUNNER_SEQ_MAX))]
     pub seq: u32,
-    /// When the request was made, RFC 3339. The daemon clamps it to the work's
-    /// own window before pricing.
+    /// Request time as an RFC 3339 timestamp. The server limits it to the assignment's time
+    /// window before calculating cost.
     #[garde(skip)]
     #[serde(with = "crate::instant")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = DateTime))]
@@ -126,10 +124,8 @@ impl RequestUsage {
     }
 }
 
-/// The request lines one renewal or report carries: none to [`LINES_MAX`].
-///
-/// A renewal that saw no provider request since the last one sends none; the
-/// daemon still logs the time it ran.
+/// Usage records for this renewal or final report, up to 512. An empty list still records
+/// server-measured runtime.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(transparent)]

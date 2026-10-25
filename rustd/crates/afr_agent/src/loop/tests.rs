@@ -43,6 +43,7 @@ pub(crate) async fn drive(
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
+        context_checkpoints: &crate::testing::ContextMemory::default(),
         events: &sink,
         meter: &Meter::default(),
         stop,
@@ -254,6 +255,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let stop = CancellationToken::new();
     let mint = CountingMint::never();
     let meter = Meter::default();
+    let context_checkpoints = crate::testing::ContextMemory::default();
     let run = engine.run(AgentRun {
         lease: &lease,
         memory: afr_memory::Seed::default(),
@@ -261,6 +263,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
         mint: &mint,
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
+        context_checkpoints: &context_checkpoints,
         events: &sink,
         meter: &meter,
         stop: &stop,

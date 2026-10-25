@@ -52,12 +52,13 @@ boundary is drawn too high: everything below a client boundary ships to the
 browser whether it needs to or not.
 
 **3 · Every route paints a shell before it paints data.**
-`Suspense` with a skeleton wraps the data-dependent region; header, nav,
-and frame render immediately. `force-dynamic` with no `Suspense` makes the
-whole page wait on the slowest call. Exception on record: the fleet wall
-(`w/[workspaceId]/fleets/page.tsx`) deliberately blocks its header on data
-so it cannot paint "Fleets" over a first-run checklist — a documented trade,
-not a precedent.
+
+`Suspense` uses the shared `RouteLoading` indicator around data-dependent regions.
+The header, navigation and frame render immediately.
+`force-dynamic` with no `Suspense` makes the whole page wait on the slowest call.
+
+Exception on record: the fleet wall (`w/[workspaceId]/fleets/page.tsx`) blocks its header on data to avoid painting "Fleets" over a first-run checklist.
+That choice does not set a precedent.
 
 **4 · Mutations feel instant.**
 Writes go through a Server Action wrapped in `useActionState`, with
@@ -94,7 +95,7 @@ Target — shell first, stream the rest, mutate optimistically:
  Browser                      Next server                 agentsfleetd
     │                              │                            │
     │──── GET /w/x/fleets ────────▶│                            │
-    │◀═ shell + skeleton (instant) ═│                           │
+    │◀═ shell + loader (instant) ═══│                           │
     │                              │─── Suspense boundary ─────▶│
     │◀═══ streamed rows ════════════│◀───── fleets JSON ────────│
     │  hydrate ~25 leaf client files (buttons, forms only)      │
@@ -193,7 +194,9 @@ Subresource-Integrity remain separate browser protections.
 
 ## Workspace setup and runtime subjects
 
-Opening New fleet allocates no resource. The first mutation creates a creator-private draft. Draft and fleet adapters key all messages, pending sends, streams and caches by account/workspace/subject. Recovery reads durable messages; streams carry authorized hints. Closing, logout, revocation, delete and subject switches clear private buffers; unsent text stays in memory, never browser local storage. No workspace-wide private broadcast is permitted.
+Opening New fleet allocates no resource; the first mutation creates a creator-private draft. Messages, pending sends, streams and caches bind account, workspace and subject. Durable messages recover progress; streams carry authorized hints.
+
+Subject disposal, logout, revocation and deletion clear private buffers. Hiding the instruction editor preserves local edits; [manual-edit recovery](shared_chat_verification.md#setup-and-runtime-stay-together) explains conflicts. Unsent draft text stays in memory; private drafts never broadcast across the workspace.
 
 The private setup, workspace activity and fleet activity proxies bound stream handshakes to 30 seconds and rotate established bodies at 240 seconds from request start.
 `StreamLifetime` forwards bytes on demand, ends rotation cleanly, and aborts the upstream request.
@@ -218,15 +221,18 @@ New fleet keeps the private setup conversation open across multiple messages.
 The header exposes **Save fleet** when the reviewed candidate can be saved.
 Successful Save opens that fleet's Chat.
 
-The sidebar's Recent list combines authorized fleets with unfinished private drafts.
-Active fleet titles use the brand color; hover or keyboard focus reveals Trash.
+The sidebar's **Fleets** list shows authorized saved fleets.
+Private drafts appear under **Unfinished setups** on **New fleet**.
 
-Fleet **Edit setup**, before **Stop**, opens a private chat panel alongside the mounted runtime conversation.
-The panel exposes **Save changes** below its composer and optional manual instructions through the chat menu.
+Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
+
+Fleet **Edit setup** opens a private chat panel alongside the mounted runtime conversation. **Stop** and permanent **Kill** live in **Fleet actions**.
+
+The panel exposes **Save changes** above its composer and optional **Edit instructions manually** below its conversation.
 Saving a revision closes the panel, refreshes server data and preserves unsent runtime text.
 
 Existing runs keep their pinned revision; new runs use the saved version.
-The Setup tab and Your fleets navigation item are removed.
+The fleet sections are **Chat**, **Activity**, and **Memory**. **Your fleets** in the sidebar opens the fleet listing.
 
 Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
 Effects own connections and cleanup; render stays pure and Hooks remain static.

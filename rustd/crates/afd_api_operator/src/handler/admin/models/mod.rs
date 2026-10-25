@@ -74,10 +74,9 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     operation_id = "create_admin_model",
     summary = "Add a priced model to the catalogue",
     description = concat!(
-        "Creates one catalogue row. `(provider, model_id)` is the row's ",
-        "immutable identity — change either by deleting and re-adding. The ",
-        "rate cache is repopulated on success, so a new price is live with no ",
-        "restart. Requires the `model:admin` scope. ",
+        "Adds a model and its rates. Prices take effect without a restart. Requires ",
+        "`model:admin`. To change `provider` or `model_id`, delete the entry and create ",
+        "another.",
     ),
     request_body = AdminModelCreate,
     responses(
@@ -133,9 +132,8 @@ pub(crate) async fn create<D: Services>(
     operation_id = "update_admin_model",
     summary = "Update model settings and rates",
     description = concat!(
-        "Updates rates and optional inference settings; `provider` and `model_id` are the row identity ",
-        "and are immutable on this endpoint. The rate cache is repopulated on ",
-        "success. Requires the `model:admin` scope. ",
+        "Updates model rates and inference settings without a restart. Requires ",
+        "`model:admin`. The `provider` and `model_id` fields cannot change.",
     ),
     request_body = AdminModelPatch,
     params(

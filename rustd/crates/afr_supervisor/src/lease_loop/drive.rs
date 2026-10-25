@@ -38,6 +38,11 @@ impl LeaseRun<'_> {
     ) -> Ending {
         let mint = LeaseMint::new(&self.lessee.plane, &self.ids.lease);
         let checkpoint = LeaseCheckpoint::new(&self.lessee.plane, &self.ids.fleet, self.lease);
+        let context_checkpoints = crate::context::LeaseContext::new(
+            &self.lessee.plane,
+            &self.ids.lease,
+            self.lease.fencing_token,
+        );
         let verbs = FencedVerbs::new(
             &self.lessee.plane,
             &self.ids.lease,
@@ -50,6 +55,7 @@ impl LeaseRun<'_> {
             mint: &mint,
             verbs: &verbs,
             checkpoint: &checkpoint,
+            context_checkpoints: &context_checkpoints,
             events: &sink,
             meter: &self.meter,
             stop: &self.interrupt,

@@ -86,16 +86,12 @@ pub struct CatalogueEntry<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConsentRedirect<'a> {
-    /// The provider's own page, carrying this round-trip's signed state.
+    /// Provider authorization URL containing signed, one-time connection state.
     pub install_url: Cow<'a, str>,
 }
 
-/// The connect landed and no dashboard page could be named to send the person to.
-///
-/// `POST /v1/connectors/{provider}/callback` answers this as a `200`, never
-/// as a failure. The grant is sealed and the connection is live by the time
-/// this is written. An error would tell a person their connect did not work
-/// when it did, and the next thing they would do is press Connect again.
+/// The provider connected successfully, but no dashboard redirect was available. The
+/// connection is active; do not repeat Connect.
 // The value is [`STATUS_CONNECTED`], the word a status read answers once the
 // grant has landed.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

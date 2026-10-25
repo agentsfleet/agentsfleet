@@ -86,7 +86,24 @@ export const credentialsLayer = (
 };
 
 export const browserLayer: Layer.Layer<Browser> = Layer.succeed(Browser, {
-  open: () => Effect.succeed(true),
+  open: (loginUrl) => Effect.promise(async () => {
+    const url = new URL(loginUrl);
+    if (url.searchParams.get("flow") === "loopback") {
+      const handoff = new URLSearchParams(url.hash.slice(1));
+      const callback = handoff.get("callback");
+      if (!callback) return false;
+      await fetch(callback, {
+        method: "POST",
+        headers: { Origin: url.origin },
+        body: new URLSearchParams({
+          state: handoff.get("state") ?? "",
+          session_id: handoff.get("session_id") ?? "",
+          status: "denied",
+        }),
+      });
+    }
+    return true;
+  }),
 });
 
 export const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(Workspaces, {

@@ -55,13 +55,13 @@ describe("workspace model cells", () => {
   it("the workspace model cell shows the name and keeps the id on hover", () => {
     renderCell(<ModelCell row={{ kind: "entry", entry: ENTRY }} platformDefault={null} />);
     expect(screen.getByTitle("claude-sonnet-5-5").textContent).toBe("Sonnet 5.5");
-    expect(screen.getByRole("button", { name: "Copy model id: claude-sonnet-5-5" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Copy model/ })).toBeNull();
   });
 
-  it("the platform default reads its name, and its id stays reachable without a hover", () => {
+  it("the platform default shows its name and keeps the identifier on hover", () => {
     renderCell(<ModelCell row={{ kind: "default" }} platformDefault={UNPRICED_DEFAULT} />);
     expect(screen.getByTitle("claude-opus-5-5").textContent).toBe("Opus 5.5");
-    expect(screen.getByRole("button", { name: "Copy model id: claude-opus-5-5" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Copy model/ })).toBeNull();
   });
 
   it("a platform default priced nowhere reads Unknown", () => {

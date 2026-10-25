@@ -43,7 +43,8 @@ pub struct ModelAccess {
     /// Current lease expiry, capped by the attempt deadline.
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,
-    /// Relative daemon route; no provider destination or key is delivered.
+    /// Relative path of the server's model endpoint. Provider addresses and credentials are
+    /// not returned.
     pub invocation_path: String,
 }
 
@@ -56,7 +57,7 @@ impl fmt::Debug for ModelAccess {
     }
 }
 
-/// A retained conversational role; system authority is always daemon-owned.
+/// Saved conversation role. Only the server can assign system instructions.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -86,11 +87,11 @@ impl fmt::Debug for ContextMessage {
     }
 }
 
-/// Hard limits shared by daemon dispatch and the authoring worker.
+/// Limits applied to both server model requests and private setup work.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Limits {
-    /// Full assembled input ceiling per physical dispatch.
+    /// Maximum assembled input for one model request.
     pub input_per_call: i64,
     /// Shared output allowance across every physical dispatch.
     pub output_per_turn: i64,
@@ -124,7 +125,7 @@ pub struct Lease<C> {
     pub deadline: jiff::Timestamp,
     /// Non-secret selected model metadata.
     pub model: SelectedModel,
-    /// Daemon invocation authority, bound to this exact attempt.
+    /// Permission to call the server's model endpoint for this specific attempt.
     pub model_access: ModelAccess,
     /// Current immutable candidate, including its identity and revision.
     #[serde(skip_serializing_if = "Option::is_none")]

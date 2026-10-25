@@ -3,7 +3,7 @@
  *
  * The Stop / Resume / Kill flow is the same Radix AlertDialog wiring across
  * every spec that drives it: lifecycle, kill, and the two full-lifecycle
- * scenarios. Each action is a primary button on the detail page + a confirm
+ * scenarios. Each action is a menu item in Fleet actions + a confirm
  * button inside an alertdialog role. Without a shared helper the four specs
  * duplicate the same getByRole pattern, and a future ConfirmDialog refactor
  * (button label, copy, dialog role) has to be tracked across four files.
@@ -22,9 +22,8 @@ const ROW_STATE_TIMEOUT_MS = 15_000;
 type RowState = "live" | "parked" | "failed";
 
 async function confirmAction(page: Page, label: "Stop" | "Resume" | "Kill"): Promise<void> {
-  // KillSwitch renders its Stop/Resume/Kill buttons directly in the detail
-  // header, so the action is reachable from whichever view the spec is on.
-  await page.getByRole("button", { name: label }).first().click();
+  await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
+  await page.getByRole("menuitem", {name: label, exact: true}).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
   // The dialog and status flip optimistically the moment confirm is clicked;

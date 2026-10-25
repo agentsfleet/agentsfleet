@@ -36,6 +36,8 @@ use crate::provider::{Call, Chunk, End, Provider, Replay, Request};
 use crate::request;
 use crate::retry::ATTEMPTS;
 use crate::usage;
+use afd_crypto::secret::SecretString;
+use afd_inference::transport::HttpTransport;
 use afd_wire::inference::{InferenceApi, ModelInference};
 use afd_wire::policy::ExecutionPolicy;
 
@@ -50,6 +52,8 @@ pub(crate) struct Turns {
     lease_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
+    counting_key: SecretString,
+    counting_transport: HttpTransport,
 }
 
 impl fmt::Debug for Turns {
@@ -69,6 +73,7 @@ impl Turns {
         settings: &ModelInference,
         policy: &ExecutionPolicy<'_>,
         lease_id: &str,
+        counting_transport: HttpTransport,
     ) -> Self {
         Self {
             model,
@@ -76,6 +81,8 @@ impl Turns {
             model_context_tokens: policy.model_context_tokens,
             lease_id: lease_id.into(),
             provider: policy.provider.as_ref().into(),
+            counting_key: SecretString::new(policy.api_key.to_string()),
+            counting_transport,
         }
     }
 
@@ -102,18 +109,28 @@ impl Turns {
     ///
     /// # Errors
     /// The conversation cannot be sent, or rig could not start the reply.
-    fn open(&self, request: &Request<'_>) -> Result<StreamTurn> {
+    async fn open(&self, request: &Request<'_>) -> Result<StreamTurn> {
         let built = request::request(self.settings.api, request)?;
         let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
-            .map_err(raise::configuration)?;
-        let built = route
-            .bound_output(request.model, built)
             .map_err(raise::configuration)?;
         let control = TurnControl {
             correlation_id: self.lease_id.clone().into(),
             ..Default::default()
         };
-        StreamTurn::open(&route, &self.model, built, control)
+        let mut count = route
+            .confirm_input(
+                request.model,
+                self.counting_key.expose(),
+                &built,
+                &self.counting_transport,
+                &control,
+            )
+            .await
+            .map_err(|error| self.failed(error.into()))?;
+        let built = route
+            .bound_counted_output(request.model, built, &mut count)
+            .map_err(raise::configuration)?;
+        StreamTurn::open_counted(&route, &self.model, built, count, control)
             .map_err(|failure| self.failed(*failure))
     }
 
@@ -131,7 +148,20 @@ impl Turns {
     }
 }
 
+#[cfg(test)]
+#[path = "turn_tests.rs"]
+mod tests;
+
 impl Provider for Turns {
+    fn measure(&self, request: Request<'_>) -> Result<u64> {
+        let body = request::request(self.settings.api, &request)?;
+        let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
+            .map_err(raise::configuration)?;
+        route
+            .measure_input(request.model, &body)
+            .map_err(raise::configuration)
+    }
+
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>> {
         stream::unfold(Pass::Opening(1), move |pass| pass.next(self, request)).boxed()
     }
@@ -169,11 +199,12 @@ impl Pass {
         let mut pass = self;
         loop {
             let step = match pass {
-                Self::Opening(attempt) => match turns.open(&request) {
+                Self::Opening(attempt) => match turns.open(&request).await {
                     Ok(stream) => Step::Continue(Self::Reading(Box::new(Reading {
                         attempt,
                         stream,
                         shown: false,
+                        reopen: !request.single_attempt,
                     }))),
                     Err(failure) => Step::Break((Err(failure), Self::Done)),
                 },
@@ -198,6 +229,7 @@ struct Reading {
     attempt: usize,
     stream: StreamTurn,
     shown: bool,
+    reopen: bool,
 }
 
 impl Reading {
@@ -226,7 +258,11 @@ impl Reading {
                 result.response,
             )))),
             Some(failure)
-                if !known && !self.shown && self.attempt < ATTEMPTS && reopens(&failure) =>
+                if self.reopen
+                    && !known
+                    && !self.shown
+                    && self.attempt < ATTEMPTS
+                    && reopens(&failure) =>
             {
                 turns.reopened(self.attempt, &failure);
                 Step::Continue(Pass::Opening(self.attempt + 1))
@@ -288,7 +324,10 @@ fn reopens(failure: &ProviderError) -> bool {
 
 /// The chunks a finished turn on `api` ends on: what it spent, then its end.
 fn ending(api: InferenceApi, response: CompletionResponse) -> Ending {
-    let cut = response.finish_reason() == Some(FinishReason::Length);
+    let cut = !matches!(
+        response.finish_reason(),
+        Some(FinishReason::Stop | FinishReason::ToolCalls)
+    );
     let spent = usage::spent(api, &response.usage, &response.raw);
     let replay = Replay(response.head().with_content(response.choice));
     let end = End { replay, cut };

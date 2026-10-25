@@ -41,7 +41,7 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
     path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
     tag = afd_http::openapi::tag::APPROVALS,
     operation_id = "approve_workspace_approval",
-    summary = "Approve a pending request",
+    summary = "Approve or reject a pending request",
     description = concat!(
         "Approves a pending request. If two callers resolve it, the first ",
         "result wins. Other callers receive 409 with the existing result and ",

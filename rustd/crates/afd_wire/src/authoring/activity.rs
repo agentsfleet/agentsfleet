@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::{DECIMAL_BYTES_MAX, PROGRESS_BYTES_MAX};
 
-/// One model-suggested change, still untrusted until the daemon commits it.
+/// Suggested setup change. It remains untrusted until the server saves it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -62,7 +62,7 @@ pub enum ActivityEvent<D = Value, C = Value, I = Value> {
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ActivityRequest<D = Value, C = Value, I = Value> {
-    /// Current attempt fence.
+    /// Current attempt number. Rejects updates from replaced runners.
     #[garde(length(bytes, min = 1, max = DECIMAL_BYTES_MAX), custom(afd_validate::rules::ascii_digits))]
     pub fence: String,
     /// Accepted user-message sequence.

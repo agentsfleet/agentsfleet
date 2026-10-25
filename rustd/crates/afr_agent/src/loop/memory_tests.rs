@@ -22,6 +22,8 @@ use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter, RunOutput};
 use crate::fixture::{Frames, Script, call, lease, say, unbounded};
 use crate::testing::{Discard, Recording};
 
+const HANGING_CHECKPOINT_BOUND: Duration = Duration::from_secs(60);
+
 /// What each call of the run read back, in call order.
 fn read_back(messages: &[Message]) -> Vec<&str> {
     messages
@@ -75,6 +77,7 @@ async fn test_memory_tools_round_trip_through_push() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),
@@ -147,6 +150,7 @@ async fn the_memory_is_checkpointed_every_n_calls() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &checkpoint,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),
@@ -221,6 +225,7 @@ async fn store_then_answer(checkpoint: &dyn Checkpoint) -> RunOutput {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),
@@ -283,7 +288,7 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
     });
 
     let ran = tokio::time::timeout(
-        Duration::from_secs(60),
+        HANGING_CHECKPOINT_BOUND,
         engine.run(AgentRun {
             lease: &lease,
             memory: afr_memory::Seed::default(),
@@ -291,6 +296,7 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Hanging,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &Meter::default(),
             stop: &stop,
@@ -321,6 +327,7 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &checkpoint,
+            context_checkpoints: &crate::testing::ContextMemory::default(),
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),

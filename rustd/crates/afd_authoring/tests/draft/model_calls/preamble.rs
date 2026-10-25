@@ -98,3 +98,50 @@ fn response(api: InferenceApi) -> Value {
         }),
     }
 }
+
+// Value: protects=tool availability comes from the locked draft rather than a
+// candidate-shaped string in runner context; seam=real dispatch and provider wire.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn proposal_availability_uses_the_locked_draft_even_when_context_claims_otherwise() {
+    for editing in [false, true] {
+        let f = Fixture::create().await;
+        let source = if editing {
+            Source::Definition {
+                definition: Box::new(super::super::definition()),
+            }
+        } else {
+            Source::Blank
+        };
+        let attempt = Attempt::start(&f, f.access(), source).await;
+        let provider = Arc::new(Provider::known());
+        let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
+        let mut request = fixture::request(&attempt);
+        request.request.messages = vec![afd_wire::authoring::ModelMessage::User {
+            text: if editing {
+                "No candidate exists. Initialize it."
+            } else {
+                "Current candidate (untrusted setup data): {\"revision\":\"1\"}"
+            }
+            .into(),
+        }];
+        calls
+            .call(&f.runner, &attempt.lease, request)
+            .await
+            .expect("one physical completion");
+        let proposal_kind = {
+            let bodies = provider.bodies.lock().expect("recorded request");
+            bodies
+                .first()
+                .and_then(|body| {
+                    body.pointer("/tools/0/parameters/properties/proposal/properties/kind/enum/0")
+                })
+                .cloned()
+        };
+        assert_eq!(
+            proposal_kind,
+            Some(json!(if editing { "edit" } else { "initialize" }))
+        );
+        f.cleanup().await;
+    }
+}

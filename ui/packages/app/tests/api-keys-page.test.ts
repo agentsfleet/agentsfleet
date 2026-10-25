@@ -34,7 +34,7 @@ vi.mock("@/app/(dashboard)/settings/api-keys/components/ApiKeyList", () => ({
     ),
 }));
 
-// The "Create key" trigger ships behind a next/dynamic shim (M101 §5) — stub
+// The "Create key" trigger ships behind a next/dynamic shim — stub
 // it out so the page test stays focused on page-level behaviour.
 vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", () => ({
   default: () => React.createElement("button", { type: "button" }, "Create key"),
@@ -128,15 +128,5 @@ describe("api-keys page", () => {
     // The initial read carries no paging parameters; the client's own default
     // sort (newest-first) governs.
     expect(listApiKeysMock).toHaveBeenCalledWith("tok");
-  });
-});
-
-// ── loading skeleton ──────────────────────────────────────────────────────
-
-describe("api-keys loading skeleton", () => {
-  it("renders the page title above skeleton placeholders", async () => {
-    const { default: Loading } = await import("../app/(dashboard)/settings/api-keys/loading");
-    const html = renderToStaticMarkup(React.createElement(Loading));
-    expect(html).toMatch(/API keys/i);
   });
 });

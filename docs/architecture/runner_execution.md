@@ -22,7 +22,19 @@
 
 ## Lease execution kinds
 
-A common tagged claim returns fleet runtime or bounded authoring work. Fleet runtime retains its sandbox/tools. Authoring executes only the fixed proposal tool and daemon-scoped model calls; no runtime credentials, repository checkout or tenant tools. The [runner protocol](runner_fleet.md#authoring-leases) owns capacity and fences; [API resources](api_resources.md#scoped-model-invocation) owns dispatch authorization.
+A tagged claim returns fleet runtime or private setup work. Fleet runs use their admitted tools and optional sandbox. Setup turns use only daemon-scoped model calls and the fixed proposal tool.
+
+Setup leases carry no runtime credentials, repository checkout or tenant tools. The [runner protocol](runner_fleet.md#authoring-leases) owns capacity and fences. [API resources](api_resources.md#scoped-model-invocation) owns dispatch authorization.
+
+### Proposal correction and failure
+
+Rejected proposal arguments and invalid edits return tool feedback to the model (`afr_supervisor/src/authoring/proposal.rs`). They do not apply a candidate or advance the activity sequence. A correction spends another model call and its measured output from the same attempt budget.
+
+The turn stops at eight calls or the admitted output allowance (`afr_supervisor/src/authoring/turn.rs`). Exhausted corrections report `failed` with `provider_failed`, retain known usage, and supply no successful answer.
+
+When every proposal in the response is accepted, the turn returns the review-ready answer. Save remains a separate human action.
+
+Unknown provider usage ends the turn without another dispatch. Renewal runs every ten seconds, retries retryable failures after 250 milliseconds, and stops at the live deadline (`afr_supervisor/src/authoring/renew.rs`). The attempt also has a 300-second maximum.
 
 ## Private content and report retention
 
@@ -32,7 +44,7 @@ DELETE draft returns 204 after the daemon transaction fences every attempt, remo
 |---|---|---|
 | Draft/message/candidate rows and private replay bodies | Daemon DELETE/expiry, content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
 | Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
-| Runner memory / in-flight request | Delete generation at renewal, report, activity; runner abort/zeroes local buffers | Online runner notices at next10-second renewal; disconnected runner lease expires within 30 seconds. Upstream completion may outlive local abort. |
+| Runner memory / in-flight request | Delete generation at renewal, report, activity; runner cancels the turn and drops its local buffers | Online runner notices at next ten-second renewal; disconnected runner lease expires within 30 seconds. Upstream completion may outlive local abort. |
 | Typed report spool, temporary files, rejected/quarantined copies | Supervisor owns encrypted authoring content plus a separate content-free settlement envelope | Logical expiry is 24 hours from first write, unchanged by retry/rename. Online cleanup runs at the deadline; stopped machines clean before content is opened at next startup. Physical files may remain while powered off. |
 | Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
 | Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
@@ -41,9 +53,21 @@ DELETE draft returns 204 after the daemon transaction fences every attempt, remo
 
 The 24-hour rule is logical expiry enforced by the supervisor, not guaranteed cryptographic unreadability or physical removal while stopped. Encryption at rest uses a separate local content key; someone retaining that key and ciphertext may decrypt offline. Cleanup deletes the content/key and all temporary/quarantined copies, though storage snapshots follow their own retention. No timer can run on a powered-off host.
 
-Write only encrypted private bytes, including temporary files. Put authenticated attempt/generation/first-write/deadline metadata outside the encrypted payload; keep the `kind:"accounting"` reports variant separately without text, content digests or capabilities. Its immutable replay identity survives private-content removal; an acknowledged terminal submission and an original never received both settle once against daemon receipts, including after draft deletion. Altered usage conflicts. Startup scans every spool category before reading/decrypting/uploading content. Expired, corrupt, orphaned, or clock-uncertain content is removed; content-free settlement remains. During uptime use a monotonic deadline; across restart use UTC plus a saved high-water clock, and fail closed on rollback. Retry, quarantine, and rename never extend expiry. If cleanup fails, stop private draining and report only a bounded cleanup error. Apply these rules to supervisor spool paths, not only the authoring loop.
+Private answer bytes, including temporary files, are encrypted. Authenticated metadata binds the lease, attempt, report identity, first-write time and deadline (`afr_supervisor/src/report_spool/authoring/entry.rs`). A separate `kind:"accounting"` envelope retains usage without private text or capabilities.
 
-These are implementation requirements, not fresh retention proofs. With an offline runner, DELETE still204s at the server text boundary with the actual retention disclosure. A tombstone rejects stale generation before accepting text. A content-free settlement may acknowledge known usage without recreating messages. Closed private history expires30 days after close, only when no active work exists.
+The replay identity survives private-content removal. Both previously acknowledged and never-received reports can settle against daemon receipts after draft deletion. Altered usage conflicts.
+
+Startup scans the private spool before decrypting or uploading content. Expired, corrupt, orphaned or clock-uncertain private copies are removed while content-free settlement remains.
+
+Uptime uses a monotonic deadline. Restart compares Coordinated Universal Time (UTC) against a saved high-water clock and fails closed on rollback. Retry and rename never extend expiry.
+
+Failed entry cleanup holds that entry without loading or sending its content. Other entries continue; a spool-wide failure pauses the pass. The drainer reports bounded cleanup errors (`afr_supervisor/src/report_spool/authoring/drain.rs`).
+
+The encrypted spool implements this retention boundary (`afr_supervisor/src/report_spool/authoring/`). Source inspection does not establish new deployment acceptance evidence.
+
+An offline runner does not prevent DELETE from returning 204 at the server text boundary. A tombstone rejects stale generations before accepting text. Content-free settlement can acknowledge known usage without recreating messages.
+
+Closed private history expires 30 days after close, only when no active work exists.
 
 ## The job it is built for
 
@@ -148,7 +172,13 @@ rustd/crates/
                         is the sub-mode that runs inside each sandbox (a microVM's init, later)
 ```
 
-Dependencies point one way: the binary → `afr_supervisor` → `afr_agent` → `afr_providers` and `afr_tools` → `afr_executor`, `afr_memory` and `afr_egress` → `afr_secrets`, with `afr_supervisor` → `afr_sandbox` → `afr_executor`. The supervisor implements `afr_egress::Mint` over its control plane, so the guard mints through the held lease without knowing the daemon's verbs. Every runner crate may depend on `afd_wire`, `afd_core`, `afd_validate` (the bounds the wire's types declare, which depends on garde alone), `afd_observability`, `afd_inference` and `afd_otlp` (the export `afr_telemetry` uses) and on nothing else from `agentsfleetd`, and none links a datastore crate. `afd_api_wire` holds the daemon's own API types apart from `afd_wire`, so an edit to an admin or tenant shape rebuilds no runner crate. There is one binary. The executor is its `sandbox` sub-mode, re-executed inside the sandbox the way Codex re-executes itself as `codex-linux-sandbox`; that entry constructs only `afr_executor`'s server, never a control-plane client, and the binary is bound read-only into every sandbox. A Firecracker guest gets it inside its root image or on a second read-only disk (§Toolbox).
+Dependencies point from the binary through the supervisor to agent, tools, providers and sandbox crates. The supervisor implements credential minting over the control plane for `afr_egress`.
+
+Shared daemon-prefixed crates are `afd_wire`, `afd_core`, `afd_validate`, `afd_observability`, `afd_inference`, `afd_otlp` and `afd_crypto`. The supervisor uses `afd_crypto` for encrypted private reports (`afr_supervisor/Cargo.toml`). No runner crate links a datastore crate or `afd_api_wire`.
+
+`afd_api_wire` owns the daemon's tenant, operator and ingress shapes. Changes there do not rebuild the runner protocol.
+
+One binary supplies both the host supervisor and its in-sandbox `sandbox` entry. The sandbox entry builds only the executor server, and each sandbox binds the binary read-only. The planned Firecracker guest receives it inside the root image or a second read-only disk (§Toolbox).
 
 A lease carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `afd_inference` validates them and builds the codec; missing settings refuse admission. [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing--saved-model-settings) owns configuration and credential matching. `rig-core` and `rig-http`, pinned to 0.44.0, speak the three supported API formats. The transport under rig is the runner's: one HTTP client per runner that follows no redirect, so a turn and its key reach the admitted host and no other, and a bounded retry that honours `Retry-After`. A turn that fails before anything visible went out is opened again under the same bound. The reasoning a provider signs goes back with the turn that made it; a call from a turn cut at the output limit is answered `output_limit_reached` and never runs; a call whose arguments are not JSON reaches its tool as the text the model wrote, so the tool refuses it with a reason. rig traces every request and reply whole, before the scrub, so the shared log filter (`afd_inference::log_filter`), installed by daemon and runner, holds rig to its warnings at any level and turns off the one warning that repeats a provider's error message. The model key rides the one header its wire names, and everything the model is sent passes the secret scrub first, the instructions, the event's message and the model's own earlier turns included. A chat lease also carries the fleet's thread before its event, the rows the dashboard thread shows: up to eight finished turns within 64 KiB, each a message and the fleet's answer, which the loop sends as user and assistant turns ahead of the new message, through the same scrub. Webhook, cron and continuation leases carry none. The trusted repair context stays in the system prompt, and no turn enters it. Because a conversation repeats its prefix lease after lease, the Messages wire marks the tools and the system prompt for caching beside the provider's moving breakpoint, at the five-minute default, and the Responses wire sends the fleet id as `prompt_cache_key`. A turn reports its cache writes apart from its input, split by the lifetime the provider names: Messages sends five minutes and one hour, Responses and Chat send a write with no lifetime (`afr_providers::usage`). Each request line carries the split, and the daemon prices each class at its tier's write rate ([billing §11](./billing_and_provider_keys.md#11-one-billing-lifecycle-behind-a-biller-trait)). The wire still asks for the five-minute default; asking for one hour is not decided. Spans and their export: [Observability](./observability.md) §"`agentsfleet-runner` — a collector of its own".
 
@@ -241,7 +271,7 @@ This section records what the code builds, against the design above. `agentsflee
 
 **Only a lease that needs a sandbox gets one.** A lease whose tools all run in the supervisor starts none (`afr_agent/src/engine/mod.rs`, `afr_supervisor/src/lease_loop/mod.rs`). `http_request` and the memory tools run in the supervisor, so a Pull Request reviewer built from them never builds a sandbox. Shell, git and file tools run in one (`afr_tools/src/catalog/mod.rs`).
 
-**One sandbox per lease, destroyed before the report.**
+**A processed lease holds its sandbox; other outcomes destroy it before reporting.**
 
 ```
  lease start                                                 lease end
@@ -323,7 +353,7 @@ lease ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per work
    fleet halted or deleted
 ```
 - **Retention.** *Target, not built.* The last three snapshots per fleet, a lifecycle rule on the prefix, and a purge when the fleet is deleted.
-- **Continuity.** The checkpoint a report writes reaches the next lease. Today it is saved to `fleet.sessions` and loaded with the fleet, but nothing hands it to a lease; a chat lease carries the thread's recent turns instead (§Crates).
+- **Continuity.** Reports save a checkpoint to `fleet.sessions`, but no lease carries it. Chat leases carry recent thread turns (§Crates).
 
 Artifacts a fleet saves for the user live beside the snapshots and are downloaded through a presigned URL the daemon authorises.
 

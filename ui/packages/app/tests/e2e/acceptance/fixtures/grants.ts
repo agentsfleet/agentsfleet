@@ -30,7 +30,7 @@ const FIELD_REFRESH_TOKEN = "refresh_token";
 const EVIDENCE_SERVICE = "service";
 
 // Vault admission requires the handle's name to match its connector.
-// The CLI journey stores this same body, so parallel suites agree.
+// Each journey owns a dedicated workspace and removes this synthetic handle.
 export const GRANT_CREDENTIAL_NAME = CONNECTOR_SERVICE_LINEAR;
 
 const SECRETS_PATH = (workspaceId: string) => `/v1/workspaces/${workspaceId}/secrets`;
@@ -45,18 +45,9 @@ const TENANT_CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const CHARGES_PAGE_LIMIT = 100;
 
 /**
- * Store the connector handle the walk's setups declare, and leave it stored.
- *
- * Claim-then-confirm rather than delete-then-create: the name is exclusively
- * this walk's, so every writer of it wants the identical body, and a refused
- * `POST` means somebody already wrote it. Deleting first would open a window in
- * which a parallel worker's Save cannot resolve the credential it declared —
- * and an unresolvable declaration FAILS the delivery instead of parking it,
- * which is the one outcome that would make this walk lie.
- *
- * The handle outlives the run on purpose. It is a classification marker with no
- * credential in it, and re-storing it per run would race the Saves that read
- * it.
+ * Store a synthetic handle only in this journey's dedicated workspace.
+ * A prior interrupted run may have left it there; teardown removes it after
+ * every fleet that references it has been purged.
  */
 export async function ensureConnectorHandle(
   handle: ClientHandle,

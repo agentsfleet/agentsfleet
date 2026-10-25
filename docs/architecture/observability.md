@@ -243,16 +243,11 @@ makes it much smaller than the three missing families above.
 
 ## `agentsfleet-runner` — a collector of its own
 
-**Built: the runner exports its own spans and metric families. The runner
-collector is built later.** The runner's `run` entry exports over OTLP/HTTP
-when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector
-(`rustd/crates/afr_telemetry/`, built on the transport both binaries share,
-`rustd/crates/afd_otlp/`). The runner writes logfmt to stderr and reports
-liveness and results over `/v1/runners` (heartbeat, `/renew`, result-report).
-It sends PostHog nothing. `agentsfleetd` owns the runner's observable state in
-`afd_observability`'s per-runner table and derives fleet liveness itself.
-`run` composes `afr_supervisor::run` (`rustd/crates/agentsfleet_runner/src/main.rs`),
-so every lease the runner takes runs inside a `runner.lease` span.
+**Built: the runner exports spans and metric families when configured.** Its dedicated collector remains unbuilt. `afr_telemetry` uses the shared `afd_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
+
+Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
+
+Fleet-runtime leases run inside `runner.lease` spans. Private authoring takes a separate path without that span (`afr_supervisor/src/worker_pool/mod.rs`).
 
 **What the runner reads.** The endpoint, protocol and timeout knobs the daemon
 reads, and no header knob: `OTEL_EXPORTER_OTLP_HEADERS`, any signal's own
@@ -393,7 +388,7 @@ the allowlist proof.
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `afd_observability`'s counting wrapper; `serve/exporting.rs` spawns `otlp_export`, which samples the resident set and runs the shutdown flush |
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); a family with no producer fails `every_census_family_has_a_producer` |
 | PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product/mod.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
-| runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot, and every lease it serves runs inside a `runner.lease` span |
+| runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime leases run inside a `runner.lease` span; authoring currently has no equivalent lease span |
 | runner collector | absent; decided, built later | `deploy/baremetal/` carries `agentsfleet-runner.service` and no collector; `deploy/fly/otelcol-{dev,prod}` serve the daemon only |
 
 ## Metrics stay semantic
@@ -599,7 +594,8 @@ daemon: no `/metrics` route is served, and no scrape is configured in either
 environment. A pull endpoint would be a second export path exporting the same
 measurements by a different mechanism with a different failure mode.
 
-The vendor-named knobs are accepted as ALIASES, as the next section spells out.
+Only the standard environment names below configure daemon export (`agentsfleetd/src/preflight/otlp/mod.rs`).
+
 ### The Rust daemon's export path, as built
 
 `agentsfleetd` reads four knobs in preflight and nowhere else, spelled as the

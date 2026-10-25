@@ -247,16 +247,19 @@ it("CatalogueList — Make default (★ minimal key dialog) > closes from Cancel
   expect(setPlatformDefaultActionMock).not.toHaveBeenCalled();
 });
 
-describe("CatalogueList — Default badge", () => {
-  it("badges the active default's row and hides its ★, while other rows keep ★", () => {
+describe("CatalogueList — default model", () => {
+  it("marks the active default, keeps Edit available, and offers default selection on other rows", async () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: DEFAULT_FIREWORKS, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     const activeRow = within(rowFor("glm-5.2"));
-    expect(activeRow.getByText("Default")).toBeTruthy();
+    expect(activeRow.getByLabelText("Platform default")).toBeTruthy();
+    fireEvent.focus(activeRow.getByRole("button", { name: "Platform default" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain("You can edit it here.");
+    expect(activeRow.getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
     expect(activeRow.queryByRole("button", { name: "Make glm-5.2 the platform default" })).toBeNull();
 
     const otherRow = within(rowFor("claude-opus-4-8"));
-    expect(otherRow.queryByText("Default")).toBeNull();
+    expect(otherRow.queryByLabelText("Platform default")).toBeNull();
     expect(otherRow.getByRole("button", { name: "Make claude-opus-4-8 the platform default" })).toBeTruthy();
   });
 });
@@ -286,9 +289,9 @@ it("ModelsView > renders the catalogue with no separate platform-default section
   expect(screen.queryByLabelText("Default provider")).toBeNull();
 });
 
-it("ModelsView > passes the active default through so the matching row is badged", () => {
+it("ModelsView > marks the matching active default", () => {
   renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: DEFAULT_FIREWORKS }));
-  expect(within(rowFor("glm-5.2")).getByText("Default")).toBeTruthy();
+  expect(within(rowFor("glm-5.2")).getByLabelText("Platform default")).toBeTruthy();
 });
 
 it("ModelsView > appends a newly created model to the catalogue without a round-trip", async () => {

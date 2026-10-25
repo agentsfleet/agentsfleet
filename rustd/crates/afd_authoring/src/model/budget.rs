@@ -14,7 +14,6 @@ use crate::{
     lease::guard::{self, Attempt},
 };
 
-pub(crate) const INPUT_PER_CALL: i64 = 32_768;
 pub(crate) const MAX_CALLS: i64 = 8;
 pub(crate) const PROVIDER_TIMEOUT: Duration = afd_inference::stream::READ_TIMEOUT;
 /// How long a provider's private result outlives its dispatch.
@@ -44,15 +43,11 @@ pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
     if !model.platform_managed {
         return Ok(runtime);
     }
-    let input = ceil(INPUT_PER_CALL, model.input_nanos_per_million)?
-        .checked_mul(MAX_CALLS)
-        .ok_or(ErrorKind::Balance)?;
     let output = ceil(output_limit(model), model.output_nanos_per_million)?
         .checked_add(MAX_CALLS - 1)
         .ok_or(ErrorKind::Balance)?;
     runtime
-        .checked_add(input)
-        .and_then(|total| total.checked_add(output))
+        .checked_add(output)
         .ok_or_else(|| ErrorKind::Balance.into())
 }
 
@@ -91,14 +86,7 @@ pub(crate) async fn gate(
     }
 }
 
-/// [`hold`] for `runner`'s attempt on `lease`, asked before the caller opens its
-/// transaction.
-///
-/// A biller call never runs inside a transaction: it may be remote, and even
-/// the built-in one takes its own pooled connection, so holding one while
-/// waiting on another starves the pool under load. An attempt that cannot be
-/// read here answers nothing: the guard inside the transaction re-reads it
-/// under its lock and refuses with the reason that applies.
+/// Re-establish the current reservation before a renewal, outside its transaction.
 pub(crate) async fn held(drafts: &Drafts, runner: &Uuid7, lease: &Uuid7) -> Result<()> {
     let attempt = {
         let mut connection = drafts.database.acquire().await?;

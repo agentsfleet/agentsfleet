@@ -6,7 +6,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
 import { listWorkspaces } from "./fixtures/seed";
 import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
-import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { gotoWorkspace, openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
@@ -49,7 +49,6 @@ async function clickSidebarLink(page: Page, href: string, destination: RegExp): 
   let link = page.locator(`a[href="${href}"]:visible`);
   if (!await link.isVisible()) {
     await page.getByRole("button", { name: "Workspace and account menu" }).click();
-    await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
     link = page.locator(`[role="menuitem"][href="${href}"]`);
   }
   await expect(link).toBeVisible();
@@ -208,11 +207,13 @@ test.describe("operator journey", () => {
     // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
-    await clickSidebarLink(page, workspaceHref(wsId, "events"), workspaceUrlPattern("events"));
+    await openSettingsDestination(page, "Activity");
+    await expect(page).toHaveURL(workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
     await expect(page.getByLabel("Workspace activity", { exact: true })).toBeVisible();
 
-    await clickSidebarLink(page, workspaceHref(wsId, "approvals"), workspaceUrlPattern("approvals"));
+    await openSettingsDestination(page, "Approvals");
+    await expect(page).toHaveURL(workspaceUrlPattern("approvals"));
     await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();
     await expect(page.getByLabel("Approval gates")).toBeVisible();
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RecentFleetList, StandaloneDraftHistory } from "./RecentChats";
+import { RecentFleetList } from "./RecentChats";
 import { deleteFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { DRAFT, FLEET_DETAIL, FLEET_ID, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
@@ -38,26 +38,35 @@ beforeEach(() => {
 });
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
-it("renders a compact icon-free union with brand color only for active fleets and no model request", async () => {
+it("shows saved fleets only without fetching private drafts or model choices", async () => {
   const navigate = vi.fn();
-  render(<><RecentFleetList workspace={WORKSPACE} onNavigate={navigate} />
-    <StandaloneDraftHistory workspace={WORKSPACE} subject="creator" onNavigate={navigate} /></>);
+  render(<RecentFleetList workspace={WORKSPACE} onNavigate={navigate} />);
   const fleet = await screen.findByRole("link", {name: active.name});
   expect(fleet.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
   expect(fleet.getAttribute("title")).toContain("active");
   expect(fleet.querySelector("svg")).toBeNull();
-  expect(within(fleet).getByText(active.name).classList.contains("text-pulse")).toBe(true);
+  expect(within(fleet).getByText(active.name).classList.contains("text-pulse")).toBe(false);
   const neutral = screen.getByRole("link", {name: stopped.name});
   expect(within(neutral).getByText(stopped.name).classList.contains("text-pulse")).toBe(false);
-  expect(await screen.findByRole("link", {name: DRAFT.title})).toBeTruthy();
+  expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull();
   expect(screen.queryByText("Saved setup must not duplicate fleet")).toBeNull();
-  expect(screen.getByRole("link", {name: "Unfinished fleet edit"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?draft=${EDIT_ID}`);
+  expect(screen.queryByRole("link", {name: "Unfinished fleet edit"})).toBeNull();
+  expect(calls.some(call => call.path.includes("/drafts"))).toBe(false);
   const trash = screen.getByRole("button", {name: `Delete fleet: ${active.name}`});
   expect(trash.classList.contains("group-focus-within:opacity-100")).toBe(true);
   expect(trash.querySelector("svg")?.getAttribute("width")).toBe("14");
   fireEvent.click(fleet);
   expect(navigate).toHaveBeenCalledOnce();
   expect(calls.some(call => call.path.includes("/models"))).toBe(false);
+});
+
+it("labels a stopped fleet so its quiet status does not look like an active fleet", async () => {
+  fetcher.mockImplementationOnce(async () => response({items: [{...stopped, status: "stopped"}], total: null, next_cursor: null}));
+  render(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} />);
+  const link = await screen.findByRole("link", {name: `${stopped.name} Stopped`});
+  expect(within(link).getByText("Stopped")).toBeTruthy();
+  expect(link.getAttribute("title")).toBe(`${stopped.name} · stopped`);
+  expect(link.querySelector(".bg-pulse")).toBeNull();
 });
 
 async function openDelete(name = active.name) {
@@ -146,27 +155,6 @@ it("cancels confirmation and deletes a stopped fleet without leaving another fle
   fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Delete fleet"}));
   await waitFor(() => expect(screen.queryByRole("link", {name: stopped.name})).toBeNull());
   expect(navigation.replace).not.toHaveBeenCalled();
-});
-
-it("shows private history failure and loads another private chat page", async () => {
-  fetcher.mockImplementationOnce(async () => response({}, 503));
-  const view = render(<StandaloneDraftHistory workspace={WORKSPACE} subject="creator" onNavigate={() => {}} />);
-  expect(await screen.findByRole("status")).toBeTruthy();
-  view.unmount();
-  fetcher.mockImplementationOnce(async () => response({items: [], next_cursor: "more"}));
-  render(<StandaloneDraftHistory workspace={WORKSPACE} subject="creator" onNavigate={() => {}} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Load more chats"}));
-  expect(await screen.findByRole("link", {name: DRAFT.title})).toBeTruthy();
-});
-
-it("removes a private draft from Recent after its authorized delete completes", async () => {
-  render(<StandaloneDraftHistory workspace={WORKSPACE} subject="creator" onNavigate={() => {}} />);
-  fireEvent.click(await screen.findByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
-  const dialog = await screen.findByRole("alertdialog");
-  fetcher.mockImplementationOnce(async () => new Response(null, {status: 204}));
-  fireEvent.click(within(dialog).getByRole("button", {name: "Delete chat"}));
-  await waitFor(() => expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull());
-  expect(fetcher.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(true);
 });
 
 it("coalesces two confirmation events before React commits the pending button state", async () => {

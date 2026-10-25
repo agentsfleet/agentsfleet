@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenSessionRequest<'a> {
-    /// The client's public key. Relayed; this daemon runs no curve over it.
+    /// Client public key, forwarded unchanged by the server.
     #[serde(borrow)]
     pub public_key: Cow<'a, str>,
     /// What the credential this login mints will be called.
@@ -77,10 +77,10 @@ pub struct ApproveSessionRequest<'a> {
     /// The dashboard's public key, for the client's key agreement.
     #[serde(borrow)]
     pub dashboard_public_key: Cow<'a, str>,
-    /// The sealed credential. Relayed; this daemon never opens it.
+    /// Encrypted credential, forwarded without being decrypted by the server.
     #[serde(borrow)]
     pub ciphertext: Cow<'a, str>,
-    /// The nonce it was sealed under.
+    /// The nonce used to encrypt this credential.
     #[serde(borrow)]
     pub nonce: Cow<'a, str>,
     /// The six digits shown to the person, whose digest is what gets stored.
@@ -122,7 +122,7 @@ pub struct VerifySessionResponse<'a> {
     pub dashboard_public_key: Cow<'a, str>,
     /// The sealed credential.
     pub ciphertext: Cow<'a, str>,
-    /// The nonce it was sealed under.
+    /// The nonce used to encrypt this credential.
     pub nonce: Cow<'a, str>,
 }
 

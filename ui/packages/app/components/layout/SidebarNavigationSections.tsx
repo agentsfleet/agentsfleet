@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { Button, cn, NavItem as NavigationItem } from "@agentsfleet/design-system";
+import { cn, NavItem as NavigationItem } from "@agentsfleet/design-system";
 import { useFreshFleetChat } from "./draft-sidebar-state";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { NAV_SURFACE, NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH, navSource, resolveHref, type NavEntry } from "./sidebar-navigation-data";
@@ -48,7 +48,7 @@ function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed }: Nav
 
 function NavGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-xs px-sm">
+    <div className="flex flex-col gap-xs px-md">
       {children}
     </div>
   );
@@ -80,10 +80,9 @@ function NavItem({
   const common = {
     title: collapsed ? label : undefined,
     "aria-label": collapsed ? label : undefined,
-    className: cn(collapsed ? "justify-center px-0" : "px-lg"),
+    className: cn("gap-md", collapsed ? "justify-center px-0" : "px-lg"),
     onClick,
   };
-  if (label === "New fleet") return <Button asChild variant="secondary" size={collapsed ? "icon" : "default"} className={cn("border-0 [&_svg]:size-5", collapsed ? "self-center" : "w-full justify-start")}><Link href={href} {...common}>{content}</Link></Button>;
   if (external) {
     return <NavigationItem href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</NavigationItem>;
   }

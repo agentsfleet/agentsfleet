@@ -5,7 +5,8 @@ import { CopyButton } from "@agentsfleet/design-system";
 import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant-ui/react";
 
 import { truncate } from "@/lib/utils";
-import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
+import { FLEET_OUTCOME_CLASS } from "./FleetFailedOutcome";
+import { FleetReplyFailure } from "./FleetReplyFailure";
 import { FleetReplyMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetExplored } from "./FleetExplored";
@@ -19,6 +20,8 @@ import { EXPLORE_TOOLS } from "./tool-call-explore";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
+import { ContextProgressStatus } from "./ContextProgressStatus";
+import { readContextProgress } from "@/lib/context-progress";
 
 const COPY_REPLY_LABEL = "Copy reply";
 const RECOVERING_LABEL = "Loading final reply; retrying if needed…";
@@ -77,6 +80,7 @@ export function FleetReply({
   const answer = readText(message).trim();
   const span = readReasoningSpan(message);
   const queued = readQueued(message);
+  const context = readContextProgress(message.metadata.custom.contextProgress);
   const eventId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
   useFirstVisiblePaint(eventId, readSubmittedAtMs(message), message.content.length > 0);
   const sender = senderLabel || DEFAULT_SENDER;
@@ -93,14 +97,15 @@ export function FleetReply({
         {(info) => renderReplyPart(info, {
           errored, running, queued, eventId, reasoning: reasoningText(message), span,
           content: message.content, startedAtMs: message.createdAt.getTime(),
+          contextProgress: context,
         })}
       </MessagePrimitive.GroupedParts>
+      {running ? <ContextProgressStatus value={context} /> : null}
       <OmittedCalls count={readOmittedCallCount(message)} />
-      {answer.length === 0 && !running ? (
-        errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p>
-      ) : null}
+      {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
+      {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
-      {running || recovering ? null : <FleetReplyFigures figures={readReplyFigures(message)} />}
+      {running || recovering || errored ? null : <FleetReplyFigures figures={readReplyFigures(message)} />}
       <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
     </FleetMessageRow>
   );
@@ -117,6 +122,7 @@ export type ReplyContext = {
   content: MessageState["content"];
   /** When the turn began, for the waiting clock. */
   startedAtMs: number;
+  contextProgress?: unknown;
 };
 
 /** One switch over every node the library hands back: groups, leaves, the indicator. */
@@ -156,9 +162,9 @@ export function renderReplyPart(
         />
       );
     case "text":
-      return <ReplyText text={part.text} errored={reply.errored} streaming={reply.running} />;
+      return <ReplyText text={part.text} streaming={reply.running} />;
     case "indicator":
-      return <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
+      return reply.contextProgress ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
     default:
       // A leaf that returns null gets the library's fallback UI; an empty
       // fragment keeps parts this reply never carries invisible.
@@ -181,10 +187,10 @@ function reasoningText(message: MessageState): string {
  * is parsed whole, once. `streaming` is deferred with the text, so the settled
  * parse reads the final answer rather than the flush before it.
  */
-function ReplyText({ text, errored, streaming }: { text: string; errored: boolean; streaming: boolean }) {
+function ReplyText({ text, streaming }: { text: string; streaming: boolean }) {
   return (
     <>
-      {errored ? <FleetFailedOutcome>{text}</FleetFailedOutcome> : <FleetReplyMarkdown text={text} streaming={streaming} />}
+      <FleetReplyMarkdown text={text} streaming={streaming} />
       {streaming ? (
         <span className="sr-only" aria-label="streaming">Receiving reply</span>
       ) : null}

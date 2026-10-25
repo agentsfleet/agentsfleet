@@ -31,18 +31,12 @@ pub struct SteerRequest<'a> {
     )]
     pub message: Cow<'a, str>,
 
-    /// Your own name for this message, repeated on its retries: 1 to 200 bytes,
-    /// with no NUL character.
+    /// Your retry identifier, 1 to 200 bytes with no NUL character (U+0000).
     ///
-    /// Scoped to the fleet. Send the same value again with the same message and
-    /// the answer is the first send's `event_id`: one run, one charge. That holds
-    /// even if the fleet has stopped or paused since. The same value with a
-    /// different message, or from another sender, is refused with 409
-    /// `UZ-AGT-016`. Each signed-in person is one sender; a workspace's API keys
-    /// are one between them.
-    ///
-    /// Omit it and every call is a new message, which is what a person pressing
-    /// send twice means.
+    /// Reuse it with the same message and sender for one run and charge. Reuse with different
+    /// text or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys
+    /// share one sender. Omit it to create a new message on every request. Safe retries
+    /// remain valid after stopping or pausing the fleet.
     //
     // A timeout does not prove an operation failed, and a server cannot tell a
     // retried POST from a second press — the bytes are identical — so only the
@@ -89,8 +83,7 @@ pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteerAccepted<'a> {
-    /// Always `accepted`. A field rather than an implied 202, because that is
-    /// what the daemon this ports writes.
+    /// Always `accepted`.
     #[serde(borrow)]
     pub status: Cow<'a, str>,
     /// The canonical event id the steer became.

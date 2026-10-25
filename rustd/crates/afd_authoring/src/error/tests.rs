@@ -105,6 +105,22 @@ fn credential_refusals_preserve_the_vault_code_and_original_cause() {
     );
 }
 
+// Value: a stale checkpoint keeps its retry classification and typed context cause.
+#[test]
+fn context_refusals_preserve_the_shared_code_without_exposing_private_notes() {
+    let source = afd_context::Error::stale();
+    let code = source.code();
+    let error = Error::from(source);
+    assert_eq!(error.code(), code);
+    assert_eq!(error.current_state(), None);
+    assert!(
+        error
+            .source()
+            .expect("context cause")
+            .is::<afd_context::Error>()
+    );
+}
+
 // Value: protects=a biller that cannot answer keeps its own classification;
 // fails_when=authoring reports a lost billing datastore as its own refusal;
 // why_new=fixture billers always answer; seam=the real ledger over an unreachable pool;

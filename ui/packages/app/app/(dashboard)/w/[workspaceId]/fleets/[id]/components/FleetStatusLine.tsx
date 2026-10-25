@@ -16,7 +16,7 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { formatMs } from "@/lib/utils";
 import { formatCount, runFigure } from "@/lib/events/run-figures-format";
 import { EVENT_STATUS, outcomeFor } from "@/lib/events/event-summary";
-import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
+import { formatDollars } from "@/lib/money";
 import {
   METRICS_APPROVAL_LABEL,
   METRICS_APPROVALS_LABEL,

@@ -29,3 +29,4 @@ pub use self::provider::{
 pub use afd_inference::log_filter;
 pub use afd_inference::transport::REPLY_MAX_BYTES;
 pub use afd_wire::inference::InferenceApi as Wire;
+pub use request::context_document;
