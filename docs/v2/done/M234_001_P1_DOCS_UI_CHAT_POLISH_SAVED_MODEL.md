@@ -10,8 +10,10 @@
 **Batch:** B1 — continue the restored chat worktree
 **Branch:** fix/chat-smooth-replies
 **Baseline revision:** 89415c2a0e622a920b4d66517decbf85640058b2
-**Test Baseline:** App 4,283; website 133; design system 519; command line 1,949 passed / 17 skipped; Rust unit shards 4,884 passed. Continuous Integration (CI) coverage confirms 1,409 existing tests in the current integration selection.
-**Baseline evidence:** Final head of [PR 784](https://github.com/agentsfleet/agentsfleet/pull/784), `f8a68b80d409cb54e0cc7ef114d0d8a0bd629392`, has the same Git tree (`43be42593362f6adee31e34d97b429d55b9bd263`) as the comparison revision. Unit [run 40222122637](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122637), Rust unit [run 40222122635](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122635), and live coverage [run 40222122664](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122664) provide the baseline; these are Linux CI results with Bun 1.4.3, not a local baseline run.
+**Test Baseline:** unit=11768 integration=1409
+**Baseline counts:** App 4,283; website 133; design system 519; command line 1,949 passed / 17 skipped; Rust unit shards 4,884 passed. Continuous Integration (CI) coverage confirms 1,409 existing tests in the current integration selection.
+**Baseline evidence:** https://github.com/agentsfleet/agentsfleet/actions/runs/40222122637
+**Baseline provenance:** Final head of [PR 784](https://github.com/agentsfleet/agentsfleet/pull/784), `f8a68b80d409cb54e0cc7ef114d0d8a0bd629392`, has the same Git tree (`43be42593362f6adee31e34d97b429d55b9bd263`) as the comparison revision. Unit [run 40222122637](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122637), Rust unit [run 40222122635](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122635), and live coverage [run 40222122664](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122664) provide the baseline; these are Linux CI results with Bun 1.4.3, not a local baseline run.
 **Depends on:** none
 **Provenance:** LLM-drafted (Codex, Oct 26, 2026)
 **Canonical architecture:** `docs/architecture/fleet_definitions.md` — native runtime model edits
@@ -92,20 +94,20 @@ The restored staged changes remain part of this delivery. Source families below 
 
 ### 1. Save the runtime model
 
-- Dimension 1.1 **DONE — Runtime selection:** Load runtime-eligible workspace models with bounded paging. Clone the current fleet setup into a private draft, edit only the runtime model and apply its reviewed revision. → Test `saves a runtime-only model change without generating a message`.
-- Dimension 1.2 **DONE — Existing chat polish:** Preserve reply text nodes on completion, shared composer fonts, compact run details, precise durations and removal of the header access warning. → Test `fleet-composer`.
-- Dimension 1.3 **DONE — Owner-approved changes:** Remove the saved-review drift flag and its activation hold. Keep current readiness checks. Save one model-change notice in the revision transaction for chat and Activity. → Test `saved_model_changes_record_one_notice_even_when_the_save_is_replayed`.
+- **Dimension 1.1** — DONE — **Runtime selection:** Load runtime-eligible workspace models with bounded paging. Clone the current fleet setup into a private draft, edit only the runtime model and apply its reviewed revision. → Test `saves a runtime-only model change without generating a message`.
+- **Dimension 1.2** — DONE — **Existing chat polish:** Preserve reply text nodes on completion, shared composer fonts, compact run details, precise durations and removal of the header access warning. → Test `fleet-composer`.
+- **Dimension 1.3** — DONE — **Owner-approved changes:** Remove the saved-review drift flag and its activation hold. Keep current readiness checks. Save one model-change notice in the revision transaction for chat and Activity. → Test `saved_model_changes_record_one_notice_even_when_the_save_is_replayed`.
 
 ### 2. Preserve state and recover safely
 
-- Dimension 2.1 **DONE — Refusal and stale setup:** Keep the saved model visible after refusal, missing models or a stale setup. Never apply unrelated editor changes. → Test `retains the saved model when the setup changes before apply`.
-- Dimension 2.2 **DONE — Unconfirmed save:** Disable further model changes while a write is unresolved. Retry the retained mutation before continuing; show the new model only after confirmed apply. → Test `retries a lost apply acknowledgment with the same key and body`.
-- Dimension 2.3 **DONE — Identity and input:** Abort owned reads when identity or source changes. Preserve composer text and focus through selection and refresh. → Test `saving the fleet model preserves both composers and survives reload`.
+- **Dimension 2.1** — DONE — **Refusal and stale setup:** Keep the saved model visible after refusal, missing models or a stale setup. Never apply unrelated editor changes. → Test `retains the saved model when the setup changes before apply`.
+- **Dimension 2.2** — DONE — **Unconfirmed save:** Disable further model changes while a write is unresolved. Retry the retained mutation before continuing; show the new model only after confirmed apply. → Test `retries a lost apply acknowledgment with the same key and body`.
+- **Dimension 2.3** — DONE — **Identity and input:** Abort owned reads when identity or source changes. Preserve composer text and focus through selection and refresh. → Test `saving the fleet model preserves both composers and survives reload`.
 
 ### 3. Verify the complete change
 
-- Dimension 3.1 **DONE — Coverage:** Cover real command-line failure and retry paths exposed by Bun 1.4.4 without weakening the 100% gate. → Test `make test-unit-all`.
-- Dimension 3.2 **DONE — Final validation:** Complete browser, build, repository verification and adversarial review. → Test `make test-integration-rustd`.
+- **Dimension 3.1** — DONE — **Coverage:** Cover real command-line failure and retry paths exposed by Bun 1.4.4 without weakening the 100% gate. → Test `make test-unit-all`.
+- **Dimension 3.2** — DONE — **Final validation:** Complete browser, build, repository verification and adversarial review. → Test `make test-integration-rustd`.
 
 ## Interfaces
 
