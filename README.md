@@ -67,7 +67,9 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 ## Local development
 
-**Prerequisites:** [Rust 1.99.1](https://rustup.rs) (pinned by `rustd/rust-toolchain.toml`, which rustup installs on the first `cargo` run inside `rustd/`) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Rust 1.99.1](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+
+Rustup installs the pinned toolchain from `rustd/rust-toolchain.toml` on the first `cargo` run inside `rustd/`.
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git
