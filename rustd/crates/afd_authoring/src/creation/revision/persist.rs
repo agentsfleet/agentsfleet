@@ -25,7 +25,7 @@ impl Creations {
         checked: &Review,
         revision: &Uuid7,
         now: Timestamp,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let number = row
             .head_revision
             .checked_add(1)
@@ -59,7 +59,7 @@ impl Creations {
             now,
         )
         .await?;
-        super::activity::record(
+        let model_changed = super::activity::record(
             connection,
             row,
             checked.effective.runtime_model_ref.as_deref(),
@@ -67,7 +67,8 @@ impl Creations {
             number,
         )
         .await?;
-        settle_draft(connection, row, captured, status).await
+        settle_draft(connection, row, captured, status).await?;
+        Ok(model_changed)
     }
 }
 
