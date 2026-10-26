@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { Readable, Writable } from "node:stream";
 import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
@@ -12,6 +12,7 @@ import { Workspaces } from "../src/services/workspaces.ts";
 import { ReplSignalEmitter, type ReplInputStream, type ReplOutputStream } from "../src/lib/repl.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
 import { SIGINT } from "../src/constants/signals.ts";
+import { ValidationError } from "../src/errors/index.ts";
 
 const WS_ID = "0195b4ba-8d3a-7f13-8abc-000000000010";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-000000000020";
@@ -111,6 +112,17 @@ const completeStream = (rec: Recorder) =>
   };
 
 describe("steerEffectFromArgs REPL dispatch", () => {
+  test("a typed prompt failure retains its actionable error", async () => {
+    const rec = makeRecorder();
+    const refusal = new ValidationError({ detail: "prompt input unavailable", suggestion: "reopen the terminal" });
+    const runRepl: RunRepl = async () => { throw refusal; };
+    const exit = await Effect.runPromiseExit(steerEffectFromArgs(FLEET_ID, undefined, { forceTty: true }, {
+      stdin: streamFrom([], false), stdout: nullOutput(), runRepl,
+    }).pipe(Effect.provide(testLayer(rec))));
+    expect(Exit.isFailure(exit) && Option.getOrNull(Cause.findErrorOption(exit.cause))).toBe(refusal);
+    expect(rec.requests).toEqual([]);
+  });
+
   test("non-TTY without --tty reads stdin once and stays single-shot", async () => {
     const rec = makeRecorder();
     const effect = steerEffectFromArgs(

@@ -205,7 +205,8 @@ New fleet supports multiple setup messages before explicit **Save fleet**.
 Saving opens that fleet's Chat.
 **Edit setup** opens a private chat panel beside the mounted runtime conversation.
 
-Manual instructions are optional, and **Save changes** remains reachable in the setup footer, above its composer.
+Manual instructions are optional. While editing, **Save changes** replaces **Edit setup** in the fleet header.
+
 Unapplied manual edits disable Save. Folding or hiding the editor retains local text while its subject remains mounted; reload or subject disposal loses unsent changes.
 
 A newer candidate preserves dirty text but blocks Update instructions until the conflict is resolved. Copy changes you want to keep, choose **Discard manual changes and load latest**, then reapply and review. Pristine fields follow the latest candidate without a discard step.

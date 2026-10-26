@@ -10,7 +10,6 @@ use super::super::{
 use crate::{
     Result,
     error::raise::query,
-    review,
     types::{DraftState, Review},
 };
 use afd_core::id::Uuid7;
@@ -26,26 +25,12 @@ impl Creations {
         checked: &Review,
         revision: &Uuid7,
         now: Timestamp,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let number = row
             .head_revision
             .checked_add(1)
             .ok_or_else(|| crate::error::raise::invalid("Setup revision is exhausted"))?;
-        // A revision is immutable, so it is written with the review of the
-        // state this write commits: the same subject against the new head.
-        let mut accepted = Accepted::from_review(captured, checked);
-        let mut context = accepted.context.clone();
-        context.linked_fleet_id = Some(row.id.clone());
-        accepted.review_digest = review::build_against(
-            &self.setup,
-            connection,
-            &context,
-            &captured.candidate,
-            now,
-            Some(number.to_string()),
-        )
-        .await?
-        .review_digest;
+        let accepted = Accepted::from_review(captured, checked);
         let head = Head {
             id: revision,
             number,
@@ -74,7 +59,16 @@ impl Creations {
             now,
         )
         .await?;
-        settle_draft(connection, row, captured, status).await
+        let model_changed = super::activity::record(
+            connection,
+            row,
+            checked.effective.runtime_model_ref.as_deref(),
+            revision,
+            number,
+        )
+        .await?;
+        settle_draft(connection, row, captured, status).await?;
+        Ok(model_changed)
     }
 }
 

@@ -21,7 +21,7 @@ describe("FleetThread — header chrome", () => {
     mockStream([]);
     render(cloneElement(threadElement(), {setupRevision: "3"}));
     expect(screen.getByText("Saved v3")).toBeTruthy();
-    expect(screen.getByText("New runs use this setup. Edit setup to change it.")).toBeTruthy();
+    expect(screen.getByText("Use Edit setup to change this fleet’s instructions, model, tools or repositories.")).toBeTruthy();
     expect(screen.getByPlaceholderText(/message your fleet/i)).toHaveProperty("disabled", false);
     expect(routerRefreshMock).not.toHaveBeenCalled();
   });

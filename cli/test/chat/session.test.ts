@@ -33,6 +33,17 @@ test("malformed creation cannot claim acceptance or forget its replay key", asyn
   });
 });
 
+test("a candidate without a validated review cannot be presented as ready to save", async () => {
+  const {review: _review, ...unreviewed} = DRAFT;
+  await withApi(() => Response.json(unreviewed), async transport => {
+    const session = new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}, DRAFT_ID);
+    const failure = await Effect.runPromise(Effect.flip(session.review()));
+    expect(failure._tag).toBe("ValidationError");
+    expect(failure.detail).toContain("no validated candidate");
+    expect(session.pending).toBe(false);
+  });
+});
+
 test("resume sends a body key, edits under the fresh tag, and cancels through the accepted sequence", async () => {
   const seen: {method: string; path: string; body: unknown; tag: string | null}[] = [];
   await withApi(async (request) => {

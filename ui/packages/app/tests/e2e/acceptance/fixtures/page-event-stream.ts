@@ -79,8 +79,8 @@ function installStandIn({ path, key, opened }: { path: string; key: string; open
       handler?.call(this, event);
     }
   }
-  // The first stream is the page's; a reconnect gets nothing, as a dropped
-  // connection would. Once dropped, every stream errors instead of opening.
+  // Development remounts replace closed streams. An explicit drop keeps every
+  // subsequent connection offline until the page leaves.
   const streams: StandIn[] = [];
   let dropped = false;
   const fail = (stream: StandIn): void => {
@@ -93,6 +93,7 @@ function installStandIn({ path, key, opened }: { path: string; key: string; open
     const stream = new StandIn(target.href);
     streams.push(stream);
     setTimeout(() => {
+      if (stream.readyState === Real.CLOSED) return;
       if (dropped) {
         fail(stream);
         return;
@@ -108,8 +109,8 @@ function installStandIn({ path, key, opened }: { path: string; key: string; open
   window.EventSource = EventSourceWithStandIn as unknown as typeof EventSource;
   (window as unknown as Record<string, PageSide>)[key] = {
     deliver: (bodies) => {
-      const stream = streams[0];
-      if (stream === undefined || stream.readyState === Real.CLOSED) return;
+      const stream = streams.findLast((candidate) => candidate.readyState === Real.OPEN);
+      if (stream === undefined) return;
       for (const body of bodies) {
         const type = /^event: (.*)$/m.exec(body)?.[1] ?? "message";
         const data = body.split("\n").filter((line) => line.startsWith("data: ")).map((line) => line.slice(6)).join("\n");

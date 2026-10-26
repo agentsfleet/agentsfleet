@@ -21,7 +21,7 @@ inputs:
   bun-version:
     description: Bun toolchain pin
     required: false
-    default: 1.4.3
+    default: 1.4.4
 
 runs:
   using: composite

@@ -8,7 +8,6 @@ import {
 } from "@assistant-ui/react";
 import {
   DashboardPanel,
-  DashboardPanelHeader,
 } from "@agentsfleet/design-system";
 import {
   CONNECTION_STATUS,
@@ -77,10 +76,9 @@ export function FleetThread({
   senderNames, modelLabel, setupRevision,
 }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
-  // The header row is chrome that earns its space only while the stream is not
-  // yet fine. `arrived` keeps it for the length of the arrival cue so the
-  // operator who WAS waiting gets the confirmation, and then the row goes —
-  // its disappearance being the steady-state signal that nothing is wrong.
+  // A connection cue floats above the transcript without changing its height.
+  // Removing a row here after the arrival animation shrank the scroll range
+  // mid-send, visibly pulling the conversation backwards before it re-pinned.
   const arrived = useArrivalCue(stream.connectionStatus);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   // Every send this fleet has not heard back on, from submit to the 202 — and
@@ -137,29 +135,17 @@ export function FleetThread({
             <DashboardPanel
               id="fleet-chat-transcript"
               padding="none"
-              className="flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
+              className="relative flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
             >
-              {/*
-                * The header speaks only when the stream is not fine.
-                *
-                * It carried the word "Chat" directly under a tab already reading
-                * "Chat", and a steady "Live" that said nothing on the overwhelming
-                * majority of loads. A transcript is the page's content; labelling
-                * it costs a row and tells the operator what they can see.
-                *
-                * What is worth saying is the exception, so connecting, reconnecting
-                * and offline still render here — and OFFLINE additionally gets the
-                * notice above the composer, with its retry. `PANEL_TITLE` stays as
-                * the scroll region's accessible name, where it is the only name
-                * that region has.
-                */}
+              {/* Connection changes occupy no transcript space. Offline also
+                exposes the retry notice beside the composer. */}
               {settledLive ? null : (
-                <DashboardPanelHeader
+                <div
                   data-testid="fleet-chat-header"
-                  className="shrink-0 border-b border-border px-lg py-md sm:px-xl"
+                  className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm"
                 >
                   <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
-                </DashboardPanelHeader>
+                </div>
               )}
               <FleetThreadViewport modelLabel={modelLabel} setupRevision={setupRevision}
                 eventsCount={stream.events.length}

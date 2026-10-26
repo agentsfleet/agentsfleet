@@ -55,6 +55,7 @@ describe("FleetThread — reply parts", () => {
     renderThread();
     const reply = replyRow();
     const chip = within(reply).getByRole("button", { name: /^Thought/ });
+    expect(messageRoot(reply).getAttribute("data-skip-layout")).toBe("true");
     const tools = within(reply).getByRole("list", { name: TOOL_CALLS });
     const answer = within(reply).getByText("Opened the PR.");
     expect(within(tools).getByText("search_repo")).toBeTruthy();
@@ -70,6 +71,7 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).getByLabelText("streaming").className).toContain("sr-only");
     expect(within(replyRow()).queryByRole("button", { name: COPY_REPLY })).toBeNull();
     expect(messageRoot(replyRow()).getAttribute("data-settled")).toBeNull();
+    expect(messageRoot(replyRow()).getAttribute("data-skip-layout")).toBeNull();
 
     mockStream([{ ...streaming, status: "processed", reply: "The whole answer" }]);
     view.rerender(threadElement());
@@ -77,6 +79,7 @@ describe("FleetThread — reply parts", () => {
     expect(within(replyRow()).queryByLabelText("streaming")).toBeNull();
     expect(within(replyRow()).getByRole("button", { name: COPY_REPLY })).toBeTruthy();
     expect(messageRoot(replyRow()).getAttribute("data-settled")).toBe("true");
+    expect(messageRoot(replyRow()).getAttribute("data-skip-layout")).toBeNull();
     // The operator's row is always laid out: the viewport's top anchor pins it
     // by its height, and a skipped row would report a stand-in height.
     expect(messageRoot(screen.getByText("Go")).getAttribute("data-settled")).toBeNull();

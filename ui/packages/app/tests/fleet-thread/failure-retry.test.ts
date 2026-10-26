@@ -66,7 +66,8 @@ it("keeps reported usage and failure diagnostics behind View details", () => {
   fireEvent.click(screen.getByRole("button", {name: "View details"}));
   expect(screen.getByText(`Reason: ${reason}`)).toBeTruthy();
   expect(screen.getByText(detail)).toBeTruthy();
-  expect(screen.getByTestId("fleet-reply-figures").textContent).toBe("Worked for 1s · 120 tokens · $0.001");
+  fireEvent.click(screen.getByRole("button", {name: "Run details"}));
+  expect(screen.getByRole("dialog", {name: "Run details"}).textContent).toContain("$0.001");
   expect(screen.queryByText("No further details were reported.")).toBeNull();
 });
 

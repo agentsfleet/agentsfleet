@@ -15,7 +15,7 @@
  */
 import { expect, type Page } from "@playwright/test";
 import type { EventDetail } from "@/lib/api/events";
-import { REPLY_FIGURES_TEST_ID, WORKED_FOR } from "@/components/domain/FleetReplyFigures";
+import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "@/components/domain/FleetReplyFigures";
 import { FIXTURE_KEY } from "./constants";
 import {
   anyRunnerLive,
@@ -107,11 +107,11 @@ export async function awaitTerminalTurn(
 }
 
 /**
- * The reply as the operator reads it, and the figures under that reply.
+ * The reply as the operator reads it, and its optional reported figures.
  *
  * The row is what the daemon persisted; this is the surface a person sees, and
  * the two are asserted apart on purpose. Unknown figures are omitted from the
- * footer, so require both recorded time and token count beside this answer.
+ * details window, so require both recorded time and token count there.
  */
 export async function expectAnsweredOnScreen(
   page: Page,
@@ -124,6 +124,10 @@ export async function expectAnsweredOnScreen(
   await expect(reply).not.toHaveText(/^\s*$/);
   const figures = reply.getByTestId(REPLY_FIGURES_TEST_ID);
   await expect(figures).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-  await expect(figures).toContainText(new RegExp(`${WORKED_FOR}\\s+\\d`), { timeout: RENDER_TIMEOUT_MS });
-  await expect(figures).toContainText(/\d[\d.,]*(?:[kmb])?\s+tokens/i, { timeout: RENDER_TIMEOUT_MS });
+  await figures.click();
+  const details = page.getByRole("dialog", { name: RUN_DETAILS_LABEL });
+  await expect(details).toContainText("Duration", { timeout: RENDER_TIMEOUT_MS });
+  await expect(details).toContainText("Tokens", { timeout: RENDER_TIMEOUT_MS });
+  await expect(details).toContainText(/\d[\d.,]*(?:[kmb])?/i);
+  await page.keyboard.press("Escape");
 }

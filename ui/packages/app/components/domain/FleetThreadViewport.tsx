@@ -73,7 +73,7 @@ function ChatHistory({ eventsCount, connectionStatus, setupRevision }: Pick<Flee
     >
       {setupRevision ? <div className="mb-md border-l-2 border-border pl-md text-label">
         <p className="font-semibold">Saved v{setupRevision}</p>
-        <p className="mt-xs text-muted-foreground">New runs use this setup. Edit setup to change it.</p>
+        <p className="mt-xs text-muted-foreground">Use Edit setup to change this fleet’s instructions, model, tools or repositories.</p>
       </div> : null}
       {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}
       {isIdleEmpty ? (

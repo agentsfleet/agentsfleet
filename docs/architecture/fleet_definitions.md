@@ -89,6 +89,12 @@ The daemon derives candidate identity, normalized definition, `canonical_digest`
 
 Review binds candidate content, instance name, runtime model, source/target revisions, policy marker, and relevant resolution versions. Exclude `readiness[].observed_at`: ordinary time passage must not invalidate every review. Changed effective permissions or model resolution invalidates the digest. Missing connections change live readiness without rewriting reusable requirements. Save rechecks the workspace owner's authority.
 
+The fleet chat model selector saves a setup revision through the native edit and reviewed Apply path. Future chat, webhook and scheduled work use that runtime model. Saving sends no authoring message and preserves unsent conversation text and private setup edits.
+
+One `model_changed` event commits with the revision and appears as “Model changed” in chat and Activity. Replaying the same save adds no second notice.
+
+Saved fleets use current readiness checks when activating or resuming. A different review digest, including catalogue or price changes, does not add a repeat-review hold. Explicit new saves still validate their review digest and setup tag before writing.
+
 A Library revision holds reusable setup and immutable requirements. A fleet separately owns its setup revision, approvals, history, memory, sessions, overrides, and schedules. Applying an improvement does not publish it. Publishing a Library revision is an explicit separate action.
 
 ### Native storage and terminal chat
