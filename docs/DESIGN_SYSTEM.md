@@ -183,7 +183,7 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 
 Fleet sections are Chat, Activity, and Memory.
 
-**Save fleet** sits beside the chat title. **Save changes** stays in the setup footer, above its composer.
+**Save fleet** sits beside the chat title. While editing a saved fleet, **Save changes** replaces **Edit setup** in the fleet header.
 **Stop** and permanent **Kill** live in **Fleet actions**, with confirmation dialogs.
 
 Setup and saved chat share a 728px reading column and a composer pinned to its bottom edge.

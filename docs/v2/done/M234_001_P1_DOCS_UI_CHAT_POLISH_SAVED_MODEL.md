@@ -4,7 +4,7 @@
 **Milestone:** M234
 **Workstream:** 001
 **Date:** Oct 26, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — fleet chat consistency
 **Categories:** DOCS, UI
 **Batch:** B1 — continue the restored chat worktree
@@ -44,8 +44,10 @@ The restored staged changes remain part of this delivery. Source families below 
 |---|---|---|
 | `docs/v2/active/M234_001_P1_DOCS_UI_CHAT_POLISH_SAVED_MODEL.md` | CREATE | Behavior and verification ledger; move to done after completion |
 | `.github/actions/setup-bun-playwright/action.yml`, `.github/workflows/`, `package.json`, `bun.lock`, `cli/package.json`, `cli/bun.lock`, `compose.dev-infra.yml`, `docker-compose.yml` | EDIT | Preserve restored Bun 1.4.4 alignment; no new workflow changes |
+| `VERSION`, `rustd/Cargo.toml` | EDIT | Feature release version; synchronize through `make sync-version` |
 | `.orly/LOCAL.md`, `README.md` | EDIT | Preserve restored fixture naming and contributor copy |
 | `docs/DESIGN_SYSTEM.md`, `docs/reviews/design-system-css-audit.md`, `docs/architecture/fleet_definitions.md` | EDIT/CREATE | Shared controls, saved model semantics and CSS audit |
+| `cli/README.md`, `docs/architecture/web_app.md`, `docs/architecture/shared_chat_verification.md` | EDIT | Correct supported Bun minimum and the saved-fleet header action |
 | `scripts/model-catalogue/quotes.integration.test.ts`, `scripts/model-catalogue/seed.integration.test.ts` | EDIT | Preserve restored runtime compatibility fixes |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx`, `components/FleetHeader.tsx` | EDIT | Pass persisted model context and show readable header copy |
 | `ui/packages/app/components/domain/FleetMarkdown.tsx`, `FleetReplyBody.tsx`, `FleetReplyFigures.tsx`, `fleetMessageRenderers.tsx`, `FleetThread.tsx`, `FleetThreadViewport.tsx`, `SteerComposer.tsx` and their existing tests | EDIT | Persistent replies, compact figures and composer model control |
@@ -90,20 +92,20 @@ The restored staged changes remain part of this delivery. Source families below 
 
 ### 1. Save the runtime model
 
-- Dimension 1.1 **IN_PROGRESS — Runtime selection:** Load runtime-eligible workspace models with bounded paging. Clone the current fleet setup into a private draft, edit only the runtime model and apply its reviewed revision. → Test `saves a runtime-only model change without generating a message`.
-- Dimension 1.2 **IN_PROGRESS — Existing chat polish:** Preserve reply text nodes on completion, shared composer fonts, compact run details, precise durations and removal of the header access warning. → Test `fleet-composer`.
-- Dimension 1.3 **IN_PROGRESS — Owner-approved changes:** Remove the saved-review drift flag and its activation hold. Keep current readiness checks. Save one model-change notice in the revision transaction for chat and Activity. → Test `saved_model_changes_record_one_notice_even_when_the_save_is_replayed`.
+- Dimension 1.1 **DONE — Runtime selection:** Load runtime-eligible workspace models with bounded paging. Clone the current fleet setup into a private draft, edit only the runtime model and apply its reviewed revision. → Test `saves a runtime-only model change without generating a message`.
+- Dimension 1.2 **DONE — Existing chat polish:** Preserve reply text nodes on completion, shared composer fonts, compact run details, precise durations and removal of the header access warning. → Test `fleet-composer`.
+- Dimension 1.3 **DONE — Owner-approved changes:** Remove the saved-review drift flag and its activation hold. Keep current readiness checks. Save one model-change notice in the revision transaction for chat and Activity. → Test `saved_model_changes_record_one_notice_even_when_the_save_is_replayed`.
 
 ### 2. Preserve state and recover safely
 
-- Dimension 2.1 **IN_PROGRESS — Refusal and stale setup:** Keep the saved model visible after refusal, missing models or a stale setup. Never apply unrelated editor changes. → Test `retains the saved model when the setup changes before apply`.
-- Dimension 2.2 **IN_PROGRESS — Unconfirmed save:** Disable further model changes while a write is unresolved. Retry the retained mutation before continuing; show the new model only after confirmed apply. → Test `retries a lost apply acknowledgment with the same key and body`.
-- Dimension 2.3 **IN_PROGRESS — Identity and input:** Abort owned reads when identity or source changes. Preserve composer text and focus through selection and refresh. → Test `saving the fleet model preserves both composers and survives reload`.
+- Dimension 2.1 **DONE — Refusal and stale setup:** Keep the saved model visible after refusal, missing models or a stale setup. Never apply unrelated editor changes. → Test `retains the saved model when the setup changes before apply`.
+- Dimension 2.2 **DONE — Unconfirmed save:** Disable further model changes while a write is unresolved. Retry the retained mutation before continuing; show the new model only after confirmed apply. → Test `retries a lost apply acknowledgment with the same key and body`.
+- Dimension 2.3 **DONE — Identity and input:** Abort owned reads when identity or source changes. Preserve composer text and focus through selection and refresh. → Test `saving the fleet model preserves both composers and survives reload`.
 
 ### 3. Verify the complete change
 
-- Dimension 3.1 **IN_PROGRESS — Coverage:** Cover real command-line failure and retry paths exposed by Bun 1.4.4 without weakening the 100% gate. → Test `make test-unit-all`.
-- Dimension 3.2 **IN_PROGRESS — Final validation:** Complete browser, build, repository verification and adversarial review. → Test `make test-integration-rustd`.
+- Dimension 3.1 **DONE — Coverage:** Cover real command-line failure and retry paths exposed by Bun 1.4.4 without weakening the 100% gate. → Test `make test-unit-all`.
+- Dimension 3.2 **DONE — Final validation:** Complete browser, build, repository verification and adversarial review. → Test `make test-integration-rustd`.
 
 ## Interfaces
 
@@ -155,14 +157,14 @@ No additional analytics or funnel is introduced. This control invokes existing s
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Saved choice, refusal and replay work | `make test-unit-app` | exit 0; app coverage 100% | P0 | |
-| R2 | Composer and replies survive browser interactions | Named acceptance scenarios in Test Specification | zero failed scenarios | P0 | |
-| S1 | Conform gates pass | `make harness-verify` | exit 0 | P0 | |
-| S2 | Lint passes | `make lint-all` | exit 0 | P0 | |
-| S3 | Unit suites pass | `make test-unit-all` | exit 0 | P0 | |
-| S4 | Real dependency lane passes | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version stays synchronized | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | Saved choice, refusal and replay work | `make test-unit-app` | exit 0; app coverage 100% | P0 | PASS: canonical `make test-coverage-all`, app 4,334 passed; all coverage metrics 100% |
+| R2 | Composer and replies survive browser interactions | Named acceptance scenarios in Test Specification | zero failed scenarios | P0 | PASS: 18 scenarios; `/tmp/agentsfleet-chat-browser-corrected.log` |
+| S1 | Conform gates pass | `make harness-verify` | exit 0 | P0 | See final `orly gate pr` output in PR Session notes; required before publication |
+| S2 | Lint passes | `make lint-all` | exit 0 | P0 | See final `orly gate pr` output in PR Session notes; required before publication |
+| S3 | Unit suites pass | `make test-unit-all` | exit 0 | P0 | See final `orly gate pr` output in PR Session notes; required before publication |
+| S4 | Real dependency lane passes | `make test-integration-rustd` | exit 0 | P0 | See final `orly gate pr` output in PR Session notes; required before publication |
+| S5 | Version stays synchronized | `make check-version` | exit 0 | P0 | See final `orly gate pr` output in PR Session notes; required before publication |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | See final `orly gate pr` output in PR Session notes; required before publication |
 
 ## Dead Code Sweep
 
@@ -197,7 +199,7 @@ The restored change deletes `fleetMarkdownBlocks.ts`, its test, the markdown ben
 
 - **Consults:** Indy chose continuation option A in the restored worktree. On model scope, Indy said: “Which i easier to fix? it shouldnt just limit to chat replies. For an user - what you see is what you get.” Source inspection confirms runtime model edits already update the fleet definition. Indy also asked to fix the review text beside Edit setup; remove the access warning entirely. Saved model changes must appear in chat and Activity.
 - **Metrics review:** No analytics/funnel playbook update required; the picker saves through existing measured setup operations and sends no authoring message.
-- **Skill-chain outcomes:** `context-restore` completed. `investigate` established that Bun 1.4.4 exposes previously credited command-line branches; evidence is `/tmp/agentsfleet-chat-cli-coverage.log`. Unit-test proofs cover refusal, access loss, retained replay, cleanup and unsent inputs. Final review remains in progress; post-push review starts after a pull request exists.
+- **Skill-chain outcomes:** `context-restore` completed. `investigate` established that Bun 1.4.4 exposes previously credited command-line branches; evidence is `/tmp/agentsfleet-chat-cli-coverage.log`. Unit-test proofs cover refusal, access loss, retained replay, cleanup and unsent inputs. Final adversarial and parent review converged with no findings on the unchanged product tree. The coverage audit mapped 29 of 29 meaningful paths with no gap. Post-push review starts after a pull request exists.
 - **Deferrals:** None. M228 and M233 are separate existing workstreams, not deferred requirements of this repair.
 
 The review-flag investigation traced `creation/read.rs` to `review/mod.rs`: `needs_re_review` compares the accepted review digest to a fresh review. Model resolution includes pricing and catalogue version; credentials, connections and creator authority also contribute. The header previously presented every mismatch as access trouble without an action. Activation checks retain their backend authority. A confirmed model change must be distinguished from this generic comparison; do not report every mismatch as a model change. Source inspection is complete; the exact live-fleet trigger has not been reproduced.
@@ -207,3 +209,9 @@ Indy then asked to remove the redundant code: “since we dont get any value to 
 Indy clarified the header's second line with a fleet-card screenshot: `AGENT MOSS-965F`, not the definition name `dev-acceptance-*`. Use the same stable agent callsign helper as the card for every fleet. The focused header check passes independently of missing or different definition names.
 
 Baseline commands are the repository's individual unit/coverage targets from those jobs. The live baseline ran `make test-coverage-rustd RUSTD_SHARD=runner`, `daemon`, and `substrate` with real dependencies and `--include-ignored`; matching their passed test names to the current canonical integration selection confirms 1,409 existing cases. The current `make test-integration-rustd` log contains those cases plus two new model-change/readiness cases: 1,411 passed, zero failed. Unit-count comparison retains the platform difference: Linux has 108 additional runner unit cases compared with this macOS run. No claim is made that the standalone baseline integration command ran locally.
+
+Final browser verification passed 18 scenarios after repairing the test stream fixture. A development remount replaced a closed stream; the fixture now delivers to the newest open stream and never reopens a closed one. The original seven failures were fixture delivery failures. A separate deterministic lifecycle diagnostic confirmed abandoned, replacement and dropped streams. Browser evidence: `.gstack/qa-reports/m234-review-20261026-1530/candidate/.qa-evidence/002/receipt.json`; fixture diagnostic: `/tmp/agentsfleet-chat-stream-fixture-probe.log`. The exact remount trigger remains unconfirmed.
+
+Final app build passed. TypeScript coverage reports app 4,334, website 133, design system 521 and command line 1,967 passed, with 16 command-line skips. All four coverage surfaces report 100%. The last canonical full unit boundary reported 4,776 Rust cases passed and 1,417 intentionally live-dependency cases ignored. Production Rust is unchanged since the canonical integration result: 1,411 passed. The final `orly gate pr` reruns the complete declared verification set before publication; its results belong in PR Session notes.
+
+Release metadata follows the feature-minor rule: `VERSION` 0.66.0, synchronized to the CLI and Rust workspace with `make sync-version`. The queue lookup found no claim or active sibling collision. The private root workspace package version remains independent of the binary version, as the canonical synchronization command declares. The unrelated M233 commit is preserved on `backup/chat-smooth-replies-before-m233-trim-20261026` and excluded from this branch.
