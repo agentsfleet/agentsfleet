@@ -109,8 +109,10 @@ impl Creations {
             },
         )
         .await?;
+        let mut model_changed = false;
         let revision = if won {
-            self.write_improvement(&mut tx, &row, &captured, &checked, &revision, now)
+            model_changed = self
+                .write_improvement(&mut tx, &row, &captured, &checked, &revision, now)
                 .await?;
             revision
         } else {
@@ -126,6 +128,9 @@ impl Creations {
             .ok_or(ErrorKind::Gone)?
         };
         tx.commit().await.map_err(query(CONTEXT))?;
+        if model_changed {
+            super::activity::publish(&self.admissions.streams(), fleet).await;
+        }
         Ok(revision)
     }
 }

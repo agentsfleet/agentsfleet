@@ -4,11 +4,24 @@ use super::super::super::fixture::Fixture;
 use super::{
     Fleet, Method, StatusCode, Value, header, json, json_body, mint, send, send_with_headers,
 };
+use afd_core::env::{EnvSource as _, ProcessEnv};
+use afd_dragonfly::{
+    Subscription, SubscriptionHub,
+    config::{DragonflyConfig, DragonflyRole},
+    hub::Received,
+    streams::{FleetStreams, fleet_activity_channel},
+};
+use std::time::Duration;
+
+const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
+const PROBE: &str = "model-change-subscription-ready";
+const FINISHED: &str = "model-change-writes-finished";
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn saved_model_changes_record_one_notice_even_when_the_save_is_replayed() {
     let fleet = Fleet::create().await;
+    let (hub, mut reader) = subscribe(&fleet).await;
     let other = Fixture::create().await;
     let selected = mint();
     sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1::uuid,$2::uuid,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3::uuid")
@@ -22,14 +35,68 @@ async fn saved_model_changes_record_one_notice_even_when_the_save_is_replayed() 
     let applied = fleet.apply(key.as_str(), tag, &request).await;
     assert_eq!(applied.status(), StatusCode::CREATED);
     let applied = json_body(applied).await;
+    let notice: Value = serde_json::from_str(&receive(&mut reader).await).expect("live notice");
+    assert_eq!(notice, json!({"kind": "catching_up", "dropped": 0}));
+    assert_eq!(fleet.current().await["setup_revision"], "2");
     assert_eq!(
         fleet.apply(key.as_str(), tag, &request).await.status(),
         StatusCode::CREATED
     );
     assert_model_notice(&fleet, selected.as_str()).await;
     save_without_model_change(&fleet, &applied).await;
+    FleetStreams::new(fleet.case.queue.clone())
+        .publish_tail(fleet.saved["id"].as_str().expect("fleet ID"), FINISHED)
+        .await
+        .expect("ordered end marker");
+    assert_eq!(
+        receive(&mut reader).await,
+        FINISHED,
+        "replay and unchanged model publish no extra notice"
+    );
+    drop(reader);
+    hub.shutdown();
     fleet.case.cleanup().await;
     other.cleanup().await;
+}
+
+async fn subscribe(fleet: &Fleet) -> (SubscriptionHub, Subscription) {
+    let config = DragonflyConfig::from_url(
+        DragonflyRole::Default,
+        ProcessEnv
+            .get("TEST_DRAGONFLY_URL")
+            .expect("live cluster URL"),
+    );
+    let hub = SubscriptionHub::start(config)
+        .await
+        .expect("live subscription hub");
+    let id = fleet.saved["id"].as_str().expect("fleet ID");
+    let mut reader = hub.subscribe(&fleet_activity_channel(id));
+    let publisher = FleetStreams::new(fleet.case.queue.clone());
+    tokio::time::timeout(DELIVERY_BUDGET, async {
+        while publisher
+            .publish_tail(id, PROBE)
+            .await
+            .expect("subscription probe")
+            == 0
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("subscription confirmed before model change");
+    assert_eq!(receive(&mut reader).await, PROBE);
+    (hub, reader)
+}
+
+async fn receive(reader: &mut Subscription) -> String {
+    let received = tokio::time::timeout(DELIVERY_BUDGET, reader.recv())
+        .await
+        .expect("live notice within budget")
+        .expect("subscription remains open");
+    let Received::Message(message) = received else {
+        panic!("a published message, not a gap");
+    };
+    message.payload.to_string()
 }
 
 async fn assert_model_notice(fleet: &Fleet, selected: &str) {
@@ -165,4 +232,49 @@ async fn events(fleet: &Fleet, suffix: &str) -> Value {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     json_body(response).await
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_failed_live_notice_keeps_the_model_save_committed_and_replayable() {
+    let mut fleet = Fleet::create().await;
+    let other = Fixture::create().await;
+    let (draft, _) = fleet.improvement().await;
+    let selected = mint();
+    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1::uuid,$2::uuid,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3::uuid")
+        .bind(selected.as_str()).bind(fleet.case.base.tenant.as_str()).bind(other.model.as_str())
+        .execute(&mut *fleet.case.base.db.acquire().await.expect("model connection"))
+        .await.expect("second runtime choice");
+    let request = select_model(&fleet, &draft, selected.as_str()).await;
+    let config =
+        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1".to_owned())
+            .with_request_timeout(Duration::from_millis(200));
+    let queue = afd_dragonfly::Dragonfly::unreachable(&config).expect("lazy unavailable queue");
+    fleet.case.router = fleet
+        .case
+        .base
+        .services(&afd_auth::Scope::ALL)
+        .with_fleet_queue_budgets(
+            fleet.case.base.db.clone(),
+            queue,
+            afd_admission::Budgets::default(),
+        )
+        .router();
+    let key = mint();
+    let tag = fleet.saved["setup_etag"].as_str().expect("saved setup tag");
+    let applied = fleet.apply(key.as_str(), tag, &request).await;
+    assert_eq!(applied.status(), StatusCode::CREATED);
+    assert_eq!(json_body(applied).await["setup_revision"], "2");
+    assert_eq!(
+        fleet.current().await["definition"]["config"]["x-agentsfleet"]["model"],
+        selected.as_str()
+    );
+    assert_eq!(
+        fleet.apply(key.as_str(), tag, &request).await.status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(fleet.revision_count().await, 2);
+    assert_model_notice(&fleet, selected.as_str()).await;
+    fleet.case.cleanup().await;
+    other.cleanup().await;
 }
