@@ -14,13 +14,15 @@ import {
 function Harness({
   defaultValue,
   onValueChange,
+  appearance,
 }: {
   defaultValue?: string;
   onValueChange?: (v: string) => void;
+  appearance?: "default" | "composer";
 }) {
   return (
     <Select defaultValue={defaultValue} onValueChange={onValueChange}>
-      <SelectTrigger aria-label="provider">
+      <SelectTrigger aria-label="provider" appearance={appearance}>
         <SelectValue placeholder="Pick one" />
       </SelectTrigger>
       <SelectContent>
@@ -50,9 +52,9 @@ describe("Select", () => {
     expect(screen.getByText("Claude")).toBeInTheDocument();
   });
 
-  it("opens, lists items + label, and emits onValueChange on selection", () => {
+  it.each(["default", "composer"] as const)("opens %s, lists choices and emits the selected value", (appearance) => {
     const onValueChange = vi.fn();
-    render(<Harness onValueChange={onValueChange} />);
+    render(<Harness onValueChange={onValueChange} appearance={appearance} />);
     const trigger = screen.getByRole("combobox", { name: /provider/i });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });

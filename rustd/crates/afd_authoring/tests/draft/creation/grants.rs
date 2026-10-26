@@ -108,10 +108,6 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
     let ready = c.save(&key, request).await;
     assert_eq!(ready.id, saved.id);
     assert_eq!(ready.status, "active");
-    assert!(
-        !ready.needs_re_review,
-        "approval status is readiness, not authored identity"
-    );
     assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
     c.cleanup().await;
 }

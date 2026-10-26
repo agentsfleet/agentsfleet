@@ -117,9 +117,9 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
       output: "0.075", cache_write_5m: "0.125", cache_write_1h: "0.1875" })] })]);
     expect((await seedCatalogue(database, wanted, true)).diff.changed).toEqual([KEY]);
     expect(await database`SELECT id, created_at, updated_at FROM model.platform_models`).toEqual(identity);
-    expect(await database<unknown>`SELECT input_nanos_per_mtok::text AS input, cached_input_nanos_per_mtok::text AS cached,
+    expect(Array.from(await database<unknown[]>`SELECT input_nanos_per_mtok::text AS input, cached_input_nanos_per_mtok::text AS cached,
       output_nanos_per_mtok::text AS output, cache_write_5m_nanos_per_mtok::text AS write_5m,
-      cache_write_1h_nanos_per_mtok::text AS write_1h FROM model.platform_model_prices`).toEqual([
+      cache_write_1h_nanos_per_mtok::text AS write_1h FROM model.platform_model_prices`)).toEqual([
       { input: "37500000", cached: "6000000", output: "75000000", write_5m: "125000000", write_1h: "187500000" },
     ]);
     expect((await seedCatalogue(database, wanted)).diff.changed).toEqual([]);
@@ -131,31 +131,31 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
     await seedCatalogue(database, catalogueFixture([tiered, extra]), true);
     const result = await seedCatalogue(database, catalogueFixture(), true);
     expect(result.diff).toEqual({ added: [], changed: [KEY], deleted: [`fireworks/${EXTRA_MODEL}`] });
-    expect(await database<unknown>`SELECT model_name FROM model.platform_models`).toEqual([{ model_name: MODEL_NAME }]);
-    expect(await database<unknown>`SELECT prompt_tokens_above FROM model.platform_model_prices`).toEqual([{ prompt_tokens_above: 0 }]);
+    expect(Array.from(await database<unknown[]>`SELECT model_name FROM model.platform_models`)).toEqual([{ model_name: MODEL_NAME }]);
+    expect(Array.from(await database<unknown[]>`SELECT prompt_tokens_above FROM model.platform_model_prices`)).toEqual([{ prompt_tokens_above: 0 }]);
     expect((await seedCatalogue(database, catalogueFixture())).diff).toEqual({ added: [], changed: [], deleted: [] });
   });
 
   test("models without exact context evidence never acquire a database row", async () => {
     const wanted = catalogueFixture([modelFixture({ context: null, context_unverified_reason: "Provider API unavailable." })]);
     expect((await seedCatalogue(database, wanted, true)).applied).toBe(false);
-    expect(await database<unknown>`SELECT id FROM model.platform_models`).toEqual([]);
-    expect(await database<unknown>`SELECT id FROM model.platform_model_prices`).toEqual([]);
+    expect(Array.from(await database<unknown[]>`SELECT id FROM model.platform_models`)).toEqual([]);
+    expect(Array.from(await database<unknown[]>`SELECT id FROM model.platform_model_prices`)).toEqual([]);
   });
 
   test("an unspecified cache-write price persists exactly, changes and clears independently", async () => {
     const catalogue = catalogueFixture([modelFixture({ prices: [priceFixture({ cache_write: "0.1875" })] })]);
     expect((await seedCatalogue(database, catalogue, true)).applied).toBe(true);
-    expect(await database<unknown>`SELECT cache_write_nanos_per_mtok::text AS unspecified,
+    expect(Array.from(await database<unknown[]>`SELECT cache_write_nanos_per_mtok::text AS unspecified,
       cache_write_5m_nanos_per_mtok AS write_5m, cache_write_1h_nanos_per_mtok AS write_1h
-      FROM model.platform_model_prices`).toEqual([{ unspecified: "187500000", write_5m: null, write_1h: null }]);
+      FROM model.platform_model_prices`)).toEqual([{ unspecified: "187500000", write_5m: null, write_1h: null }]);
     expect((await seedCatalogue(database, catalogue)).diff.changed).toEqual([]);
     catalogue.models[0]!.prices[0]!.cache_write = "0.0375";
     expect((await seedCatalogue(database, catalogue, true)).diff.changed).toEqual([KEY]);
-    expect(await database<unknown>`SELECT cache_write_nanos_per_mtok::text AS unspecified
-      FROM model.platform_model_prices`).toEqual([{ unspecified: "37500000" }]);
+    expect(Array.from(await database<unknown[]>`SELECT cache_write_nanos_per_mtok::text AS unspecified
+      FROM model.platform_model_prices`)).toEqual([{ unspecified: "37500000" }]);
     expect((await seedCatalogue(database, catalogueFixture(), true)).diff.changed).toEqual([KEY]);
-    expect(await database<unknown>`SELECT cache_write_nanos_per_mtok FROM model.platform_model_prices`)
+    expect(Array.from(await database<unknown[]>`SELECT cache_write_nanos_per_mtok FROM model.platform_model_prices`))
       .toEqual([{ cache_write_nanos_per_mtok: null }]);
   });
 
@@ -171,8 +171,8 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue seeder", () => {
     }
     await waitForClientCount(database, NO_OTHER_CLIENTS);
     expect(BigInt(await version(database))).toBe(generation + 1n);
-    expect(await database<unknown>`SELECT count(*)::integer AS models FROM model.platform_models`).toEqual([{ models: 1 }]);
-    expect(await database<unknown>`SELECT count(*)::integer AS prices FROM model.platform_model_prices`).toEqual([{ prices: 1 }]);
+    expect(Array.from(await database<unknown[]>`SELECT count(*)::integer AS models FROM model.platform_models`)).toEqual([{ models: 1 }]);
+    expect(Array.from(await database<unknown[]>`SELECT count(*)::integer AS prices FROM model.platform_model_prices`)).toEqual([{ prices: 1 }]);
   });
 
   test("the command applies then diffs through separate real connections and closes them", async () => {

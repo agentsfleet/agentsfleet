@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { EVENTS } from "@/lib/analytics/events";
 
-import { eventLinkFrom, eventReferenceFrom } from "./event-payload";
+import { eventHeadlineFrom, eventLinkFrom, eventReferenceFrom } from "./event-payload";
 
 const proposal = (over: Record<string, unknown> = {}) =>
   JSON.stringify({ action: "opened", repo: "o/r", number: 7, ...over });
+
+it("names a saved model change without exposing opaque model references", () => {
+  expect(eventHeadlineFrom(JSON.stringify({model_ref: "owner-private-ref"}), EVENTS.model_changed)).toBe("Model changed");
+  expect(eventHeadlineFrom(null, EVENTS.model_changed)).toBe("Model changed");
+});
 
 describe("eventLinkFrom", () => {
   it("returns the provider link when the payload carries an absolute https URL", () => {

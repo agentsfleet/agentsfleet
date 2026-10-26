@@ -72,3 +72,6 @@ facts.
   `&garde::Valid<T>`, so it cannot run on unproved input.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
+- Test fleets use purpose-driven display names, such as `Support triage` or
+  `Pull request review`. Keep run identifiers, timestamps, and cleanup keys out
+  of names shown in the sidebar; track fixture ownership by fleet identifier.

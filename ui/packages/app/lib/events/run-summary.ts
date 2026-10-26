@@ -1,6 +1,6 @@
 import type { EventRow } from "@/lib/api/events";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import { EVENT_STATUS } from "./event-summary";
+import { ACTOR, EVENT_STATUS } from "./event-summary";
 
 // The figures the chat's metrics strip shows, and the builders every side
 // derives them with: the server's first render (from the thread page it
@@ -67,7 +67,7 @@ export function buildRunSummary(
 ): FleetRunSummary {
   // The newest stored row: a waiting message leads a thread's first page, and
   // it is not the fleet's latest run.
-  const newest = rows?.items.find((row) => SERVER_STATUSES.has(row.status));
+  const newest = rows?.items.find((row) => row.actor !== ACTOR.CONFIG_RELOAD && SERVER_STATUSES.has(row.status));
   return {
     status,
     latest: newest === undefined ? null : figuresOfRow(newest),
@@ -103,7 +103,7 @@ const SERVER_STATUSES: ReadonlySet<string> = new Set(Object.values(EVENT_STATUS)
 export function latestFigures(events: readonly FleetEvent[]): RunFigures | null {
   let newest: FleetEvent | undefined;
   for (const event of events) {
-    if (!SERVER_STATUSES.has(event.status)) continue;
+    if (event.actor === ACTOR.CONFIG_RELOAD || !SERVER_STATUSES.has(event.status)) continue;
     if (newest === undefined || isNewer(event, newest)) newest = event;
   }
   if (newest === undefined) return null;

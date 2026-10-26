@@ -18,7 +18,7 @@ async fn an_improvement_advances_only_setup_and_replays_after_the_private_draft_
     assert_eq!(current["id"], fleet.saved["id"]);
     assert_eq!(current["name"], fleet.saved["name"]);
     assert_eq!(current["status"], "active");
-    assert_eq!(current["needs_re_review"], false);
+    assert!(current.get("needs_re_review").is_none());
     assert_ne!(current["definition"], fleet.saved["definition"]);
     assert_eq!(current["setup_etag"], applied["setup_etag"]);
     assert_eq!(fleet.revision_count().await, 2);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EVENTS } from "@/lib/analytics/events";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { THREAD_STATUS } from "./event-summary";
@@ -57,6 +58,14 @@ function event(over: Partial<FleetEvent> = {}): FleetEvent {
 }
 
 describe("buildRunSummary", () => {
+  it("keeps configuration notices out of the latest run figures", () => {
+    const change = row({actor: "config_reload", event_type: EVENTS.model_changed});
+    expect(buildRunSummary(STATUS_ACTIVE, {items: [change, row()]}, 0).latest).toEqual(figuresOfRow(row()));
+    expect(buildRunSummary(STATUS_ACTIVE, {items: [change]}, 0).latest).toBeNull();
+    const notice = event({actor: "config_reload", createdAt: new Date(OPTIMISTIC_AT)});
+    expect(latestFigures([event(), notice])).toEqual(latestFigures([event()]));
+    expect(latestFigures([notice])).toBeNull();
+  });
   it("the thread page and a live row build the same figures", () => {
     const fromThread = buildRunSummary(STATUS_ACTIVE, { items: [turn(), turn({ event_id: "evt_0" })] }, PENDING);
     // The bodies ride along on the thread row but never reach the strip, and

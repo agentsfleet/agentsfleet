@@ -9,7 +9,7 @@ import { sseFrame as frame } from "./fixtures/sse";
 import type { TimedFrame } from "./fixtures/page-event-stream";
 import { withReplyPage } from "./fixtures/reply-page";
 
-const FLEET_PREFIX = "reply-parts-spec-";
+const FLEET_NAME = "pull-request-review";
 const EVENT_ID = "9200000000000-1";
 const ACTOR = "steer:reply-parts@agentsfleet.dev";
 const REASONING_CHUNKS = 60;
@@ -54,7 +54,7 @@ const FRAMES_PER_TURN = 2;
 type ProbeResult = { longTasks: number; frames: number; p95FrameMs: number };
 
 test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     let seq = 0;
     await stream.send([opening(Date.now()), chunk(seq++, "reasoning", LIVE_REASONING)]);
     const live = chat.getByRole("button", { name: /^Thinking/ });
@@ -82,7 +82,7 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
 // The animation is read from the browser's computed style, which no unit lane
 // can see.
 test("test_live_tool_cell_settles_green", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await stream.send([
       opening(Date.now()),
       callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_STARTED, { call_id: REQUEST_CALL_ID, args_redacted: { method: "GET", url: REQUEST_URL } }),
@@ -108,7 +108,7 @@ test("test_live_tool_cell_settles_green", async ({ page }) => {
 // A short prompt's model reasons, answers, then reasons again before it ends.
 // The reader opens and closes Thought; streaming preserves each choice.
 test("test_interleaved_reasoning_folds_once", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     let seq = 0;
     const thinkFor = (count: number) => Array.from({ length: count }, () => ({
       ...chunk(seq++, "reasoning", "Deciding how to greet back. "),
@@ -151,8 +151,52 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
   });
 });
 
+test("repeated markdown replies preserve their text when each turn completes", async ({ page }, testInfo) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
+    for (let turn = 0; turn < 3; turn++) {
+      const eventId = `950000000000${turn}-1`;
+      const intro = `Review ${turn + 1} is ready.`;
+      const segments = [intro + "\n\n", "- Verify the signature.\n", "- Match the repository.\n\n",
+        "```ts\n", "const verified = true;\n", "```\n\n", "Ready for the next question."];
+      await sendOwn(`Please continue review ${turn + 1}.`, eventId);
+      await stream.send([
+        { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: eventId, actor: ownActor, created_at: Date.now() }) },
+        ...segments.map((text, seq) => ({ afterMs: ANSWER_EVERY_MS, body: frame(FRAME_KIND.CHUNK, {
+          event_id: eventId, text, text_kind: "answer", stream_seq: seq, stream_start: seq === 0, stream_contiguous: true,
+        }) })),
+      ]);
+      const paragraph = chat.getByText(intro, { exact: true });
+      const row = chat.locator('[data-role="assistant"]').filter({ has: page.getByText(intro, { exact: true }) });
+      await expect(row.getByText("Ready for the next question.", { exact: true })).toBeVisible();
+      await expect(row.locator("pre code")).toContainText("const verified = true;");
+      const probe = await paragraph.evaluateHandle(el => ({ samples: new Promise<Array<{ x: number; y: number; connected: boolean }>>(resolve => {
+        const samples: Array<{ x: number; y: number; connected: boolean }> = [];
+        const start = performance.now();
+        const tick = () => {
+          const rect = el.getBoundingClientRect();
+          samples.push({ x: rect.x, y: rect.y, connected: el.isConnected });
+          if (performance.now() - start < 500) requestAnimationFrame(tick);
+          else resolve(samples);
+        };
+        tick();
+      }) }));
+      await stream.send([{ afterMs: 0, body: frame(FRAME_KIND.EVENT_COMPLETE, {
+        event_id: eventId, actor: ownActor, status: "processed", final_reply: segments.join(""),
+      }) }]);
+      const samples = await probe.evaluate(async probe => probe.samples);
+      await probe.dispose();
+      await testInfo.attach(`conversation-turn-${turn + 1}`, { contentType: "application/json", body: JSON.stringify(samples) });
+      const first = samples[0]!;
+      expect(samples.every(sample => sample.connected)).toBe(true);
+      expect(Math.max(...samples.map(sample => Math.abs(sample.y - first.y)))).toBeLessThanOrEqual(1);
+      expect(Math.max(...samples.map(sample => Math.abs(sample.x - first.x)))).toBeLessThanOrEqual(1);
+      await expect(row.getByRole("button", { name: COPY_REPLY })).toBeVisible();
+    }
+  });
+});
+
 test("test_streaming_reply_costs_no_long_tasks", { tag: FRAME_BUDGET_TAG }, async ({ page }, testInfo) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     // A thread with a real history first, then the measured reply beneath it.
     const now = Date.now();
     await stream.send(settledHistory(now - HISTORY_TURNS));
@@ -177,7 +221,7 @@ test("test_streaming_reply_costs_no_long_tasks", { tag: FRAME_BUDGET_TAG }, asyn
 // A settled row skips layout off screen, which contains its paint; a control
 // focused near its edge must still show the whole ring, not a clipped arc.
 test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await stream.send(settledHistory(Date.now()).slice(0, FRAMES_PER_TURN));
     const copy = chat.getByRole("button", { name: COPY_REPLY });
     await expect(copy).toBeVisible();

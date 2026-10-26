@@ -82,13 +82,8 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
 
-  /* Status — bare-name for `text-success`, `bg-warn`, `text-error`,
-   * `text-info`, `text-evidence`. The spec uses --warn (not --warning);
-   * mirror in the utility name so prose and class strings agree.
-   * `--color-warning` is also exposed (Tailwind convention) and
-   * resolves to the same Layer 0 token. */
+  /* Status utilities use the shared component vocabulary. */
   --color-success: var(--success);
-  --color-warn: var(--warn);
   --color-warning: var(--warn);
   --color-error: var(--error);
   --color-info: var(--info);
@@ -99,9 +94,7 @@
   --color-pulse: var(--pulse);
   --color-pulse-dim: var(--pulse-dim);
   --color-pulse-glow: var(--pulse-glow);
-  /* `text-on-pulse` — theme-fixed dark text for content layered on
-   * a pulse-coloured surface (primary CTAs, brand-mark labels). Stays
-   * dark in light mode too; see tokens.css `--on-pulse`. */
+  /* `text-on-pulse` follows the theme's contrasting ink for pulse surfaces. */
   --color-on-pulse: var(--on-pulse);
   /* Primary CTA fill — swaps pulse (dark) <-> ink (light); see tokens.css --cta. */
   --color-cta: var(--cta);
@@ -138,7 +131,6 @@
   --text-display-md: var(--fs-display-md);
   --text-heading: var(--fs-heading);
   --text-eyebrow: var(--fs-eyebrow);
-  --text-reading: var(--fs-reading);
   --text-body-lg: var(--fs-body-lg);
   --text-body: var(--fs-body);
   --text-body-sm: var(--fs-body-sm);
@@ -168,7 +160,6 @@
   --leading-display-md: var(--lh-display-md);
   --leading-heading: var(--lh-heading);
   --leading-eyebrow: var(--lh-eyebrow);
-  --leading-reading: var(--lh-reading);
   --leading-body-lg: var(--lh-body-lg);
   --leading-body: var(--lh-body);
   --leading-body-sm: var(--lh-body-sm);
@@ -196,20 +187,6 @@
   --container-tagline: var(--max-w-tagline);
   --container-prose: var(--max-w-prose);
 
-  /* Min-width forwards — Tailwind v4 reads `--container-*` for `max-w-*`
-   * utilities but uses a SEPARATE `--min-width-*` namespace for `min-w-*`.
-   * Without these forwards `min-w-narrow` etc. silently emit no CSS and
-   * the consumer's min-width constraint vanishes. Mirror the container
-   * set so every named width works as both a max and a min. */
-  --min-width-trim: var(--max-w-trim);
-  --min-width-narrow: var(--max-w-narrow);
-  --min-width-measure: var(--max-w-measure);
-  --min-width-form: var(--max-w-form);
-  --min-width-wide: var(--max-w-wide);
-  --min-width-content: var(--max-w-content);
-  --min-width-tagline: var(--max-w-tagline);
-  --min-width-prose: var(--max-w-prose);
-
   /* Named grid templates — `grid-cols-footer` etc. Tailwind v4 reads
    * `--grid-template-columns-{name}` as the source of `grid-cols-{name}`
    * utilities. Add a row here when a layout earns its second consumer. */
@@ -226,7 +203,7 @@
 
   /* Fonts — forward Layer 0 --ff-* to Tailwind --font-* utilities. */
   --font-sans: var(--ff-sans);
-  --font-system: system-ui, sans-serif;
+  --font-system: var(--ff-system);
   --font-serif: var(--ff-serif);
   --font-display: var(--ff-display);
   --font-mono: var(--ff-mono);

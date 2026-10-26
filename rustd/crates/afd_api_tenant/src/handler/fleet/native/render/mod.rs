@@ -41,7 +41,6 @@ pub(super) async fn response<D: Services>(
         setup_etag: saved.setup_etag,
         setup_revision: saved.setup_revision,
         policy_semantics: saved.policy_semantics,
-        needs_re_review: saved.needs_re_review,
         definition: saved.definition,
         setup: saved.setup,
         start: saved.start,

@@ -228,7 +228,7 @@ Active fleet dots use the brand color; hover or keyboard focus reveals the delet
 
 Fleet **Edit setup** opens a private chat panel alongside the mounted runtime conversation. **Stop** and permanent **Kill** live in **Fleet actions**.
 
-The panel exposes **Save changes** above its composer and optional **Edit instructions manually** below its conversation.
+While editing, **Save changes** replaces **Edit setup** in the fleet header. Optional **Edit instructions manually** remains below the setup conversation.
 Saving a revision closes the panel, refreshes server data and preserves unsent runtime text.
 
 Existing runs keep their pinned revision; new runs use the saved version.

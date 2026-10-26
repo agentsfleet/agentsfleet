@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FRAME_KIND } from "@/lib/api/events-types";
+import { EVENTS } from "@/lib/analytics/events";
+import { MODEL_CHANGED_LABEL } from "@/lib/events/event-payload";
 import { CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { setupRegistryTests, row, WS, Z_A, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, RECONNECT_ADVANCE_MS, SEED_AT_MS, MISSED_AT_MS, SEED_SINCE_PARAM, MISSED_SINCE_PARAM, fetchSpy, pageWith, queryOf, flushBackfill, reconnect } from "@/tests/helpers/fleet-stream-backfill-fixtures";
@@ -199,6 +201,23 @@ describe("fleet-stream-registry — backfill", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(queryOf(0).get("since")).toBe(SEED_SINCE_PARAM);
     expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual(["evt_seed", "evt_missed"]);
+    release();
+  });
+  it("shows a committed model notice in an already open chat and deduplicates repeated refresh signals", async () => {
+    const notice = row({event_id: "evt_model", actor: "config_reload", event_type: EVENTS.model_changed,
+      status: "processed", created_at: new Date(MISSED_AT_MS).toISOString()});
+    fetchSpy.mockResolvedValue(pageWith([notice]));
+    const release = subscribe(WS, Z_A, [], () => {});
+    const source = sourceAt(0);
+    source.open(); source.heartbeat();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    source.emit({kind: FRAME_KIND.CATCHING_UP, dropped: 0});
+    await flushBackfill();
+    expect(getSnapshot(Z_A).events).toMatchObject([{id: notice.event_id, text: MODEL_CHANGED_LABEL, status: "processed"}]);
+    source.emit({kind: FRAME_KIND.CATCHING_UP, dropped: 0});
+    await flushBackfill();
+    expect(getSnapshot(Z_A).events).toHaveLength(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
     release();
   });
   it("test_chat_backfills_on_catching_up — a gap during a walk runs a second walk, from the first one's watermark, after it", async () => {

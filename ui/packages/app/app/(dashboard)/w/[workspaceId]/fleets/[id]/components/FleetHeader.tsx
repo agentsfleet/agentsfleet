@@ -1,6 +1,7 @@
 import { Badge, PageTitle } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
@@ -25,7 +26,7 @@ export function FleetHeader({
     <div className="fleet-chat-heading flex shrink-0 items-center justify-between gap-md px-xl pb-sm pt-5 sm:px-chat-inset">
       <div className="min-w-0">
         <PageTitle size="chat" className="truncate">{fleet.name}</PageTitle>
-        <p className="mt-xs text-eyebrow text-muted-foreground">Saved v{fleet.setup_revision} · <span className="capitalize">{fleet.status}</span></p>
+        <p className="mt-xs truncate text-eyebrow text-muted-foreground">{agentDisplayName(fleet.id)}</p>
       </div>
       <div
         aria-label="Fleet lifecycle actions"
@@ -34,7 +35,6 @@ export function FleetHeader({
         {exhaustedAt !== undefined ? (
           <ExhaustionBadge exhaustedAt={exhaustedAt} />
         ) : null}
-        {fleet.needs_re_review ? <Badge variant="amber">Access needs attention before resuming</Badge> : null}
         <EditSetupButton />
         {fleet.status === AGENTSFLEET_STATUS.INSTALLING ? (
           <Badge variant="cyan" aria-label="Fleet status: installing">
