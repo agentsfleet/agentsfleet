@@ -24,7 +24,7 @@ export const FLEET: Fleet = {id: FLEET_ID, name: "repairer", status: "installing
     next_action: {kind: "workspace_connections", label: "Connect GitHub", href: `/w/${WORKSPACE}/integrations`}}]}, start: {kind: START_KIND.none},
   schedules: []};
 export const FLEET_DETAIL = {...FLEET, definition: REVIEW.effective.definition, created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z",
-  policy_semantics: REVIEW.policy_semantics, needs_re_review: false, events_processed: "3", budget_used_nanos: "9007199254740993",
+  policy_semantics: REVIEW.policy_semantics, events_processed: "3", budget_used_nanos: "9007199254740993",
   pending_approvals: 2, memory_access: {read: true, publish: false}};
 export const MESSAGE: Message = {sequence: "1", operation_id: OPERATION_ID, role: MESSAGE_ROLE.user,
   state: MESSAGE_STATE.completed, text: "Investigate failures", created_at: "1970-01-01T00:00:00Z"};

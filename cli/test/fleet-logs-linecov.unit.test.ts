@@ -26,6 +26,16 @@ const WORKSPACE_ID = "ws_linecov";
 const CURSOR_TOKEN = "cur_abc123";
 const STORED_TOKEN = "tok_stored";
 
+test("logs uses an explicit page limit in the request", async () => {
+  const httpSpy: HttpSpy = { requestedPath: null };
+  const outSpy: OutputSpy = { jsonPayloads: [], infoLines: [] };
+  const exit = await runWith(logsEffectFromFlags({ fleetId: VALID_FLEET_ID, limit: "41" }), {
+    config: configLayer(false), output: outputLayer(outSpy), http: httpClientLayer(httpSpy, { items: [] }),
+  });
+  expect(Exit.isSuccess(exit)).toBe(true);
+  expect(httpSpy.requestedPath).toContain("limit=41");
+});
+
 const configLayer = (jsonMode: boolean): Layer.Layer<CliConfig> =>
   Layer.succeed(CliConfig, {
     apiUrl: "https://api.test.local",

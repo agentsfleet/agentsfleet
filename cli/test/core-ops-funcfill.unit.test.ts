@@ -65,13 +65,13 @@ const noTokenCredentialsLayer = (): Layer.Layer<Credentials> =>
     clearAccessToken: Effect.void,
   });
 
-const healthzOkHttpLayer = (rec: Recorder): Layer.Layer<HttpClient> =>
+const healthzOkHttpLayer = (rec: Recorder, status = "ok"): Layer.Layer<HttpClient> =>
   Layer.succeed(HttpClient, {
     request: (input) => {
       rec.httpCalls.push(input.path);
       // Only the authless healthz probe should ever be issued in this
       // scenario; the binding GET is skipped when the token is missing.
-      return Effect.succeed({ status: "ok" } as never);
+      return Effect.succeed({ status } as never);
     },
   });
 
@@ -99,6 +99,19 @@ interface DoctorReport {
 }
 
 describe("doctorEffect — binding check token-failure branch", () => {
+  test("an unexpected health response is reported as unhealthy with its payload", async () => {
+    const rec = makeRecorder();
+    const code = await Effect.runPromise(doctorEffect.pipe(
+      Effect.provide(configLayer(true)), Effect.provide(noTokenCredentialsLayer()),
+      Effect.provide(healthzOkHttpLayer(rec, "degraded")),
+      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)), Effect.provide(workspaceSelectedLayer()),
+    ));
+    const report = JSON.parse(rec.stdout[0] ?? "{}") as DoctorReport;
+    expect(code).toBe(1);
+    expect(report.checks.find(check => check.name === DOCTOR_CHECK.SERVER_REACHABLE))
+      .toEqual({ name: DOCTOR_CHECK.SERVER_REACHABLE, ok: false, detail: 'unexpected payload: {"status":"degraded"}' });
+  });
+
   test("workspace selected but no token: binding folds to ok=false without a GET, exit 1", async () => {
     const rec = makeRecorder();
     const program = doctorEffect.pipe(

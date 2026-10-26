@@ -56,7 +56,7 @@ async fn rename_and_stop_preserve_setup_and_resume_rechecks_the_removed_model() 
         .await;
     assert_eq!(response.status(), StatusCode::OK);
     let stopped = json_body(response).await;
-    assert_eq!(stopped["needs_re_review"], false);
+    assert!(stopped.get("needs_re_review").is_none());
     assert_eq!(stopped["setup_etag"], fleet.saved["setup_etag"]);
     sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
         .bind(fleet.case.base.model.as_str())
@@ -83,7 +83,13 @@ async fn rename_and_stop_preserve_setup_and_resume_rechecks_the_removed_model() 
         current["status"], "installing",
         "removed model cannot resume runtime work"
     );
-    assert_eq!(current["needs_re_review"], true);
+    assert!(
+        current["setup"]["checks"]
+            .as_array()
+            .expect("setup checks")
+            .iter()
+            .any(|check| check["kind"] == "model" && check["state"] != "ready")
+    );
     fleet.case.cleanup().await;
 }
 

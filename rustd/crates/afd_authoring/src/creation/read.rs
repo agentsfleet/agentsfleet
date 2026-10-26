@@ -33,8 +33,6 @@ pub struct SavedFleet {
     pub setup_revision: String,
     /// Policy interpretation of this setup.
     pub policy_semantics: String,
-    /// Effective authority drift needs a new review before activation.
-    pub needs_re_review: bool,
     /// Shared immutable setup, without conversation or credentials.
     pub definition: Definition,
     /// Actual current installation checks.
@@ -128,7 +126,6 @@ fn project(row: Stored, review: &Review) -> SavedFleet {
         etag: etag(&row.id, row.resource_version),
         setup_etag: etag(&row.id, row.head_revision),
         setup_revision: row.head_revision.to_string(),
-        needs_re_review: row.accepted.review_digest != review.review_digest,
         policy_semantics: row.accepted.policy_semantics,
         id: row.id,
         name: row.name,

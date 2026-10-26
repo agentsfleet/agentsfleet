@@ -32,8 +32,6 @@ pub struct FleetResponse<D = Value, P = Value, O = Value, S = Value> {
     pub setup_revision: String,
     /// Pinned policy interpretation.
     pub policy_semantics: String,
-    /// Effective authority changed since review.
-    pub needs_re_review: bool,
     /// Complete validated native setup, with no private transcript.
     #[cfg_attr(feature = "openapi", schema(value_type = afd_fleet_runtime::definition::DefinitionSchema))]
     pub definition: D,

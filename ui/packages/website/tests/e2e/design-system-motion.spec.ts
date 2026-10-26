@@ -20,6 +20,7 @@ const BECKON = "data-beckon";
 const BECKON_TEXT = "data-beckon-text";
 const TOOL_SHIMMER = "data-tool-shimmer";
 const SETTLED = "data-settled";
+const SKIP_LAYOUT = "data-skip-layout";
 const BRAILLE_SPINNER = "data-braille-spinner";
 const BRAILLE_FRAMES = "data-braille-frames";
 const BRAILLE_REST = "data-braille-rest";
@@ -113,18 +114,19 @@ test.describe("attribute-driven motion fires only for the literal true value", (
     }
   });
 
-  test("a settled row skips off-screen layout; any other value lays out normally", async ({ page }) => {
-    expect((await styleOf(page, { [SETTLED]: LITERAL_TRUE }, ["content-visibility"]))["content-visibility"]).toBe(AUTO_CONTENT);
-    expect((await styleOf(page, { [SETTLED]: LITERAL_FALSE }, ["content-visibility"]))["content-visibility"]).toBe(VISIBLE_CONTENT);
-    expect((await styleOf(page, { [SETTLED]: PRESENCE_ONLY }, ["content-visibility"]))["content-visibility"]).toBe(VISIBLE_CONTENT);
+  test("only explicit history layout skipping opts in; completed live rows keep their layout", async ({ page }) => {
+    expect((await styleOf(page, { [SKIP_LAYOUT]: LITERAL_TRUE }, ["content-visibility"]))["content-visibility"]).toBe(AUTO_CONTENT);
+    expect((await styleOf(page, { [SKIP_LAYOUT]: LITERAL_FALSE }, ["content-visibility"]))["content-visibility"]).toBe(VISIBLE_CONTENT);
+    expect((await styleOf(page, { [SKIP_LAYOUT]: PRESENCE_ONLY }, ["content-visibility"]))["content-visibility"]).toBe(VISIBLE_CONTENT);
+    expect((await styleOf(page, { [SETTLED]: LITERAL_TRUE }, ["content-visibility"]))["content-visibility"]).toBe(VISIBLE_CONTENT);
   });
 });
 
 test.describe("tokens derive from one declaration and the spinner steps in CSS", () => {
-  test("a settled row's ring room grows with the focus ring's reach and is cancelled by its margin", async ({ page }) => {
+  test("a history row's ring room grows with the focus ring's reach and is cancelled by its margin", async ({ page }) => {
     const roomAt = async (reach: string) => {
       await setRootProperty(page, FOCUS_RING_REACH, reach);
-      const style = await styleOf(page, { [SETTLED]: LITERAL_TRUE }, ["padding-left", "margin-left"]);
+      const style = await styleOf(page, { [SKIP_LAYOUT]: LITERAL_TRUE }, ["padding-left", "margin-left"]);
       expect(parseFloat(style["margin-left"] ?? "")).toBe(-parseFloat(style["padding-left"] ?? ""));
       return parseFloat(style["padding-left"] ?? "");
     };

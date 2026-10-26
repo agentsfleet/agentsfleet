@@ -56,23 +56,26 @@ export const Select = SelectPrimitive.Root;
 export const SelectGroup = SelectPrimitive.Group;
 export const SelectValue = SelectPrimitive.Value;
 
-export type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger>;
+export type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & { appearance?: "default" | "composer" };
 
 export function SelectTrigger({
   className,
   children,
   ref,
+  appearance = "default",
   ...props
 }: SelectTriggerProps) {
   return (
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex h-9 w-full items-center justify-between rounded-md border border-border-strong bg-secondary",
+        "flex items-center justify-between rounded-md font-sans transition-colors duration-snap ease-snap",
         // No resting shadow: borders define panels, and shadows belong to
         // dialogs and menus. This was the only box-shadow inside <main> on
         // every route that renders it.
-        "px-md py-sm font-sans text-body-sm transition-colors duration-snap ease-snap enabled:hover:border-ring",
+        appearance === "composer"
+          ? "h-auto w-auto min-w-0 max-w-full border-0 bg-transparent px-0 py-0 text-eyebrow leading-label text-muted-foreground"
+          : "h-9 w-full border border-border-strong bg-secondary px-md py-sm text-body-sm enabled:hover:border-ring",
         // The coarse-pointer floor every Button-derived control already carries
         // (Button.tsx:11). Without it the "Rows per page" combobox was the one
         // interactive element in <main> under the 44px touch minimum.

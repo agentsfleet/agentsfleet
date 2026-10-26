@@ -27,7 +27,7 @@ export const FleetDetailSchema = FleetSchema.extend({
   })),
   definition: DefinitionSchema.extend({config: ConfigSchema.passthrough()}),
   created_at: Instant, updated_at: Instant,
-  policy_semantics: z.string(), needs_re_review: z.boolean(),
+  policy_semantics: z.string(),
   events_processed: DecimalSchema, budget_used_nanos: nanosSchema,
   pending_approvals: z.number().int().nonnegative(),
   memory_access: z.object({read: z.boolean(), publish: z.boolean()}),

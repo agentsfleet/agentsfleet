@@ -1,21 +1,17 @@
 "use client";
 
-import { createContext, memo, useContext, useDeferredValue, useMemo, useState, type ReactNode } from "react";
+import { createContext, memo, useContext, type ReactNode } from "react";
+import { MarkdownTextPrimitive, memoizeMarkdownComponents } from "@assistant-ui/react-markdown";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { StreamingBlocks } from "./fleetMarkdownBlocks";
 
 /**
  * A fleet's reply, as markdown.
  *
- * Models write markdown whether or not anything renders it, so the chat used to
- * print `- **A repo + PR number**` verbatim and collapse every newline into a
- * space — a numbered list arrived as one long paragraph. `react-markdown` is
- * the engine here (it is what `@assistant-ui/react-markdown` wraps; that
- * package's primitive reads the message's own text part, and the fleet's reply
- * lives in a separate field it cannot see). Raw HTML is never parsed, which is
- * the posture worth having when the author is a model.
+ * Assistant messages use the library's streaming text-part renderer. Standalone
+ * text, including user messages, uses the same markdown engine and elements.
+ * Raw HTML is never parsed: models and users are untrusted authors.
  *
  * Every element maps to a design-system token rather than to prose defaults, so
  * a reply sits in the same type scale as the surface around it.
@@ -27,7 +23,7 @@ const Fenced = createContext(false);
 // Module scope, so a finished block's props never change identity under it.
 const REMARK_PLUGINS = [remarkGfm];
 
-const COMPONENTS: Components = {
+const COMPONENTS = {
   p: ({ children }) => <p className="leading-conversation">{children}</p>,
   ul: ({ children }) => <ul className="list-disc space-y-xs pl-lg">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal space-y-xs pl-lg">{children}</ol>,
@@ -78,16 +74,17 @@ const COMPONENTS: Components = {
     <th className="border border-border px-sm py-xs text-left font-medium">{children}</th>
   ),
   td: ({ children }) => <td className="border border-border px-sm py-xs">{children}</td>,
-};
+} satisfies Components;
 
 // Match the approved conversation type in setup and saved fleet chat.
 const BODY_CLASS = "space-y-lg font-sans text-conversation leading-conversation text-foreground";
 
-/** Defer text and completion together so the final parse sees the final text. */
-export const FleetReplyMarkdown = memo(function FleetReplyMarkdown({ text, streaming }: { text: string; streaming: boolean }) {
-  const snapshot = useMemo(() => ({ text, streaming }), [text, streaming]);
-  const deferred = useDeferredValue(snapshot);
-  return deferred.streaming ? <FleetStreamingMarkdown text={deferred.text} /> : <FleetMarkdown>{deferred.text}</FleetMarkdown>;
+const REPLY_COMPONENTS = memoizeMarkdownComponents(COMPONENTS);
+
+/** Keep the library's text-part renderer mounted through streaming and completion. */
+export const FleetReplyMarkdown = memo(function FleetReplyMarkdown() {
+  return <MarkdownTextPrimitive className={BODY_CLASS} components={REPLY_COMPONENTS}
+    remarkPlugins={REMARK_PLUGINS} smooth defer />;
 });
 
 export const FleetMarkdown = memo(function FleetMarkdown({ children }: { children: string }) {
@@ -97,37 +94,6 @@ export const FleetMarkdown = memo(function FleetMarkdown({ children }: { childre
         {children}
       </Markdown>
     </div>
-  );
-});
-
-/**
- * A reply still streaming, rendered block by block: each finished block is
- * parsed once and then left alone, and a flush re-parses only the open tail
- * (see `fleetMarkdownBlocks`). A settled reply renders through `FleetMarkdown`
- * instead, in one parse, so what stays on screen is exactly what it was.
- */
-export const FleetStreamingMarkdown = memo(function FleetStreamingMarkdown({ text }: { text: string }) {
-  const [blocks] = useState(() => new StreamingBlocks());
-  const view = blocks.view(text);
-  return (
-    <div className={BODY_CLASS}>
-      {view.finished.map((source, index) => (
-        // Finished blocks only ever append, so a position names one block for
-        // good; a replaced answer re-renders through the `source` it carries.
-        <FinishedBlock key={index} source={source} />
-      ))}
-      <Markdown components={COMPONENTS} remarkPlugins={[remarkGfm, () => view.readTail]}>
-        {view.tail}
-      </Markdown>
-    </div>
-  );
-});
-
-const FinishedBlock = memo(function FinishedBlock({ source }: { source: string }) {
-  return (
-    <Markdown components={COMPONENTS} remarkPlugins={REMARK_PLUGINS}>
-      {source}
-    </Markdown>
   );
 });
 

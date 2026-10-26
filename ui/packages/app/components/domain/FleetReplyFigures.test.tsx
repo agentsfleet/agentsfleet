@@ -1,13 +1,11 @@
 import { ev, mockStream, renderThread } from "@/tests/fleet-thread/harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 
-import { REPLY_FIGURES_TEST_ID, WORKED_FOR } from "./FleetReplyFigures";
+import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "./FleetReplyFigures";
 import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 
-// What a turn took, at its foot once it settles, and how long it has run while
-// it has nothing else to show. Rendered through the thread, from the figures
-// the reply's own custom bag carries.
+// Optional reported figures, and the waiting clock, through the real thread.
 
 const NOW = Date.UTC(2026, 9, 4, 12, 0, 0);
 const TOKENS = 12_400;
@@ -34,19 +32,28 @@ function renderTurn(over: Partial<FleetEvent>) {
 const figures = () => screen.queryByTestId(REPLY_FIGURES_TEST_ID)?.textContent ?? null;
 
 describe("FleetThread — reply figures", () => {
-  it("test_settled_reply_shows_figures", () => {
+  it("opens reported figures on request and closes with Escape", () => {
     renderTurn({ tokens: TOKENS, wallMs: WALL_MS, costNanos: String(COST_NANOS) });
-    // Pin test: the literal is the line Codex ends a turn with, plus the spend.
-    expect(figures()).toBe(`${WORKED_FOR} 41s · 12.4K tokens · $0.03`);
+    const trigger = screen.getByRole("button", { name: RUN_DETAILS_LABEL });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: RUN_DETAILS_LABEL });
+    for (const value of ["Duration", "41s", "Tokens", "12.4K", "Reported cost", "$0.03"]) {
+      expect(within(dialog).getByText(value)).toBeTruthy();
+    }
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("test_unknown_figure_left_out", () => {
     renderTurn({ tokens: TOKENS, wallMs: WALL_MS, costNanos: null });
-    expect(figures()).toBe(`${WORKED_FOR} 41s · 12.4K tokens`);
-    expect(figures()).not.toContain("$");
+    fireEvent.click(screen.getByRole("button", { name: RUN_DETAILS_LABEL }));
+    expect(screen.getByRole("dialog").textContent).not.toContain("Reported cost");
     cleanup();
     renderTurn({ tokens: TOKENS, wallMs: null, costNanos: null });
-    expect(figures()).toBe("12.4K tokens");
+    fireEvent.click(screen.getByRole("button", { name: RUN_DETAILS_LABEL }));
+    expect(screen.getByRole("dialog").textContent).toContain("12.4K");
+    expect(screen.getByRole("dialog").textContent).not.toContain("Duration");
     cleanup();
     // Nothing reported, no line at all.
     renderTurn({ tokens: null, wallMs: null, costNanos: null });

@@ -72,13 +72,13 @@ it("keeps saved fleet status separate from a resumed draft proposal", () => {
   render(<FleetSetup client={client} view={{...client.getSnapshot(), draft}} workspace={WORKSPACE} />);
   expect(screen.getByRole("heading", {name: "Based on v1"})).toBeTruthy();
   expect(screen.queryByText(/Unsaved changes/)).toBeNull();
-  expect(screen.getByText(/Save changes when you’re ready|New runs use this setup/)).toBeTruthy();
+  expect(screen.getByText(/Save changes when you’re ready|Your fleet is ready to use this setup/)).toBeTruthy();
 });
 
 it("summarizes a saved fleet without opening its full setup report", () => {
   render(<FleetSetup client={client} view={{...client.getSnapshot(), fleet: {...FLEET, status: "active", setup: {state: "ready", checks: []}}}} workspace={WORKSPACE} />);
   expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
-  expect(screen.getByText(/New runs use this setup/)).toBeTruthy();
+  expect(screen.getByText(/Your fleet is ready to use this setup/)).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Saved fleet setup"})).toBeNull();
   expect(screen.getByRole("link", {name: "Open fleet"})).toBeTruthy();
 });
@@ -89,7 +89,7 @@ it.each(["2", "3"])("shows confirmed saved v%s without labeling the draft as sav
   expect(screen.getByRole("heading", {name: `Saved v${revision}`})).toBeTruthy();
   view.rerender(<FleetSetup client={client} view={{...snapshot, draft: {...DRAFT, candidate: {...DRAFT.candidate!, id: FLEET.id}}}} workspace={WORKSPACE} />);
   expect(screen.getByRole("heading", {name: `Saved v${revision}`})).toBeTruthy();
-  expect(screen.getByText(/Save changes when you’re ready|New runs use this setup/)).toBeTruthy();
+  expect(screen.getByText(/Save changes when you’re ready|Your fleet is ready to use this setup/)).toBeTruthy();
 });
 
 it("does not hide an unconfirmed first run behind a saved-success summary", () => {

@@ -44,7 +44,7 @@ describe.skipIf(!CATALOGUE_DATABASE_URL)("real catalogue base-price quotes", () 
     const after = await database.file(AFTER_PAGE, [PROVIDER, first[0].display_key, first[0].vendor_key, first[0].id, 10, false]);
     expect(after).toHaveLength(1);
     expect(after[0].model_name).toBe(NEXT_MODEL);
-    expect(await database.file<unknown>(FIRST_PAGE, ["openai", 10, false])).toEqual([]);
+    expect(Array.from(await database.file<unknown[]>(FIRST_PAGE, ["openai", 10, false]))).toEqual([]);
   });
 
   test("a price-only edit advances the tenant page stamp without changing identity", async () => {

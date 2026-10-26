@@ -28,6 +28,7 @@
   "dependencies": {
     "@agentsfleet/design-system": "workspace:*",
     "@assistant-ui/react": "^0.15.31",
+    "@assistant-ui/react-markdown": "0.14.24",
     "@clerk/nextjs": "^7.9.19",
     "@clerk/ui": "^1.41.1",
     "@hookform/resolvers": "^6.0.0",

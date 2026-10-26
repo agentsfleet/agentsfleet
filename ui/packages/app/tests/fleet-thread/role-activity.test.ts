@@ -1,6 +1,6 @@
 import { ev, mockStream, renderThread } from "./harness";
 import { describe, expect, it } from "vitest";
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 import { FleetThread } from "@/components/domain/FleetThread";
 
@@ -26,7 +26,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(0);
 
     // The count is a summary the operator can always check.
-    const toggle = screen.getByRole("button", { expanded: false });
+    const toggle = within(screen.getByRole("log", { name: "Chat" })).getByRole("button", { expanded: false });
     await act(async () => {
       fireEvent.click(toggle);
     });
@@ -62,7 +62,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     renderThread();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { expanded: false }));
+      fireEvent.click(within(screen.getByRole("log", { name: "Chat" })).getByRole("button", { expanded: false }));
     });
     expect(screen.getAllByText("Details")).toHaveLength(2);
   });

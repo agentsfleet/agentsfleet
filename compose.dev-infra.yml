@@ -49,7 +49,7 @@ services:
       retries: 20
 
   qstash:
-    image: mirror.gcr.io/oven/bun:1
+    image: mirror.gcr.io/oven/bun:1.4.4
     command:
       - sh
       - -c

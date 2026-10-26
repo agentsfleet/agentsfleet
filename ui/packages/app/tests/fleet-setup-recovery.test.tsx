@@ -60,13 +60,7 @@ it("shows recovery only for unfinished setup or first-run admission", async () =
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("keeps setup editing available while renewed access review is required", () => {
-  render(<FleetHeader fleet={FleetDetailSchema.parse({...FLEET_DETAIL, needs_re_review: true})} workspaceId={WORKSPACE} />);
-  expect(screen.getByText("Access needs attention before resuming")).toBeTruthy();
-  expect(screen.getByRole("button", {name: "Edit setup"}).getAttribute("aria-expanded")).toBe("false");
-});
-
-it("keeps Edit setup before Fleet actions in the existing fleet workspace", () => {
+it("keeps setup editing usable without a header review warning", () => {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
   render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
     header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
@@ -77,6 +71,7 @@ it("keeps Edit setup before Fleet actions in the existing fleet workspace", () =
   expect(edit.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Stop"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Saved instructions"})).toBeNull();
+  expect(screen.queryByText("Access needs attention before resuming")).toBeNull();
 });
 
 it.each(["installing", "active", "stopped"] as const)("retries an unregistered schedule while %s and reports a refusal", async (status) => {
