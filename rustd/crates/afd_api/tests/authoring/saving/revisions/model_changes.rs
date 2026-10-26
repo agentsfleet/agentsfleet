@@ -96,7 +96,7 @@ async fn receive(reader: &mut Subscription) -> String {
     let Received::Message(message) = received else {
         panic!("a published message, not a gap");
     };
-    message.payload.to_string()
+    message.payload.clone()
 }
 
 async fn assert_model_notice(fleet: &Fleet, selected: &str) {
