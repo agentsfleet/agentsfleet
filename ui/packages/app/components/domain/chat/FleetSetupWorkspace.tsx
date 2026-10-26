@@ -106,7 +106,7 @@ export function SetupSaveAction({ children, fallback }: { children: ReactNode; f
 function SetupPanel({account, workspace, fleet, revision, close, saved, hidden}: {
   account: string; workspace: string; fleet: string; revision: string; close: () => void; saved: () => void; hidden: boolean;
 }) {
-  const [source] = useState({kind: SOURCE_KIND.fleet, fleet_id: fleet, setup_revision: revision});
+  const source = useMemo(() => ({kind: SOURCE_KIND.fleet, fleet_id: fleet, setup_revision: revision}), [fleet, revision]);
   useEffect(() => {
     if (hidden) return;
     const escape = (event: KeyboardEvent): void => {if (event.key === "Escape" && !event.defaultPrevented) close();};

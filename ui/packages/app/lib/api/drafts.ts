@@ -129,10 +129,11 @@ export class DraftClient {
     });
   }
 
-  refreshSetup(): Promise<DrawerEdit> {
+  refreshSetup(source?: Source): Promise<DrawerEdit> {
     return this.#act(async () => {
       this.#idle();
       if (!this.#snapshot.draft) {
+        if (source) this.#source = source;
         const preview = await sourcePreview(this.#base, this.#source, AbortSignal.any([this.#owner.signal, this.#view.signal]));
         if (!preview) throw new SetupUnavailable("There is no setup to refresh yet.", 409);
         this.#update({preview}); return preview;
