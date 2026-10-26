@@ -99,7 +99,7 @@ function ChatSurface({client, workspace, subject, source, opening, selected, rel
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
   const retrySchedule = (schedule: Schedule): void => { void client.syncSchedule(schedule).catch(ignore); };
   return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
-    {view.error ? <ChatError client={client} view={view} source={source} workspace={workspace} reload={reload} /> : null}
+    {view.error ? <ChatError client={client} view={view} source={source} workspace={workspace} reload={reload} onStartOver={() => setInstructionsDirty(false)} /> : null}
     {view.notice ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     {embedded ? null : <DraftChatHeading client={client} view={view} />}
@@ -113,14 +113,14 @@ function ChatSurface({client, workspace, subject, source, opening, selected, rel
   </div>;
 }
 
-function ChatError({client, view, source, workspace, reload}: {client: DraftClient; view: DraftView; source?: Source; workspace: string; reload: () => Promise<void>}) {
+function ChatError({client, view, source, workspace, reload, onStartOver}: {client: DraftClient; view: DraftView; source?: Source; workspace: string; reload: () => Promise<void>; onStartOver: () => void}) {
   return <ChatAvailability title={view.inaccessible ? "Chat is unavailable" : "We couldn’t complete that"} actions={<>
         <Button size="sm" variant="secondary" disabled={view.busy} onClick={() => {
           if (view.inaccessible) window.location.reload();
           else void (view.draft || view.pending ? client.retry() : reload()).catch(ignore);
         }}>{view.inaccessible ? "Reload" : "Retry"}</Button>
         {!view.inaccessible && source?.kind === SOURCE_KIND.fleet ? <Button size="sm" variant="secondary" disabled={view.busy || view.pending || chatRecovery(view).pending} onClick={() => {
-          client.fresh(source); void reload().catch(ignore);
+          client.fresh(source); onStartOver(); void reload().catch(ignore);
         }}>Start over from current setup</Button> : null}
         <Button size="sm" variant="ghost" asChild><Link href={`/w/${workspace}/fleets`}>Your fleets</Link></Button>
     </>}>{view.error}</ChatAvailability>;

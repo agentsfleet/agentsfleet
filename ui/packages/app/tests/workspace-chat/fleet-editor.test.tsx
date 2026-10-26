@@ -38,6 +38,14 @@ function workspace(account: string | null = CHAT_PROPS.account, revision = "1", 
   </FleetSetupWorkspace>;
 }
 
+function serveSavedSetup(read = () => response({...FLEET_DETAIL, setup_revision: "2", status: "active"})) {
+  const base = fixture.fetch.getMockImplementation()!;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return path.endsWith(`/fleets/${FLEET_ID}`) ? read() : base(input, init);
+  });
+}
+
 async function edit() {
   fixture.auth.isLoaded = false;
   fixture.auth.userId = "";
@@ -84,12 +92,7 @@ it("keeps an unsent setup message and starts its draft from the current saved re
   const unsent = "Keep this setup message after the model changes.";
   fireEvent.change(composer, {target: {value: unsent}});
   fireEvent.click(screen.getByRole("button", {name: "Close setup editor"}));
-  const base = fixture.fetch.getMockImplementation()!;
-  fixture.fetch.mockImplementation(async (input, init) => {
-    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET_DETAIL, setup_revision: "2", status: "active"});
-    return base(input, init);
-  });
+  serveSavedSetup();
   view.rerender(workspace(CHAT_PROPS.account, "2", "model:new-runtime"));
   fireEvent.click(screen.getByRole("button", {name: "Edit setup"}));
   expect(screen.getByRole("complementary")).toBe(panel);
@@ -137,19 +140,16 @@ it("retains the proposed change and runtime conversation when saving conflicts",
   expect(chatRouter.refresh).not.toHaveBeenCalled();
 });
 
-it("lets a stale private draft load the current setup without changing the fleet", async () => {
+it("lets a stale private draft discard manual edits and save a fresh proposal", async () => {
   const {view, composer, runtime} = await edit();
   await propose(composer);
-  const base = fixture.fetch.getMockImplementation()!;
-  fixture.fetch.mockImplementation(async (input, init) => {
-    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET_DETAIL, setup_revision: "2", status: "active"});
-    return base(input, init);
-  });
+  serveSavedSetup();
   view.rerender(workspace(CHAT_PROPS.account, "2", "model:new-runtime"));
   fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
   await screen.findByText("This fleet changed. Open Edit from its current setup and try again.");
   expect(screen.getByText("Your setup is ready.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Edit instructions manually"}));
+  fireEvent.change(screen.getByLabelText("Instructions"), {target: {value: "Discard these private manual edits when starting over."}});
   fireEvent.click(screen.getByRole("button", {name: "Start over from current setup"}));
   const currentComposer = await screen.findByLabelText(EDIT_SETUP_PLACEHOLDER);
   await waitFor(() => expect(currentComposer).toHaveProperty("disabled", false));
@@ -159,20 +159,16 @@ it("lets a stale private draft load the current setup without changing the fleet
   expect(runtime).toHaveProperty("value", "Unsent runtime message");
   expect(fixture.calls.some(call => call.path.endsWith("/revisions"))).toBe(false);
   expect(fixture.writes().some(call => call.method === "DELETE")).toBe(false);
+  expect(await propose(currentComposer)).toHaveProperty("disabled", false);
 });
 
 it("keeps typed setup text through a failed current-source refresh and retry", async () => {
   const {view, composer} = await edit();
   const unsent = "Keep my private setup message through a failed refresh.";
   fireEvent.change(composer, {target: {value: unsent}});
-  const base = fixture.fetch.getMockImplementation()!;
   let unavailable = true;
-  fixture.fetch.mockImplementation(async (input, init) => {
-    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}`)) return unavailable ? response({user_message: "Setup read unavailable"}, 503)
-      : response({...FLEET_DETAIL, setup_revision: "2", status: "active"});
-    return base(input, init);
-  });
+  serveSavedSetup(() => unavailable ? response({user_message: "Setup read unavailable"}, 503)
+    : response({...FLEET_DETAIL, setup_revision: "2", status: "active"}));
   view.rerender(workspace(CHAT_PROPS.account, "2", "model:new-runtime"));
   await screen.findByText("Setup read unavailable");
   expect(composer).toHaveProperty("value", unsent);
