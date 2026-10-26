@@ -56,6 +56,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
+| `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT | Dev daemon `shared-cpu-2x` 1 GB, the smallest size whose baseline covers its resting load |
+| `deploy/fly/dragonfly-dev/fly.toml` | EDIT | Dev Dragonfly `shared-cpu-1x` 1 GB, sized for cost |
+| `.github/workflows/deploy-dev-fly.yml` | EDIT | Dev deploys set `AGENTSFLEET_LOG_LEVEL="info"` |
+| `scripts/check_workflow_rules.py` | EDIT | Rule `workflow-daemon-log-level` pins `info` (owner-approved gate edit) |
+| `scripts/check_workflow_rules_test.py` | EDIT | Clean fixture and seeded violation follow the pinned value |
+| `docs/architecture/scaling.md` | EDIT | Dev cluster size statement |
 | `rustd/crates/afd_observability/src/metrics/label/event_stage.rs` | CREATE | Closed `Verb` and `Stage` enums and the verb→stage table |
 | `rustd/crates/afd_observability/src/metrics/label/mod.rs` | EDIT | Register the event stage labels |
 | `rustd/crates/afd_observability/src/producers/event_stage.rs` | CREATE | `stage_finished(verb, stage, duration)` and the per-request tally recorder |
@@ -115,6 +121,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | SCHEMA GUARD | no — no schema change | Attribute joins replace any trace-context column |
 | Architecture consult | yes — new families and keys | Consult recorded in Discovery; `observability.md` updated in the same PR |
 | File & Function Length (≤350/≤50/≤70) | yes — `pull/mod.rs` and `report/mod.rs` are near the cap | Stage recording lives in `producers/event_stage.rs`; call sites add one guard each |
+| Harness edit (`check_workflow_rules.py`) | yes — §0 changes the value the rule pins | Owner approval recorded in Discovery, naming the rule and the reason; the dead-`LOG_LEVEL` ban is unchanged |
 
 ## Prior-Art / Reference Implementations
 
@@ -124,6 +131,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Reference:** W3C `Server-Timing` (https://www.w3.org/TR/server-timing/) — the browser reads `PerformanceResourceTiming.serverTiming` on a same-origin response.
 
 ## Sections (implementation slices)
+
+### §0 — Dev runs where latency is measurable — IN_PROGRESS
+
+Every measurement this spec enables is meaningless on a machine frozen in 80 ms slices. A shared vCPU's baseline is 5 ms per 80 ms; the dev daemon rests at about 7–8% of a core, so on `shared-cpu-1x` its burst balance stayed empty and every request was throttled. Dev moves to `shared-cpu-2x` 1 GB (12.5% baseline), Dragonfly dev moves to `shared-cpu-1x` 1 GB (2.8% resting, 154 MB resident), and dev logs at `info`. The live machines were resized on Oct 26, 2026; this Section makes the deploy configuration agree so the next deploy keeps them.
+
+- **Dimension 0.1** — DONE — Dev deploys set `AGENTSFLEET_LOG_LEVEL="info"`, the rule pins it, and the dead `LOG_LEVEL` spelling stays refused → Test `test_moved_rules_reject_seeded_violations`
+- **Dimension 0.2** — DONE — Both dev `fly.toml` sizes match the live machines → Test `manual_dev_sizes_match_live`
+- **Dimension 0.3** — After an hour at rest the dev daemon's burst balance stays above zero and throttle time is zero → Test `manual_dev_daemon_unthrottled_at_rest`
 
 ### §1 — The daemon names every stage an event crosses
 
@@ -228,6 +243,9 @@ No PostHog event changes; the analytics funnel playbook needs no update because 
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
+| 0.1 | unit | `test_moved_rules_reject_seeded_violations` | Workflow fixture with `export AGENTSFLEET_LOG_LEVEL="info"` passes; replacing it with `LOG_LEVEL="info"` fails rule `workflow-daemon-log-level` |
+| 0.2 | manual | `manual_dev_sizes_match_live` | `fly scale show -a agentsfleetd-dev` reads `shared` 2 CPUs 1024 MB and `-a dragonfly-dev` reads `shared` 1 CPU 1024 MB, matching both `fly.toml` `[[vm]]` blocks |
+| 0.3 | manual | `manual_dev_daemon_unthrottled_at_rest` | One hour after resize, Fly Prometheus `rate(fly_instance_cpu_throttle{app="agentsfleetd-dev"}[30m])` = 0 and `fly_instance_cpu_balance` > 0; values in Session Notes |
 | 1.1 | unit | `event_stage_records_each_declared_stage_once` | A stubbed report that settles → `load, settle, capture, release, announce` each observed once |
 | 1.2 | unit | `sql_tally_sums_statements_inside_the_request_span` | Three synthetic `sqlx::query` events at 2, 3, 75 ms in a span, one outside → statements 3, duration 80 |
 | 1.3 | unit | `empty_poll_records_claim_without_identity` | Poll with no unsettled admission → `claim` observed once; span has no `agentsfleet.event.id` |
@@ -250,6 +268,7 @@ No PostHog event changes; the analytics funnel playbook needs no update because 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
+| R0 | Dev runs unthrottled at rest and deploys at `info` (§0) | `make check-gh-actions-valid` | exit 0 | P0 | |
 | R1 | Daemon records every declared stage and the SQL tally (§1) | `cargo test -p afd_observability event_stage` | exit 0 | P0 | |
 | R2 | Runner collector ships runner spans from the dev host (§2) | `manual: TraceQL { span.agentsfleet.event.id = "<probe id>" } in Grafana Tempo` | ≥1 `runner.lease` span | P0 | |
 | R3 | Edge cost reaches the browser and the daemon (§3) | `cd ui/packages/app && bun run test steer-route-timing` | exit 0 | P0 | |
@@ -305,7 +324,7 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — `docs/architecture/observability.md` read for §Traces, §Library read stages, §runner collector, §PostHog (Oct 26, 2026). Indy (Oct 26, 2026), direct: "I want you to have logging, observability added to so we could to this as a fleet for me to check it and optimize". Agent reading: per-fleet, per-event stage breakdown in Grafana. Measured dev run (event `01a17627-25c5-761d-9794-f1ab0b40d9fc`, Oct 26, 2026 03:00:38 UTC): Send → 202 0.78 s (daemon 50 ms of it); claim → runner holds lease 1.51 s across 36 statements; hydrate 0.33 s; model window ≤ 0.64 s; capture 0.39 s; report 1.60 s across 28 statements; `event_complete` at +5.42 s. Statements split 2–10 ms vs 65–82 ms. Cause measured the same day: CPU quota throttling on the dev daemon machine (`shared-cpu-1x`, `deploy/fly/agentsfleetd-dev/fly.toml`), not the database, the pooler or Nagle. PlanetScale Insights (branch `useast`) shows `insert into billing.holds` at p50/p99 0 ms server-side; an in-region probe reproduced the floor with `TCP_NODELAY` on and off, on ports 6432 and 5432; and with no database at all, 169 of 2000 idle 1 ms sleeps woke 70–76 ms late, and 1988 of 2000 under one busy thread (median 158.6 ms, max 558 ms). Runner spans: none in Tempo (no collector).
-- **Required human decisions** — **D1 (decided):** the runner collector reuses `op://ZMB_CD_DEV/grafana-dev/{otlp-endpoint,instance-id,api-key}`. Indy (Oct 26, 2026), choosing between a new write-only key and the existing one: "Reuse grafana-dev". The agent had recommended a separate key; the accepted risk is that one leaked host exposes the daemon's ingest key too. **D2:** browser telemetry export, or DevTools marks only (agent recommends marks only here). Does not block.
+- **Required human decisions** — **D1 (decided):** the runner collector reuses `op://ZMB_CD_DEV/grafana-dev/{otlp-endpoint,instance-id,api-key}`. Indy (Oct 26, 2026), choosing between a new write-only key and the existing one: "Reuse grafana-dev". The agent had recommended a separate key; the accepted risk is that one leaked host exposes the daemon's ingest key too. **D2:** browser telemetry export, or DevTools marks only (agent recommends marks only here). Does not block. **§0 decisions (Oct 26, 2026), direct from Indy:** "I am okay with the bottleneck in dev, but i need you to confirm the reason, so i can focus on that in production"; "For development also strip down the debug level in development … bring down the sizing of dragonfly as well as it costs 60$"; asked to pin `info` in rule `workflow-daemon-log-level` of `scripts/check_workflow_rules.py`: "Yes, pin info (Recommended)" — this is the gate-edit approval, superseding the M187 call to deploy dev at `debug`; asked to move the dev daemon: "Yes, shared-cpu-2x 1GB (Recommended)". Confirmation measured on `performance-1x`: 0 of 8,610 probe statements ≥ 40 ms, 0 late 1 ms wake-ups, three chats 1.53–1.86 s; Fly docs give the 5 ms per 80 ms baseline and throttling "for the remainder of the 80ms period".
 - **Metrics review** — four daemon families added; runner families unchanged; no analytics funnel playbook update required, because no product event changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
