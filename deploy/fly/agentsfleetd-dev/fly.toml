@@ -47,9 +47,18 @@ primary_region = "iad"
   # so the value has to carry `/v1` itself.
   CLERK_API_BASE = "https://api.clerk.com/v1"
 
+# shared-cpu-2x, the smallest size where dev latency means something. A shared
+# vCPU's baseline is 5 ms per 80 ms period (6.25%), pooled across a machine's
+# vCPUs, and a machine whose burst balance is spent is frozen for the rest of
+# each period. At rest this daemon uses about 7-8% of one core (user + system
+# + softirq, Oct 26, 2026, mostly the runner fleet's lease polls), so on
+# shared-cpu-1x it sat throttled with an empty balance and every request
+# stalled in ~75 ms slices. Two vCPUs give a 12.5% baseline: the balance
+# refills at rest and bursts run unthrottled. Watch fly_instance_cpu_throttle
+# and fly_instance_cpu_balance; sustained throttle time means size up.
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = "shared-cpu-2x"
+  memory = "1gb"
 
 # No public Fly service. Cloudflare Tunnel reaches
 # agentsfleetd-dev.internal:3000 over Fly's private IPv6 network (6PN).

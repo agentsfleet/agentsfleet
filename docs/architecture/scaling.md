@@ -80,7 +80,7 @@ v2 ships hosted on Fly.io, and the canonical datastore is **self-hosted Dragonfl
 - **Per-request pricing is gone.** Command volume consumes CPU on the datastore machine. The fleet scheduler's idle query consumes Postgres capacity. §"Idle request volume" still matters, but it now sizes a **machine**, not an invoice.
 - **The Transport Layer Security (TLS) dial cost is gone in-region.** 6PN is WireGuard-encrypted already, so the seed is plaintext and a dial pays no handshake. That is worth roughly 230 ms per connection against an RSA-2048 leaf, which is why the local rig keeps a TLS node for one suite and runs everything else plaintext.
 
-**What replaces them is a fixed machine, and a fixed machine has a different failure shape.** A hosted plan degrades by refusing a dial or sending a bill; a machine degrades by running out of memory or CPU, and a Dragonfly node that hits `maxmemory` while retaining rather than evicting refuses writes. The dev cluster is `performance-2x` (2 vCPU, 4GB) against a 2.25GB configured ceiling.
+**What replaces them is a fixed machine, and a fixed machine has a different failure shape.** A hosted plan degrades by refusing a dial or sending a bill; a machine degrades by running out of memory or CPU, and a Dragonfly node that hits `maxmemory` while retaining rather than evicting refuses writes. The dev cluster is `shared-cpu-1x` (1 shared vCPU, 1GB) against a 2.25GB configured ceiling that dev's data never approaches (154 MB resident when it moved, Oct 26, 2026); production stays `performance-2x`.
 
 Postgres is **PlanetScale**, and two of its properties bind the same way:
 
