@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M233
 **Workstream:** 001
 **Date:** Oct 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: a dev chat reply takes 5.4–10 s, about 1 s of it is the model, and the rest cannot be attributed without hand-reading debug logs
 **Categories:** API, INFRA, OBS, UI
 **Batch:** B1 — §1 and §3 run in parallel; §2 needs decision D1; §4 needs §1–§3 emitting
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m233-round-trip-stage-timing
+**Baseline revision:** d6d279cfde5f3c6ec5eb75b088fa1d2bac1af371
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 26, 2026), from a measured dev investigation recorded in Discovery
@@ -275,7 +275,7 @@ N/A — no files deleted.
 
 ## Out of Scope
 
-- **Making the round trip faster.** Candidates measured in Discovery (the ~75 ms statement floor, transaction count, hydrate folded into the lease, capture skipped when nothing changed, three report transactions) need this spec's numbers first; a successor spec picks them.
+- **Making the round trip faster.** Candidates measured in Discovery (the CPU-throttling floor on the daemon machine, transaction count, hydrate folded into the lease, capture skipped when nothing changed, three report transactions) need this spec's numbers first; a successor spec picks them.
 - **Browser telemetry export** (Grafana Frontend Observability or similar) — decision D2; this spec leaves marks in DevTools only.
 - **W3C `traceparent` across the runner protocol** — `observability.md` §Traces keeps leases as separate roots joined by attribute.
 - **Production runner collector** — dev host only; production follows the same unit once a production runner exists.
@@ -304,7 +304,7 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — `docs/architecture/observability.md` read for §Traces, §Library read stages, §runner collector, §PostHog (Oct 26, 2026). Indy (Oct 26, 2026), direct: "I want you to have logging, observability added to so we could to this as a fleet for me to check it and optimize". Agent reading: per-fleet, per-event stage breakdown in Grafana. Measured dev run (event `01a17627-25c5-761d-9794-f1ab0b40d9fc`, Oct 26, 2026 03:00:38 UTC): Send → 202 0.78 s (daemon 50 ms of it); claim → runner holds lease 1.51 s across 36 statements; hydrate 0.33 s; model window ≤ 0.64 s; capture 0.39 s; report 1.60 s across 28 statements; `event_complete` at +5.42 s. Statements split 2–10 ms vs 65–82 ms; sqlx 0.9.0 sets no `TCP_NODELAY` (`sqlx-core-0.9.0/src/net/socket/mod.rs`). Runner spans: none in Tempo (no collector).
+- **Consults** — `docs/architecture/observability.md` read for §Traces, §Library read stages, §runner collector, §PostHog (Oct 26, 2026). Indy (Oct 26, 2026), direct: "I want you to have logging, observability added to so we could to this as a fleet for me to check it and optimize". Agent reading: per-fleet, per-event stage breakdown in Grafana. Measured dev run (event `01a17627-25c5-761d-9794-f1ab0b40d9fc`, Oct 26, 2026 03:00:38 UTC): Send → 202 0.78 s (daemon 50 ms of it); claim → runner holds lease 1.51 s across 36 statements; hydrate 0.33 s; model window ≤ 0.64 s; capture 0.39 s; report 1.60 s across 28 statements; `event_complete` at +5.42 s. Statements split 2–10 ms vs 65–82 ms. Cause measured the same day: CPU quota throttling on the dev daemon machine (`shared-cpu-1x`, `deploy/fly/agentsfleetd-dev/fly.toml`), not the database, the pooler or Nagle. PlanetScale Insights (branch `useast`) shows `insert into billing.holds` at p50/p99 0 ms server-side; an in-region probe reproduced the floor with `TCP_NODELAY` on and off, on ports 6432 and 5432; and with no database at all, 169 of 2000 idle 1 ms sleeps woke 70–76 ms late, and 1988 of 2000 under one busy thread (median 158.6 ms, max 558 ms). Runner spans: none in Tempo (no collector).
 - **Required human decisions** — **D1 (decided):** the runner collector reuses `op://ZMB_CD_DEV/grafana-dev/{otlp-endpoint,instance-id,api-key}`. Indy (Oct 26, 2026), choosing between a new write-only key and the existing one: "Reuse grafana-dev". The agent had recommended a separate key; the accepted risk is that one leaked host exposes the daemon's ingest key too. **D2:** browser telemetry export, or DevTools marks only (agent recommends marks only here). Does not block.
 - **Metrics review** — four daemon families added; runner families unchanged; no analytics funnel playbook update required, because no product event changes.
 - **Skill-chain outcomes** — pending.
