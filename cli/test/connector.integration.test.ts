@@ -16,6 +16,25 @@ const authedScope = <T>(fn: () => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_connector" }, fn);
 
 describe("connector commands", () => {
+  test("an unconfigured connector shows the administrator action without requesting connection details", async () => {
+    await authedScope(async () => {
+      const listPath = `/v1/workspaces/${WS_ID}/connectors`;
+      await withMockApi({ [`GET ${listPath}`]: () => jsonResponse(200, [
+        { id: "slack", configured: false, connected: false },
+      ]) }, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["connector", "show", "slack", "--workspace", WS_ID], {
+          stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).toBe(0);
+        expect(out.read()).toContain("unconfigured");
+        expect(out.read()).toContain("platform administrator");
+        expect(calls.map(call => `${call.method} ${call.path}`)).toEqual([`GET ${listPath}`]);
+      });
+    });
+  });
+
   test("`connector list` prints configured and connected state", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {

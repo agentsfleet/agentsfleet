@@ -1,5 +1,6 @@
 //! Improvement application owns one transaction for the setup pointer and replay.
 
+mod activity;
 mod apply;
 mod persist;
 mod result;

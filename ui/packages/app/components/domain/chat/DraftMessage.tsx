@@ -8,12 +8,13 @@ import { MessageSchema, MESSAGE_ROLE } from "@/lib/api/draft-types";
 import { draftFailureCopy } from "@/lib/api/draft-failure-copy";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { readContextProgress } from "@/lib/context-progress";
-import { FleetReplyMarkdown } from "../FleetMarkdown";
+import { FleetMarkdown, FleetReplyMarkdown } from "../FleetMarkdown";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatFailure } from "./ChatFailure";
 import { ContextProgressStatus } from "../ContextProgressStatus";
 
 const RetryContext = createContext<{disabled: boolean; retry: (text: string) => Promise<void>} | null>(null);
+const PART_COMPONENTS = { Text: FleetReplyMarkdown };
 
 /** Streaming text never changes the retry context or makes settled rows scan history. */
 export function DraftRetryProvider({client, disabled, children}: {client: DraftClient; disabled: boolean; children: ReactNode}) {
@@ -38,13 +39,11 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
   const context = useMemo(() => readContextProgress(message.metadata.custom.contextProgress), [message.metadata.custom.contextProgress]);
   return <MessagePrimitive.Root>
     <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role}>
-      {running && context ? <>
-        {text ? <FleetReplyMarkdown text={text} streaming={running} /> : null}
-        <ContextProgressStatus value={context} />
-      </> :
+      {text ? user ? <FleetMarkdown>{text}</FleetMarkdown> : <MessagePrimitive.Parts components={PART_COMPONENTS} /> : null}
+      {running && context ? <ContextProgressStatus value={context} /> :
         queued && !text ? <output aria-label="Queued" className="text-label text-muted-foreground">Queued…</output>
         : running && !text ? <output aria-label="Working" className="inline-flex items-center gap-sm text-label text-muted-foreground"><SignalSpinner className="text-pulse" />Working…</output>
-        : text ? <FleetReplyMarkdown text={text} streaming={running} /> : null}
+        : null}
       {!user && message.metadata.custom.failure ? <DraftFailure message={message} /> : null}
     </ChatMessageRow>
   </MessagePrimitive.Root>;

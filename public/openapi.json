@@ -22131,7 +22131,6 @@
           "setup_etag",
           "setup_revision",
           "policy_semantics",
-          "needs_re_review",
           "definition",
           "setup",
           "start",
@@ -22177,10 +22176,6 @@
           "name": {
             "type": "string",
             "description": "Validated instance slug."
-          },
-          "needs_re_review": {
-            "type": "boolean",
-            "description": "Effective authority changed since review."
           },
           "pending_approvals": {
             "type": "integer",

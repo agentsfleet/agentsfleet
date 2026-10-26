@@ -1,3 +1,5 @@
+import { EVENTS } from "@/lib/analytics/events";
+
 // What a stored `request_json` payload says — parsing, headlines, and the
 // source reference and outbound link a recognised shape earns.
 //
@@ -16,6 +18,7 @@ export const HEADLINE = {
 const PAYLOAD_MESSAGE_KEY = "message";
 const SEPARATOR = " · ";
 const TITLE_SEPARATOR = " — ";
+export const MODEL_CHANGED_LABEL = "Model changed";
 
 type Payload = Record<string, unknown>;
 
@@ -60,6 +63,7 @@ export function eventHeadlineFrom(
   requestJson: string | null | undefined,
   eventType: string,
 ): string {
+  if (eventType === EVENTS.model_changed) return MODEL_CHANGED_LABEL;
   const payload = parsePayload(requestJson);
   if (!payload) return neutralHeadline(eventType);
   return (

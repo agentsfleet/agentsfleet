@@ -1,6 +1,7 @@
 //! Improvement drafts target one immutable setup, independently of resource edits.
 
 mod apply;
+mod model_changes;
 mod policy;
 mod purge;
 mod refusals;

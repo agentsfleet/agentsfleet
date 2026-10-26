@@ -1,7 +1,6 @@
 import { MS_PER_SECOND, SECONDS_PER_MINUTE } from "@/lib/utils";
 
-// The run figures a reply's "Worked for" line spells, the way Codex's
-// transcript does, and the rule both it and the console's status line follow:
+// The reported figures shared by a reply's details and the console's status:
 // a figure the run did not report is left out, never drawn as zero.
 
 const LOCALE = "en-US";
@@ -14,6 +13,7 @@ const COMPACT_COUNT_FORMAT = new Intl.NumberFormat(LOCALE, { notation: "compact"
 const HOURS = unitFormat("hour");
 const MINUTES = unitFormat("minute");
 const SECONDS = unitFormat("second");
+const MILLISECONDS = unitFormat("millisecond");
 const MINUTES_PER_HOUR = 60;
 
 /** A figure's text, or null when the run did not report it: left out, never
@@ -37,6 +37,16 @@ export function formatCompactCount(value: number): string {
  * reads as no time. */
 export function formatElapsed(ms: number): string {
   const seconds = Number.isFinite(ms) ? Math.round(Math.max(0, ms) / MS_PER_SECOND) : 0;
+  return elapsedSeconds(seconds);
+}
+
+/** Reported run duration retains milliseconds; the live waiting clock stays quiet. */
+export function formatRunDuration(ms: number): string {
+  const duration = Number.isFinite(ms) ? Math.round(Math.max(0, ms)) : 0;
+  return duration < MS_PER_SECOND ? MILLISECONDS.format(duration) : elapsedSeconds(duration / MS_PER_SECOND);
+}
+
+function elapsedSeconds(seconds: number): string {
   const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
   const hours = Math.floor(minutes / MINUTES_PER_HOUR);
   const shown = [
@@ -47,6 +57,6 @@ export function formatElapsed(ms: number): string {
   return shown.filter((unit) => unit !== null).join(" ");
 }
 
-function unitFormat(unit: "hour" | "minute" | "second"): Intl.NumberFormat {
+function unitFormat(unit: "hour" | "minute" | "second" | "millisecond"): Intl.NumberFormat {
   return new Intl.NumberFormat(LOCALE, { style: "unit", unit, unitDisplay: "narrow" });
 }

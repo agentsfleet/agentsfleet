@@ -34,7 +34,7 @@ You write a fleet by describing the job in a private chat, in the app or with `a
 
 Already invited? [Sign in to the app](https://app.agentsfleet.net/sign-in). To request access, visit [Early access](https://agentsfleet.net/#pricing).
 
-The public command-line interface (CLI) package is waiting for release. Build the CLI from this repository with [Bun 1.4 or newer](https://bun.sh):
+The public command-line interface (CLI) package is waiting for release. Build the CLI from this repository with [Bun 1.4.4](https://bun.sh):
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git

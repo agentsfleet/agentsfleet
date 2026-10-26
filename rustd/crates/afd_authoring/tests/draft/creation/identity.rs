@@ -19,10 +19,6 @@ async fn unfunded_save_replays_one_fleet_and_funding_resumes_it() {
             .iter()
             .any(|check| check.kind == "wallet" && check.state == "pending")
     );
-    assert!(
-        !first.needs_re_review,
-        "readiness alone does not change review identity"
-    );
     assert_eq!(c.save(&key, request.clone()).await.id, first.id);
     assert_eq!(c.fleet_count().await, 1);
     c.fund().await;

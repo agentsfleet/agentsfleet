@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version: 1.4.4
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version: 1.4.4
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
@@ -83,7 +83,7 @@ jobs:
           python-version: "3.14"
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version: 1.4.4
       - name: Playbooks (shellcheck + refs + vault-gate parity)
         run: make check-playbooks
       - name: Architecture doc consistency
