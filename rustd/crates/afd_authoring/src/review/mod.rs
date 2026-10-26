@@ -24,7 +24,6 @@ use crate::{
 const CONTEXT: &str = "review current native setup";
 
 pub(crate) use context::{Context, Subject};
-pub(crate) use readiness::review_action;
 
 pub(super) struct Observed {
     checks: Vec<crate::types::Check>,
@@ -73,20 +72,6 @@ pub(crate) async fn build(
     now: Timestamp,
 ) -> Result<Review> {
     let target = target(connection, draft).await?;
-    build_against(setup, connection, draft, candidate, now, target).await
-}
-
-/// [`build`] against `target`, the fleet revision a fleet source would replace,
-/// rather than the one the fleet holds now: a write that moves the fleet's head
-/// reviews the state it is about to commit before it writes immutable rows.
-pub(crate) async fn build_against(
-    setup: &Setup,
-    connection: &mut PgConnection,
-    draft: &Context,
-    candidate: &Candidate,
-    now: Timestamp,
-    target: Option<String>,
-) -> Result<Review> {
     let mut observed = Observed {
         checks: Vec::new(),
         versions: Vec::new(),

@@ -77,6 +77,7 @@ pub(super) struct Stored {
     pub(super) setup_stream_ready: Option<bool>,
     pub(super) initial_start: InitialStart,
     pub(super) definition: Definition,
+    pub(super) runtime_model_ref: Option<String>,
     pub(super) resource_version: i64,
     /// The head `fleet.revisions.revision`: 1 at Save, +1 per Apply.
     pub(super) head_revision: i64,
@@ -107,6 +108,7 @@ pub(super) struct StoredRow {
     memory_publishes_workspace: bool,
     head_revision: i64,
     definition: String,
+    runtime_model_ref: Option<String>,
     review_context: Option<String>,
     review_digest: Option<String>,
     source_candidate_id: Option<String>,
@@ -151,6 +153,7 @@ impl StoredRow {
                     .ok_or_else(|| absent("initial_start"))?,
             )?,
             definition: value(&self.definition)?,
+            runtime_model_ref: self.runtime_model_ref,
             resource_version: self.resource_version,
             head_revision: self.head_revision,
             created_at: self.created_at,

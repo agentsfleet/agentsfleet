@@ -10,8 +10,8 @@
 **Batch:** B1 — continue the restored chat worktree
 **Branch:** fix/chat-smooth-replies
 **Baseline revision:** 89415c2a0e622a920b4d66517decbf85640058b2
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — retain comparison revision, commands, counts and environment
+**Test Baseline:** App 4,283; website 133; design system 519; command line 1,949 passed / 17 skipped; Rust unit shards 4,884 passed. Continuous Integration (CI) coverage confirms 1,409 existing tests in the current integration selection.
+**Baseline evidence:** Final head of [PR 784](https://github.com/agentsfleet/agentsfleet/pull/784), `f8a68b80d409cb54e0cc7ef114d0d8a0bd629392`, has the same Git tree (`43be42593362f6adee31e34d97b429d55b9bd263`) as the comparison revision. Unit [run 40222122637](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122637), Rust unit [run 40222122635](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122635), and live coverage [run 40222122664](https://github.com/agentsfleet/agentsfleet/actions/runs/40222122664) provide the baseline; these are Linux CI results with Bun 1.4.3, not a local baseline run.
 **Depends on:** none
 **Provenance:** LLM-drafted (Codex, Oct 26, 2026)
 **Canonical architecture:** `docs/architecture/fleet_definitions.md` — native runtime model edits
@@ -52,11 +52,18 @@ The restored staged changes remain part of this delivery. Source families below 
 | `ui/packages/app/components/domain/fleetMarkdownBlocks.ts`, `fleetMarkdownBlocks.test.ts`, `ui/packages/app/tests/bench/fleet-markdown-stream.bench.tsx`, `tests/helpers/fleet-markdown-corpus.ts` | DELETE | Remove the replaced markdown splitter and its fixtures |
 | `ui/packages/app/components/domain/chat/ChatComposer.tsx`, `ChatComposerFrame.tsx`, `ChatToolbar.tsx`, `DraftMessage.tsx`, `DraftSaveBar.tsx`, `FleetSetup.tsx`, `FleetSetupWorkspace.tsx`, `chat-defaults.ts` | EDIT | Shared controls and isolated runtime selection context |
 | `ui/packages/app/components/domain/chat/FleetModelSelect.tsx`, `FleetModelSelect.test.tsx`, `useFleetModel.ts`, `useFleetModel.test.tsx` | CREATE | Saved selection, paging, failure and replay behavior |
-| `ui/packages/app/lib/api/drafts.ts`, `ui/packages/app/tests/draft-model-selection.test.ts`, `ui/packages/app/tests/draft-runtime-model.test.ts` | EDIT/CREATE | Honor runtime-only edits and prove revision writes |
+| `ui/packages/app/tests/helpers/fleet-model-fixture.ts` | CREATE | Public request-boundary fixture for model selection and replay |
+| `ui/packages/app/lib/api/drafts.ts`, `ui/packages/app/lib/api/draft-source.ts`, `ui/packages/app/tests/draft-model-selection.test.ts`, `ui/packages/app/tests/draft-runtime-model.test.ts` | EDIT/CREATE | Honor runtime-only edits, type fleet previews and prove revision writes |
 | `ui/packages/app/lib/events/run-figures-format.ts` and its test | EDIT | Millisecond duration formatting |
 | `ui/packages/app/tests/e2e/acceptance/`, `tests/fleet-thread/`, `tests/fleets-routes/detail-header.test.ts`, `tests/workspace-chat/`, `tests/fleet-markdown.test.tsx`, `tests/fleet-setup-recovery.test.tsx`, `vitest.setup.ts`, `package.json` | EDIT/CREATE | Existing chat regression proofs and saved-model browser check |
 | `ui/packages/design-system/src/`, `ui/packages/design-system/package.json` | EDIT/CREATE | Preserve shared composer, popover and CSS cleanup |
 | `cli/test/` | EDIT/CREATE | Meaningful coverage of branches exposed by Bun 1.4.4; exact files recorded before editing |
+| `cli/test/chat/{action-retries.test.ts,session.test.ts}`, `cli/test/{run-effect-render.unit.test.ts,fleet-schedule.unit.test.ts,core-ops-funcfill.unit.test.ts,fleet-logs-linecov.unit.test.ts,fleet-steer-repl.unit.test.ts,services-http-body.unit.test.ts,config-dir.unit.test.ts,connector.integration.test.ts,fleet-status-render.unit.test.ts,http-retry.provenance.unit.test.ts,entry-flag-validation.unit.test.ts}` | EDIT/CREATE | Cover command retry dispatch, malformed reads, explicit flags and transport/error boundaries |
+| `rustd/crates/afd_authoring/src/creation/{read.rs,progress.rs,activate.rs,stored.rs,sql/locked.sql,revision/}`, `rustd/crates/afd_authoring/Cargo.toml`, `rustd/Cargo.lock` | EDIT/CREATE | Remove saved-review drift blocking; record model changes with the saved revision |
+| `ui/packages/app/components/domain/EventsList.tsx` and its existing tests | EDIT | Name model changes plainly in Activity |
+| `rustd/crates/afd_authoring/src/review/mod.rs`, `rustd/crates/afd_authoring/tests/draft/creation/{identity.rs,grants.rs}`, `rustd/crates/afd_api/tests/authoring/saving/revisions/` | EDIT/CREATE | Remove obsolete review-flag assertions and prove concrete readiness and durable notices |
+| `rustd/crates/afd_api_wire/src/fleet/output.rs`, `rustd/crates/afd_api_tenant/src/handler/fleet/native/render/mod.rs`, `public/openapi.json`, `docs/architecture/api_resources.md`, `ui/packages/app/lib/api/fleet-detail.ts`, `tests/helpers/draft-fixtures.ts` | EDIT | Remove the unused review flag through the existing response and decoder |
+| `ui/packages/app/lib/api/draft-edits.ts`, `tests/draft-edits.test.ts`, `ui/packages/app/lib/events/{event-payload.ts,event-summary.ts,run-summary.ts}` and their existing tests | EDIT | Recognize confirmed native-edit replay and share model-change copy between chat and Activity |
 
 ## Applicable Rules
 
@@ -85,12 +92,13 @@ The restored staged changes remain part of this delivery. Source families below 
 
 - Dimension 1.1 **IN_PROGRESS — Runtime selection:** Load runtime-eligible workspace models with bounded paging. Clone the current fleet setup into a private draft, edit only the runtime model and apply its reviewed revision. → Test `saves a runtime-only model change without generating a message`.
 - Dimension 1.2 **IN_PROGRESS — Existing chat polish:** Preserve reply text nodes on completion, shared composer fonts, compact run details, precise durations and removal of the header access warning. → Test `fleet-composer`.
+- Dimension 1.3 **IN_PROGRESS — Owner-approved changes:** Remove the saved-review drift flag and its activation hold. Keep current readiness checks. Save one model-change notice in the revision transaction for chat and Activity. → Test `saved_model_changes_record_one_notice_even_when_the_save_is_replayed`.
 
 ### 2. Preserve state and recover safely
 
 - Dimension 2.1 **IN_PROGRESS — Refusal and stale setup:** Keep the saved model visible after refusal, missing models or a stale setup. Never apply unrelated editor changes. → Test `retains the saved model when the setup changes before apply`.
 - Dimension 2.2 **IN_PROGRESS — Unconfirmed save:** Disable further model changes while a write is unresolved. Retry the retained mutation before continuing; show the new model only after confirmed apply. → Test `retries a lost apply acknowledgment with the same key and body`.
-- Dimension 2.3 **IN_PROGRESS — Identity and input:** Abort owned reads when identity or source changes. Preserve composer text and focus through selection and refresh. → Test `preserves unsent text while the saved model changes`.
+- Dimension 2.3 **IN_PROGRESS — Identity and input:** Abort owned reads when identity or source changes. Preserve composer text and focus through selection and refresh. → Test `saving the fleet model preserves both composers and survives reload`.
 
 ### 3. Verify the complete change
 
@@ -135,9 +143,11 @@ No additional analytics or funnel is introduced. This control invokes existing s
 |---|---|---|---|
 | 1.1 | unit | `saves a runtime-only model change without generating a message` | Same definition and name plus new model → native patch then reviewed apply, no message request |
 | 1.2 | e2e | `fleet-composer` | Shared computed fonts and repeated reply completion → stable text, focus and placement |
+| 1.3 | integration | `saved_model_changes_record_one_notice_even_when_the_save_is_replayed` | Saved model change and replay → one durable notice |
+| 1.3 | integration | `catalogue_price_changes_do_not_require_review_to_resume_a_ready_fleet` | Catalogue drift with ready prerequisites → resume succeeds |
 | 2.1 | unit | `retains the saved model when the setup changes before apply` | Changed setup revision → no revision write and original label retained |
 | 2.2 | unit | `retries a lost apply acknowledgment with the same key and body` | Lost response → retained request replay, one confirmed model change |
-| 2.3 | e2e | `preserves unsent text while the saved model changes` | Type text then select model → text survives save and reload shows selected model |
+| 2.3 | e2e | `saving the fleet model preserves both composers and survives reload` | Type text in both composers then select model → both inputs survive save and reload shows selected model |
 | 3.1 | unit | `make test-unit-all` | All declared suites → 100% TypeScript package coverage |
 | 3.2 | integration | `make test-integration-rustd` | Existing real dependency lane → zero failed tests |
 
@@ -156,7 +166,7 @@ No additional analytics or funnel is introduced. This control invokes existing s
 
 ## Dead Code Sweep
 
-The restored change deletes `fleetMarkdownBlocks.ts`, its test, the markdown benchmark and corpus. Search `rg -n 'fleetMarkdownBlocks|fleet-markdown-corpus|fleet-markdown-stream' ui/packages/app` and require zero references outside this spec and historical reports.
+The restored change deletes `fleetMarkdownBlocks.ts`, its test, the markdown benchmark and corpus. Search `rg -n 'fleetMarkdownBlocks|fleet-markdown-corpus|fleet-markdown-stream' ui/packages/app` and require zero references outside this spec and historical reports. The runtime picker reuses the draft client's owned setup read; its separate read controller and source-preview overloads are removed. The header uses the fleet card's existing `agentDisplayName(fleet.id)` helper.
 
 ## Out of Scope
 
@@ -175,7 +185,7 @@ The restored change deletes `fleetMarkdownBlocks.ts`, its test, the markdown ben
 7. **Fit with existing features:** Runtime selection complements the setup conversation's separate helper-model selection.
 8. **Surface order:** Browser first because this change repairs the fleet composer; the existing command-line setup flow remains available.
 9. **Dashboard restraint:** State changes become visible only after the server confirms them.
-10. **Confused-user next step:** Inline failure copy offers Retry or reopening the current setup; no internal flag is used as user copy.
+10. **Confused-user next step:** Inline failure copy offers Retry for an unconfirmed save, Reload choices for a failed model list, and Reload fleet for a stale setup. No internal flag is used as user copy.
 
 ## Decomposition & alternatives (patch vs refactor)
 
@@ -187,7 +197,13 @@ The restored change deletes `fleetMarkdownBlocks.ts`, its test, the markdown ben
 
 - **Consults:** Indy chose continuation option A in the restored worktree. On model scope, Indy said: “Which i easier to fix? it shouldnt just limit to chat replies. For an user - what you see is what you get.” Source inspection confirms runtime model edits already update the fleet definition. Indy also asked to fix the review text beside Edit setup; remove the access warning entirely. Saved model changes must appear in chat and Activity.
 - **Metrics review:** No analytics/funnel playbook update required; the picker saves through existing measured setup operations and sends no authoring message.
-- **Skill-chain outcomes:** `context-restore` completed. `investigate` established that Bun 1.4.4 exposes previously credited command-line branches; evidence is `/tmp/agentsfleet-chat-cli-coverage.97WYoz`. Unit-test review, final review and post-push review remain pending.
+- **Skill-chain outcomes:** `context-restore` completed. `investigate` established that Bun 1.4.4 exposes previously credited command-line branches; evidence is `/tmp/agentsfleet-chat-cli-coverage.log`. Unit-test proofs cover refusal, access loss, retained replay, cleanup and unsent inputs. Final review remains in progress; post-push review starts after a pull request exists.
 - **Deferrals:** None. M228 and M233 are separate existing workstreams, not deferred requirements of this repair.
 
 The review-flag investigation traced `creation/read.rs` to `review/mod.rs`: `needs_re_review` compares the accepted review digest to a fresh review. Model resolution includes pricing and catalogue version; credentials, connections and creator authority also contribute. The header previously presented every mismatch as access trouble without an action. Activation checks retain their backend authority. A confirmed model change must be distinguished from this generic comparison; do not report every mismatch as a model change. Source inspection is complete; the exact live-fleet trigger has not been reproduced.
+
+Indy then asked to remove the redundant code: “since we dont get any value to ask the user when the team's owner had changed it.” and “if possible cut down and remove that code please”. Remove saved-versus-current review-digest comparisons and the resulting flag/block. Current model, authority, policy, wallet and grant readiness still governs activation. The digest on an explicit new save remains its conditional write check.
+
+Indy clarified the header's second line with a fleet-card screenshot: `AGENT MOSS-965F`, not the definition name `dev-acceptance-*`. Use the same stable agent callsign helper as the card for every fleet. The focused header check passes independently of missing or different definition names.
+
+Baseline commands are the repository's individual unit/coverage targets from those jobs. The live baseline ran `make test-coverage-rustd RUSTD_SHARD=runner`, `daemon`, and `substrate` with real dependencies and `--include-ignored`; matching their passed test names to the current canonical integration selection confirms 1,409 existing cases. The current `make test-integration-rustd` log contains those cases plus two new model-change/readiness cases: 1,411 passed, zero failed. Unit-count comparison retains the platform difference: Linux has 108 additional runner unit cases compared with this macOS run. No claim is made that the standalone baseline integration command ran locally.

@@ -16,11 +16,25 @@ import { HttpClient, type HttpRequestInput } from "../src/services/http-client.t
 import { Output, type OutputShape } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
+import { ValidationError } from "../src/errors/index.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000000001";
 const FLEET_ID = "01900000-0000-7000-8000-000000000002";
 const SCHEDULE_ID = "01900000-0000-7000-8000-000000000003";
 const TOKEN = "pat_schedule_test";
+
+test("a missing required schedule value refuses before any request", async () => {
+  for (const flags of [{ cron: "", message: "Summarize" }, { cron: "0 9 * * *", message: "" }]) {
+    const calls: HttpRequestInput[] = [];
+    const failure = await Effect.runPromise(Effect.flip(
+      provide(scheduleAddEffectFromArgs(FLEET_ID, flags), newCapture(), calls, {}),
+    ));
+    expect(failure).toBeInstanceOf(ValidationError);
+    if (!(failure instanceof ValidationError)) throw new Error("missing schedule refusal");
+    expect(failure.suggestion).toContain("agentsfleet schedule create");
+    expect(calls).toEqual([]);
+  }
+});
 
 interface Capture {
   jsons: unknown[];

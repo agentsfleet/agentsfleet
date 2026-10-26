@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { EVENTS } from "@/lib/analytics/events";
 import { row, renderList } from "./helpers/events-list-harness";
 
 describe("EventsList — the standard workspace events table", () => {
+  it("names saved model changes in Activity", () => {
+    renderList({items: [row({event_type: EVENTS.model_changed, actor: "config_reload", status: "processed"})], next_cursor: null});
+    expect(screen.getByText("Model changed")).toBeTruthy();
+  });
   it("collapses repeated identical failures into one row that opens on demand", async () => {
     const failure = (id: string) =>
       row({

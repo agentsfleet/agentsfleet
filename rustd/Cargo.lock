@@ -337,6 +337,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_dragonfly",
+ "afd_events",
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
  "afd_identity",

@@ -1,6 +1,13 @@
 import { expect, it } from "vitest";
-import { drawerPatch } from "@/lib/api/draft-edits";
+import { drawerMatches, drawerPatch } from "@/lib/api/draft-edits";
 import { REVIEW } from "./helpers/draft-fixtures";
+
+it("recognizes a completed native edit while retaining all other setup content", () => {
+  const definition = REVIEW.effective.definition;
+  expect(drawerMatches(definition, {definition, instanceName: "one"})).toBe(true);
+  const edited = {...definition, instructions_md: "Unrelated change"};
+  expect(drawerMatches(edited, {definition, instanceName: "one"})).toBe(false);
+});
 
 it("patches removed, added and changed keys while escaping pointers and preserving byte offsets", () => {
   const prior = {...REVIEW.effective.definition, instructions_md: "你好", config: {keep: true, remove: 1, "a~/b": 2}, description: "Old description"};

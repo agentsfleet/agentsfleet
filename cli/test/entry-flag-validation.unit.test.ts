@@ -4,10 +4,18 @@
 // three a single flag can produce have to read as one family.
 
 import { describe, expect, test } from "bun:test";
+import { Cause } from "effect";
 
 import { runCli } from "../src/cli.ts";
+import { exitCodeForFailure, isLibraryUsageError } from "../src/program/entry/exit-code.ts";
 
 const EXIT_VALIDATION = 4;
+
+test("an unexpected runtime defect exits as a failure without posing as a usage error", () => {
+  const cause = Cause.die(new Error("unexpected runtime failure"));
+  expect(exitCodeForFailure(cause)).toBe(1);
+  expect(isLibraryUsageError(cause)).toBe(false);
+});
 
 const reject = async (argv: ReadonlyArray<string>): Promise<{ code: number; err: string }> => {
   const chunks: string[] = [];

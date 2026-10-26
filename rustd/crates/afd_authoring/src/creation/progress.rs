@@ -45,14 +45,6 @@ pub struct SetupProgress {
 
 pub(super) fn current(row: &Stored, review: &Review) -> SetupProgress {
     let mut checks: Vec<_> = review.readiness.iter().map(observed).collect();
-    if review.review_digest != row.accepted.review_digest {
-        checks.push(SetupCheck {
-            kind: KIND_POLICY,
-            subject: "review_changed".to_owned(),
-            state: CHECK_BLOCKED,
-            next_action: Some(crate::review::review_action(&row.accepted.context)),
-        });
-    }
     checks.push(SetupCheck {
         kind: "stream",
         subject: "runtime_queue".to_owned(),
@@ -117,10 +109,9 @@ fn kind(kind: CheckKind) -> &'static str {
     }
 }
 
-pub(super) fn ready(row: &Stored, review: &Review) -> bool {
-    row.accepted.review_digest == review.review_digest
-        && review
-            .readiness
-            .iter()
-            .all(|check| check.state == CheckState::Ready)
+pub(super) fn ready(review: &Review) -> bool {
+    review
+        .readiness
+        .iter()
+        .all(|check| check.state == CheckState::Ready)
 }

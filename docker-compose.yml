@@ -140,7 +140,7 @@ services:
     # QStash tests (AGENTSFLEET_QSTASH_LIVE_URL/TOKEN); self-skip when it is down.
     # Debian (glibc), not Alpine: the CLI fetches a glibc-linked Go binary that
     # cannot exec under musl.
-    image: mirror.gcr.io/oven/bun:1
+    image: mirror.gcr.io/oven/bun:1.4.4
     command:
       - sh
       - -c

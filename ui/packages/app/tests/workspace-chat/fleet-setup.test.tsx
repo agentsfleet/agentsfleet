@@ -129,7 +129,7 @@ it("saves an improvement against the current setup tag and publishes another rev
   await chooseSetupAction("Save changes");
   await screen.findByText(/Fleet setup updated/);
   expect(screen.getByRole("heading", {name: "Saved v2"})).toBeTruthy();
-  expect(screen.getByText(/New runs use this setup/)).toBeTruthy();
+  expect(screen.getByText(/Your fleet is ready to use this setup/)).toBeTruthy();
   await openSetupReview();
   expect(fixture.writes()[0]?.headers.get("If-Match")).toBe(FLEET.setup_etag);
   fireEvent.click(screen.getByRole("button", {name: "Publish to Fleet library"}));

@@ -12,7 +12,7 @@ import { DraftWatch } from "./draft-watch";
 import { DraftLists } from "./draft-lists";
 import { DRAFT_LIST_STATUS, defaultChatModel, type DraftList } from "./draft-list-types";
 import { EMPTY_DRAFT_VIEW as EMPTY, type DraftIdentity, type DraftView, type DrawerEdit } from "./draft-state";
-import { drawerPatch } from "./draft-edits";
+import { drawerMatches, drawerPatch } from "./draft-edits";
 import { sourcePreview } from "./draft-source";
 import { readySetup } from "./draft-ready-setup";
 import { chatRecovery } from "./draft-recovery";
@@ -129,17 +129,18 @@ export class DraftClient {
     });
   }
 
-  refreshSetup(): Promise<void> {
+  refreshSetup(): Promise<DrawerEdit> {
     return this.#act(async () => {
       this.#idle();
       if (!this.#snapshot.draft) {
-        this.#update({preview: await sourcePreview(this.#base, this.#source, AbortSignal.any([this.#owner.signal, this.#view.signal]))});
-        return;
+        const preview = await sourcePreview(this.#base, this.#source, AbortSignal.any([this.#owner.signal, this.#view.signal]));
+        if (!preview) throw new SetupUnavailable("There is no setup to refresh yet.", 409);
+        this.#update({preview}); return preview;
       }
       await this.#read(this.#draft().id);
       const draft = this.#draft();
       if (!draft.review) throw new SetupUnavailable("Continue chatting or edit instructions before saving setup.", 409);
-      await this.#targetSetup(draft, draft.review);
+      await this.#targetSetup(draft, draft.review); return {definition: draft.review.effective.definition, instanceName: draft.review.effective.instance_name};
     });
   }
   edit(input: DrawerEdit): Promise<void> {
@@ -158,9 +159,12 @@ export class DraftClient {
           this.#update(await this.#lists.refreshDraft(created.id, AbortSignal.any([this.#owner.signal, this.#view.signal])));
           selectionTag ??= created.etag;
           if (!created.candidate) throw new SetupUnavailable("The selected source has no editable setup.", 409);
-          if (JSON.stringify(created.candidate.definition) !== JSON.stringify(input.definition)) {
+          if (JSON.stringify(created.candidate.definition) !== JSON.stringify(input.definition) && !drawerMatches(created.candidate.definition, input)) {
             await this.#patch(drawerPatch(created.candidate.definition, input), selectionTag);
-          } else if (created.review?.effective.instance_name !== input.instanceName) await this.#patch({instance_name: input.instanceName}, selectionTag);
+          } else if (created.review?.effective.instance_name !== input.instanceName
+            || input.runtimeModel !== undefined && created.review.effective.runtime_model_ref !== input.runtimeModel) {
+            await this.#patch({instance_name: input.instanceName, ...(input.runtimeModel ? {runtime_model_ref: input.runtimeModel} : {})}, selectionTag);
+          }
         });
       } else {
         if (!draft.candidate) throw new SetupUnavailable("Continue chatting until the first setup is proposed before editing it.", 409);
@@ -314,11 +318,11 @@ export class DraftClient {
       failed: cause => this.#failed(cause),
     });
   }
-  async #act(action: () => Promise<void>, opening = false): Promise<void> {
+  async #act<T>(action: () => Promise<T>, opening = false): Promise<T> {
     if (this.#snapshot.inaccessible) throw new SetupUnavailable("Reload this page to check access before continuing.", 403);
     if (this.#snapshot.busy) throw new SetupUnavailable("A setup request is still in progress.", 409);
     this.#update({busy: true, error: null, notice: null});
-    try { await action(); } catch (cause) { if (!this.#owner.signal.aborted && !this.getSnapshot().inaccessible) this.#failed(cause, opening); throw cause; }
+    try { return await action(); } catch (cause) { if (!this.#owner.signal.aborted && !this.getSnapshot().inaccessible) this.#failed(cause, opening); throw cause; }
     finally { this.#update({busy: false, pending: this.#operation.pending}); }
   }
   #failed(cause: unknown, opening = false): void {
