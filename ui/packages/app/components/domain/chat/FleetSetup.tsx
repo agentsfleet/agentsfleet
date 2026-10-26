@@ -20,7 +20,7 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
   return <Section className="ph-no-capture ph-no-record my-md gap-xs border-l-2 border-border pl-md py-xs" aria-label="Fleet setup">
     <h2 className="text-body font-semibold">{editing ? `Based on v${revision}` : revision ? `Saved v${revision}` : setup ? "Setup ready" : "Preparing your setup"}</h2>
     <p className="text-label text-muted-foreground">{revision
-      ? editing ? "Tell me what you’d like to change. Save changes when you’re ready." : "New runs use this setup. Edit setup to change it."
+      ? editing ? "Tell me what you’d like to change. Save changes when you’re ready." : "Your fleet is ready to use this setup. Choose Edit setup to make changes."
       : setup || view.preview ? "Keep chatting to refine it, or select Save fleet in the header to create your fleet." : "Keep chatting to work out the instructions together."}
       {view.fleet ? <> <Link className="underline underline-offset-4" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet</Link>.</> : null}
     </p>

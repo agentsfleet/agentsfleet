@@ -45,7 +45,7 @@ impl Creations {
             self.recover_initial(access, fleet).await?;
             return self.confirm_initial(access, fleet).await;
         }
-        if row.status != INSTALLING || row.accepted.review_digest != checked.review_digest {
+        if row.status != INSTALLING {
             return Ok(());
         }
         for check in &checked.readiness {
@@ -65,7 +65,7 @@ impl Creations {
             }
         }
         let (row, checked) = self.snapshot(access, fleet).await?;
-        if row.status != INSTALLING || !progress::ready(&row, &checked) {
+        if row.status != INSTALLING || !progress::ready(&checked) {
             return Ok(());
         }
         if row.setup_stream_ready != Some(true) {
@@ -102,7 +102,7 @@ impl Creations {
             return Ok(());
         }
         let checked = self.review(&mut tx, &row).await?;
-        if !progress::ready(&row, &checked) || row.setup_stream_ready != Some(true) {
+        if !progress::ready(&checked) || row.setup_stream_ready != Some(true) {
             return Ok(());
         }
         let initial = self

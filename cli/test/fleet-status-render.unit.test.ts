@@ -6,7 +6,8 @@
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { statusEffect } from "../src/commands/fleet.ts";
+import { statusEffect, stopEffectFromId } from "../src/commands/fleet.ts";
+import { FLEET, FLEET_ID } from "./chat/fixture.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
@@ -65,6 +66,18 @@ const credentialsLayer = (): Layer.Layer<Credentials> =>
   });
 
 describe("agentsfleet status — per-fleet events + budget", () => {
+  test("a status mutation reports the server's actual outcome", async () => {
+    const messages: string[] = [];
+    const http = Layer.succeed(HttpClient, { request: <T,>() => Effect.succeed({ ...FLEET, status: "killed" } as T) });
+    await Effect.runPromise(stopEffectFromId(FLEET_ID).pipe(
+      Effect.provide(configLayer()), Effect.provide(credentialsLayer()), Effect.provide(workspacesLayer()),
+      Effect.provide(http), Effect.provide(Layer.succeed(Output, {
+        ...outputDouble(), success: message => Effect.sync(() => { messages.push(message); }),
+      })),
+    ));
+    expect(messages).toEqual([`${FLEET_ID} killed.`]);
+  });
+
   test("projects events_processed and formats budget_used_nanos as USD", async () => {
     const rows: Array<Record<string, string>> = [];
     const exit = await Effect.runPromiseExit(

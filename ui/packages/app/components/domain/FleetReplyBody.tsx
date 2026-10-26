@@ -21,6 +21,7 @@ import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
 import { ContextProgressStatus } from "./ContextProgressStatus";
+import type { ReplyFigures } from "./fleetMessageReaders";
 import { readContextProgress } from "@/lib/context-progress";
 
 const COPY_REPLY_LABEL = "Copy reply";
@@ -105,8 +106,7 @@ export function FleetReply({
       {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
       {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
-      {running || recovering || errored ? null : <FleetReplyFigures figures={readReplyFigures(message)} />}
-      <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
+      <ReplyActions answer={answer} settled={!running && !errored && !recovering} figures={readReplyFigures(message)} />
     </FleetMessageRow>
   );
 }
@@ -162,7 +162,7 @@ export function renderReplyPart(
         />
       );
     case "text":
-      return <ReplyText text={part.text} streaming={reply.running} />;
+      return <ReplyText streaming={reply.running} />;
     case "indicator":
       return reply.contextProgress ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
     default:
@@ -180,17 +180,13 @@ function reasoningText(message: MessageState): string {
 }
 
 /**
- * What the fleet said. Parsing a growing answer is the reply's heaviest
- * render, so it is deferred: React 19 `useDeferredValue` lets typing and
- * scrolling interrupt it, and the markdown catches up on the next idle frame.
- * While it streams, only its open block is parsed per flush; once settled it
- * is parsed whole, once. `streaming` is deferred with the text, so the settled
- * parse reads the final answer rather than the flush before it.
+ * The library owns smoothing and deferred parsing within the current text part.
+ * Completing a run updates its status without replacing the displayed answer.
  */
-function ReplyText({ text, streaming }: { text: string; streaming: boolean }) {
+function ReplyText({ streaming }: { streaming: boolean }) {
   return (
     <>
-      <FleetReplyMarkdown text={text} streaming={streaming} />
+      <FleetReplyMarkdown />
       {streaming ? (
         <span className="sr-only" aria-label="streaming">Receiving reply</span>
       ) : null}
@@ -201,12 +197,8 @@ function ReplyText({ text, streaming }: { text: string; streaming: boolean }) {
 /*
  * The actions under a finished reply.
  *
- * Rendered ONLY on a settled turn, which is both the interaction we want and
- * the cheap one. A streaming reply re-renders on every chunk; mounting a
- * clipboard affordance inside that loop would rebuild it dozens of times for a
- * control nobody can usefully press yet, since the text it would copy is still
- * arriving. Both Claude and ChatGPT reveal these the same way — after the
- * answer lands.
+ * Keep the action row's height while the answer streams. Revealing controls
+ * when it settles must not add a footer and push the reader's position.
  *
  * `memo` on top of that: the transcript re-renders when ANY row changes, and a
  * settled reply's text does not change again. Comparing one string prop is
@@ -215,14 +207,18 @@ function ReplyText({ text, streaming }: { text: string; streaming: boolean }) {
 const ReplyActions = memo(function ReplyActions({
   answer,
   settled,
+  figures,
 }: {
   answer: string;
   settled: boolean;
+  figures: ReplyFigures;
 }) {
-  if (!settled || answer.length === 0) return null;
   return (
-    <div className="-ml-sm flex items-center gap-xs pt-xs">
-      <CopyButton value={answer} label={COPY_REPLY_LABEL} />
+    <div className="-ml-sm flex h-11 items-center gap-xs">
+      {settled ? <>
+        {answer.length > 0 ? <CopyButton value={answer} label={COPY_REPLY_LABEL} /> : null}
+        <FleetReplyFigures figures={figures} />
+      </> : null}
     </div>
   );
 });

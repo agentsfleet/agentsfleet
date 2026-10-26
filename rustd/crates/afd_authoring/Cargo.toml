@@ -30,6 +30,7 @@ afd_runner.workspace = true
 afd_admission.workspace = true
 afd_approval.workspace = true
 afd_cron.workspace = true
+afd_events.workspace = true
 # The product-analytics reporter the private-chat-to-fleet funnel steps go to,
 # each after the commit that made it true.
 afd_observability.workspace = true

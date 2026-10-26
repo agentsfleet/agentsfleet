@@ -10,7 +10,7 @@ import type { ScheduledStream, TimedFrame } from "./fixtures/page-event-stream";
 import { withReplyPage } from "./fixtures/reply-page";
 import { sseFrame as frame } from "./fixtures/sse";
 
-const FLEET_PREFIX = "thread-anchor-spec-";
+const FLEET_NAME = "webhook-delivery-review";
 const EVENT_ID = "9300000000000-1";
 // Another operator in the workspace: a turn this tab did not send.
 const TEAMMATE = "steer:user_thread_anchor_teammate";
@@ -24,10 +24,8 @@ const REASONING_EVERY_MS = 80;
 const ANSWER = "Checked every signature; nothing to change.";
 const HISTORY_TURNS = 30;
 const HISTORY_ID_BASE = 9_200_000_000_000;
-// The library's reserve trails a 200 ms fold, and the re-pin when a send's
-// rows take their admitted ids, by a frame or a few: the view may wobble by
-// about a line, and must come back to where it was.
-const WOBBLE_PX = 40;
+// Measure every frame: completion and folding must preserve the reader's place.
+// One CSS pixel accommodates fractional layout rounding, never a line of motion.
 const SETTLED_PX = 1;
 const SAMPLE_MS = 450;
 const SEND_SAMPLE_MS = 1_500;
@@ -44,7 +42,7 @@ const OFFLINE_WITHIN_MS = 60_000;
 const OFFLINE_TEST_MS = 120_000;
 
 test("test_fold_at_bottom_holds_view", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor, sendOwn }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
     await sendOwn(OWN_TURN, EVENT_ID);
     await stream.send(liveReply(Date.now(), ownActor));
     await stream.send([answer(), complete(ownActor)]);
@@ -60,7 +58,7 @@ test("test_fold_at_bottom_holds_view", async ({ page }) => {
 });
 
 test("test_settle_holds_view", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor, sendOwn }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
     await sendOwn(OWN_TURN, EVENT_ID);
     await stream.send(liveReply(Date.now(), ownActor));
     const thought = chat.getByRole("button", { name: /^Thinking/ });
@@ -74,8 +72,29 @@ test("test_settle_holds_view", async ({ page }) => {
   });
 });
 
+test("final answer stays in place when a short reply completes", async ({ page }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
+    await sendOwn(OWN_TURN, EVENT_ID);
+    await stream.send([opening(Date.now(), ownActor), { afterMs: 0, body: chunkBody(0, "answer", ANSWER) }]);
+    const paragraph = chat.getByText(ANSWER, { exact: true });
+    await expect(paragraph).toBeVisible();
+    // Let the text finish revealing before the completion frame arrives, as
+    // observed in Brave. A placeholder taller than this reply used to flash.
+    await page.waitForTimeout(SAMPLE_MS);
+    const original = await paragraph.elementHandle();
+    const tops = await sampleTop(paragraph, SAMPLE_MS, () => stream.send([complete(ownActor)]));
+    await test.info().attach("final-answer-tops", { contentType: "application/json", body: JSON.stringify(tops) });
+    expectHeld(tops);
+    expect(await original?.evaluate(el => el.isConnected)).toBe(true);
+    // Completion must keep the live row laid out, including in browsers that
+    // happen to measure containment before the next paint and hide the jump.
+    expect(await paragraph.evaluate(el => getComputedStyle(el.closest('[data-testid="fleet-message"]')!).contentVisibility)).toBe("visible");
+    await expect(chat.getByRole("button", { name: "Copy reply" })).toBeVisible();
+  });
+});
+
 test("test_send_scrolls_once", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await stream.send(history(Date.now() - HISTORY_TURNS));
     await expect(chat.getByText(`Settled answer ${HISTORY_TURNS}`)).toBeVisible();
     const composer = page.getByLabel(COMPOSER_LABEL);
@@ -86,17 +105,45 @@ test("test_send_scrolls_once", async ({ page }) => {
       composer.getByRole("button", { name: SEND_LABEL, exact: true }).click(),
     );
     await test.info().attach("send-scroll-tops", { contentType: "application/json", body: JSON.stringify(tops.map(Math.round)) });
-    // One way: never further back than a wobble behind the furthest point
-    // reached, and resting at that point once the send is admitted.
+    // Sending moves forward once, without reversing when admission arrives.
     const furthest = tops.map((_, i) => Math.max(...tops.slice(0, i + 1)));
-    expect(Math.max(...tops.map((top, i) => (furthest[i] ?? top) - top))).toBeLessThanOrEqual(WOBBLE_PX);
+    expect(Math.max(...tops.map((top, i) => (furthest[i] ?? top) - top))).toBeLessThanOrEqual(SETTLED_PX);
     expect(Math.abs((tops.at(-1) ?? 0) - Math.max(...tops))).toBeLessThanOrEqual(SETTLED_PX);
     await expect(chat.getByText(SENT)).toBeInViewport();
   });
 });
 
+test("run details opens by keyboard without moving the reply", async ({ page }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
+    await stream.send([opening(Date.now(), TEAMMATE), answer(), {
+      afterMs: 0,
+      body: frame(FRAME_KIND.EVENT_COMPLETE, {
+        event_id: EVENT_ID, actor: TEAMMATE, status: "processed", final_reply: ANSWER,
+        wall_ms: 12_000, tokens: 1_200, cost_nanos: "40000000",
+      }),
+    }]);
+    const reply = chat.getByText(ANSWER, { exact: true });
+    await expect(reply).toBeVisible();
+    const details = chat.getByRole("button", { name: "Run details" });
+    await details.focus();
+    const tops = await sampleTop(reply, SAMPLE_MS, async () => {
+      await page.keyboard.press("Enter");
+      const dialog = page.getByRole("dialog", { name: "Run details" });
+      await expect(dialog).toContainText("Reported cost");
+      await expect(dialog).toContainText("$0.04");
+      const bounds = await dialog.boundingBox();
+      expect(bounds?.width).toBeLessThanOrEqual(280);
+      expect(bounds?.height).toBeLessThanOrEqual(160);
+      await page.keyboard.press("Escape");
+    });
+    expectHeld(tops);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(details).toBeFocused();
+  });
+});
+
 test("test_jump_to_latest_after_anchor", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await readingHistory(chat, stream);
     await stream.send([opening(Date.now(), TEAMMATE), answer(), complete(TEAMMATE)]);
     await chat.getByRole("button", { name: JUMP_TO_LATEST }).click();
@@ -107,7 +154,7 @@ test("test_jump_to_latest_after_anchor", async ({ page }) => {
 // A turn this tab did not send, from a teammate or the fleet's own API,
 // leaves a reader in the history where they are.
 test("test_background_turn_leaves_history_alone", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await expectHistoryHeld(chat, stream, TEAMMATE, "background-turn-tops");
   });
 });
@@ -115,7 +162,7 @@ test("test_background_turn_leaves_history_alone", async ({ page }) => {
 // The operator's own account sending from another tab reaches this one by
 // frame alone: this tab's reader stays in the history too.
 test("test_other_tab_turn_leaves_history_alone", async ({ page }) => {
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream, ownActor }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor }) => {
     await expectHistoryHeld(chat, stream, ownActor, "other-tab-turn-tops");
   });
 });
@@ -124,7 +171,7 @@ test("test_other_tab_turn_leaves_history_alone", async ({ page }) => {
 // the notice once sat in the panel above the thread and pushed it down.
 test("test_reconnect_notice_warns_in_place", async ({ page }) => {
   test.setTimeout(OFFLINE_TEST_MS);
-  await withReplyPage(page, FLEET_PREFIX, async ({ chat, stream }) => {
+  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await readingHistory(chat, stream);
     const reading = chat.getByText("Settled answer 1", { exact: true });
     await stream.drop();
@@ -190,18 +237,22 @@ async function sampleTop(target: Locator, ms: number, act: () => Promise<unknown
 }
 
 async function sampleScroll(viewport: Locator, ms: number, act: () => Promise<unknown>): Promise<number[]> {
-  const sampling = viewport.evaluate((el, window_) => new Promise<number[]>((resolve) => {
-    const tops: number[] = [];
+  const sampling = viewport.evaluate((el, window_) => new Promise<Array<{top: number; height: number; anchor: string | undefined; reserve: string | undefined}>>((resolve) => {
+    const samples: Array<{top: number; height: number; anchor: string | undefined; reserve: string | undefined}> = [];
     const t0 = performance.now();
     const tick = () => {
-      tops.push(el.scrollTop);
+      const anchor = el.querySelector<HTMLElement>('[data-aui-top-anchor-user]');
+      const reserve = el.querySelector<HTMLElement>('[data-aui-top-anchor-reserve]');
+      samples.push({top: el.scrollTop, height: el.scrollHeight, anchor: anchor?.dataset.messageId, reserve: reserve?.style.height});
       if (performance.now() - t0 < window_) requestAnimationFrame(tick);
-      else resolve(tops);
+      else resolve(samples);
     };
     requestAnimationFrame(tick);
   }), ms);
   await act();
-  return sampling;
+  const samples = await sampling;
+  await test.info().attach("send-scroll-geometry", { contentType: "application/json", body: JSON.stringify(samples) });
+  return samples.map(sample => sample.top);
 }
 
 // A reader who has been at the bottom sees settled rows at their real height;
@@ -224,7 +275,7 @@ async function restAtBottom(viewport: Locator): Promise<void> {
 function expectHeld(tops: number[]): void {
   const start = tops[0] ?? 0;
   const drift = Math.max(...tops.map((top) => Math.abs(top - start)));
-  expect(drift).toBeLessThanOrEqual(WOBBLE_PX);
+  expect(drift).toBeLessThanOrEqual(SETTLED_PX);
   expect(Math.abs((tops.at(-1) ?? start) - start)).toBeLessThanOrEqual(SETTLED_PX);
 }
 

@@ -118,6 +118,7 @@ export {
   type DialogTitleProps,
   type DialogDescriptionProps,
 } from "./Dialog";
+export { Popover, PopoverTrigger, PopoverContent, type PopoverContentProps } from "./Popover";
 export {
   DropdownMenu,
   DropdownMenuTrigger,

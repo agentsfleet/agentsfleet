@@ -16,6 +16,8 @@ import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { compareNanos, formatDollars } from "@/lib/money";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { senderLabelFor } from "@/lib/events/event-summary";
+import { MODEL_CHANGED_LABEL } from "@/lib/events/event-payload";
+import { EVENTS } from "@/lib/analytics/events";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 import { AgentLabel } from "./AgentLabel";
 import {
@@ -173,7 +175,7 @@ function createEventColumns(
       header: "Type",
       hideOnMobile: true,
       sortValue: (row) => row.event_type,
-      cell: (row) => row.event_type,
+      cell: (row) => row.event_type === EVENTS.model_changed ? MODEL_CHANGED_LABEL : row.event_type,
     },
     {
       // Trailing column: how many consecutive identical deliveries this row

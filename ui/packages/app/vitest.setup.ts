@@ -54,3 +54,10 @@ afterEach(() => {
 // having been run on a loaded machine. It costs wall time only on runs that are
 // already failing.
 configure({ asyncUtilTimeout: ASYNC_UTIL_TIMEOUT_MS });
+
+// Component tests run without animation; browser checks exercise streamed reveal.
+if (typeof window !== "undefined") window.matchMedia = (query) => ({
+  matches: query === "(prefers-reduced-motion: reduce)", media: query, onchange: null,
+  addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+  dispatchEvent: () => false,
+});

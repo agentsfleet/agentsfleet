@@ -27,6 +27,13 @@ const configLayer = (jsonMode: boolean): Layer.Layer<CliConfig> =>
   } as never);
 
 describe("renderAndCount — a cause carrying no typed failure", () => {
+  test("preserves a command-managed nonzero result without inventing an error message", async () => {
+    const errors: string[] = [];
+    const code = await Effect.runPromise(renderAndCount(Exit.succeed(2)).pipe(Effect.provideService(Output,
+      {...outputDouble(), error: message => Effect.sync(() => {errors.push(message);})})));
+    expect(code).toBe(2);
+    expect(errors).toEqual([]);
+  });
   // A die or an interrupt has no typed error inside it, so `findErrorOption`
   // answers None and the dispatcher has nothing to read an exit code off.
   // Left unhandled this is the branch where a crash exits 0 and a script

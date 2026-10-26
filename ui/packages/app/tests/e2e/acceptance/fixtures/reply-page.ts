@@ -11,7 +11,7 @@ import { FIXTURE_KEY } from "./constants";
 import { workspaceHref } from "./nav";
 import { pageEventStream, type ScheduledStream } from "./page-event-stream";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./seed";
-import { cleanWorkspaceFleets } from "./teardown";
+import { assertDestructiveTargetIsSafe, purgeFixtureFleet } from "./teardown";
 
 const EMPTY_HISTORY: EventsPage = { items: [], next_cursor: null };
 const CHAT_LABEL = "Fleet chat";
@@ -27,6 +27,8 @@ const STEER_ACCEPTED = "accepted";
  * the one the thread anchors while its reply runs. The same actor arriving by
  * frame alone is the operator's turn from another tab. */
 export type ReplyPage = {
+  workspaceId: string;
+  fleetId: string;
   chat: Locator;
   stream: ScheduledStream;
   ownActor: string;
@@ -35,11 +37,11 @@ export type ReplyPage = {
 
 export async function withReplyPage(
   page: Page,
-  fleetPrefix: string,
+  purpose: string,
   body: (reply: ReplyPage) => Promise<void>,
 ): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-  const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: `${fleetPrefix}${crypto.randomUUID()}` });
+  const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: purpose });
   const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/events/stream`;
   const historyPath = streamPath.replace(/\/stream$/, "");
   const stream = await pageEventStream(page, streamPath);
@@ -55,12 +57,13 @@ export async function withReplyPage(
     await stream.connected;
     const ownActor = `${ACTOR.STEER_PREFIX}${fixtureSubject(FIXTURE_KEY.regular)}`;
     const sendOwn = (text: string, eventId: string) => sendFromComposer(page, steerMessagesUrl(workspaceId, fleet.id), text, eventId);
-    await body({ chat, stream, ownActor, sendOwn });
+    await body({ workspaceId, fleetId: fleet.id, chat, stream, ownActor, sendOwn });
     expect(errors).toEqual([]);
   } finally {
     await page.goto("about:blank");
     await page.unrouteAll({ behavior: "wait" });
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, fleetPrefix);
+    assertDestructiveTargetIsSafe();
+    await purgeFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleet.id);
   }
 }
 

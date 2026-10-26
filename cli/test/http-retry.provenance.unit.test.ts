@@ -5,7 +5,7 @@
 // CLI's own reading of each class.
 
 import { expect, test } from "bun:test";
-import { ApiError } from "../src/lib/http.ts";
+import { ApiError, apiRequest } from "../src/lib/http.ts";
 import { apiRequestWithRetry, type RetryInfo } from "../src/lib/http-retry.ts";
 import { asFetchImpl, type ResponseLike } from "./helpers.ts";
 
@@ -13,6 +13,16 @@ const URL = "https://api.example.test/v1/thing";
 const NO_SLEEP = async (): Promise<void> => undefined;
 const OK: ResponseLike = { ok: true, status: 200, statusText: "OK", headers: { get: () => null }, text: async () => '{"ok":true}' };
 const TIMED_OUT = Object.assign(new Error("aborted"), { name: "AbortError" });
+
+test("an invalid Retry-After preserves the refusal without a fabricated delay", async () => {
+  const refusal = await apiRequest(URL, { fetchImpl: async () =>
+    new Response('{"detail":"slow down"}', { status: 429, headers: { "Retry-After": "sometime" } }),
+  }).catch((cause: unknown) => cause);
+  expect(refusal).toBeInstanceOf(ApiError);
+  if (!(refusal instanceof ApiError)) throw new Error("missing API refusal");
+  expect(refusal.status).toBe(429);
+  expect(refusal.retryAfterMs).toBeNull();
+});
 
 function fetchFailed(code: string): TypeError {
   return new TypeError("fetch failed", { cause: Object.assign(new Error(code), { code }) });

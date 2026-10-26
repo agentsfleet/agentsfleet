@@ -122,6 +122,7 @@ export default async function FleetDetailPage({
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <FleetSetupWorkspace account={workspaces?.items.find(item => item.id === workspaceId)?.account.tenant_id ?? null}
         workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision}
+        model={typeof fleet.definition.config["x-agentsfleet"].model === "string" ? fleet.definition.config["x-agentsfleet"].model : "platform-default"}
         viewer={typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null} header={<>
       <FleetHeader
         workspaceId={workspaceId}

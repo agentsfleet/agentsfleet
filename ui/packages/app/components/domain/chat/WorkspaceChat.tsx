@@ -13,6 +13,7 @@ import { DraftClient } from "@/lib/api/drafts";
 import { DraftCache } from "@/lib/api/draft-cache";
 import { isRunning } from "@/lib/api/draft-types";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
+import { chatRecovery } from "@/lib/api/draft-recovery";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
 import { ScheduleSync } from "./ScheduleSync";
@@ -42,7 +43,8 @@ export function WorkspaceChat(props: Props) {
 function ChatSession(props: Props & {identity: DraftIdentity}) {
   const [cache] = useState(() => new DraftCache());
   useEffect(() => () => cache.clear(), [cache]);
-  return <OwnedChat key={JSON.stringify([props.draft, props.source])} {...props} cache={cache} />;
+  const sourceKey = props.source?.kind === SOURCE_KIND.fleet ? {kind: props.source.kind, fleet_id: props.source.fleet_id} : props.source;
+  return <OwnedChat key={JSON.stringify([props.draft, sourceKey])} {...props} cache={cache} />;
 }
 
 function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatformModels, onSaved, cache}: Props & {identity: DraftIdentity; cache: DraftCache}) {
@@ -63,7 +65,7 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
     let disposed = false;
     const open = async (): Promise<void> => {
       const cached = draft ? cache.read(draft) : undefined;
-      setOpening(!cached);
+      setOpening(!cached && !current.getSnapshot().preview);
       const lists = current.initialize();
       void lists.catch(ignore);
       try {
@@ -76,13 +78,18 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
     void open().catch(ignore);
     return () => {disposed = true; unsubscribe(); cache.remember(current.getSnapshot()); current.dispose();};
   }, [selection, cache]);
-  return client && reload ? <ChatSurface embedded={source?.kind === SOURCE_KIND.fleet} onSaved={onSaved} canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />;
+  return client && reload ? <ChatSurface source={source} embedded={source?.kind === SOURCE_KIND.fleet} onSaved={onSaved} canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />;
 }
 
-function ChatSurface({client, workspace, subject, opening, selected, reload, canManagePlatformModels, onSaved, embedded}: {canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>; onSaved?: () => void; embedded?: boolean}) {
+function ChatSurface({client, workspace, subject, source, opening, selected, reload, canManagePlatformModels, onSaved, embedded}: {canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; source?: Source; opening: boolean; selected: boolean; reload: () => Promise<void>; onSaved?: () => void; embedded?: boolean}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const [instructionsDirty, setInstructionsDirty] = useState(false);
   const router = useRouter();
+  useEffect(() => {
+    if (opening || view.busy || view.pending || view.error || view.draft || view.inaccessible
+      || source?.kind !== SOURCE_KIND.fleet || view.preview?.setupRevision === source.setup_revision) return;
+    void client.refreshSetup(source).catch(ignore);
+  }, [client, source, opening, view.busy, view.pending, view.error, view.draft, view.inaccessible, view.preview?.setupRevision]);
   const savedFleet = view.fleet?.id ?? (view.savedSetupRevision ? view.draft?.linked_fleet_id : null);
   useEffect(() => {
     if (opening || view.busy || view.error || !savedFleet) return;
@@ -92,7 +99,7 @@ function ChatSurface({client, workspace, subject, opening, selected, reload, can
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
   const retrySchedule = (schedule: Schedule): void => { void client.syncSchedule(schedule).catch(ignore); };
   return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
-    {view.error ? <ChatError client={client} view={view} workspace={workspace} reload={reload} /> : null}
+    {view.error ? <ChatError client={client} view={view} source={source} workspace={workspace} reload={reload} onStartOver={() => setInstructionsDirty(false)} /> : null}
     {view.notice ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     {embedded ? null : <DraftChatHeading client={client} view={view} />}
@@ -106,12 +113,15 @@ function ChatSurface({client, workspace, subject, opening, selected, reload, can
   </div>;
 }
 
-function ChatError({client, view, workspace, reload}: {client: DraftClient; view: DraftView; workspace: string; reload: () => Promise<void>}) {
+function ChatError({client, view, source, workspace, reload, onStartOver}: {client: DraftClient; view: DraftView; source?: Source; workspace: string; reload: () => Promise<void>; onStartOver: () => void}) {
   return <ChatAvailability title={view.inaccessible ? "Chat is unavailable" : "We couldn’t complete that"} actions={<>
         <Button size="sm" variant="secondary" disabled={view.busy} onClick={() => {
           if (view.inaccessible) window.location.reload();
           else void (view.draft || view.pending ? client.retry() : reload()).catch(ignore);
         }}>{view.inaccessible ? "Reload" : "Retry"}</Button>
+        {!view.inaccessible && source?.kind === SOURCE_KIND.fleet ? <Button size="sm" variant="secondary" disabled={view.busy || view.pending || chatRecovery(view).pending} onClick={() => {
+          client.fresh(source); onStartOver(); void reload().catch(ignore);
+        }}>Start over from current setup</Button> : null}
         <Button size="sm" variant="ghost" asChild><Link href={`/w/${workspace}/fleets`}>Your fleets</Link></Button>
     </>}>{view.error}</ChatAvailability>;
 }

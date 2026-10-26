@@ -34,7 +34,7 @@ You write a fleet by describing the job in a private chat, in the app or with `a
 
 Already invited? [Sign in to the app](https://app.agentsfleet.net/sign-in). To request access, visit [Early access](https://agentsfleet.net/#pricing).
 
-The public command-line interface (CLI) package is waiting for release. Build the CLI from this repository with [Bun 1.4 or newer](https://bun.sh):
+The public command-line interface (CLI) package is waiting for release. Build the CLI from this repository with [Bun 1.4.4](https://bun.sh):
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git
@@ -67,7 +67,9 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 ## Local development
 
-**Prerequisites:** [Rust 1.99.1](https://rustup.rs) (pinned by `rustd/rust-toolchain.toml`, which rustup installs on the first `cargo` run inside `rustd/`) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Rust 1.99.1](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+
+Rustup installs the pinned toolchain from `rustd/rust-toolchain.toml` on the first `cargo` run inside `rustd/`.
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git

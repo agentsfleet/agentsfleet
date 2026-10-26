@@ -1,40 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { SignalSpinner } from "@agentsfleet/design-system";
+import {
+  Button, DescriptionDetails, DescriptionList, DescriptionTerm, Popover, PopoverContent,
+  PopoverTrigger, SignalSpinner,
+} from "@agentsfleet/design-system";
 
 import { formatDollars } from "@/lib/money";
-import { formatCompactCount, formatElapsed, runFigure } from "@/lib/events/run-figures-format";
+import { formatCompactCount, formatElapsed, formatRunDuration, runFigure } from "@/lib/events/run-figures-format";
 import type { ReplyFigures } from "./fleetMessageReaders";
-
-// How long a reply has run, and once it settles, what it took: the line Codex
-// ends a turn with, "Worked for 41s", plus what the turn spent.
 
 export const WORKING_LABEL = "Working";
 export const QUEUED_LABEL = "Queued";
-export const WORKED_FOR = "Worked for";
+export const RUN_DETAILS_LABEL = "Run details";
 export const REPLY_FIGURES_TEST_ID = "fleet-reply-figures";
-const TOKENS_WORD = "tokens";
-const FIGURE_SEPARATOR = " · ";
 // The waiting clock shows whole seconds, so it ticks at seconds.
 const ELAPSED_TICK_MS = 1_000;
 
 /**
- * "Worked for 41s · 12.4K tokens · $0.03". A figure the run did not report is
- * left out rather than drawn as zero; with none reported, there is no line.
+ * Optional run information stays outside the transcript layout. Missing figures
+ * remain absent; a run reporting nothing gets no details control.
  */
 export function FleetReplyFigures({ figures }: { figures: ReplyFigures }) {
-  const shown = [
-    runFigure(figures.wallMs, (ms) => `${WORKED_FOR} ${formatElapsed(ms)}`),
-    runFigure(figures.tokens, (count) => `${formatCompactCount(count)} ${TOKENS_WORD}`),
-    runFigure(figures.costNanos, formatDollars),
-  ].filter((figure) => figure !== null);
-  if (shown.length === 0) return null;
-  return (
-    <p data-testid={REPLY_FIGURES_TEST_ID} className="pt-xs text-body-sm text-text-subtle tabular-nums">
-      {shown.join(FIGURE_SEPARATOR)}
-    </p>
-  );
+  const rows = [
+    { label: "Duration", value: runFigure(figures.wallMs, formatRunDuration) },
+    { label: "Tokens", value: runFigure(figures.tokens, formatCompactCount) },
+    { label: "Reported cost", value: runFigure(figures.costNanos, formatDollars) },
+  ].filter(row => row.value !== null);
+  if (rows.length === 0) return null;
+  return <Popover>
+    <PopoverTrigger asChild>
+      <Button variant="ghost" size="sm" data-testid={REPLY_FIGURES_TEST_ID}>{RUN_DETAILS_LABEL}</Button>
+    </PopoverTrigger>
+    <PopoverContent side="top" align="start" aria-label={RUN_DETAILS_LABEL}>
+      <DescriptionList className="tabular-nums">
+        {rows.map(row => <div key={row.label}><DescriptionTerm>{row.label}</DescriptionTerm><DescriptionDetails>{row.value}</DescriptionDetails></div>)}
+      </DescriptionList>
+    </PopoverContent>
+  </Popover>;
 }
 
 /** The calls the saved trace dropped to stay inside its bounds, said in the

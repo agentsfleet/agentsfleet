@@ -9,7 +9,9 @@ import { ArrowUpIcon } from "lucide-react";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
-import { ChatComposerFrame } from "./chat/ChatComposerFrame";
+import { ChatComposerFrame, ChatComposerHint } from "./chat/ChatComposerFrame";
+import { EditSetupButton, useFleetSetup } from "./chat/FleetSetupWorkspace";
+import { FleetModelSelect } from "./chat/FleetModelSelect";
 
 const PLACEHOLDER = "Message your fleet…";
 const SEND_LABEL = "Send";
@@ -47,6 +49,7 @@ export type SteerComposerProps = {
 };
 
 export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, modelLabel = "Saved model" }: SteerComposerProps) {
+  const modelChanging = useFleetSetup()?.modelChanging ?? false;
   const unresolved = useMemo(
     () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
     [pending],
@@ -60,15 +63,15 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   const draftBytes = useMemo(() => lastDraftBytes(), []);
   return (
     <>
-    <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef}
-      toolbar={<span className="truncate text-eyebrow text-muted-foreground">{modelLabel}</span>}
+    <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef} disabled={modelChanging}
+      toolbar={<FleetModelSelect label={modelLabel} />}
       actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftSize draftBytes={draftBytes} />
         <DraftReporter onDraft={onDraft} />
 
     </ChatComposerFrame>
-    <p className="mt-sm text-center text-eyebrow text-muted-foreground">New messages use the saved setup. Edit setup to change it.</p>
+    <ChatComposerHint>Continue the conversation here. To change how your fleet works, choose <EditSetupButton inline />.</ChatComposerHint>
     </>
   );
 }
@@ -114,6 +117,7 @@ function useRestoreRefusedTextOnMount(
  */
 function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef: RefObject<HTMLTextAreaElement | null> }) {
   const tooLong = useAuiState((s) => overSteerLimit(draftBytes(s.composer.text)));
+  const modelChanging = useFleetSetup()?.modelChanging ?? false;
   return (
     <ComposerPrimitive.Send asChild>
       <Button
@@ -123,7 +127,7 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
         aria-label={SEND_LABEL}
         className="shrink-0 self-end rounded-lg"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
-        {...(tooLong ? { disabled: true } : {})}
+        {...(tooLong || modelChanging ? { disabled: true } : {})}
       >
         <ArrowUpIcon size={16} aria-hidden="true" />
       </Button>
@@ -198,6 +202,7 @@ function PendingSendNotices({ entries, ...actions }: { entries: readonly Pending
 // that could only be refused again.
 function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: PendingSend } & NoticeProps) {
   const aui = useAui();
+  const modelChanging = useFleetSetup()?.modelChanging ?? false;
   const textId = useId();
   // Sign-in returns to this fleet, where the notice's Resend is waiting.
   const pathname = usePathname();
@@ -231,7 +236,7 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
       ) : null}
       {/* Offered after a sign-in too: once the session is back, a Resend is
           the way out, and a fresh 401 simply marks it again. */}
-      <Button type="button" variant="outline" size="sm" onClick={resend} aria-describedby={textId}>
+      <Button type="button" variant="outline" size="sm" disabled={modelChanging} onClick={resend} aria-describedby={textId}>
         {entry.state === PENDING_SEND_STATE.CONFLICT ? SEND_AS_NEW_LABEL : RESEND_LABEL}
       </Button>
     </Alert>

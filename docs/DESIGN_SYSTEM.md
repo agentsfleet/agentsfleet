@@ -183,7 +183,7 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 
 Fleet sections are Chat, Activity, and Memory.
 
-**Save fleet** sits beside the chat title. **Save changes** stays in the setup footer, above its composer.
+**Save fleet** sits beside the chat title. While editing a saved fleet, **Save changes** replaces **Edit setup** in the fleet header.
 **Stop** and permanent **Kill** live in **Fleet actions**, with confirmation dialogs.
 
 Setup and saved chat share a 728px reading column and a composer pinned to its bottom edge.
@@ -291,10 +291,50 @@ Clerk’s primary actions, input states, popup backdrop, and corner radii follow
 Generated avatar images use the local flat fallback; uploaded user photographs remain visible.
 Inspect third-party pseudo-elements for gradients after dependency upgrades.
 
+### Chat composers
+
+Fleet chat and setup chat compose the same controls from `components/domain/chat/ChatComposerFrame.tsx` in the app package.
+`ChatComposerFrame` owns the input, boundary, spacing, height limits, and focus behavior.
+
+`ChatComposerModel` owns model display and selection. `ChatComposerHint` owns supporting copy below the input.
+
+Callers supply content and actions. Callers must not override these controls' typography or copy their visual classes.
+
+| Part | Typography | Shared control |
+|---|---|---|
+| Input | Sans, conversation size and line height | Textarea with `composer` appearance |
+| Model | Sans, eyebrow size, label line height | ChatComposerModel; SelectTrigger with `composer` appearance when editable |
+| Hint | Sans, eyebrow size, label line height | ChatComposerHint |
+| Send or stop | Shared icon button sizing and focus | Button |
+
+Fleet chat displays the saved runtime model. Setup chat selects the model that helps write the setup.
+
+These controls have different jobs and share typography. Changing the setup conversation's model does not change the fleet's runtime model.
+
+While editing a fleet, the header's Edit setup action becomes Save changes.
+Reuse the reviewed draft's save action, including validation, pending state, and conflict handling. Do not add a second save action above the composer.
+
+Explain when changes affect the fleet in plain language. Keep revision numbers within setup details.
+
+Completed replies keep the same markdown renderer and text nodes used while streaming.
+Reserve reply-action space before completion. Completing a live reply must not enable layout skipping or change its scroll position.
+
+Only replies loaded as completed history may skip offscreen layout.
+Run details use a compact, optional popover with keyboard dismissal and focus return.
+Show measured durations with millisecond precision, such as `842ms` or `1.237s`.
+
+Browser checks compare computed font family, size, weight, and line height across both composers.
+Check narrow screens, keyboard focus, reduced motion, and repeated reply completion. Completion must not introduce visible movement.
+
 ### Ownership and enforcement
 
 Change font families and light/dark color values in `ui/packages/design-system/src/tokens.css`.
-Forward token roles to utilities in `theme.css`. Shared components own their typography,
+Keep token values and theme overrides in `tokens.css`. Keep shared selectors, animations, and reduced-motion behavior in `interactions.css`.
+
+Forward token roles to utilities in `theme.css`; references to token variables are intentional and must not copy their values.
+Remove unused roles and duplicate selectors together with their forwards and class-merging entries.
+
+Shared components own their typography,
 surface, focus, disabled, and selected styles. A component must render correctly without
 consumer CSS; `UsageBar` owns its fill, and `NavItem` owns destination styling.
 
@@ -303,6 +343,10 @@ Do not copy a component's visual class string into a page or override its font o
 to create a local theme. Add a shared variant when an actual product state requires one.
 Interface eyebrows use sans. Apply mono to the technical value itself, never its surrounding
 navigation, explanatory prose, or whole table. Keep route labels and recovery actions sans.
+
+Use `text-foreground`, `text-muted-foreground`, and `warning` utilities for new interface code.
+Keep distinct roles such as card, popover, focus, and destructive even when their current values match.
+See the [CSS audit](reviews/design-system-css-audit.md) for existing duplicate names and compiler evidence.
 
 `.orly/audits/design-tokens.sh` checks named utilities, flat fills, and consumer font ownership.
 Its current flat-fill enforcement still rejects CSS gradients. A future gradient implementation requires a separately authorized, aligned enforcement change.

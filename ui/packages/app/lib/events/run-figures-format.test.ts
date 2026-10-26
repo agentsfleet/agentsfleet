@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
+import { MS_PER_SECOND } from "@/lib/utils";
 
-import { formatCompactCount, formatCount, formatElapsed, runFigure } from "./run-figures-format";
+import { formatCompactCount, formatCount, formatElapsed, formatRunDuration, runFigure } from "./run-figures-format";
 
 // Pin tests throughout: each literal is the string a surface draws.
 
 describe("run-figures-format", () => {
+  it.each([
+    [0, "0ms"], [842, "842ms"], [999, "999ms"], [MS_PER_SECOND, "1s"], [1_240, "1.24s"],
+    [59_600, "59.6s"], [65_237, "1m 5.237s"], [3_723_004, "1h 2m 3.004s"],
+    [-1, "0ms"], [Number.NaN, "0ms"], [Number.POSITIVE_INFINITY, "0ms"],
+  ])("keeps reported duration %s precise as %s", (ms, shown) => {
+    expect(formatRunDuration(ms)).toBe(shown);
+  });
   it("should leave a figure the run did not report out, and keep a reported zero", () => {
     expect(runFigure(null, formatCount)).toBeNull();
     expect(runFigure(undefined, formatCount)).toBeNull();

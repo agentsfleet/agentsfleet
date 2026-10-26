@@ -6,7 +6,6 @@ import { LibrarySchema } from "./draft-library";
 import { setupRequest, SetupUnavailable } from "./draft-request";
 
 const FleetSeedSchema = z.object({id: z.uuidv7(), definition: DefinitionSchema, name: z.string(), setup_revision: z.string()});
-
 export async function sourcePreview(base: string, source: Source, signal: AbortSignal) {
   if (source.kind === SOURCE_KIND.blank) return null;
   if (source.kind === SOURCE_KIND.definition) return {definition: source.definition, instanceName: String(source.definition.config.name), revision: "inline"};
