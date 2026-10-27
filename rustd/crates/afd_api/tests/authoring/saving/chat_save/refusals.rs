@@ -40,7 +40,7 @@ async fn an_unnamed_instance_saves_with_its_definition_name() {
         .expect("location")
         .to_owned();
     let created = json_body(created).await;
-    let patch = send_with_headers(
+    let edited = send_with_headers(
         &case.router,
         Method::PATCH,
         &item,
@@ -49,7 +49,7 @@ async fn an_unnamed_instance_saves_with_its_definition_name() {
         &[(header::IF_MATCH, created["etag"].as_str().expect("tag"))],
     )
     .await;
-    assert_eq!(patch.status(), StatusCode::OK);
+    assert_eq!(edited.status(), StatusCode::OK);
     accept_message(
         &case,
         &item,
