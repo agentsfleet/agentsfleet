@@ -3,10 +3,12 @@
 use super::super::{fixture::Fixture, json_body, mint, send, send_with_headers};
 use afd_auth::Scope;
 use afd_core::env::{EnvSource as _, ProcessEnv};
+use afd_core::event::status::RECORDED;
 use afd_dragonfly::{
     Dragonfly,
     config::{DragonflyConfig, DragonflyRole},
 };
+use afd_events::activity::{ACTOR_ACTIVITY, EVENT_TYPE_ACTIVITY};
 use axum::Router;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
@@ -124,4 +126,53 @@ impl Case {
     pub(super) async fn cleanup(self) {
         self.base.cleanup().await;
     }
+}
+
+pub(super) fn runtime_history(page: &Value, fleet: &str, workspace: &str) -> Vec<Value> {
+    history_identities(page, fleet, workspace);
+    let rows = page["items"].as_array().expect("complete history page");
+    let mut receipts = Vec::new();
+    let mut runtime = Vec::new();
+    for row in rows {
+        if row["event_type"] == EVENT_TYPE_ACTIVITY {
+            assert_eq!(row["actor"], ACTOR_ACTIVITY);
+            assert_eq!(row["status"], RECORDED);
+            assert!(row["response_text"].is_null());
+            receipts.push(
+                serde_json::from_str::<Value>(row["request_json"].as_str().expect("receipt JSON"))
+                    .expect("safe receipt metadata"),
+            );
+        } else {
+            runtime.push(row.clone());
+        }
+    }
+    receipts.sort_by_key(Value::to_string);
+    // pin test: literal is the contract
+    assert_eq!(
+        receipts,
+        vec![
+            json!({"kind":"setup_ready", "revision":"1"}),
+            json!({"kind":"setup_saved", "revision":"1"}),
+        ]
+    );
+    runtime
+}
+
+pub(super) fn history_identities(page: &Value, fleet: &str, workspace: &str) -> Vec<String> {
+    let rows = page["items"].as_array().expect("complete history page");
+    assert!(
+        page["next_cursor"].is_null(),
+        "the entire history is inspected"
+    );
+    let mut identities = std::collections::BTreeSet::new();
+    for row in rows {
+        assert_eq!(row["fleet_id"], fleet);
+        assert_eq!(row["workspace_id"], workspace);
+        let id = row["event_id"].as_str().expect("event identity");
+        assert!(
+            identities.insert(id.to_owned()),
+            "unique history identities"
+        );
+    }
+    identities.into_iter().collect()
 }

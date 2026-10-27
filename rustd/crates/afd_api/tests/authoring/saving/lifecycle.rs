@@ -2,7 +2,7 @@
 
 use super::{
     super::{json_body, mint, send, send_with_headers},
-    fixture::Case,
+    fixture::{Case, runtime_history},
 };
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ async fn save_retries_the_same_fleet_after_funding_without_copying_private_chat(
     assert_eq!(saved["id"], first["id"]);
     assert_eq!(saved["status"], "active");
     assert_eq!(saved["definition"]["instructions_md"], "Investigate.\n");
-    assert_eq!(saved["events_processed"], "0");
+    assert_only_setup_receipts(&case, &item, &saved).await;
     assert_eq!(saved["budget_used_nanos"], "0");
     assert_eq!(saved["schedules"], json!([]));
     for key in ["messages", "authoring_model_ref", "draft_id", "transcript"] {
@@ -38,6 +38,32 @@ async fn save_retries_the_same_fleet_after_funding_without_copying_private_chat(
     assert_private_draft_closed(&case, &draft).await;
     assert_rename_preserves_setup(&case, &item, &tag, &saved).await;
     case.cleanup().await;
+}
+
+async fn assert_only_setup_receipts(case: &Case, item: &str, saved: &Value) {
+    let messages = send(
+        &case.router,
+        Method::GET,
+        &format!("{item}/messages"),
+        Some(&case.base.token),
+        "",
+    )
+    .await;
+    assert_eq!(messages.status(), StatusCode::OK);
+    let page = json_body(messages).await;
+    assert_eq!(
+        runtime_history(
+            &page,
+            saved["id"].as_str().expect("fleet id"),
+            case.base.workspace.as_str()
+        ),
+        Vec::<Value>::new()
+    );
+    // pin test: literal is the contract; this is a lifetime history count.
+    assert_eq!(
+        saved["events_processed"], "2",
+        "the lifetime count includes both verified receipts"
+    );
 }
 
 /// Saves before the wallet is funded: the fleet is created but stays

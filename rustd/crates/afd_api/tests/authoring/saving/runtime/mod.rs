@@ -10,7 +10,7 @@ mod message;
 
 use super::{
     super::{json_body, mint, send, send_with_headers},
-    fixture::Case,
+    fixture::{Case, history_identities, runtime_history},
 };
 use afd_auth::Scope;
 use afd_core::id::Uuid7;
@@ -154,27 +154,42 @@ async fn a_saved_fleet_serves_messages_history_and_grants() {
     let saved = Saved::create().await;
     let grant = mint();
     saved.seed_event_and_grant(&grant).await;
-    assert_thread_lists_the_event_and_admits_a_message(&saved).await;
-    assert_history_serves_the_event(&saved).await;
+    let identities = assert_thread_lists_the_event_and_admits_a_message(&saved).await;
+    assert_history_serves_the_event(&saved, &identities).await;
     assert_grant_lists_and_revokes_once(&saved, &grant).await;
     saved.case.cleanup().await;
 }
 
 /// The fleet's message thread lists the seeded event and accepts a new message.
-async fn assert_thread_lists_the_event_and_admits_a_message(saved: &Saved) {
+async fn assert_thread_lists_the_event_and_admits_a_message(saved: &Saved) -> Vec<String> {
     let (status, listed) = saved.get(&saved.thread).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(listed.pointer("/items/0/event_id"), Some(&json!(EVENT)));
+    let runtime = runtime_history(
+        &listed,
+        saved.fleet.as_str(),
+        saved.case.base.workspace.as_str(),
+    );
+    assert_eq!(
+        runtime.len(),
+        1,
+        "one seeded runtime event beside the exact receipt pair"
+    );
+    assert_eq!(runtime[0]["event_id"], json!(EVENT));
     let (status, steered) = saved
         .steer(&saved.thread, mint().as_str(), "ship the next change")
         .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{steered}");
     assert_eq!(steered["status"], "accepted");
+    history_identities(
+        &listed,
+        saved.fleet.as_str(),
+        saved.case.base.workspace.as_str(),
+    )
 }
 
 /// The workspace page, the fleet's filtered page and the event detail all
 /// serve the seeded event, its request JSON intact.
-async fn assert_history_serves_the_event(saved: &Saved) {
+async fn assert_history_serves_the_event(saved: &Saved, identities: &[String]) {
     let workspace_page = format!(
         "{}/events?fleet_id={}",
         saved.workspace,
@@ -182,7 +197,15 @@ async fn assert_history_serves_the_event(saved: &Saved) {
     );
     let (status, page) = saved.get(&workspace_page).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(page.pointer("/items/0/event_id"), Some(&json!(EVENT)));
+    let listed = history_identities(
+        &page,
+        saved.fleet.as_str(),
+        saved.case.base.workspace.as_str(),
+    );
+    assert_eq!(
+        listed, identities,
+        "the summary page preserves the complete verified history"
+    );
     let events = format!("{}/events", saved.item);
     let (status, page) = saved.get(&format!("{events}?actor_prefix=steer")).await;
     assert_eq!(status, StatusCode::OK);
