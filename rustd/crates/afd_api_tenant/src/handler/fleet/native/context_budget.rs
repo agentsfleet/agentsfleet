@@ -41,9 +41,8 @@ pub(super) fn fit<F: Serialize, D: Serialize, R: Serialize>(
         if value.conversations.len() <= 1 {
             return Err(read_refusal(None));
         }
-        if let Some(removed) = value.conversations.pop() {
-            bytes -= encoded_len(&removed)? + 1;
-        }
+        let removed = value.conversations.remove(value.conversations.len() - 1);
+        bytes -= encoded_len(&removed)? + 1;
         boundaries.pop();
         let old_cursor = encoded_len(&value.next_cursor)?;
         value.next_cursor = boundaries.last().map(|last| last.conversation.clone());

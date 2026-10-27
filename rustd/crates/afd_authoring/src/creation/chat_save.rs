@@ -2,7 +2,7 @@
 
 use super::{CONTEXT, Creations, KILLED, read, reserve::Instance, revision, source::Captured};
 use crate::{
-    Access, Result, access, candidate, draft,
+    Access, Result, candidate, draft,
     error::{ErrorKind, raise::query},
     lease::guard::{Attempt, Guarded},
     message, review,
@@ -12,6 +12,12 @@ use afd_core::{id::Uuid7, problem::Problem};
 use afd_events::activity::Announcement;
 use afd_wire::authoring::{Report, Reported};
 use sqlx::{Connection as _, PgConnection};
+
+#[derive(sqlx::FromRow)]
+struct SavedTurn {
+    fleet_id: String,
+    oidc_subject: String,
+}
 
 impl Creations {
     /// Completes a setup turn and any save that its accepted message requested.
@@ -135,41 +141,30 @@ impl Creations {
     /// Retries activation after a committed report, including after a lost acknowledgement.
     pub(crate) async fn finish_saved_turn(&self, attempt: &Attempt) -> Result<()> {
         let mut connection = self.setup.drafts.database.acquire().await?;
-        let fleet: Option<String> = sqlx::query_scalar(include_str!("sql/saved_turn.sql"))
+        let saved: Option<SavedTurn> = sqlx::query_as(include_str!("sql/saved_turn.sql"))
             .bind(attempt.draft_id.as_str())
             .bind(attempt.workspace_id.as_str())
             .bind(attempt.user_id.as_str())
             .bind(attempt.message_sequence)
             .bind(MessageState::Completed.as_str())
             .bind(DraftState::Saving.as_str())
+            .bind(attempt.tenant_id.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
-        let Some(fleet) = fleet else {
-            return Ok(());
-        };
-        let subject: Option<String> = sqlx::query_scalar(crate::sql::access::SUBJECT)
-            .bind(attempt.user_id.as_str())
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        let Some(subject) = subject else {
+        let Some(saved) = saved else {
             return Ok(());
         };
         let access = Access {
             workspace: &attempt.workspace_id,
-            subject: &subject,
+            subject: &saved.oidc_subject,
         };
-        match access::current(&mut connection, access).await {
-            Ok(person) if person.id == attempt.user_id && person.owner == attempt.tenant_id => {}
-            Ok(_) => return Ok(()),
-            Err(error) if error.code() == afd_core::error_code::AUTHORING_NOT_FOUND => {
-                return Ok(());
-            }
-            Err(error) => return Err(error),
-        }
         drop(connection);
-        self.advance(access, &Uuid7::parse(&fleet)?, afd_core::clock::now())
-            .await
+        self.advance(
+            access,
+            &Uuid7::parse(&saved.fleet_id)?,
+            afd_core::clock::now(),
+        )
+        .await
     }
 }
