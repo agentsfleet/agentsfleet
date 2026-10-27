@@ -34,6 +34,7 @@ const EVENT_ACCESS_CHANGED: &str = "memory_access_changed";
 #[derive(Debug, Clone)]
 pub struct Memories {
     inner: Arc<Inner>,
+    activity_streams: Option<afd_dragonfly::FleetStreams>,
 }
 
 #[derive(Debug)]
@@ -75,11 +76,19 @@ impl Memories {
     #[must_use]
     pub fn new(database: Db, entropy: Entropy) -> Self {
         Self {
+            activity_streams: None,
             inner: Arc::new(Inner {
                 store: PgStore::new(database.clone(), entropy),
                 directory: Directory::new(database),
             }),
         }
+    }
+
+    /// Enables best-effort history notifications after changed grants commit.
+    #[must_use]
+    pub fn with_activity_streams(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+        self.activity_streams = Some(streams);
+        self
     }
 
     pub(crate) fn store(&self) -> &PgStore {
@@ -200,7 +209,7 @@ impl Memories {
     ) -> Result<MemoryAccess> {
         let access = self
             .directory()
-            .set(workspace, fleet, change)
+            .set(workspace, fleet, change, self.activity_streams.as_ref())
             .await?
             .ok_or_else(fleet_not_found)?;
         if change.read.is_none() && change.publish.is_none() {

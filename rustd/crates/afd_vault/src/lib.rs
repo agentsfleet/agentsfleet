@@ -130,6 +130,7 @@ impl Directory {
 #[derive(Debug, Clone)]
 pub struct Vault {
     directory: Directory,
+    activity_streams: Option<afd_dragonfly::FleetStreams>,
     kek: Arc<Kek>,
     /// Draws the per-row Data Encryption Key and both nonces.
     sealer: Sealer,
@@ -149,9 +150,30 @@ impl Vault {
     pub fn new(database: Db, kek: Arc<Kek>, entropy: Entropy) -> Self {
         Self {
             directory: Directory::new(database),
+            activity_streams: None,
             kek,
             sealer: Sealer::new(),
             entropy,
+        }
+    }
+
+    /// Enables best-effort history notifications for this vault's writes.
+    #[must_use]
+    pub fn with_activity_streams(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+        self.activity_streams = Some(streams);
+        self
+    }
+
+    /// Notifies only after the caller has committed the receipts' transaction.
+    pub async fn publish_activity(&self, fleets: &[String]) {
+        use futures_util::StreamExt as _;
+        const MAX_CONCURRENT_ACTIVITY_NOTICES: usize = 16;
+        if let Some(streams) = &self.activity_streams {
+            futures_util::stream::iter(fleets)
+                .for_each_concurrent(MAX_CONCURRENT_ACTIVITY_NOTICES, |fleet| {
+                    afd_events::activity::announce(streams, fleet)
+                })
+                .await;
         }
     }
 

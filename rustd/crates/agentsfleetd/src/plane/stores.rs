@@ -55,7 +55,12 @@ pub(super) struct Tenant {
 }
 
 /// Builds the tenant surface's stores.
-pub(super) fn tenant(database: &Db, kek: &Arc<Kek>, providers: &Providers) -> Tenant {
+pub(super) fn tenant(
+    database: &Db,
+    kek: &Arc<Kek>,
+    providers: &Providers,
+    streams: &afd_dragonfly::FleetStreams,
+) -> Tenant {
     Tenant {
         workspaces: Workspaces::new(database.clone(), Entropy::new()),
         fleets: Fleets::new(database.clone()),
@@ -66,7 +71,8 @@ pub(super) fn tenant(database: &Db, kek: &Arc<Kek>, providers: &Providers) -> Te
         billing: Billing::new(database.clone()),
         models: Models::new(database.clone()),
         providers: providers.clone(),
-        secrets: SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+        secrets: SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new())
+            .with_activity_streams(streams.clone()),
         preferences: Preferences::new(database.clone(), Entropy::new()),
         signups: Signups::new(database.clone(), Entropy::new()),
     }

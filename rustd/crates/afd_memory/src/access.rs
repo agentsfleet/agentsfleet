@@ -109,6 +109,7 @@ impl Directory {
         workspace: &Uuid7,
         fleet: &Uuid7,
         change: MemoryAccessRequest,
+        streams: Option<&afd_dragonfly::FleetStreams>,
     ) -> Result<Option<MemoryAccess>> {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT_GRANT))?;
@@ -151,6 +152,10 @@ impl Directory {
         .await
         .map_err(query(CONTEXT_GRANT))?;
         tx.commit().await.map_err(query(CONTEXT_GRANT))?;
+        drop(connection);
+        if let Some(streams) = streams {
+            afd_events::activity::announce(streams, fleet.as_str()).await;
+        }
         Ok(Some(access.into()))
     }
 

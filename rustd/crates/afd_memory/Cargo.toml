@@ -15,6 +15,7 @@ categories.workspace = true
 
 [dependencies]
 afd_events.workspace = true
+afd_dragonfly.workspace = true
 # Instants are `jiff::Timestamp`; `TIMESTAMPTZ(3)` columns decode through jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true

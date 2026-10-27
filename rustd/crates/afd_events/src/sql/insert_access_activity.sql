@@ -10,3 +10,4 @@ SELECT f.id, f.workspace_id, concat($4::text, ':', $2::text, ':', txid_current()
             r.definition #> '{config,x-agentsfleet,triggers}', '[]'::jsonb)) trigger
             WHERE COALESCE(trigger ->> 'credential_name', trigger ->> 'source') = $2))
 ON CONFLICT (fleet_id, event_id) DO NOTHING
+RETURNING fleet_id::text
