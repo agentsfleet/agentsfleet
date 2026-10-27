@@ -51,9 +51,11 @@ describe("KillSwitch component", () => {
     );
   }
 
-  it("renders Killed label when fleet is terminal (no actions)", async () => {
+  it("keeps the menu available without lifecycle actions when the fleet is terminal", async () => {
     await renderSwitch("killed");
-    expect(screen.getByText("Killed")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", {name: "Fleet actions"}));
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(setFleetStatusActionMock).not.toHaveBeenCalled();
   });
 
   it("offers Resume + Kill when fleet is stopped", async () => {

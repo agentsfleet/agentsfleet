@@ -32,7 +32,6 @@ const DEFAULT_METHOD = "GET";
 export const INTERRUPTED_VERB = "Interrupted";
 export const EMPTY_OUTPUT = "(no output)";
 export const OUTPUT_UNAVAILABLE = "(output unavailable)";
-export const FAILED_MARK = "(failed)";
 
 const VERBS = {
   WRITE: { running: "Writing", done: "Wrote" },
@@ -85,12 +84,6 @@ export function toolCopy(name: string, args: ToolArgs | undefined): ToolCopy {
     return plainCopy(known({}).verbs, ARGS_NOT_RECORDED);
   }
   return plainCopy(VERBS.CALL, args === undefined ? name : `${name}${compactArgs(args)}`);
-}
-
-/** The header's verb: `Interrupted` replaces it, as Codex's does. */
-export function verbFor(verbs: Verbs, state: CellState): string {
-  if (state === CELL_STATE.INTERRUPTED) return INTERRUPTED_VERB;
-  return state === CELL_STATE.RUNNING ? verbs.running : verbs.done;
 }
 
 /** How a cell reads from its outcome. A call with no outcome that is no

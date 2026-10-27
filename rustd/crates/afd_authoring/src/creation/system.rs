@@ -51,8 +51,9 @@ impl Creations {
 
     async fn reserve_system(&self, setup: SystemSetup<'_>, now: Timestamp) -> Result<Uuid7> {
         setup.definition.validate_for_save()?;
-        let mut connection = self.setup.drafts.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        let mut tx = sqlx::Transaction::begin(self.setup.drafts.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT))?;
         let tenant: Option<String> = sqlx::query_scalar(sql::TENANT)
             .bind(setup.workspace.as_str())
             .fetch_optional(&mut *tx)
@@ -84,9 +85,12 @@ impl Creations {
             name,
             start: &Start::None,
         };
-        self.insert(&mut tx, &id, &captured, instance, &checked, now)
+        let announcement = self
+            .insert(&mut tx, &id, &captured, instance, &checked, now)
             .await?;
-        tx.commit().await.map_err(query(CONTEXT))?;
+        afd_events::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+            .await
+            .map_err(query(CONTEXT))?;
         Ok(id)
     }
 

@@ -45,6 +45,10 @@ pub struct CreateDraftRequest<D = Value> {
     #[serde(default, deserialize_with = "super::present")]
     #[cfg_attr(feature = "openapi", schema(nullable = false))]
     pub message: Option<String>,
+    /// Defaults to false. When true, save the finalized setup after this message succeeds.
+    /// Requires `message`. Closing the browser does not cancel the save.
+    #[serde(default)]
+    pub save: bool,
     /// Required retry identifier: a version 7 universally unique identifier (UUID).
     ///
     /// Retry within 24 hours with the same `operation_id` and unchanged request. After
@@ -90,6 +94,10 @@ pub struct DraftPatchRequest<C = Value, I = Value> {
 pub struct MessageRequest {
     /// 1..32768 UTF-8 bytes; line endings normalize to LF.
     pub message: String,
+    /// Defaults to false. When true, save the finalized setup after this message succeeds.
+    /// Failed or stopped messages never save. Retry with the same value and operation identifier.
+    #[serde(default)]
+    pub save: bool,
     /// Required retry identifier: a version 7 universally unique identifier (UUID).
     ///
     /// Retry within 24 hours with the same `operation_id` and unchanged request. After

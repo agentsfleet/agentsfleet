@@ -4,8 +4,8 @@ import { CHAT_PROPS, ChatFixture, chatRouter } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { REQUEST_METHOD } from "@/lib/api/draft-request";
-import { MESSAGE_ROLE, MESSAGE_STATE, type Message } from "@/lib/api/draft-types";
-import { DRAFT_ID, FLEET, MESSAGE, REVISION_ID, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT_STATE, MESSAGE_ROLE, MESSAGE_STATE, type Message } from "@/lib/api/draft-types";
+import { DRAFT_ID, FLEET, FLEET_ID, MESSAGE, REVISION_ID, response } from "@/tests/helpers/draft-fixtures";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 
 const SAVED = {...FLEET, setup_revision: "3", status: "active", setup: {state: "ready", checks: []}};
@@ -16,7 +16,6 @@ const MESSAGES = "/messages";
 const FLEETS = "/fleets";
 
 class SaveChatFixture extends ChatFixture {
-  readonly commit = Promise.withResolvers<Response>();
   messageResponse: Promise<Response> | undefined;
   constructor() {
     super();
@@ -24,22 +23,27 @@ class SaveChatFixture extends ChatFixture {
     const route = this.fetch.getMockImplementation()!;
     this.fetch.mockImplementation(async (input, init) => {
       const path = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "http://app.test").pathname;
-      if (init?.method !== REQUEST_METHOD.post || !path.endsWith(MESSAGES) && !path.endsWith(FLEETS)) return route(input, init);
+      if (path.endsWith(`/fleets/${FLEET_ID}`)) return response(SAVED);
+      if (init?.method !== REQUEST_METHOD.post || !path.endsWith(MESSAGES)) return route(input, init);
       if (typeof init.body !== "string") throw new Error("Expected a JSON request body");
       const body = JSON.parse(init.body);
       this.calls.push({path, method: init.method, body, headers: new Headers(init.headers)});
-      if (path.endsWith(FLEETS)) { this.saveAttempts++; return this.commit.promise; }
       if (this.messageResponse) return this.messageResponse;
-      const user: Message = {...MESSAGE, sequence: "2", operation_id: body.operation_id, text: body.message};
+      const user: Message = {...MESSAGE, sequence: "2", operation_id: body.operation_id, text: body.message, save_requested: body.save};
       this.messages = [...this.messages, user, {...user, role: MESSAGE_ROLE.assistant, state: MESSAGE_STATE.running, text: undefined}];
       return response({status: "accepted", sequence: "2", replayed: false}, 202);
     });
   }
-  finishModel(state: Message["state"] = MESSAGE_STATE.completed): void {
+  finishModel(state: Message["state"] = MESSAGE_STATE.completed, refused = false): void {
     this.draft = {...this.draft, candidate: {...this.draft.candidate!, id: REVISION_ID},
       review: {...this.draft.review!, review_digest: "finalized-review"}};
     this.messages = this.messages.map(message => message.sequence === "2" && message.role === MESSAGE_ROLE.assistant
       ? {...message, state, candidate_id: REVISION_ID, text: "The instructions now include your latest decisions."} : message);
+    if (state === MESSAGE_STATE.completed && this.messages.at(-1)?.save_requested) {
+      if (refused) this.messages = this.messages.map(message => message.role === MESSAGE_ROLE.assistant && message.sequence === "2"
+        ? {...message, save_error_code: "AGENTSFLEET_NAME_EXISTS"} : message);
+      else this.draft = {...this.draft, state: DRAFT_STATE.closed, linked_fleet_id: FLEET_ID};
+    }
     FakeEventSource.instances.at(-1)!.emitNamed(DRAFT_EVENT.completed, JSON.stringify({draft_id: DRAFT_ID}));
   }
 }
@@ -63,12 +67,8 @@ it("shows saving through model finalization and confirms only after the write su
   expect(fixture.saveAttempts).toBe(0);
   expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
   await act(async () => fixture.finishModel());
-  await waitFor(() => expect(fixture.saveAttempts).toBe(1));
-  expect(screen.getByLabelText(SAVING)).toBeTruthy();
-  expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
-  const write = fixture.writes().find(call => call.path.endsWith(FLEETS));
-  expect(write?.body).toMatchObject({source: {draft_candidate_id: REVISION_ID}, review_digest: "finalized-review", start: {kind: "none"}});
-  await act(async () => fixture.commit.resolve(response(SAVED)));
+  expect(fixture.writes().find(call => call.path.endsWith(MESSAGES))?.body).toMatchObject({save: true});
+  expect(fixture.writes().some(call => call.path.endsWith(FLEETS))).toBe(false);
   await screen.findByRole("heading", {name: ACKNOWLEDGEMENT});
   await waitFor(() => expect(screen.queryByLabelText(SAVING)).toBeNull());
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -79,14 +79,12 @@ it("shows saving through model finalization and confirms only after the write su
 
 it("ends progress and preserves chat when the database refuses the save", async () => {
   await requestSave();
-  await act(async () => fixture.finishModel());
-  await waitFor(() => expect(fixture.saveAttempts).toBe(1));
-  await act(async () => fixture.commit.resolve(response({}, 409)));
+  await act(async () => fixture.finishModel(MESSAGE_STATE.completed, true));
   await waitFor(() => expect(screen.queryByLabelText(SAVING)).toBeNull());
   expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
   expect(screen.getByText(SAVE, {exact: true})).toBeTruthy();
   expect(screen.getByRole("alert")).toBeTruthy();
-  expect(fixture.saveAttempts).toBe(1);
+  expect(fixture.saveAttempts).toBe(0);
 });
 
 it("does not write a setup when the model turn fails", async () => {

@@ -58,6 +58,7 @@ const INVENTORY: &[&str] = &[
     // §3 — workspace fleets and install.
     "/v1/workspaces/{workspace_id}/fleets",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/authoring-context",
     // §4 — the vault.
     "/v1/workspaces/{workspace_id}/secrets",
     "/v1/workspaces/{workspace_id}/secrets/{name}",

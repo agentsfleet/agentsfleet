@@ -44,7 +44,7 @@ it.each([200, 403, 412])("reconciles setup continuation status %i without hiding
   expect(refresh).toHaveBeenCalledOnce();
   expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
   expect(resume).toHaveBeenCalledWith(WORKSPACE, FLEET.id, "active", FLEET.etag);
-  if (status === 403) expect(screen.getByRole("alert").textContent).toBe("Denied");
+  if (status === 403) expect(screen.getByRole("alert").textContent).toBe("Couldn't finish fleet setup — Denied.");
   else expect(screen.queryByRole("alert")).toBeNull();
 });
 
@@ -56,6 +56,14 @@ it.each([new Error("Transport failed"), "uncertain"])("retains a failed continua
   fireEvent.click(screen.getByRole("button", {name: "Finish setup"}));
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+});
+
+it("shows the scope recovery message instead of internal continuation detail", async () => {
+  resume.mockResolvedValue({ok: false, status: 403, errorCode: "UZ-AUTH-022", error: "Internal continuation detail"});
+  render(<FleetRecovery fleet={{...FLEET, setup: {state: "waiting", checks: []}}} workspace={WORKSPACE} />);
+  await finishSetup();
+  expect((await screen.findByRole("alert")).textContent).toContain("You need an additional scope");
+  expect(screen.getByRole("alert").textContent).not.toContain("Internal continuation");
 });
 
 it("shows recovery only for unfinished setup or first-run admission", async () => {

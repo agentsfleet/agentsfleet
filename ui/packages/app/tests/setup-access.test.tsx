@@ -5,6 +5,7 @@ import { FleetSetup } from "@/components/domain/chat/FleetSetup";
 import { FleetRecoveryContent } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecoveryContent";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { DRAFT, FLEET_DETAIL, FLEET_ID, REVIEW, WORKSPACE } from "./helpers/draft-fixtures";
+import { presentErrorString } from "@/lib/errors";
 
 const api = vi.hoisted(() => ({catalog: vi.fn(), connect: vi.fn(), create: vi.fn(), refresh: vi.fn()}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions", () => ({readConnectorCatalogAction: api.catalog, startConnectAction: api.connect}));
@@ -15,7 +16,10 @@ const HOST = "api.fly.io";
 const FORM_VALUE = ["form", "test", "value"].join("-");
 const definition = {...REVIEW.effective.definition, instructions_md: "Use ${secrets.fly.api_token}.",
   config: {...REVIEW.effective.definition.config, "x-agentsfleet": {network: {allow: [HOST]}}}};
-beforeEach(() => {vi.resetAllMocks(); api.catalog.mockResolvedValue({ok: true, data: []}); api.create.mockResolvedValue({ok: true, data: {name: "fly"}});});
+beforeEach(() => {
+  vi.resetAllMocks(); vi.spyOn(window, "open").mockReturnValue(null);
+  api.catalog.mockResolvedValue({ok: true, data: []}); api.create.mockResolvedValue({ok: true, data: {name: "fly"}});
+});
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();});
 
 function authorizationWindow() {
@@ -24,6 +28,32 @@ function authorizationWindow() {
   const navigate = vi.spyOn(window.location, "replace").mockImplementation(() => {});
   return {popup: window, close, navigate};
 }
+
+// Value: protects=provider tab creation remains in the user gesture; fails_when=the catalog await loses popup permission;
+// seam=window and server actions; no_claim=real browser popup policy.
+it("reserves the provider tab before its catalog read finishes", async () => {
+  const catalog = Promise.withResolvers<unknown>();
+  api.catalog.mockReturnValue(catalog.promise);
+  api.connect.mockResolvedValue({ok: true, data: {install_url: "https://accounts.zoho.test/authorize"}});
+  const {popup, navigate} = authorizationWindow();
+  const open = vi.spyOn(window, "open").mockReturnValue(popup);
+  render(<SetupAccess workspace={WORKSPACE} name="zoho" />);
+  fireEvent.click(screen.getByRole("button", {name: "Connect Zoho"}));
+  expect(open).toHaveBeenCalledExactlyOnceWith("about:blank", "_blank");
+  catalog.resolve({ok: true, data: [{id: "zoho", display_name: "Zoho", configured: true}]});
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith("https://accounts.zoho.test/authorize"));
+});
+
+// Value: protects=known access errors use operator copy; fails_when=raw refusal text bypasses the shared presenter;
+// seam=server action; no_claim=authentication.
+it("presents a catalog session failure with the existing recovery instruction", async () => {
+  api.catalog.mockResolvedValue({ok: false, errorCode: "UZ-AUTH-401", error: "raw session failure"});
+  vi.spyOn(window, "open").mockReturnValue(null);
+  render(<SetupAccess workspace={WORKSPACE} name="fly" />);
+  fireEvent.click(screen.getByRole("button", {name: "Connect Fly"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("Your session expired");
+  expect(screen.getByRole("alert").textContent).not.toContain("raw session failure");
+});
 
 it("refreshes the fleet page after checking newly authorized setup access", async () => {
   const provider = "zoho";
@@ -49,6 +79,18 @@ async function openForm(refresh = vi.fn(async () => {})) {
   await screen.findByLabelText("Secret name");
   return refresh;
 }
+
+// Value: protects=explicit destination cannot overwrite a user field; fails_when=two host inputs silently collapse into one;
+// seam=server action; no_claim=network destination enforcement.
+it("refuses a host field collision without losing the entered access", async () => {
+  await openForm();
+  fireEvent.change(screen.getByLabelText("Field 1 name"), {target: {value: "host"}});
+  fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: FORM_VALUE}});
+  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  await screen.findByText("Use Allowed host above instead of a host field");
+  expect(api.create).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Field 1 value")).toHaveProperty("value", FORM_VALUE);
+});
 
 it("stores Fly through the existing vault form with an explicit host, then refreshes readiness", async () => {
   const refresh = await openForm();
@@ -103,7 +145,7 @@ it("keeps credentials untouched when access options cannot be loaded", async () 
   api.catalog.mockResolvedValue({ok: false, error: "Connections unavailable"});
   render(<SetupAccess workspace={WORKSPACE} name="fly" definition={definition} />);
   fireEvent.click(screen.getByRole("button", {name: "Connect Fly"}));
-  await screen.findByText("Connections unavailable");
+  await screen.findByText(presentErrorString({message: "Connections unavailable", action: "load access options"}));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(api.create).not.toHaveBeenCalled();
 });
@@ -151,7 +193,8 @@ it.each(["refused", "malformed", "transport"])("closes an unsuccessful authoriza
   render(<SetupAccess workspace={WORKSPACE} name={provider} />);
   const connect = screen.getByRole("button", {name: "Connect Zoho"});
   fireEvent.click(connect);
-  expect((await screen.findByRole("alert")).textContent).toBe(failure === "refused" ? refused : "Access could not be opened. Try again.");
+  expect((await screen.findByRole("alert")).textContent).toBe(failure === "refused"
+    ? presentErrorString({message: refused, action: "connect this access"}) : "Access could not be opened. Try again.");
   expect(close).toHaveBeenCalledOnce();
   expect(navigate).not.toHaveBeenCalled();
   expect(screen.queryByText(/Finish authorizing/)).toBeNull();

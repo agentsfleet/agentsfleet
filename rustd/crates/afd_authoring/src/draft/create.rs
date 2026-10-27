@@ -33,6 +33,11 @@ impl Drafts {
         now: Timestamp,
     ) -> Result<Created> {
         let mut request = garde::Unvalidated::new(request).validate()?.into_inner();
+        if request.save && request.message.is_none() {
+            return Err(crate::error::raise::invalid(
+                "Save requires an initial message",
+            ));
+        }
         request.message = request.message.map(|text| message::normalize(&text));
         let request = garde::Unvalidated::new(request).validate()?;
         let digest = replay::digest(&*request)?;
@@ -163,6 +168,7 @@ impl Drafts {
                     sequence: FIRST_REVISION,
                     operation: &new.request.operation_id,
                     text,
+                    save: new.request.save,
                     model: &new.request.authoring_model_ref,
                 },
             )
@@ -252,7 +258,9 @@ mod tests {
             "description": description,
             "instructions_md": "Run.",
             "config": {"name": "fixture", "x-agentsfleet": {
-                "triggers": [], "tools": [], "budget": {"daily_nanos": "1000000000"}
+                "triggers": [], "tools": [], "budget": {
+                    "daily_nanos": afd_core::money::NANOS_PER_USD.to_string()
+                }
             }},
         });
         Definition::parse(&json.to_string())

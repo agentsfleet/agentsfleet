@@ -24,7 +24,10 @@ export function readFleetActivity(json: string): FleetActivity | null {
 }
 
 export function fleetActivityText(json: string): string {
-  const activity = readFleetActivity(json);
+  return fleetActivityLabel(readFleetActivity(json));
+}
+
+export function fleetActivityLabel(activity: FleetActivity | null): string {
   if (!activity) return "Activity recorded";
   switch (activity.kind) {
     case ACTIVITY_KIND.setupSaved: return saveDoneText(activity.revision);

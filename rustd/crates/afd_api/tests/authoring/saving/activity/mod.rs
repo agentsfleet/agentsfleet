@@ -2,8 +2,11 @@
 
 mod commit_failure;
 mod connectors;
+mod editor;
+mod editor_bytes;
 mod execution;
-mod fault;
+pub(super) mod fault;
+mod filtering;
 mod fixture;
 mod live;
 mod notifications;

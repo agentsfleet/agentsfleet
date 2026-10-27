@@ -35,6 +35,7 @@ async fn stop_cutoff_preserves_new_messages_and_exact_operation_replay() {
             f.access(),
             id,
             SendMessage {
+                save: false,
                 message: "second".into(),
                 operation_id: mint(),
             },
@@ -105,6 +106,7 @@ async fn assert_replay(f: &Fixture, id: &afd_core::id::Uuid7, operation: afd_cor
             f.access(),
             id,
             SendMessage {
+                save: false,
                 message: "first".into(),
                 operation_id: operation.clone(),
             },
@@ -120,6 +122,7 @@ async fn assert_replay(f: &Fixture, id: &afd_core::id::Uuid7, operation: afd_cor
             f.access(),
             id,
             SendMessage {
+                save: false,
                 message: "changed".into(),
                 operation_id: operation,
             },

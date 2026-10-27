@@ -2,8 +2,9 @@
 
 use afd_core::{event::status::RECORDED, id::Uuid7};
 use afd_dragonfly::FleetStreams;
+use futures_util::StreamExt as _;
 use serde::Serialize;
-use sqlx::PgConnection;
+use sqlx::{PgConnection, Postgres, Transaction};
 
 use crate::Result;
 
@@ -11,6 +12,43 @@ use crate::Result;
 pub const EVENT_TYPE_ACTIVITY: &str = "activity";
 /// Receipts describe system facts rather than messages from a person or runner.
 pub const ACTOR_ACTIVITY: &str = "system";
+const MAX_CONCURRENT_ACTIVITY_NOTICES: usize = 16;
+
+/// Unpublished recipients produced by a receipt write; consumed by [`commit`].
+#[derive(Debug, Default)]
+#[must_use = "commit the receipt transaction with its announcement"]
+pub struct Announcement {
+    fleets: Vec<String>,
+}
+
+impl Announcement {
+    /// Combines receipt writes owned by the same transaction.
+    pub fn append(&mut self, other: Self) {
+        self.fleets.extend(other.fleets);
+    }
+}
+
+/// Commits receipt writes, releases their owned connection, then notifies open tails.
+///
+/// # Errors
+/// A refused commit publishes nothing. Notification failures leave history durable.
+pub async fn commit(
+    transaction: Transaction<'static, Postgres>,
+    mut announcement: Announcement,
+    streams: Option<&FleetStreams>,
+) -> Result<(), sqlx::Error> {
+    transaction.commit().await?;
+    announcement.fleets.sort_unstable();
+    announcement.fleets.dedup();
+    if let Some(streams) = streams {
+        futures_util::stream::iter(announcement.fleets)
+            .for_each_concurrent(MAX_CONCURRENT_ACTIVITY_NOTICES, |fleet| async move {
+                announce(streams, &fleet).await;
+            })
+            .await;
+    }
+    Ok(())
+}
 
 /// Metadata permitted in history. No credential body or instruction text fits.
 #[derive(Debug, Serialize)]
@@ -53,8 +91,8 @@ pub async fn record_on(
     fleet: &Uuid7,
     identity: &str,
     activity: Activity<'_>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(crate::sql::INSERT_FLEET_EVENT)
+) -> Result<Announcement, sqlx::Error> {
+    let (inserted, _id): (bool, String) = sqlx::query_as(crate::sql::INSERT_FLEET_EVENT)
         .bind(fleet.as_str())
         .bind(identity)
         .bind(workspace.as_str())
@@ -63,9 +101,15 @@ pub async fn record_on(
         .bind(sqlx::types::Json(activity))
         .bind(None::<&str>)
         .bind(RECORDED)
-        .execute(connection)
+        .fetch_one(connection)
         .await?;
-    Ok(())
+    Ok(Announcement {
+        fleets: if inserted {
+            vec![fleet.to_string()]
+        } else {
+            Vec::new()
+        },
+    })
 }
 
 /// Records access storage for the workspace's saved fleets that require it.
@@ -76,8 +120,8 @@ pub async fn record_access_on(
     connection: &mut PgConnection,
     workspace: &Uuid7,
     service: &str,
-) -> Result<Vec<String>, sqlx::Error> {
-    sqlx::query_scalar(crate::sql::INSERT_ACCESS_ACTIVITY)
+) -> Result<Announcement, sqlx::Error> {
+    let fleets = sqlx::query_scalar(crate::sql::INSERT_ACCESS_ACTIVITY)
         .bind(workspace.as_str())
         .bind(service)
         .bind(ACTOR_ACTIVITY)
@@ -85,11 +129,12 @@ pub async fn record_access_on(
         .bind(RECORDED)
         .bind(sqlx::types::Json(Activity::AccessSaved { service }))
         .fetch_all(connection)
-        .await
+        .await?;
+    Ok(Announcement { fleets })
 }
 
 /// Open tails recover committed history through their existing catch-up path.
-pub async fn announce(streams: &FleetStreams, fleet: &str) {
+async fn announce(streams: &FleetStreams, fleet: &str) {
     streams
         .publish_frame(fleet, &Notice::CatchingUp { dropped: 0 })
         .await;

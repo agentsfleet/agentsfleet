@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/local-dev.sh
 source deploy/local/bootstrap.sh
+source deploy/local/certificate.sh
 dev_state
 
 action="${1:-all}"
@@ -32,6 +33,7 @@ cleanup() {
     if kill -0 "$ui_pid" 2>/dev/null; then kill -TERM "$ui_pid"; fi
     wait "$ui_pid" || true
   fi
+  if [ -n "${LOCAL_ACCEPTANCE_CA:-}" ]; then acceptance_untrust_certificate "$LOCAL_ACCEPTANCE_CA"; fi
   rmdir "$DEV_LOCK"
 }
 trap cleanup EXIT
@@ -113,10 +115,7 @@ until curl --silent --fail --max-time 2 --cacert "$LOCAL_ACCEPTANCE_CA" "https:/
   [ "$(date +%s)" -lt "$deadline" ] || dev_fail 'Caddy HTTPS readiness timed out; inspect docker compose logs'
   sleep 0.2
 done
-if ! security verify-cert -c "$LOCAL_ACCEPTANCE_CA" -p basic >/dev/null 2>&1; then
-  printf 'Trusting the local Caddy certificate in your login keychain; macOS may ask for approval.\n'
-  security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" "$LOCAL_ACCEPTANCE_CA"
-fi
+acceptance_trust_certificate "$LOCAL_ACCEPTANCE_CA"
 export NODE_EXTRA_CA_CERTS="$LOCAL_ACCEPTANCE_CA"
 start_dashboard
 printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nSSL_CERT_FILE=/var/lib/agentsfleet-runner/ca.pem\n' \

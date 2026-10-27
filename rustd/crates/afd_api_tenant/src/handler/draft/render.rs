@@ -4,7 +4,7 @@ use afd_api_wire::authoring as wire;
 use afd_authoring::{Cancellation, types};
 use afd_fleet_runtime::Definition;
 
-pub(super) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Review> {
+pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Review> {
     wire::Draft {
         id: value.id.to_string(),
         state: value.state.as_str().into(),
@@ -58,8 +58,10 @@ pub(super) fn card(value: types::DraftCard) -> wire::DraftCard {
     }
 }
 
-pub(super) fn message(value: types::Message) -> wire::Message {
+pub(crate) fn message(value: types::Message) -> wire::Message {
     wire::Message {
+        save_requested: value.save_requested,
+        save_error_code: value.save_error_code,
         sequence: value.sequence,
         operation_id: value.operation_id.to_string(),
         role: value.role.into(),
@@ -116,6 +118,7 @@ mod tests {
     /// A card at `revisions`: candidate, saved setup and publication.
     fn listed(revisions: (Option<i64>, Option<i64>, Option<i64>)) -> types::DraftCard {
         types::DraftCard {
+            continuation: String::new(),
             id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")
                 .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
             title: "Triage the inbox".to_owned(),
@@ -170,6 +173,8 @@ mod tests {
         let accepted = jiff::Timestamp::constant(1_760_000_000, 0);
 
         let rendered = message(types::Message {
+            save_requested: false,
+            save_error_code: None,
             sequence: "7".to_owned(),
             operation_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011")
                 .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),

@@ -135,11 +135,6 @@ export default function KillSwitch({ workspaceId, fleet, children }: KillSwitchP
 
   return (
     <>
-      {actions.length === 0 && !children ? (
-        <Button variant="ghost" size="sm" disabled>
-          Killed
-        </Button>
-      ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-compact" aria-label="Fleet actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80 max-w-full p-sm">
@@ -151,7 +146,6 @@ export default function KillSwitch({ workspaceId, fleet, children }: KillSwitchP
             {children}
           </DropdownMenuContent>
         </DropdownMenu>
-      )}
       <ConfirmDialog
         open={pendingAction !== null}
         // ConfirmDialog only calls onOpenChange on user-dismiss (cancel,

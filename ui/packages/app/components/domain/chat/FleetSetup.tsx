@@ -4,8 +4,9 @@ import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { Button, Section } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
-import { ACTIVITY_KIND, readFleetActivity, saveDoneText } from "@/lib/events/fleet-activity";
-import { START_KIND } from "@/lib/api/draft-vocabulary";
+import { setupActivity } from "@/lib/api/draft-activity";
+import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { setupRecovery } from "@/lib/api/schedule-status";
 import { SetupChecks } from "./SetupChecks";
 import { ScheduleSync } from "./ScheduleSync";
 
@@ -16,11 +17,10 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
   const revision = fleet?.setup_revision ?? view.savedSetupRevision ?? setup?.effective.target_setup_revision ?? view.preview?.setupRevision;
   const editing = Boolean(view.draft && !savedDraft(view) && (setup?.effective.target_setup_revision || fleet));
   const checks = editing || !fleet ? setup?.readiness ?? [] : fleet.setup.checks;
-  const retryStart = fleet?.status === "active" && fleet.start.kind === START_KIND.runNow && fleet.start.state !== "accepted";
+  const {retryStart, canFinish: continueSetup} = fleet ? setupRecovery(fleet) : {retryStart: false, canFinish: false};
   const definition = view.draft?.candidate?.definition ?? view.preview?.definition ?? fleet?.definition;
-  const continueSetup = fleet?.status === "installing" && fleet.setup.checks.every(check => check.state === "ready" || check.kind === "stream" || check.kind === "activation");
   const recorded = view.activities?.some(row => {
-    const activity = readFleetActivity(row.request_json);
+    const activity = setupActivity(row);
     return activity && (activity.kind === ACTIVITY_KIND.setupSaved || activity.kind === ACTIVITY_KIND.setupReady) && activity.revision === revision;
   });
   return <Section className="ph-no-capture ph-no-record my-md gap-sm py-xs" aria-label="Fleet setup">

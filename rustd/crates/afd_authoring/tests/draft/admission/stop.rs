@@ -94,6 +94,7 @@ async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once()
     assert_eq!(held.0, 1);
     assert!(held.1 > 0, "admission reserved a bound");
     let second = SendMessage {
+        save: false,
         message: "Second".into(),
         operation_id: mint(),
     };

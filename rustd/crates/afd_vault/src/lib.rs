@@ -164,17 +164,17 @@ impl Vault {
         self
     }
 
-    /// Notifies only after the caller has committed the receipts' transaction.
-    pub async fn publish_activity(&self, fleets: &[String]) {
-        use futures_util::StreamExt as _;
-        const MAX_CONCURRENT_ACTIVITY_NOTICES: usize = 16;
-        if let Some(streams) = &self.activity_streams {
-            futures_util::stream::iter(fleets)
-                .for_each_concurrent(MAX_CONCURRENT_ACTIVITY_NOTICES, |fleet| {
-                    afd_events::activity::announce(streams, fleet)
-                })
-                .await;
-        }
+    /// Commits a vault mutation and announces its receipts after releasing the connection.
+    ///
+    /// # Errors
+    /// Returns the commit refusal without publishing uncommitted history.
+    pub async fn commit_activity(
+        &self,
+        transaction: sqlx::Transaction<'static, sqlx::Postgres>,
+        announcement: afd_events::activity::Announcement,
+    ) -> Result<(), sqlx::Error> {
+        afd_events::activity::commit(transaction, announcement, self.activity_streams.as_ref())
+            .await
     }
 
     /// The key-less half — the list, and the delete.

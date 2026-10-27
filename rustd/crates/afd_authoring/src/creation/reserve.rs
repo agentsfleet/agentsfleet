@@ -16,7 +16,7 @@ use crate::{
 use afd_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
-use sqlx::{Connection as _, PgConnection};
+use sqlx::{PgConnection, Transaction};
 
 /// Capability tags a new fleet needs before any runner may place it: none.
 const NO_TAGS: &[&str] = &[];
@@ -54,8 +54,9 @@ impl Creations {
         request: &garde::Valid<SaveFleet>,
         now: Timestamp,
     ) -> Result<Uuid7> {
-        let mut connection = self.setup.drafts.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        let mut tx = Transaction::begin(self.setup.drafts.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:fleet:create:{}", access.workspace, person.id);
         let digest = replay::digest(&**request)?;
@@ -105,16 +106,17 @@ impl Creations {
             },
         )
         .await?;
-        let id = if won {
+        let (id, announcement) = if won {
             let instance = Instance {
                 name: &request.name,
                 start: &request.start,
             };
-            self.insert(&mut tx, &id, &captured, instance, &checked, now)
+            let announcement = self
+                .insert(&mut tx, &id, &captured, instance, &checked, now)
                 .await?;
-            id
+            (id, announcement)
         } else {
-            replay::find(
+            let id = replay::find(
                 &mut tx,
                 &scope,
                 replay::Resource::Fleet,
@@ -123,9 +125,12 @@ impl Creations {
                 &digest,
             )
             .await?
-            .ok_or(ErrorKind::Gone)?
+            .ok_or(ErrorKind::Gone)?;
+            (id, afd_events::activity::Announcement::default())
         };
-        tx.commit().await.map_err(query(CONTEXT))?;
+        afd_events::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+            .await
+            .map_err(query(CONTEXT))?;
         Ok(id)
     }
 
@@ -168,7 +173,7 @@ impl Creations {
         instance: Instance<'_>,
         checked: &crate::types::Review,
         now: Timestamp,
-    ) -> Result<()> {
+    ) -> Result<afd_events::activity::Announcement> {
         let revision = self.setup.drafts.mint(now)?;
         insert_fleet(connection, id, &revision, captured, &instance).await?;
         let accepted = Accepted::from_review(captured, checked);
@@ -178,7 +183,8 @@ impl Creations {
             accepted: &accepted,
             model: checked.effective.runtime_model_ref.as_deref(),
         };
-        insert_revision(connection, id, &captured.candidate.definition, head).await?;
+        let announcement =
+            insert_revision(connection, id, &captured.candidate.definition, head).await?;
         self.replace_schedules(
             connection,
             &captured.context.workspace_id,
@@ -197,7 +203,7 @@ impl Creations {
                 .await
                 .map_err(query(CONTEXT))?;
         }
-        Ok(())
+        Ok(announcement)
     }
 }
 
@@ -216,7 +222,7 @@ pub(super) async fn insert_revision(
     fleet: &Uuid7,
     definition: &afd_fleet_runtime::Definition,
     head: Head<'_>,
-) -> Result<()> {
+) -> Result<afd_events::activity::Announcement> {
     sqlx::query(sql::REVISION)
         .bind(head.id.as_str())
         .bind(fleet.as_str())
@@ -233,7 +239,7 @@ pub(super) async fn insert_revision(
         .map_err(query(CONTEXT))?;
     let number = head.number.to_string();
     let identity = format!("setup_saved:{}", head.id);
-    afd_events::activity::record_on(
+    let announcement = afd_events::activity::record_on(
         connection,
         &head.accepted.context.workspace_id,
         fleet,
@@ -242,7 +248,7 @@ pub(super) async fn insert_revision(
     )
     .await
     .map_err(query(CONTEXT))?;
-    Ok(())
+    Ok(announcement)
 }
 
 /// The fleet row itself, `INSTALLING` under the accepted review. A name another

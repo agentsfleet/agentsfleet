@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo, useCallback, type ReactNode } from "react";
 import { ThreadPrimitive } from "@assistant-ui/react";
 import { Skeleton } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
@@ -51,6 +51,8 @@ function BackfillSkeleton() {
 }
 
 function ChatHistory({ eventsCount, connectionStatus, setup, setupEventId }: Pick<FleetThreadViewportProps, "eventsCount" | "connectionStatus" | "setup" | "setupEventId">) {
+  const renderMessage = useCallback((props: Parameters<typeof renderFleetMessage>[0]) =>
+    setup && props.message.id === setupEventId ? setup : renderFleetMessage(props), [setup, setupEventId]);
   const isAwaitingFirstFrames =
     eventsCount === 0 &&
     (connectionStatus === CONNECTION_STATUS.CONNECTING ||
@@ -77,7 +79,7 @@ function ChatHistory({ eventsCount, connectionStatus, setup, setupEventId }: Pic
       {isIdleEmpty && !setup ? (
         <p className="px-sm py-lg text-sm text-muted-foreground">{EMPTY_HINT}</p>
       ) : null}
-      <ThreadPrimitive.Messages>{props => setup && props.message.id === setupEventId ? setup : renderFleetMessage(props)}</ThreadPrimitive.Messages>
+      <ThreadPrimitive.Messages>{renderMessage}</ThreadPrimitive.Messages>
     </div>
   );
 }

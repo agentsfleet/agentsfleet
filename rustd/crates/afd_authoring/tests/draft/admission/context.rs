@@ -26,6 +26,7 @@ async fn send(f: &Fixture, draft: &Draft) {
             f.access(),
             &draft.id,
             SendMessage {
+                save: false,
                 message: "Next question".into(),
                 operation_id: mint(),
             },

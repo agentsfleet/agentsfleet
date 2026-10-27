@@ -78,7 +78,7 @@ INSERT INTO fleet.events
    created_at, updated_at)
 SELECT fleets.id, fleets.workspace_id, 'plan-probe-' || e,
        CASE WHEN e % 4 = 0 THEN 'cron:' || fleets.id || ':' || (e % 8) ELSE 'steer:api' END,
-       'chat', 'completed', '{}'::jsonb,
+       CASE WHEN e % 8 = 0 THEN 'activity' ELSE 'chat' END, 'completed', '{}'::jsonb,
        $2::timestamptz + e * interval '1 millisecond',
        $2::timestamptz + e * interval '1 millisecond'
   FROM fleets, generate_series(1, $5) e";

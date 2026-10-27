@@ -231,3 +231,5 @@ assert.equal(await readFile(file, 'utf8'), 'ENCRYPTION_MASTER_KEY=keep-existing-
 
 unittest.main(argv=['acceptance-bootstrap'])
 PY
+
+bash "$(dirname "$0")/certificate_test.sh"

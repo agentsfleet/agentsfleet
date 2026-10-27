@@ -128,9 +128,10 @@ it("reopens the current fleet setup after an initial read fails without creating
   const unavailable = "Current setup is temporarily unavailable";
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}`)) {
+    if (path.endsWith(`/fleets/${FLEET_ID}/authoring-context`)) {
       reads += 1;
-      return Promise.resolve(reads === 1 ? response({user_message: unavailable}, 503) : response(FLEET_DETAIL));
+      return Promise.resolve(reads === 1 ? response({user_message: unavailable}, 503) : response({fleet: FLEET_DETAIL,
+        conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null}));
     }
     return base(input, init);
   });
@@ -153,7 +154,8 @@ it("loads the new saved revision when the same fleet source changes in place", a
   let current = FLEET_DETAIL;
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    return path.endsWith(`/fleets/${FLEET_ID}`) ? Promise.resolve(response(current)) : base(input, init);
+    return path.endsWith(`/fleets/${FLEET_ID}/authoring-context`) ? Promise.resolve(response({fleet: current,
+      conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null})) : base(input, init);
   });
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
   await screen.findByRole("heading", {name: current.name});

@@ -17,7 +17,7 @@ use jiff::Timestamp;
 use sqlx::PgConnection;
 
 impl Creations {
-    pub(super) async fn write_improvement(
+    pub(in crate::creation) async fn write_improvement(
         &self,
         connection: &mut PgConnection,
         row: &Stored,
@@ -25,7 +25,7 @@ impl Creations {
         checked: &Review,
         revision: &Uuid7,
         now: Timestamp,
-    ) -> Result<bool> {
+    ) -> Result<afd_events::activity::Announcement> {
         let number = row
             .head_revision
             .checked_add(1)
@@ -37,7 +37,8 @@ impl Creations {
             accepted: &accepted,
             model: checked.effective.runtime_model_ref.as_deref(),
         };
-        insert_revision(connection, &row.id, &captured.candidate.definition, head).await?;
+        let announcement =
+            insert_revision(connection, &row.id, &captured.candidate.definition, head).await?;
         let status = if matches!(row.status.as_str(), ACTIVE | INSTALLING) {
             INSTALLING
         } else {
@@ -59,7 +60,7 @@ impl Creations {
             now,
         )
         .await?;
-        let model_changed = super::activity::record(
+        super::activity::record(
             connection,
             row,
             checked.effective.runtime_model_ref.as_deref(),
@@ -68,7 +69,7 @@ impl Creations {
         )
         .await?;
         settle_draft(connection, row, captured, status).await?;
-        Ok(model_changed)
+        Ok(announcement)
     }
 }
 

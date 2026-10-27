@@ -7,6 +7,23 @@ import { DRAFT, MESSAGE } from "./helpers/draft-fixtures";
 
 const HISTORY_COUNTS = [100, 1_000];
 
+// Value: protects=stable historical and receipt row identity during streaming; fails_when=each frame rebuilds old rows;
+// seam=projection only; no_claim=browser paint timing.
+it("retains historical and receipt rows while a current answer changes", () => {
+  const project = createDraftThreadProjection();
+  const receipt = {event_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
+    created_at: MESSAGE.created_at, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "1"})};
+  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, previousDrafts: [{id: "earlier", cancelledThrough: "0", messages: [MESSAGE]}],
+    activities: [receipt], messages: [{...MESSAGE, sequence: "2", role: "assistant" as const, state: "running" as const}]};
+  const first = project(view);
+  const next = project({...view, liveReply: {sequence: "2", stream: "stream", text: "Growing", gapped: false}});
+  for (const id of ["earlier:1:user", "activity:saved"]) expect(next.find(row => row.id === id)).toBe(first.find(row => row.id === id));
+  expect(next.find(row => row.id === "2:assistant")).not.toBe(first.find(row => row.id === "2:assistant"));
+  const changed = project({...view, activities: [{...receipt, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupReady, revision: "1"})}]});
+  expect(changed.find(row => row.id === "activity:saved")).toMatchObject({content: [{text: "Setup done · v1"}]});
+  expect(createDraftThreadProjection()(view).find(row => row.id === "activity:saved")).not.toBe(first.find(row => row.id === "activity:saved"));
+});
+
 // Value: protects=receipts keep their timeline position while an optimistic answer has no durable instant;
 // fails_when=undated pending answers sort ahead of recorded activity; seam=none; no_claim=server event ordering.
 it("places a dated receipt before the undated answer to an optimistic request", () => {

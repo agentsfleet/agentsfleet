@@ -1,11 +1,12 @@
 "use client";
 
-import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
+import type { AppendMessage, ThreadMessageLike, MessageRuntimeState } from "@assistant-ui/react";
 import type { DraftView } from "@/lib/api/draft-state";
 import type { DraftClient } from "@/lib/api/drafts";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
+import Link from "next/link";
 import { BrandMark, Button, PageTitle } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -13,10 +14,11 @@ import { CHAT_EXAMPLES } from "./chat-defaults";
 import { ChatComposer } from "./ChatComposer";
 import { ChatThread } from "./ChatThread";
 import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
-import { ACTIVITY_KIND, readFleetActivity } from "@/lib/events/fleet-activity";
+import { setupActivity } from "@/lib/api/draft-activity";
+import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
 import { DraftMessage, DraftRetryProvider } from "./DraftMessage";
 
-export function DraftConversation({client, view, children, unfinished, instructionsDirty = false}: {client: DraftClient; view: DraftView; children?: ReactNode; unfinished?: ReactNode; instructionsDirty?: boolean}) {
+export function DraftConversation({client, view, workspace, children, unfinished, instructionsDirty = false}: {client: DraftClient; view: DraftView; workspace: string; children?: ReactNode; unfinished?: ReactNode; instructionsDirty?: boolean}) {
   const recovery = chatRecovery(view);
   const [project] = useState(createDraftThreadProjection);
   const messages = useMemo(() => project(view), [project, view]);
@@ -31,6 +33,7 @@ export function DraftConversation({client, view, children, unfinished, instructi
     onCancel: () => client.stop(),
   }), [client, messages, recovery.pending, view.optimistic, saving]);
   const runtime = useExternalStoreRuntime(adapter);
+  const renderMessage = useCallback(({message}: {message: MessageRuntimeState}) => <><DraftMessage message={message} />{message.id === anchor ? children : null}</>, [anchor, children]);
   const empty = messages.length === 0 && !view.fleet && !view.draft && !view.preview;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -39,9 +42,13 @@ export function DraftConversation({client, view, children, unfinished, instructi
         footer={<ChatComposer client={client} view={view} canStop={recovery.canStop} blocked={recovery.blocked || instructionsDirty} />}>
         <div role="log" aria-live="off" className="mx-auto flex w-full max-w-chat flex-1 flex-col py-3xl">
           {empty ? <><ChatEntrance /><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} />{unfinished}</> : null}
-          {view.truncated ? <p className="text-sm text-muted-foreground">Showing the latest conversation messages. Earlier messages remain in this setup chat.</p> : null}
+          {view.truncated ? <p className="text-sm text-muted-foreground">Showing the latest conversation messages. Earlier messages remain in this setup chat.
+            {view.draft ? <Link className="ml-sm underline" href={`/w/${workspace}/fleets/new?draft=${view.draft.id}`}>Open full conversation</Link> : null}</p> : null}
+          {view.conversationCursor || view.activityCursor ? <Button variant="ghost" size="sm" disabled={view.busy}
+            onClick={() => {void client.loadEarlierConversations().catch(() => undefined);}}>Load earlier history</Button> : null}
+          {(view.previousDrafts ?? []).filter(item => item.truncated).map(item => <Link key={item.id} className="text-sm underline" href={`/w/${workspace}/fleets/new?draft=${item.id}`}>Open full earlier conversation</Link>)}
           {anchor === null ? children : null}
-          <ThreadPrimitive.Messages>{({message}) => <><DraftMessage message={message} />{message.id === anchor ? children : null}</>}</ThreadPrimitive.Messages>
+          <ThreadPrimitive.Messages>{renderMessage}</ThreadPrimitive.Messages>
         </div>
       </ChatThread>
       </DraftRetryProvider>
@@ -50,7 +57,7 @@ export function DraftConversation({client, view, children, unfinished, instructi
 }
 function setupAnchor(view: DraftView): string | null {
   const saved = (view.activities ?? []).find(row => {
-    const activity = readFleetActivity(row.request_json);
+    const activity = setupActivity(row);
     return activity && (activity.kind === ACTIVITY_KIND.setupSaved || activity.kind === ACTIVITY_KIND.setupReady)
       && activity.revision === view.fleet?.setup_revision;
   });

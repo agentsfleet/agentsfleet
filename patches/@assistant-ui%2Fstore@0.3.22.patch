@@ -3,34 +3,25 @@ index b0f13b6f4ee45eaa73c9a524a93f5c97dfa1749c..af0a10f8d2c9925b35e4daac72a78e4d
 --- a/dist/utils/thread-viewport-auto-scroll.js
 +++ b/dist/utils/thread-viewport-auto-scroll.js
 @@ -215,8 +215,9 @@ const createThreadViewportAutoScroll = (input) => {
--		const grew = inset > contentInset;
-+		const grew = inset > contentInset;
--		contentInset = inset;
-+		contentInset = inset;
--		input.onContentInsetChange?.(inset);
-+		input.onContentInsetChange?.(inset);
+ 		const grew = inset > contentInset;
+ 		contentInset = inset;
+ 		input.onContentInsetChange?.(inset);
 -		if (grew) followGrowth();
 -		handleScroll({ insetShrank: !grew });
 +		const viewportResized = element !== null && element.clientHeight !== lastObservedClientHeight;
 +		if (grew || viewportResized) followGrowth();
 +		handleScroll({ insetShrank: !grew && !viewportResized });
--	};
-+	};
--	return {
-+	return {
--		attach: (el) => {
-+		attach: (el) => {
+ 	};
+ 	return {
+ 		attach: (el) => {
 diff --git a/src/utils/thread-viewport-auto-scroll.ts b/src/utils/thread-viewport-auto-scroll.ts
 index 334c1016eca702e74fc34cb3375973de479b6151..3a6e01a788017a409f9da9f05ec55ef9b87a1e06 100644
 --- a/src/utils/thread-viewport-auto-scroll.ts
 +++ b/src/utils/thread-viewport-auto-scroll.ts
 @@ -316,9 +316,11 @@ export const createThreadViewportAutoScroll = (input: {
--    const grew = inset > contentInset;
-+    const grew = inset > contentInset;
--    contentInset = inset;
-+    contentInset = inset;
--    input.onContentInsetChange?.(inset);
-+    input.onContentInsetChange?.(inset);
+     const grew = inset > contentInset;
+     contentInset = inset;
+     input.onContentInsetChange?.(inset);
 -    // A growing inset obscures pinned content and follows like a resize; a shrinking inset reveals content without moving the viewport.
 -    if (grew) followGrowth();
 -    handleScroll({ insetShrank: !grew });
@@ -39,9 +30,6 @@ index 334c1016eca702e74fc34cb3375973de479b6151..3a6e01a788017a409f9da9f05ec55ef9
 +    const viewportResized = element !== null && element.clientHeight !== lastObservedClientHeight;
 +    if (grew || viewportResized) followGrowth();
 +    handleScroll({ insetShrank: !grew && !viewportResized });
--  };
-+  };
--
-+
--  return {
-+  return {
+   };
+ 
+   return {

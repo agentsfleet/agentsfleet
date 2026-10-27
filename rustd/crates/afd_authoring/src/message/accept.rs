@@ -106,7 +106,7 @@ impl Drafts {
                 &scope(access.workspace, id),
                 &request.operation_id,
                 &person.id,
-                &replay::digest(&text)?,
+                &message_digest(&text, request.save)?,
                 id,
             )
             .await?
@@ -139,7 +139,7 @@ impl Drafts {
             .mint(now)
             .and_then(|message| self.mint(now).map(|receipt| (message, receipt)));
         let ids = identifiers.as_ref().ok();
-        let digest = replay::digest(&text)?;
+        let digest = message_digest(text, request.save)?;
         let admitted: Admission = sqlx::query_as(ADMIT)
             .bind(draft.id.as_str())
             .bind(sequence)
@@ -156,6 +156,7 @@ impl Drafts {
             .bind(replay::REPLAY_WINDOW)
             .bind(draft.cancelled_through_sequence)
             .bind(Status::Settled.as_str())
+            .bind(request.save)
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -206,6 +207,7 @@ pub(crate) struct Insertion<'a> {
     pub(crate) sequence: i64,
     pub(crate) operation: &'a Uuid7,
     pub(crate) text: &'a str,
+    pub(crate) save: bool,
     pub(crate) model: &'a str,
 }
 
@@ -222,6 +224,7 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
         .bind(QUEUED)
         .bind(model::tenant_model(insertion.model))
         .bind(insertion.text)
+        .bind(insertion.save)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -233,7 +236,7 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
             person: insertion.person,
             scope: &scope(insertion.workspace, insertion.draft),
             operation: insertion.operation,
-            digest: &replay::digest(&insertion.text)?,
+            digest: &message_digest(insertion.text, insertion.save)?,
             resource: insertion.id,
         },
     )
@@ -248,4 +251,13 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
         .await
         .map_err(query(CONTEXT))?;
     Ok(())
+}
+
+fn message_digest(text: &str, save: bool) -> Result<String> {
+    // Preserve existing retry receipts when the new flag is absent or false.
+    if save {
+        replay::digest(&(text, save))
+    } else {
+        replay::digest(&text)
+    }
 }

@@ -130,6 +130,11 @@ pub struct DraftCard {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Message {
+    /// True when this accepted message requests saving after successful completion.
+    pub save_requested: bool,
+    /// A stable error code when the setup could not be saved. The conversation remains available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub save_error_code: Option<String>,
     /// Decimal request sequence.
     pub sequence: String,
     /// Accepted body replay key.

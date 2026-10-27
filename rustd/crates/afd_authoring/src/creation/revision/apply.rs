@@ -9,7 +9,7 @@ use crate::{
 };
 use afd_core::id::Uuid7;
 use jiff::Timestamp;
-use sqlx::Connection as _;
+use sqlx::Transaction;
 
 impl Creations {
     /// Applies one reviewed improvement without publishing a Library revision.
@@ -44,8 +44,9 @@ impl Creations {
         request: &garde::Valid<ApplyRevision>,
         now: Timestamp,
     ) -> Result<Uuid7> {
-        let mut connection = self.setup.drafts.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        let mut tx = Transaction::begin(self.setup.drafts.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let scope = format!("{}:fleet:{fleet}:revision", access.workspace);
         let digest = replay::digest(&**request)?;
@@ -109,14 +110,13 @@ impl Creations {
             },
         )
         .await?;
-        let mut model_changed = false;
-        let revision = if won {
-            model_changed = self
+        let (revision, announcement) = if won {
+            let announcement = self
                 .write_improvement(&mut tx, &row, &captured, &checked, &revision, now)
                 .await?;
-            revision
+            (revision, announcement)
         } else {
-            replay::find(
+            let revision = replay::find(
                 &mut tx,
                 &scope,
                 replay::Resource::FleetRevision,
@@ -125,12 +125,12 @@ impl Creations {
                 &digest,
             )
             .await?
-            .ok_or(ErrorKind::Gone)?
+            .ok_or(ErrorKind::Gone)?;
+            (revision, afd_events::activity::Announcement::default())
         };
-        tx.commit().await.map_err(query(CONTEXT))?;
-        if model_changed {
-            super::activity::publish(&self.admissions.streams(), fleet).await;
-        }
+        afd_events::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+            .await
+            .map_err(query(CONTEXT))?;
         Ok(revision)
     }
 }

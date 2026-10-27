@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use sqlx::Connection as _;
 
 use crate::error::{Result, query};
 
@@ -111,8 +110,9 @@ impl Directory {
         change: MemoryAccessRequest,
         streams: Option<&afd_dragonfly::FleetStreams>,
     ) -> Result<Option<MemoryAccess>> {
-        let mut connection = self.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT_GRANT))?;
+        let mut tx = sqlx::Transaction::begin(self.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_GRANT))?;
         let Some(previous) = sqlx::query_as::<_, LockedGrants>(LOCK_ACCESS)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
@@ -139,7 +139,7 @@ impl Directory {
             .fetch_one(&mut *tx)
             .await
             .map_err(query(CONTEXT_GRANT))?;
-        afd_events::activity::record_on(
+        let announcement = afd_events::activity::record_on(
             &mut tx,
             workspace,
             fleet,
@@ -151,11 +151,9 @@ impl Directory {
         )
         .await
         .map_err(query(CONTEXT_GRANT))?;
-        tx.commit().await.map_err(query(CONTEXT_GRANT))?;
-        drop(connection);
-        if let Some(streams) = streams {
-            afd_events::activity::announce(streams, fleet.as_str()).await;
-        }
+        afd_events::activity::commit(tx, announcement, streams)
+            .await
+            .map_err(query(CONTEXT_GRANT))?;
         Ok(Some(access.into()))
     }
 

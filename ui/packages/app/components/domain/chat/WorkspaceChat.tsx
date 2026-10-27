@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { Alert, Button, Skeleton } from "@agentsfleet/design-system";
 import { stagePlatformLibraryAction } from "@/app/(dashboard)/admin/fleet-libraries/actions";
 import { SetupUnavailable } from "@/lib/api/draft-request";
@@ -83,13 +84,14 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
 
 function ChatSurface({client, source, initialSourceRevision, workspace, subject, opening, selected, reload, canManagePlatformModels, fleetPage, menuItems}: {source?: Source; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
+  useSavedSetupUrl(workspace, source, view, opening);
   const [instructionsDirty, setInstructionsDirty] = useState(false);
   const handledSourceRevision = useRef(initialSourceRevision);
   useEffect(() => {
-    if (opening || view.busy || view.pending || view.error || view.draft || view.inaccessible || view.savedSetupRevision
+    if (opening || view.busy || view.pending || view.error || view.inaccessible
       || source?.kind !== SOURCE_KIND.fleet || !view.preview || handledSourceRevision.current === source.setup_revision) return;
     handledSourceRevision.current = source.setup_revision;
-    if (view.preview.setupRevision === source.setup_revision) return;
+    if (view.preview.setupRevision === source.setup_revision || view.savedSetupRevision === source.setup_revision) return;
     client.fresh(source);
     void client.refreshFleetSetup().catch(ignore);
   }, [client, source, opening, view.busy, view.pending, view.error, view.draft, view.inaccessible, view.savedSetupRevision, view.preview]);
@@ -100,11 +102,26 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
     <ChatModelAvailability canManagePlatformModels={canManagePlatformModels} client={client} view={view} workspace={workspace} />
-    <DraftConversation client={client} view={view} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <DraftConversation client={client} view={view} workspace={workspace} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       <FleetSetup client={client} view={view} workspace={workspace} />
     </DraftConversation>
     </>}
   </div>;
+}
+
+function useSavedSetupUrl(workspace: string, source: Source | undefined, view: DraftView, opening: boolean): void {
+  const router = useRouter();
+  const replaced = useRef<string | undefined>(undefined);
+  const revision = view.savedSetupRevision ?? view.preview?.setupRevision;
+  useEffect(() => {
+    if (opening || view.busy || view.inaccessible || view.error || source?.kind !== SOURCE_KIND.fleet || !revision
+      || view.fleet?.id !== source.fleet_id || BigInt(revision) <= BigInt(source.setup_revision)) return;
+    const query = new URLSearchParams({fleet: source.fleet_id, setup_revision: revision});
+    const url = `/w/${workspace}/fleets/new?${query}`;
+    if (replaced.current === url) return;
+    replaced.current = url;
+    router.replace(url, {scroll: false});
+  }, [router, workspace, source, revision, opening, view.busy, view.inaccessible, view.error, view.fleet?.id]);
 }
 
 function ChatError({client, view, source, workspace, reload, onStartOver}: {client: DraftClient; view: DraftView; source?: Source; workspace: string; reload: () => Promise<void>; onStartOver: () => void}) {
@@ -114,7 +131,7 @@ function ChatError({client, view, source, workspace, reload, onStartOver}: {clie
           else void (view.draft || view.pending ? client.retry() : reload()).catch(ignore);
         }}>{view.inaccessible ? "Reload" : "Retry"}</Button>
         {!view.inaccessible && source?.kind === SOURCE_KIND.fleet ? <Button size="sm" variant="secondary" disabled={view.busy || view.pending || chatRecovery(view).pending} onClick={() => {
-          client.fresh(source); onStartOver(); void reload().catch(ignore);
+          client.fresh(source); onStartOver(); void client.refreshFleetSetup(false, true).catch(ignore);
         }}>Start over from current setup</Button> : null}
         <Button size="sm" variant="ghost" asChild><Link href={`/w/${workspace}/fleets`}>Your fleets</Link></Button>
     </>}>{view.error}</ChatAvailability>;

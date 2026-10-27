@@ -9,7 +9,7 @@ const DDL_LOCK: i64 = 0x6166_645f_6974;
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 const NOT_REMOVED: &str = "test_receipt_refusal_not_removed";
 
-pub(super) struct Refusal {
+pub(in crate::authoring::saving) struct Refusal {
     url: String,
     name: String,
 }
@@ -19,7 +19,11 @@ impl Refusal {
         Self::scoped(url, workspace, kind, false).await
     }
 
-    pub(super) async fn at_commit(url: String, workspace: &Uuid7, kind: &str) -> Self {
+    pub(in crate::authoring::saving) async fn at_commit(
+        url: String,
+        workspace: &Uuid7,
+        kind: &str,
+    ) -> Self {
         Self::scoped(url, workspace, kind, true).await
     }
 
@@ -77,7 +81,7 @@ impl Refusal {
         guard
     }
 
-    pub(super) async fn assert_fired_once(&self) {
+    pub(in crate::authoring::saving) async fn assert_fired_once(&self) {
         let mut owner = sqlx::PgConnection::connect(&self.url)
             .await
             .expect("counter connection");

@@ -20,7 +20,7 @@ use afd_crypto::aad::Aad;
 use afd_crypto::envelope::Envelope;
 use jiff::Timestamp;
 
-use sqlx::{Acquire as _, Transaction};
+use sqlx::Transaction;
 
 use crate::error::{ErrorKind, Result, query};
 use crate::secret::{SecretBody, SecretName};
@@ -48,14 +48,15 @@ impl Vault {
         body: &SecretBody,
         now: Timestamp,
     ) -> Result<()> {
-        let mut connection = self.directory.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_CREATE))?;
+        let mut transaction = Transaction::begin(self.directory.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
         let fleets = self
             .create_in(&mut transaction, workspace, name, body, now)
             .await?;
-        transaction.commit().await.map_err(query(CONTEXT_CREATE))?;
-        drop(connection);
-        self.publish_activity(&fleets).await;
+        self.commit_activity(transaction, fleets)
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
         Ok(())
     }
 
@@ -67,7 +68,7 @@ impl Vault {
     /// separately, a failure between them leaves routing describing one
     /// installation while the vault holds another's credential, which reads as
     /// connected and is not. See `afd_connector::grant`.
-    /// Returns the receipt recipients; call [`Self::publish_activity`] after commit.
+    /// Returns the receipt announcement for [`Self::commit_activity`].
     ///
     /// # Errors
     /// As [`Self::create`]. The transaction is the caller's to commit; dropping
@@ -79,7 +80,7 @@ impl Vault {
         name: &SecretName,
         body: &SecretBody,
         now: Timestamp,
-    ) -> Result<Vec<String>> {
+    ) -> Result<afd_events::activity::Announcement> {
         let envelope = self.seal(workspace, name, body)?;
         let id = self.entropy.uuid7(now)?;
         let projection = body.projection();
@@ -140,14 +141,15 @@ impl Vault {
         name: &SecretName,
         body: &SecretBody,
     ) -> Result<()> {
-        let mut connection = self.directory.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_REPLACE))?;
+        let mut transaction = Transaction::begin(self.directory.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
         let fleets = self
             .replace_in(&mut transaction, workspace, name, body)
             .await?;
-        transaction.commit().await.map_err(query(CONTEXT_REPLACE))?;
-        drop(connection);
-        self.publish_activity(&fleets).await;
+        self.commit_activity(transaction, fleets)
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
         Ok(())
     }
 
@@ -157,7 +159,7 @@ impl Vault {
     /// the stored grant AND moves the routing row, and the two have to land or
     /// fail together. A replace that committed alone would leave the newer
     /// credential under the older routing.
-    /// Returns the receipt recipients; call [`Self::publish_activity`] after commit.
+    /// Returns the receipt announcement for [`Self::commit_activity`].
     ///
     /// # Errors
     /// As [`Self::replace`].
@@ -167,7 +169,7 @@ impl Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-    ) -> Result<Vec<String>> {
+    ) -> Result<afd_events::activity::Announcement> {
         let envelope = self.seal(workspace, name, body)?;
         let projection = body.projection();
 

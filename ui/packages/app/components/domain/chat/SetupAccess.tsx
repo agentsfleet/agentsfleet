@@ -6,6 +6,7 @@ import nextDynamic from "next/dynamic";
 import { z } from "zod";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@agentsfleet/design-system";
 import { readConnectorCatalogAction, startConnectAction } from "@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions";
+import { presentErrorString } from "@/lib/errors";
 
 const AddSecretForm = nextDynamic(() => import("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm"), {
   loading: () => <output>Loading access form…</output>,
@@ -32,25 +33,27 @@ export function SetupAccess({workspace, name, definition, onRefresh}: {workspace
   const connect = async (): Promise<void> => {
     setBusy(true); setError(null);
     let popup: Window | null = null;
+    let launched = false;
     try {
+      popup = window.open("about:blank", "_blank");
+      if (popup) popup.opener = null;
       const catalog = await readConnectorCatalogAction(workspace);
-      if (!catalog.ok) {setError(catalog.error); return;}
+      if (!catalog.ok) {setError(presentErrorString({message: catalog.error, errorCode: catalog.errorCode, action: "load access options"})); return;}
       const parsed = CatalogSchema.safeParse(catalog.data);
       if (!parsed.success) {setError("Access options could not be loaded. Try again."); return;}
       const provider = parsed.data.find(entry => entry.id === name);
       if (!provider) {setOpen(true); return;}
       if (!provider.configured) {setError(`${provider.display_name} needs to be enabled by a workspace administrator.`); return;}
-      popup = window.open("about:blank", "_blank");
       if (!popup) {setError("Allow a new browser tab, then connect again."); return;}
-      popup.opener = null;
       const result = await startConnectAction(provider.id, workspace);
-      if (!result.ok) {popup.close(); setError(result.error); return;}
+      if (!result.ok) {setError(presentErrorString({message: result.error, errorCode: result.errorCode, action: "connect this access"})); return;}
       const destination = new URL(result.data.install_url);
-      if (destination.protocol !== "https:") {popup.close(); setError("The provider returned an invalid authorization URL."); return;}
+      if (destination.protocol !== "https:") {setError("The provider returned an invalid authorization URL."); return;}
       popup.location.replace(destination.href);
+      launched = true;
       setAuthorizationStarted(true);
-    } catch {popup?.close(); setError("Access could not be opened. Try again.");}
-    finally {setBusy(false);}
+    } catch {setError("Access could not be opened. Try again.");}
+    finally {if (!launched) popup?.close(); setBusy(false);}
   };
   const refresh = async (): Promise<void> => {
     setBusy(true); setError(null);

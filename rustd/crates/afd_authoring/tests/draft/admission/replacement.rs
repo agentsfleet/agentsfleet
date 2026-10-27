@@ -104,6 +104,7 @@ async fn assert_recovers(f: &super::Fixture, draft: &Uuid7) {
             f.access(),
             draft,
             SendMessage {
+                save: false,
                 message: "Try again on the replacement".to_owned(),
                 operation_id: mint(),
             },
