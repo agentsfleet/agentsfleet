@@ -46,7 +46,7 @@ it("refreshes the fleet page after checking newly authorized setup access", asyn
 async function openForm(refresh = vi.fn(async () => {})) {
   render(<SetupAccess workspace={WORKSPACE} name="fly" definition={definition} onRefresh={refresh} />);
   fireEvent.click(screen.getByRole("button", {name: "Connect Fly"}));
-  await screen.findByRole("dialog");
+  await screen.findByLabelText("Secret name");
   return refresh;
 }
 
@@ -200,7 +200,7 @@ it("ignores other services' references and cancels custom access without a write
   render(<SetupAccess workspace={WORKSPACE} name="fly" definition={{...definition,
     instructions_md: "Use ${secrets.other.key}.", config: {}}} />);
   fireEvent.click(screen.getByRole("button", {name: "Connect Fly"}));
-  await screen.findByRole("dialog");
+  await screen.findByLabelText("Field 1 name");
   expect(screen.getByLabelText("Field 1 name")).toHaveProperty("value", "");
   fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

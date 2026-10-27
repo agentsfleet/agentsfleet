@@ -2,10 +2,14 @@
 
 import type { Definition } from "@/lib/api/draft-types";
 import { useState } from "react";
+import nextDynamic from "next/dynamic";
 import { z } from "zod";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@agentsfleet/design-system";
-import AddSecretForm from "@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm";
 import { readConnectorCatalogAction, startConnectAction } from "@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions";
+
+const AddSecretForm = nextDynamic(() => import("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm"), {
+  loading: () => <output>Loading access form…</output>,
+});
 
 const CatalogSchema = z.array(z.object({id: z.string(), display_name: z.string(), configured: z.boolean()}));
 const NetworkSchema = z.object({"x-agentsfleet": z.object({network: z.object({allow: z.array(z.string())})})});
