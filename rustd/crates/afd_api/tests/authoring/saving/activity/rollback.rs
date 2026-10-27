@@ -4,7 +4,7 @@ use super::super::{
     super::{json_body, mint, send},
     fixture::Case,
 };
-use super::{fault::Refusal, fixture::*};
+use super::{fault::Refusal, fixture::*, streams::Reader};
 use afd_vault::SecretName;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
@@ -90,6 +90,7 @@ async fn refused_ready_receipt_keeps_installing_then_retry_activates_once() {
 #[ignore = "needs isolated local Postgres and Dragonfly"]
 async fn refused_access_receipt_rolls_back_secret_create_and_replace_before_retry() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
+    let mut reader = Reader::open(&saved, &saved.fleet).await;
     for (method, previous, next) in [
         (Method::POST, None, "fixture-first"),
         (Method::PUT, Some("fixture-first"), "fixture-replaced"),
@@ -105,6 +106,7 @@ async fn refused_access_receipt_rolls_back_secret_create_and_replace_before_retr
         fault.assert_fired_once().await;
         assert_secret(&saved, previous).await;
         assert_receipts(&saved.receipts().await, &before);
+        reader.quiet().await;
         drop(fault);
         let expected = if method == Method::POST {
             StatusCode::CREATED
@@ -112,6 +114,8 @@ async fn refused_access_receipt_rolls_back_secret_create_and_replace_before_retr
             StatusCode::OK
         };
         assert_eq!(saved.access(method, next).await.status(), expected);
+        reader.changed().await;
+        reader.quiet().await;
         assert_secret(&saved, Some(next)).await;
         let mut expected = before;
         expected.push(access_receipt());
@@ -124,6 +128,7 @@ async fn refused_access_receipt_rolls_back_secret_create_and_replace_before_retr
 #[ignore = "needs isolated local Postgres and Dragonfly"]
 async fn refused_memory_receipt_rolls_back_both_grants_and_retry_records_one_change() {
     let saved = Saved::create(json!({})).await;
+    let mut reader = Reader::open(&saved, &saved.fleet).await;
     let before = saved.grants().await;
     let fault = Refusal::install(
         saved.case.base.owner_url(),
@@ -135,9 +140,12 @@ async fn refused_memory_receipt_rolls_back_both_grants_and_retry_records_one_cha
     fault.assert_fired_once().await;
     assert_eq!(saved.grants().await, before);
     assert_receipts(&saved.receipts().await, &[saved_receipt(), ready_receipt()]);
+    reader.quiet().await;
     drop(fault);
     assert_eq!(saved.memory(true, true).await.status(), StatusCode::OK);
+    reader.changed().await;
     assert_eq!(saved.memory(true, true).await.status(), StatusCode::OK);
+    reader.quiet().await;
     assert_eq!(saved.grants().await, json!({"read":true,"publish":true}));
     assert_receipts(
         &saved.receipts().await,
@@ -160,7 +168,7 @@ async fn assert_receipt_refused(response: axum::response::Response) {
     );
 }
 
-async fn assert_secret(saved: &Saved, expected: Option<&str>) {
+pub(super) async fn assert_secret(saved: &Saved, expected: Option<&str>) {
     let vault = crate::harness::vault(saved.case.base.db.clone());
     let stored = vault
         .load(

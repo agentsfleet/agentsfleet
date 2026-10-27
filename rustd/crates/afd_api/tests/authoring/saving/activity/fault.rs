@@ -16,6 +16,14 @@ pub(super) struct Refusal {
 
 impl Refusal {
     pub(super) async fn install(url: String, workspace: &Uuid7, kind: &str) -> Self {
+        Self::scoped(url, workspace, kind, false).await
+    }
+
+    pub(super) async fn at_commit(url: String, workspace: &Uuid7, kind: &str) -> Self {
+        Self::scoped(url, workspace, kind, true).await
+    }
+
+    async fn scoped(url: String, workspace: &Uuid7, kind: &str, at_commit: bool) -> Self {
         let name = format!("receipt_refusal_{}", mint().as_str().replace('-', ""));
         let guard = Self { url, name };
         let mut owner = sqlx::PgConnection::connect(&guard.url)
@@ -27,6 +35,17 @@ impl Refusal {
             .execute(&mut *tx)
             .await
             .expect("serialize fixture DDL");
+        let trigger = if at_commit {
+            format!(
+                "CREATE CONSTRAINT TRIGGER {} AFTER INSERT ON fleet.events DEFERRABLE INITIALLY DEFERRED",
+                guard.name
+            )
+        } else {
+            format!(
+                "CREATE TRIGGER {} BEFORE INSERT ON fleet.events",
+                guard.name
+            )
+        };
         // The identifier, UUID and receipt kind are fixture-owned, never request input.
         for statement in [
             format!("CREATE SEQUENCE public.{}_hits", guard.name),
@@ -41,7 +60,7 @@ impl Refusal {
                 guard.name
             ),
             format!(
-                "CREATE TRIGGER {0} BEFORE INSERT ON fleet.events FOR EACH ROW
+                "{trigger} FOR EACH ROW
                 WHEN (NEW.workspace_id = '{1}'::uuid AND NEW.event_type = 'activity'
                 AND NEW.request_json->>'kind' = '{2}') EXECUTE FUNCTION public.{0}()",
                 guard.name,

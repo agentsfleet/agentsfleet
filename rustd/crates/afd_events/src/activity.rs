@@ -1,6 +1,7 @@
 //! Durable receipts join the fleet history without admitting or executing work.
 
 use afd_core::{event::status::RECORDED, id::Uuid7};
+use afd_dragonfly::FleetStreams;
 use serde::Serialize;
 use sqlx::PgConnection;
 
@@ -75,15 +76,27 @@ pub async fn record_access_on(
     connection: &mut PgConnection,
     workspace: &Uuid7,
     service: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(crate::sql::INSERT_ACCESS_ACTIVITY)
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(crate::sql::INSERT_ACCESS_ACTIVITY)
         .bind(workspace.as_str())
         .bind(service)
         .bind(ACTOR_ACTIVITY)
         .bind(EVENT_TYPE_ACTIVITY)
         .bind(RECORDED)
         .bind(sqlx::types::Json(Activity::AccessSaved { service }))
-        .execute(connection)
-        .await?;
-    Ok(())
+        .fetch_all(connection)
+        .await
+}
+
+/// Open tails recover committed history through their existing catch-up path.
+pub async fn announce(streams: &FleetStreams, fleet: &str) {
+    streams
+        .publish_frame(fleet, &Notice::CatchingUp { dropped: 0 })
+        .await;
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum Notice {
+    CatchingUp { dropped: u64 },
 }

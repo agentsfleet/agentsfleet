@@ -145,7 +145,8 @@ impl ServingPlane {
         );
         let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
-        let tenant = stores::tenant(&database, &kek, &providers);
+        let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
+        let tenant = stores::tenant(&database, &kek, &providers, &activity_streams);
         let activity = stores::activity(&database, &queue, &kek, &admissions);
         let outbound = surfaces::outbound(
             &database,
@@ -200,6 +201,7 @@ fn lease_plane(
     broker: Arc<afd_credential::credential::Broker>,
     biller: Arc<dyn afd_billing::biller::Biller>,
 ) -> Plane {
+    let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
     Plane {
         leases: Leases::new(database.clone(), queue.clone(), Entropy::new())
             .with_doorbell(doorbell),
@@ -210,7 +212,8 @@ fn lease_plane(
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),
         biller,
-        memories: Memories::new(database.clone(), Entropy::new()),
+        memories: Memories::new(database.clone(), Entropy::new())
+            .with_activity_streams(activity_streams),
         providers,
         // The thread a chat lease reads its earlier turns from: the rows the
         // dashboard thread shows, through the same reader.
