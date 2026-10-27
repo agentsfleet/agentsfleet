@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 
 mod atomic;
 mod improvement;
+mod recovery;
+mod refusals;
 
 #[tokio::test]
 #[ignore = "needs isolated local Postgres and Dragonfly"]

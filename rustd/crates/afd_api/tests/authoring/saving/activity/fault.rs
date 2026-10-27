@@ -15,7 +15,11 @@ pub(in crate::authoring::saving) struct Refusal {
 }
 
 impl Refusal {
-    pub(super) async fn install(url: String, workspace: &Uuid7, kind: &str) -> Self {
+    pub(in crate::authoring::saving) async fn install(
+        url: String,
+        workspace: &Uuid7,
+        kind: &str,
+    ) -> Self {
         Self::scoped(url, workspace, kind, false).await
     }
 
