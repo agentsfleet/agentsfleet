@@ -3,7 +3,7 @@
 import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
 import type { Source } from "@/lib/api/draft-types";
 import type { ReactNode } from "react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
 import { Alert, Button, Skeleton } from "@agentsfleet/design-system";
@@ -77,15 +77,19 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
     void open().catch(ignore);
     return () => {disposed = true; unsubscribe(); cache.remember(current.getSnapshot()); current.dispose();};
   }, [selection, cache]);
-  return client && reload ? <ChatSurface source={source} fleetPage={fleetPage} menuItems={menuItems} canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />;
+  const initialSourceRevision = selection.source?.kind === SOURCE_KIND.fleet ? selection.source.setup_revision : undefined;
+  return client && reload ? <ChatSurface initialSourceRevision={initialSourceRevision} source={source} fleetPage={fleetPage} menuItems={menuItems} canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />;
 }
 
-function ChatSurface({client, source, workspace, subject, opening, selected, reload, canManagePlatformModels, fleetPage, menuItems}: {source?: Source; fleetPage?: boolean; menuItems?: ReactNode; canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
+function ChatSurface({client, source, initialSourceRevision, workspace, subject, opening, selected, reload, canManagePlatformModels, fleetPage, menuItems}: {source?: Source; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const [instructionsDirty, setInstructionsDirty] = useState(false);
+  const handledSourceRevision = useRef(initialSourceRevision);
   useEffect(() => {
     if (opening || view.busy || view.pending || view.error || view.draft || view.inaccessible || view.savedSetupRevision
-      || source?.kind !== SOURCE_KIND.fleet || !view.preview || view.preview.setupRevision === source.setup_revision) return;
+      || source?.kind !== SOURCE_KIND.fleet || !view.preview || handledSourceRevision.current === source.setup_revision) return;
+    handledSourceRevision.current = source.setup_revision;
+    if (view.preview.setupRevision === source.setup_revision) return;
     client.fresh(source);
     void client.refreshFleetSetup().catch(ignore);
   }, [client, source, opening, view.busy, view.pending, view.error, view.draft, view.inaccessible, view.savedSetupRevision, view.preview]);
