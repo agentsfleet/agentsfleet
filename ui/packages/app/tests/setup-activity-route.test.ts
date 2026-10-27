@@ -29,6 +29,16 @@ it("refuses signed-out history reads without calling the backend", async () => {
   expect(upstream.mock.calls).toEqual([]);
 });
 
+it("preserves the receipt filter and opaque cursor while dropping unrelated query keys", async () => {
+  getToken.mockResolvedValue("fixture-session");
+  upstream.mockResolvedValue(new Response(JSON.stringify({items: [], next_cursor: null})));
+  const query = new URLSearchParams({event_type: "activity", starting_after: "opaque+cursor", limit: "25", actor: "discard"});
+  const result = await GET(new Request(`http://app.test/live?${query}`), params);
+  expect(result.status).toBe(200);
+  const target = new URL(upstream.mock.calls[0]?.[0]);
+  expect([...target.searchParams]).toEqual([["starting_after", "opaque+cursor"], ["limit", "25"], ["event_type", "activity"]]);
+});
+
 it.each([403, 404, 503])("preserves an upstream history refusal (%i)", async status => {
   getToken.mockResolvedValue("fixture-session");
   upstream.mockResolvedValue(new Response(JSON.stringify({detail: "History unavailable"}), {status, headers: {"Content-Type": "application/json"}}));

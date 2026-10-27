@@ -29,12 +29,14 @@ case "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" in pk_test_*) ;; *) dev_fail 'loca
 
 ui_pid=""
 cleanup() {
+  local status=$?
   if [ -n "$ui_pid" ]; then
     if kill -0 "$ui_pid" 2>/dev/null; then kill -TERM "$ui_pid"; fi
     wait "$ui_pid" || true
   fi
-  if [ -n "${LOCAL_ACCEPTANCE_CA:-}" ]; then acceptance_untrust_certificate "$LOCAL_ACCEPTANCE_CA"; fi
-  rmdir "$DEV_LOCK"
+  if [ -n "${LOCAL_ACCEPTANCE_CA:-}" ]; then acceptance_untrust_certificate "$LOCAL_ACCEPTANCE_CA" || status=$?; fi
+  rmdir "$DEV_LOCK" || status=$?
+  exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT

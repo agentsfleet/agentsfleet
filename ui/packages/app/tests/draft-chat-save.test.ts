@@ -139,3 +139,38 @@ it("keeps durable save progress while its draft snapshot is still loading", () =
   const user = {...MESSAGE, save_requested: true, state: MESSAGE_STATE.running};
   expect(savingOperation({...EMPTY_DRAFT_VIEW, messages: [user]})).toBe(user.operation_id);
 });
+
+// Value: protects=manual save recovery after a durable chat-save refusal;
+// fails_when=the preparatory read restores an old error after the write succeeds; seam=HTTP.
+it("clears the previous chat-save refusal when a manual revision commits", async () => {
+  fixture.fleet = FLEET_DETAIL;
+  fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID,
+    review: {...DRAFT.review!, effective: {...DRAFT.review!.effective, target_setup_revision: "1"}}};
+  messages = [{...MESSAGE, save_requested: true}, {...MESSAGE, role: MESSAGE_ROLE.assistant,
+    save_requested: true, save_error_code: "AGENTSFLEET_NAME_EXISTS"}];
+  const fallback = fixture.override;
+  fixture.override = call => {
+    if (call.path.endsWith("/revisions")) {
+      fixture.fleet = {...FLEET_DETAIL, setup_revision: "2"};
+      return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: fixture.fleet.setup_etag,
+        etag: fixture.fleet.etag, schedules: []}, 201);
+    }
+    return fallback(call);
+  };
+  const client = await fixture.ready(true);
+  expect(client.getSnapshot().error).toBeTruthy();
+  await client.apply();
+  expect(client.getSnapshot()).toMatchObject({savedSetupRevision: "2", error: null, pending: false});
+  expect(saves()).toHaveLength(1);
+});
+
+// Value: protects=historical refusal remains history after the draft was saved;
+// fails_when=reopening a committed draft resurrects its old save error; seam=HTTP.
+it("does not restore a historical save refusal when reopening a saved draft", async () => {
+  fixture.current = {...DRAFT, state: DRAFT_STATE.closed, linked_fleet_id: FLEET_ID};
+  messages = [{...MESSAGE, save_requested: true}, {...MESSAGE, role: MESSAGE_ROLE.assistant,
+    save_requested: true, save_error_code: "AGENTSFLEET_NAME_EXISTS"}];
+  const client = await fixture.ready(true);
+  expect(client.getSnapshot()).toMatchObject({savedSetupRevision: "1", error: null, pending: false});
+  expect(saves()).toEqual([]);
+});

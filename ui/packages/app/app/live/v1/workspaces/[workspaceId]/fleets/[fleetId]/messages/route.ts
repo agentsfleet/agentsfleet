@@ -69,7 +69,7 @@ const REFUSAL = {
 
 // Mirrors the daemon's parser, which refuses unknown fields.
 const SteerBodySchema = z.object({ message: z.string(), operation_id: z.string() }).strict();
-const FORWARDED_QUERY_KEYS = ["starting_after", "limit"] as const;
+const FORWARDED_QUERY_KEYS = ["starting_after", "limit", "event_type"] as const;
 
 export async function GET(req: Request, {params}: Params): Promise<Response> {
   const {workspaceId, fleetId} = await params;
