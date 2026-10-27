@@ -26,10 +26,12 @@ const BODY_COLUMNS: &str = ",
 FROM fleet.events";
 
 /// The texts outside the listing grid.
-const THREADS: [&str; 5] = [
+const THREADS: [&str; 7] = [
     SELECT_THREAD_PAGE,
     SELECT_THREAD_PAGE_AFTER,
     SELECT_THREAD_FINISHED_BEFORE,
+    SELECT_THREAD_FILTERED,
+    SELECT_THREAD_FILTERED_AFTER,
     SELECT_FLEET_PAGE_OF_ACTOR,
     SELECT_FLEET_PAGE_OF_ACTOR_AFTER,
 ];
@@ -64,6 +66,8 @@ fn every_body_read_appends_the_bodies_after_the_row() {
         SELECT_THREAD_PAGE,
         SELECT_THREAD_PAGE_AFTER,
         SELECT_THREAD_FINISHED_BEFORE,
+        SELECT_THREAD_FILTERED,
+        SELECT_THREAD_FILTERED_AFTER,
     ] {
         let rest = text
             .trim_start_matches('(')

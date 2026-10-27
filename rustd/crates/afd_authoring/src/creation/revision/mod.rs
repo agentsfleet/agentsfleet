@@ -9,7 +9,7 @@ use super::source::Captured;
 use crate::{Result, error::ErrorKind, types::SourcePin};
 use afd_core::id::Uuid7;
 
-fn target(captured: &Captured, fleet: &Uuid7, current: i64) -> Result<()> {
+pub(super) fn target(captured: &Captured, fleet: &Uuid7, current: i64) -> Result<()> {
     match &captured.context.source_pin {
         Some(SourcePin::Fleet {
             fleet_id,

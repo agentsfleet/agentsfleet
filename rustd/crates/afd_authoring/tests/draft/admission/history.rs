@@ -168,6 +168,7 @@ fn concurrent_sends(f: &Arc<Fixture>, id: &Uuid7, peers: &[Drafts; 2]) -> JoinSe
         tasks.spawn(async move {
             barrier.wait().await;
             let input = SendMessage {
+                save: false,
                 message: "A concurrent follow-up".into(),
                 operation_id: mint(),
             };
@@ -273,6 +274,7 @@ async fn discovery_offers_new_work_after_stopped_unknown_usage() {
             f.access(),
             &draft.id,
             SendMessage {
+                save: false,
                 message: "Try the next request".into(),
                 operation_id: mint(),
             },

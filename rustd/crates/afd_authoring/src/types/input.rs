@@ -63,6 +63,10 @@ pub struct CreateDraft {
     )]
     #[garde(inner(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(afd_validate::rules::nul_free)))]
     pub message: Option<String>,
+    /// Save the finalized candidate when this message completes successfully.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub save: bool,
     /// Body replay key; header keys are refused by the HTTP adapter.
     #[garde(skip)]
     pub operation_id: Uuid7,
@@ -75,6 +79,10 @@ pub struct SendMessage {
     /// User text, never trimmed or interpreted as executable setup.
     #[garde(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(afd_validate::rules::nul_free))]
     pub message: String,
+    /// Durable authorization to save the candidate finalized by this turn.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub save: bool,
     /// Replay identity within this draft.
     #[garde(skip)]
     pub operation_id: Uuid7,

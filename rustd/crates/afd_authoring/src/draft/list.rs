@@ -87,6 +87,7 @@ fn project(rows: Vec<Stored>, limit: usize, binding: &str) -> Result<Page<DraftC
         let id = Uuid7::parse(&row.id)?;
         next_cursor = Some(paging::cursor(binding, row.updated_at, &id));
         items.push(DraftCard {
+            continuation: paging::cursor(binding, row.updated_at, &id),
             etag: super::etag(&id, row.resource_version),
             id,
             title: row.title,

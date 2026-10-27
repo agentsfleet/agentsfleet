@@ -3,6 +3,7 @@
 import type { Fleet, Schedule } from "@/lib/api/draft-types";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { presentErrorString } from "@/lib/errors";
 import { Alert } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { ScheduleSchema } from "@/lib/api/draft-types";
@@ -23,9 +24,9 @@ export function FleetRecoveryContent({workspace, fleet, setupPending}: {workspac
     setBusy(true); setError(null);
     try {
       const result = await setFleetStatusAction(workspace, fleet.id, AGENTSFLEET_STATUS.ACTIVE, fleet.etag);
-      if (!result.ok && result.status !== 412) setError(result.error);
+      if (!result.ok && result.status !== 412) setError(presentErrorString({message: result.error, errorCode: result.errorCode, action: "finish fleet setup"}));
       router.refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Setup could not be confirmed. Refresh to read its current state."); }
+    } catch (cause) { setError(presentErrorString({message: cause instanceof Error ? cause.message : "", action: "finish fleet setup"})); }
     finally { setBusy(false); }
   };
   const retrySchedule = async (schedule: Schedule): Promise<void> => {

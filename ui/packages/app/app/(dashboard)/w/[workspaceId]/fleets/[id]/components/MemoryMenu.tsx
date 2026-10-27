@@ -2,12 +2,14 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { BookOpenIcon, ChevronRightIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
+import nextDynamic from "next/dynamic";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, SwitchIndicator } from "@agentsfleet/design-system";
 import type { MemoryAccess, MemoryEntry } from "@/lib/types";
 import { listFleetMemoriesAction, setMemoryAccessAction } from "../../actions";
-import MemoryPanel from "./MemoryPanel";
+import { presentErrorString } from "@/lib/errors";
+
+const MemoryPanel = nextDynamic(() => import("./MemoryPanel"), {loading: () => <output>Loading memories…</output>});
 
 type Props = {workspaceId: string; fleetId: string; access?: MemoryAccess; canGrant: boolean};
 const SAVED_MEMORIES = "Saved memories";
@@ -36,7 +38,6 @@ export function MemoryMenu({workspaceId, fleetId, access, canGrant}: Props) {
 }
 
 function MemorySharing({workspaceId, fleetId, initial}: {workspaceId: string; fleetId: string; initial: MemoryAccess}) {
-  const router = useRouter();
   const descriptionId = useId();
   const [access, setAccess] = useState(initial);
   const [notice, setNotice] = useState<string | null>(null);
@@ -47,8 +48,8 @@ function MemorySharing({workspaceId, fleetId, initial}: {workspaceId: string; fl
     inFlight.current = true; setSaving(true); setNotice(null);
     try {
       const result = await setMemoryAccessAction(workspaceId, fleetId, {[grant]: !access[grant]});
-      if (result.ok) {setAccess(result.data); router.refresh();}
-      else setNotice(result.error);
+      if (result.ok) setAccess(result.data);
+      else setNotice(presentErrorString({message: result.error, errorCode: result.errorCode, action: "change memory sharing"}));
     } catch {setNotice("Memory sharing could not be changed. Try again.");}
     finally {inFlight.current = false; setSaving(false);}
   };
@@ -74,7 +75,7 @@ function MemoryBrowser({workspaceId, fleetId}: {workspaceId: string; fleetId: st
     void listFleetMemoriesAction(workspaceId, fleetId).then(result => {
       if (!current) return;
       if (result.ok) setEntries(result.data.items);
-      else setError(result.error);
+      else setError(presentErrorString({message: result.error, errorCode: result.errorCode, action: "load saved memories"}));
     }).catch(() => {if (current) setError("Saved memories could not be loaded.");})
       .finally(() => {if (current) setLoading(false);});
     return () => {current = false;};

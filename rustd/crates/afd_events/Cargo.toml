@@ -44,9 +44,10 @@ jiff.workspace = true
 # The `TIMESTAMPTZ` bridge for those instants: row fields decode through it and
 # a cursor boundary binds through it.
 jiff-sqlx.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["json"] }
 thiserror.workspace = true
 tracing.workspace = true
+futures-util.workspace = true
 # The history cursor's identifier bound, declared on the decoded cursor.
 garde.workspace = true
 
@@ -80,8 +81,6 @@ redis.workspace = true
 # A delivered frame is the publisher's bytes forwarded unrewritten, and reading
 # the event id back out of them is precisely what a reconnecting client does.
 serde_json.workspace = true
-# The frames are polled as a `Stream`, which is what the HTTP layer hands axum.
-futures-util.workspace = true
 # So the event macros in the code under test evaluate their fields.
 tracing-subscriber.workspace = true
 

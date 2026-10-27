@@ -3,8 +3,6 @@
 use super::super::{CONTEXT, stored::Stored};
 use crate::{Result, error::raise::query};
 use afd_core::id::Uuid7;
-use afd_dragonfly::FleetStreams;
-use serde::Serialize;
 use serde_json::json;
 use sqlx::PgConnection;
 
@@ -17,9 +15,9 @@ pub(super) async fn record(
     model: Option<&str>,
     revision: &Uuid7,
     number: i64,
-) -> Result<bool> {
+) -> Result<()> {
     if row.runtime_model_ref.as_deref() == model {
-        return Ok(false);
+        return Ok(());
     }
     let payload = json!({
         "previous_model_ref": row.runtime_model_ref,
@@ -38,18 +36,5 @@ pub(super) async fn record(
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
-    Ok(true)
-}
-
-/// Existing open tails recover the committed notice through ordinary history.
-pub(super) async fn publish(streams: &FleetStreams, fleet: &Uuid7) {
-    streams
-        .publish_frame(fleet.as_str(), &Notice::CatchingUp { dropped: 0 })
-        .await;
-}
-
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum Notice {
-    CatchingUp { dropped: u64 },
+    Ok(())
 }

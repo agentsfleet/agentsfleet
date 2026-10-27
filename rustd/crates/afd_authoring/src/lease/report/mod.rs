@@ -10,8 +10,8 @@ mod usage;
 pub(crate) mod verdict;
 
 use afd_core::id::Uuid7;
-use afd_wire::authoring::{Report, Reported};
-use sqlx::{Connection as _, PgConnection};
+use afd_wire::authoring::{Outcome, Report, Reported};
+use sqlx::{PgConnection, Transaction};
 
 use super::{Status, guard, meter};
 use crate::{
@@ -32,9 +32,20 @@ impl Drafts {
     /// Refuses foreign/bad fences, changed report identity and invented meters.
     /// Accounting replay remains available after private deletion or expiry.
     pub async fn report(&self, runner: &Uuid7, lease: &Uuid7, request: Report) -> Result<Reported> {
+        self.report_with_save(runner, lease, request, None).await
+    }
+
+    pub(crate) async fn report_with_save(
+        &self,
+        runner: &Uuid7,
+        lease: &Uuid7,
+        request: Report,
+        creations: Option<&crate::Creations>,
+    ) -> Result<Reported> {
         let prepared = prepare::Prepared::new(request)?;
-        let mut connection = self.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        let mut tx = Transaction::begin(self.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT))?;
         let mut owed = Owed::default();
         let private = prepare::publication(&mut tx, runner, lease, &prepared, &mut owed).await?;
         let attempt = guard::accounting(&mut tx, runner, lease, &prepared.counters).await?;
@@ -51,10 +62,24 @@ impl Drafts {
                     .await?
             }
         };
-        tx.commit().await.map_err(query(CONTEXT))?;
+        let mut announcement = afd_events::activity::Announcement::default();
+        if !ack.replayed
+            && ack.state == Outcome::Completed
+            && let (Some(creations), Some(private)) = (creations, private.as_ref())
+        {
+            // Keep optional setup writes out of the accounting future's inline size.
+            announcement.append(Box::pin(creations.save_turn_on(&mut tx, private)).await?);
+        }
+        let streams = creations.map(crate::Creations::activity_streams);
+        afd_events::activity::commit(tx, announcement, streams.as_ref())
+            .await
+            .map_err(query(CONTEXT))?;
         owed.settle(&self.analytics);
         if let Some(owing) = owing {
             self.pay(&owing).await;
+        }
+        if let Some(creations) = creations {
+            Box::pin(creations.finish_saved_turn(&attempt)).await?;
         }
         Ok(ack)
     }

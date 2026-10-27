@@ -18,7 +18,7 @@ beforeEach(async () => {
 });
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 function conversation(view: DraftView) {
-  return <DraftConversation client={client} view={view}><FleetSetup client={client} view={view} workspace={WORKSPACE} /></DraftConversation>;
+  return <DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}><FleetSetup client={client} view={view} workspace={WORKSPACE} /></DraftConversation>;
 }
 function before(first: Node, second: Node): boolean {
   return Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);

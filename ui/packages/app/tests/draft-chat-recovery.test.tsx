@@ -21,7 +21,7 @@ beforeEach(async () => {
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 function Live({children}: {children?: ReactNode}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  return <DraftConversation client={client} view={view}>{children}</DraftConversation>;
+  return <DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}>{children}</DraftConversation>;
 }
 
 function RuntimeStop() {
@@ -124,7 +124,7 @@ it("persists cancellation requested through the assistant runtime", async () => 
 });
 
 it.each(["MiniMax M3.1 Flash (Free)", "GLM 5.3 Flash"])("displays the selected model's supplied label: %s", (label) => {
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), models: [{...MODEL, label}], model: MODEL.ref}} />);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), models: [{...MODEL, label}], model: MODEL.ref}} />);
   expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toBe(label);
 });
 
@@ -155,10 +155,10 @@ it("focuses a resumed chat and New fleet after leaving it", async () => {
 
 it("waits for the new composer to become ready before focusing", () => {
   const view = client.getSnapshot();
-  const rendered = render(<DraftConversation client={client} view={{...view, busy: true}} />);
+  const rendered = render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...view, busy: true}} />);
   const input = screen.getByRole("textbox", {name: CHAT_PLACEHOLDER});
   expect(document.activeElement).not.toBe(input);
-  rendered.rerender(<DraftConversation client={client} view={view} />);
+  rendered.rerender(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
   expect(document.activeElement).toBe(input);
 });
 
@@ -178,10 +178,10 @@ it("returns the caret after the first message and accepts the next without anoth
 it("leaves model selection focused when conversation updates arrive", async () => {
   await client.resume(DRAFT.id);
   const view = client.getSnapshot();
-  const rendered = render(<DraftConversation client={client} view={view} />);
+  const rendered = render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
   const model = screen.getByRole("combobox", {name: "Authoring model"});
   model.focus();
-  rendered.rerender(<DraftConversation client={client} view={{...view, messages: [...view.messages]}} />);
+  rendered.rerender(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...view, messages: [...view.messages]}} />);
   expect(document.activeElement).toBe(model);
 });
 
@@ -194,10 +194,10 @@ it("leaves another control focused when a composer mounts or becomes ready", asy
   initial.unmount(); menu.unmount();
   await client.resume(DRAFT.id);
   const view = client.getSnapshot();
-  const rendered = render(<DraftConversation client={client} view={{...view, busy: true}}><Button>Inspect answer</Button></DraftConversation>);
+  const rendered = render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...view, busy: true}}><Button>Inspect answer</Button></DraftConversation>);
   const inspect = screen.getByRole("button", {name: "Inspect answer"});
   inspect.focus();
-  rendered.rerender(<DraftConversation client={client} view={view}><Button>Inspect answer</Button></DraftConversation>);
+  rendered.rerender(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}><Button>Inspect answer</Button></DraftConversation>);
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
   expect(document.activeElement).toBe(inspect);
 });

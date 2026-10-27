@@ -1,4 +1,6 @@
 SELECT m.sequence,
+       m.save_requested,
+       m.save_error_code,
        m.operation_id::text AS operation_id,
        m.status,
        m.user_text,

@@ -22,6 +22,8 @@ beforeEach(() => {
   if (!respond) throw new Error("Chat fixture is not mounted");
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith(`/fleets/${FLEET_ID}/authoring-context`)) return Promise.resolve(response({fleet: PENDING_FLEET,
+      conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null}));
     return path.endsWith(`/fleets/${FLEET_ID}`) && (!init?.method || init.method === "GET")
       ? Promise.resolve(response(PENDING_FLEET)) : respond(input, init);
   });

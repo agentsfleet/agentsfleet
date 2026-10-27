@@ -14348,6 +14348,132 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/authoring-context": {
+      "get": {
+        "tags": [
+          "Fleets"
+        ],
+        "summary": "Read your fleet editor context",
+        "description": "Returns current fleet setup, at most three creator-private conversations with at most 25 recent role rows each, and 25 filtered activity receipts. The complete response is limited to four mebibytes. Older whole turns or conversations move behind their continuation when that limit is reached. The conversation cursor binds creator, workspace and fleet. Older messages remain available through each draft's messages resource. Private responses must not be cached.",
+        "operationId": "get_fleet_authoring_context",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Use next_cursor unchanged to read older conversations for this creator and fleet.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded private editor context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthoringContext"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fleet or private draft unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events": {
       "get": {
         "tags": [
@@ -15533,6 +15659,15 @@
           {
             "name": "limit",
             "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued admissions. Omit for the mixed thread, including queued messages.",
             "required": false,
             "schema": {
               "type": "string"
@@ -18582,6 +18717,39 @@
         },
         "additionalProperties": false
       },
+      "AuthoringContext": {
+        "type": "object",
+        "description": "One read for current fleet setup, private conversations and filtered receipts.",
+        "required": [
+          "fleet",
+          "conversations",
+          "activities"
+        ],
+        "properties": {
+          "activities": {
+            "$ref": "#/components/schemas/CursorPage_SetupActivity",
+            "description": "Up to 25 recorded activity receipts; runtime bodies are excluded before paging."
+          },
+          "conversations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Conversation_Value_Value"
+            },
+            "description": "Up to three of this creator's conversations, most recently updated first."
+          },
+          "fleet": {
+            "$ref": "#/components/schemas/FleetResponse",
+            "description": "Shared current setup, prerequisites and schedules."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "More conversations for this creator, workspace and fleet, or null."
+          }
+        }
+      },
       "AuthoringOutcome": {
         "type": "string",
         "description": "Terminal attempt outcome, distinct from the draft lifecycle.",
@@ -19888,6 +20056,39 @@
           "interrupted"
         ]
       },
+      "Conversation_Value_Value": {
+        "type": "object",
+        "description": "A current private draft and its recent durable message window.",
+        "required": [
+          "draft",
+          "messages",
+          "truncated"
+        ],
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/Draft_Value_Value",
+            "description": "Current creator-private setup and review."
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "description": "Up to 25 recent role rows, in sequence order."
+          },
+          "messages_starting_after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reuse with the draft messages endpoint and limit=25 to reconcile this window."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Older role rows can be read from the draft messages endpoint without a cursor."
+          }
+        }
+      },
       "CreateDraftRequest": {
         "type": "object",
         "description": "Atomically create a private draft and optional first message.",
@@ -19908,6 +20109,10 @@
           "operation_id": {
             "type": "string",
             "description": "Required retry identifier: a version 7 universally unique identifier (UUID).\n\nRetry within 24 hours with the same `operation_id` and unchanged request. After\nthat window, inspect existing resources before retrying."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Defaults to false. When true, save the finalized setup after this message succeeds.\nRequires `message`. Closing the browser does not cancel the save."
           },
           "source": {
             "$ref": "#/components/schemas/Source_Value",
@@ -20261,6 +20466,7 @@
               "type": "object",
               "description": "One user or assistant role in a durable request sequence.",
               "required": [
+                "save_requested",
                 "sequence",
                 "operation_id",
                 "role",
@@ -20306,6 +20512,17 @@
                 "role": {
                   "type": "string",
                   "description": "user or assistant."
+                },
+                "save_error_code": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "A stable error code when the setup could not be saved. The conversation remains available."
+                },
+                "save_requested": {
+                  "type": "boolean",
+                  "description": "True when this accepted message requests saving after successful completion."
                 },
                 "sequence": {
                   "type": "string",
@@ -20390,6 +20607,69 @@
                 "revision": {
                   "type": "string",
                   "description": "Decimal entry-local revision."
+                }
+              }
+            },
+            "description": "Current bounded rows."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Use this value unchanged for the next page, or stop when null."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Known total, or null.",
+            "minimum": 0
+          }
+        }
+      },
+      "CursorPage_SetupActivity": {
+        "type": "object",
+        "description": "One page of results. `total` is null when unavailable; `next_cursor` is null on the last\npage.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Safe durable activity metadata, with no runtime request or response bodies.",
+              "required": [
+                "event_id",
+                "event_type",
+                "status",
+                "request_json",
+                "created_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the receipt was written."
+                },
+                "event_id": {
+                  "type": "string",
+                  "description": "Stable event identity."
+                },
+                "event_type": {
+                  "type": "string",
+                  "description": "Always activity for this resource."
+                },
+                "request_json": {
+                  "type": "string",
+                  "description": "Safe receipt payload encoded as JSON text."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Recorded receipt status."
                 }
               }
             },
@@ -21395,6 +21675,10 @@
           "operation_id": {
             "type": "string",
             "description": "Required retry identifier: a version 7 universally unique identifier (UUID).\n\nRetry within 24 hours with the same `operation_id` and unchanged request. After\nthat window, inspect existing messages before retrying."
+          },
+          "save": {
+            "type": "boolean",
+            "description": "Defaults to false. When true, save the finalized setup after this message succeeds.\nFailed or stopped messages never save. Retry with the same value and operation identifier."
           }
         },
         "additionalProperties": false
@@ -23471,6 +23755,7 @@
         "type": "object",
         "description": "One user or assistant role in a durable request sequence.",
         "required": [
+          "save_requested",
           "sequence",
           "operation_id",
           "role",
@@ -23516,6 +23801,17 @@
           "role": {
             "type": "string",
             "description": "user or assistant."
+          },
+          "save_error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A stable error code when the setup could not be saved. The conversation remains available."
+          },
+          "save_requested": {
+            "type": "boolean",
+            "description": "True when this accepted message requests saving after successful completion."
           },
           "sequence": {
             "type": "string",

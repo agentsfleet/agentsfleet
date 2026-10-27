@@ -208,6 +208,7 @@ async fn malformed_key(api: InferenceApi, key: &str) {
             f.access(),
             &draft.id,
             SendMessage {
+                save: false,
                 message: TEXT.into(),
                 operation_id: mint(),
             },
@@ -250,6 +251,7 @@ async fn authentication_rejection_fails_and_settles_without_cancelling_the_chat(
             f.access(),
             &draft.id,
             SendMessage {
+                save: false,
                 message: TEXT.into(),
                 operation_id: mint(),
             },

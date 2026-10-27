@@ -14,7 +14,8 @@
     "zod": "^4.6.7"
   },
   "overrides": {
-    "playwright-core": "1.64.1"
+    "playwright-core": "1.64.1",
+    "@assistant-ui/store": "0.3.22"
   },
   "version": "0.28.2",
   "dependencies": {

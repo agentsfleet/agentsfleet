@@ -36,8 +36,6 @@ use afd_db::Db;
 use afd_vault::{SecretBody, SecretName, Vault};
 use jiff::Timestamp;
 
-use sqlx::Acquire as _;
-
 use crate::error::{Result, query};
 use crate::provider::Provider;
 use crate::sql;
@@ -188,8 +186,9 @@ impl Grants {
         // Nothing orders this against a concurrent Disconnect: the workspace
         // row cannot be locked by `api_runtime`, and Indy chose no lock over
         // one (Oct 20, 2026, PR #778).
-        let mut connection = self.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_INSTALL))?;
+        let mut transaction = sqlx::Transaction::begin(self.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_INSTALL))?;
         let fleets = self
             .seal(&mut transaction, workspace, &name, &body, now)
             .await?;
@@ -206,9 +205,10 @@ impl Grants {
             .await?;
         }
 
-        transaction.commit().await.map_err(query(CONTEXT_INSTALL))?;
-        drop(connection);
-        self.vault.publish_activity(&fleets).await;
+        self.vault
+            .commit_activity(transaction, fleets)
+            .await
+            .map_err(query(CONTEXT_INSTALL))?;
 
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.
@@ -230,7 +230,7 @@ impl Grants {
         name: &SecretName,
         body: &SecretBody,
         now: Timestamp,
-    ) -> Result<Vec<String>> {
+    ) -> Result<afd_events::activity::Announcement> {
         match self
             .vault
             .create_in(transaction, workspace, name, body, now)

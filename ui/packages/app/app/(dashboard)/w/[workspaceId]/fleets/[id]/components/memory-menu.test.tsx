@@ -29,7 +29,7 @@ it("places the workspace memory controls in the menu with plain descriptions", a
   expect(list.mock.calls).toEqual([]);
 });
 
-it("saves only the selected permission and refreshes the chat after its answer", async () => {
+it("saves only the selected permission and updates it without refreshing the route", async () => {
   save.mockResolvedValue({ok: true, data: {read: true, publish: false}});
   const user = userEvent.setup({delay: null});
   render(menu()); await user.click(screen.getByRole("button", {name: "Fleet actions"}));
@@ -38,7 +38,7 @@ it("saves only the selected permission and refreshes the chat after its answer",
   expect(screen.getByRole("menuitemcheckbox", {name: READ}).querySelector('[aria-hidden="true"][data-state="checked"]')).toBeTruthy();
   expect(screen.getByRole("menuitemcheckbox", {name: SHARE}).getAttribute("aria-checked")).toBe("false");
   expect(save).toHaveBeenCalledExactlyOnceWith("workspace", "fleet", {read: true});
-  expect(refresh).toHaveBeenCalledOnce();
+  expect(refresh).not.toHaveBeenCalled();
 });
 
 it("supports changing sharing with the keyboard while keeping the menu open", async () => {
@@ -59,6 +59,16 @@ it.each([403, 503])("keeps the previous permission and shows a refused save (%i)
   expect((await screen.findByRole("alert")).textContent).toContain("Memory change refused");
   expect(screen.getByRole("menuitemcheckbox", {name: READ}).getAttribute("aria-checked")).toBe("false");
   expect(refresh).not.toHaveBeenCalled();
+});
+
+it("uses the scope recovery message instead of a raw action error", async () => {
+  save.mockResolvedValue({ok: false, errorCode: "UZ-AUTH-022", error: "Internal grant implementation detail"});
+  const user = userEvent.setup({delay: null});
+  render(menu()); await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+  await user.click(screen.getByRole("menuitemcheckbox", {name: READ}));
+  expect((await screen.findByRole("alert")).textContent).toContain("You need an additional scope");
+  expect(screen.getByRole("alert").textContent).not.toContain("Internal grant");
+  expect(screen.getByRole("menuitemcheckbox", {name: READ}).getAttribute("aria-checked")).toBe("false");
 });
 
 it("permits retry after transport loss and blocks overlapping saves", async () => {
@@ -93,7 +103,7 @@ it("keeps the observed permission until its single pending change is confirmed",
   await act(async () => pending.resolve({ok: true, data: {read: true, publish: false}}));
   expect(read.getAttribute("aria-checked")).toBe("true");
   expect(screen.getByRole("menuitemcheckbox", {name: SHARE}).getAttribute("aria-checked")).toBe("false");
-  expect(refresh).toHaveBeenCalledOnce();
+  expect(refresh).not.toHaveBeenCalled();
 });
 
 it("lets a viewer open saved memories without exposing permission changes", async () => {

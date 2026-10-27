@@ -7,6 +7,26 @@ use serde_json::json;
 
 #[tokio::test]
 #[ignore = "needs isolated local Postgres and Dragonfly"]
+async fn activation_notifies_an_open_chat_and_retry_remains_quiet() {
+    let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
+    assert_eq!(
+        saved.access(Method::POST, "fixture-access").await.status(),
+        StatusCode::CREATED
+    );
+    let mut reader = Reader::open(&saved, &saved.fleet).await;
+    assert_eq!(saved.activate().await.status(), StatusCode::OK);
+    reader.changed().await;
+    assert_receipts(
+        &saved.receipts().await,
+        &[saved_receipt(), access_receipt(), ready_receipt()],
+    );
+    assert_eq!(saved.activate().await.status(), StatusCode::OK);
+    reader.quiet().await;
+    saved.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs isolated local Postgres and Dragonfly"]
 async fn access_changes_notify_only_dependent_fleets_in_the_owning_workspace() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     let other = Saved::create(json!({"credentials":[SERVICE]})).await;

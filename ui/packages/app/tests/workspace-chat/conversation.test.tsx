@@ -19,14 +19,27 @@ beforeEach(async () => {
   await client.initialize();
 });
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
+
+it("opens complete creator history from the workspace authoring route and permits retrying an older-page failure", async () => {
+  const older = "0199a801-1000-7000-8000-000000000009";
+  const load = vi.spyOn(client, "loadEarlierConversations").mockRejectedValue(new Error("History temporarily unavailable"));
+  const view: DraftView = {...client.getSnapshot(), draft: DRAFT, messages: [MESSAGE], truncated: true, conversationCursor: "older",
+    previousDrafts: [{id: older, messages: [], cancelledThrough: "0", truncated: true}]};
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
+  expect(screen.getByRole("link", {name: "Open full conversation"}).getAttribute("href")).toBe(`/w/${CHAT_PROPS.workspace}/fleets/new?draft=${DRAFT.id}`);
+  expect(screen.getByRole("link", {name: "Open full earlier conversation"}).getAttribute("href")).toBe(`/w/${CHAT_PROPS.workspace}/fleets/new?draft=${older}`);
+  fireEvent.click(screen.getByRole("button", {name: "Load earlier history"}));
+  await waitFor(() => expect(load).toHaveBeenCalledOnce());
+  expect(screen.getByRole("button", {name: "Load earlier history"})).toHaveProperty("disabled", false);
+});
 function LiveConversation() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  return <DraftConversation client={client} view={view} />;
+  return <DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />;
 }
 
 it("folds a long request without losing its full text", async () => {
   const text = `Investigate the development environment. ${"Include concrete evidence. ".repeat(60)}End of the full request.`;
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [{...MESSAGE, text}]}} />);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), messages: [{...MESSAGE, text}]}} />);
   expect(screen.queryByText(/End of the full request/)).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Show full message"}));
   expect(screen.getByText(/End of the full request/)).toBeTruthy();
@@ -40,7 +53,7 @@ it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved o
   const view = {...client.getSnapshot(), fleet: FLEET, activities: [activity], messages: [
     MESSAGE, {...MESSAGE, sequence: "2", text: "Change the setup", state: "running" as const, created_at: "1970-01-01T00:00:02Z"},
   ]};
-  render(<DraftConversation client={client} view={view}><p>Configuration readiness</p></DraftConversation>);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}><p>Configuration readiness</p></DraftConversation>);
   const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Save done v1" : "Setup done · v1");
   const checks = screen.getByText("Configuration readiness");
   const working = screen.getByRole("status", {name: "Working"});
@@ -49,7 +62,7 @@ it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved o
 });
 
 it("keeps saved setup actions inside the conversation history", () => {
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [MESSAGE]}}>
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), messages: [MESSAGE]}}>
     <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} />
   </DraftConversation>);
@@ -59,7 +72,7 @@ it("keeps saved setup actions inside the conversation history", () => {
 });
 
 it.each([false, true])("shows the new-fleet entrance only before an empty draft is saved (%s)", (saved) => {
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [], fleet: saved ? FLEET : null}}>
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), messages: [], fleet: saved ? FLEET : null}}>
     {saved ? <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} /> : null}
   </DraftConversation>);
@@ -106,7 +119,7 @@ it.each([
 ])("explains the recorded failure without asking for another message (%s)", (reason, copy) => {
   const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",
     text: undefined, failure: {reason, error_code: "UZ-TEST-001", recovery_action: "retry_message"}}]};
-  render(<DraftConversation client={client} view={view} />);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
   expect(screen.getByRole("log").textContent).toContain(copy);
   expect(screen.getByRole("log").textContent).not.toContain("UZ-TEST-001");
   fireEvent.click(screen.getByRole("button", {name: "View details"}));
@@ -134,7 +147,7 @@ it("loads more eligible authoring models and removes the control when the list e
 });
 
 it("does not offer more models after losing access, even when an older view had a cursor", () => {
-  render(<DraftConversation client={client} view={{...client.getSnapshot(), moreModels: true, inaccessible: true}} />);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), moreModels: true, inaccessible: true}} />);
   expect(screen.queryByRole("button", {name: "Load more models"})).toBeNull();
   expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
 });

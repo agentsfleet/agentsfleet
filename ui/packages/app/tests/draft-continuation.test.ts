@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
-import { continueSavedDraft, restoreFleetHistory } from "@/lib/api/draft-continuation";
+import { continueSavedDraft } from "@/lib/api/draft-continuation";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { DRAFT, DRAFT_ID, FLEET_DETAIL, FLEET_ID, MESSAGE, REVIEW, response } from "./helpers/draft-fixtures";
 
@@ -10,8 +10,9 @@ const fixture = new DraftClientFixture();
 const NEXT_DRAFT = "0199a801-1000-7000-8000-00000000000a";
 const SAVED = {...DRAFT, state: "closed", linked_fleet_id: FLEET_ID} as const;
 const BASE = "/live/v1/workspaces/workspace";
-const cards = (...drafts: (typeof SAVED)[]) => drafts.map(draft => ({...draft,
-  updated_at: MESSAGE.created_at, candidate_revision: 1, setup_revision: 1, publication_revision: null}));
+const context = (...drafts: (typeof SAVED | typeof DRAFT)[]) => ({fleet: fixture.fleet,
+  conversations: drafts.map(draft => ({draft, messages: [MESSAGE], messages_starting_after: null, truncated: false})),
+  activities: {items: [], next_cursor: null}, next_cursor: null});
 beforeEach(() => {fixture.mount(); fixture.fleet = FLEET_DETAIL;});
 afterEach(() => fixture.dispose());
 
@@ -77,26 +78,19 @@ it("refuses to continue a saved view without a fleet identity before making any 
 
 it("opens Edit setup with the creator-scoped history read and no mutation", async () => {
   fixture.current = SAVED;
-  fixture.override = ({path}) => path.endsWith("/drafts") ? response({items: [{...SAVED,
-    updated_at: MESSAGE.created_at, candidate_revision: 1, setup_revision: 1, publication_revision: null}], next_cursor: null}) : undefined;
+  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response(context(SAVED)) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await client.refreshFleetSetup();
   expect(client.getSnapshot().previousDrafts?.[0]?.messages).toEqual([MESSAGE]);
-  expect(fixture.calls.some(call => call.path.endsWith("/drafts") && new URLSearchParams(call.search).get("linked_fleet_id") === FLEET_ID)).toBe(true);
+  expect(fixture.calls.filter(call => call.path.endsWith("/authoring-context"))).toHaveLength(1);
   expect(fixture.mutations()).toEqual([]);
 });
 
 it("restores earlier saved conversations after reopening without executing historical Save messages", async () => {
   const latest = {...SAVED, id: NEXT_DRAFT};
-  fixture.override = ({path}) => {
-    if (path.endsWith("/drafts")) return response({items: [latest, SAVED].map(draft => ({...draft,
-      updated_at: MESSAGE.created_at, candidate_revision: 1, setup_revision: 1, publication_revision: null})), next_cursor: null});
-    if (path.endsWith(`/drafts/${NEXT_DRAFT}`)) return response(latest);
-    if (path.endsWith(`/drafts/${DRAFT_ID}`)) return response(SAVED);
-    if (path.endsWith("/messages") && path.includes("/drafts/")) return response({items: [{...MESSAGE, text: "Save"}], next_cursor: null});
-    return undefined;
-  };
+  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response({...context(latest, SAVED),
+    conversations: context(latest, SAVED).conversations.map(item => ({...item, messages: [{...MESSAGE, text: "Save"}]}))}) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await client.refreshFleetSetup();
@@ -117,7 +111,7 @@ it.each([
   if (failure === "missing instructions") fixture.fleet = {...FLEET_DETAIL, definition: undefined};
   if (failure === "wrong conversation") {
     fixture.current = {...SAVED, linked_fleet_id: NEXT_DRAFT};
-    fixture.override = ({path}) => path.endsWith("/drafts") ? response({items: cards(SAVED), next_cursor: null}) : undefined;
+    fixture.override = ({path}) => path.endsWith("/authoring-context") ? response(context(fixture.current)) : undefined;
   }
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await expect(client.refreshFleetSetup()).rejects.toMatchObject({name: "SetupUnavailable", status, message});
@@ -147,9 +141,8 @@ it.each([403, 404, 502])("does not replace saved instructions or start another d
 
 it("does not silently archive an earlier setup request that is still running", async () => {
   fixture.current = SAVED;
-  fixture.override = ({path}) => path.endsWith("/drafts") ? response({items: [{...SAVED,
-    updated_at: MESSAGE.created_at, candidate_revision: 1, setup_revision: 1, publication_revision: null}], next_cursor: null})
-    : path.includes("/drafts/") && path.endsWith("/messages") ? response({items: [{...MESSAGE, state: "running"}], next_cursor: null}) : undefined;
+  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response({...context(SAVED),
+    conversations: context(SAVED).conversations.map(item => ({...item, messages: [{...MESSAGE, state: "running"}]}))}) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await expect(client.refreshFleetSetup()).rejects.toMatchObject({status: 409, message: "Finish or stop your earlier setup request before opening a new edit."});
@@ -200,8 +193,7 @@ it("resumes a creator's editable conversation at the fleet's current setup revis
   fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID,
     review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   const client = await fixture.ready();
-  fixture.override = ({path}) => path.endsWith("/drafts")
-    ? response({items: [{...cards(SAVED)[0], state: DRAFT.state}], next_cursor: null}) : undefined;
+  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response(context(fixture.current)) : undefined;
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await client.refreshFleetSetup();
   expect(client.getSnapshot()).toMatchObject({draft: fixture.current, messages: [MESSAGE], model: DRAFT.authoring_model_ref,
@@ -221,87 +213,6 @@ it("refreshes access readiness without marking an unsaved proposal as saved", as
   expect(fixture.mutations()).toEqual([]);
 });
 
-// Value: history outages remain visible while the current setup and composer stay usable.
-it("retains current authoring on a history-list failure and can retry", async () => {
-  const client = await fixture.ready();
-  let view: DraftView = {...client.getSnapshot(), fleet: FLEET_DETAIL};
-  fixture.override = () => response({}, 503);
-  const update = (patch: Partial<typeof view>) => {view = {...view, ...patch};};
-  await restoreFleetHistory(BASE, view.fleet, new AbortController().signal, () => view, update);
-  expect(view).toMatchObject({truncated: true, busy: false, inaccessible: false, error: null});
-  fixture.override = ({path}) => path.endsWith("/drafts") ? response({items: cards(SAVED), next_cursor: null})
-    : path.endsWith(`/drafts/${DRAFT_ID}`) ? response(SAVED) : undefined;
-  await restoreFleetHistory(BASE, view.fleet, new AbortController().signal, () => view, update);
-  expect(view.previousDrafts?.[0]?.id).toBe(DRAFT_ID);
-  expect(fixture.mutations()).toEqual([]);
-});
-
-// Value: protects=late history responses cannot repopulate a different or cleared fleet page; fails_when=restoration ignores navigation or cancellation;
-// why_new=existing navigation cases kept a fleet selected; seam=none; no_claim=browser transport cancellation (mocked HTTP).
-it.each(["abort", "switch fleet", "clear fleet"])("discards a late history list after %s", async action => {
-  const client = await fixture.ready();
-  let view: DraftView = {...client.getSnapshot(), fleet: FLEET_DETAIL};
-  const pending = Promise.withResolvers<Response>();
-  fixture.override = () => pending.promise;
-  const controller = new AbortController();
-  const update = vi.fn();
-  const restoring = restoreFleetHistory(BASE, view.fleet, controller.signal, () => view, update);
-  if (action === "abort") controller.abort();
-  else if (action === "clear fleet") view = {...view, fleet: null};
-  else view = {...view, fleet: {...FLEET_DETAIL, id: NEXT_DRAFT}};
-  pending.resolve(response({items: cards(SAVED), next_cursor: NEXT_DRAFT}));
-  await restoring;
-  expect(update).not.toHaveBeenCalled();
-  expect(fixture.calls.filter(call => call.path.includes("/drafts/"))).toEqual([]);
-});
-
-it("marks a bounded history incomplete and excludes active, duplicate and unrelated conversations", async () => {
-  const client = await fixture.ready();
-  let view: DraftView = {...client.getSnapshot(), fleet: FLEET_DETAIL,
-    draft: {...DRAFT, linked_fleet_id: FLEET_ID}, previousDrafts: [{id: NEXT_DRAFT, messages: [], cancelledThrough: "0"}]};
-  fixture.override = () => response({items: [...cards(SAVED, {...SAVED, id: NEXT_DRAFT}),
-    {...cards(SAVED)[0], id: FLEET_ID, linked_fleet_id: NEXT_DRAFT}], next_cursor: NEXT_DRAFT});
-  await restoreFleetHistory(BASE, view.fleet, new AbortController().signal, () => view,
-    patch => {view = {...view, ...patch};});
-  expect(view.truncated).toBe(true);
-  expect(view.previousDrafts).toHaveLength(1);
-  expect(fixture.calls.at(-1)?.path).toBe(`${BASE}/drafts`);
-  expect(fixture.mutations()).toEqual([]);
-});
-
-it.each(["wrong fleet", "running", "unavailable"])("omits an unsafe historical conversation: %s", async refusal => {
-  const client = await fixture.ready();
-  let view: DraftView = {...client.getSnapshot(), fleet: FLEET_DETAIL};
-  fixture.override = ({path}) => {
-    if (path.endsWith("/drafts")) return response({items: cards(SAVED), next_cursor: null});
-    if (path.endsWith(`/drafts/${DRAFT_ID}`)) return refusal === "unavailable" ? response({}, 503)
-      : response({...SAVED, linked_fleet_id: refusal === "wrong fleet" ? NEXT_DRAFT : FLEET_ID});
-    if (path.endsWith("/messages")) return response({items: [{...MESSAGE, state: "running"}], next_cursor: null});
-    return undefined;
-  };
-  await restoreFleetHistory(BASE, view.fleet, new AbortController().signal, () => view,
-    patch => {view = {...view, ...patch};});
-  expect(view).toMatchObject({truncated: true, busy: false});
-  expect(view.previousDrafts ?? []).toEqual([]);
-  expect(fixture.mutations()).toEqual([]);
-});
-
-it("does not replace messages added while an older conversation is loading", async () => {
-  const client = await fixture.ready();
-  let view: DraftView = {...client.getSnapshot(), fleet: FLEET_DETAIL};
-  const pending = Promise.withResolvers<Response>();
-  fixture.override = ({path}) => path.endsWith("/drafts") ? response({items: cards(SAVED), next_cursor: null})
-    : path.endsWith(`/drafts/${DRAFT_ID}`) ? pending.promise : undefined;
-  const restoring = restoreFleetHistory(BASE, view.fleet, new AbortController().signal, () => view,
-    patch => {view = {...view, ...patch};});
-  await vi.waitFor(() => expect(fixture.calls.some(call => call.path.endsWith(`/drafts/${DRAFT_ID}`))).toBe(true));
-  view = {...view, messages: [{...MESSAGE, text: "A new question"}], previousDrafts: [{id: DRAFT_ID, messages: [], cancelledThrough: "0"}]};
-  pending.resolve(response(SAVED));
-  await restoring;
-  expect(view.messages[0]?.text).toBe("A new question");
-  expect(view.previousDrafts).toHaveLength(1);
-});
-
 // Value: protects=continuing a setup retains each restored conversation once; fails_when=a delayed revision read overwrites or duplicates restored history;
 // why_new=the original merge case did not include the current draft already archived; seam=none; no_claim=server history ordering (mocked HTTP).
 it.each([false, true])("merges restored history without duplicating an already archived current draft: %s", async archived => {
@@ -317,17 +228,4 @@ it.each([false, true])("merges restored history without duplicating an already a
   expect(next?.patch.previousDrafts?.map(draft => draft.id)).toEqual([NEXT_DRAFT, DRAFT_ID]);
   expect(next?.patch.previousDrafts?.[0]?.messages[0]?.text).toBe("Earlier chat");
   expect(fixture.mutations()).toEqual([]);
-});
-
-// Value: protects=no selected fleet means no private-history request; fails_when=history restoration fetches without a current owner;
-// why_new=late-response tests always began with a selected fleet; seam=none; no_claim=server authorization (no HTTP request is expected).
-it("does not request conversation history before a fleet is selected", async () => {
-  const client = await fixture.ready();
-  const before = fixture.calls.length;
-  const view = client.getSnapshot();
-  await restoreFleetHistory(BASE, null, new AbortController().signal, () => view, patch => {
-    throw new Error(`Unexpected history update: ${Object.keys(patch).join(",")}`);
-  });
-  expect(fixture.calls).toHaveLength(before);
-  expect(client.getSnapshot()).toBe(view);
 });

@@ -16,13 +16,15 @@ const FLEET_INDEX: &str = "idx_events_fleet_id_created_at_event_id";
 const WORKSPACE_INDEX: &str = "idx_events_workspace_id_created_at_event_id";
 /// The index one actor's read in a fleet walks (`schema/1700_fleet_events.sql`).
 const ACTOR_INDEX: &str = "idx_events_fleet_id_actor_created_at_event_id";
+/// Equality-filtered event types keep the cursor on the same ordered index.
+const TYPE_INDEX: &str = "idx_events_fleet_id_event_type_created_at_event_id";
 
 /// Each bound as Postgres prints it in a plan.
 const FLEET: &str = "fleet_id = $2";
 const WORKSPACE: &str = "workspace_id = $1";
 
 /// `(name, the index an unfiltered text walks in order, its bounds)`.
-pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 13] = [
+pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 15] = [
     (
         "fleet page",
         Some(FLEET_INDEX),
@@ -80,6 +82,20 @@ pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 13] = [
         ],
     ),
     ("thread page", Some(FLEET_INDEX), &[FLEET]),
+    (
+        "thread filtered",
+        Some(TYPE_INDEX),
+        &[FLEET, "event_type = $3"],
+    ),
+    (
+        "thread filtered after",
+        Some(TYPE_INDEX),
+        &[
+            FLEET,
+            "event_type = $3",
+            "ROW(created_at, event_id) < ROW($4, $5)",
+        ],
+    ),
     (
         "thread page after",
         Some(FLEET_INDEX),

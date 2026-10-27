@@ -45,8 +45,7 @@ export const SECRET_FORM_MODE = {CREATE: "create", REPLACE: "replace"} as const;
 const STORE_ACTION = "store the secret";
 const ADD_FIELD_LABEL = "Add field";
 const ADD_SECRET_LABEL = "Create";
-// Secret names become a vault key; field names become JSON object keys resolved
-// at runtime as ${secrets.<name>.<field>}, so both must be reference-safe.
+// New names support instruction references; existing vault names stay immutable.
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const FIELD_PATTERN = /^[A-Za-z0-9_]+$/;
 
@@ -100,6 +99,17 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+function formSchema(mode: Props["mode"], host: boolean) {
+  const names = mode === SECRET_FORM_MODE.REPLACE ? schema.extend({name: z.string()}) : schema;
+  if (!host) return names;
+  return names.extend({host: hostSchema}).superRefine((values, context) => {
+    values.fields.forEach((field, index) => {
+      if (field.key === "host") context.addIssue({code: z.ZodIssueCode.custom,
+        path: ["fields", index, "key"], message: "Use Allowed host above instead of a host field"});
+    });
+  });
+}
+
 const EMPTY_FIELD = { key: "", value: "" };
 
 export default function AddSecretForm(props: Props) {
@@ -128,7 +138,7 @@ function useSecretForm({workspaceId, initialName = "", initialFields = [], initi
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({
-    resolver: zodResolver(initialHost === undefined ? schema : schema.extend({host: hostSchema})),
+    resolver: zodResolver(formSchema(mode, initialHost !== undefined)),
     defaultValues: {name: initialName, host: initialHost,
       fields: initialFields.length ? initialFields.map(key => ({key, value: ""})) : [{...EMPTY_FIELD}]},
   });

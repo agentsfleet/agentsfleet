@@ -25,6 +25,17 @@ const submit = () => fireEvent.click(screen.getByRole("button", {name: SAVE}));
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
 
+// Value: protects=replacing an existing daemon-valid name; fails_when=create-only reference syntax blocks a read-only name;
+// seam=server action; no_claim=vault persistence.
+it("replaces fields under a dotted existing name without renaming it", async () => {
+  const existing = "my.key";
+  replace.mockResolvedValue({ok: true, data: {name: existing}});
+  render(<EditSecretDialog workspaceId={WORKSPACE} name={existing} open onOpenChange={vi.fn()} />);
+  enter(); submit();
+  await waitFor(() => expect(replace).toHaveBeenCalledWith(WORKSPACE, existing, {api_token: TOKEN}));
+  expect(create).not.toHaveBeenCalled();
+});
+
 it("replaces through the existing update action with a locked name and masked field values", async () => {
   replace.mockResolvedValue({ok: true, data: {name: NAME}});
   const close = vi.fn(); dialog(close);

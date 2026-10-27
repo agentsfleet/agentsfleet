@@ -19,7 +19,7 @@ const FINISHED: &str = "model-change-writes-finished";
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn saved_model_changes_record_one_notice_even_when_the_save_is_replayed() {
+async fn every_saved_revision_notifies_but_a_replayed_save_stays_quiet() {
     let fleet = Fleet::create().await;
     let (hub, mut reader) = subscribe(&fleet).await;
     let other = Fixture::create().await;
@@ -35,8 +35,7 @@ async fn saved_model_changes_record_one_notice_even_when_the_save_is_replayed() 
     let applied = fleet.apply(key.as_str(), tag, &request).await;
     assert_eq!(applied.status(), StatusCode::CREATED);
     let applied = json_body(applied).await;
-    let notice: Value = serde_json::from_str(&receive(&mut reader).await).expect("live notice");
-    assert_eq!(notice, json!({"kind": "catching_up", "dropped": 0}));
+    saved_and_ready(&mut reader).await;
     assert_eq!(fleet.current().await["setup_revision"], "2");
     assert_eq!(
         fleet.apply(key.as_str(), tag, &request).await.status(),
@@ -44,6 +43,7 @@ async fn saved_model_changes_record_one_notice_even_when_the_save_is_replayed() 
     );
     assert_model_notice(&fleet, selected.as_str()).await;
     save_without_model_change(&fleet, &applied).await;
+    saved_and_ready(&mut reader).await;
     FleetStreams::new(fleet.case.queue.clone())
         .publish_tail(fleet.saved["id"].as_str().expect("fleet ID"), FINISHED)
         .await
@@ -51,12 +51,19 @@ async fn saved_model_changes_record_one_notice_even_when_the_save_is_replayed() 
     assert_eq!(
         receive(&mut reader).await,
         FINISHED,
-        "replay and unchanged model publish no extra notice"
+        "replayed save publishes no extra notice"
     );
     drop(reader);
     hub.shutdown();
     fleet.case.cleanup().await;
     other.cleanup().await;
+}
+
+async fn saved_and_ready(reader: &mut Subscription) {
+    for _ in 0..2 {
+        let notice: Value = serde_json::from_str(&receive(reader).await).expect("live notice");
+        assert_eq!(notice, json!({"kind": "catching_up", "dropped": 0}));
+    }
 }
 
 async fn subscribe(fleet: &Fleet) -> (SubscriptionHub, Subscription) {

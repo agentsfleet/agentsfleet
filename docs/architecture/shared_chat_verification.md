@@ -1,8 +1,8 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-10-24
-product_version: 0.65.0
+verified: 2026-10-27
+product_version: 0.70.0
 executable: false
 ---
 
@@ -143,6 +143,18 @@ It fills missing usage fields and preserves reported cost, cache and reasoning c
 
 The received document is decoded locally through Rig without a physical send.
 
+### Durable saves and live receipts
+
+An accepted authoring message records an explicit `save` choice. The daemon completes a successful save-requested turn and writes its immutable setup in the report transaction.
+
+The browser can close after admission without losing that choice. A checked save refusal retains the answer and editable proposal; an internal failure rolls back the report.
+
+Activation follows the commit and retries on report replay. Current access is checked again before activation.
+
+`afd_events::activity::commit` owns the transaction through commit, releases its connection, then announces committed receipts. Rollbacks and exact replays emit no new receipts.
+
+The returned announcement is marked `must_use`. This catches accidental discard; it does not prevent a caller deliberately discarding it or pairing another transaction.
+
 ## Browser ownership
 
 ```mermaid
@@ -169,8 +181,9 @@ flowchart TD
 | `ChatMessageRow` | Share assistant logo alignment, operator bubble and text spacing |
 | `ChatComposerFrame` | Share input sizing, quiet focus appearance and focus restoration |
 
-Root `package.json` pins two Bun patches for `@assistant-ui/react` and `@assistant-ui/store`.
+The app pins `@assistant-ui/react` exactly; the root override pins `@assistant-ui/store` exactly. Root `package.json` registers both Bun patches.
 They restore reserved scroll space before a fold paints and retain bottom-following when a shorter viewport also shrinks the composer.
+Streaming mutations share one scheduled animation-frame update. Container resizes apply immediately; unmount cancels queued work and disconnects observers.
 The browser acceptance checks measure folding, viewport resizing, and manual history reading; keep those checks when updating either dependency.
 
 The setup adapter normalizes its one-based preview sequence before calling `ReplyStream`.
@@ -192,12 +205,17 @@ The mounted private identity owns the cache and clears it after lost access.
 
 The private transcript stays out of browser storage.
 
+The fleet editor reads current setup, creator-private conversations, and filtered receipts through `GET F/authoring-context`, as defined in the API reference.
+Conversation and receipt pages stay bounded. Older conversations load on request; truncated messages retain a link to their full private chat.
+The server measures complete serialized context bytes before trimming older turns or deferring conversations. Message and conversation boundaries advance together with those cuts.
+
 The sidebar reads saved fleets only. Creator-private drafts remain in **Unfinished setups** on **New fleet**.
 Both lists remain scoped to the account, workspace, and signed-in person.
 
 Draft projection indexes original requests by sequence once per snapshot.
 A conversation-owned weak cache preserves unchanged message objects while the latest reply streams.
 Settled rows receive message data without scanning the transcript again.
+Earlier conversation rows and decoded receipts retain their object identities. A stable fleet message renderer avoids rebuilding unchanged rows when surrounding controls change.
 
 Setup retry reads current client state, stops uncertain work when required, then submits the original request.
 Saved-chat retry uses the normal delivery queue and requires the original request's actor to match the signed-in person.
@@ -220,6 +238,9 @@ Model edits follow the separate [exact-text correction path](fleet_definitions.m
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.
 A successful setup save keeps authoring open. Saving manual instructions closes only the instruction editor.
+Saving also replaces the URL's setup revision. Start over reads the fleet's current revision before creating another draft.
+
+Optional receipt-read failures keep the confirmed save and previous receipts available. Lost access still clears private state.
 
 The authoring composer remains available after saving.
 New runs use the saved revision; existing runs keep their pinned version.

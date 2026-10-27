@@ -2,7 +2,7 @@ import type { DraftClient } from "@/lib/api/drafts";
 import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CHAT_PROPS, chooseSetupAction } from "./fixture";
+import { CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
 import { DefinitionEditor } from "@/components/domain/chat/DefinitionEditor";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { DraftClientFixture } from "@/tests/helpers/draft-client-fixture";
@@ -19,6 +19,7 @@ let applyCount: number;
 let editedDefinition: typeof definition;
 
 beforeEach(() => {
+  chatRouter.replace.mockClear();
   fixture = new DraftClientFixture(); fixture.mount();
   failure = "none"; patched = false; failed = false; applyCount = 0;
   editedDefinition = definition;
@@ -68,7 +69,7 @@ it("saves newer manual instructions after a definite Apply refusal", async () =>
   expect(client.getSnapshot().fleet?.definition?.instructions_md).toBe(newer);
   expect(applyCount).toBe(2);
 });
-afterEach(() => {cleanup(); fixture.dispose();});
+afterEach(() => {cleanup(); fixture.dispose(); chatRouter.search = "";});
 
 function LiveEditor({client, done, dirty}: {client: DraftClient; done: () => void; dirty: (value: boolean) => void}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
@@ -89,7 +90,7 @@ it("loads a revision selected before the initial chat surface mounts", async () 
   const latest = {...first, name: "Current deployment watch", setup_revision: "2", definition};
   let reads = 0;
   fixture.override = call => {
-    if (call.method === "GET" && call.path.endsWith(`/fleets/${FLEET_ID}`)) return response(++reads === 1 ? first : latest);
+    if (call.method === "GET" && call.path.endsWith("/authoring-context")) return response({fleet: ++reads === 1 ? first : latest, conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null});
     return normal(call);
   };
   render(<OpeningNavigation />);
@@ -102,9 +103,11 @@ it("loads a revision selected before the initial chat surface mounts", async () 
 // Value: protects=continuing a saved fleet's instructions and creator history;
 // fails_when=an unchanged incoming revision resets a locally advanced session; seam=HTTP fixture; no_claim=durable writes.
 it.each([false, true])("reopens saved instructions and creator history (restored edit: %s)", async restored => {
+  chatRouter.search = "view=chat";
   const normal = fixture.override;
-  if (restored) fixture.override = call => call.method === "GET" && call.path.endsWith("/drafts") && call.search.includes("linked_fleet_id=")
-    ? response({items: [{...fixture.current, updated_at: "1970-01-01T00:00:00Z", candidate_revision: 1, setup_revision: 1, publication_revision: null}], next_cursor: null}) : normal(call);
+  if (restored) fixture.override = call => call.method === "GET" && call.path.endsWith("/authoring-context")
+    ? response({fleet: fixture.fleet, conversations: [{draft: fixture.current, messages: [], messages_starting_after: null, truncated: false}],
+      activities: {items: [], next_cursor: null}, next_cursor: null}) : normal(call);
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
   await screen.findByRole("heading", {name: fixture.fleet.name});
   await chooseSetupAction("Instructions");
@@ -112,6 +115,7 @@ it.each([false, true])("reopens saved instructions and creator history (restored
   fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(fixture.fleet.setup_revision).toBe("2");
+  expect(chatRouter.replace).toHaveBeenLastCalledWith(`/w/${CHAT_PROPS.workspace}/fleets/new?fleet=${FLEET_ID}&setup_revision=2`, {scroll: false});
   const writes = [...fixture.mutations()];
   await chooseSetupAction("Instructions");
   await act(async () => {await Promise.resolve();});
@@ -123,6 +127,30 @@ it.each([false, true])("reopens saved instructions and creator history (restored
   page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "2"}} />);
   await act(async () => {await Promise.resolve();});
   expect(fixture.calls).toHaveLength(reads);
+  fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  const nextInstructions = "Use the newly selected saved revision.";
+  fixture.fleet = {...fixture.fleet, setup_revision: "3", definition: {...definition, instructions_md: nextInstructions}};
+  page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "3"}} />);
+  await screen.findByText("Fleet setup · v3");
+  await chooseSetupAction("Instructions");
+  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", nextInstructions);
+  expect(fixture.mutations()).toEqual(writes);
+});
+
+// Value: protects=recovery from a stale saved authoring URL; fails_when=Start over reuses its old revision;
+// seam=HTTP fixture and router; no_claim=real browser reload.
+it("starts over from the current revision when a reloaded authoring URL is stale", async () => {
+  chatRouter.replace.mockClear();
+  fixture.fleet = {...fixture.fleet, setup_revision: "2", definition};
+  render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
+  fireEvent.click(await screen.findByRole("button", {name: "Start over from current setup"}));
+  await screen.findByRole("heading", {name: fixture.fleet.name});
+  expect(screen.queryByText(/This fleet changed/)).toBeNull();
+  expect(chatRouter.replace).toHaveBeenLastCalledWith(`/w/${CHAT_PROPS.workspace}/fleets/new?fleet=${FLEET_ID}&setup_revision=2`, {scroll: false});
+  await chooseSetupAction("Instructions");
+  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", INSTRUCTIONS);
+  expect(fixture.mutations()).toEqual([]);
 });
 
 // Value: protects=finishing an accepted edit after partial failure;

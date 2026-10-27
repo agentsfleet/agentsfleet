@@ -3,8 +3,9 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { fleetActivityText, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
 import { draftThreadMessages } from "@/lib/api/draft-thread-messages";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
+import { readSetupActivity } from "@/lib/api/draft-activity";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
-import { DRAFT, DRAFT_ID, FLEET_DETAIL, FLEET_ID, MESSAGE, response } from "./helpers/draft-fixtures";
+import { DRAFT, DRAFT_ID, FLEET_DETAIL, FLEET_ID, MESSAGE, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const RECEIPT = {event_id: "setup_saved:one", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
@@ -58,7 +59,8 @@ it("rejects a malformed history response rather than displaying unvalidated fiel
   fixture.override = ({path}) => path.includes("/fleets/") && path.endsWith("/messages")
     ? response({items: [{...RECEIPT, created_at: "not a date"}], next_cursor: null}) : undefined;
   const client = await fixture.ready();
-  await expect(client.resume(DRAFT_ID)).rejects.toMatchObject({status: 502});
+  await expect(readSetupActivity(`/live/v1/workspaces/${WORKSPACE}`, FLEET_ID, new AbortController().signal)).rejects.toMatchObject({status: 502});
+  await client.resume(DRAFT_ID);
   expect(client.getSnapshot().activities ?? []).toEqual([]);
 });
 

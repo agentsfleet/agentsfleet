@@ -41,13 +41,22 @@ impl Setup {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         let locked = read::lock(&mut tx, access, &person, id).await?;
+        let draft = self.review_draft_on(&mut tx, locked).await?;
+        tx.commit().await.map_err(query(CONTEXT))?;
+        Ok(draft)
+    }
+    pub(crate) async fn review_draft_on(
+        &self,
+        connection: &mut PgConnection,
+        locked: read::Locked,
+    ) -> Result<Draft> {
         let review = match &locked.head_candidate_id {
             Some(id) => {
-                let candidate = candidate::read(&mut tx, &locked.id, id).await?;
+                let candidate = candidate::read(connection, &locked.id, id).await?;
                 Some(
                     build(
                         self,
-                        &mut tx,
+                        connection,
                         &Context::from(&locked),
                         &candidate,
                         clock::now(),
@@ -57,9 +66,8 @@ impl Setup {
             }
             None => None,
         };
-        let mut draft = read::project(&mut tx, locked).await?;
+        let mut draft = read::project(connection, locked).await?;
         draft.review = review;
-        tx.commit().await.map_err(query(CONTEXT))?;
         Ok(draft)
     }
 }

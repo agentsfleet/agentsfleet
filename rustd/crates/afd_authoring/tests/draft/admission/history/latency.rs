@@ -153,6 +153,7 @@ async fn failed_sequence_update_rolls_back_message_and_receipt_then_allows_same_
     let draft = queue(&f, "Original request").await;
     let operation = mint();
     let request = || SendMessage {
+        save: false,
         message: "Next request".into(),
         operation_id: operation.clone(),
     };

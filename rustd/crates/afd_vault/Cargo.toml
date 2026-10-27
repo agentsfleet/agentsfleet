@@ -19,7 +19,6 @@ workspace = true
 [dependencies]
 afd_events.workspace = true
 afd_dragonfly.workspace = true
-futures-util.workspace = true
 # Identifiers, the clock the write stamps rows with, and the registry codes.
 afd_core.workspace = true
 # The envelope, the associated data, and the key material types. The whole

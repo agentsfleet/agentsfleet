@@ -23,6 +23,8 @@ export class DraftClientFixture {
       const call = {path, search: url.search, method: init?.method ?? "GET", body: init?.body ? JSON.parse(typeof init.body === "string" ? init.body : "null") : undefined, headers: new Headers(init?.headers)};
       this.calls.push(call);
       const custom = await this.override(call); if (custom) return custom;
+      if (path.endsWith("/authoring-context")) return response({fleet: this.fleet, conversations: [],
+        activities: {items: [], next_cursor: null}, next_cursor: null});
       if (path.endsWith("/models")) return response({items: [MODEL], next_cursor: null});
       if (path.endsWith("/drafts") && call.method === "GET") return response({items: [], next_cursor: null});
       if (path.endsWith("/drafts") && call.method === "POST") return response({...this.current, accepted: ACCEPTED}, 201);

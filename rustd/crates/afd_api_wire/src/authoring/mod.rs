@@ -3,11 +3,14 @@
 //! Generic setup/edit fields let the daemon deserialize through its shared
 //! validator while this wire-only crate retains no datastore dependency.
 
+mod context;
 mod input;
 mod models;
 mod output;
 #[cfg(feature = "openapi")]
 mod schema;
+
+pub use context::{AuthoringContext, Conversation, SetupActivity};
 
 pub use models::{Eligibility, Pricing, WorkspaceModel};
 

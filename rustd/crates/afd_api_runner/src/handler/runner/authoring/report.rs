@@ -39,7 +39,7 @@ pub(crate) async fn handle<D: Services>(
     let request: Report = afd_core::json::object_from_slice(&body)
         .map_err(|_invalid| Refusal::malformed("Invalid authoring report body"))?;
     let result = services
-        .authoring()
+        .creations()
         .report(runner.id(), &lease, request)
         .await
         .map_err(authoring_refusal)?;

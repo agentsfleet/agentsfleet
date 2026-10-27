@@ -1,11 +1,24 @@
 import { z } from "zod";
-import type { Definition } from "./draft-types";
+import type { Definition, Draft } from "./draft-types";
 import type { DrawerEdit } from "./draft-state";
+import { SetupUnavailable } from "./draft-request";
 
 const encoder = new TextEncoder();
 const ROOTS = ["config"] as const;
 const RuntimeConfigSchema = z.record(z.string(), z.unknown());
 type ConfigOp = {op: "remove"; path: string} | {op: "add" | "replace"; path: string; value: unknown};
+
+export function createdDrawerPatch(created: Draft, input: DrawerEdit) {
+  if (!created.candidate) throw new SetupUnavailable("The selected source has no editable setup.", 409);
+  if (JSON.stringify(created.candidate.definition) !== JSON.stringify(input.definition) && !drawerMatches(created.candidate.definition, input)) {
+    return drawerPatch(created.candidate.definition, input);
+  }
+  if (created.review?.effective.instance_name !== input.instanceName
+    || input.runtimeModel !== undefined && created.review.effective.runtime_model_ref !== input.runtimeModel) {
+    return {instance_name: input.instanceName, ...(input.runtimeModel ? {runtime_model_ref: input.runtimeModel} : {})};
+  }
+  return undefined;
+}
 
 /** A replayed creation reads the current candidate after a lost native-edit response. */
 export function drawerMatches(prior: Definition, input: DrawerEdit): boolean {

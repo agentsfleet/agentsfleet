@@ -11,7 +11,6 @@ import {
   moreLinesLabel,
   outputPreview,
   toolCopy,
-  verbFor,
 } from "./tool-call-copy";
 import { DIFF_ROW } from "./tool-call-diff";
 import { ARGS_NOT_RECORDED, TOOL_BODY, TOOL_NAME } from "./tool-call-shape";
@@ -26,7 +25,7 @@ const CLIPPED = "x".repeat(ARGS_LEAF_MAX_BYTES);
 
 function headerOf(name: string, args: Record<string, string> | undefined, state: (typeof CELL_STATE)[keyof typeof CELL_STATE]) {
   const copy = toolCopy(name, args);
-  return `${verbFor(copy.verbs, state)} ${copy.target}`;
+  return `${(state === CELL_STATE.INTERRUPTED ? "Interrupted" : state === CELL_STATE.RUNNING ? copy.verbs.running : copy.verbs.done)} ${copy.target}`;
 }
 
 describe("toolCopy", () => {

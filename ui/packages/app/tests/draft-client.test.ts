@@ -115,7 +115,7 @@ describe("private setup editing and recovery boundaries", () => {
     fixture.override = ({path}) => path.endsWith("/messages") ? pending.promise : undefined;
     const reading = instance.retry(); instance.dispose();
     pending.resolve(response({items: [MESSAGE], next_cursor: null}));
-    await expect(reading).rejects.toMatchObject({status: 502});
+    await expect(reading).rejects.toMatchObject({name: "AbortError"});
     expect(instance.getSnapshot()).toMatchObject({draft: null, messages: [], busy: false});
   });
 

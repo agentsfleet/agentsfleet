@@ -47,6 +47,7 @@ pub(super) fn create(bytes: &[u8]) -> Result<CreateDraft, Refusal> {
     Ok(CreateDraft {
         source,
         message: request.message,
+        save: request.save,
         authoring_model_ref: request.authoring_model_ref,
         operation_id: uuid(&request.operation_id)?,
     })
@@ -68,6 +69,7 @@ pub(super) fn send(bytes: &[u8]) -> Result<SendMessage, Refusal> {
     let request: wire::MessageRequest = body(bytes)?;
     Ok(SendMessage {
         message: request.message,
+        save: request.save,
         operation_id: uuid(&request.operation_id)?,
     })
 }

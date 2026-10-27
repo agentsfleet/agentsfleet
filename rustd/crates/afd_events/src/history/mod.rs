@@ -29,6 +29,7 @@ mod actor;
 mod cursor;
 mod detail;
 mod filter;
+mod filtered;
 mod row;
 pub(crate) mod statement;
 mod tool_call;

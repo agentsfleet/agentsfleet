@@ -12,7 +12,7 @@ use afd_approval::{Origin, Wanted};
 use afd_core::id::Uuid7;
 use afd_observability::AuthoringStep;
 use jiff::Timestamp;
-use sqlx::Connection as _;
+use sqlx::Transaction;
 
 const SETUP_BUDGET: Duration = Duration::from_secs(15);
 
@@ -89,8 +89,9 @@ impl Creations {
         let prepared = self
             .prepare_initial(&snapshot, &key, payload.as_deref())
             .await?;
-        let mut connection = self.setup.drafts.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        let mut tx = Transaction::begin(self.setup.drafts.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         sqlx::query_scalar::<_, i64>(sql::WALLET)
             .bind(person.owner.as_str())
@@ -124,17 +125,10 @@ impl Creations {
             .into());
         }
         super::start::store(&mut tx, access, fleet, &initial).await?;
-        sqlx::query(sql::CLOSE_DRAFTS)
-            .bind(fleet.as_str())
-            .bind(DraftState::Closed.as_str())
-            .bind(super::PRIVATE_RETENTION)
-            .bind(DraftState::Saving.as_str())
-            .execute(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
+        close_saved_drafts(&mut tx, fleet).await?;
         let number = row.head_revision.to_string();
         let identity = format!("setup_ready:{number}");
-        afd_events::activity::record_on(
+        let announcement = afd_events::activity::record_on(
             &mut tx,
             access.workspace,
             fleet,
@@ -143,7 +137,9 @@ impl Creations {
         )
         .await
         .map_err(query(CONTEXT))?;
-        tx.commit().await.map_err(query(CONTEXT))?;
+        afd_events::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+            .await
+            .map_err(query(CONTEXT))?;
         // Only the commit whose guarded update moved `installing` to `active`
         // gets here; a retry finds the fleet active and returns above.
         let step = AuthoringStep::SetupFinished {
@@ -152,4 +148,16 @@ impl Creations {
         self.setup.drafts.reached(access, step);
         Ok(())
     }
+}
+
+async fn close_saved_drafts(connection: &mut sqlx::PgConnection, fleet: &Uuid7) -> Result<()> {
+    sqlx::query(sql::CLOSE_DRAFTS)
+        .bind(fleet.as_str())
+        .bind(DraftState::Closed.as_str())
+        .bind(super::PRIVATE_RETENTION)
+        .bind(DraftState::Saving.as_str())
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(())
 }

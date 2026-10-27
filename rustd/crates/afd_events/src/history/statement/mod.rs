@@ -130,7 +130,7 @@ pub const QUEUED_READ_TEXTS: [(&str, &str); 2] = [
 /// Every listing and thread text, named, for the suite that asks Postgres how
 /// it plans each one.
 #[cfg(feature = "test-util")]
-pub const READ_TEXTS: [(&str, &str); 13] = [
+pub const READ_TEXTS: [(&str, &str); 15] = [
     ("fleet page", SELECT_FLEET_PAGE),
     ("fleet page by actor", SELECT_FLEET_PAGE_BY_ACTOR),
     ("fleet page after", SELECT_FLEET_PAGE_AFTER),
@@ -147,6 +147,8 @@ pub const READ_TEXTS: [(&str, &str); 13] = [
     ),
     ("thread page", SELECT_THREAD_PAGE),
     ("thread page after", SELECT_THREAD_PAGE_AFTER),
+    ("thread filtered", SELECT_THREAD_FILTERED),
+    ("thread filtered after", SELECT_THREAD_FILTERED_AFTER),
     ("thread finished before", SELECT_THREAD_FINISHED_BEFORE),
     ("fleet page of actor", SELECT_FLEET_PAGE_OF_ACTOR),
     (
@@ -154,6 +156,12 @@ pub const READ_TEXTS: [(&str, &str); 13] = [
         SELECT_FLEET_PAGE_OF_ACTOR_AFTER,
     ),
 ];
+
+/// Recorded events of one type, before the page limit reads their bodies.
+pub(super) const SELECT_THREAD_FILTERED: &str = include_str!("select_thread_filtered.sql");
+/// The same equality-filtered walk after a composite cursor.
+pub(super) const SELECT_THREAD_FILTERED_AFTER: &str =
+    include_str!("select_thread_filtered_after.sql");
 
 #[cfg(test)]
 mod tests;

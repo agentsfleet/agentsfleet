@@ -137,7 +137,7 @@ connection or transaction; there is no generic repository trait.
 | Table | Purpose | Columns |
 |---|---|---|
 | `drafts` | One private setup chat | `id, workspace_id, tenant_id, user_id, title, status, tenant_model_id, head_candidate_id, source_type, source_library_revision_id, source_fleet_revision_id, instance_name, fleet_id, library_revision_id, last_message_sequence, cancelled_through_sequence, resource_version, closed_at, expires_at, created_at, updated_at` |
-| `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, operation_id, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, finished_at, created_at, updated_at` |
+| `messages` | One turn: what was typed, what came back | `id, draft_id, sequence, operation_id, status, tenant_model_id, user_text, answer_text, candidate_id, failure_reason, save_requested, save_error_code, finished_at, created_at, updated_at` |
 | `candidates` | A frozen numbered setup the model proposed | `id, draft_id, revision, definition, canonical_digest, policy_semantics, created_at` · append-only |
 | `attempts` | One runner lease running one message, money reserved, model pinned | `id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence, fencing_token, model_token_hash, model_snapshot, status, lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count, output_token_count, reported_runtime_ms, last_activity_sequence, failure_reason, outcome, created_at, updated_at` · `reserved_nanos` is the ceiling its hold reserves; `outcome` is set once usage settles |
 | `dispatches` | One physical model call: intent before, result after; `native_reply` is the provider's own reply kept for replay, private like `result` | `id, attempt_id, sequence, request_digest, status, result, usage, native_reply, dispatch_expires_at, failure_cause, private_expires_at, created_at, updated_at` |
@@ -150,6 +150,7 @@ connection or transaction; there is no generic repository trait.
 - **Model pointers.** `drafts.tenant_model_id` and `messages.tenant_model_id` are NULL for the
   platform default and otherwise reference a `model.tenant_models` row of the same tenant. The wire
   keeps today's string: `platform-default` maps to NULL, a tenant model id maps to the row.
+- **Chat save intent.** `messages.save_requested` persists the accepted request to save after a completed turn. The report writer saves the setup with the answer. A checked save refusal retains the answer and records its safe code in `save_error_code` (`schema/2170_authoring_message_save.sql`).
 - **Source and publication are separate facts.** `source_type` (blank, definition, library, fleet)
   plus `source_library_revision_id` or `source_fleet_revision_id` record where the chat started;
   `library_revision_id` records what it published. A draft can start from Library revision A and

@@ -116,8 +116,9 @@ function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, s
   });
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
   const setupEventId = useMemo(() => stream.events.findLast(event => {
+    if (event.status !== FLEET_ACTIVITY.status) return false;
     const activity = readFleetActivity(event.custom?.requestJson ?? "");
-    return event.status === FLEET_ACTIVITY.status && activity
+    return activity
       && activity.kind === ACTIVITY_KIND.setupSaved
       && activity.revision === setupRevision;
   })?.id, [stream.events, setupRevision]);

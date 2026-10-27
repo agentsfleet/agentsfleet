@@ -88,8 +88,10 @@ it("refreshes the editable review after access changes without saving the propos
 // why_new=resume starts a watcher but the fleet edit entrypoint differs; seam=browser EventSource and HTTP only; no_claim=live transport.
 it("follows a running edit when opening the saved fleet's current conversation", async () => {
   let running = true;
-  fixture.override = ({path, method}) => path.endsWith("/drafts") && method === "GET"
-    ? response({items: [{...fixture.current, updated_at: MESSAGE.created_at, candidate_revision: 1, setup_revision: 1, publication_revision: null}], next_cursor: null})
+  fixture.override = ({path, method}) => path.endsWith("/authoring-context")
+    ? response({fleet: fixture.fleet, conversations: [{draft: fixture.current,
+      messages: [{...MESSAGE, state: MESSAGE_STATE.running}], messages_starting_after: null, truncated: false}],
+      activities: {items: [], next_cursor: null}, next_cursor: null})
     : path.includes("/drafts/") && path.endsWith("/messages") && method === "GET"
       ? response({items: [{...MESSAGE, state: running ? MESSAGE_STATE.running : MESSAGE_STATE.completed}], next_cursor: null}) : undefined;
   const client = await fixture.ready();
@@ -99,7 +101,7 @@ it("follows a running edit when opening the saved fleet's current conversation",
   expect(FakeEventSource.instances).toHaveLength(1);
   const stream = FakeEventSource.instances[0]!;
   stream.open();
-  await vi.waitFor(() => expect(fixture.calls.filter(call => call.path.includes("/drafts/") && call.path.endsWith("/messages"))).toHaveLength(2));
+  await vi.waitFor(() => expect(fixture.calls.filter(call => call.path.includes("/drafts/") && call.path.endsWith("/messages"))).toHaveLength(1));
   running = false;
   stream.emitNamed(DRAFT_EVENT.completed, JSON.stringify({draft_id: DRAFT_ID}));
   await vi.waitFor(() => expect(client.getSnapshot().messages[0]?.state).toBe(MESSAGE_STATE.completed));
