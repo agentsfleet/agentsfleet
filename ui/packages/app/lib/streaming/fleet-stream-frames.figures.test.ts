@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { HEADLINE, OUTCOME } from "@/lib/events/event-summary";
+import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
 import { applyLiveFrame } from "./fleet-stream-frames";
 import { rowToEvent, type FleetEvent } from "./fleet-stream-row";
 
@@ -194,6 +195,17 @@ describe("event_complete — a row the timeline never opened", () => {
 });
 
 describe("rowToEvent", () => {
+  // Value: protects=backfilled receipts stay system activity without a fabricated completed run;
+  // fails_when=recorded status gets the ordinary completion floor; seam=none; no_claim=live transport.
+  it("keeps a saved setup receipt separate from a completed fleet answer", () => {
+    const receipt = {...row({actor: "config_reload", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
+      tokens: null, wall_ms: null, cost_nanos: null}),
+      request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "3"})};
+    expect(rowToEvent(receipt)).toMatchObject({role: "system", text: "Save done v3", reply: "", outcome: "",
+      status: FLEET_ACTIVITY.status, tokens: null, wallMs: null, costNanos: null});
+    expect(rowToEvent(row()).outcome).toBe(OUTCOME.COMPLETED);
+  });
+
   it("carries a durable row's figures so a backfilled completion moves the strip too", () => {
     expect(rowToEvent(row())).toMatchObject({ tokens: 1200, wallMs: 12_000, costNanos: "40000000" });
     expect(rowToEvent(row({ cost_nanos: null }))).toMatchObject({ costNanos: null });

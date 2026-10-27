@@ -14,11 +14,12 @@ const fixture = new FleetModelFixture();
 beforeEach(() => {fixture.mount(); refresh.mockReset();});
 afterEach(() => {cleanup(); fixture.dispose();});
 
-function workspace(revision = "1", model = MODEL_REF) {
+function workspace(revision = "1", model = MODEL_REF, inlineEdit = false) {
   return <FleetSetupWorkspace {...MODEL_OWNER} fleet={MODEL_OWNER.fleet} revision={revision} model={model}
-    viewer="creator" header={<EditSetupButton />}>
+    viewer="creator" header={<EditSetupButton workspace={MODEL_OWNER.workspace} fleet={MODEL_OWNER.fleet} revision={revision} />}>
     <Input aria-label="Unsent fleet message" defaultValue="" />
     <FleetModelSelect label={model === MODEL_REF ? MODEL.label : RUNTIME_MODEL.label} />
+    {inlineEdit ? <EditSetupButton inline /> : null}
   </FleetSetupWorkspace>;
 }
 
@@ -54,18 +55,22 @@ it("keeps the confirmed model if route refresh becomes unavailable after saving"
 
 it("keeps the saved label during an unconfirmed apply and offers its retained retry", async () => {
   fixture.loseApply = true;
-  render(workspace());
+  render(workspace("1", MODEL_REF, true));
+  expect(screen.getAllByRole("link", {name: "Edit setup"})).toHaveLength(2);
   await chooseRuntime();
   await screen.findByRole("button", {name: "Retry"});
   expect(refresh).not.toHaveBeenCalled();
   expect(screen.getByRole("combobox")).toHaveProperty("disabled", true);
   expect(screen.getByRole("combobox").textContent).toContain(MODEL.label);
-  expect(screen.getByRole("button", {name: "Edit setup"})).toHaveProperty("disabled", true);
+  const edits = screen.getAllByRole("button", {name: "Edit setup"});
+  expect(edits).toHaveLength(2);
+  for (const edit of edits) expect(edit).toHaveProperty("disabled", true);
   await userEvent.click(screen.getByRole("button", {name: "Retry"}));
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
   expect(screen.getByRole("combobox").textContent).toContain(RUNTIME_MODEL.label);
   expect(fixture.applyKeys).toHaveLength(2);
   expect(fixture.applyKeys[1]).toBe(fixture.applyKeys[0]);
+  expect(screen.getAllByRole("link", {name: "Edit setup"})).toHaveLength(2);
 });
 
 it.each(["source", "apply"])("reloads a stale fleet before saving another model (%s)", async (step) => {

@@ -37,9 +37,10 @@ export function FleetRecoveryContent({workspace, fleet, setupPending}: {workspac
     } catch (cause) { setError(setupErrorMessage(cause)); }
     finally { setBusy(false); }
   };
-  return <div className="mb-lg min-h-0 overflow-y-auto space-y-md">
+  return <div className="space-y-md">
     {error ? <Alert variant="destructive">{error}</Alert> : null}
     {setupPending ? <SetupProgress fleet={fleet} workspace={workspace} busy={unavailable} onContinue={() => { void resume(); }}
+      onRefresh={async () => {router.refresh();}}
       onRetrySchedule={(schedule) => { void retrySchedule(schedule); }} />
       : <ScheduleSync schedules={fleet.schedules} busy={unavailable} onRetry={(schedule) => { void retrySchedule(schedule); }} />}
   </div>;

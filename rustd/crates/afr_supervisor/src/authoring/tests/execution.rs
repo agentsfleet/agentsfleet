@@ -58,7 +58,7 @@ async fn a_plain_answer_uses_only_the_canonical_scoped_route_and_private_report(
 }
 
 #[tokio::test]
-async fn cut_output_never_submits_a_proposal_even_if_a_reply_contains_one() {
+async fn cut_output_never_completes_or_submits_a_proposal() {
     let mut rig = rig(|call| match call.verb {
         Verb::AuthoringModel => result(
             call,
@@ -71,7 +71,9 @@ async fn cut_output_never_submits_a_proposal_even_if_a_reply_contains_one() {
     });
     let (calls, report) = run(&mut rig, lease()).await;
     assert_eq!(calls.len(), 2);
-    assert_eq!(report["outcome"], "completed");
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["failure_reason"], "provider_failed");
+    assert!(report["answer"].is_null());
     assert_eq!(report["usage"]["output_tokens"], 2);
 }
 

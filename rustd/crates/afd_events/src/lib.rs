@@ -33,6 +33,7 @@
 
 #![deny(clippy::self_named_module_files)]
 
+pub mod activity;
 mod closed;
 mod counters;
 pub mod error;

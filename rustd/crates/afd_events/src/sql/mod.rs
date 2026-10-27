@@ -55,6 +55,9 @@
 /// `$7` resumes-event, `$8` status.
 pub const INSERT_FLEET_EVENT: &str = include_str!("insert_fleet_event.sql");
 
+/// Access receipts: workspace, required service, actor, type, status, metadata.
+pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_activity.sql");
+
 /// [`INSERT_FLEET_EVENT`] as the lease path runs it: a steer's row is stamped
 /// with the instant it was ADMITTED, not the instant a runner took it.
 ///

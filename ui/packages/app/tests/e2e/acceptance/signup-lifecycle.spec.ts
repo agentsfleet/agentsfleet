@@ -115,9 +115,9 @@ test.describe("signup → install → lifecycle", () => {
     await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "live");
 
-    // Billing page renders the balance card (starter credit).
+    // Billing page loads the report's period totals.
     await page.goto("/settings/billing");
-    await expect(page.getByTestId("balance-headline")).toBeVisible();
+    await expect(page.getByLabel("Period totals")).toBeVisible();
 
     // Lifecycle: Stop → Resume → Kill, each via the AlertDialog confirm.
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));

@@ -7,6 +7,7 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { DraftConversation } from "@/components/domain/chat/DraftConversation";
 import { SetupProgress } from "@/components/domain/chat/SetupProgress";
 import { LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
+import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
 import { DRAFT, FLEET, MESSAGE, MODEL, response } from "@/tests/helpers/draft-fixtures";
 
@@ -23,15 +24,38 @@ function LiveConversation() {
   return <DraftConversation client={client} view={view} />;
 }
 
+it("folds a long request without losing its full text", async () => {
+  const text = `Investigate the development environment. ${"Include concrete evidence. ".repeat(60)}End of the full request.`;
+  render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [{...MESSAGE, text}]}} />);
+  expect(screen.queryByText(/End of the full request/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Show full message"}));
+  expect(screen.getByText(/End of the full request/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Show less"}));
+  expect(screen.queryByText(/End of the full request/)).toBeNull();
+});
+
+it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved occurrence and readiness before the next working turn (%s)", kind => {
+  const activity = {event_id: "setup:one", event_type: "activity", status: "recorded",
+    request_json: JSON.stringify({kind, revision: "1"}), created_at: "1970-01-01T00:00:01Z"};
+  const view = {...client.getSnapshot(), fleet: FLEET, activities: [activity], messages: [
+    MESSAGE, {...MESSAGE, sequence: "2", text: "Change the setup", state: "running" as const, created_at: "1970-01-01T00:00:02Z"},
+  ]};
+  render(<DraftConversation client={client} view={view}><p>Configuration readiness</p></DraftConversation>);
+  const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Save done v1" : "Setup done · v1");
+  const checks = screen.getByText("Configuration readiness");
+  const working = screen.getByRole("status", {name: "Working"});
+  expect(saved.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(checks.compareDocumentPosition(working) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
 it("keeps saved setup actions inside the conversation history", () => {
   render(<DraftConversation client={client} view={{...client.getSnapshot(), messages: [MESSAGE]}}>
     <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} />
   </DraftConversation>);
-  const open = screen.getByRole("link", {name: "Open fleet"});
-  expect(screen.getByRole("log").contains(open)).toBe(true);
-  expect(open.getAttribute("href")).toBe(`/w/${CHAT_PROPS.workspace}/fleets/${FLEET.id}`);
-  expect(screen.getByText(/When you send it a message/)).toBeTruthy();
+  const saved = screen.getByRole("heading", {name: "Save done v1"});
+  expect(screen.getByRole("log").contains(saved)).toBe(true);
+  expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
 });
 
 it.each([false, true])("shows the new-fleet entrance only before an empty draft is saved (%s)", (saved) => {
@@ -44,11 +68,11 @@ it.each([false, true])("shows the new-fleet entrance only before an empty draft 
   if (saved) {
     expect(entrance).toBeNull();
     expect(suggestion).toBeNull();
-    expect(screen.getByRole("log").contains(screen.getByRole("link", {name: "Open fleet"}))).toBe(true);
+    expect(screen.getByRole("log").contains(screen.getByRole("heading", {name: "Save done v1"}))).toBe(true);
   } else {
     expect(entrance).toBeTruthy();
     expect(suggestion).toBeTruthy();
-    expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
+    expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
   }
 });
 

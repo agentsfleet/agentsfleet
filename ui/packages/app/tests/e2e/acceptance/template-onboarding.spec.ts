@@ -18,7 +18,7 @@ test("a published recipe is inspected and pins the selected revision in a new pr
   const published = await publishFixtureLibrary(FIXTURE_KEY.regular, workspace, fixtureDefinition(name, INSTRUCTIONS));
   await signInAs(page, FIXTURE_KEY.regular);
   await page.goto(workspaceHref(workspace, "fleets/new"));
-  await expect(page.getByLabel("Private fleet setup conversation")).toBeVisible();
+  await expect(page.getByLabel(CHAT_PLACEHOLDER)).toBeEnabled();
   await openSettingsDestination(page, "Fleet library");
   await expect(page).toHaveURL(workspaceUrlPattern("library"));
   const inspected = page.waitForResponse((response) => response.url().includes(`revision_id=${published.revision_id}`));

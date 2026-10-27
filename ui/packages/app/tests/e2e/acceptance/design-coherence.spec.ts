@@ -61,7 +61,10 @@ test("Secrets keeps Created aligned before Actions at desktop and mobile widths"
       await page.goto(`/w/${workspaceId}/secrets`);
       await checkCreatedColumn(page, name);
       await expectAccessible(page, "Populated secrets table");
-      for (const action of ["Edit", "Rename", "Delete"]) {
+      await expect(page.getByRole("button", {name: `Rename secret ${name}`, exact: true})).toHaveCount(0);
+      const nameCell = page.getByRole("row").filter({hasText: name}).getByRole("cell").first();
+      await expect(nameCell.getByRole("button", {name: `Copy secret name: ${name}`, exact: true})).toBeVisible();
+      for (const action of ["Edit", "Delete"]) {
         const opener = page.getByRole("button", { name: `${action} secret ${name}`, exact: true });
         await opener.click();
         const dialog = page.getByRole("dialog").or(page.getByRole("alertdialog"));

@@ -49,8 +49,16 @@ impl Case {
     }
 
     pub(super) async fn request(&self) -> (String, Value) {
+        self.request_with(json!({})).await
+    }
+
+    pub(super) async fn request_with(&self, config: Value) -> (String, Value) {
         let mut body = self.base.request(&mint());
         body.as_object_mut().expect("request").remove("message");
+        body["source"]["definition"]["config"]["x-agentsfleet"]
+            .as_object_mut()
+            .expect("runtime config")
+            .extend(config.as_object().expect("config amendments").clone());
         let response = send(
             &self.router,
             Method::POST,

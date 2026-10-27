@@ -100,8 +100,7 @@ async fn receive(reader: &mut Subscription) -> String {
 }
 
 async fn assert_model_notice(fleet: &Fleet, selected: &str) {
-    let thread = events(fleet, "messages").await;
-    let notices = thread["items"].as_array().expect("thread items");
+    let notices = history_with_receipts(fleet, 2).await;
     assert_eq!(notices.len(), 1, "replayed save records one notice");
     assert_eq!(notices[0]["event_type"], "model_changed");
     assert_eq!(notices[0]["actor"], "config_reload");
@@ -119,8 +118,13 @@ async fn assert_model_notice(fleet: &Fleet, selected: &str) {
         fleet.case.base.model.as_str()
     );
     assert_eq!(
-        events(fleet, "events").await["items"][0]["event_type"],
-        "model_changed"
+        events(fleet, "events").await["items"]
+            .as_array()
+            .expect("history items")
+            .iter()
+            .filter(|item| item["event_type"] == "model_changed")
+            .count(),
+        1
     );
 }
 
@@ -134,13 +138,7 @@ async fn save_without_model_change(fleet: &Fleet, applied: &Value) {
         )
         .await;
     assert_eq!(saved.status(), StatusCode::CREATED);
-    assert_eq!(
-        events(fleet, "messages").await["items"]
-            .as_array()
-            .expect("thread items")
-            .len(),
-        1
-    );
+    assert_eq!(history_with_receipts(fleet, 3).await.len(), 1);
 }
 
 #[tokio::test]
@@ -169,10 +167,7 @@ async fn catalogue_price_changes_do_not_require_review_to_resume_a_ready_fleet()
             .any(|check| check["subject"] == "review_changed")
     );
     assert!(
-        events(&fleet, "messages").await["items"]
-            .as_array()
-            .expect("thread items")
-            .is_empty(),
+        history_with_receipts(&fleet, 1).await.is_empty(),
         "price drift is not a model change"
     );
     fleet.case.cleanup().await;
@@ -232,6 +227,41 @@ async fn events(fleet: &Fleet, suffix: &str) -> Value {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     json_body(response).await
+}
+
+/// Assert every saved revision's receipts while keeping model notices distinct.
+async fn history_with_receipts(fleet: &Fleet, revision: u32) -> Vec<Value> {
+    let history = events(fleet, "messages").await;
+    let items = history["items"].as_array().expect("thread items");
+    let mut receipts = Vec::new();
+    let mut notices = Vec::new();
+    for item in items {
+        if item["event_type"] == "activity" {
+            assert_eq!(item["actor"], "system");
+            assert_eq!(item["status"], "recorded");
+            assert!(item["response_text"].is_null());
+            let payload: Value =
+                serde_json::from_str(item["request_json"].as_str().expect("receipt JSON"))
+                    .expect("typed receipt");
+            receipts.push(payload.to_string());
+        } else {
+            assert_eq!(item["event_type"], "model_changed");
+            notices.push(item.clone());
+        }
+    }
+    let mut expected: Vec<_> = (1..=revision)
+        .flat_map(|number| {
+            ["setup_saved", "setup_ready"]
+                .map(|kind| json!({"kind": kind, "revision": number.to_string()}).to_string())
+        })
+        .collect();
+    receipts.sort();
+    expected.sort();
+    assert_eq!(
+        receipts, expected,
+        "each committed setup has one receipt of each kind"
+    );
+    notices
 }
 
 #[tokio::test]

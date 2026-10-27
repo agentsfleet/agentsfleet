@@ -11,7 +11,7 @@ Read this when changing reusable setup, fleet setup revisions, or Definition val
 
 ## Setup authority
 
-One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#verification-evidence).
+One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
 
 ### Drafts, Library and fleets
 
@@ -26,6 +26,8 @@ Publishing creates a Library entry or appends an immutable revision to a selecte
 ## Storage and runtime reads
 
 Postgres stores normalized Definitions, immutable candidate/Library/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision.
+
+Setup saves, readiness, access storage and memory-sharing changes add history-only receipts to `fleet.events` in their mutation's transaction. Their `recorded` status creates no admission and stays outside runtime model history; the browser displays permitted metadata in chronological order.
 
 Library removal deletes the entry and its Library history. Installed fleets retain their own frozen revisions; draft source and publication references become null.
 
@@ -77,6 +79,8 @@ The model instead proposes `append {text}` or `replace {old_text,text}` instruct
 
 The runner returns bounded corrective feedback for refused arguments or rejected native edits. Corrections share the admitted turn’s output allowance and maximum eight model calls; exhaustion ends without claiming the setup is ready. Usage remains charged for observed calls, including rejected proposals.
 
+An accepted edit retains the model's conversational answer. A tool-only reply continues with its accepted receipt within the same allowance; the runner supplies no stock review reminder. Questions can be answered without proposing another edit.
+
 Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save and publication.
 
 Implementation: `afd_authoring/src/model/provider/edits.rs`, `afd_fleet_runtime/src/definition/edit/mod.rs`, and `afr_supervisor/src/authoring/{proposal,turn}.rs` under `rustd/crates`.
@@ -89,9 +93,13 @@ The daemon derives candidate identity, normalized definition, `canonical_digest`
 
 Review binds candidate content, instance name, runtime model, source/target revisions, policy marker, and relevant resolution versions. Exclude `readiness[].observed_at`: ordinary time passage must not invalidate every review. Changed effective permissions or model resolution invalidates the digest. Missing connections change live readiness without rewriting reusable requirements. Save rechecks the workspace owner's authority.
 
+In browser authoring, ordinary questions and changes continue the conversation without a review reminder. A standalone command such as “save this” or “save changes” starts one finalization-and-save operation. The selected model receives the working conversation context and current setup; it incorporates the person's latest decisions through validated native edits when needed. Exploratory questions do not become requirements. The browser shows “Saving setup...” while finalization and the checked Save or Apply write are pending, then “Save done vN” after the database acknowledges the write. Readiness is displayed separately, so saving does not claim connected access or start a run.
+
+The save uses the candidate pinned by that completed authoring report, including a candidate first created or changed by the Save turn. A different head after finalization, failed or stopped turns, unknown usage, quoted commands and ordinary questions cannot trigger a save. Fresh digest and setup-tag validation and the existing idempotency key protect the write. The command remains pending only in the current browser session; reloading history never executes it. There is no second review or Save confirmation.
+
 The fleet chat model selector saves a setup revision through the native edit and reviewed Apply path. Future chat, webhook and scheduled work use that runtime model. Saving sends no authoring message and preserves unsent conversation text and private setup edits.
 
-One `model_changed` event commits with the revision and appears as “Model changed” in chat and Activity. Replaying the same save adds no second notice.
+One `model_changed` event commits with the revision and appears as “Model changed” in the fleet conversation. Replaying the same save adds no second notice.
 
 Saved fleets use current readiness checks when activating or resuming. A different review digest, including catalogue or price changes, does not add a repeat-review hold. Explicit new saves still validate their review digest and setup tag before writing.
 

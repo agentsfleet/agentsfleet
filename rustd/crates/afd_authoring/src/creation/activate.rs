@@ -132,6 +132,17 @@ impl Creations {
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
+        let number = row.head_revision.to_string();
+        let identity = format!("setup_ready:{number}");
+        afd_events::activity::record_on(
+            &mut tx,
+            access.workspace,
+            fleet,
+            &identity,
+            afd_events::activity::Activity::SetupReady { revision: &number },
+        )
+        .await
+        .map_err(query(CONTEXT))?;
         tx.commit().await.map_err(query(CONTEXT))?;
         // Only the commit whose guarded update moved `installing` to `active`
         // gets here; a retry finds the fleet active and returns above.

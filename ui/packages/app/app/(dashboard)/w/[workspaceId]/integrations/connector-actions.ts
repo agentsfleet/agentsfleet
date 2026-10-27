@@ -3,8 +3,10 @@
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
   disconnectConnector,
+  getConnectorCatalog,
   startConnect,
   type ConnectorConnectStart,
+  type ConnectorCatalogEntry,
 } from "@/lib/api/connectors";
 
 // A connector id is a registry provider slug. Server-action arguments arrive from
@@ -18,6 +20,10 @@ import {
 // argument from smuggling `/`, `..`, or `%` into the path.
 const PROVIDER_ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
 const UNKNOWN_PROVIDER = "Unknown connector provider";
+
+export async function readConnectorCatalogAction(workspaceId: string): Promise<ActionResult<ConnectorCatalogEntry[]>> {
+  return withToken(token => getConnectorCatalog(workspaceId, token));
+}
 
 function providerIsValid(provider: string): boolean {
   return PROVIDER_ID_PATTERN.test(provider);

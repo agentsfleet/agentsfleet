@@ -6,6 +6,7 @@ import { CONTINUITY } from "./continuity-scenario";
 
 const ThreadItem = z.object({
   event_id: z.string(), fleet_id: z.string(), workspace_id: z.string(), status: z.string(),
+  event_type: z.string(), actor: z.string(),
   request_json: z.string(), response_text: z.string().nullable(),
   failure_label: z.string().nullable().optional(),
 });

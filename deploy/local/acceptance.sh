@@ -3,27 +3,29 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/local-dev.sh
+source deploy/local/bootstrap.sh
 dev_state
 
 action="${1:-all}"
 case "$action" in all|e2e|cli|execution) ;; *) dev_fail 'expected e2e, cli or execution (default: both suites)' ;; esac
 [ "$(uname -s)" = Darwin ] || dev_fail 'local acceptance requires macOS with a dedicated OrbStack Linux machine'
 export LOCAL_DEV_ENV_FILE="${AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE:-$DEV_STATE/acceptance.env}"
-[ -f "$LOCAL_DEV_ENV_FILE" ] || dev_fail "configure $LOCAL_DEV_ENV_FILE first; see docs/development.md"
+dev_lock "$DEV_STATE/acceptance.lock"
 set -a
 if [ -f "$HOME/.config/agentsfleet/.env" ]; then source "$HOME/.config/agentsfleet/.env"; fi
 if [ -n "${AGENTSFLEET_UI_ENV_FILE:-}" ]; then source "$AGENTSFLEET_UI_ENV_FILE"; fi
+if [ -n "${AGENTSFLEET_RUSTD_ENV_FILE:-}" ]; then source "$AGENTSFLEET_RUSTD_ENV_FILE"; fi
+acceptance_environment
 source "$LOCAL_DEV_ENV_FILE"
 set +a
-# The backend resolves live model credentials from its vault.
-unset OPENROUTER_API_KEY
+model_bootstrap_key="${FIREWORKS_API_KEY:-}"
+unset OPENROUTER_API_KEY FIREWORKS_API_KEY
 case "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" in pk_test_*) ;; *) dev_fail 'local acceptance requires development Clerk credentials' ;; esac
 : "${CLERK_SECRET_KEY:?development Clerk secret is required}"
 : "${ACCEPTANCE_LOCAL_RUNNER_MACHINE:?dedicated OrbStack machine is required}"
 : "${ACCEPTANCE_LOCAL_TOOLBOX_DIR:?signed Linux toolbox directory is required}"
 : "${ACCEPTANCE_LOCAL_RUNNER_RECORD:?local runner registration file is required}"
 
-dev_lock "$DEV_STATE/acceptance.lock"
 ui_pid=""
 cleanup() {
   if [ -n "$ui_pid" ]; then
@@ -42,15 +44,11 @@ export LOCAL_ACCEPTANCE_TLS_PORT="${ACCEPTANCE_LOCAL_TLS_PORT:-$((DEV_PORT + 100
 export LOCAL_ACCEPTANCE_UI_TLS_PORT="${ACCEPTANCE_LOCAL_UI_TLS_PORT:-$((DEV_PORT + 10001))}"
 export LOCAL_ACCEPTANCE_CA="$LOCAL_ACCEPTANCE_STATE/caddy-data/caddy/pki/authorities/local/root.crt"
 export NEXT_PUBLIC_API_URL="https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT"
+export APP_URL="https://localhost:$LOCAL_ACCEPTANCE_UI_TLS_PORT"
 export ACCEPTANCE_RUNNER_MACHINE="$ACCEPTANCE_LOCAL_RUNNER_MACHINE" CARGO_TARGET_DIR="$DEV_SHARED/build"
 mkdir -p "$LOCAL_ACCEPTANCE_STATE"
-export ACCEPTANCE_RUNNER_TOKEN
-ACCEPTANCE_RUNNER_TOKEN="$(bun -e '
-const {runner_token: token} = await Bun.file(Bun.argv[1]).json();
-if (typeof token !== "string" || !/^[!-~]{1,4096}$/.test(token))
-  throw new Error("local acceptance: invalid runner token in private registration file");
-process.stdout.write(token);
-' "$ACCEPTANCE_LOCAL_RUNNER_RECORD")"
+acceptance_machine
+acceptance_toolbox
 if [ ! -f "$LOCAL_ACCEPTANCE_STATE/audit-token" ]; then openssl rand -hex 32 >"$LOCAL_ACCEPTANCE_STATE/audit-token"; fi
 export AGENTSFLEET_E2E_AUDIT=1 AGENTSFLEET_E2E_AUDIT_TOKEN
 AGENTSFLEET_E2E_AUDIT_TOKEN="$(cat "$LOCAL_ACCEPTANCE_STATE/audit-token")"
@@ -96,6 +94,16 @@ start_dashboard() {
 make --no-print-directory acceptance-build
 export LOCAL_DEV_BINARY="$DEV_ROOT/dist/acceptance/agentsfleetd"
 make --no-print-directory _ensure-local-daemon
+acceptance_platform
+# Runtime model credentials now live in the local encrypted vault.
+make --no-print-directory _ensure-local-daemon
+export ACCEPTANCE_RUNNER_TOKEN
+ACCEPTANCE_RUNNER_TOKEN="$(bun -e '
+const {runner_token: token} = await Bun.file(Bun.argv[1]).json();
+if (typeof token !== "string" || !/^[!-~]{1,4096}$/.test(token))
+  throw new Error("local acceptance: invalid runner token in private registration file");
+process.stdout.write(token);
+' "$ACCEPTANCE_LOCAL_RUNNER_RECORD")"
 mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config"
 printf 'https://localhost:443 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\nhttps://localhost:444 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\n' \
   "$DEV_PORT" "$LOCAL_ACCEPTANCE_UI_PORT" >"$LOCAL_ACCEPTANCE_STATE/Caddyfile"
@@ -105,6 +113,10 @@ until curl --silent --fail --max-time 2 --cacert "$LOCAL_ACCEPTANCE_CA" "https:/
   [ "$(date +%s)" -lt "$deadline" ] || dev_fail 'Caddy HTTPS readiness timed out; inspect docker compose logs'
   sleep 0.2
 done
+if ! security verify-cert -c "$LOCAL_ACCEPTANCE_CA" -p basic >/dev/null 2>&1; then
+  printf 'Trusting the local Caddy certificate in your login keychain; macOS may ask for approval.\n'
+  security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" "$LOCAL_ACCEPTANCE_CA"
+fi
 export NODE_EXTRA_CA_CERTS="$LOCAL_ACCEPTANCE_CA"
 start_dashboard
 printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nSSL_CERT_FILE=/var/lib/agentsfleet-runner/ca.pem\n' \

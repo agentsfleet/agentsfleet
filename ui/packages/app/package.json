@@ -76,7 +76,7 @@
     "size-limit": "14.2.0",
     "svix": "^2.8.0",
     "tailwindcss": "^4.3.3",
-    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "tsrs": "0.20.0-ts7.1.0-beta",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   }

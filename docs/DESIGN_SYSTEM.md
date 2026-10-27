@@ -177,18 +177,26 @@ Use shared primitives before adding consumer markup with equivalent behavior.
 
 Reusable visual treatments belong in `ui/packages/design-system`. App widgets combine those primitives with product behavior and data.
 
-Use Activity for the workspace feed and fleet section. Individual records remain events; existing event URLs retain their meaning.
+Use Activity for the workspace feed. Fleet activity appears in its conversation. Individual records remain events; existing event URLs retain their meaning.
 
-The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** opens the private setup chat at the fleet's saved version.
+The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** opens the authoring page at the fleet's saved version.
 
-Fleet sections are Chat, Activity, and Memory.
+Fleet messages, setup receipts, and integration activity share one chronological conversation.
 
-**Save fleet** sits beside the chat title. While editing a saved fleet, **Save changes** replaces **Edit setup** in the fleet header.
+**Save fleet** sits beside the authoring chat title. Authoring a saved fleet shows **Save changes** in that position.
 **Stop** and permanent **Kill** live in **Fleet actions**, with confirmation dialogs.
 
 Setup and saved chat share a 728px reading column and a composer pinned to its bottom edge.
 User messages use a quiet bubble; assistant replies use plain prose and the fleet's name.
-Memory and Activity keep their own scrollable content beneath the fleet tabs.
+**Saved memories** opens from **Fleet actions**. The dialog has one title; its description fits on one line on desktop and wraps on narrow screens.
+
+Each tool call has a separate entry with its recorded name, status, and elapsed clock.
+A running call has its own spinner. **Input** and **Output** or **Error** open independently for each call.
+Commands and returned text stay inside these disclosures. Tool status does not claim the fleet's overall task succeeded.
+
+Create and Edit secret use the same field editor with masked values and add/remove controls.
+Both dialogs share the encryption explanation and help link. Edit locks the name and explains that saving replaces every field.
+Stored values are never loaded into the editor. Secret names display Copy only; value editing opens from Actions.
 
 ### Compact density
 
@@ -311,7 +319,7 @@ Fleet chat displays the saved runtime model. Setup chat selects the model that h
 
 These controls have different jobs and share typography. Changing the setup conversation's model does not change the fleet's runtime model.
 
-While editing a fleet, the header's Edit setup action becomes Save changes.
+On the authoring page for a saved fleet, the header offers Save changes.
 Reuse the reviewed draft's save action, including validation, pending state, and conflict handling. Do not add a second save action above the composer.
 
 Explain when changes affect the fleet in plain language. Keep revision numbers within setup details.
@@ -413,28 +421,28 @@ Keep every accepted message and saved assistant reply in the creator-private dra
 
 During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
 
-For new drafts, keep review and correction available from the chat menu throughout a long conversation.
-**Edit instructions** opens a side panel on desktop and a full-screen editor on mobile.
+Keep **Instructions** and explicit publication in the authoring chat menu throughout the conversation.
+**Instructions** opens a tall side dialog on desktop and a full-screen editor on mobile.
 
-**Review and run options** holds the current task, runtime model, access, budget, readiness, publishing, and optional first run.
-Update edited fields before saving or publishing. Publication stores the selected candidate unchanged; the transcript stays private.
+Questions and requested changes continue the conversation. A standalone Save command finalizes the current decisions with the model, then saves the checked setup.
+Publication remains a separate menu action and stores the selected candidate unchanged; the transcript stays private.
 
-Saved-fleet setup uses the inline **Edit instructions manually** editor and **Review and publish options** below its conversation.
+Saved fleets return to the same authoring page through **Edit setup**. Instructions and publication use the same menu controls.
 
-Opening the editor or review creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the panel is open.
+Opening the editor creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the dialog is open.
 
-The saved-fleet editor keeps manual instructions when folded or closed. Disable **Save changes** until manual edits are applied through **Update instructions**.
+The instruction editor offers **Save changes** and **Cancel**. Warn before discarding unsaved edits; a conflicting setup change retains the manual text.
 
 Failed replies retain partial answers and explain the next action in plain language.
 Keep diagnostic details behind **View details**. Unknown usage stays unknown; never substitute zero tokens or zero cost.
 
 **Try again** sends the original request. Saved chat offers it only for the signed-in person's own request.
 
-Show only **Saved vN** and a short explanation in the conversation after saving. Keep that summary above later messages until a new proposal replaces it. The version describes the fleet's saved setup; never append an inferred unsaved label to it.
+Show **Saving setup...** through chat finalization and saving, then one white **Save done vN** acknowledgement in chronological order. Readiness marks and access actions remain distinct.
 
 Saving changes updates the version from the server response. New runs use the saved setup, while runs already started keep their version. Accepted work can still be running.
 
-**Save fleet** requests no first run. Configured automatic triggers can start work once setup is ready. **Save and run now** requires a first message.
+**Save fleet** requests no first run. Configured automatic triggers can start work once setup is ready.
 
 Keep unfinished setup and first-run recovery, schedule registration warnings, and retry actions visible. Successful setup does not add an expandable report to the conversation.
 The saved result shares the conversation's scroll area so **Open fleet** remains reachable on narrow screens and short windows.

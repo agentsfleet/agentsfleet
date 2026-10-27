@@ -9,11 +9,11 @@ import { scheduleOwed } from "@/lib/api/schedule-status";
 // Healthy fleets do not need recovery controls or the summary's schedule parser.
 const FleetRecoveryContent = lazy(() => import("./FleetRecoveryContent").then((module) => ({default: module.FleetRecoveryContent})));
 
-export function FleetRecovery({workspace, fleet}: {workspace: string; fleet: Fleet}) {
+export function FleetRecovery({workspace, fleet, showSaved = false}: {workspace: string; fleet: Fleet; showSaved?: boolean}) {
   const setupPending = fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE &&
     fleet.start.kind === START_KIND.runNow && fleet.start.state !== "accepted";
-  if (!setupPending && !fleet.schedules.some(scheduleOwed)) return null;
+  if (!showSaved && !setupPending && !fleet.schedules.some(scheduleOwed)) return null;
   return <Suspense fallback={null}>
-    <FleetRecoveryContent workspace={workspace} fleet={fleet} setupPending={setupPending} />
+    <FleetRecoveryContent workspace={workspace} fleet={fleet} setupPending={setupPending || showSaved} />
   </Suspense>;
 }

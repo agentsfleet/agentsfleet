@@ -4,20 +4,22 @@ import type { Message } from "./draft-types";
 import type { ContextProgress } from "../context-progress";
 import { isRunning, MESSAGE_ROLE, MESSAGE_STATE } from "./draft-types";
 import { isStopped } from "./draft-recovery";
+import { fleetActivityText } from "../events/fleet-activity";
 
 type ProjectMessage = typeof threadMessage;
 
 /** One conversation owns its cache; unchanged rows keep their runtime identity during streaming. */
 export function createDraftThreadProjection(): (view: DraftView) => ThreadMessageLike[] {
-  const cache = new WeakMap<Message, {live: string | undefined; context: ContextProgress | undefined; stopped: boolean; request?: string; row: ThreadMessageLike}>();
+  const cache = new WeakMap<Message, {live: string | undefined; context: ContextProgress | undefined; stopped: boolean; saving: boolean; request?: string; row: ThreadMessageLike}>();
   const project: ProjectMessage = (message, view, cutoff, request) => {
     const live = message.role === MESSAGE_ROLE.assistant && isRunning(message) && view.liveReply?.sequence === message.sequence ? view.liveReply.text : undefined;
     const stopped = isStopped(message, cutoff);
     const context = compactionFor(message, view, cutoff);
+    const saving = isSaving(message, view);
     const old = cache.get(message);
-    if (old && old.live === live && old.context === context && old.stopped === stopped && old.request === request) return old.row;
+    if (old && old.live === live && old.context === context && old.stopped === stopped && old.saving === saving && old.request === request) return old.row;
     const row = threadMessage(message, view, cutoff, request);
-    cache.set(message, {live, context, stopped, request, row});
+    cache.set(message, {live, context, stopped, saving, request, row});
     return row;
   };
   return view => draftThreadMessages(view, project);
@@ -42,23 +44,38 @@ export function draftThreadMessages(view: DraftView, project: ProjectMessage = t
     rows.push({id: `pending:${pending.operation}`, role: MESSAGE_ROLE.user,
       content: [{type: "text", text: pending.text}], createdAt: new Date(pending.createdAt)});
     rows.push({id: `pending-answer:${pending.operation}`, role: MESSAGE_ROLE.assistant,
-      content: [{type: "text", text: view.liveReply?.text ?? ""}], status: {type: "running"}});
+      content: [{type: "text", text: view.liveReply?.text ?? ""}], status: {type: "running"},
+      metadata: {custom: {saving: view.saveOperation === pending.operation && !view.error}}});
   }
-  return rows;
+  const previous = (view.previousDrafts ?? []).flatMap(history => history.messages.map(message => {
+    const row = threadMessage(message, {...view, liveReply: null, contextProgress: null}, history.cancelledThrough);
+    return {...row, id: `${history.id}:${row.id}`};
+  }));
+  const activity: ThreadMessageLike[] = (view.activities ?? []).map(row => ({
+    id: `activity:${row.event_id}`, role: "system", createdAt: new Date(row.created_at),
+    content: [{type: "text", text: fleetActivityText(row.request_json)}], metadata: {custom: {activity: true}},
+  }));
+  return [...previous, ...rows, ...activity].sort((left, right) =>
+    (left.createdAt?.getTime() ?? Number.POSITIVE_INFINITY) - (right.createdAt?.getTime() ?? Number.POSITIVE_INFINITY));
 }
 
 function threadMessage(message: Message, view: DraftView, cutoff: string, request?: string): ThreadMessageLike {
   const failure = message.failure;
   const stopped = isStopped(message, cutoff);
   const pending = isRunning(message) && !stopped;
+  const saving = isSaving(message, view);
   const live = pending && message.role === MESSAGE_ROLE.assistant && view.liveReply?.sequence === message.sequence ? view.liveReply.text : undefined;
   const text = [live ?? message.text ?? "",
     message.role === MESSAGE_ROLE.assistant && (message.state === MESSAGE_STATE.cancelled || (stopped && isRunning(message))) ? "Request stopped." : ""].filter(Boolean).join("\n\n");
   return {id: `${message.sequence}:${message.role}`, role: message.role, content: [{type: "text", text}], createdAt: new Date(message.created_at),
-    metadata: {custom: {queued: pending && message.state === MESSAGE_STATE.queued,
+    metadata: {custom: {saving, queued: pending && message.state === MESSAGE_STATE.queued,
       contextProgress: compactionFor(message, view, cutoff),
       failure: message.role === MESSAGE_ROLE.assistant ? failure : undefined, retryText: failure ? request : undefined}},
-    ...(message.role === MESSAGE_ROLE.assistant ? {status: pending ? {type: "running"} : {type: "complete", reason: "stop"}} : {})};
+    ...(message.role === MESSAGE_ROLE.assistant ? {status: pending || saving ? {type: "running"} : {type: "complete", reason: "stop"}} : {})};
+}
+
+function isSaving(message: Message, view: DraftView): boolean {
+  return message.role === MESSAGE_ROLE.assistant && message.operation_id === view.saveOperation && !view.error;
 }
 
 function compactionFor(message: Message, view: DraftView, cutoff: string): ContextProgress | undefined {

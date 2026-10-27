@@ -1,6 +1,7 @@
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import type { ContextProgress } from "../context-progress";
 import { readNanos } from "@/lib/api/nanos";
+import { FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
 import {
   EVENT_STATUS,
   THREAD_STATUS,
@@ -39,6 +40,7 @@ export const AGENTSFLEET_EVENT_STATUS = {
   AGENT_ERROR: EVENT_STATUS.FLEET_ERROR,
   GATE_BLOCKED: EVENT_STATUS.GATE_BLOCKED,
   QUEUED: THREAD_STATUS.QUEUED,
+  RECORDED: FLEET_ACTIVITY.status,
   OPTIMISTIC: "optimistic",
 } as const;
 
@@ -52,6 +54,7 @@ export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   AGENTSFLEET_EVENT_STATUS.PROCESSED,
   AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
   AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
+  AGENTSFLEET_EVENT_STATUS.RECORDED,
 ]);
 
 // One tool the fleet called while working an event, as the three tool frames
@@ -182,7 +185,7 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
     actor: row.actor,
     text: triggerBodyFor({ actor: row.actor, event_type: row.event_type, request_json }),
     reply: replyBodyFor({ response_text: bodies.response_text ?? null }),
-    outcome: outcomeFor(row),
+    outcome: row.status === FLEET_ACTIVITY.status ? "" : outcomeFor(row),
     failureLabel: row.failure_label ?? null,
     failureDetail: row.failure_detail ?? null,
     createdAt: new Date(row.created_at),

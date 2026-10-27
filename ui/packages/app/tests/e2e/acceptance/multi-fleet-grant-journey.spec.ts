@@ -135,7 +135,7 @@ async function approveAndContinue(page: Page, fleetId: string, setupUrl: string)
   expect(approved.approved_at).not.toBeNull();
   expect(await pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleetId)).toBeNull();
   await page.goto(setupUrl);
-  await page.getByRole("button", {name: "Continue setup", exact: true}).click();
+  await page.getByRole("button", {name: "Finish setup", exact: true}).click();
   await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`), {timeout: GRANT_TIMEOUT_MS});
   // This detail URL already identifies the saved fleet. Finish continuation
   // before another navigation can cancel its request.

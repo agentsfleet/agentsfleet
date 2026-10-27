@@ -177,7 +177,13 @@ export async function mintTokens(
   userId: string,
 ): Promise<{ sessionId: string; sessionJwt: string }> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
-  return { sessionId: session.id, sessionJwt: await refreshSessionToken(session.id) };
+  try {
+    return { sessionId: session.id, sessionJwt: await refreshSessionToken(session.id) };
+  } catch (mintError) {
+    try { await revokeSession(session.id); }
+    catch (revokeError) { throw new AggregateError([mintError, revokeError], "Session token mint and cleanup failed"); }
+    throw mintError;
+  }
 }
 
 /**

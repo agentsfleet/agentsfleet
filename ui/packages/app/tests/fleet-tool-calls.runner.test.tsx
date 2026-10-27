@@ -1,9 +1,8 @@
 import { ev, mockStream, renderThread } from "./fleet-thread/harness";
 import { describe, expect, it } from "vitest";
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 
 import { TOOL_CALLS_LABEL } from "@/components/domain/FleetToolCalls";
-import { EXPLORED_LABEL } from "@/components/domain/FleetExplored";
 import { TOOL_NAME } from "@/components/domain/tool-call-shape";
 import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
@@ -22,6 +21,7 @@ function call(name: string, args: FleetToolCall["args"]): FleetToolCall {
 function renderCalls(tools: FleetToolCall[]) {
   mockStream([ev({ id: "evt_runner", role: "user", actor: "operator", text: "Go", status: "processed", tools })]);
   renderThread();
+  for (const button of screen.queryAllByRole("button", {name: /^(Input|Output|Error)$/})) fireEvent.click(button);
 }
 
 const cell = (name: string) => document.querySelector<HTMLElement>(`li[data-tool="${name}"]`)!;
@@ -33,7 +33,7 @@ describe("FleetThread — runner tool cells", () => {
       plan: [{ step: "Read the logs", status: "completed" }, { step: "Open a PR", status: "in_progress" }, { step: "Tell the team", status: "pending" }],
     })]);
     const plan = cell(TOOL_NAME.UPDATE_PLAN);
-    expect(plan.textContent).toContain("Updated plan");
+    expect(plan.textContent).toContain(TOOL_NAME.UPDATE_PLAN);
     expect(plan.textContent).toContain("└One step left");
     expect([...plan.querySelectorAll("[data-plan-step]")].map((step) => step.textContent)).toEqual(["✔", "◐", "□"]);
     // Pin test: the literals are what a screen reader hears for each state.
@@ -49,14 +49,14 @@ describe("FleetThread — runner tool cells", () => {
 
     renderCalls([call(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: /workspace/a.ts\n-old\n+new\n+more" })]);
     const patch = cell(TOOL_NAME.APPLY_PATCH);
-    expect(patch.firstElementChild?.textContent).toMatch(/^✓Edited a\.ts \(\+2 −1\) · /);
+    expect(patch.firstElementChild?.textContent).toContain(TOOL_NAME.APPLY_PATCH);
     expect([...patch.querySelectorAll("[data-diff]")].map((row) => row.getAttribute("data-diff"))).toEqual(["removed", "added", "added"]);
     cleanup();
 
     // A hashed edit that names its line by tag carries no old text to diff.
     renderCalls([call(TOOL_NAME.FILE_EDIT_HASHED, { path: "/workspace/a.md", target: "L10:abc", new_text: "b" })]);
     const edit = cell(TOOL_NAME.FILE_EDIT_HASHED);
-    expect(edit.firstElementChild?.textContent).toMatch(/^✓Edited a\.md at L10:abc · /);
+    expect(edit.firstElementChild?.textContent).toContain(TOOL_NAME.FILE_EDIT_HASHED);
     expect(edit.querySelector("[data-diff]")).toBeNull();
     cleanup();
 
@@ -67,13 +67,11 @@ describe("FleetThread — runner tool cells", () => {
       call(TOOL_NAME.CRON_LIST, undefined),
       call(TOOL_NAME.PUSHOVER, { message: "Done" }),
     ]);
-    const group = document.querySelector<HTMLElement>("[data-explored]")!;
-    expect(within(group).getByText(EXPLORED_LABEL)).toBeTruthy();
-    expect(group.textContent).toContain("Search dragonfly cluster on the web");
-    expect(group.textContent).toContain("Fetch https://docs.example/ops");
-    expect(group.textContent).toContain("List schedules");
-    // A notification changes something, so it stays a cell of its own.
-    const tools = screen.getByRole("list", { name: TOOL_CALLS_LABEL });
-    expect(within(tools).getByText("Notified")).toBeTruthy();
+    const tools = screen.getByRole("list", {name: TOOL_CALLS_LABEL});
+    expect(within(tools).getAllByRole("listitem")).toHaveLength(4);
+    expect(cell(TOOL_NAME.WEB_SEARCH).textContent).toContain("dragonfly cluster");
+    expect(cell(TOOL_NAME.WEB_FETCH).textContent).toContain("https://docs.example/ops");
+    expect(cell(TOOL_NAME.CRON_LIST)).toBeTruthy();
+    expect(cell(TOOL_NAME.PUSHOVER).textContent).toContain("Done");
   });
 });

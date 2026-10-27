@@ -10,6 +10,7 @@
 // strip, and the events table — so the vocabulary cannot drift between them.
 
 import type { EventDetail, EventRow, EventStatusValue } from "@/lib/api/events";
+import { FLEET_ACTIVITY, fleetActivityText } from "./fleet-activity";
 // Re-exported below so every consumer keeps importing this one module.
 import {
   eventHeadlineFrom,
@@ -280,6 +281,7 @@ export function outcomeForCompletion(
  * An assistant-actor row has no separate trigger (it IS a reply); returns "".
  */
 export function triggerBodyFor(row: Pick<EventDetail, "actor" | "request_json" | "event_type">): string {
+  if (row.event_type === FLEET_ACTIVITY.type) return fleetActivityText(row.request_json);
   const role = roleFor(row.actor);
   if (role === "user") return steerMessageFrom(row.request_json);
   if (role === "assistant") return "";

@@ -17,6 +17,7 @@ import { steerFleet } from "@/lib/api/fleets";
 import { STEER_MESSAGE_MAX_BYTES, type SteerRequest } from "@/lib/api/fleets-types";
 import { credential } from "@/lib/auth/credential";
 import { ERROR_CODE } from "@/lib/errors";
+import { proxyJsonGet } from "@/lib/api/live-json-proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,12 @@ const REFUSAL = {
 
 // Mirrors the daemon's parser, which refuses unknown fields.
 const SteerBodySchema = z.object({ message: z.string(), operation_id: z.string() }).strict();
+const FORWARDED_QUERY_KEYS = ["starting_after", "limit"] as const;
+
+export async function GET(req: Request, {params}: Params): Promise<Response> {
+  const {workspaceId, fleetId} = await params;
+  return proxyJsonGet(req, ["workspaces", workspaceId, "fleets", fleetId, "messages"], FORWARDED_QUERY_KEYS);
+}
 
 export async function POST(req: Request, { params }: Params): Promise<Response> {
   if (!sameOrigin(req)) return problem(HTTP_STATUS.FORBIDDEN, REFUSAL.CROSS_ORIGIN);

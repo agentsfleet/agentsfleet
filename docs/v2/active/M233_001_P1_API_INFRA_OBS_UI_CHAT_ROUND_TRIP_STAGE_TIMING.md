@@ -53,7 +53,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Break each chat's round trip into stages, per fleet, in Grafana
+- **PR title (current scope):** Keep saved fleet setup and activity in chat
 - **Intent (one sentence):** Indy (project owner) can open one dashboard, pick a fleet and a chat event, and see where the time between Send and the reply went, so optimisations and production sizing are chosen from evidence.
 - **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
@@ -102,7 +102,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/lib/runner/common.sh` | EDIT | §2: read the collector credential from the vault at deploy |
 | `playbooks/lib/runner/deploy.sh` | EDIT | §2: write the credential to the host's root-only environment file |
 | `playbooks/lib/runner/runner_test.sh` | EDIT | §2: the credential is written without being printed |
-| `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages/route.ts` | EDIT | §3: time credential and upstream; answer `Server-Timing` |
+| `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages/route.ts` | EDIT | §3: time credential and upstream; answer `Server-Timing`. §5: forward authenticated history reads through the existing JSON proxy |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts` | EDIT | §3: `performance` marks for send and accepted |
 | `ui/packages/app/lib/streaming/fleet-stream-reply-registry.ts` | EDIT | §3: `performance` marks for first frame and completion |
 | `ui/packages/app/tests/steer-route-timing.test.ts` | CREATE | §3: route timing header tests |
@@ -111,9 +111,37 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/observability/002_round_trip_playbook.md` | CREATE | §4: how to read one event's round trip, with the tiling script fallback |
 | `playbooks/README.md` | EDIT | §4: inventory row for the new playbook |
 | `docs/architecture/observability.md` | EDIT | §1–§4: span layer placement, runner collector built for traces and metrics (logs not yet), stage attributes, edge `Server-Timing` |
+| `ui/packages/app/components/domain/chat/{WorkspaceChat,FleetSetupWorkspace,DraftChatHeading,DraftConversation,DraftMessage,ChatComposer,DraftSaveBar,DefinitionEditor,FleetSetup,FleetSetupActions,SetupProgress,SetupChecks,SetupInstructions,SetupAccess}.tsx`, `ui/packages/app/components/domain/chat/chat-defaults.ts` | EDIT / CREATE / REMOVE | §5: one authoring page, slim readiness, secure access and simplified manual editing; remove replaced embedded editors and unused placeholder |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetHeader,FleetRecovery,FleetRecoveryContent,ChatView,FleetPendingChat}.tsx` | EDIT / CREATE | §5: inline readiness and setup conversation while execution waits for access |
+| `ui/packages/app/components/domain/chat/{FleetModelSelect.tsx,FleetModelSelect.test.tsx,useFleetModel.test.tsx}` | EDIT | §5: preserve the merged model picker with full-page authoring and prove safe retry after a failed confirmation read |
+| `ui/packages/app/tests/helpers/fleet-model-fixture.ts` | EDIT | §5: model saves advance the fixture’s persisted setup revision |
+| `ui/packages/app/components/domain/{FleetThread,FleetThreadViewport}.tsx` | EDIT | §5: render readiness once at its saved activity in the conversation |
+| `ui/packages/app/components/domain/FleetThreadViewport.test.tsx` | EDIT | §5: readiness ordering and no duplicated saved notice |
+| `ui/packages/app/components/domain/FleetReplyBody.tsx` | EDIT | §5: separate recorded tool entries with individual input and output |
+| `ui/packages/app/components/domain/{FleetToolCalls,FleetToolCallBody,FleetPayloadDisclosure}.tsx` | EDIT | §5: separate input and output for each recorded tool call; remove grouped progress |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/{EditSecretDialog.tsx,EditSecretDialog.test.tsx}` | EDIT | §5: reuse secure field entry for replacement; remove the raw JSON editor |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/{components/{AddSecretDialog,SecretValueNotice,secret-row-cells,SecretsList,SecretsList.test}.tsx,lib/secret-data.ts}` | EDIT / CREATE | §5: shared encryption explanation; Copy only beside names |
+| `ui/packages/app/{app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog*,components/domain/island-dynamic/RenameSecretDialogDynamic.tsx,tests/secret-data.test.ts}` | REMOVE | §5: remove the unused Rename dialog, loader and parser tests |
+| `ui/packages/app/tests/island-dynamic.test.ts` | EDIT | §5: remove the unused Rename loader case |
+| `ui/packages/app/tests/secrets-{components,list}.test.ts` | EDIT | §5: shared replacement form and existing dismissal behavior |
+| `ui/packages/app/tests/fleet-tool-*.tsx` | EDIT / CREATE | §5: progress state transitions and retained technical detail behavior |
+| `ui/packages/app/tests/fleet-thread/{role-reasoning,role-reply-parts,context-progress}.test.ts` | EDIT | §5: individual tool entries preserve reply ordering and context preparation |
+| `ui/packages/app/components/domain/{FleetExplored*,tool-call-explore*}` | REMOVE | §5: remove the replaced read-call fold and its tests; each recorded call has its own entry |
+| `ui/packages/design-system/src/{index.ts,design-system/{index.ts,Button.tsx,Button.test.tsx,Switch.tsx,Switch.test.tsx}}` | EDIT | §5: shared compact icon size and visible menu switches |
+| `ui/packages/app/lib/api/{drafts,draft-state,draft-continuation,draft-ready-setup,draft-thread-messages,draft-triggers}.ts` | EDIT / CREATE / REMOVE | §5: creator-scoped history, bounded background restoration and current-revision continuation; remove the unused advanced-form trigger validator |
+| `rustd/crates/{afr_supervisor/src/authoring/{turn.rs,tests/{confirmation,context,corrections,execution}.rs},afd_authoring/src/model/provider/prompt.rs}` | EDIT | §5: retain genuine authoring replies; stop forcing review reminders; bound tool-only follow-up calls and refuse truncated finalization |
+| `ui/packages/app/{lib/api/draft-chat-save.ts,tests/draft-chat-save.test.ts}` | CREATE | §5: explicit chat saves reuse fresh validation and idempotent writes; never execute historical or failed-turn requests |
+| `ui/packages/app/tests/{draft-continuation.test.ts,clerk-admin-fixture.test.ts,fleet-pending-chat.test.tsx,fleet-thread/surface.test.ts,helpers/draft-client-fixture.ts,workspace-chat/*.tsx,e2e/acceptance/{fixtures/{clerk-admin,install-ui,private-chat,continuity-journey,continuity-setup}.ts,{fleet-execution,workspace-private-chat,fleet-composer,fleet-model,chat-single-fetch,fleet-console,design-coherence,secrets-lifecycle,header-alignment,fleet-reply-parts,fleet-thread,fleet-thread-anchor,logs-detail,template-onboarding,multi-fleet-grant-journey,login-install-lifecycle,signup-lifecycle,operator-journey}.spec.ts}}` | EDIT / CREATE | §5: save, navigation and full-page editing checks; preserve meaningful acceptance checks after approved surface changes; revoke acceptance sessions when token minting fails |
+| `docs/{DESIGN_SYSTEM.md,development.md,architecture/fleet_definitions.md,architecture/shared_chat_verification.md,architecture/web_app.md}` | EDIT | §5: approved authoring flow and single-command local acceptance |
+| `.gitignore`, `deploy/local/{acceptance.sh,bootstrap*},make/test-unit.mk`, `cli/test/acceptance/logs-events-live.spec.ts`, `{package.json,bun.lock}`, `cli/{package.json,bun.lock}`, `ui/packages/*/package.json`, `patches/@assistant-ui%2F*.patch` | EDIT / CREATE | §5.7: local fixtures, refusal, retry, reuse and timestamps; repair fold and resize following; pin requested `tsrs` `0.20.0-ts7.1.0-beta` and rerun compiler checks |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/{fleets/[id]/page.tsx,integrations/connector-actions.ts,secrets/components/AddSecretForm.tsx}` | EDIT | §5: remove the embedded editor and reuse existing secure access actions from authoring |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation,FleetTabLink,FleetActivity,MemoryPanel,MemoryMenu,KillSwitch,view-data}*` | EDIT / CREATE / DELETE | §5: remove obsolete tabs; retain memory management through the fleet menu |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | §5: load saved memories on demand from the existing authenticated API |
+| `ui/packages/app/{lib/api/draft-activity.ts,lib/events/{event-summary,fleet-activity}.ts,lib/streaming/fleet-stream-row.ts,components/domain/fleetMessageRenderers.tsx,tests/*setup*.ts*,tests/draft-client*.ts,tests/draft-readiness-recovery.test.ts,tests/draft-thread-messages.test.ts,tests/fleet-stream-provider.test.tsx,lib/events/event-summary.body.test.ts,lib/streaming/fleet-stream-frames.figures.test.ts,tests/draft-summary-lifecycle.test.ts,tests/fleets-routes/*.ts*}` | EDIT / CREATE | §5: chronological saved occurrences, persistent receipts and changed-flow regression checks |
+| `rustd/crates/{afd_events/src/sql/*activity*,afd_events/src/sql/mod.rs,afd_vault/{Cargo.toml,src/write.rs,tests/*activity*},afd_authoring/src/creation/{reserve.rs,activate.rs,revision/{persist,activity}.rs}}` | EDIT / CREATE | §5: access and setup receipts share the successful mutation's database transaction; model-change receipts bind typed JSON |
+| `rustd/{Cargo.lock,crates/{afd_core/src/event.rs,afd_api/tests/authoring/saving/{fixture.rs,mod.rs,activity/**,revisions/model_changes.rs},afd_events/{Cargo.toml,src/lib.rs,src/activity.rs},afd_authoring/Cargo.toml,afd_memory/{Cargo.toml,src/access.rs,src/sql/lock_access.sql},afd_vault/tests/vault_suite.rs}}` | EDIT / CREATE | §5: typed non-running activity records and atomic memory grant receipts |
 
 ## Applicable Rules
-
 - **`.orly/docs/greptile-learnings/RULES.md`**, applied as follows:
   - **UFS:** stage names and attribute keys are named constants in `semconv`.
   - **FLL:** file and function length limits; the clock is passed in, so call sites stay short.
@@ -134,7 +162,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----------------------|
 | UFS GATE | yes — stage names, attribute keys, the collector port | Named constants in `semconv` and the stage clock; the port is one variable in `service.sh` |
 | LOGGING GATE | yes — handlers and `logs.rs` on the logging path | No new log lines; the span layer moves, the log layers do not |
-| UI GATE / DESIGN TOKEN GATE | no — no rendered component changes | `performance` marks only |
+| UI GATE / DESIGN TOKEN GATE | yes — §5 changes rendered chat, menus and secret forms | Existing design tokens; component tests; final Brave walkthrough pending |
 | SCHEMA GUARD | no — no schema change | Identity joins by attribute and time window |
 | Architecture consult | yes — new attribute keys; span layer placement; collector status | Recorded in Discovery; `observability.md` updated in the same PR |
 | File & Function Length (≤350/≤50/≤70) | yes — `pull/mod.rs` and `report/mod.rs` are near the cap | The clock is passed in; each call site adds one mark |
@@ -151,10 +179,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §0 — Dev runs where latency is measurable — IN_PROGRESS
 
-Every measurement this spec enables is meaningless on a machine frozen in 80 ms slices. A shared vCPU's baseline is 5 ms per 80 ms; the dev daemon rests at about 7–8% of a core, so on `shared-cpu-1x` its burst balance stayed empty and every request was throttled. Dev moves to `shared-cpu-2x` 1 GB (12.5% baseline) and logs at `info`. The Dragonfly downsizing and the rule edit are owner-requested cost and hygiene changes. The live machines were resized on Oct 26, 2026; this Section makes the deploy configuration agree.
+Every measurement this spec enables is meaningless on a machine frozen in 80 ms slices. A shared vCPU's baseline is 5 ms per 80 ms; the dev daemon rests at about 7–8% of a core, so on `shared-cpu-1x` its burst balance stayed empty and every request was throttled. Dev moves to `shared-cpu-2x` 1 GB (12.5% baseline) and logs at `info`. The Dragonfly downsizing and the rule edit are owner-requested cost and hygiene changes. An earlier Oct 26 session reported resizing the live machines, but the later live recheck above found the daemon on one shared CPU and 512 MB. The desired deploy configuration remains unchanged; live agreement must be proved again.
 
 - **Dimension 0.1** — DONE — Dev deploys set `AGENTSFLEET_LOG_LEVEL="info"`, the rule pins it, and the dead `LOG_LEVEL` spelling stays refused → Test `test_moved_rules_reject_seeded_violations`
-- **Dimension 0.2** — DONE — Both dev `fly.toml` sizes match the live machines → Test `manual_dev_sizes_match_live`
+- **Dimension 0.2** — IN_PROGRESS — Both dev `fly.toml` sizes match the live machines; the later daemon recheck fails this condition → Test `manual_dev_sizes_match_live`
 - **Dimension 0.3** — After an hour at rest, neither `agentsfleetd-dev` nor `dragonfly-dev` shows throttle time, and both keep a burst balance above zero → Test `manual_dev_machines_unthrottled_at_rest`
 
 ### §1 — The daemon names every stage a chat crosses
@@ -230,6 +258,30 @@ The dashboard's round-trip row reads Tempo through a datasource variable (`tempo
 - **Dimension 4.1** — The asset check accepts the Tempo datasource variable and still refuses any other datasource → Test `assets_check_accepts_tempo_variable_only`
 - **Dimension 4.2** — For each verb span, duration minus the sum of its stage attributes is under the larger of 10% and 5 ms → Test `verb_stage_attributes_account_for_the_span`
 - **Dimension 4.3** — On dev, for N consecutive probes, every span in the table is found, and `af:accepted − af:send` ≥ `auth + upstream` ≥ steer span → Test `manual_probes_satisfy_coverage_and_edge_ordering`
+
+### §5 — One authoring page — IN_PROGRESS
+
+Owner-approved addition: keep setup creation and Edit setup on the full authoring page. Save acknowledges `Save done vN` inline in white, followed by compact readiness marks; the composer remains usable. Open fleet is explicit. Edit setup returns from runtime to authoring using the latest saved revision and only the signed-in person's retained conversation. A saved or closed draft continues through a new draft based on the latest fleet setup; existing runs keep their pinned revision.
+
+- **Dimension 5.1** — DONE. Save stays in authoring; `saving.test.tsx` proves no redirect and a usable composer. → Test `workspace-chat/saving.test.tsx`
+- **Dimension 5.2** — DONE. Edit setup links to full authoring; `fleet-editor.test.tsx` proves navigation without an embedded setup panel. → Test `workspace-chat/fleet-editor.test.tsx`
+- **Dimension 5.3** — DONE. Continued chat uses the current saved setup and creator-owned history; `draft-continuation.test.ts` proves revision refresh, scoped lookup, bounded restoration after reopening, stale-read isolation, concurrent history merges, retry and access loss. → Test `draft-continuation.test.ts`
+- **Dimension 5.4** — DONE. One slim saved acknowledgement and readiness entry in conversation; no Installing or Active badge or duplicate saved notice. `setup-status.test.tsx` and `FleetThreadViewport.test.tsx` prove readiness and chronological placement. → Test `workspace-chat/setup-status.test.tsx`
+- **Dimension 5.5** — DONE. Instructions has a tall editor, explicit save/cancel and no Review action; publication lives in the chat menu. `editor.test.tsx` and `setup-menu.test.tsx` prove removed controls, preserved policy, conflict handling and explicit publication. → Test `workspace-chat/editor.test.tsx`
+- **Dimension 5.6** — IN_PROGRESS. Missing access uses secure credential entry with an explicit destination host, or existing provider authorization. Installing fleets retain setup conversation on their fleet page. `setup-access.test.tsx` and `fleet-pending-chat.test.tsx` prove safe storage, readiness refresh and chat without execution admission. → Test `setup-access.test.tsx`
+- **Dimension 5.7** — IN_PROGRESS. `make test-unit-all` passes: 448 app files and 4,423 tests, with statements, branches, functions and lines at required 100%; every other package coverage gate passes. Full lint passes before the final acceptance-only correction; app lint and type checks pass afterward. The owner cancelled full `make acceptance-local` with exit 130: 125 browser checks passed, 1 failed, 1 skipped and 1 did not run; command-line acceptance did not start. Continuity expected 50 total rows but returned 50 processed messages and two recorded setup receipts. The corrected assertions check exact runtime history and receipt pairs per revision, including fleet and workspace; continuity was not rerun by owner direction. Folding retains its one-pixel before-paint red/green proof. Bootstrap passes 13 refusal, retry and reuse tests. Acceptance override: Indy approved publishing with the cancelled acceptance result and no continuity rerun. Browser walkthrough override: “Indy will review this upon deployment.” Database proofs pass seven focused tests plus three existing revision tests; neither override claims a passing acceptance or browser check. → Test `manual_local_brave_setup_walkthrough`
+- **Dimension 5.8** — DONE. Fleet chat is chronological for setup saves, access changes and connector deliveries. Receipts must survive reload without secret values entering history or model context. Activity and Memory tabs are removed; workspace memory sharing uses visible on/off indicators below a menu separator, followed by Saved memories opening a viewer. `setup-activity.test.ts` and `memory-menu.test.tsx` prove rendering with HTTP fixtures; seven live-database tests in `afd_api/tests/authoring/saving/activity/` pass, including parallel fixture execution; three revision receipt tests also pass. They prove reload, recipient isolation, runtime-context exclusion, no admitted/billable/delivery work, and rollback with retry for setup, activation, secret create/replace and memory grants. → Test `setup-activity.test.ts`
+- **Dimension 5.9** — IN_PROGRESS. Each tool call has its own updating entry, status, timing and input/output disclosures. Tool identity comes from recorded run data; no invented purpose labels. Failed, interrupted and unknown outcomes never claim success. Saved memories has one title and a desktop description on one line. `fleet-tool-progress.test.tsx` and `memory-menu.test.tsx` prove disclosure and outcome behavior; local Brave review checks layout. → Test `fleet-tool-progress.test.tsx`
+- **Dimension 5.10** — DONE. Edit secret reuses Create's field builder, with a locked name and masked replacement values. Saving replaces all fields through the existing update action. `EditSecretDialog.test.tsx` proves field validation, safe replacement, retry and dismissal guards. Create and Edit share the encryption explanation and help link. Secret names have Copy only; the unused Rename dialog and its parser are removed. Live replacement remains unverified under §5.7. → Test `EditSecretDialog.test.tsx`
+- **Dimension 5.11** — IN_PROGRESS. Ordinary authoring continues back and forth without a review reminder. An explicit “Save” shows “Saving setup...” while the model finalizes instructions from the working conversation and current setup, then the application saves the candidate pinned by that completed turn and confirms “Save done vN” without another review or Save click. Newly initialized and changed candidates are eligible; a different head after finalization, questions, quotes, cancelled work and historical messages never save. `authoring::tests::confirmation`, `draft-chat-save.test.ts` and `workspace-chat/save-command.test.tsx` prove replies, progress, finalized content, failure handling and idempotency. The long authoring wait remains a separate investigation; live saving is untested. → Test `workspace-chat/save-command.test.tsx`
+
+Verification: `make lint-app`, `make test-unit-app`, then the visible local browser walkthrough. Full repository gates remain due at the Pull Request boundary. Public documentation updates require the separate docs-repository approval before shipping. No OpenAPI, command-line, schema or retention-policy change is planned for this addition.
+
+Earlier local authoring regression checks: `make test-unit-app` reports 444 files and 4,342 tests passed; `make test-unit-rustd-runner` reports 1,329 passed. `make lint-app`, `make lint-rustd` and `make check-documentation-rules` pass. The focused provider adapter run reports 27 passed; this exercises codecs with a transport fixture and proves no live model behavior. The finalization client and UI checks report 26 passed (`tests/draft-chat-save.test.ts` and `tests/workspace-chat/save-command.test.tsx`); these use HTTP-boundary fixtures, not a deployed model or database. Development deployment and live save verification remain pending.
+
+The authoring delay remains unresolved. The correct log target is `agentsfleetd-dev`; the earlier attempt used the wrong app name. Read-only logs work, but the retained 100 entries covered roughly one second of SQL and runner polling, missing the slow turn. At 18:51:02.782 UTC on Oct 26, a normal browser question requesting no setup changes returned a conversational answer: admission took 1,764 ms, the stream lasted 5,734 ms and closed 7,518 ms after Send. This differs from the earlier 44-second setup-edit observation; neither stream lifetime alone isolates model inference. Correlate a slow turn's admission, runner start and model dispatch before claiming a latency fix. Standalone save commands still await their authoring turn; the reply fix does not establish faster saving.
+
+Live sizing recheck on Oct 26: `fly machine list -a agentsfleetd-dev --json` reports machine `48ee32df500958` running one shared CPU and 512 MB, contradicting Dimension 0.2's earlier completion claim. Read-only SFTP samples of `/proc/stat` at 19:01:30.972 and 19:01:50.007 UTC show 125 active ticks and 158 steal ticks out of 2,006 total ticks: 6.23% active and 7.88% steal. [Fly's CPU documentation](https://fly.io/docs/machines/cpu-performance/) gives a 6.25% baseline for one shared CPU. This supports investigating CPU scheduling but does not distinguish quota throttling from host contention or explain the entire authoring wait. No resize, deployment, secret change or live save was performed during this recheck.
 
 ## Interfaces
 
@@ -315,6 +367,17 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 | 4.1 | unit | `assets_check_accepts_tempo_variable_only` | Panel with `${tempo}` passes; panel with any other datasource UID fails naming it |
 | 4.2 | unit | `verb_stage_attributes_account_for_the_span` | Fixture spans: verb duration 100 ms with stages summing 96 ms → pass; summing 80 ms → fail |
 | 4.3 | manual | `manual_probes_satisfy_coverage_and_edge_ordering` | N consecutive dev probes: every table span found; edge ordering holds; numbers in Session Notes |
+| 5.1 | unit | `workspace-chat/saving.test.tsx` | Save retains the authoring page and an enabled composer without redirecting |
+| 5.2 | unit | `workspace-chat/fleet-editor.test.tsx` | Edit setup returns to the full authoring page using the current saved revision |
+| 5.3 | unit | `draft-continuation.test.ts` | Continued drafts retain history, refresh the revision and preserve access-loss and retry behavior |
+| 5.4 | unit | `workspace-chat/setup-status.test.tsx` | One saved acknowledgement appears with readiness in conversation, without status badges or a duplicate notice |
+| 5.5 | unit | `workspace-chat/editor.test.tsx` | The editor preserves policy and handles conflicts; Review controls are absent and publication is explicit |
+| 5.6 | unit | `setup-access.test.tsx` | Access opens the appropriate secure form or provider authorization; missing access remains conversational |
+| 5.7 | manual | `manual_local_brave_setup_walkthrough` | Indy inspects creation, saved acknowledgement, continued chat, runtime navigation and Edit setup on localhost against the development backend |
+| 5.8 | unit / integration | `setup-activity.test.ts` | Safe rendering; `authoring::saving::activity::` adds seven real-database proofs for reload, isolation, execution exclusion and mutation/receipt rollback with retry |
+| 5.9 | unit | `fleet-tool-progress.test.tsx` | Each recorded call has its own progress entry and disclosure; failure and interruption never display success |
+| 5.10 | unit | `EditSecretDialog.test.tsx` | Create and Edit reuse field entry and explanation; replacement validation, retry and dismissal preserve unsaved values |
+| 5.11 | unit | `workspace-chat/save-command.test.tsx` | Save waits for the completed report, persists its pinned candidate once and announces success only after acknowledgement; failed admission keeps chat usable, failed finalization or writes preserve the conversation, retry retains its operation identity, and historical Save text never writes |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -342,7 +405,7 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 
 ## Dead Code Sweep
 
-N/A — no files deleted.
+Remove the replaced embedded editor, duplicate save controls and runtime tab routing; keep workspace connector authorization and secret management.
 
 ## Out of Scope
 
@@ -356,14 +419,14 @@ N/A — no files deleted.
 - **W3C `traceparent` across the runner protocol.** `observability.md` §Traces keeps leases as separate root spans joined by attribute. Future work only if that decision changes.
 - **Non-chat events.** Webhook, cron and continuation events have no browser Send; their daemon spans still carry stage attributes, but the round-trip row covers chats. Future work.
 - **Production runner collector.** Dev host only; production follows the same systemd units once a production runner exists. Future work.
-- **The "access needs attention" banner.** It came up in the same session; it is a separate product change. Future work.
+- §5 includes the owner-approved compact access-readiness experience; unrelated workspace settings remain outside this addition.
 
 ---
 
 ## Product Clarity (authoring record)
 
 1. **Successful user moment** — Indy picks the dev acceptance fleet by ID and its last chat, and reads (illustrative values) "lease 210 ms: billing_hold 40 ms; gap B 640 ms: model 560 ms" without opening a terminal.
-2. **Preserved user behaviour** — Chat send, reply and retry are unchanged. Every API response keeps its status and body; the steer route adds one `Server-Timing` header. The browser records `performance` marks and renders nothing new.
+2. **Preserved user behaviour** — Chat send, reply and retry are unchanged. API response envelopes stay unchanged; the steer route adds one `Server-Timing` header. §5 simplifies authoring and puts fleet activity in chat.
 3. **Optimal-way check** — The most direct design is one distributed trace per event. `observability.md` §Traces keeps each lease as a separate root span, so this spec joins spans by `agentsfleet.event.id` and a fleet time window. That gives the same data, not one trace view.
 4. **Rebuild-vs-iterate** — Iterate for §1, §3 and §4: attributes on existing spans and existing stopwatches recorded. §2 is new infrastructure, a collector whose design is already approved.
 5. **What we build** — Daemon stage attributes through a span layer outside the reload slot, the runner collector admitting only root-owned sockets, runner segment attributes, edge `Server-Timing` and marks, one dashboard row, one playbook.
@@ -393,16 +456,16 @@ N/A — no files deleted.
 - **Patch-vs-refactor verdict:** patch for §1, §3 and §4; §2 is new infrastructure.
 
 ## Discovery (consult log)
-
+- **Save finalization approved, Oct 27, 2026:** Indy: "The when i say save" and "You feed to the model wait for the model reply and `Saving setup...` and i see `Save done v3`", followed by "Yes correct lets go, signed off approved." The completed report's pinned candidate, including changes from this turn, is saved without another Save click; a cut response fails without saving. The existing fleet's conflicting app-selection guidance remains unsaved. > Indy (2026-10-27): "Okay whatz up, if we cant verify then lets move it up?" / "to a PR" / "undraft the PR, since i would like to merge and test" — context: publish current chat changes as a ready Pull Request with missing live proof disclosed; M233 stays active and unfinished timing work remains open.
+- **Review deferred by owner:** "And i think for now remove the `Review Setup`" followed by "we will deal with it later". Remove the action from this change.
+- **Incomplete fleet conversation:** Indy: "how do we make it better to even un configured fleets can receive chat". Reuse existing setup admission while required access is missing; do not admit a runtime job that cannot execute. Static credentials remain bound to an explicitly selected host.
+- **Chronological activity:** Indy: "I think the chat must be the funneling point for all activity" and "Even the memory tab for a Fleet chat - is not needed". Memory sharing remains workspace-scoped; no global sharing permission is added.
+- **Authoring addition:** Indy chose "Use the current M233 worktree", then approved "Yes correct lets do that" for Edit setup returning to the original authoring page. "once we ahve this fixed we need to run this on the local on the current fly.io thing you are on" and "and see the experience" authorize local verification against the existing development backend. Fonts stay unchanged. These choices supersede the prior embedded setup editor in the design and architecture documents.
 - **Consults**
   - `docs/architecture/observability.md` §Traces, §runner collector, §Signal routing and §PostHog read (Oct 26, 2026).
   - Owner request, Indy (Oct 26, 2026), verbatim: "I want you to have logging, observability added to so we could to this as a fleet for me to check it and optimize". Agent's interpretation: a per-fleet, per-event stage breakdown in Grafana.
   - **Throttled baseline** on `shared-cpu-1x`, event `01a17627-25c5-761d-9794-f1ab0b40d9fc`, 03:00:38 UTC; daemon logs and Tempo via `gcx`, Postgres read-only:
-    - Send to 202: 0.78 s, of which 50 ms in the daemon.
-    - Lease request: 1.67 s over 36 SQL statements.
-    - Hydrate: 0.33 s. Capture: 0.39 s.
-    - Report: 1.60 s over 28 statements.
-    - `event_complete`: 5.42 s after Send.
+    - Send to 202: 0.78 s, including 50 ms in the daemon. Lease request: 1.67 s over 36 SQL statements; hydrate: 0.33 s; capture: 0.39 s; report: 1.60 s over 28 statements; `event_complete`: 5.42 s after Send.
   - **Ruled out** (inference from these measurements: the cause is CPU quota throttling on `shared-cpu-1x`):
     - The database: PlanetScale Insights, branch `useast`, `insert into billing.holds` p50 and p99 0 ms server-side.
     - The pooler and Nagle's algorithm: an in-region Go probe on the daemon machine reproduced the delay with `TCP_NODELAY` on and off, on ports 6432 and 5432.
@@ -410,10 +473,7 @@ N/A — no files deleted.
   - **`performance-1x` trial:** 0 of 8,610 probe statements took ≥ 40 ms; three chats took 1.53–1.86 s.
   - **On `shared-cpu-2x` after §0:** three chats took 1.53–1.94 s (05:11 UTC, browser probe through the steer route).
   - **Runner stopwatch** (`lease_completed` lines in the dev runner's journal, `journalctl -u agentsfleet-runner`, 04:21–05:43 UTC), dev acceptance fleet after the resize:
-    - Runner wall time: 700–1,100 ms.
-    - Memory: 62–86 ms. Model: 346–684 ms. First token: 317–489 ms. Report: 249–347 ms.
-    - `tools=0`, and no `sandbox` segment: no sandbox ran.
-    - Throttled 04:21 run: memory 718 ms, report 1,883 ms.
+    - Runner wall time: 700–1,100 ms; memory: 62–86 ms; model: 346–684 ms; first token: 317–489 ms; report: 249–347 ms. `tools=0` and no `sandbox` segment: no sandbox ran. Throttled 04:21 run: memory 718 ms, report 1,883 ms.
   - **`DeliveryStage` export gap:** Prometheus has no series matching `*delivery*` (05:45 UTC), although `docs/metrics.census.tsv` declares `agentsfleet_fleet_delivery_stage_seconds` as a delta histogram.
   - **Pricing:** `https://docs.fly.io/about/pricing`, Oct 26, 2026, `iad`: `performance-2x` 4 GB $66 a month; `shared-cpu-4x` 4 GB about $26.76, derived from $6 per GB and the shared-vCPU rate; three machines each.
 - **Required human decisions — pending**
@@ -428,7 +488,7 @@ N/A — no files deleted.
   - "I am okay with the bottleneck in dev, but i need you to confirm the reason, so i can focus on that in production".
   - "For development also strip down the debug level in development … bring down the sizing of dragonfly as well as it costs 60$".
   - Asked whether to pin `info` in rule `workflow-daemon-log-level` of `scripts/check_workflow_rules.py`, Indy chose "Yes, pin info" (the option the agent marked Recommended). This is the gate-edit approval, superseding the M187 call to deploy dev at `debug`.
-  - Asked to move the dev daemon, Indy chose "Yes, shared-cpu-2x 1GB" (the option the agent marked Recommended).
+  - Asked to move the dev daemon, Indy chose "Yes, shared-cpu-2x 1GB" (the option the agent marked Recommended). Oct 27, 2026: "Can you move tsrs to 0.20.0-ts7.1.0-beta"; update all existing compiler pins and both Bun lockfiles, then verify lint and builds.
 - **Metrics review** — no metric family added; span attributes only; no analytics funnel playbook update required, because no product event changes.
 - **Skill-chain outcomes**
   - **egm review, Stage 5:** report `egm-review/zoom_out_report.md`. Indy: "Okay do that". Changes are in revision `7123d5c05`.
