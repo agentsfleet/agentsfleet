@@ -19,17 +19,27 @@ export function DefinitionEditor({client, view, onUpdated, onDirtyChange, onCanc
     name: view.draft?.review?.effective.instance_name ?? view.preview?.instanceName ?? view.fleet?.name ?? String(initial.config.name)});
   const {instructions, name} = form.values;
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {onDirtyChange?.(form.dirty);}, [form.dirty, onDirtyChange]);
+  const [savePending, setSavePending] = useState(false);
+  const hasWork = form.dirty || savePending;
+  const retryApply = view.pending && savePending;
+  useEffect(() => {onDirtyChange?.(hasWork);}, [hasWork, onDirtyChange]);
   const recovery = chatRecovery(view);
-  const locked = form.conflict || view.busy || view.pending || recovery.pending || recovery.blocked
+  const locked = form.conflict || view.busy || (view.pending && !retryApply) || recovery.pending || recovery.blocked
     || Boolean(view.draft && (!view.draft.candidate || view.draft.state !== DRAFT_STATE.editing && !savedDraft(view)));
   const apply = async (): Promise<void> => {
     setError(null);
     try {
-      const updating = Boolean(view.preview?.setupRevision || view.draft?.linked_fleet_id || view.fleet);
-      await client.edit({definition: {...initial, instructions_md: instructions}, instanceName: name});
-      await client.refreshSetup();
-      if (updating) await client.apply();
+      if (retryApply) await client.retry();
+      else {
+        const updating = Boolean(view.preview?.setupRevision || view.draft?.linked_fleet_id || view.fleet);
+        if (form.dirty) {
+          await client.edit({definition: {...initial, instructions_md: instructions}, instanceName: name});
+          setSavePending(true);
+        }
+        await client.refreshSetup();
+        if (updating) await client.apply();
+      }
+      setSavePending(false);
       onUpdated();
     } catch (cause) {setError(setupErrorMessage(cause));}
   };
@@ -37,13 +47,13 @@ export function DefinitionEditor({client, view, onUpdated, onDirtyChange, onCanc
     {form.conflict ? <Alert variant="warning">Setup chat changed these instructions. Your edits are still here.
       <Button variant="outline" size="sm" onClick={() => {form.reset(); setError(null);}}>Discard manual changes and load latest</Button>
     </Alert> : null}
-    <div className="space-y-xs"><Label htmlFor={`${inputId}-name`}>Fleet name</Label><Input id={`${inputId}-name`} value={name} onChange={event => form.change("name", event.target.value)} maxLength={64} /></div>
+    <div className="space-y-xs"><Label htmlFor={`${inputId}-name`}>Fleet name</Label><Input id={`${inputId}-name`} disabled={view.busy || view.pending} value={name} onChange={event => form.change("name", event.target.value)} maxLength={64} /></div>
     <div className="flex min-h-0 flex-1 flex-col gap-xs"><Label htmlFor={`${inputId}-instructions`}>Instructions</Label>
-      <Textarea id={`${inputId}-instructions`} rows={18} className="min-h-64 flex-1 resize-y leading-prose" value={instructions} onChange={event => form.change("instructions", event.target.value)} /></div>
+      <Textarea id={`${inputId}-instructions`} disabled={view.busy || view.pending} rows={18} className="min-h-64 flex-1 resize-y leading-prose" value={instructions} onChange={event => form.change("instructions", event.target.value)} /></div>
     {error ? <Alert variant="destructive">{error}</Alert> : null}
     <div className="flex flex-wrap items-center gap-sm">
       <div className="ml-auto flex gap-sm">{onCancel ? <Button variant="ghost" disabled={view.busy} onClick={onCancel}>Cancel</Button> : null}
-        <Button disabled={locked || !form.dirty} onClick={() => {void apply();}}>Save changes</Button></div>
+        <Button disabled={locked || !hasWork} onClick={() => {void apply();}}>{retryApply ? "Retry save" : "Save changes"}</Button></div>
     </div>
   </div>;
 }
