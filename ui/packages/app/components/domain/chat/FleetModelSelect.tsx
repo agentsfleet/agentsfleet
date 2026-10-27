@@ -21,7 +21,7 @@ const ignore = (): void => undefined;
 export function FleetModelSelect({label}: {label: string}) {
   const setup = useFleetSetup();
   return setup?.modelOwner ? <ModelPicker key={`${setup.modelOwner.fleet}:${setup.modelOwner.revision}`} owner={setup.modelOwner}
-    label={label} disabled={setup.editing} model={setup.modelState} /> : <ChatComposerModel>{label}</ChatComposerModel>;
+    label={label} disabled={setup.modelChanging} model={setup.modelState} /> : <ChatComposerModel>{label}</ChatComposerModel>;
 }
 
 function ModelPicker({owner, label, disabled, model}: {owner: FleetModelOwner; label: string; disabled: boolean; model: ReturnType<typeof useFleetModel>}) {

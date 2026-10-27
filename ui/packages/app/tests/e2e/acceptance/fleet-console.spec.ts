@@ -1,17 +1,16 @@
 /**
  * fleet-console.spec.ts — the operator lives on the fleet console: a local
- * navigation rail (Chat, Activity, Memory) beside one
- * working surface at a time, with Chat as the action surface.
+ * conversation with setup and saved memories reachable from its header.
  *
  * The walk proves the two things a console must get right before anything
  * else: the composer is reachable without scrolling the page even when the
  * fleet has a history, and a message actually leaves the composer. It then
- * checks that a non-chat view still behaves as ordinary page content, and
- * that the way back to the wall works.
+ * checks that saved memories open without losing an unsent message, and
+ * that the way back to all fleets works.
  *
  * Requires the full acceptance stack (seeded fleet + SSR auth). A regression
  * lands as a composer below the fold, a message that never leaves the field,
- * or a clipped Memory view.
+ * or an unreachable saved-memory dialog.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -19,12 +18,14 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { editSetupLink } from "./fixtures/private-chat";
 
 const RENDER_TIMEOUT_MS = 15_000;
 const SEND_TIMEOUT_MS = 10_000;
 // An idle fleet first flushes through the proxy on the daemon's 15s heartbeat.
 const STREAM_OPEN_TIMEOUT_MS = 30_000;
 const FOLLOW_UP = "And report build errors";
+const SAVED_MEMORIES = "Saved memories";
 
 test.describe("fleet console", () => {
   test("test_e2e_operator_lives_on_the_console — reach the composer, send, navigate", async ({
@@ -39,14 +40,8 @@ test.describe("fleet console", () => {
     await visitFleetAndCheckStream(page, ws, fleet.id);
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
-    // The console's local rail — one working surface at a time.
-    const rail = page.getByRole("navigation", { name: "Fleet sections" });
-    await expect(rail).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    for (const section of ["Chat", "Activity", "Memory"]) {
-      await expect(rail.getByRole("link", { name: section })).toBeVisible();
-    }
-    await expect(rail.getByRole("link", {name: "Setup", exact: true})).toHaveCount(0);
-    await expect(page.getByRole("button", {name: "Edit setup", exact: true})).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Fleet sections" })).toHaveCount(0);
+    await expect(editSetupLink(page)).toBeVisible();
 
     const thread = page.getByTestId("fleet-thread-root");
     await expect(thread).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
@@ -87,11 +82,17 @@ test.describe("fleet console", () => {
     await page.keyboard.type(FOLLOW_UP);
     await expect(textarea).toHaveValue(FOLLOW_UP);
 
-    await rail.getByRole("link", { name: "Memory", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`fleets/${fleet.id}\\?view=memory$`));
-    await expect(page.getByRole("button", {name: "Edit setup", exact: true})).toBeVisible();
+    await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
+    await page.getByRole("menuitem", {name: SAVED_MEMORIES, exact: true}).click();
+    const memories = page.getByRole("dialog", {name: SAVED_MEMORIES, exact: true});
+    await expect(memories).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(memories).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", {name: "Fleet actions", exact: true})).toHaveAttribute("aria-expanded", "false");
+    await expect(textarea).toHaveValue(FOLLOW_UP);
 
-    // The shared sidebar returns to all saved fleets from every fleet section.
+    // The shared sidebar returns to all saved fleets.
     await page.getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: "Your fleets", exact: true })
       .click();

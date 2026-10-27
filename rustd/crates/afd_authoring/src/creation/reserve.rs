@@ -228,9 +228,20 @@ pub(super) async fn insert_revision(
         .bind(&head.accepted.review_digest)
         .bind(head.accepted.frozen()?)
         .bind(head.accepted.candidate_id.as_str())
-        .execute(connection)
+        .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
+    let number = head.number.to_string();
+    let identity = format!("setup_saved:{}", head.id);
+    afd_events::activity::record_on(
+        connection,
+        &head.accepted.context.workspace_id,
+        fleet,
+        &identity,
+        afd_events::activity::Activity::SetupSaved { revision: &number },
+    )
+    .await
+    .map_err(query(CONTEXT))?;
     Ok(())
 }
 

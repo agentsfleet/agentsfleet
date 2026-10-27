@@ -20,8 +20,11 @@ const LAST_ANSWER_LINE = `Step ${ANSWER_CHUNKS} settled`;
 const TOOL_NAME = "file_read";
 const TOOL_PATH = "src/probe.ts";
 const TOOL_CALL_ID = "f0:0";
-const EXPLORING_LABEL = "Exploring";
-const EXPLORED_LABEL = "Explored";
+const TOOL_CALLS_LABEL = "Tool calls";
+const INPUT_LABEL = "Input";
+const OUTPUT_LABEL = "Output";
+const RUNNING_LABEL = "Running";
+const DONE_LABEL = "Done";
 const TOOL_WALL_MS = 700;
 const REQUEST_TOOL = "http_request";
 const REQUEST_URL = "https://status.example.test/health";
@@ -62,10 +65,13 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
     await expect(live).toContainText(LIVE_REASONING.slice(0, -1));
 
     await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_STARTED, { call_id: TOOL_CALL_ID, args_redacted: { path: TOOL_PATH } })]);
-    await expect(chat.getByRole("list", { name: EXPLORING_LABEL, exact: true })).toContainText("Read probe.ts");
+    const call = chat.getByRole("list", {name: TOOL_CALLS_LABEL}).locator(`[data-tool="${TOOL_NAME}"]`);
+    await expect(call).toContainText(RUNNING_LABEL);
+    await call.getByRole("button", {name: INPUT_LABEL, exact: true}).click();
+    await expect(call).toContainText(TOOL_PATH);
     await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_COMPLETED, { call_id: TOOL_CALL_ID, ms: TOOL_WALL_MS, status: "succeeded" })]);
-    await expect(chat.getByRole("list", { name: EXPLORED_LABEL, exact: true })).toContainText("Read probe.ts");
-    await expect(chat.getByRole("list", { name: EXPLORING_LABEL, exact: true })).toHaveCount(0);
+    await expect(call).toContainText(DONE_LABEL);
+    await expect(call.getByText(RUNNING_LABEL, {exact: true})).toHaveCount(0);
 
     await stream.send([chunk(seq++, "answer", ANSWER)]);
     await expect(chat.getByText(ANSWER)).toBeVisible();
@@ -78,7 +84,7 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
 });
 
 // A call as Codex draws it, live: the bullet breathes while the request runs,
-// then settles green with the verb in the past tense and the output under it.
+// then settles green with its recorded name, outcome and expandable output.
 // The animation is read from the browser's computed style, which no unit lane
 // can see.
 test("test_live_tool_cell_settles_green", async ({ page }) => {
@@ -87,19 +93,23 @@ test("test_live_tool_cell_settles_green", async ({ page }) => {
       opening(Date.now()),
       callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_STARTED, { call_id: REQUEST_CALL_ID, args_redacted: { method: "GET", url: REQUEST_URL } }),
     ]);
-    const cell = chat.getByRole("list", { name: "Tool calls" }).locator(`[data-tool="${REQUEST_TOOL}"]`);
+    const cell = chat.getByRole("list", { name: TOOL_CALLS_LABEL }).locator(`[data-tool="${REQUEST_TOOL}"]`);
     const bullet = cell.locator("[data-tool-shimmer]");
-    await expect(cell).toContainText(`Requesting GET ${REQUEST_URL}`);
+    await expect(cell).toContainText(RUNNING_LABEL);
+    await cell.getByRole("button", {name: INPUT_LABEL, exact: true}).click();
+    await expect(cell).toContainText(REQUEST_URL);
+    await expect(cell.getByRole("button", {name: OUTPUT_LABEL, exact: true})).toBeDisabled();
     await expect(bullet).toHaveAttribute("data-tool-shimmer", "true");
     await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe(SHIMMER);
 
     await stream.send([callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_COMPLETED, {
       call_id: REQUEST_CALL_ID, ms: TOOL_WALL_MS, status: "succeeded", output_head: REQUEST_OUTPUT, output_line_count: 2,
     })]);
-    await expect(cell).toContainText(`Requested GET ${REQUEST_URL}`);
+    await expect(cell).toContainText(DONE_LABEL);
     await expect(bullet).toHaveAttribute("data-tool-shimmer", "false");
     await expect(bullet).toHaveClass(/\btext-success\b/);
     await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+    await cell.getByRole("button", {name: OUTPUT_LABEL, exact: true}).click();
     await expect(cell).toContainText("200 OK");
     await expect(cell).toContainText("0.7s");
   });

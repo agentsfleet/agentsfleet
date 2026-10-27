@@ -29,6 +29,7 @@ import { executionInstructions } from "./fixtures/definition";
 import { expect, test, type Page } from "@playwright/test";
 import type { EventDetail } from "@/lib/api/events";
 import { signInAs } from "./fixtures/auth";
+import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   anyRunnerLive,
@@ -79,7 +80,8 @@ const MESSAGE_PREFIX = "acceptance-probe-";
 // Mirrors of tile copy in `fleets/components/FleetTile.tsx`. Importing the
 // constants would pull a "use client" module — React and next/navigation with
 // it — into the Playwright process; the wall's own unit suite pins the copy.
-const TILE_EMPTY_COPY = /Waiting for the next event\.|No live activity\./;
+const TILE_IDLE_COPY = /Waiting for the next event\.|No live activity\.|Activity recorded/;
+const ACTIVITY_EVENT = "activity";
 const MANAGE_FLEET_LABEL = "Manage fleet";
 // Every tile card carries its kind — live, snapshot or drained — as data.
 const TILE_CARD = "[data-kind]";
@@ -169,8 +171,7 @@ test.describe("fleet execution", () => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
 
     // ── 1.1 A reviewed save reaches active ──
-    // saveFleetViaUI is the operator's own walk: inline setup, Edit instructions,
-    // Update instructions, Save fleet, Open fleet.
+    // Edit instructions, save without leaving authoring, then open the fleet.
     await signInAs(page, FIXTURE_KEY.regular);
     const fleetId = await saveFleetViaUI(page, EXECUTING_TEMPLATE, {
       handle: FIXTURE_KEY.regular,
@@ -199,7 +200,7 @@ test.describe("fleet execution", () => {
     await wall.goto(workspaceHref(workspaceId, "fleets"));
     await expect(tileFor(wall, fleetId)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(tileFor(wall, control.id)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(tileFor(wall, fleetId)).toContainText(TILE_EMPTY_COPY, {
+    await expect(tileFor(wall, fleetId)).toContainText(TILE_IDLE_COPY, {
       timeout: RENDER_TIMEOUT_MS,
     });
 
@@ -273,10 +274,16 @@ test.describe("fleet execution", () => {
     });
 
     // ── 1.4, second half: the activity reached one tile over one stream ──
-    await expect(tileFor(wall, fleetId)).not.toContainText(TILE_EMPTY_COPY, {
+    await expect(tileFor(wall, fleetId)).not.toContainText(TILE_IDLE_COPY, {
       timeout: RENDER_TIMEOUT_MS,
     });
-    await expect(tileFor(wall, control.id)).toContainText(TILE_EMPTY_COPY);
+    await expect(tileFor(wall, control.id)).toContainText(TILE_IDLE_COPY);
+    // A setup receipt may appear on an untouched fleet; execution must not.
+    const controlHistory = await clientFor(FIXTURE_KEY.regular).get<{items: EventDetail[]}>(
+      `/v1/workspaces/${workspaceId}/fleets/${control.id}/messages`,
+    );
+    expect(controlHistory.items.every(row => row.event_type === ACTIVITY_EVENT)).toBe(true);
+    expect(await findLeaseFor(control.id)).toBeNull();
     expect(streams.workspace, "the wall opens the workspace stream once").toBe(1);
     expect(streams.fleet, "the wall opens no per-fleet stream").toBe(0);
     await wall.close();

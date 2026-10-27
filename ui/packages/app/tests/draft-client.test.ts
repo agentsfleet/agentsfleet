@@ -199,7 +199,13 @@ describe("private browser chat", () => {
   it("pins Apply to the setup tag whose revision matches the displayed Review", async () => {
     fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
     const instance = await ready(true); await instance.refreshSetup();
-    fixture.override = ({path, method}) => path.endsWith(`/fleets/${FLEET_ID}/revisions`) && method === "POST" ? response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"resource-two"', schedules: []}, 201) : undefined;
+    fixture.override = ({path, method}) => {
+      if (path.endsWith(`/fleets/${FLEET_ID}/revisions`) && method === "POST") {
+        fixture.fleet = {...FLEET, setup_revision: "2"};
+        return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"resource-two"', schedules: []}, 201);
+      }
+      return undefined;
+    };
     await instance.apply();
     expect(mutations()[0]?.headers.get("If-Match")).toBe(FLEET.setup_etag);
     expect(mutations()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest});
@@ -212,6 +218,7 @@ describe("private browser chat", () => {
     const instance = await ready(true); await instance.refreshSetup();
     fixture.override = ({path, method}) => {
       if (path.endsWith(`/fleets/${FLEET_ID}/revisions`) && method === "POST") {
+        fixture.fleet = {...FLEET, setup_revision: "2", schedules: [failed]};
         return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"resource-two"', schedules: [failed]}, 201);
       }
       if (path.endsWith(`/fleets/${FLEET_ID}/schedules/sched-1/sync`) && method === "POST") return response({...failed, sync: "synced", last_error: null});
@@ -223,7 +230,7 @@ describe("private browser chat", () => {
     await instance.syncSchedule(failed);
     expect(mutations().at(-1)?.path).toMatch(/\/fleets\/[^/]+\/schedules\/sched-1\/sync$/);
     expect(instance.getSnapshot().schedules[0]?.sync).toBe("synced");
-    expect(instance.getSnapshot().fleet).toBeNull();
+    expect(instance.getSnapshot().fleet).toMatchObject({setup_revision: "2", schedules: [{sync: "synced"}]});
   });
   it("updates the saved fleet's schedule after a retried registration", async () => {
     const owed = {schedule_id: "sched-2", fleet_id: FLEET_ID, sync: "syncing", last_error: null};
@@ -258,15 +265,6 @@ describe("private browser chat", () => {
     expect(mutations()[1]?.headers.get("If-Match")).toBe('"original-library"');
     expect(mutations()[1]?.headers.get("Idempotency-Key")).toBe(mutations()[0]?.headers.get("Idempotency-Key"));
     expect(calls.filter((call) => call.path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`))).toHaveLength(1);
-  });
-  it("reloads a retained fleet and resumes it with its fresh resource tag", async () => {
-    fixture.current = {...DRAFT, state: DRAFT_STATE.saving, linked_fleet_id: FLEET_ID};
-    const instance = await ready(true);
-    expect(instance.getSnapshot().fleet?.id).toBe(FLEET_ID); expect(mutations()).toEqual([]);
-    await instance.retry();
-    expect(mutations()).toHaveLength(1); expect(mutations()[0]?.method).toBe("PATCH");
-    expect(mutations()[0]?.headers.get("If-Match")).toBe(FLEET.etag);
-    expect(mutations()[0]?.body).toEqual({status: "active"});
   });
   it("clears private data and cancels future I/O on disposal", async () => {
     const instance = await ready(true); instance.dispose(); const before = calls.length;

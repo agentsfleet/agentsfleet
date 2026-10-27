@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import { z } from "zod";
 import { ModelsSchema, type WorkspaceModel } from "@/lib/api/draft-types";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
-import { EDIT_SETUP_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
@@ -12,22 +11,13 @@ const MODELS = "/v1/tenants/me/models";
 const PLATFORM_DEFAULT = "platform-default";
 const ENTRY = z.object({id: z.uuid()});
 const MESSAGE = "Keep my unsent question after the model changes";
-const SETUP_MESSAGE = "Keep my unsent setup edit too";
 const MODEL_LABEL = "Fleet model";
-const EDITOR_LABEL = "Edit fleet setup";
 
-test("saving the fleet model preserves both composers and survives reload", async ({page}) => {
+test("saving the fleet model preserves its unsent message and survives reload", async ({page}) => {
   await withRuntimeChoice(async choice => {
     await withReplyPage(page, "incident-routing", async ({workspaceId, fleetId}) => {
       const composer = page.getByLabel("Chat composer", {exact: true}).getByRole("textbox");
-      const opener = page.getByRole("button", {name: EDITOR_LABEL, exact: true});
       await composer.fill(MESSAGE);
-      await opener.click();
-      const setup = page.getByRole("complementary", {name: EDITOR_LABEL});
-      const setupInput = setup.getByLabel(EDIT_SETUP_PLACEHOLDER);
-      await expect(setupInput).toBeEnabled();
-      await setupInput.fill(SETUP_MESSAGE);
-      await setup.getByRole("button", {name: "Close setup editor"}).click();
       const postedMessages: string[] = [];
       page.on("request", request => {
         if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/messages")) postedMessages.push(request.url());
@@ -38,9 +28,6 @@ test("saving the fleet model preserves both composers and survives reload", asyn
       await expect(page.getByRole("combobox", {name: MODEL_LABEL})).toContainText(choice.label);
       expect((await readFleet(workspaceId, fleetId)).definition.config["x-agentsfleet"].model).toBe(choice.ref);
       await expect(composer).toHaveValue(MESSAGE);
-      await opener.click();
-      await expect(setupInput).toHaveValue(SETUP_MESSAGE);
-      await setup.getByRole("button", {name: "Close setup editor"}).click();
       expect(postedMessages).toEqual([]);
       await page.reload();
       await expect(page.getByRole("combobox", {name: MODEL_LABEL})).toContainText(choice.label);

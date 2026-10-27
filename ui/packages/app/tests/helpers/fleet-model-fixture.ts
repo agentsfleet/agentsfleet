@@ -45,7 +45,7 @@ export class FleetModelFixture extends DraftClientFixture {
       if (call.path.endsWith("/revisions")) {
         const key = call.headers.get("Idempotency-Key") ?? ""; this.applyKeys.push(key);
         if (this.saveStatus !== 201) return response({user_message: "Another editor saved a newer version."}, this.saveStatus);
-        this.applied.add(key);
+        this.applied.add(key); this.revision = "2";
         if (this.loseApply) {this.loseApply = false; throw new TypeError("Lost apply acknowledgment");}
         return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"setup-two"', etag: '"fleet-two"', schedules: []}, 201);
       }

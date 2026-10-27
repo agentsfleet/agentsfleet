@@ -1,7 +1,7 @@
 import type { Draft, Message } from "@/lib/api/draft-types";
 import { vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 // Load the real dynamic children before interaction deadlines start.
 import "@/components/domain/chat/DraftConversation";
@@ -30,14 +30,15 @@ export class ChatFixture {
     if (path.endsWith("/models")) return response({items: [MODEL], next_cursor: null});
     if (path.endsWith("/drafts") && call.method === "GET") return response({items: [], next_cursor: null});
     if (path.endsWith("/drafts") && call.method === "POST") return response({...this.draft, accepted: {status: "accepted", sequence: "1", replayed: false}}, 201);
+    if (path.includes("/fleets/") && path.endsWith("/messages")) return response({items: [], next_cursor: null});
     if (path.endsWith("/messages")) return response({items: this.messages, next_cursor: null});
     if (path.endsWith(`/drafts/${this.draft.id}`)) return response(this.draft);
     if (path.endsWith("/fleets") && call.method === "POST") {
       this.saveAttempts++;
       if (this.failSave && this.saveAttempts === 1) throw new TypeError("network interrupted");
-      return response({...FLEET, status: "active", setup: {state: "ready", checks: []}}, 201);
+      return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}}, 201);
     }
-    if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET, status: "active", setup: {state: "ready", checks: []}});
+    if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}});
     if (path.endsWith("/fleet-libraries") && call.method === "POST") return response(PUBLICATION, 201);
     throw new Error(`Unexpected chat fixture request ${call.method} ${path}`);
   });
@@ -63,8 +64,6 @@ export async function chooseSetupAction(name: string): Promise<void> {
   fireEvent.click(await setupAction(name));
 }
 
-export async function openSetupReview(): Promise<void> {
-  await chooseSetupAction("Edit instructions");
-  const toggle = await screen.findByRole("button", {name: "Review and run options"});
-  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+export async function openPublication(): Promise<void> {
+  await chooseSetupAction("Publish to Library");
 }

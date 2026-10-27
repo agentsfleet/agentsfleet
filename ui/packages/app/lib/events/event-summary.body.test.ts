@@ -12,6 +12,7 @@ import {
   triggerBodyFor,
 } from "./event-summary";
 import { ACCOUNT_ID, PLATFORM_IDENTITY, row } from "@/tests/helpers/event-summary-fixtures";
+import { ACTIVITY_KIND, FLEET_ACTIVITY } from "./fleet-activity";
 
 describe("parsePayload", () => {
   it("rejects absent, malformed, and non-object payloads", () => {
@@ -88,6 +89,18 @@ describe("eventHeadlineFrom", () => {
 });
 
 describe("triggerBodyFor / replyBodyFor", () => {
+  // Value: protects=durable receipts display only permitted activity fields, never private payload text;
+  // fails_when=receipts fall through to trigger headlines or expose arbitrary messages; seam=none; no_claim=server filtering.
+  it.each([
+    {payload: {kind: ACTIVITY_KIND.setupSaved, revision: "3", message: "private setup input"}, text: "Save done v3"},
+    {payload: {kind: "future_receipt", message: "private setup input"}, text: "Activity recorded"},
+  ])("renders a safe receipt caption: $text", ({payload, text}) => {
+    const receipt = row({actor: "config_reload", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
+      request_json: JSON.stringify(payload)});
+    expect(triggerBodyFor(receipt)).toBe(text);
+    expect(replyBodyFor(receipt)).toBe("");
+  });
+
   it("the trigger is the operator's own text, never the fleet's reply on the same row", () => {
     const operator = row({
       actor: `${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`,

@@ -22,28 +22,31 @@ import { cn } from "../utils";
 
 export type SwitchProps = ComponentProps<typeof SwitchPrimitive.Root>;
 
+const TRACK_CLASS = "inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent bg-border-strong data-[state=checked]:bg-primary transition-colors duration-snap ease-snap";
+const THUMB_CLASS = "pointer-events-none block h-4 w-4 rounded-full bg-background data-[state=checked]:translate-x-4 data-[state=checked]:bg-primary-foreground transition-transform duration-snap ease-snap";
+
+/** The switch appearance for a menu item that already owns keyboard input. */
+export function SwitchIndicator({checked}: {checked: boolean}) {
+  const state = checked ? "checked" : "unchecked";
+  return <span aria-hidden="true" data-state={state} className={TRACK_CLASS}>
+    <span data-state={state} className={THUMB_CLASS} />
+  </span>;
+}
+
 export function Switch({ className, ref, ...props }: SwitchProps) {
   return (
     <SwitchPrimitive.Root
       ref={ref}
       className={cn(
-        "inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent",
+        TRACK_CLASS, "cursor-pointer",
         "relative after:absolute after:inset-0 pointer-coarse:after:-inset-y-xl pointer-coarse:after:-inset-x-md",
-        "bg-border-strong data-[state=checked]:bg-primary",
         "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         "disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50",
-        "transition-colors duration-snap ease-snap",
         className,
       )}
       {...props}
     >
-      <SwitchPrimitive.Thumb
-        className={cn(
-          "pointer-events-none block h-4 w-4 rounded-full bg-background",
-          "data-[state=checked]:translate-x-4 data-[state=checked]:bg-primary-foreground",
-          "transition-transform duration-snap ease-snap",
-        )}
-      />
+      <SwitchPrimitive.Thumb className={THUMB_CLASS} />
     </SwitchPrimitive.Root>
   );
 }

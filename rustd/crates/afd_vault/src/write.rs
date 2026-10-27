@@ -104,6 +104,9 @@ impl Vault {
         if written.rows_affected() == 0 {
             return Err(ErrorKind::NameTaken.into());
         }
+        afd_events::activity::record_access_on(transaction, workspace, name.as_str())
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();
@@ -183,6 +186,9 @@ impl Vault {
         if written.rows_affected() == 0 {
             return Err(ErrorKind::NotFound.into());
         }
+        afd_events::activity::record_access_on(transaction, workspace, name.as_str())
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();

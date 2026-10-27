@@ -41,40 +41,34 @@ test.describe("fleet detail logs", () => {
     });
     await composer.getByRole("button", { name: /send/i }).click();
     await expect(page.getByLabel("Fleet chat").getByText(message)).toBeVisible();
-    await persisted;
+    const accepted = await persisted;
+    expect(accepted.status()).toBe(202);
+    const receipt = await accepted.json();
+    expect(receipt).toMatchObject({status: "accepted", replayed: false, event_id: expect.any(String)});
+    const settledEventId = receipt.event_id as string;
     const api = clientFor(FIXTURE_KEY.regular);
-    let settledEventId = "";
     await expect
       .poll(
         async () => {
           const events = await api.get<EventPage>(
             `/v1/workspaces/${ws}/fleets/${seeded.id}/events?limit=100`,
           );
-          settledEventId = events.items[0]?.event_id ?? "";
-          return settledEventId !== "";
+          return events.items.some(event => event.event_id === settledEventId);
         },
         { timeout: RENDER_TIMEOUT_MS },
       )
       .toBe(true);
-    // The fleet was seeded in this test, so its first event is this steer;
-    // the body lives only on the single-event route.
+    // Setup receipts share the timeline; inspect the event this send admitted.
     const detail = await api.get<EventDetail>(
       `/v1/workspaces/${ws}/fleets/${seeded.id}/events/${settledEventId}`,
     );
     expect(detail.request_json ?? "").toContain(message);
 
-    // The approved chat keeps routine run details in Activity.
-    await expect(page.getByRole("heading", {name: seeded.name, exact: true})).toBeVisible();
-    await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
-    // Scope to the fleet rail: the workspace sidebar carries its own Events
-    // link, so the bare role query is ambiguous on the detail page.
-    await page
-      .getByRole("navigation", { name: "Fleet sections" })
-      .getByRole("link", { name: "Activity" })
-      .click();
-    const events = page.getByRole("table", { name: "Fleet activity" });
+    // Workspace activity retains inspection after the fleet tabs were removed.
+    await page.goto(workspaceHref(ws, "events"));
+    const events = page.getByRole("table", { name: "Workspace activity" });
     await expect(events).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await events.getByRole("button", { name: /inspect event/i }).first().click();
+    await events.getByRole("button", {name: `Inspect event ${settledEventId}`, exact: true}).click();
 
     // The detail keeps the outcome and request context prominent without
     // technical identifiers or clipboard controls in the footer.
@@ -84,6 +78,7 @@ test.describe("fleet detail logs", () => {
     await expect(dialog.getByText(/^Source:/)).toBeVisible();
     await expect(dialog.getByText(/^Type:/)).toBeVisible();
     await expect(dialog.getByRole("heading", { name: "Request context" })).toBeVisible();
+    await expect(dialog).toContainText(message);
     await expect(dialog.getByRole("button", { name: /copy/i })).toHaveCount(0);
   });
 

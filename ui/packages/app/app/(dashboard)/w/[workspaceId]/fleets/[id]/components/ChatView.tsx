@@ -1,6 +1,7 @@
 "use client";
 
 import type { EventDetail } from "@/lib/api/events";
+import type { ReactNode } from "react";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
 import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
@@ -10,6 +11,7 @@ import FleetStatusLine from "./FleetStatusLine";
 type Props = {
   modelLabel?: string;
   setupRevision?: string;
+  setup?: ReactNode;
   workspaceId: string;
   fleetId: string;
   senderLabel: string;
@@ -39,13 +41,13 @@ export function ChatView({
   initialSummary,
   approvalsHref,
   viewer,
-  senderNames, modelLabel, setupRevision,
+  senderNames, modelLabel, setupRevision, setup,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
-      <FleetThreadDynamic modelLabel={modelLabel} setupRevision={setupRevision}
+      <FleetThreadDynamic modelLabel={modelLabel} setupRevision={setupRevision} setup={setup}
         workspaceId={workspaceId}
         fleetId={fleetId}
         senderLabel={senderLabel}

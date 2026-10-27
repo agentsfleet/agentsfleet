@@ -33,7 +33,7 @@ vi.mock("lucide-react", () => {
     KeyRoundIcon: make("KeyRoundIcon"),
     SearchIcon: make("SearchIcon"),
     PencilIcon: make("PencilIcon"),
-    PencilLineIcon: make("PencilLineIcon"),
+    CircleHelpIcon: make("CircleHelpIcon"),
     ArrowUpIcon: make("ArrowUpIcon"),
     ArrowDownIcon: make("ArrowDownIcon"),
     ArrowUpDownIcon: make("ArrowUpDownIcon"),
@@ -162,8 +162,8 @@ describe("SecretsList component", () => {
     // asks the user to re-enter the secret rather than displaying the stored one.
     await user.click(screen.getByLabelText(/Edit secret openai-key/i));
     await waitFor(() => expect(screen.getByText(/Edit secret .*openai-key/i)).toBeTruthy());
-    expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
-    expect(screen.getByText(/paste the full replacement value/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^save changes$/i })).toBeTruthy();
+    expect(screen.getByText(/re-enter every field you want to keep/i)).toBeTruthy();
     // There is no "reveal"/"show" control that would expose the stored value.
     expect(screen.queryByRole("button", { name: /reveal|show secret/i })).toBeNull();
   });
@@ -237,23 +237,13 @@ describe("SecretsList component", () => {
     await renderList();
     await user.click(screen.getByLabelText(/Edit secret fly/i));
     await waitFor(() => expect(screen.getByText(/Edit secret .*fly/i)).toBeTruthy());
-    expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
-    // Rename is no longer inside the edit dialog — it has its own trigger.
+    expect(screen.getByRole("button", { name: /^save changes$/i })).toBeTruthy();
+    // Editing keeps the reference name fixed.
     expect(screen.queryByRole("button", { name: /rename/i })).toBeNull();
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /Edit secret .*fly/i })).toBeNull());
   });
 
-  it("clicking rename in the Name column opens the rename dialog, and Cancel closes it", async () => {
-    const user = userEvent.setup();
-    await renderList();
-    await user.click(screen.getByLabelText(/Rename secret fly/i));
-    await waitFor(() => expect(screen.getByText(/Rename secret .*fly/i)).toBeTruthy());
-    expect(screen.getByRole("button", { name: /^rename$/i })).toBeTruthy();
-    expect(screen.getByLabelText(/new name/i)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Rename secret .*fly/i })).toBeNull());
-  });
 
   it("error from a previous attempt clears when reopening another secret", async () => {
     deleteSecretActionMock.mockResolvedValueOnce({ ok: false, error: "boom" });

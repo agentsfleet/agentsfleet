@@ -5,12 +5,9 @@ import { ContinuitySetup } from "./continuity-setup";
 import { ContinuityRuntime } from "./continuity-runtime";
 import { draftHistory, runtimeHistory } from "./continuity-history";
 import { CONTINUITY, CONTINUITY_KIND, CONTINUITY_STEPS } from "./continuity-scenario";
-import { CHAT_COPY, NEW_FLEET } from "./private-chat";
+import { CHAT_COPY, NEW_FLEET, editSetupLink, openSavedFleet } from "./private-chat";
 import { workspaceHref } from "./nav";
 import { purgeFixtureFleet } from "./teardown";
-
-const SAVE_TIMEOUT_MS = 60_000;
-const FLEET_URL = /\/fleets\/(?!new)[0-9a-f-]+$/;
 
 export class ContinuityJourney {
   readonly drafts: ContinuitySetup[] = [];
@@ -33,7 +30,7 @@ export class ContinuityJourney {
       else await this.edit(step.revision);
     }
     await this.page.reload();
-    await this.runtime!.assertHistory();
+    await this.runtime!.assertHistory(this.revision);
     for (const draft of this.drafts) await draft.assertHistory();
     await this.assertSaved(4);
   }
@@ -45,22 +42,21 @@ export class ContinuityJourney {
     await chat.converse(CONTINUITY.authoredMessages, 1, this.name);
     this.definition = chat.definition;
     await this.page.getByRole("button", {name: CHAT_COPY.save, exact: true}).click();
-    await expect(this.page).toHaveURL(FLEET_URL, {timeout: SAVE_TIMEOUT_MS});
-    this.fleetId = FleetSchema.shape.id.parse(new URL(this.page.url()).pathname.split("/").at(-1));
+    this.fleetId = FleetSchema.shape.id.parse(await openSavedFleet(this.page));
     console.log(JSON.stringify({continuityIdentifiers: this.identifiers()}));
     this.runtime = new ContinuityRuntime(this.page, this.client, this.workspace, this.fleetId);
     await this.assertSaved(1);
   }
 
   private async edit(revision: number): Promise<void> {
-    await this.page.getByRole("button", {name: CHAT_COPY.improve, exact: true}).click();
-    const panel = this.page.getByRole("complementary", {name: "Edit fleet setup", exact: true});
-    const chat = new ContinuitySetup(this.page, this.client, this.workspace, panel);
+    await editSetupLink(this.page).click();
+    await expect(this.page.getByLabel(CHAT_COPY.composer)).toBeVisible();
+    const chat = new ContinuitySetup(this.page, this.client, this.workspace, this.page.locator("main"));
     this.drafts.push(chat);
     await chat.converse(CONTINUITY.setupMessages, revision, this.name);
     this.definition = chat.definition;
-    await panel.getByRole("button", {name: CHAT_COPY.apply, exact: true}).click();
-    await expect(panel).toBeHidden({timeout: SAVE_TIMEOUT_MS});
+    await this.page.getByRole("button", {name: CHAT_COPY.apply, exact: true}).click();
+    expect(await openSavedFleet(this.page, String(revision))).toBe(this.fleetId);
     this.revision = revision;
     await this.assertSaved(revision);
   }
@@ -76,7 +72,7 @@ export class ContinuityJourney {
     await card.getByRole("link").click();
     await expect(this.page).toHaveURL(new RegExp(`/fleets/${this.fleetId}$`));
     await this.assertSaved(this.revision);
-    await this.runtime!.assertHistory();
+    await this.runtime!.assertHistory(this.revision);
   }
 
   private async assertSaved(revision: number): Promise<void> {

@@ -49,19 +49,35 @@ it("keeps the latest proposal after the reply that created it", () => {
   expect(before(screen.getByText("Current proposal"), screen.getByRole("region", {name: SUMMARY}))).toBe(true);
 });
 
-it("shows only a heading and short text without an expandable setup report", () => {
+// Value: protects=setup placement after restored private history; fails_when=a saved setup moves below a newer turn;
+// why_new=existing placement tests use the current draft only; seam=none; no_claim=database persistence of private history.
+it("anchors saved setup to the last assistant in an older chat and handles history without an assistant", () => {
+  const older = {...MESSAGE, text: "Earlier private request"};
+  const reply = {...MESSAGE, role: "assistant" as const, text: "Saved proposal from earlier chat"};
+  const view: DraftView = {...client.getSnapshot(), fleet: FLEET, messages: [{...MESSAGE, text: HEY}],
+    activities: [{event_id: "unrelated", event_type: "activity", status: "recorded", created_at: "1970-01-01T00:00:01Z", request_json: "{"}],
+    previousDrafts: [{id: "earlier-chat", cancelledThrough: "0", messages: [older]}]};
+  const page = render(conversation(view));
+  expect(before(screen.getByRole("region", {name: SUMMARY}), screen.getByText(HEY))).toBe(true);
+  page.rerender(conversation({...view, previousDrafts: [{id: "earlier-chat", cancelledThrough: "0", messages: [older, reply]}]}));
+  const summary = screen.getByRole("region", {name: SUMMARY});
+  expect(before(screen.getByText(reply.text), summary)).toBe(true);
+  expect(before(summary, screen.getByText(HEY))).toBe(true);
+});
+
+it("keeps an unsaved proposal conversational without a ready or review heading", () => {
   render(<FleetSetup client={client} view={client.getSnapshot()} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Setup ready"})).toBeTruthy();
+  expect(screen.queryByRole("heading")).toBeNull();
   expect(screen.getByText(/Keep chatting to refine it/)).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Setup instructions"})).toBeNull();
   expect(screen.queryByRole("button", {name: DETAILS})).toBeNull();
-  expect(screen.getByRole("region", {name: SUMMARY}).children).toHaveLength(2);
+  expect(screen.getByRole("region", {name: SUMMARY}).children).toHaveLength(1);
 });
 
 it("does not label an unchanged fleet-source chat as having unsaved changes", () => {
   const draft = {...DRAFT, linked_fleet_id: FLEET.id, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   render(<FleetSetup client={client} view={{...client.getSnapshot(), draft}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Based on v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
   expect(screen.queryByText(/Unsaved changes/)).toBeNull();
   expect(screen.queryByText(/New runs use v2/)).toBeNull();
 });
@@ -70,31 +86,47 @@ it("keeps saved fleet status separate from a resumed draft proposal", () => {
   const draft = {...DRAFT, linked_fleet_id: FLEET.id, candidate: {...DRAFT.candidate!, revision: "2"},
     review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   render(<FleetSetup client={client} view={{...client.getSnapshot(), draft}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Based on v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
   expect(screen.queryByText(/Unsaved changes/)).toBeNull();
-  expect(screen.getByText(/Save changes when you’re ready|Your fleet is ready to use this setup/)).toBeTruthy();
+  expect(screen.getByText(/Save changes when you’re ready|You can keep chatting here/)).toBeTruthy();
 });
 
 it("summarizes a saved fleet without opening its full setup report", () => {
   render(<FleetSetup client={client} view={{...client.getSnapshot(), fleet: {...FLEET, status: "active", setup: {state: "ready", checks: []}}}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Saved v1"})).toBeTruthy();
-  expect(screen.getByText(/Your fleet is ready to use this setup/)).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByText(/You can keep chatting here|Save changes when you’re ready/)).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Saved fleet setup"})).toBeNull();
-  expect(screen.getByRole("link", {name: "Open fleet"})).toBeTruthy();
+  expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
 });
 
 it.each(["2", "3"])("shows confirmed saved v%s without labeling the draft as saved or unsaved", (revision) => {
   const snapshot = {...client.getSnapshot(), savedSetupRevision: revision};
   const view = render(<FleetSetup client={client} view={snapshot} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: `Saved v${revision}`})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: `Save done v${revision}`})).toBeTruthy();
   view.rerender(<FleetSetup client={client} view={{...snapshot, draft: {...DRAFT, candidate: {...DRAFT.candidate!, id: FLEET.id}}}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: `Saved v${revision}`})).toBeTruthy();
-  expect(screen.getByText(/Save changes when you’re ready|Your fleet is ready to use this setup/)).toBeTruthy();
+  expect(screen.getByRole("heading", {name: `Save done v${revision}`})).toBeTruthy();
+  expect(screen.getByText(/Save changes when you’re ready|You can keep chatting here/)).toBeTruthy();
 });
 
 it("does not hide an unconfirmed first run behind a saved-success summary", () => {
   render(<FleetSetup client={client} view={{...client.getSnapshot(), fleet: {...FLEET, status: "active", start: {kind: "run_now", state: "pending"}}}} workspace={WORKSPACE} />);
-  expect(screen.getByText(/setup needs attention/)).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
   expect(screen.queryByRole("button", {name: DETAILS})).toBeNull();
-  expect(screen.getByRole("button", {name: "Continue setup"})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Retry first run"})).toBeTruthy();
+});
+
+// Value: protects=one saved acknowledgement per revision; fails_when=unrelated or malformed activity suppresses it or a saved receipt duplicates it;
+// why_new=existing anchoring tests supplied custom setup children rather than FleetSetup; seam=none; no_claim=receipt durability.
+it("suppresses the fallback acknowledgement only for a recorded setup receipt of the current revision", () => {
+  const activity = {event_id: "setup:current", event_type: "activity", status: "recorded", created_at: "1970-01-01T00:00:01Z"};
+  const snapshot = {...client.getSnapshot(), draft: null, fleet: {...FLEET, status: "active", setup: {state: "ready", checks: []}}};
+  const page = render(<FleetSetup client={client} view={snapshot} workspace={WORKSPACE} />);
+  const unrelated = ["{", JSON.stringify({kind: "access_saved", service: "fly"}), JSON.stringify({kind: "setup_saved", revision: "0"})];
+  page.rerender(<FleetSetup client={client} view={{...snapshot, activities: unrelated.map((request_json, index) => ({...activity, event_id: String(index), request_json}))}} workspace={WORKSPACE} />);
+  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  for (const kind of ["setup_saved", "setup_ready"]) {
+    page.rerender(<FleetSetup client={client} view={{...snapshot, activities: [{...activity, request_json: JSON.stringify({kind, revision: "1"})}]}} workspace={WORKSPACE} />);
+    expect(screen.queryByRole("heading", {name: "Save done v1"})).toBeNull();
+    expect(screen.getByText("You can keep chatting here to change the setup.")).toBeTruthy();
+  }
 });

@@ -14,7 +14,11 @@ backend traffic through server reads/actions or authenticated same-origin
 ## Chat workspace
 
 The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one authoring-and-runtime conversation.
-It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent. Save, Save and run now, and explicit Save to library follow the [single resource reference](api_resources.md).
+It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent.
+
+**Save fleet** and **Save changes** follow the [single resource reference](api_resources.md).
+**Publish to Library** remains an explicit action in the chat menu.
+
 The authoring API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
 
 ## The five statements
@@ -203,36 +207,36 @@ The private setup, workspace activity and fleet activity proxies bound stream ha
 Browser cancellation, request cancellation, upstream failure and ordinary completion release timers and the upstream reader.
 The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime event streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable events list.
 
-A shared Definition powers drawer edits, model proposals and review. Save retains one fleet identity with visible setup checks. Save and run now exposes Pending until the committed initial admission is confirmed with its expected event identity.
+A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps authoring open. When an initial run is requested, Pending remains until its committed admission is confirmed with its expected event identity.
 
 Save does not publish a Library entry. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
 
 Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
 
-Review explains the proposed task, run triggers, access, and spending limits before save. Opening review requests no run and creates no fleet.
+The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet. Publication remains an explicit action in the chat menu.
 The saved view separates setup readiness from first-run admission; an accepted run can still be running.
 
-The inline receipt shows `Saved vN` and explains which runs use that version.
+The inline receipt shows `Save done vN`; readiness remains separate from the saved version.
 The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.
 
 ### One fleet workspace
 
 New fleet keeps the private setup conversation open across multiple messages.
 The header exposes **Save fleet** when the reviewed candidate can be saved.
-Successful Save opens that fleet's Chat.
+Successful Save keeps authoring open; **Open fleet** navigates to the fleet conversation.
 
 The sidebar's **Fleets** list shows authorized saved fleets.
 Private drafts appear under **Unfinished setups** on **New fleet**.
 
 Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
 
-Fleet **Edit setup** opens a private chat panel alongside the mounted runtime conversation. **Stop** and permanent **Kill** live in **Fleet actions**.
+Fleet **Edit setup** opens the authoring page at its latest saved revision. **Stop** and permanent **Kill** live in **Fleet actions**.
 
-While editing, **Save changes** replaces **Edit setup** in the fleet header. Optional **Edit instructions manually** remains below the setup conversation.
-Saving a revision closes the panel, refreshes server data and preserves unsent runtime text.
+While authoring a saved fleet, the header offers **Save changes**. **Instructions** opens a tall editor from the chat menu.
+Saving a revision keeps authoring open. An explicit chat Save shows `Saving setup...` through model finalization and the checked write, then `Save done vN`.
 
 Existing runs keep their pinned revision; new runs use the saved version.
-The fleet sections are **Chat**, **Activity**, and **Memory**. **Your fleets** in the sidebar opens the fleet listing.
+Fleet messages, setup receipts and integration activity share one chronological conversation. **Saved memories** opens from **Fleet actions**; **Your fleets** opens the listing.
 
 Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
 Effects own connections and cleanup; render stays pure and Hooks remain static.

@@ -1,5 +1,6 @@
 //! Save and recovery cross the actual HTTP, Postgres and Dragonfly boundaries.
 
+mod activity;
 mod fixture;
 mod initial_run;
 mod lifecycle;

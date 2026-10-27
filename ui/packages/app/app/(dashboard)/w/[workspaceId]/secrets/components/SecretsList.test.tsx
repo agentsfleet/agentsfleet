@@ -6,7 +6,7 @@ import { type Secret } from "@/lib/api/secrets";
 import { SECRET_KIND } from "@/lib/api/secrets-types";
 
 // next/navigation + the server action module are the only runtime deps
-// SecretsList reaches for; the dynamic edit/rename islands render null while
+// SecretsList reaches for; the dynamic edit island renders null while
 // closed (open is parent-driven), so no stub is needed for them.
 const { refreshMock, deleteSecretActionMock } = vi.hoisted(() => ({
   refreshMock: vi.fn(),
@@ -203,10 +203,12 @@ describe("SecretsList name cell", () => {
     // Below sm the slot may shrink: no unprefixed floor holds it at the trim width.
     expect(slot.classList.contains("min-w-0")).toBe(true);
     expect(slot.classList.contains("min-w-trim")).toBe(false);
-    // Copy and rename follow the slot in the same row, so every row lines them up.
+    // Copy is the only action beside the name; value editing belongs to Actions.
     const iconRow = slot.parentElement!;
     expect(within(iconRow).getByRole("button", { name: `Copy secret name: ${longName}` })).toBeTruthy();
-    expect(within(iconRow).getByRole("button", { name: `Rename secret ${longName}` })).toBeTruthy();
+    expect(within(iconRow).getAllByRole("button")).toHaveLength(1);
+    expect(screen.queryByRole("button", {name: `Rename secret ${longName}`})).toBeNull();
+    expect(screen.getByRole("button", {name: `Edit secret ${longName}`})).toBeTruthy();
   });
 });
 

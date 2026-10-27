@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useOptimistic, useTransition } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { EllipsisIcon } from "lucide-react";
+import { EllipsisIcon, PowerOffIcon, CircleStopIcon, PlayIcon } from "lucide-react";
 import { Button, ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetStatusSettable } from "@/lib/api/fleets";
@@ -10,6 +11,7 @@ import { setFleetStatusAction } from "../../actions";
 import { presentErrorString } from "@/lib/errors";
 
 interface KillSwitchProps {
+  children?: ReactNode;
   workspaceId: string;
   fleet: {id: string; status: string; etag: string};
 }
@@ -34,7 +36,7 @@ interface ActionConfig {
 //   - `paused` (auto-halt)  → Resume + Kill
 //   - `stopped` (op halt)   → Resume + Kill
 //   - `killed` (terminal)   → no actions (DELETE is offered in FleetConfig)
-export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
+export default function KillSwitch({ workspaceId, fleet, children }: KillSwitchProps) {
   const router = useRouter();
   const [pendingAction, setPendingAction] = useState<ActionConfig | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -133,17 +135,20 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
 
   return (
     <>
-      {actions.length === 0 ? (
+      {actions.length === 0 && !children ? (
         <Button variant="ghost" size="sm" disabled>
           Killed
         </Button>
       ) : (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Fleet actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-0 w-32">
-            {actions.map((action) => <DropdownMenuItem key={action.target} onSelect={() => setPendingAction(action)}>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-compact" aria-label="Fleet actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80 max-w-full p-sm">
+            {actions.map((action) => <DropdownMenuItem key={action.target} onSelect={() => setPendingAction(action)}
+              className={action.target === AGENTSFLEET_STATUS.KILLED ? "text-destructive focus:text-destructive" : undefined}>
+              {action.target === AGENTSFLEET_STATUS.KILLED ? <PowerOffIcon aria-hidden="true" /> : action.target === AGENTSFLEET_STATUS.STOPPED ? <CircleStopIcon aria-hidden="true" /> : <PlayIcon aria-hidden="true" />}
               {action.buttonLabel}
             </DropdownMenuItem>)}
+            {children}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

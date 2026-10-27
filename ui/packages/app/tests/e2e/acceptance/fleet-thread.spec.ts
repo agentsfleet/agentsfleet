@@ -18,6 +18,7 @@ import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { SSE_CONTENT_TYPE, sseFrame } from "./fixtures/sse";
 import { auditStream, documentIsMarked, markDocument, streamCount } from "./fixtures/soft-navigation";
 import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
+import { editSetupLink } from "./fixtures/private-chat";
 
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
@@ -95,10 +96,8 @@ test.describe("fleet thread surface", () => {
     const threadCard = page.getByLabel(CHAT_LABEL);
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
-    // The selected Chat tab names this view; the transcript needs no second title.
-    await expect(
-      page.getByRole("navigation", { name: "Fleet sections" }).getByRole("link", { name: "Chat" }),
-    ).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("navigation", { name: "Fleet sections" })).toHaveCount(0);
+    await expect(editSetupLink(page)).toBeVisible();
     await expect(threadCard.getByRole("link", { name: "Steer" })).toHaveCount(0);
 
     // The conversation carries role="log" + aria-live=polite.

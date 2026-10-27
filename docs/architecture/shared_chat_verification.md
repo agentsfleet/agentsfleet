@@ -169,6 +169,10 @@ flowchart TD
 | `ChatMessageRow` | Share assistant logo alignment, operator bubble and text spacing |
 | `ChatComposerFrame` | Share input sizing, quiet focus appearance and focus restoration |
 
+Root `package.json` pins two Bun patches for `@assistant-ui/react` and `@assistant-ui/store`.
+They restore reserved scroll space before a fold paints and retain bottom-following when a shorter viewport also shrinks the composer.
+The browser acceptance checks measure folding, viewport resizing, and manual history reading; keep those checks when updating either dependency.
+
 The setup adapter normalizes its one-based preview sequence before calling `ReplyStream`.
 Runtime frames already use the shared zero-based sequence.
 A gap stops provisional concatenation instead of displaying a corrupted answer.
@@ -202,25 +206,25 @@ Partial answers and unknown usage remain visible after failure.
 ### Setup and runtime stay together
 
 New fleet supports multiple setup messages before explicit **Save fleet**.
-Saving opens that fleet's Chat.
-**Edit setup** opens a private chat panel beside the mounted runtime conversation.
+Saving keeps authoring open; **Open fleet** navigates to its conversation.
+**Edit setup** returns to the authoring page with the latest saved revision.
 
-Manual instructions are optional. While editing, **Save changes** replaces **Edit setup** in the fleet header.
+Manual instructions are optional. The authoring header offers **Save changes** for an existing fleet; **Instructions** opens from the chat menu.
 
-Unapplied manual edits disable Save. Folding or hiding the editor retains local text while its subject remains mounted; reload or subject disposal loses unsent changes.
+Unapplied manual edits disable the outer Save action. Closing the editor asks before discarding edits; reload or subject disposal loses unsent changes.
 
-A newer candidate preserves dirty text but blocks Update instructions until the conflict is resolved. Copy changes you want to keep, choose **Discard manual changes and load latest**, then reapply and review. Pristine fields follow the latest candidate without a discard step.
+A newer candidate preserves dirty text but blocks the editor's **Save changes** until the conflict is resolved. Copy changes you want to keep, choose **Discard manual changes and load latest**, then reapply. Pristine fields follow the latest candidate without a discard step.
 
 Model edits follow the separate [exact-text correction path](fleet_definitions.md#small-atomic-edits); manual text is never silently merged with them.
 
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.
-A successful save closes the panel and refreshes server data.
+A successful setup save keeps authoring open. Saving manual instructions closes only the instruction editor.
 
-The mounted runtime composer retains its unsent text.
+The authoring composer remains available after saving.
 New runs use the saved revision; existing runs keep their pinned version.
 
-Fleet Activity keeps server rendering through `FleetActivity` while its table loads at the selected-view boundary.
+Fleet activity shares the conversation; **Saved memories** opens a viewer from **Fleet actions**. Activity and Memory tabs are removed.
 Setup constants and schedule-status checks do not initialize setup schemas.
 
 ### Retaining long acceptance evidence

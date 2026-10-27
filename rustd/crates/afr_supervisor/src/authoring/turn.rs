@@ -7,8 +7,6 @@ use afd_crypto::entropy::Entropy;
 use afd_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest};
 use serde_json::Value;
 
-const PROPOSAL_READY: &str = "Your setup is ready to review. Save it when you’re ready.";
-
 pub(super) struct Turn<'a> {
     pub(super) plane: &'a ControlPlane,
     pub(super) lease: &'a Lease<Value>,
@@ -56,9 +54,13 @@ impl Turn<'_> {
             if result.compacted {
                 continue;
             }
-            if result.cut || result.proposal_calls.is_empty() {
+            if result.cut {
+                return Ok(Ending::incomplete());
+            }
+            if result.proposal_calls.is_empty() {
                 return Ok(Ending::completed(Some(result.text)));
             }
+            let answer = result.text.clone();
             messages.push(ModelMessage::Assistant {
                 text: result.text,
                 proposal_calls: result.proposal_calls.clone(),
@@ -72,8 +74,8 @@ impl Turn<'_> {
                 activity_sequence += u64::from(accepted);
                 all_accepted &= accepted;
             }
-            if all_accepted {
-                return Ok(Ending::completed(Some(PROPOSAL_READY.into())));
+            if all_accepted && !answer.trim().is_empty() {
+                return Ok(Ending::completed(Some(answer)));
             }
         }
         Ok(Ending::incomplete())

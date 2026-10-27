@@ -37,7 +37,7 @@ export class ContinuitySetup {
   private async send(text: string, edits: boolean, savedRevision: number): Promise<void> {
     const created = this.draftId ? null : this.page.waitForResponse(response =>
       response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(`/workspaces/${this.workspace}/drafts`));
-    await this.root.getByRole("textbox", {name: CHAT_COPY.composerInput}).fill(text);
+    await this.root.getByLabel(CHAT_COPY.composer).getByRole("textbox").fill(text);
     await this.root.getByRole("button", {name: CHAT_COPY.send, exact: true}).click();
     if (created) {
       const response = await created;

@@ -25,6 +25,9 @@
 
 /// The stored spellings of `fleet.events.status`.
 pub mod status {
+    /// A history receipt only; never runnable or included in model context.
+    pub const RECORDED: &str = "recorded";
+
     /// The status an event opens in.
     ///
     /// The report flips it to [`PROCESSED`] or [`FLEET_ERROR`], and the gate

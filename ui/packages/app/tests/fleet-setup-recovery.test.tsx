@@ -14,15 +14,21 @@ vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "creator", isLoaded: true})}));
 afterEach(() => {cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals();});
 
+async function finishSetup() {
+  const button = await screen.findByRole("button", {name: "Finish setup"});
+  await waitFor(() => expect(button).toHaveProperty("disabled", false));
+  fireEvent.click(button);
+}
+
 it("keeps setup continuation disabled until client handlers can receive the click", async () => {
   const server = document.createElement("div");
-  server.innerHTML = renderToStaticMarkup(<FleetRecoveryContent fleet={FLEET} workspace={WORKSPACE} setupPending />);
-  const control = [...server.querySelectorAll("button")].find((button) => button.textContent === "Continue setup");
+  server.innerHTML = renderToStaticMarkup(<FleetRecoveryContent fleet={{...FLEET, setup: {state: "waiting", checks: []}}} workspace={WORKSPACE} setupPending />);
+  const control = [...server.querySelectorAll("button")].find((button) => button.textContent === "Finish setup");
   expect(control).toHaveProperty("disabled", true);
   expect(resume).not.toHaveBeenCalled();
   resume.mockResolvedValue({ok: true});
-  render(<FleetRecoveryContent fleet={FLEET} workspace={WORKSPACE} setupPending />);
-  const ready = screen.getByRole("button", {name: "Continue setup"});
+  render(<FleetRecoveryContent fleet={{...FLEET, setup: {state: "waiting", checks: []}}} workspace={WORKSPACE} setupPending />);
+  const ready = screen.getByRole("button", {name: "Finish setup"});
   expect(ready).toHaveProperty("disabled", false);
   fireEvent.click(ready);
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
@@ -31,11 +37,12 @@ it("keeps setup continuation disabled until client handlers can receive the clic
 
 it.each([200, 403, 412])("reconciles setup continuation status %i without hiding the fleet", async (status) => {
   resume.mockResolvedValue(status === 200 ? {ok: true} : {ok: false, error: "Denied", status});
-  render(<FleetRecovery fleet={FLEET} workspace={WORKSPACE} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Continue setup"}));
-  await waitFor(() => expect(screen.getByRole("button", {name: "Continue setup"})).toHaveProperty("disabled", false));
+  render(<FleetRecovery fleet={{...FLEET, setup: {state: "waiting", checks: []}}} workspace={WORKSPACE} />);
+  await finishSetup();
+  await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  await waitFor(() => expect(screen.getByRole("button", {name: "Finish setup"})).toHaveProperty("disabled", false));
   expect(refresh).toHaveBeenCalledOnce();
-  expect(screen.getByRole("link", {name: "Open fleet"})).toBeTruthy();
+  expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
   expect(resume).toHaveBeenCalledWith(WORKSPACE, FLEET.id, "active", FLEET.etag);
   if (status === 403) expect(screen.getByRole("alert").textContent).toBe("Denied");
   else expect(screen.queryByRole("alert")).toBeNull();
@@ -43,31 +50,31 @@ it.each([200, 403, 412])("reconciles setup continuation status %i without hiding
 
 it.each([new Error("Transport failed"), "uncertain"])("retains a failed continuation and permits retry", async (cause) => {
   resume.mockRejectedValueOnce(cause).mockResolvedValueOnce({ok: true});
-  render(<FleetRecovery fleet={FLEET} workspace={WORKSPACE} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Continue setup"}));
+  render(<FleetRecovery fleet={{...FLEET, setup: {state: "waiting", checks: []}}} workspace={WORKSPACE} />);
+  await finishSetup();
   await screen.findByRole("alert");
-  fireEvent.click(screen.getByRole("button", {name: "Continue setup"}));
+  fireEvent.click(screen.getByRole("button", {name: "Finish setup"}));
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-  expect(screen.getByRole("link", {name: "Open fleet"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
 });
 
 it("shows recovery only for unfinished setup or first-run admission", async () => {
   const view = render(<FleetRecovery fleet={{...FLEET, status: "stopped"}} workspace={WORKSPACE} />);
   expect(screen.queryByRole("link")).toBeNull();
   view.rerender(<FleetRecovery fleet={{...FLEET, status: "active", start: {kind: "run_now", state: "pending"}}} workspace={WORKSPACE} />);
-  expect(await screen.findByRole("button", {name: "Continue setup"})).toBeTruthy();
+  expect(await screen.findByRole("button", {name: "Retry first run"})).toBeTruthy();
   view.rerender(<FleetRecovery fleet={{...FLEET, status: "active", start: {kind: "run_now", state: "accepted"}}} workspace={WORKSPACE} />);
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("keeps setup editing usable without a header review warning", () => {
+it("keeps Edit setup before Fleet actions in the existing fleet workspace", () => {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
   render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
     header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
-  const edit = screen.getByRole("button", {name: "Edit setup"});
+  const edit = screen.getByRole("link", {name: "Edit setup"});
   const actions = screen.getByRole("button", {name: "Fleet actions"});
-  expect(edit).toHaveProperty("disabled", false);
-  expect(edit.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByLabelText("Fleet status: active")).toBeNull();
+  expect(edit.getAttribute("href")).toContain("/fleets/new?fleet=");
   expect(edit.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Stop"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Saved instructions"})).toBeNull();
