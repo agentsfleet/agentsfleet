@@ -110,6 +110,11 @@ jobs:
           workspaces: rustd
           shared-key: rustd-unit
           save-if: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install local bootstrap test dependencies
+        run: bun install --frozen-lockfile
       - name: Test the daemon's library crates
         run: make test-unit-rustd-daemon-libs
 
