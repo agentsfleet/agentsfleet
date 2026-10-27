@@ -38,7 +38,7 @@ export async function readSetupActivityPage(base: string, fleet: string, signal:
 /** Keep the confirmed save visible even if its following history read fails. */
 export async function updateSavedSetup(base: string, fleet: Fleet, signal: AbortSignal,
   update: (patch: Partial<DraftView>) => void, lists: Partial<DraftView>): Promise<void> {
-  update({...lists, fleet, schedules: fleet.schedules, savedSetupRevision: fleet.setup_revision});
+  update({...lists, fleet, schedules: fleet.schedules, savedSetupRevision: fleet.setup_revision, error: null});
   try { const page = await readSetupActivityPage(base, fleet.id, signal); update({activities: page.items, activityCursor: page.next_cursor}); }
   catch (cause) { if (signal.aborted || losesAccess(cause)) throw cause; }
 }

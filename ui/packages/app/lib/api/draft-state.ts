@@ -4,6 +4,7 @@ import type { DraftReply } from "./draft-replies";
 import type { DraftCompaction } from "./draft-live";
 import type { SetupActivity } from "./draft-activity";
 import { latestSaveAnswer, savingOperation } from "./draft-chat-save";
+import { DRAFT_STATE } from "./draft-types";
 import { presentErrorString } from "@/lib/errors";
 
 export type DraftIdentity = {readonly account: string; readonly workspace: string; readonly subject: string};
@@ -58,5 +59,5 @@ export function messagePatch(view: DraftView, draft: Draft, messages: readonly M
   const answer = latestSaveAnswer(messages);
   const optimistic = messages.some(message => message.operation_id === view.optimistic?.operation) ? null : view.optimistic;
   return {draft, model: draft.authoring_model_ref, messages, optimistic, truncated,
-    ...(answer?.save_error_code ? {error: presentErrorString({errorCode: answer.save_error_code, action: "save this setup"})} : {})};
+    ...(draft.state === DRAFT_STATE.editing && answer?.save_error_code ? {error: presentErrorString({errorCode: answer.save_error_code, action: "save this setup"})} : {})};
 }

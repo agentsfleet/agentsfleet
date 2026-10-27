@@ -11,14 +11,14 @@ acceptance_trust_certificate() {
   fi
   printf 'Temporarily trusting the local Caddy certificate for localhost HTTPS; macOS may ask for approval.\n'
   security add-trusted-cert -r trustRoot -p ssl -s localhost \
-    -k "$HOME/Library/Keychains/login.keychain-db" "$certificate" || return
+    -k "$HOME/Library/Keychains/login.keychain-db" "$certificate" || return $?
   acceptance_certificate_added=1
 }
 
 acceptance_untrust_certificate() {
   local certificate="$1"
   if [ "$acceptance_certificate_added" = 1 ]; then
-    security remove-trusted-cert "$certificate" || return
+    security remove-trusted-cert "$certificate" || return $?
     acceptance_certificate_added=0
   fi
 }
