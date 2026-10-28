@@ -93,7 +93,7 @@ async fn a_signed_but_unreadable_github_payload_is_refused_without_appending() {
         refusal_code(response).await,
         error_code::WEBHOOK_MALFORMED.as_str()
     );
-    assert!(ingress.deliveries().is_empty());
+    assert_eq!(ingress.deliveries(), []);
 }
 
 /// Every way a delivery can fail to prove itself earns one answer.
