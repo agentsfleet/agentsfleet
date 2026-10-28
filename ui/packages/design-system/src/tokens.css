@@ -1,7 +1,6 @@
 /* agentsfleet visual tokens. Source: docs/DESIGN_SYSTEM.md.
  * Charcoal, warm white, and mint; sans UI, expressive display, mono technical data.
- * Gradient functions are forbidden by audits/design-tokens.sh. Fonts are
- * bundled locally. Theme utilities forward these values in theme.css. */
+ * Fonts are bundled locally. Theme utilities forward these values in theme.css. */
 @import "@fontsource/commit-mono/400.css";
 @import "@fontsource/commit-mono/500.css";
 @import "@fontsource/commit-mono/600.css";

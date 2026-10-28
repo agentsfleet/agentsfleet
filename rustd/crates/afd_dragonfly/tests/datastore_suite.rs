@@ -29,6 +29,10 @@
 //! `resp`, through `#[path]` attributes that resolve against the directory of
 //! the file declaring them — `tests/support/`. Aggregation does not move those
 //! files, so those paths keep resolving and are deliberately not hoisted.
+#![expect(
+    clippy::print_stdout,
+    reason = "a suite's helpers print their measured evidence into the lane log"
+)]
 
 // The helpers carry no lint attributes of their own: each inherited them from
 // whichever suite declared it, back when that suite WAS a crate root. They are

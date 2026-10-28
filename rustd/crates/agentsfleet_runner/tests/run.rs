@@ -63,21 +63,8 @@ fn run_one_lease(
     daemon: &mut FakeDaemon,
     extra: &[(&str, &str)],
 ) -> Ran {
-    // Under /tmp, short: each lease's executor socket is made beneath it, and
-    // a Unix socket's path is capped near a hundred bytes.
-    let home = tempfile::Builder::new()
-        .prefix("afr-run-")
-        .tempdir_in("/tmp")
-        .expect("a storage home");
-    let mut child = Runner::new(&["run", "--unsandboxed"])
-        .daemon(&daemon.url)
-        .home(home.path())
-        .envs(extra)
-        .command()
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("the runner binary starts");
+    let home = storage_home();
+    let mut child = start(&daemon.url, home.path(), extra);
     let stderr = drain_stderr(&mut child);
 
     let report = runtime.block_on(daemon.report(SETTLE_WITHIN));
@@ -90,6 +77,28 @@ fn run_one_lease(
         stderr,
         report,
     }
+}
+
+/// A storage home under /tmp, short: each lease's executor socket is made
+/// beneath it, and a Unix socket's path is capped near a hundred bytes.
+fn storage_home() -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix("afr-run-")
+        .tempdir_in("/tmp")
+        .expect("a storage home")
+}
+
+/// Starts `run --unsandboxed` against the daemon at `url`, its stderr piped.
+fn start(url: &str, home: &std::path::Path, extra: &[(&str, &str)]) -> Child {
+    Runner::new(&["run", "--unsandboxed"])
+        .daemon(url)
+        .home(home)
+        .envs(extra)
+        .command()
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the runner binary starts")
 }
 
 /// Reads the binary's stderr on a thread of its own, so a chatty run never
@@ -238,4 +247,45 @@ fn test_runner_binary_runs_a_lease_per_policy() {
             ran.stderr
         );
     }
+}
+
+/// What the runner logs when a second signal ends the drain the first began.
+const STOP_FORCED: &str = "runner_stop_forced";
+
+/// A second SIGTERM stops the binary while a drain is still waiting on a lease
+/// in flight, and says so.
+///
+/// The daemon keeps the lease's report and never answers it, so the first
+/// signal's drain cannot finish on its own. SIGTERM is sent again every
+/// [`POLL`] until the binary exits, because a signal sent before the binary
+/// listens for the second one is not counted.
+#[test]
+fn a_second_signal_stops_a_drain_the_first_began() {
+    let runtime = runtime();
+    let mut daemon = runtime.block_on(FakeDaemon::stalling_reports());
+    let home = storage_home();
+    let mut child = start(&daemon.url, home.path(), &[]);
+    let stderr = drain_stderr(&mut child);
+
+    let reported = runtime.block_on(daemon.report(SETTLE_WITHIN));
+    let deadline = Instant::now() + STOP_WITHIN;
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("the runner's status reads") {
+            break status;
+        }
+        if Instant::now() > deadline {
+            drop(child.kill());
+            panic!("the runner did not stop within {STOP_WITHIN:?} of repeated SIGTERMs");
+        }
+        terminate(&child);
+        std::thread::sleep(POLL);
+    };
+    let stderr = stderr.join().expect("the stderr reader joins");
+
+    assert!(
+        reported.is_some(),
+        "the lease never posted its report: {stderr}"
+    );
+    assert!(status.success(), "{status:?}: {stderr}");
+    assert!(stderr.contains(STOP_FORCED), "{stderr}");
 }

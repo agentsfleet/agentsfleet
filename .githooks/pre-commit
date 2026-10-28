@@ -4,17 +4,12 @@
 #
 # Stage shape:
 #   1. reject files with staged and unstaged edits
-#   2. orly gate work                 (serial — runs the declared `conform`
-#                                       command, i.e. make harness-verify)
-#   3. gitleaks --staged              (serial, always)
+#   2. orly gate work                 (serial — branch shape and declared
+#                                       commands, no test execution)
+#   3. gitleaks --staged              (serial, always), then the
+#      .gitleaks.toml self-test
 #   4. classify staged files by surface
 #   5. run one parallel Make graph plus the direct auth test
-#
-# orly 0.8.0 recomposed its gates one-per-cadence: `work` now runs the
-# declared `conform` command itself (M06_001, agentsfleet/orly#25), so the
-# explicit `make harness-verify` this hook ran a second time — after `orly
-# gate work` had already run it once, below — is gone. harness-verify still
-# fires exactly once per commit; it fires inside the gate call, not twice.
 #
 # Surfaces:
 #   - lint-website            (ui/packages/website/*)
@@ -37,17 +32,11 @@
 # tax on every commit including the small ones, and it is what makes a developer
 # batch unrelated work into one large commit to avoid paying it twice.
 #
-# It moved to pre-push, which is where docs/VERIFY_TIERS.md already said lint
-# belongs: "`orly gate work` runs the `conform` row alone and is what the
-# pre-commit hook fires, so it costs seconds. `orly gate verify` runs the lint,
-# unit, and version rows and is what pre-push fires." The hooks had drifted from
-# their own documented tiering; this closes the gap rather than opening one.
-#
-# No coverage is lost before anything leaves the machine. Nothing reaches a
-# remote without pre-push, and the deterministic Rust audits a commit needs —
-# UFS, RUST ERR, LOGGING, MILESTONE-ID — are `harness-verify`'s and still run
-# here, over the staged diff, inside `orly gate work` above. What moved is the
-# COMPILING half, which is the only half that costs minutes.
+# It moved to pre-push: commit-time checks cost seconds, and lint runs at push.
+# No coverage is lost before anything leaves the machine, because nothing
+# reaches a remote without pre-push. The written Rust rules in
+# .orly/standards/ are applied by the orly-build skill and the
+# orly-standards-reviewer agent, not by a commit-time script.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
@@ -137,6 +126,10 @@ fi
 step "gitleaks protect --staged" \
   gitleaks protect --staged --redact --verbose --no-banner
 
+# Proves .gitleaks.toml still loads the default rules and catches a seeded
+# secret; a config that silently disabled them would pass every scan above.
+step "gitleaks config self-test" bash scripts/checks/gitleaks-config.sh
+
 # --- Classify staged files into per-surface flags ----------------------------
 # Each flag triggers exactly one make target; design-system additionally
 # triggers app (DS is consumed by app, so a DS change might break app's tsc).
@@ -151,7 +144,6 @@ needs_check_documentation=0
 needs_check_gh_actions=0
 needs_check_playbooks=0
 needs_check_playbooks_refs=0
-needs_harness_only=0
 # Not a lane trigger — only what the skip message reports. See the `*.rs` arm.
 staged_rustd=0
 
@@ -162,9 +154,7 @@ while IFS= read -r f; do
       # Deliberately routes to NOTHING at commit time — an arm rather than an
       # absence, so somebody looking for the Rust lane reads why it is not here
       # instead of concluding it was forgotten. See the header note: clippy is
-      # pre-push's now. Kept ahead of the config catch-all below so
-      # rustd/Cargo.toml lands here rather than being routed as a stray
-      # manifest into harness-verify-only.
+      # pre-push's now.
       staged_rustd=1 ;;
     ui/packages/website/*)
       needs_lint_website=1 ;;
@@ -200,18 +190,10 @@ while IFS= read -r f; do
       needs_check_playbooks=1 ;;
     tests/fixtures/*)
       needs_check_documentation=1 ;;
-    *.json|*.yaml|*.yml)
-      # Catch-all for stray config/manifest files staged outside a known
-      # surface prefix (root-level `package.json`, `docker-compose.yml`,
-      # ad-hoc CI overlays, etc.). These can't affect
-      # workflow YAML, so route them through harness-verify only —
-      # actionlint + the make-target-ref sweep cost ~30s and would
-      # always be wasted work for these files.
-      needs_harness_only=1 ;;
   esac
 done <<< "$staged"
 
-any_needed=$(( needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_gh_actions + needs_check_playbooks + needs_check_playbooks_refs + needs_harness_only ))
+any_needed=$(( needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_gh_actions + needs_check_playbooks + needs_check_playbooks_refs ))
 
 staged_count="$(printf '%s\n' "$staged" | grep -c . || true)"
 echo "▶ pre-commit: $staged_count staged file(s)"
@@ -219,9 +201,8 @@ echo "▶ pre-commit: $staged_count staged file(s)"
 if [ "$any_needed" -eq 0 ]; then
   if [ "$staged_rustd" = 1 ]; then
     # Said explicitly, because "nothing to lint" would be a lie about a commit
-    # full of Rust: harness-verify already graded it above, and clippy is the
-    # push's job.
-    echo "pre-commit: Rust staged — audited by harness-verify; clippy runs at pre-push"
+    # full of Rust: clippy is the push's job.
+    echo "pre-commit: Rust staged — clippy runs at pre-push"
   else
     echo "pre-commit: no commit-time lint surfaces staged, skipping targeted lint"
   fi

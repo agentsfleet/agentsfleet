@@ -47,29 +47,29 @@ Each trap is enforced in its owner section; this list is the index.
 
 - The live tail is the eyeballs surface, not the audit surface; durable history is `fleet.events` (§Two streams + one pub/sub channel).
 - A connection held across a blocking `SSUBSCRIBE` can never return to a pool (§Connection topology).
-- Never acquire a second Postgres connection while holding one — that is how a pool deadlocks (§The Postgres pool).
+- Never acquire a second Postgres connection while holding one; that is how a pool deadlocks (§The Postgres pool).
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
 - `gate_blocked` rows are NEVER reopened (§"C. EXECUTE" step 3).
 - A Pull Request reviewer cannot post a review or a comment: no egress write rule admits one ([`lease_flow.md`](./lease_flow.md) §"4. How AGENT BOB 01 can reply").
 - Nothing coalesces per Pull Request: every push is its own admitted event, queued behind the fleet's running lease ([`lease_flow.md`](./lease_flow.md) §"5. The PR is fixed and pushed again").
 - Preserve the admission row's event identity across claims and retries (§B. TRIGGER).
-- The continuation actor is FLAT — it never re-nests `continuation:` (§B. TRIGGER).
+- The continuation actor is FLAT: it never re-nests `continuation:` (§B. TRIGGER).
 - `repositories` is required for GitHub App traffic; omission means no delivery, never every repository (§B. TRIGGER).
 - No Bearer fallback on webhook routes; the `Authorization` header is never consulted there (§B. TRIGGER).
 - Clients never derive a cursor from an event id; SSE sequence ids have no cross-connection meaning (§D. WATCH).
-- The reasoning loop never branches on actor — actor is metadata (§B. TRIGGER).
+- The reasoning loop never branches on actor; actor is metadata (§B. TRIGGER).
 - `/v1/webhooks/` and `/v1/ingress/` are customer-data-plane only; Clerk identity events live in the auth plane (§B. TRIGGER).
 - The coding fleet never becomes the Fleet runtime and never sees its tokens (§The coding fleet and the Fleet runtime).
 
 ## Topology
 
-The diagrams live with their flows — each is the section's proof, so none is duplicated here:
+The diagrams live with their flows. Each is the section's proof, so none is duplicated here:
 
-- coding fleet vs Fleet runtime — §The coding fleet and the Fleet runtime
+- coding fleet vs Fleet runtime: §The coding fleet and the Fleet runtime
 - the admission, claim and settlement boundaries in §Steer flow end-to-end
-- the Dragonfly connection topology — §Connection topology
-- save, trigger envelope, execute, watch — §"End-to-end sequence" — A through D
-- the setup failure window — §The install failure scenario, visually
+- the Dragonfly connection topology: §Connection topology
+- save, trigger envelope, run, watch: §"End-to-end sequence", A through D
+- the setup failure window: §The install failure scenario, visually
 
 The same sequence told for two fleets at once, a Pull Request and a Slack thread, one picture per step: [`scenarios/two-fleets-github-slack.md`](./scenarios/two-fleets-github-slack.md).
 
@@ -93,12 +93,14 @@ The same sequence told for two fleets at once, a Pull Request and a Slack thread
 ## Detail
 
 Everything below is the full reference. One event is told twice, at two
-zoom levels, and they do not repeat each other — read the one that matches your
-question. §"Steer flow end-to-end" draws the path as boxes, so you can see where
+zoom levels, and they do not repeat each other; read the one that matches your
+question.
+
+§"Steer flow end-to-end" draws the path as boxes, so you can see where
 a call goes. §"End-to-end sequence" (A INSTALL → D WATCH) states what
 each step must guarantee.
 
-Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
+Headings are stable because specs cite them by text. Insert new sections; never rename existing ones.
 
 ## Process and stream ownership at a glance
 
@@ -127,7 +129,9 @@ Two distinct things are in play. Keeping them straight is essential to understan
 └──────────────────────────────────┘         └───────────────────────────────────┘
 ```
 
-The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime — the product object the user creates — runs as the runner's agent loop, with its tool calls in the lease's sandbox. The coding fleet never becomes that runtime and never sees its tokens — they communicate only through the steer endpoint, the event stream, and the events history.
+The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime (the product object the user creates) runs as the runner's agent loop, with its tool calls in the lease's sandbox.
+
+The coding fleet never becomes that runtime and never sees its tokens. They communicate only through the steer endpoint, the event stream, and the events history.
 
 ## Steer flow end-to-end
 
@@ -186,7 +190,7 @@ Read the primary keys and the shape falls out:
   fleet.sessions     PK fleet_id                                one row per FLEET
 ```
 
-Three of them grow with traffic. `fleet.sessions` does not — it is a cursor, not a log, which is why "where does this fleet resume" is a primary-key lookup rather than a sort over its history.
+Three of them grow with traffic. `fleet.sessions` does not: it is a cursor, not a log. That is why "where does this fleet resume" is a primary-key lookup rather than a sort over its history.
 
 One event's life across all four:
 
@@ -206,11 +210,15 @@ One event's life across all four:
       └─▶ fleet.obligations  UPDATE  delivered_at        a person received it
 ```
 
-The two ledgers are not symmetric, and the asymmetry is **who can retry**. A producer holds its own `producer_key` and repeats it, so an admission deduplicates on the PRODUCER's identity. A destination has no such key — a chat provider cannot tell us "this is the same message" — so an obligation deduplicates on the event that produced the answer, the only stable identity this side owns.
+The two ledgers are not symmetric, and the asymmetry is **who can retry**. A producer holds its own `producer_key` and repeats it, so an admission deduplicates on the PRODUCER's identity.
+
+A destination has no such key: a chat provider cannot tell us "this is the same message". So an obligation deduplicates on the event that produced the answer, the only stable identity this side owns.
 
 An admission failure remains visible to its producer, which can retry the same identity. Uncertain obligations are sent again because delivery is at-least-once. People can recognize and recover from duplicate replies; a missing answer leaves no visible record.
 
-`fleet.events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow: an event has a genuine vocabulary — `received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest — where a delivery has exactly two facts. The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
+`fleet.events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow. An event has a genuine vocabulary (`received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest), where a delivery has exactly two facts.
+
+The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
@@ -222,14 +230,16 @@ An admission failure remains visible to its producer, which can retry the same i
 
 Why a narrative table and a usage table (`fleet.events` + `billing.usage_lines`) instead of one? They have different write authorities and retention rules:
 
-- `fleet.events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
-- `billing.usage_lines` holds numeric audit columns — small, priced once and never repriced, retained for billing reconciliation independent of whether the conversation row is purged; it has no foreign keys, so a line outlives the fleet, workspace and price row it names.
+- `fleet.events` holds user-readable strings (`request_json`, `response_text`): large, mutable mid-lifecycle, deletable on tenant offboarding.
+- `billing.usage_lines` holds numeric audit columns: small, priced once and never repriced. Lines are retained for billing reconciliation independent of whether the conversation row is purged. The table has no foreign keys, so a line outlives the fleet, workspace and price row it names.
 
 Durable lease bookkeeping (`runner.leases`, `runner.fleet_slots`) is a fourth concern. It records ownership: which runner holds an event, its fencing token, and its expiry. This bookkeeping lives in the `runner` schema and never carries user strings.
 
 ### The list read and the detail read are different reads
 
-A page is up to two hundred rows, and the two body columns are unbounded — a trigger payload and a full agent answer. Selecting them per row bought a table that renders about a hundred and sixty characters per cell, so the list stops selecting them and the surfaces that used to quote an answer now state an outcome instead. A row that failed says why; a row that succeeded records that it did, without reproducing the reply. Postgres already keeps wide values in oversized-attribute storage, so the cost was never that the bodies existed — it was that the list **selected** them, which is why this is a read-path change and not a storage one.
+A page is up to two hundred rows, and the two body columns are unbounded: a trigger payload and a full agent answer. Selecting them per row bought a table that renders about a hundred and sixty characters per cell. So the list stops selecting them, and the surfaces that used to quote an answer now state an outcome instead.
+
+A row that failed says why; a row that succeeded records that it did, without reproducing the reply. Postgres already keeps wide values in oversized-attribute storage, so the cost was never that the bodies existed. The cost was that the list **selected** them, which is why this is a read-path change and not a storage one.
 
 The events table and fleet header use summaries. The chat transcript reads bodies through `GET /messages`; individual event detail remains a separate read. See [watch recovery](#d-watch--user-side-how-the-live-tail-surfaces) for reconnect behavior.
 
@@ -254,7 +264,11 @@ The admissions queue lives in Postgres. Dragonfly carries outbound delivery, liv
 
 Activity and wake notifications are ephemeral. Their loss cannot remove accepted work from the ledger.
 
-**Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its SSE connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side. On every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `fleet.events` list, keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events` (mirror of the SSE proxy; the `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel). No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
+**Client-side gap recovery (M122).** The channel has no resume. So a dashboard tab that drops its SSE connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side.
+
+The registry fetches the bounded `fleet.events` list on every reconnect open, never on the SSR-seeded initial connect. The fetch is keyed `since` the last server-delivered event minus a 2-second overlap, and the registry merges by event id.
+
+The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events`, the mirror of the SSE proxy. The `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel. No server, channel, or frame-shape change: the durable table remains the recovery source of truth.
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
@@ -298,10 +312,10 @@ Source: [`afd_dragonfly::Dragonfly`](../../rustd/crates/afd_dragonfly/src/client
 ## The Postgres pool: a saturated pool and a dead datastore are different pages
 
 Every request-path Postgres read takes exactly one pooled connection and holds
-it for the life of the handler. A read that acquires a second while holding the
-first is how a pool deadlocks under load — two requests each holding one and
-waiting for another — so a handler never holds two pool connections at once
-(RULE CNX, `.orly/docs/greptile-learnings/RULES.md`).
+it for the life of the handler. A read acquiring a second while holding the
+first is how a pool deadlocks under load: two requests each hold one and wait
+for another. A handler therefore never holds two pool connections at once (CNX
+in `.orly/standards/domains/sql.md`).
 
 An acquire can fail two ways, and they are **different operator problems**:
 
@@ -311,23 +325,27 @@ An acquire can fail two ways, and they are **different operator problems**:
 | `PoolUnavailable` | the pool could not produce a connection at all | the datastore — reachability, credentials, TLS |
 
 The pool acquire answers those as a typed error, and the two are asked apart
-by name (`rustd/crates/afd_db/src/error/mod.rs` — `is_pool_capacity` against
+by name (`rustd/crates/afd_db/src/error/mod.rs`: `is_pool_capacity` against
 `is_datastore_unavailable`). An acquire that answered only an absent connection
 would erase the distinction at the handler boundary and put both behind one
-alert, and the handler that needed to tell them apart would acquire from the
-pool directly — reimplementing the acquire/release pairing the pooled-connection
+alert. The handler that needed to tell them apart would then acquire from the
+pool directly, reimplementing the acquire/release pairing the pooled-connection
 guard makes unskippable.
 
 **What the pool guarantees, and what it does not.** Releasing an occupied slot
-lets at least one queued waiter progress, and every waiter either acquires or
-receives the configured timeout — no waiter blocks forever. There is **no
-ordering or fairness guarantee**: which waiter wins is scheduling. `afd_db`'s
-live-pool integration suite proves the two real guarantees against a live
-size-1 pool and deliberately declines to assert the third.
+lets at least one queued waiter progress. Every waiter either acquires or
+receives the configured timeout, so no waiter blocks forever.
+
+There is **no ordering or fairness guarantee**: which waiter wins is
+scheduling. `afd_db`'s live-pool integration suite proves the two real
+guarantees against a live size-1 pool and deliberately declines to assert the
+third.
 
 ## Config reload — pull-per-lease, no signal
 
-Canonical: [`runner_fleet.md` §Config](./runner_fleet.md) — config resolves fresh from `fleet.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal. What is specific to this flow: status works the same way — the assignment scan filters `fleet.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
+Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). Config resolves fresh from `fleet.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal.
+
+What is specific to this flow: status works the same way. The assignment scan filters `fleet.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
 
 ## End-to-end sequence
 
@@ -708,7 +726,8 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
 Before the cutover, a single worker thread owned all events for a Fleet, and the concern was round-robin across worker replicas breaking per-fleet continuity. That model is gone. Ownership is now a **durable lease**, not a thread:
 
-- `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_token`. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently. The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
+- `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically and bumps a monotonic `fencing_token`; a runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently.
+- The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
 - Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement remains a hint, never ownership.
 
@@ -727,8 +746,8 @@ One PR through one lease: its records and timers in [lease_flow.md §1](./lease_
 
 - Never touches the user's laptop directly
 - Never reads the user's local filesystem (it sees only what the fleet's reviewed setup grants it)
-- Never escapes the sandbox — namespaces, Landlock, seccomp and cgroup v2 bound each lease's sandbox, and the agent loop runs outside it ([`runner_execution.md`](./runner_execution.md#sandbox-engines)). **Network egress** follows the runner's network policy (see [`runner_fleet.md` §Egress model](./runner_fleet.md)).
-- Never holds a datastore credential — the runner reaches the platform only over the `/v1/runners` protocol
+- Never escapes the sandbox: namespaces, Landlock, seccomp and cgroup v2 bound each lease's sandbox, and the agent loop runs outside it ([`runner_execution.md`](./runner_execution.md#sandbox-engines)). **Network egress** follows the runner's network policy (see [`runner_fleet.md` §Egress model](./runner_fleet.md)).
+- Never holds a datastore credential: the runner reaches the platform only over the `/v1/runners` protocol
 
 ## The install failure scenario, visually
 

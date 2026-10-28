@@ -1,9 +1,7 @@
 <!--
 SPEC AUTHORING RULES (load-bearing — the one comment that survives):
-- Body order = the executing agent's read order. Fill via the orly-spec-new
-  skill (authoring order lives there); after filling, DELETE every "tpl:"
-  guidance comment — the SPEC TEMPLATE GATE blocks tpl residue, unfilled
-  {slots}, and missing required sections (.orly/audits/spec-template.sh --staged).
+- Body order = the executing agent's read order. Fill via the orly-spec
+  skill; after filling, DELETE every "tpl:" guidance comment.
 - No time/effort/hour/day estimates anywhere. No effort columns, complexity
   ratings, percentage-complete, implementation dates, assigned owners.
 - Priority (P0/P1/P2/P3) is the only sizing signal; Dependencies are the only
@@ -63,9 +61,9 @@ External changes use existing runbooks: production tunnel/domain, runner-readine
 
 ## Applicable Rules
 
-- `.orly/docs/greptile-learnings/RULES.md` — no speculative compatibility and no dead code.
-- `.orly/dispatch/lifecycle.md` — release and deploy edits need Indy's per-item approval; `gh release create` and `git push --tags` are his.
-- `.orly/dispatch/write_documentation.md` — launch documentation; cross-repository edits require approval.
+- `.orly/standards/code.md` — no speculative compatibility and no dead code.
+- `.orly/AGENTS.md` Hard Safety — release and deploy edits need Indy's per-item approval; `gh release create` and `git push --tags` are his.
+- `.orly/standards/docs.md` — launch documentation; cross-repository edits require approval.
 
 ## Applicable Gates
 
@@ -184,14 +182,14 @@ All rows are manual operational acceptance: Indy supplies approvals/triggers; th
 | R2 | Artifacts and complete production installation (§2; M213_001 R4) | manual — inspect retained release/run, artifact checks, host inventory and final acceptance in launch baseline | all Dimension 2.1–2.2 assertions satisfied; no missing or skipped final check | P0 | |
 | R3 | Three production results plus one inherited development proof (§3; M213_001 R5) | manual — inspect development and production records for 3.1–3.3 and copy M213_001's inherited `github-pr-reviewer` proof into launch baseline | all 3.1–3.3 assertions satisfied in both environments; inherited proof labelled development with source | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
+| S1 | Commit gate green | `orly gate work` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
 | S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
 | S5 | Version in sync | `make check-version` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 
-**Grading:** Run spec-specific checks as written; record ✅/❌ and decisive output in Graded. All declared repository commands above remain required at the final `orly gate pr` boundary; cite its output in Session Notes. Missing/red P0 evidence blocks completion. Transfers require the user-approved mapping in `.orly/docs/TEMPLATE.md`; baseline metadata follows `.orly/dispatch/lifecycle.md`.
+**Grading:** Run spec-specific checks as written; record ✅/❌ and decisive output in Graded. All declared repository commands above remain required at the final `orly gate pr` boundary; cite its output in Session Notes. Missing/red P0 evidence blocks completion. Transfers require the user-approved mapping in `.orly/standards/spec.md`; baseline metadata follows SPEC-BASELINE there.
 
 ## Dead Code Sweep
 

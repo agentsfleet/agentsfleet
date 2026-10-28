@@ -6,6 +6,10 @@
 //! linking, and its own datastore connections. The support modules are
 //! declared once here and reached as `crate::<name>` from each suite,
 //! which is the shape `afd_api` already uses for its four planes.
+#![expect(
+    clippy::print_stderr,
+    reason = "a suite's helpers print their measured evidence into the lane log"
+)]
 
 mod installed;
 mod lease_renewal;

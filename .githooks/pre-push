@@ -16,9 +16,8 @@
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
 #   - test-unit-design-system  (ui/packages/design-system/*)
 #
-# `lint-rustd` runs HERE rather than at commit time, and that is the tiering
-# docs/VERIFY_TIERS.md already describes: the `conform` row is pre-commit's and
-# costs seconds, the lint and unit rows are pre-push's. Clippy over the whole
+# `lint-rustd` runs HERE rather than at commit time: commit-time checks cost
+# seconds, and the lint and unit rows are pre-push's. Clippy over the whole
 # workspace is 36s to 3m16s — measured across six commits on one branch — and
 # charging that to every commit is what makes a developer batch unrelated work
 # into one large commit to avoid paying it twice. Once per push covers exactly
@@ -59,24 +58,10 @@ fmt_elapsed() {
 since() { printf '%s' "$(fmt_elapsed "$(( $(date +%s) - $1 ))")"; }
 
 # --- no orly gate here, deliberately -----------------------------------------
-# This hook used to run `orly gate work`. orly 0.8.0 recomposed its gates
-# one-per-cadence, and `work` now runs the repository's declared `conform`
-# command — which here is `make harness-verify`, and harness-verify is
-# STAGED-scoped. Nothing is staged at push time, so all nine audits printed
-# "no files in scope" and the call cost ~3s to prove nothing about the commits
-# being pushed.
-#
-# Dropping it loses no coverage: `conform` already ran against every one of
-# those commits, at commit time, in .githooks/pre-commit — over the staged diff
-# that actually became the commit, which is the only scope where a staged-diff
-# audit means anything. Re-asking at push can only re-answer for an empty set.
-#
-# The whole-worktree answer (`make harness-verify-all`) is a different and
-# strictly larger question — it grades untouched pre-existing debt, not this
-# push — and belongs to `orly gate pr` at CHORE(close) and to Continuous
-# Integration (CI), both of which run it. `orly gate pr` also remains the
-# comprehensive tier this hook deliberately leaves alone: running it here would
-# hold the push open for the stretch github.com kept dropping.
+# `orly gate work` already ran at every commit in .githooks/pre-commit, and
+# `orly gate pr` is the comprehensive tier, run by hand at CHORE(close).
+# Running it here would hold the push open for the stretch github.com kept
+# dropping.
 
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   upstream_ref='@{u}'

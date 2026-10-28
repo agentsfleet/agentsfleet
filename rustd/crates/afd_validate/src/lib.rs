@@ -1,6 +1,6 @@
 //! What every crate needs to bound untrusted input with garde, written once.
 //!
-//! `docs/REST_API_DESIGN_GUIDELINES.md` §8 puts a bound on the request type,
+//! HTTP-GARDE (`.orly/standards/domains/http.md`) puts a bound on the request type,
 //! with garde, and keeps the sentence a caller reads beside it. garde covers
 //! lengths and ranges; three things it does not are shared by enough crates to
 //! live in one leaf instead of being re-spelled in each:

@@ -1,4 +1,4 @@
-# Development notes — repo-specific operational knowledge
+# Development notes: repo-specific operational knowledge
 
 > Contributor-facing notes for the things `make help` and the architecture set
 > don't cover: how the hooks behave, what the test lanes actually mean, and the
@@ -237,8 +237,8 @@ See [Cargo's build cache](https://doc.rust-lang.org/cargo/reference/build-cache.
 
 ## Pushing and git hooks
 
-Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githooks`)
-— not in any contributor's dotfiles. Hook fixes are normal repo PRs.
+Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githooks`),
+not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 - **pre-push classifies the outgoing range into lint and unit surfaces** by file
   pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → `test-unit-cli`,
@@ -250,41 +250,45 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   datastore. Rust unit tests do not run here; they run at `orly gate pr` and
   in Continuous Integration (CI) (`.githooks/pre-push`).
 - **Clippy is pre-push's, not pre-commit's.** `lint-rustd` compiles the whole
-  workspace under `-D warnings`, which measured 36s to 3m16s per commit — a tax
-  on every commit including the small ones. Pre-commit keeps the checks that
-  cost seconds: the partial-staging reject, `orly gate work` (the `conform`
-  row — UFS (the named-constants gate), RUST ERR, LOGGING and the rest, over the staged diff), gitleaks,
-  and the fast per-surface gates. This is the split `.orly/docs/VERIFY_TIERS.md`
-  already describes; the hooks had drifted from it.
+  workspace under `-D warnings`, which measured 36s to 3m16s per commit. That
+  is a tax on every commit, including the small ones. Pre-commit keeps the
+  checks that cost seconds: the partial-staging reject, `orly gate work`
+  (branch shape and declared commands), gitleaks and its config self-test,
+  and fast per-surface gates.
 - **Pre-commit asserts the orly engine pin before it gates.**
-  `.orly/orly.json` records `orly_version`; CI installs exactly that version
-  before gating, and `scripts/check_orly_pin.sh` now proves the local binary
-  matches it. It exists because a stale global orly reads the pin, proceeds
-  anyway, and grades a narrower criteria set than the repository declares —
-  one of the five declared commands, while printing a complete-looking list —
-  and `orly doctor` on a stale engine printed thirty red "managed file was
-  edited" lines and still exited 0. The check asserts rather than installs
-  (the commit tier costs seconds, and reinstalling global tooling per commit
-  is a surprise), prints both versions on failure, and names the install
-  command for the manager the binary actually resolves under: bun-installed
-  and npm-installed orlys do not replace each other.
+  `.orly/orly.json` records `orly_version`, and CI installs exactly that
+  version before gating. `scripts/check_orly_pin.sh` now proves the local
+  binary matches it.
+
+  It exists because a stale global orly reads the pin and proceeds anyway. It
+  then grades a narrower criteria set than the repository declares (one of the
+  declared commands) while printing a complete-looking list. And `orly doctor`
+  on a stale engine printed thirty red "managed file was edited" lines and
+  still exited 0.
+
+  The check asserts rather than installs: the commit tier costs seconds, and
+  reinstalling global tooling per commit is a surprise. On failure it prints
+  both versions and names the install command for the manager the binary
+  actually resolves under. A bun-installed orly and an npm-installed one do not
+  replace each other.
 - **The merge trap:** merging `origin/main` *into* a branch makes the pushed
-  range include all of main's recent source files — pre-push then runs
+  range include all of main's recent source files. Pre-push then runs
   `lint-rustd` and the TypeScript unit lanes for what was a docs-only intent.
-  The lean-push pattern for docs-only branches: don't local-merge main; push just the docs commit (skips), and sync
-  the branch with GitHub's **"Update branch"** button (server-side, no local
-  hook).
+
+  The lean-push pattern for docs-only branches: don't local-merge main, and
+  push just the docs commit (skips). Sync the branch with GitHub's **"Update
+  branch"** button (server-side, no local hook).
 - **Sandboxed agent environments break the SSH transfer.** Hook verification
   passes, then the upload dies with `Broken pipe` / `Connection closed by remote
-  host` on every attempt. It is not payload size — run the push with network
+  host` on every attempt. It is not payload size: run the push with network
   sandboxing disabled and it lands first try.
 - **Flaky under parallel hook load:** `cli/test/browser-resolve-platforms.unit.test.ts`
   (and occasionally the app's provider-selection tests) time out at ~5 s but pass
   in isolation. Retry serially before suspecting the diff.
 - **`main` is branch-protected** (required checks; direct pushes are declined).
-  Everything lands via a feature branch + PR — including specs.
+  Everything lands via a feature branch + PR, including specs.
 
-## Test lanes — what the names mean
+## Test lanes: what the names mean
 
 The lane definitions, the toolchain reason both cargo lanes `cd` into `rustd/`,
 and the coverage bar are canonical in
@@ -302,8 +306,8 @@ follows is the repo-workflow half that page does not carry.
   post-deploy.
 
 - **Runner execute-loop without a language model:** `afr_agent`'s scripted
-  engine (`rustd/crates/afr_agent/src/scripted.rs`) runs a fixed turn — tool
-  calls, streamed text, memory items — so a sandbox or wire fault cannot hide
+  engine (`rustd/crates/afr_agent/src/scripted.rs`) runs a fixed turn of tool
+  calls, streamed text and memory items. So a sandbox or wire fault cannot hide
   behind a model's choices. It sits behind the crate's `test-util` feature,
   which only dev-dependencies enable (`afr_supervisor`, `afr_providers`,
   `agentsfleetd`), so no shipped binary carries it.
@@ -415,22 +419,24 @@ The shared Mac checkout survives. Delete only your disposable machine, then repe
 
 ## agentsfleet CLI conventions
 
-- **Hidden flags are registered on the root program**, never on a subcommand —
-  commander renders any subcommand with options as `cmd [options] …`, which
-  widens the auto-computed help column past 80 chars and breaks both the
-  byte-exact help golden and the 80-column test. `.hideHelp()` hides the flag
-  from `cmd --help` but not the `[options]` term in the parent listing. Accepted
-  trade-off: the flag parses as a global no-op on other subcommands.
+- **Hidden flags are registered on the root program**, never on a subcommand.
+  `commander` renders any subcommand with options as `cmd [options] …`, which
+  widens the auto-computed help column past 80 chars. That breaks both the
+  byte-exact help golden and the 80-column test.
+
+  `.hideHelp()` hides the flag from `cmd --help` but not the `[options]` term
+  in the parent listing. Accepted trade-off: the flag parses as a global no-op
+  on other subcommands.
 - **Effect-TS follows the Supabase CLI reference** at
-  `~/Projects/oss/cli/apps/cli/src/next/` — service surface, layer composition,
+  `~/Projects/oss/cli/apps/cli/src/next/`: service surface, layer composition,
   handler shape, error mapping. Any divergence (even Tag-construction or layer
-  order) needs an explicit maintainer ack **before** the diff lands; surface the
+  order) needs an explicit maintainer ack **before** the diff lands. Surface the
   reference shape, the proposed divergence, and the why.
 
 ## Deploys (Vercel)
 
-- Token at runtime: `VERCEL_TOKEN=$(op read 'op://ZMB_CD_DEV/vercel-api-token/credential')`
-  — never print it. Team scope `indykishs-projects`.
+- Token at runtime: `VERCEL_TOKEN=$(op read 'op://ZMB_CD_DEV/vercel-api-token/credential')`.
+  Never print it. Team scope `indykishs-projects`.
 - Projects → domains: `agentsfleet-website` (marketing) · `agentsfleet-app`
   (dashboard) · `agentsfleet-agents-dev` (serves the `agentsfleet.dev` installer
   domain; static output `ui/agentsfleet.dev/dist/`).
@@ -441,13 +447,13 @@ The shared Mac checkout survives. Delete only your disposable machine, then repe
 - Vercel ignores Cloudflare-Pages `_redirects`/`_headers`; static dirs need
   `framework=Other` + a `vercel.json` for rewrites/headers. The `agentsfleet.dev`
   root rewrite + `text/x-shellscript` content-type live in
-  `ui/agentsfleet.dev/dist/vercel.json` (two explicit header sources — the
+  `ui/agentsfleet.dev/dist/vercel.json` (two explicit header sources; the
   optional-group regex form does not match bare `/`). Deploys ride the git
   integration: preview-on-PR, prod-on-merge.
-- Parsing `/v6/deployments` JSON: use `jq` — python's `json.load` chokes on
+- Parsing `/v6/deployments` JSON: use `jq`; python's `json.load` chokes on
   control characters in the response.
 
-## Dashboard performance — read dev numbers carefully
+## Dashboard performance: read dev numbers carefully
 
 A slow dev-mode fleet list (`/w/{workspaceId}/fleets`) is mostly **not** a
 backend bug: Turbopack compiles routes on demand (zero in prod), local dev

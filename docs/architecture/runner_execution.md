@@ -383,7 +383,7 @@ When a fleet requires approval, the push runs in the continuation lease after so
 
 ## Why Rust
 
-- **Memory safety is checked by the compiler.** The runner this one replaced relied on rules a reviewer enforced by hand: one owner per resource, init and deinit pairing, idempotent cleanup, draining before deinit (`.orly/docs/greptile-learnings/RULES.md`, OWN, DEINIT, DIDEM, DRAIN). It needed a memory-leak lane of its own.
+- **Memory safety is checked by the compiler.** The runner this one replaced relied on rules a reviewer enforced by hand. They were one owner per resource, init and deinit pairing, idempotent cleanup, and draining before deinit. OWN is still in the [code standard](../../.orly/standards/code.md); DEINIT, DIDEM and DRAIN retired with that runner, which needed a memory-leak lane of its own.
 - **The language is stable.** The runner this one replaced was written in a pre-1.0 language: a standard-library list change cost the rulebook a rule (ZAL), and a process I/O change cost its engine a patched fork.
 - **One wire.** The runner speaks `afd_wire`, the daemon's own types, so a mismatch between the two sides fails to compile.
 - **The next work already exists in Rust.** Pseudo-terminals, patch application, the bubblewrap helper, Landlock and seccomp bindings, S3 presigning and Firecracker itself.

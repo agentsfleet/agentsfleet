@@ -82,26 +82,34 @@ pub fn finish(
     Ok(path.display().to_string())
 }
 
+/// Print a lane's report for the person who ran it, ending in one newline.
+///
+/// Every bin prints through here, so the print exemption at the crate root
+/// covers each of them.
+pub fn show(report: &str) {
+    println!("{}", report.trim_end());
+}
+
 /// Turn a lane's outcome into the process's, printing what a person needs.
 #[must_use]
 pub fn exit(name: &str, outcome: Result<String>) -> ExitCode {
     match outcome {
         Ok(path) => {
-            // logging: a make target answers the person who ran it on stdout; no daemon is running here to carry an event.
+            // a make target answers the person who ran it on stdout; no daemon is running here to carry an event.
             println!("wrote {path}");
             ExitCode::SUCCESS
         }
         Err(refusal) => {
-            // logging: a refusal goes to stderr where the shell shows it; no subscriber is installed in this process.
+            // a refusal goes to stderr where the shell shows it; no subscriber is installed in this process.
             eprintln!("{name} refused: {refusal}");
             let mut cause: Option<&dyn core::error::Error> = core::error::Error::source(&refusal);
             while let Some(reason) = cause {
-                // logging: the cause chain belongs on the same stream as the refusal it explains.
+                // the cause chain belongs on the same stream as the refusal it explains.
                 eprintln!("  caused by: {reason}");
                 cause = reason.source();
             }
             if refusal.is_pre_flight() {
-                // logging: tells the reader there is nothing to sweep, on the stream the refusal went to.
+                // tells the reader there is nothing to sweep, on the stream the refusal went to.
                 eprintln!("  nothing was created: the refusal came before any connection opened");
             }
             ExitCode::FAILURE

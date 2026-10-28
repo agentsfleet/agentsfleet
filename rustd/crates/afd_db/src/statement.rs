@@ -2,7 +2,7 @@
 //! and the escape that keeps a caller's text literal inside a `LIKE` pattern.
 //!
 //! The clock is not here. Each `.sql` file names the clock function its job
-//! needs (`.orly/docs/SCHEMA_CONVENTIONS.md` §Timestamps), so a reader sees in
+//! needs (SQL-STAMP and SQL-DEADLINE, `.orly/standards/domains/sql.md`), so a reader sees in
 //! the statement itself whether it reads the time before or after a lock.
 
 use sqlx::postgres::PgArguments;

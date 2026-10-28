@@ -3,7 +3,7 @@
 //! # The list envelope is the shared one plus a key, by design
 //!
 //! [`WorkspacesResponse`] carries `tenant_id` beside `items` — the one
-//! security-bound exception `docs/REST_API_DESIGN_GUIDELINES.md` grants:
+//! security-bound exception HTTP-LIST (`.orly/standards/domains/http-responses.md`) grants:
 //! browser and command-line clients persist the authoritative tenant with the
 //! workspace list, so a refreshed identity cannot mix local state from two
 //! tenants. `total` is always `null` here — the list never counts — and stays

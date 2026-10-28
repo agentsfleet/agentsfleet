@@ -131,11 +131,11 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
 
 /// The first refusal per runner is enough to diagnose a failed measurement.
 fn refusal(error: &crate::error::Error) {
-    // logging: the benchmark has no subscriber; its first refusal belongs on the same stderr as the final run failure.
+    // the benchmark has no subscriber; its first refusal belongs on the same stderr as the final run failure.
     eprintln!("drain runner refused: {error}");
     let mut cause = core::error::Error::source(error);
     while let Some(reason) = cause {
-        // logging: preserve the cause chain for a benchmark failure without printing any fixture request.
+        // preserve the cause chain for a benchmark failure without printing any fixture request.
         eprintln!("  caused by: {reason}");
         cause = reason.source();
     }
