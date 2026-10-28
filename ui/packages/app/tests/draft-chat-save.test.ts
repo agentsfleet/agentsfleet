@@ -29,8 +29,8 @@ function completedSave(revision = "1"): void {
   messages = messages.map(message => ({...message, state: MESSAGE_STATE.completed}));
 }
 
-// Value: authorization persists with the message, including a compound imperative.
-it.each(["Save", "Please save this.", "Save changes", "Save it and run it daily"])("sends durable authorization for %s without a browser save request", async text => {
+// Value: only a complete setup-save command grants durable save authorization.
+it.each(["Save", "Please save this.", "Save changes", "Go ahead and save this setup now please!"])("sends durable authorization for %s without a browser save request", async text => {
   const client = await fixture.ready(true);
   await client.send(text);
   expect(input()).toMatchObject({message: text, save: true});
@@ -38,7 +38,8 @@ it.each(["Save", "Please save this.", "Save changes", "Save it and run it daily"
   expect(saves()).toEqual([]);
 });
 
-it.each(["What happens when I save this?", "Don't save this", "Say 'save this'", "Change the budget", "Save this after I review it", "Save if it is ready"])("keeps %s conversational", async text => {
+it.each(["What happens when I save this?", "Don't save this", "Say 'save this'", "Change the budget", "Save this after I review it", "Save if it is ready",
+  "Save and categorize receipts from my inbox", "Save it and send me a Slack message", "Save it and run it daily", "Save this and deploy it"])("keeps %s conversational", async text => {
   const client = await fixture.ready(true);
   await client.send(text);
   expect(input()).toMatchObject({save: false});
