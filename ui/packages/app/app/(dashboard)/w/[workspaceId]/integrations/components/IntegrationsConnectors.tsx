@@ -7,8 +7,7 @@ import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
 import { useWorkspaceNotice, WorkspaceNotice } from "@/components/layout/WorkspaceNotice";
 import { PlugIcon } from "lucide-react";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
-import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
-import { OAuthConnectorRow, type ConnectorStatusOverride } from "./connector-rows";
+import { OAuthConnectorRow } from "./connector-rows";
 import { CONNECT_APPS_COPY } from "../copy";
 
 const CONNECTOR_REQUESTED_MESSAGE = "Requested";
@@ -31,16 +30,10 @@ export default function IntegrationsConnectors({
   workspaceId,
   catalog,
   catalogError = null,
-  githubStatus,
-  slackStatus = CONNECTOR_STATUS.notConnected,
-  slackTeam = null,
 }: {
   workspaceId: string;
   catalog: readonly ConnectorCatalogEntry[];
   catalogError?: ConnectorFetchError | null;
-  githubStatus: ConnectorStatus;
-  slackStatus?: ConnectorStatus;
-  slackTeam?: string | null;
 }) {
   const [search, setSearch] = useState("");
   const { notice, showNotice } = useWorkspaceNotice();
@@ -48,17 +41,6 @@ export default function IntegrationsConnectors({
   const [refreshing, startRefresh] = useTransition();
   const router = useRouter();
   const matches = catalog.filter((entry) => entry.display_name.toLowerCase().includes(query));
-  // GitHub and Slack are the two connectors the page fetches a bespoke status for
-  // (tri-state + the Slack team); every other card derives its status from the
-  // catalog. Keyed by provider id so the render loop stays provider-agnostic; read
-  // with an own-key guard so a catalog id named after a prototype member can't
-  // resolve to an inherited value.
-  const statusOverrides: Record<string, ConnectorStatusOverride> = {
-    github: { status: githubStatus },
-    slack: { status: slackStatus, identity: slackTeam },
-  };
-  const overrideFor = (id: string): ConnectorStatusOverride | undefined =>
-    Object.hasOwn(statusOverrides, id) ? statusOverrides[id] : undefined;
 
   return (
     <Section className="space-y-xl" data-testid="integrations-connectors">
@@ -82,7 +64,6 @@ export default function IntegrationsConnectors({
               key={entry.id}
               entry={entry}
               workspaceId={workspaceId}
-              override={overrideFor(entry.id)}
               onRequest={() => showNotice("success", CONNECTOR_REQUESTED_MESSAGE)}
             />
           ))}

@@ -3,9 +3,9 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn svix_inspects_its_raw_signing_reference_and_tracks_rotation() {
+async fn svix_inspects_its_credential_field_and_tracks_rotation() {
     let case = Case::create(json!({"triggers":[{"type":"webhook","source":"clerk",
-        "credential_name":"unused-outbound","signature":{"secret_ref":"event-signing"}}]}))
+        "credential_name":"event-signing","verifier":{"scheme":"svix-v1"}}]}))
     .await;
     case.store("unused-outbound", json!({"webhook_secret":TOKEN}))
         .await;
@@ -18,7 +18,11 @@ async fn svix_inspects_its_raw_signing_reference_and_tracks_rotation() {
         check(&case.read().await, "credential", "event-signing", "blocked");
     }
     let signing = format!("whsec_{}", STANDARD.encode(TOKEN));
-    case.raw("event-signing", signing.as_bytes()).await;
+    case.raw(
+        "event-signing",
+        json!({"webhook_secret":signing}).to_string().as_bytes(),
+    )
+    .await;
     let ready = case.read().await;
     check(&ready, "credential", "event-signing", "ready");
     assert!(!ready.to_string().contains(&signing));
@@ -30,7 +34,11 @@ async fn svix_inspects_its_raw_signing_reference_and_tracks_rotation() {
             .all(|item| item["subject"] != "unused-outbound" && item["subject"] != "clerk")
     );
     let rotated = format!("whsec_{}", STANDARD.encode(format!("{TOKEN}-rotated")));
-    case.raw("event-signing", rotated.as_bytes()).await;
+    case.raw(
+        "event-signing",
+        json!({"webhook_secret":rotated}).to_string().as_bytes(),
+    )
+    .await;
     let fresh = case.read().await;
     check(&fresh, "credential", "event-signing", "ready");
     assert_ne!(ready["review_digest"], fresh["review_digest"]);
@@ -46,8 +54,8 @@ const SHARED_NAME: &str = "event_signing";
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn raw_signing_bytes_cannot_also_satisfy_an_execution_credential() {
     let case = Case::create(json!({"credentials":[SHARED_NAME],
-        "triggers":[{"type":"webhook","source":"clerk","signature":{
-        "secret_ref":SHARED_NAME}}]}))
+        "triggers":[{"type":"webhook","source":"clerk","credential_name":SHARED_NAME,"verifier":{
+        "scheme":"svix-v1"}}]}))
     .await;
     case.store(SHARED_NAME, json!({"api_key":TOKEN})).await;
     let signing = format!("whsec_{}", STANDARD.encode(TOKEN));

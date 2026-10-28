@@ -46,7 +46,7 @@ fn rendered(triggers: &serde_json::Value) -> Vec<(String, String)> {
 #[test]
 fn each_webhook_source_gets_the_address_its_route_serves() {
     let addresses = rendered(&json!([
-        {"type": "webhook", "source": "stripe", "signature": {"secret_ref": "stripe_svix"}},
+        {"type": "webhook", "source": "stripe", "credential_name": "stripe_svix", "verifier": {"scheme": "svix-v1"}},
         {"type": "webhook", "source": "github"},
         {"type": "webhook", "source": "linear"},
         {"type": "webhook", "source": "slack"},
@@ -55,7 +55,7 @@ fn each_webhook_source_gets_the_address_its_route_serves() {
     assert_eq!(
         addresses,
         [
-            ("stripe", format!("{DEPLOYMENT}/v1/webhooks/svix/{FLEET}")),
+            ("stripe", format!("{DEPLOYMENT}/v1/webhooks/{FLEET}/stripe")),
             ("github", format!("{DEPLOYMENT}/v1/webhooks/{FLEET}/github")),
             ("linear", format!("{DEPLOYMENT}/v1/webhooks/{FLEET}/linear")),
             ("slack", format!("{DEPLOYMENT}/v1/webhooks/{FLEET}/slack")),

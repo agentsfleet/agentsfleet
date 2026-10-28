@@ -47,6 +47,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+pub mod family;
 pub mod freshness;
 pub mod scheme;
 #[cfg(feature = "test-util")]
@@ -54,6 +55,7 @@ pub mod test_util;
 pub mod vendor;
 pub mod verdict;
 
+pub use self::family::{Family, Proof};
 pub use self::freshness::MAX_DRIFT_SECONDS;
 pub use self::scheme::Scheme;
 pub use self::verdict::{Refusal, Verdict};

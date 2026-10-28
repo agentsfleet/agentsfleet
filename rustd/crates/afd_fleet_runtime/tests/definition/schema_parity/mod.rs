@@ -13,6 +13,7 @@
 
 mod admits;
 mod refusals;
+mod verifier;
 
 use std::path::PathBuf;
 

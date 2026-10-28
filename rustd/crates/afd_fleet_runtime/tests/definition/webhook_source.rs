@@ -1,7 +1,6 @@
 //! A webhook trigger's `source` is the last segment of the address its
 //! deliveries are sent to, so it is a lowercase slug and never `approval`; and
-//! a trigger must be one some route can verify — a source whose scheme this
-//! daemon ships, or a Svix `signature.secret_ref`.
+//! a trigger must use a built-in source or declare a supported verifier.
 //!
 //! Driven through [`FleetConfig::authored`], the entry every reviewed setup's
 //! configuration goes through.
@@ -13,9 +12,7 @@
 
 use afd_core::money::NANOS_PER_USD;
 use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::{
-    Trigger, VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WebhookSignature,
-};
+use afd_fleet_runtime::config::{Trigger, VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL};
 use afd_validate::rules::OUTSIDE_CHARSET;
 use serde_json::{Value, json};
 
@@ -32,9 +29,6 @@ fn chain(refused: &afd_fleet_runtime::Error) -> String {
     .join(": ")
 }
 
-/// The Svix secret the signed cases declare.
-const SVIX_SECRET: &str = "stripe_svix";
-
 /// A configuration declaring `triggers` verbatim.
 fn config_of(triggers: &Value) -> String {
     json!({"name": "webhook-source-probe", "x-agentsfleet": {
@@ -45,15 +39,14 @@ fn config_of(triggers: &Value) -> String {
     .to_string()
 }
 
-/// A configuration declaring one webhook trigger from `source`, signed for the
-/// Svix route when `signature` is given.
-fn document_with(source: &str, signature: Option<Value>) -> String {
+/// A configuration declaring one webhook trigger and its optional verifier.
+fn document_with(source: &str, verifier: Option<Value>) -> String {
     let mut trigger = json!({"type": "webhook", "source": source});
-    if let Some(signature) = signature {
+    if let Some(verifier) = verifier {
         trigger
             .as_object_mut()
             .unwrap_or_else(|| panic!("a trigger is an object"))
-            .insert("signature".to_owned(), signature);
+            .insert("verifier".to_owned(), verifier);
     }
     config_of(&json!([trigger]))
 }
@@ -76,52 +69,72 @@ fn a_verified_source_is_accepted_without_a_signature() {
     }
 }
 
-/// A source no scheme is shipped for is refused bare, with a sentence naming
-/// every verifiable source, and accepted once it names a Svix secret.
+/// Custom sources declare a closed recipe; registry sources cannot override it.
 #[test]
-fn an_unverifiable_source_needs_a_svix_secret() {
-    let named = VERIFIED_WEBHOOK_SOURCES
-        .map(|source| format!("`{source}`"))
-        .join(", ");
-    let expected = format!(
-        "the webhook source `stripe` cannot be verified: use {named}, or declare \
-         `signature.secret_ref` for a Svix-signed source"
-    );
-    let Err(refused) = FleetConfig::authored(&document("stripe")) else {
-        panic!("a bare `stripe` trigger is refused");
+fn an_unverifiable_trigger_never_parses() {
+    let Err(refused) = FleetConfig::authored(&document("acme")) else {
+        panic!("unverifiable")
     };
-    assert!(chain(&refused).contains(&expected), "{}", chain(&refused));
+    let sentence = chain(&refused);
+    for family in afd_webhook::Family::ALL {
+        assert!(sentence.contains(family.token()), "{sentence}");
+    }
+    let unknown = document_with("acme", Some(json!({"scheme":"sha512-hex"})));
+    let Err(refused) = FleetConfig::authored(&unknown) else {
+        panic!("unknown recipe")
+    };
+    for family in afd_webhook::Family::ALL {
+        assert!(chain(&refused).contains(family.token()));
+    }
+}
 
-    for source in ["stripe", "pager-duty2"] {
-        let signed = document_with(source, Some(json!({"secret_ref": SVIX_SECRET})));
-        let config = FleetConfig::authored(&signed)
-            .unwrap_or_else(|refused| panic!("`{source}` with a secret: {}", chain(&refused)));
+#[test]
+fn a_verifier_that_cannot_hold_is_refused_at_parse() {
+    for (source, declaration) in [
+        ("github", json!({"scheme":"svix-v1"})),
+        ("acme", json!({"scheme":"slack-v0","header":"x-proof"})),
+        ("acme", json!({"scheme":"svix-v1","header":"x-proof"})),
+        ("acme", json!({"scheme":"slack-v0","extra":{"nested":true}})),
+        ("acme", json!({"scheme":"svix-v1","extra":{"nested":true}})),
+        ("acme", json!({"scheme":"body-hex","header":"x acme"})),
+        ("acme", json!({"scheme":"body-hex","header":"x\r\nproof"})),
+        (
+            "acme",
+            json!({"scheme":"body-hex","header":"x".repeat(129)}),
+        ),
+        ("acme", json!({"scheme":"body-hex"})),
+    ] {
         assert!(
-            matches!(
-                config.triggers(),
-                [Trigger::Webhook(hook)]
-                    if hook.signature.as_ref().map(WebhookSignature::secret_ref)
-                        == Some(SVIX_SECRET)
-            ),
-            "`{source}` keeps its Svix secret"
+            FleetConfig::authored(&document_with(source, Some(declaration.clone()))).is_err(),
+            "{source}: {declaration}"
         );
     }
 }
 
-/// The header, prefix and timestamp keys were never read by any route, so a
-/// signature block naming one is refused by name.
 #[test]
-fn a_signature_names_only_its_secret() {
-    for key in ["header", "prefix", "ts_header"] {
-        let signature = json!({"secret_ref": SVIX_SECRET, key: "x-signature"});
-        let Err(refused) = FleetConfig::authored(&document_with("stripe", Some(signature))) else {
-            panic!("a signature naming `{key}` is refused");
+fn every_recipe_parses_and_keeps_its_header_policy() {
+    for family in afd_webhook::Family::ALL {
+        let declaration = match family {
+            afd_webhook::Family::SlackV0 | afd_webhook::Family::SvixV1 => {
+                json!({"scheme":family.token()})
+            }
+            _ => json!({"scheme":family.token(),"header":"X-Acme-Proof"}),
         };
-        assert!(
-            chain(&refused).contains(&format!("unknown field `{key}`")),
-            "{}",
-            chain(&refused)
-        );
+        let config = FleetConfig::authored(&document_with("acme", Some(declaration)))
+            .unwrap_or_else(|refused| panic!("{}: {}", family.token(), chain(&refused)));
+        let [Trigger::Webhook(hook)] = config.triggers() else {
+            panic!("one webhook")
+        };
+        let verifier = hook
+            .verifier
+            .as_ref()
+            .unwrap_or_else(|| panic!("declared recipe"));
+        assert_eq!(verifier.family(), *family);
+        let expected_header = match family {
+            afd_webhook::Family::SlackV0 | afd_webhook::Family::SvixV1 => None,
+            _ => Some("x-acme-proof"),
+        };
+        assert_eq!(verifier.header(), expected_header);
     }
 }
 

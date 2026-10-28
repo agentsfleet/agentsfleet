@@ -81,7 +81,7 @@ pub(super) struct Fixture {
     queue: Dragonfly,
     subject: String,
     tenant: String,
-    workspace: Uuid7,
+    pub(super) workspace: Uuid7,
     user: String,
     /// The fleet a delivery is addressed to.
     pub(super) fleet: Uuid7,
@@ -122,6 +122,11 @@ impl Fixture {
             self.seal(
                 CREDENTIAL,
                 &format!(r#"{{"{WEBHOOK_SECRET_FIELD}":"{text}"}}"#),
+            )
+            .await;
+            self.seal(
+                "clerk",
+                &serde_json::json!({"webhook_secret": harness::webhook::SVIX_SECRET}).to_string(),
             )
             .await;
         }
@@ -209,7 +214,7 @@ impl Fixture {
 /// The second verifiable source the stored document declares.
 pub(super) const SECOND_SOURCE: &str = "linear";
 
-/// The stored document, declaring two webhook triggers on one credential.
+/// Registry and declared recipes sharing one stored fleet.
 fn document() -> String {
     format!(
         r#"{{
@@ -217,7 +222,9 @@ fn document() -> String {
           "x-agentsfleet": {{
             "triggers": [
               {{"type":"webhook","source":"{SOURCE}","credential_name":"{CREDENTIAL}"}},
-              {{"type":"webhook","source":"{SECOND_SOURCE}","credential_name":"{CREDENTIAL}"}}
+              {{"type":"webhook","source":"{SECOND_SOURCE}","credential_name":"{CREDENTIAL}"}},
+              {{"type":"webhook","source":"clerk","verifier":{{"scheme":"svix-v1"}}}},
+              {{"type":"webhook","source":"acme","credential_name":"{CREDENTIAL}","verifier":{{"scheme":"body-hex-sha256","header":"x-acme-signature"}}}}
             ],
             "tools": ["bash"],
             "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}

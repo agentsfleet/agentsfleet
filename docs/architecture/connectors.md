@@ -78,6 +78,43 @@ Complete a fresh Connect to restore the binding, or Disconnect again when remova
 
 - **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live in `rustd/crates/afd_ingress/src/app/mod.rs`. Slack keeps `POST /v1/connectors/slack/events` (the `/v1/connectors/{provider}/events` route) because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention once, under the `slack_mention` admission producer, on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention/mod.rs`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
+## Workspace connection reads and browser returns
+
+Connections belong to the workspace. An authorized
+`GET /v1/workspaces/{workspace_id}/connectors` returns every registered provider's
+identifier, display name, archetype, configured flag, connected flag and public
+account label. The service reads deployment app names and a bounded batch of that
+workspace's registered grant names concurrently.
+
+It checks each grant's matching
+connector marker and returns no tokens. A missing, unrelated or malformed handle
+is disconnected. Storage failures remain errors instead of invented disconnected
+states (`rustd/crates/afd_connector/src/connection.rs` and `grant/catalogue.rs`).
+
+The connection page streams its heading before this single list finishes. It
+makes no separate GitHub or Slack status read. Connected means a saved
+authorization; status loading makes no provider call and cannot detect upstream
+revocation.
+
+The provider's granted permissions and implemented actions still
+limit what a fleet can do.
+
+Browser callbacks return to `/api/connectors/{provider}/callback` on the web app.
+The API's `/v1/connectors/{provider}/callback` requires an authenticated POST.
+The web relay allows 25 seconds for completion and never retries the spent code.
+
+Failures lead to a safe recovery page with a validated workspace return link;
+codes, state and vendor response bodies do not appear there. The workspace cookie
+is a navigation hint and grants no access. The API still verifies state, starter
+identity and workspace access before saving a grant.
+
+Jira, Linear and Zoho handles retain refresh tokens and account metadata. Their
+initial access token and expiry are unused by the credential broker and are not
+stored. The broker mints its own access token and caches that token's expiry.
+
+This keeps a large initial vendor token from overflowing the vault's bounded
+credential object (`rustd/crates/afd_connector/src/grant/parse/mod.rs`).
+
 ## Archetypes
 
 | Archetype | Flow | Callback carries | Writes | Shipped instances |

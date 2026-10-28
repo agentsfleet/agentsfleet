@@ -6,11 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // connect/probe security boundary is the backend. The provider is NOT checked
 // against an allowlist — that would duplicate the registry — so a newly registered
 // provider connects with no change here. Mock both module boundaries.
-const { disconnectConnectorMock, withTokenMock, startConnectMock } = vi.hoisted(() => ({
+const { disconnectConnectorMock, withTokenMock, startConnectMock, cookieSet } = vi.hoisted(() => ({
   disconnectConnectorMock: vi.fn(),
   withTokenMock: vi.fn(),
   startConnectMock: vi.fn(),
+  cookieSet: vi.fn(),
 }));
+
+vi.mock("next/headers", () => ({ cookies: async () => ({ set: cookieSet }) }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/api/connectors", () => ({
@@ -68,6 +71,8 @@ describe("startConnectAction (OAuth connect)", () => {
     expect(withTokenMock).toHaveBeenCalledTimes(1);
     // The token is injected by withToken, not the caller.
     expect(startConnectMock).toHaveBeenCalledWith("github", "ws_1", "tok");
+    expect(cookieSet).toHaveBeenCalledWith("connector_return_github", "/w/ws_1/integrations",
+      expect.objectContaining({ httpOnly: true, sameSite: "lax", path: "/", maxAge: 600 }));
   });
 
   it("forwards a provider that is NOT github/slack — registry-driven, no allowlist", async () => {
@@ -78,6 +83,32 @@ describe("startConnectAction (OAuth connect)", () => {
 
     expect(result).toEqual({ ok: true, data: authorize });
     expect(startConnectMock).toHaveBeenCalledWith("zoho", "ws_1", "tok");
+  });
+
+  it("never stores an unsafe workspace return hint", async () => {
+    const install = { install_url: "https://jira.example/authorize" };
+    startConnectMock.mockResolvedValue(install);
+
+    expect(await startConnectAction("jira", "ws_1?code=private")).toEqual({ ok: true, data: install });
+    expect(cookieSet).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable start failure before saving a return hint", async () => {
+    startConnectMock.mockRejectedValue(new Error("Connection service unavailable"));
+
+    expect(await startConnectAction("jira", "ws_1"))
+      .toEqual({ ok: false, error: "Connection service unavailable" });
+    expect(startConnectMock).toHaveBeenCalledOnce();
+    expect(cookieSet).not.toHaveBeenCalled();
+  });
+
+  it("never reports a successful start when saving the return hint fails", async () => {
+    startConnectMock.mockResolvedValue({ install_url: "https://jira.example/authorize" });
+    cookieSet.mockImplementationOnce(() => { throw new Error("Return hint unavailable"); });
+
+    expect(await startConnectAction("jira", "ws_1"))
+      .toEqual({ ok: false, error: "Return hint unavailable" });
+    expect(startConnectMock).toHaveBeenCalledOnce();
   });
 
   it("rejects a path-tampered provider before any token or API work", async () => {

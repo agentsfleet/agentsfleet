@@ -37,15 +37,15 @@ vi.mock("lucide-react", () => {
 
 import IntegrationsConnectors from "@/app/(dashboard)/w/[workspaceId]/integrations/components/IntegrationsConnectors";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
-import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors-types";
 import { EVENTS } from "@/lib/analytics/events";
 
 const WS = "ws_test";
+const PAGE_SHOW_EVENT = "pageshow";
 
 function entry(
   over: Partial<ConnectorCatalogEntry> & Pick<ConnectorCatalogEntry, "id" | "archetype">,
 ): ConnectorCatalogEntry {
-  return { display_name: over.id, configured: true, connected: false, ...over };
+  return { display_name: over.id, configured: true, connected: false, label: null, ...over };
 }
 
 const GITHUB = entry({ id: "github", archetype: "app_install", display_name: "GitHub" });
@@ -55,9 +55,6 @@ const ZOHO = entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk" 
 function renderConnectors(
   catalog: ConnectorCatalogEntry[],
   props: Partial<{
-    githubStatus: ConnectorStatus;
-    slackStatus: ConnectorStatus;
-    slackTeam: string | null;
     catalogError: { code: string; status: number | null } | null;
   }> = {},
 ) {
@@ -68,9 +65,6 @@ function renderConnectors(
       // Passed through as-is: omitting it (undefined) exercises the
       // component's own `catalogError = null` default.
       catalogError: props.catalogError,
-      githubStatus: props.githubStatus ?? CONNECTOR_STATUS.notConnected,
-      slackStatus: props.slackStatus,
-      slackTeam: props.slackTeam,
     }),
   );
 }
@@ -127,7 +121,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   });
 
   it("renders an OAuth connector not-connected with a Connect button and no paste", () => {
-    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.notConnected });
+    renderConnectors([GITHUB]);
     const github = screen.getByTestId("integration-github");
     expect(github.textContent).toContain("Not connected");
     expect(github.textContent).not.toContain("GITHUB_TOKEN");
@@ -138,7 +132,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   });
 
   it("says connected exactly once, on the pill, and offers an exact Disconnect", () => {
-    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+    renderConnectors([{ ...GITHUB, connected: true }]);
     const github = screen.getByTestId("integration-github");
     // The pill is the one place the state is spelled. The description used to
     // say "Connected." underneath it, so the row read the word twice, and the
@@ -148,7 +142,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     // The action is a glyph now; its accessible name still names the provider.
     expect(screen.getByRole("button", { name: "Disconnect GitHub" })).toBeTruthy();
     // And the description says what the pill cannot: what the connection is FOR.
-    expect(github.textContent).toContain("Ready for your fleets to use.");
+    expect(github.textContent).toContain("Authorization saved.");
   });
 
   it("should say it is disconnecting, and refuse a second click, while the write is in flight", async () => {
@@ -163,7 +157,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
         release = resolve;
       }),
     );
-    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+    renderConnectors([{ ...GITHUB, connected: true }]);
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
@@ -200,12 +194,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     await waitFor(() => expect(screen.getByRole("button", { name: "Connect Zoho Desk" })).toBeTruthy());
   });
 
-  it("offers Connect when the install was revoked", () => {
-    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.reconnectRequired });
-    expect(screen.getByRole("button", { name: "Connect GitHub" })).toBeTruthy();
-  });
-
-  it("derives status from the catalog `connected` flag when there's no override (Zoho)", () => {
+  it("derives status from the catalog `connected` flag for every provider (Zoho)", () => {
     renderConnectors([entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk", connected: true })]);
     expect(within(screen.getByTestId("integration-zoho")).getByText("Connected")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Disconnect Zoho Desk" })).toBeTruthy();
@@ -218,12 +207,12 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();
   });
 
-  it("shows the Slack team identity from the override when connected", () => {
-    renderConnectors([SLACK], { slackStatus: CONNECTOR_STATUS.connected, slackTeam: "Acme Corp" });
+  it("shows the Slack team identity from the workspace catalog", () => {
+    renderConnectors([{ ...SLACK, connected: true, label: "Acme Corp" }]);
     expect(screen.getByTestId("integration-slack").textContent).toContain("Installed on Acme Corp");
   });
 
-  it("calls the connect action with the catalog id and redirects on success", async () => {
+  it("redirects once and lets a restored page start a fresh connection", async () => {
     const install_url = "https://github.com/apps/agentsfleet/installations/new?state=signed";
     startConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
     const original = window.location;
@@ -237,6 +226,14 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
       fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
       await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledWith("github", WS));
       await waitFor(() => expect(assigned).toBe(install_url));
+      const busy = screen.getByRole("button", { name: "Connecting…" });
+      fireEvent(window, new Event(PAGE_SHOW_EVENT));
+      expect((busy as HTMLButtonElement).disabled).toBe(true);
+      const restored = new Event(PAGE_SHOW_EVENT);
+      Object.defineProperty(restored, "persisted", { value: true });
+      fireEvent(window, restored);
+      fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
+      await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledTimes(2));
     } finally {
       Object.defineProperty(window, "location", { configurable: true, value: original });
     }
@@ -265,7 +262,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
 
   it("disconnects the connected provider and refreshes server state", async () => {
     disconnectConnectorActionMock.mockResolvedValue({ ok: true, data: undefined });
-    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+    renderConnectors([{ ...GITHUB, connected: true }]);
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
@@ -279,7 +276,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
       error: "boom",
       errorCode: "UZ-INTERNAL-003",
     });
-    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+    renderConnectors([{ ...GITHUB, connected: true }]);
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
@@ -294,7 +291,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     ["non-error disconnect failure", "Couldn't disconnect GitHub. Try again, or check Activity for what blocked it."],
   ])("surfaces a thrown disconnect failure %#", async (cause, message) => {
     disconnectConnectorActionMock.mockRejectedValue(cause);
-    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+    renderConnectors([{ ...GITHUB, connected: true }]);
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 

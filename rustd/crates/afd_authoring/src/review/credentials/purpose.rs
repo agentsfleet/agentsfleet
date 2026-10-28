@@ -26,13 +26,16 @@ pub(super) fn collect<'a>(
     for trigger in candidate.definition.runtime().triggers() {
         let (name, purpose) = match trigger {
             Trigger::Mention(mention) => (&*mention.source, Purpose::Mention(&mention.source)),
-            Trigger::Webhook(hook) => match &hook.signature {
-                Some(signature) => (signature.secret_ref(), Purpose::Svix),
-                None => (
-                    hook.credential_name.as_deref().unwrap_or(&hook.source),
-                    Purpose::Webhook,
-                ),
-            },
+            Trigger::Webhook(hook) => (
+                hook.credential_name.as_deref().unwrap_or(&hook.source),
+                if hook.verifier.as_ref().is_some_and(|v| {
+                    matches!(v, afd_fleet_runtime::config::WebhookVerifier::SvixV1)
+                }) {
+                    Purpose::Svix
+                } else {
+                    Purpose::Webhook
+                },
+            ),
             Trigger::Cron(_) => continue,
         };
         needs.entry(name).or_default().push(purpose);

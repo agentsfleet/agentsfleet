@@ -1,9 +1,15 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { buildSignInUrl } from "@/lib/auth/sign-in-redirect";
+import { CONNECTOR_COMPLETION_PATH } from "@/lib/connectors/completion";
+
+const CONNECTOR_CALLBACK_ROUTE = /^\/api\/connectors\/[a-z][a-z0-9_-]{0,63}\/callback$/;
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  CONNECTOR_COMPLETION_PATH,
+  // The relay requires a credential before any exchange; anonymous visits only recover.
+  CONNECTOR_CALLBACK_ROUTE,
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

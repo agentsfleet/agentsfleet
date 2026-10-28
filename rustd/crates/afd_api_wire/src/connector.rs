@@ -4,7 +4,7 @@
 //! # Why these are here rather than beside their handlers
 //!
 //! Every one of these is a shape a client parses. A struct declared inside the
-//! handler that writes it is a contract only one side can see: the dashboard
+//! handler that writes it is a shape only one side can see: the dashboard
 //! and the CLI generate against THIS crate, so a field renamed in a handler-
 //! local struct is a silent break, while the same rename here fails a build and
 //! shows up in a fixture diff. Nothing on this surface is answered with
@@ -80,6 +80,8 @@ pub struct CatalogueEntry<'a> {
     pub configured: bool,
     /// Whether THIS workspace holds a landed grant for it.
     pub connected: bool,
+    /// The public name of this workspace’s connection, when available.
+    pub label: Option<Cow<'a, str>>,
 }
 
 /// `POST …/connectors/{provider}/connect` — where a person is sent to consent.
