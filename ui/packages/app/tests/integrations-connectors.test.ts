@@ -40,6 +40,7 @@ import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { EVENTS } from "@/lib/analytics/events";
 
 const WS = "ws_test";
+const PAGE_SHOW_EVENT = "pageshow";
 
 function entry(
   over: Partial<ConnectorCatalogEntry> & Pick<ConnectorCatalogEntry, "id" | "archetype">,
@@ -211,7 +212,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.getByTestId("integration-slack").textContent).toContain("Installed on Acme Corp");
   });
 
-  it("calls the connect action with the catalog id and redirects on success", async () => {
+  it("redirects once and lets a restored page start a fresh connection", async () => {
     const install_url = "https://github.com/apps/agentsfleet/installations/new?state=signed";
     startConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
     const original = window.location;
@@ -225,6 +226,14 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
       fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
       await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledWith("github", WS));
       await waitFor(() => expect(assigned).toBe(install_url));
+      const busy = screen.getByRole("button", { name: "Connecting…" });
+      fireEvent(window, new Event(PAGE_SHOW_EVENT));
+      expect((busy as HTMLButtonElement).disabled).toBe(true);
+      const restored = new Event(PAGE_SHOW_EVENT);
+      Object.defineProperty(restored, "persisted", { value: true });
+      fireEvent(window, restored);
+      fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
+      await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledTimes(2));
     } finally {
       Object.defineProperty(window, "location", { configurable: true, value: original });
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Alert,
@@ -33,6 +33,7 @@ const NOT_CONNECTED_LABEL = "Not connected";
 const CONNECTED_LABEL = "Connected";
 const CONNECTING_LABEL = "Connecting…";
 const DISCONNECTING_LABEL = "Disconnecting…";
+const PAGE_SHOW_EVENT = "pageshow";
 const CONNECT_LABEL = "Connect";
 const DISCONNECT_LABEL = "Disconnect";
 const REQUEST_CONNECTOR_LABEL = "Request access";
@@ -90,6 +91,14 @@ export function OAuthConnectorRow({
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const restore = (event: PageTransitionEvent) => {
+      if (event.persisted) setConnecting(false);
+    };
+    window.addEventListener(PAGE_SHOW_EVENT, restore);
+    return () => window.removeEventListener(PAGE_SHOW_EVENT, restore);
+  }, []);
 
   const isConnected = entry.connected;
   const identity = entry.label;
