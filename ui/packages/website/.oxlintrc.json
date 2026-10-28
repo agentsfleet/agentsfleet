@@ -18,6 +18,7 @@
     "const-comparisons": "error",
     "no-cond-assign": "error",
     "no-const-assign": "error",
+    "no-console": "error",
     "no-debugger": "error",
     "no-dupe-class-members": "error",
     "no-dupe-keys": "error",

@@ -9,6 +9,11 @@
 //! The same binary is the sandbox's entry: started as `kernel_lane sandbox`
 //! inside bubblewrap, it hardens itself and serves the executor, exactly as
 //! `agentsfleet-runner sandbox` does.
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "the kernel lane is an operator-run example; its report and refusals are terminal output"
+)]
 
 #[cfg(target_os = "linux")]
 mod admission;

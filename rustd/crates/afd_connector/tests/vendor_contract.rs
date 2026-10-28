@@ -34,6 +34,10 @@
     clippy::disallowed_methods,
     reason = "the live probes reach the vendors through any proxy the lane's environment sets, which `direct` would refuse"
 )]
+#![expect(
+    clippy::print_stderr,
+    reason = "the suite tells the operator which vendor answer it read"
+)]
 
 use afd_connector::exchange::Exchange;
 use afd_connector::oauth;

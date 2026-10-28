@@ -235,10 +235,13 @@ pub async fn migrate<E: EnvSource + ?Sized>(env: &E) -> u8 {
 /// whether it could be written. `public/openapi.json` is this, redirected.
 #[cfg(feature = "openapi")]
 #[must_use]
+#[expect(
+    clippy::print_stdout,
+    reason = "the document is this subcommand's output, not a log record"
+)]
 pub fn openapi() -> u8 {
     match afd_api::openapi::document().to_pretty_json() {
         Ok(document) => {
-            // logging: the document IS this subcommand's output, not a log record
             println!("{document}");
             SUCCESS
         }

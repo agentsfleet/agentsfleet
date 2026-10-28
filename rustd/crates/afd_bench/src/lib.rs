@@ -28,6 +28,11 @@
 //! traffic on an operator's dashboard.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "afd_bench is an operator-run benchmark tool; its reports and refusals are terminal output"
+)]
 
 pub mod abort;
 pub mod allocations;

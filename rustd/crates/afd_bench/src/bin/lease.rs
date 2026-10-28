@@ -3,6 +3,10 @@
 //! Every knob is an environment variable, because the make target already
 //! speaks that language; the preamble every lane shares lives in
 //! `afd_bench::cli`, and this file owns only what this lane asks for.
+#![expect(
+    clippy::print_stdout,
+    reason = "a bench command's report is its stdout"
+)]
 
 use std::process::ExitCode;
 

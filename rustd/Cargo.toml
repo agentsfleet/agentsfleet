@@ -934,6 +934,12 @@ multiple_crate_versions = "allow"
 # out per-file with `#![expect(..., reason = ...)]`.
 unwrap_used = "deny"
 expect_used = "deny"
+# A stream write skips the level, the event and the fields collectors read
+# (LOG-STREAM, `.orly/standards/domains/logging.md`). A program whose interface
+# is its output names why with `#[expect(clippy::print_stdout, reason = ...)]`.
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
 panic = "deny"
 indexing_slicing = "deny"
 todo = "deny"
