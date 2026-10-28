@@ -70,9 +70,11 @@ impl Vault {
 
         // No secret material in the line, and no length either: a length is a
         // narrowing fact about a key.
+        let workspace_id = workspace.as_str();
+        let secret_name = name.as_str();
         tracing::debug!(
-            workspace = workspace.as_str(),
-            name = name.as_str(),
+            workspace = workspace_id,
+            name = secret_name,
             event = "secret_opened",
         );
         Ok(Some(opened))
