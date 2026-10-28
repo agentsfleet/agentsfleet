@@ -1,8 +1,7 @@
-//! Trigger parsing contracts, including set-level uniqueness.
+//! Trigger parsing and set-level uniqueness.
 
-use super::set::REASON_SVIX_NOT_FIRST;
 use super::{
-    Cron, MAX_TRIGGERS, Trigger, VERIFIED_WEBHOOK_SOURCES, WebhookSignature, parse_set, raw,
+    Cron, MAX_TRIGGERS, Trigger, VERIFIED_WEBHOOK_SOURCES, WebhookVerifier, parse_set, raw,
 };
 use crate::Error;
 use crate::error::ErrorKind;
@@ -53,11 +52,11 @@ fn a_webhook_is_valid_only_when_some_route_can_verify_it() -> Result<(), Error> 
         parse_set(vec![webhook(source, None)])?;
     }
 
-    let svix = parse_set(vec![webhook("stripe", Some(secret("stripe_svix")))])?;
+    let svix = parse_set(vec![webhook("stripe", Some(raw::Verifier::SvixV1 {}))])?;
     assert!(matches!(
         svix.first(),
         Some(Trigger::Webhook(hook))
-            if hook.signature.as_ref().map(WebhookSignature::secret_ref) == Some("stripe_svix")
+            if hook.verifier.as_ref().map(WebhookVerifier::family) == Some(afd_webhook::Family::SvixV1)
     ));
 
     assert!(matches!(
@@ -70,30 +69,14 @@ fn a_webhook_is_valid_only_when_some_route_can_verify_it() -> Result<(), Error> 
     Ok(())
 }
 
-/// The Svix route reaches only the fleet's first webhook trigger: a
-/// Svix-signed source parses there, and is refused after another webhook,
-/// including a second Svix-signed one, before Save could advertise an address
-/// that binds to the wrong trigger.
+/// Source-addressed routing makes declaration order irrelevant.
 #[test]
-fn a_svix_signed_source_is_accepted_only_as_the_first_webhook() -> Result<(), Error> {
-    let clerk = || webhook("clerk", Some(secret("clerk_signing")));
-    assert_eq!(
-        parse_set(vec![cron("tick"), clerk(), webhook("github", None)])?.len(),
-        3
-    );
-
-    for misplaced in [
-        vec![webhook("github", None), clerk()],
-        vec![clerk(), webhook("stripe", Some(secret("stripe_svix")))],
-    ] {
-        assert!(matches!(
-            parse_set(misplaced),
-            Err(ref refused) if matches!(
-                refused.kind(),
-                ErrorKind::InvalidTriggerSet { reason } if *reason == REASON_SVIX_NOT_FIRST
-            )
-        ));
-    }
+fn a_svix_signed_source_can_follow_another_webhook() -> Result<(), Error> {
+    let parsed = parse_set(vec![
+        webhook("github", None),
+        webhook("clerk", Some(raw::Verifier::SvixV1 {})),
+    ])?;
+    assert_eq!(parsed.len(), 2);
     Ok(())
 }
 
@@ -134,12 +117,10 @@ fn arity_and_required_trigger_fields_fail_closed() {
         ));
     }
 
-    for secret_ref in [None, Some(String::new())] {
-        assert!(matches!(
-            parse_set(vec![webhook("stripe", Some(raw::Signature { secret_ref }))]),
-            Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidSignatureConfig { .. })
-        ));
-    }
+    assert!(matches!(
+        parse_set(vec![webhook("stripe", Some(raw::Verifier::BodyHex { header: None }))]),
+        Err(ref refusal) if matches!(refusal.kind(), ErrorKind::InvalidSignatureConfig { .. })
+    ));
 }
 
 fn cron(message: &str) -> raw::Trigger {
@@ -150,19 +131,12 @@ fn cron(message: &str) -> raw::Trigger {
     }
 }
 
-fn webhook(source: &str, signature: Option<raw::Signature>) -> raw::Trigger {
+fn webhook(source: &str, verifier: Option<raw::Verifier>) -> raw::Trigger {
     raw::Trigger::Webhook {
         source: Some(source.to_owned()),
         events: Some(vec!["push".to_owned()]),
         repositories: Some(vec!["agentsfleet/agentsfleet".to_owned()]),
         credential_name: Some("github_app".to_owned()),
-        signature,
-    }
-}
-
-/// A signature block naming `secret_ref`.
-fn secret(secret_ref: &str) -> raw::Signature {
-    raw::Signature {
-        secret_ref: Some(secret_ref.to_owned()),
+        verifier,
     }
 }

@@ -19,10 +19,10 @@ use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result};
 
 mod set;
-mod signature;
+mod verifier;
 
 pub(crate) use self::set::parse_set;
-pub use self::signature::WebhookSignature;
+pub use self::verifier::WebhookVerifier;
 
 /// Where a cron trigger's schedule is read, when it names no zone.
 const DEFAULT_CRON_TIMEZONE: &str = "UTC";
@@ -111,8 +111,8 @@ pub struct Webhook {
     /// A vault-key override, so two fleets on one source can hold different
     /// secrets.
     pub credential_name: Option<Box<str>>,
-    /// The Svix secret, for a source verified on the Svix route.
-    pub signature: Option<WebhookSignature>,
+    /// The declared recipe for a source outside the built-in registry.
+    pub verifier: Option<WebhookVerifier>,
 }
 
 /// A fleet woken on a schedule.
@@ -205,7 +205,7 @@ impl Trigger {
     /// Builds one trigger.
     ///
     /// A webhook trigger must be one some route can verify: its source names a
-    /// signature scheme this daemon ships, or it declares a Svix secret. A
+    /// signature scheme this daemon ships, or it declares a verifier recipe. A
     /// trigger neither route could check would be handed a URL every delivery
     /// to fails. Mention triggers share the `source` key and not this rule.
     ///
@@ -218,7 +218,7 @@ impl Trigger {
                 events,
                 repositories,
                 credential_name,
-                signature,
+                verifier,
             } => {
                 let source = source.filter(|value| !value.is_empty()).ok_or(Error::from(
                     ErrorKind::InvalidTriggerSet {
@@ -226,10 +226,10 @@ impl Trigger {
                     },
                 ))?;
 
-                let signature = signature
-                    .map(|block| WebhookSignature::resolve(block, &source))
+                let verifier = verifier
+                    .map(|block| WebhookVerifier::resolve(block, &source))
                     .transpose()?;
-                if Scheme::for_source(&source).is_none() && signature.is_none() {
+                if Scheme::for_source(&source).is_none() && verifier.is_none() {
                     return Err(ErrorKind::UnverifiableWebhookSource {
                         provider: source.into(),
                     }
@@ -241,7 +241,7 @@ impl Trigger {
                     // is ownership.
                     events: events.map(own),
                     repositories: repositories.map(own),
-                    signature,
+                    verifier,
                     credential_name: credential_name.map(Into::into),
                     source: source.into(),
                 }))

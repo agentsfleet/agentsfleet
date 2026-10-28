@@ -188,7 +188,7 @@ async fn the_github_route_asks_for_the_github_trigger_by_source() {
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     assert_eq!(
         ingress.sources_asked(),
-        vec![Some("github".to_owned())],
+        vec!["github".to_owned()],
         "the route names its own source when it reads the binding"
     );
 }

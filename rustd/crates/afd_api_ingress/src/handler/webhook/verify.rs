@@ -21,7 +21,8 @@ use std::sync::Arc;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_ingress::Binding;
-use afd_webhook::{Refusal as WallRefusal, Verdict};
+use afd_webhook::vendor::svix;
+use afd_webhook::{Family, Proof, Refusal as WallRefusal, Scheme, Verdict};
 use axum::body::Bytes;
 use http::HeaderMap;
 
@@ -52,6 +53,8 @@ pub(crate) struct Verified {
     /// went through a parse and back is a different byte string that would not
     /// verify — which is why this is handed on rather than a parsed tree.
     pub(crate) body: Bytes,
+    /// A replay key authenticated by the selected recipe.
+    pub(crate) replay_id: String,
 }
 
 /// Proves a delivery, or answers the refusal it earned.
@@ -65,7 +68,7 @@ pub(crate) struct Verified {
 pub(crate) async fn verified<D: Services>(
     services: &Arc<D>,
     fleet: &Uuid7,
-    source: Option<&str>,
+    source: &str,
     headers: &HeaderMap,
     body: Bytes,
 ) -> Result<Verified, Refusal> {
@@ -81,7 +84,7 @@ pub(crate) async fn verified<D: Services>(
     // A source with no declared scheme is refused BEFORE the vault is asked.
     // Reading a secret first would spend a decrypt on a delivery that cannot be
     // verified either way, and would let a probe measure the difference.
-    let Some(scheme) = binding.scheme() else {
+    let Some(family) = binding.family() else {
         return Err(wall(WallRefusal::Unconfigured));
     };
 
@@ -94,20 +97,59 @@ pub(crate) async fn verified<D: Services>(
         return Err(wall(WallRefusal::Unconfigured));
     };
 
-    let presented = header(headers, scheme.signature_header());
-    let timestamp = scheme
-        .timestamp_header()
-        .and_then(|name| header(headers, name));
-
-    match scheme.verify_at(
-        &secret,
-        presented,
-        timestamp,
-        &body,
-        services.now().as_second(),
-    ) {
-        Verdict::Verified => Ok(Verified { binding, body }),
+    let proof = proof_for(family, &binding, headers, &body);
+    let id = proof.id;
+    match family.verify_at(&secret, proof, services.now().as_second()) {
+        Verdict::Verified => {
+            // Svix signs this identifier. Other recipes authenticate the body.
+            let replay_id = if family == Family::SvixV1 {
+                id.unwrap_or_default().to_owned()
+            } else {
+                afd_ingress::replay_id(&body)
+            };
+            Ok(Verified {
+                binding,
+                body,
+                replay_id,
+            })
+        }
         Verdict::Refused(refusal) => Err(wall(refusal)),
+    }
+}
+
+/// Header names follow the stored recipe, regardless of other offered headers.
+fn proof_for<'a>(
+    family: Family,
+    binding: &'a Binding,
+    headers: &'a HeaderMap,
+    body: &'a [u8],
+) -> Proof<'a> {
+    let (signature, timestamp, id) = match family {
+        Family::BodyHexSha256 | Family::BodyHex | Family::BodyBase64Sha256 => (
+            binding
+                .signature_header()
+                .and_then(|name| header(headers, name)),
+            None,
+            None,
+        ),
+        Family::SlackV0 => (
+            header(headers, Scheme::SlackV0.signature_header()),
+            Scheme::SlackV0
+                .timestamp_header()
+                .and_then(|name| header(headers, name)),
+            None,
+        ),
+        Family::SvixV1 => (
+            header(headers, svix::SIGNATURE_HEADER),
+            header(headers, svix::TIMESTAMP_HEADER),
+            header(headers, svix::ID_HEADER),
+        ),
+    };
+    Proof {
+        signature,
+        timestamp,
+        id,
+        body,
     }
 }
 

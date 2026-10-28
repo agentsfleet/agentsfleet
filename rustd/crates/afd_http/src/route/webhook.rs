@@ -13,8 +13,6 @@ pub enum WebhookRoute {
     /// A fleet's inbound webhook from the source its URL names, so two
     /// webhook triggers on one fleet each have an address of their own.
     ReceiveSource,
-    /// The Svix-signed variant of the same delivery.
-    ReceiveSvix,
     /// An approval decision arriving from outside.
     Approval,
     /// A GitHub delivery for a fleet.
@@ -29,7 +27,6 @@ impl WebhookRoute {
     /// Every webhook route.
     pub const ALL: &'static [Self] = &[
         Self::ReceiveSource,
-        Self::ReceiveSvix,
         Self::Approval,
         Self::GitHub,
         Self::AppIngress,
@@ -56,7 +53,6 @@ impl WebhookRoute {
             Self::ReceiveSource => (Guard::WebhookSignature, "/v1/webhooks/{fleet_id}/{source}"),
             Self::GitHub => (Guard::WebhookSignature, "/v1/webhooks/{fleet_id}/github"),
             Self::Approval => (Guard::WebhookHmac, "/v1/webhooks/{fleet_id}/approval"),
-            Self::ReceiveSvix => (Guard::Svix, "/v1/webhooks/svix/{fleet_id}"),
             Self::AppIngress => (Guard::PayloadSigned, "/v1/ingress/{provider}"),
             Self::QstashSchedules => (Guard::PayloadSigned, "/v1/ingress/qstash/schedules"),
         };

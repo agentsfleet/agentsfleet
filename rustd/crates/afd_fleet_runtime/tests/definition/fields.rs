@@ -58,10 +58,7 @@ fn the_full_definition_carries_every_authored_block() {
         panic!("full.json declares exactly one webhook trigger");
     };
     assert_eq!(&*hook.source, "github");
-    let Some(signature) = hook.signature.as_ref() else {
-        panic!("full.json declares a signature block");
-    };
-    assert_eq!(signature.secret_ref(), "github_secret");
+    assert_eq!(hook.credential_name.as_deref(), Some("github_secret"));
 
     assert_eq!(
         parsed.description(),

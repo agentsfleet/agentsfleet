@@ -92,8 +92,6 @@ pub(crate) struct Scripted {
     binding: Option<Binding>,
     /// What [`WebhookIngress::signing_secret`] answers.
     secret: Option<SecretBytes>,
-    /// What [`WebhookIngress::svix_secret`] answers.
-    svix: Option<SecretBytes>,
     /// What [`WebhookIngress::platform_secret`] answers.
     platform_secret: Option<SecretBytes>,
     /// What [`WebhookIngress::installation_workspace`] answers.
@@ -110,7 +108,7 @@ pub(crate) struct Scripted {
     log: Mutex<Vec<Recorded>>,
     /// The source each binding read named, in order — `None` for the routes
     /// whose URL names no provider.
-    asked: Mutex<Vec<Option<String>>>,
+    asked: Mutex<Vec<String>>,
     /// The first id each claim key was answered with.
     claimed: Mutex<BTreeMap<String, String>>,
 }
@@ -133,13 +131,6 @@ impl Scripted {
     #[must_use]
     pub(crate) fn signing(mut self, secret: &[u8]) -> Self {
         self.secret = Some(SecretBytes::new(secret.to_vec()));
-        self
-    }
-
-    /// The Svix secret a fleet's trigger names.
-    #[must_use]
-    pub(crate) fn svix_signing(mut self, secret: &str) -> Self {
-        self.svix = Some(SecretBytes::new(secret.as_bytes().to_vec()));
         self
     }
 
@@ -172,7 +163,7 @@ impl Scripted {
     }
 
     /// The source each binding read named, in the order the routes asked.
-    pub(crate) fn sources_asked(&self) -> Vec<Option<String>> {
+    pub(crate) fn sources_asked(&self) -> Vec<String> {
         self.asked
             .lock()
             .expect("no test holds this lock across a panic")

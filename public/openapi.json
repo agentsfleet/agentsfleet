@@ -9443,156 +9443,6 @@
         ]
       }
     },
-    "/v1/webhooks/svix/{fleet_id}": {
-      "post": {
-        "tags": [
-          "Webhooks"
-        ],
-        "summary": "Receive a signed Svix event",
-        "description": "Receives a signed Svix event for one fleet. A valid new event returns 202. A duplicate or an event for a paused fleet returns 200. ",
-        "operationId": "receive_svix_webhook",
-        "parameters": [
-          {
-            "name": "fleet_id",
-            "in": "path",
-            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "svix-id",
-            "in": "header",
-            "description": "Svix message identifier (used for deduplication and signature binding).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "svix-timestamp",
-            "in": "header",
-            "description": "Unix timestamp of the Svix delivery (used for replay protection).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "svix-signature",
-            "in": "header",
-            "description": "Space-separated list of Svix signatures (v1 scheme).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "description": "The provider's original event body; requires a valid signature",
-          "content": {
-            "application/json": {
-              "schema": {}
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The signed event was ignored; the response explains why",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Ignored"
-                }
-              }
-            }
-          },
-          "202": {
-            "description": "Accepted for publication; delivery to subscribers is not yet confirmed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Accepted"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "The signature does not verify, the timestamp is stale, or no signing secret is configured",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": []
-      }
-    },
     "/v1/webhooks/{fleet_id}/approval": {
       "post": {
         "tags": [
@@ -10529,7 +10379,7 @@
           "Connectors"
         ],
         "summary": "List connectors for a workspace",
-        "description": "Returns the providers available to the workspace. Each item shows whether the provider is ready and connected. Requires the `connector:read` scope. ",
+        "description": "Returns the providers available to the workspace. Each item shows whether its application is configured and the workspace holds a saved connection, plus the connected account label when available. This read does not contact providers to check authorization health. Requires the `connector:read` scope.",
         "operationId": "connector_catalog",
         "parameters": [
           {
@@ -19515,6 +19365,13 @@
           "id": {
             "type": "string",
             "description": "The provider's route segment, which is also its stored id."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The public name of this workspace’s connection, when available."
           }
         }
       },
@@ -21343,17 +21200,6 @@
                 "maxItems": 64,
                 "minItems": 1
               },
-              "signature": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DefinitionWebhookSignature",
-                    "description": "How the delivery proves it came from the provider."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
               "source": {
                 "type": "string",
                 "description": "The provider that sends the delivery, as a lowercase slug: it is the\nlast segment of the URL the fleet's deliveries are sent to.",
@@ -21364,6 +21210,17 @@
                 "type": "string",
                 "enum": [
                   "webhook"
+                ]
+              },
+              "verifier": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DefinitionWebhookVerifier",
+                    "description": "How the delivery proves it came from the provider."
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               }
             }
@@ -21444,21 +21301,114 @@
         ],
         "description": "One way a fleet can start a run. `type` selects the kind."
       },
-      "DefinitionWebhookSignature": {
-        "type": "object",
-        "description": "A Svix-signed webhook: the secret its deliveries are verified with, at\n`/v1/webhooks/svix/{fleet_id}`.",
-        "required": [
-          "secret_ref"
-        ],
-        "properties": {
-          "secret_ref": {
-            "type": "string",
-            "description": "The secret name that holds the Svix signing secret.",
-            "maxLength": 128,
-            "minLength": 1
+      "DefinitionWebhookVerifier": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Raw body with a prefixed hex digest.",
+            "required": [
+              "header",
+              "scheme"
+            ],
+            "properties": {
+              "header": {
+                "type": "string",
+                "description": "Header holding the signature.",
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+              },
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "body-hex-sha256"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Raw body with a bare hex digest.",
+            "required": [
+              "header",
+              "scheme"
+            ],
+            "properties": {
+              "header": {
+                "type": "string",
+                "description": "Header holding the signature.",
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+              },
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "body-hex"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Raw body with a base64 digest.",
+            "required": [
+              "header",
+              "scheme"
+            ],
+            "properties": {
+              "header": {
+                "type": "string",
+                "description": "Header holding the signature.",
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+              },
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "body-base64-sha256"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Fixed Slack headers with a signed timestamp.",
+            "required": [
+              "scheme"
+            ],
+            "properties": {
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "slack-v0"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Fixed Svix headers with a signed identifier and timestamp.",
+            "required": [
+              "scheme"
+            ],
+            "properties": {
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "svix-v1"
+                ]
+              }
+            },
+            "additionalProperties": false
           }
-        },
-        "additionalProperties": false
+        ],
+        "description": "The complete signing recipe. Fixed-header recipes accept no extra fields."
       },
       "DeleteAllSessionsResponse": {
         "type": "object",

@@ -116,3 +116,17 @@ Serialization round trips cover the description, gates, anomaly rules, network r
 The terminal client creates or resumes a private draft and sends ordinary chat messages. It displays the same reviewed candidate and readiness checks before explicit Save or Library publication. Reusing a Library revision creates an independent fleet with that revision pinned. Library updates never propagate to existing fleets without Improve and explicit Apply.
 
 Remove dollar budget keys from live readers, writers, generated API, CLI, app, and active fixtures. New fields are positive checked integer nanos with the existing daily/monthly ceiling limits, decimal strings on the wire. Keep frozen migration history and completed milestone records as historical evidence. Add a new migration; the release plan resets acceptance-test setup data before traffic resumes rather than guessing conversions.
+
+### Webhook declarations
+
+Registry sources `github`, `linear` and `slack` imply their signing recipe and
+reject an override. A custom source requires `verifier.scheme` from
+`body-hex-sha256`, `body-hex`, `body-base64-sha256`, `slack-v0` or `svix-v1`.
+The three body recipes require `verifier.header`, an HTTP token of 1–128
+characters. Slack and Svix use fixed headers and reject that field.
+
+Each trigger's `credential_name` selects a workspace credential; the name defaults
+to its source. Every credential is a JSON object with a `webhook_secret` string,
+including the `whsec_` value for Svix. Save returns one
+`/v1/webhooks/{fleet_id}/{source}` URL per trigger. A fleet can mix registry and
+declared recipes without ordering its triggers for routing.

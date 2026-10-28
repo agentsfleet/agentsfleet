@@ -40,7 +40,7 @@ pub use self::repository::{Access, Reach, Recorded, RepositoryBinding};
 pub use self::trigger::{
     ChannelId, Cron, KIND_CRON, KIND_MENTION, KIND_WEBHOOK, Mention, TRIGGER_KINDS, Trigger,
     VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WEBHOOK_SOURCE_GITHUB,
-    WEBHOOK_SOURCE_LINEAR, WEBHOOK_SOURCE_SLACK, Webhook, WebhookSignature,
+    WEBHOOK_SOURCE_LINEAR, WEBHOOK_SOURCE_SLACK, Webhook, WebhookVerifier,
 };
 
 /// The key naming the fleet.
@@ -279,6 +279,9 @@ impl FleetConfig {
         self.context
     }
 }
+
+/// Declarable signing recipes shared with authoring surfaces.
+pub use afd_webhook::Family as WebhookFamily;
 
 #[cfg(test)]
 mod tests {

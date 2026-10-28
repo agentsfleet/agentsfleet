@@ -41,15 +41,6 @@ const RUN_FAILURE: &str =
 /// The event kind the fixture is.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 
-/// A trigger naming a provider this daemon ships no signature scheme for.
-///
-/// `zoho` is a connector provider rather than a webhook one, so
-/// [`Scheme::for_source`] answers `None` for it — which is the fail-closed
-/// branch, not a pass. It parses only because it names a Svix secret: the
-/// Svix route could verify it, and the HMAC wall still must not.
-const TRIGGER_UNKNOWN_SCHEME: &str =
-    r#"[{"type":"webhook","source":"zoho","signature":{"secret_ref":"zoho_svix"}}]"#;
-
 /// Where one fleet's GitHub deliveries arrive.
 fn path() -> String {
     format!("/v1/webhooks/{}/github", signed::FLEET)
@@ -152,20 +143,6 @@ async fn a_fleet_with_no_stored_secret_is_refused_before_any_verify_is_attempted
         error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str(),
         "a valid signature over a fleet with no secret is still unconfigured — \
          this daemon has nothing to have checked it against"
-    );
-}
-
-#[tokio::test]
-async fn a_source_this_daemon_ships_no_scheme_for_fails_closed_rather_than_open() {
-    let ingress = holding(TRIGGER_UNKNOWN_SCHEME, Some(signed::SECRET));
-    let proof = signed::signature(Scheme::BodyHex, signed::SECRET, RUN_FAILURE.as_bytes());
-    let headers = signed::github_headers(EVENT_WORKFLOW_RUN, signed::DELIVERY_ID, &proof);
-
-    assert_eq!(
-        refused(&ingress, &headers, RUN_FAILURE, "a source with no scheme").await,
-        error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str(),
-        "an unrecognised provider is refused, never passed — and refused BEFORE \
-         the vault is asked, so a probe cannot measure the decrypt"
     );
 }
 

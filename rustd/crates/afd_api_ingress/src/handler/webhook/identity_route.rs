@@ -130,9 +130,7 @@ pub(crate) async fn receive<D: Services>(
     let Some(stored) = services.identity_webhook_secret() else {
         return Err(wall(WallRefusal::Unconfigured));
     };
-    // A secret that will not parse is `Unconfigured`, never a failed
-    // verification — the same reading `verify_svix` makes, for the same reason
-    // an absent one is: nothing was checked, so nothing was refused.
+    // An absent or malformed secret is unconfigured: verification cannot run.
     let Some(secret) = std::str::from_utf8(stored.expose())
         .ok()
         .and_then(SvixSecret::parse)

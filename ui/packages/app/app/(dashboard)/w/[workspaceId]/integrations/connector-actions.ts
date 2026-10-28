@@ -1,5 +1,7 @@
 "use server";
 
+import { cookies } from "next/headers";
+import { CONNECTOR_RETURN_COOKIE, CONNECTOR_RETURN_MAX_AGE_SECONDS, connectorReturnPath } from "@/lib/connectors/completion";
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
   disconnectConnector,
@@ -40,7 +42,17 @@ export async function startConnectAction(
   if (!providerIsValid(provider)) {
     return { ok: false, error: UNKNOWN_PROVIDER };
   }
-  return withToken((t) => startConnect(provider, workspaceId, t));
+  return withToken(async (token) => {
+    const result = await startConnect(provider, workspaceId, token);
+    const destination = connectorReturnPath(`/w/${workspaceId}/integrations`);
+    if (destination) {
+      (await cookies()).set(`${CONNECTOR_RETURN_COOKIE}${provider}`, destination, {
+        httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
+        path: "/", maxAge: CONNECTOR_RETURN_MAX_AGE_SECONDS,
+      });
+    }
+    return result;
+  });
 }
 
 export async function disconnectConnectorAction(
