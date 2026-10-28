@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.26.0",
+  "orly_version": "0.26.1",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -85,7 +85,7 @@
     ".agents/skills/orly-build/SKILL.md": "sha256:3d0af4ac30649c0e79de9536e7349043c43df177e534fa46ee7f671aeff167a3",
     ".agents/skills/orly-ship/SKILL.md": "sha256:ea8bd562bed43096a9635530f56397eb445f05dfc48947c5f0e53947eff97013",
     ".agents/skills/orly-spec/SKILL.md": "sha256:b4f01ea870d1de44068ff6d5b6b1f4eee73b89ca8b14ec569d78eab8ddc2161c",
-    ".claude/agents/orly-standards-reviewer.md": "sha256:9c0085109646f7f39a5fafd686e4094079f3a5a5e3c07a2b4081a0276a766797",
+    ".claude/agents/orly-standards-reviewer.md": "sha256:4f6849a7cdaf98e09479949ab299a2b3c22c328385d7800425b1a8a22dceb63d",
     ".claude/skills/orly-build/SKILL.md": "sha256:3d0af4ac30649c0e79de9536e7349043c43df177e534fa46ee7f671aeff167a3",
     ".claude/skills/orly-ship/SKILL.md": "sha256:ea8bd562bed43096a9635530f56397eb445f05dfc48947c5f0e53947eff97013",
     ".claude/skills/orly-spec/SKILL.md": "sha256:b4f01ea870d1de44068ff6d5b6b1f4eee73b89ca8b14ec569d78eab8ddc2161c",
@@ -94,7 +94,7 @@
     ".opencode/skills/orly-spec/SKILL.md": "sha256:b4f01ea870d1de44068ff6d5b6b1f4eee73b89ca8b14ec569d78eab8ddc2161c",
     ".orly/AGENTS.md": "sha256:03d2ccde898bd4d9f9d7695fe696cb0c4cd7ce85ab270816a66a1686477a77e7",
     ".orly/skills/orly-build/SKILL.md": "sha256:0ee96a3c168ef379d515b78520c1414cf69a7963811506b87e4b92961b73707a",
-    ".orly/skills/orly-ship/SKILL.md": "sha256:194117c5fc06f461e64a5c88697fdc30bf822aff4897988b5ddc69bf3d1f6a62",
+    ".orly/skills/orly-ship/SKILL.md": "sha256:dc55ab61cbc53495d360e87a0d2574db73ad81e98f51caa132337c333df8e24d",
     ".orly/skills/orly-spec/SKILL.md": "sha256:973f4fd58c34e56759f687d489637207db6d65db26819f20a90ceb9abe37d8ff",
     ".orly/standards/changelog.md": "sha256:6ae510bc9ec210b8245a00b6d083a9029ee98f3a6833ed4709ec7981b8425a8f",
     ".orly/standards/code.md": "sha256:495d323dede7c00247cb643dc4387871a0d2b3032c4af36f46bd448f2fa7f9a2",
