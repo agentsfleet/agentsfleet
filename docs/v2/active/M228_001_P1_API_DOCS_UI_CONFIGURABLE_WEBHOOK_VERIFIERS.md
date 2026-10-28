@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M228
 **Workstream:** 001
 **Date:** Oct 16, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing: a fleet cannot be woken by any provider outside GitHub, Linear and Slack today
 **Categories:** API, DOCS, UI
-**Batch:** B1 — single workstream; webhook authentication changes ship in their own Pull Request (PR)
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Batch:** B1 — one worktree and Pull Request (PR), with focused webhook and connector commits; expanded by the recorded user decision below
+**Branch:** codex/m228-webhooks-connectors
+**Baseline revision:** 289d226856e65d459f1b24de7b60519f897ef2d3
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M227_001 — adds `POST /v1/webhooks/{fleet_id}/{source}` (`receive_source_webhook`), deletes the bare `/v1/webhooks/{fleet_id}`, refuses webhook sources no verifier covers, and deletes the never-read `signature.header`/`prefix`/`ts_header`
@@ -38,9 +38,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat(webhooks): triggers declare their verifier; one URL per source
-- **Intent (one sentence):** Let a fleet owner wire any HMAC-signing provider or Svix sender to a fleet by declaring how it signs, without a daemon release and without a URL that guesses the trigger.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **PR title (eventual):** feat(connectors): reliable connections and declared webhook verifiers
+- **Intent (one sentence):** Let owners connect applications with clear completion feedback and wire signed webhook senders to their own fleet source URLs.
+- **Handshake:** Implement the existing verifier design and the reported Slack, Jira and loading failures in this worktree. Assumptions: retain provider permissions; a connection records authorization rather than promising every application action; identify Jira's failing boundary before changing it. Accepted by the user's start instruction in Discovery.
 
 ## Implementing agent — read these first
 
@@ -76,6 +76,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/AUTH.md`; `docs/architecture/data_flow.md`; `docs/architecture/fleet_definitions.md` | EDIT | Families, declaration, one URL per source |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/last-delivery.ts` | EDIT | Its comment and delivery lookup assume a shared Svix URL |
 | `~/Projects/docs` `fleets/webhooks.mdx` (own branch) | EDIT | Published webhook guide: declaring a verifier, error rows |
+| `ui/packages/app/app/api/connectors/[provider]/callback/route.ts`; `ui/packages/app/tests/connector-callback-route.test.ts` | EDIT | Bounded callback completion and safe dashboard failure feedback |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/integrations/page.tsx`; `loading.tsx`; `copy.ts`; `components/IntegrationsConnectors.tsx`; `components/connector-rows.tsx`; `connector-actions.ts` in that directory | EDIT | Stream connection status, show pending/retry states and precise capabilities |
+| `ui/packages/app/tests/integrations-page.test.ts`; `integrations-connectors.test.ts`; `connector-actions.test.ts` in that directory | EDIT | Loading, return feedback and connection capability regressions |
+| `rustd/crates/afd_connector/src/complete.rs`; `jira.rs`; `grant/mod.rs`; `grant/parse/mod.rs`; `grant/parse/tests.rs`; `error/mod.rs`; `error/detail.rs`; `error/raise.rs` in that crate | EDIT if diagnosis requires | Repair the demonstrated Jira completion boundary and preserve useful failure classification |
+| `rustd/crates/afd_api_tenant/src/handler/connector/callback.rs`; `rustd/crates/afd_api/tests/integration_connector_callback/**`; `rustd/crates/afd_connector/tests/integration_connect_roundtrip/**` | EDIT | Callback completion and persistence failure proofs |
+| `playbooks/operations/slack_app_registration/001_playbook.md`; `docs/architecture/connectors.md` | EDIT | Correct dashboard callback and distinguish authorization from supported actions |
 
 ## Applicable Rules
 
@@ -125,6 +131,15 @@ A webhook trigger names one family by token; families that sign the raw body alo
 - **Dimension 3.1** — the model prompt lists every family token from the `Scheme` constants and nothing else → Test `the_prompt_lists_exactly_the_declarable_families`
 - **Dimension 3.2** — the published schema and the parser agree on the family list, the header bound and the fixed-header refusal → Test `the_verifier_schema_and_parser_agree`
 
+### §4 — Diagnose Jira and make application connections dependable
+
+Preparation output: identify the boundary behind the observed `UZ-INTERNAL-003` callback using a safe error trace or a reproducing persistence test. The implementing agent may select the local repair once reproduced; changing permissions or choosing among several authorized Jira sites requires a separate user decision. Slack's registered redirect must equal `https://app-dev.agentsfleet.net/api/connectors/slack/callback` without a trailing slash; the authenticated backend POST is not the browser redirect.
+
+- **Dimension 4.1** — Jira's reproduced completion failure is repaired and a failed persistence attempt never reports connected → Test `jira_completion_lands_a_usable_grant`
+- **Dimension 4.2** — callback refusals, invalid redirects and deadlines return safe dashboard feedback with a fresh connection retry; authorization codes and state never appear in the landing URL → Test `callback_failures_return_to_connect_apps`
+- **Dimension 4.3** — Connect Apps paints its heading and loading state before connector status completes; completed connections show authorization and provider-specific limits → Test `connect_apps_renders_before_status_finishes`
+- **Dimension 4.4** — every provider uses its exact dashboard relay URL and an unsuccessful start becomes a visible retryable failure → Test `connector_redirects_use_the_dashboard_relay`
+
 ## Interfaces
 
 ```
@@ -155,6 +170,9 @@ Save reply webhook_urls[]: {source, url: "<deployment>/v1/webhooks/<fleet_id>/<s
 | Unverifiable source | No registry family, no declaration | Parse refusal naming sources and families |
 | Secret missing or not `whsec_` | Vault row absent or wrong shape | 401 `UZ-WH-020` before any comparison |
 | Old Svix URL | Sender still posts to `/v1/webhooks/svix/{fleet_id}` | 404 |
+| Callback refused or unavailable | Vendor, grant persistence or backend failure | Safe dashboard failure, request reference when supplied, fresh connection retry; never replay the spent code |
+| Callback exceeds its deadline | Backend or vendor does not finish | Bounded wait, safe retry message, no raw JSON or query secret in the landing URL |
+| Status is slow or fails | Optional connector status request stalls | Page shell remains usable; loading or retry state names the affected operation |
 
 ## Invariants
 
@@ -186,6 +204,10 @@ Save reply webhook_urls[]: {source, url: "<deployment>/v1/webhooks/<fleet_id>/<s
 | 2.5 | e2e | `two_families_on_one_fleet_each_verify_at_their_own_url` | Save reply lists both URLs; GitHub and Svix deliveries each append one event to the right trigger |
 | 3.1 | unit | `the_prompt_lists_exactly_the_declarable_families` | Prompt names the five tokens and no other family word |
 | 3.2 | unit | `the_verifier_schema_and_parser_agree` | Schema enum equals parser tokens; schema and parser both refuse a header on `svix-v1` |
+| 4.1 | integration | `jira_completion_lands_a_usable_grant` | Simulated Atlassian exchange and site listing through real persistence → usable sealed grant; persistence refusal → no success redirect |
+| 4.2 | unit | `callback_failures_return_to_connect_apps` | Backend refusal, unsafe redirect and aborted fetch → same-origin error landing without code/state; success retains workspace URL |
+| 4.3 | unit | `connect_apps_renders_before_status_finishes` | Deferred status promise → visible shell immediately; eventual data or refusal → meaningful card or retry |
+| 4.4 | integration | `connector_redirects_use_the_dashboard_relay` | Each start's redirect URI equals the app relay; provider refusal never reports connection success |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -256,6 +278,8 @@ Save reply webhook_urls[]: {source, url: "<deployment>/v1/webhooks/<fleet_id>/<s
 ## Discovery (consult log)
 
 - **Consults** — Source reads: `scheme.rs` (closed enum rationale), `binding/mod.rs`, `verify_svix.rs` (`binding(fleet, None)`), and the Zig lookup at `1ad07eb21` (`serve_webhook_lookup.zig`: registry-only verification, first-trigger stopgap). Owner decisions: **D1** — > Indy (2026-10-16): "Pick our recipe + header" — closed families plus an authored header, over RULE CFG's fully data-driven verifier and one arm per named provider; **D2** — > Indy (2026-10-16): "Same URL as others" — one per-source route for every family, over a separate per-source Svix route.
+- **Expanded scope:** Indy: "So we fix the M228+ the above issues in a single worktree?" followed by "Okay lets go". Covers Slack redirect, Jira completion, Connect Apps and return loading, and accurate capability text alongside the verifier work. Main-checkout changes belonging to other streams remain there.
+- **Investigation evidence:** Brave displayed Slack's redirect mismatch naming the dashboard relay. Jira consent twice reached a failed backend completion (`UZ-INTERNAL-003`); its underlying persistence boundary remains to be established by §4 preparation. Page timing and source inspection identify blocking status reads before the Connect Apps shell; provider return timing is not yet established.
 - **Metrics review** — no product or operator signal changes; refusals keep their codes. No analytics/funnel playbook update required.
 - **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
 - **Deferrals** — > Indy (2026-10-16 00:15): "A: refuse + spec (recommended)" — context: M227_001 refuses unverifiable webhook sources and defers configurable verifiers and per-source Svix to this spec.
