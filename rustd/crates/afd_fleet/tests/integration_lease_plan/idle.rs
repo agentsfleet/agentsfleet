@@ -1,8 +1,4 @@
 //! An empty ledger avoids probing every active fleet on each idle poll.
-#![expect(
-    clippy::print_stderr,
-    reason = "the test prints its measured evidence for the lane log"
-)]
 
 use super::{Fixtures, head_plan, relation_scans, run};
 use afd_db::config::DbRole;

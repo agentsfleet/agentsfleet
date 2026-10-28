@@ -1,8 +1,4 @@
 //! Prove transport progress and private publication against live Postgres and Dragonfly.
-#![expect(
-    clippy::print_stderr,
-    reason = "the test prints its measured evidence for the lane log"
-)]
 
 mod compaction;
 mod deadline;

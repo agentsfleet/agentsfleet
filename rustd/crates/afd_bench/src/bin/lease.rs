@@ -3,10 +3,6 @@
 //! Every knob is an environment variable, because the make target already
 //! speaks that language; the preamble every lane shares lives in
 //! `afd_bench::cli`, and this file owns only what this lane asks for.
-#![expect(
-    clippy::print_stdout,
-    reason = "a bench command's report is its stdout"
-)]
 
 use std::process::ExitCode;
 
@@ -85,7 +81,7 @@ async fn measure() -> Result<String> {
             Shape::Saturation => saturation::summary(report),
         };
         // the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
-        println!("{summary}");
+        cli::show(&summary);
     }
     let swept = sweep::everything(&stores.database, &prefix).await;
     cli::finish(lane, profile, measured, swept)

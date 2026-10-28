@@ -1,8 +1,4 @@
 //! Cutoff range scans and real contention retain one claim per new message.
-#![expect(
-    clippy::print_stderr,
-    reason = "the test prints its measured evidence for the lane log"
-)]
 
 mod latency;
 mod waiting;
