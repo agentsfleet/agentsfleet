@@ -93,6 +93,7 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
     fixture.seed(Runnable::Active, Secret::Stored).await;
     let router = fixture.router();
 
+    let capture = afd_core::test_util::trace::Capture::install();
     let woken = deliver(&router, &fixture.fleet, SIGNING_SECRET).await;
     let status = woken.status();
     let document = json_body(woken).await;
@@ -102,6 +103,17 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
         Some(false),
         "the first arrival of a delivery is not a replay: {document}"
     );
+
+    let opened = capture.only("secret_opened");
+    assert_eq!(opened.field("workspace"), Some(fixture.workspace.as_str()));
+    assert_eq!(opened.field("name"), Some(CREDENTIAL));
+    let fields: std::collections::BTreeSet<_> = opened.fields.keys().map(String::as_str).collect();
+    assert_eq!(
+        fields,
+        ["event", "name", "workspace"].into_iter().collect(),
+        "vault diagnostics expose only scope, never key material or length"
+    );
+    drop(capture);
 
     fixture.cleanup().await;
 }
@@ -238,52 +250,6 @@ async fn a_workspace_holding_no_credential_refuses_before_it_verifies() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn a_svix_delivery_resolves_the_first_trigger_out_of_the_live_row() {
-    // The Svix route names no provider, so the live read takes the document's
-    // first webhook trigger. It resolves here — the refusal is the credential's
-    // (an HMAC bag is not a `whsec_` secret), not the fleet's — and a fleet with
-    // no row is the not-found the route answers before any secret is read.
-    let fixture = Fixture::create().await;
-    fixture.seed(Runnable::Active, Secret::Stored).await;
-    let router = fixture.router();
-    let svix = |fleet: &afd_core::id::Uuid7| format!("/v1/webhooks/svix/{fleet}");
-    let headers = signed::svix_headers(signed::SVIX_DELIVERY, "1700000000", "v1,AAAA");
-
-    let resolved = send_with_headers(
-        &router,
-        Method::POST,
-        &svix(&fixture.fleet),
-        None,
-        "{}",
-        &headers,
-    )
-    .await;
-    let status = resolved.status();
-    let document = json_body(resolved).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED, "{document}");
-    assert_eq!(
-        document.get("error_code").and_then(Value::as_str),
-        Some(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED.as_str()),
-        "{document}"
-    );
-
-    let unknown = afd_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("a minted id");
-    let missing =
-        send_with_headers(&router, Method::POST, &svix(&unknown), None, "{}", &headers).await;
-    let status = missing.status();
-    let document = json_body(missing).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{document}");
-    assert_eq!(
-        document.get("error_code").and_then(Value::as_str),
-        Some(error_code::WEBHOOK_FLEET_NOT_FOUND.as_str()),
-        "{document}"
-    );
-
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_paused_fleet_is_acknowledged_from_its_stored_status() {
     // The status column is read on the same statement as the document, and this
     // is what proves it is read at all: a paused fleet is answered 200 with a
@@ -333,3 +299,6 @@ async fn a_fleet_this_deployment_does_not_serve_is_refused_without_naming_it() {
 
     fixture.cleanup().await;
 }
+
+#[path = "ingress_live/declared.rs"]
+mod declared;

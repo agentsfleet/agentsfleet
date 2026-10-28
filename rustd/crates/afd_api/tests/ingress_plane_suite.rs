@@ -33,6 +33,8 @@ mod integration_qstash_fire_once;
 mod integration_slack_mention;
 #[path = "webhook_approval_wall.rs"]
 mod webhook_approval_wall;
+#[path = "webhook_declared_svix.rs"]
+mod webhook_declared_svix;
 mod webhook_fleet_route;
 #[path = "webhook_qstash_route.rs"]
 mod webhook_qstash_route;
@@ -40,7 +42,5 @@ mod webhook_qstash_route;
 mod webhook_source_delivery;
 #[path = "webhook_source_route.rs"]
 mod webhook_source_route;
-#[path = "webhook_svix_route.rs"]
-mod webhook_svix_route;
 #[path = "webhook_wall_refusals.rs"]
 mod webhook_wall_refusals;

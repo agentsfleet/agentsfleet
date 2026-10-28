@@ -9,7 +9,6 @@ use afd_authoring::SavedFleet;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Trigger;
-use afd_webhook::Scheme;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},
@@ -81,14 +80,7 @@ pub(super) fn payload<'s, D: Services>(
 
 /// Where each declared webhook trigger is delivered, on this deployment.
 ///
-/// A source whose signature scheme the ingress ships is served at
-/// `/v1/webhooks/{fleet_id}/{source}` — `github` by its own literal route,
-/// every other by the per-source route (`afd_http::route::webhook`). The
-/// source needs no escaping: the parser admits only a lowercase slug, and
-/// never `approval`. Any other source parsed only because it declared a Svix
-/// secret, so its one verifying route is `/v1/webhooks/svix/{fleet_id}`; the
-/// parser keeps that source the fleet's first webhook trigger, the one that
-/// route reaches.
+/// The source is a validated lowercase slug; each verifier uses this route.
 fn webhook_urls(deployment: &str, fleet: &Uuid7, config: &FleetConfig) -> Vec<WebhookUrl<'static>> {
     config
         .triggers()
@@ -96,10 +88,10 @@ fn webhook_urls(deployment: &str, fleet: &Uuid7, config: &FleetConfig) -> Vec<We
         .filter_map(|trigger| match trigger {
             Trigger::Webhook(webhook) => Some(WebhookUrl {
                 source: Cow::Owned(webhook.source.to_string()),
-                url: Cow::Owned(match Scheme::for_source(&webhook.source) {
-                    Some(_) => format!("{deployment}/v1/webhooks/{fleet}/{}", webhook.source),
-                    None => format!("{deployment}/v1/webhooks/svix/{fleet}"),
-                }),
+                url: Cow::Owned(format!(
+                    "{deployment}/v1/webhooks/{fleet}/{}",
+                    webhook.source
+                )),
             }),
             _ => None,
         })

@@ -62,8 +62,8 @@ Use supported runtime fields only. triggers:[] means messages only; otherwise ea
     WEBHOOK_SOURCE_LINEAR,
     "|",
     WEBHOOK_SOURCE_SLACK,
-    r#""} (other lowercase-slug sources need signature:{secret_ref} for Svix and must be
-the first webhook trigger),{type:""#,
+    r#""} (other lowercase-slug sources need verifier:{scheme,header?} and credential_name;
+body-only recipes require a header; slack-v0 and svix-v1 refuse a header),{type:""#,
     KIND_CRON,
     r#"",schedule,timezone?,message?} or {type:""#,
     KIND_MENTION,
@@ -91,9 +91,14 @@ Later instructions are at most "#,
 
 pub(in crate::model) fn system(editing: bool, save: bool) -> String {
     format!(
-        "{SYSTEM}\n{}\n{}",
+        "{SYSTEM}\n{}\n{}\nDeclarable webhook recipes: {}",
         if editing { EDIT } else { INITIAL },
-        if save { SAVE } else { CONVERSATION }
+        if save { SAVE } else { CONVERSATION },
+        afd_fleet_runtime::config::WebhookFamily::ALL
+            .iter()
+            .map(|family| family.token())
+            .collect::<Vec<_>>()
+            .join(", ")
     )
 }
 
@@ -110,6 +115,23 @@ mod tests {
     use afd_fleet_runtime::config::{TRIGGER_KINDS, VERIFIED_WEBHOOK_SOURCES};
 
     use super::INITIAL;
+
+    #[test]
+    fn the_prompt_lists_exactly_the_declarable_families() {
+        let prompt = super::system(false, false);
+        let recipes = prompt
+            .split_once("Declarable webhook recipes: ")
+            .map(|(_, recipes)| recipes.split(", ").collect::<Vec<_>>());
+        assert_eq!(
+            recipes,
+            Some(
+                afd_fleet_runtime::config::WebhookFamily::ALL
+                    .iter()
+                    .map(|family| family.token())
+                    .collect::<Vec<_>>()
+            )
+        );
+    }
 
     /// How the prompt opens one trigger shape.
     const SHAPE_OPENER: &str = "type:\"";

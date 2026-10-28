@@ -15,6 +15,7 @@ const CLIENT_CHUNK_PREFIX = "/_next/";
 const STATIC_CHUNK_PREFIX = "static/chunks/";
 const DASHBOARD_LAYOUT_SUFFIX = "/app/(dashboard)/layout";
 const AUTH_APP_PATH = "/(auth)/";
+const CONNECTOR_COMPLETION_APP_PATH = "/connectors/complete/page";
 const CLI_AUTH_APP_PATH = "/cli-auth/";
 const DASHBOARD_APP_PATH = "/(dashboard)/";
 const PAGE_APP_PATH_SUFFIX = "/page";
@@ -112,6 +113,7 @@ function equalSets(left, right) {
 
 function routeClass(appPath) {
   if (appPath.startsWith(AUTH_APP_PATH)) return ROUTE_CLASS.auth;
+  if (appPath === CONNECTOR_COMPLETION_APP_PATH) return ROUTE_CLASS.auth;
   if (appPath.startsWith(CLI_AUTH_APP_PATH)) return ROUTE_CLASS.cliAuth;
   if (appPath.startsWith(DASHBOARD_APP_PATH)) return ROUTE_CLASS.dashboard;
   return null;

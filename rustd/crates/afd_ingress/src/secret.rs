@@ -1,12 +1,7 @@
 //! Opening the one secret a signature is checked against.
 //!
-//! # Two stored shapes, and they are not interchangeable
-//!
-//! The per-fleet HMAC family stores a JSON OBJECT and signs with one field of
-//! it, `webhook_secret`. The Svix family stores the raw `whsec_…` string with
-//! no envelope of its own. This module reads them with two functions for that
-//! reason — a single reader taking an "is it JSON" branch would be one flag
-//! away from feeding a whole JSON document to an HMAC as if it were a key.
+//! Every recipe reads the `webhook_secret` string from the credential object.
+//! A Svix declaration puts its `whsec_` string in that same field.
 //!
 //! # Every failure here is `Ok(None)`, and that is the fail-closed answer
 //!
@@ -23,8 +18,9 @@
 //! [`afd_vault::Vault::load`] declines to log one for the same reason.
 
 use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
+use afd_crypto::secret::{SecretBytes, SecretString};
 use afd_vault::SecretName;
+use serde_json::value::RawValue;
 
 use crate::Ingress;
 use crate::binding::Binding;
@@ -51,23 +47,6 @@ impl Ingress {
             .stored_credential(binding.workspace(), binding.credential_name())
             .await?;
         Ok(stored.as_ref().and_then(webhook_secret_field))
-    }
-
-    /// The Svix signing secret, for a fleet whose trigger declares a ref.
-    ///
-    /// Answers the RAW stored bytes. A Svix secret is a `whsec_`-prefixed
-    /// base64 string, and both the prefix strip and the decode belong to the
-    /// verifier that knows the scheme — `afd_webhook::vendor::svix` — rather
-    /// than to the reader that fetched it.
-    ///
-    /// # Errors
-    /// As [`Self::signing_secret`].
-    pub async fn svix_secret(&self, binding: &Binding) -> Result<Option<SecretBytes>> {
-        let Some(signature) = binding.signature() else {
-            return Ok(None);
-        };
-        self.stored_credential(binding.workspace(), signature.secret_ref())
-            .await
     }
 
     /// The App's own signing secret, held by the platform admin workspace.
@@ -115,16 +94,14 @@ impl Ingress {
 
 /// The `webhook_secret` field of a stored credential object, as key material.
 ///
-/// Re-wrapped into a fresh [`SecretBytes`] rather than handed out as a slice of
-/// the parsed tree: `serde_json` owns that tree on the heap with no destructor
-/// that zeroes it, so the copy this returns is the one carrying the guarantee.
+/// The parsed string and returned bytes both zero on drop. Unrelated secret
+/// fields are skipped without copying them into a JSON tree.
 fn webhook_secret_field(stored: &SecretBytes) -> Option<SecretBytes> {
-    let document: serde_json::Value = serde_json::from_slice(stored.expose()).ok()?;
-    let field = document.get(WEBHOOK_SECRET_FIELD)?.as_str()?;
-    if field.is_empty() {
-        return None;
-    }
-    Some(SecretBytes::new(field.as_bytes().to_vec()))
+    let document: std::collections::BTreeMap<String, &RawValue> =
+        serde_json::from_slice(stored.expose()).ok()?;
+    let field =
+        SecretString::new(serde_json::from_str(document.get(WEBHOOK_SECRET_FIELD)?.get()).ok()?);
+    (!field.expose().is_empty()).then(|| SecretBytes::new(field.expose().as_bytes().to_vec()))
 }
 
 #[cfg(test)]

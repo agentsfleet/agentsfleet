@@ -34,7 +34,6 @@ use services::Services;
 pub fn webhook_handler_for<D: Services>(verb: WebhookRoute) -> MethodRouter<Arc<D>> {
     match verb {
         WebhookRoute::ReceiveSource => post(handler::webhook::source_route::receive::<D>),
-        WebhookRoute::ReceiveSvix => post(handler::webhook::svix_route::receive::<D>),
         WebhookRoute::Approval => post(handler::webhook::approval_route::receive::<D>),
         WebhookRoute::GitHub => post(handler::webhook::github_route::receive::<D>),
         WebhookRoute::AppIngress => post(handler::webhook::app_route::receive::<D>),

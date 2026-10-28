@@ -109,7 +109,7 @@ pub(crate) async fn receive<D: Services>(
         .to_owned();
 
     // Nothing above this line has read the body as anything but bytes.
-    let proven = webhook::verified(&services, &fleet, Some(SOURCE), &headers, body).await?;
+    let proven = webhook::verified(&services, &fleet, SOURCE, &headers, body).await?;
 
     // Checked against the HEADER's word for the delivery, before the payload is
     // parsed: an author's allow-list is written in GitHub's event vocabulary.

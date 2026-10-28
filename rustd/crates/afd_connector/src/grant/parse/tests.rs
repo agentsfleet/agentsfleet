@@ -80,13 +80,6 @@ const REFRESH_TOKEN_VALUE: &str = "rt-fixture";
 // pin test: literal is the contract
 const EXPIRES_IN_SECONDS: i64 = 3600;
 
-/// The conversion the handle's absolute expiry is computed through.
-///
-/// Named rather than spelled in the assertion so the arithmetic reads as the
-/// unit change it is, and so the numeric audit sees a definition rather than a
-/// magic factor.
-const MS_PER_SECOND: i64 = 1_000;
-
 /// A Slack install answer carrying everything the handle needs.
 fn slack_answer() -> Value {
     let mut answer = json!({});
@@ -180,13 +173,9 @@ fn a_slack_team_without_a_name_still_yields_a_grant() {
     assert!(install_scopes.is_empty(), "{install_scopes:?}");
 }
 
-/// The triple becomes a handle whose expiry is absolute rather than relative.
-///
-/// The conversion matters: `expires_in` is seconds from NOW and the broker
-/// compares an absolute instant, so storing the relative value would make every
-/// token look expired the moment the daemon restarted.
+/// The durable handle carries refresh material and public connection metadata.
 #[test]
-fn a_refresh_triple_becomes_a_handle_with_an_absolute_expiry() {
+fn a_refresh_triple_keeps_only_the_material_the_broker_uses() {
     let grant = refresh_triple(
         Provider::Linear,
         &refresh_answer(),
@@ -197,12 +186,8 @@ fn a_refresh_triple_becomes_a_handle_with_an_absolute_expiry() {
     .expect("a complete triple");
 
     assert_eq!(grant.handle["integration"], json!(Provider::Linear.id()));
-    assert_eq!(grant.handle[ACCESS_TOKEN], json!(ACCESS_TOKEN_VALUE));
+    assert!(!grant.handle.contains_key(ACCESS_TOKEN));
     assert_eq!(grant.handle[REFRESH_TOKEN], json!(REFRESH_TOKEN_VALUE));
-    assert_eq!(
-        grant.handle["expires_at_ms"],
-        json!(NOW + EXPIRES_IN_SECONDS * MS_PER_SECOND),
-    );
     assert_eq!(grant.handle["connected_at_ms"], json!(NOW));
     assert_eq!(
         grant.handle["label"],
@@ -265,4 +250,17 @@ fn a_non_numeric_expiry_is_no_grant() {
     );
 
     assert!(refused.is_none());
+}
+
+/// Large access tokens cannot overflow the durable credential's size limit.
+#[test]
+fn an_initial_access_token_larger_than_the_vault_limit_is_not_stored() {
+    let mut answer = refresh_answer();
+    answer[ACCESS_TOKEN] = json!("a".repeat(afd_vault::MAX_DATA_BYTES + 1));
+    let grant = refresh_triple(Provider::Jira, &answer, "Support Jira", at(NOW), Map::new())
+        .expect("a complete exchange");
+    let raw = serde_json::value::to_raw_value(&grant.handle).expect("handle object");
+    afd_vault::SecretBody::parse(&raw).expect("the refresh grant fits the vault");
+    assert!(!grant.handle.contains_key(ACCESS_TOKEN));
+    assert_eq!(grant.handle[REFRESH_TOKEN], json!(REFRESH_TOKEN_VALUE));
 }

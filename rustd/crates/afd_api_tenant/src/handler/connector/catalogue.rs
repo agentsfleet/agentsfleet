@@ -32,7 +32,7 @@ use crate::services::{Services, WorkspaceConnectors as _};
 /// One catalogue row, as the wire renders it.
 ///
 /// The shape and its two archetype spellings are `afd_api_wire::connector`'s.
-/// Both strings are a wire contract the dashboard switches on rather than a
+/// Both strings are a wire shape the dashboard switches on rather than a
 /// description this surface is free to improve.
 fn entry(row: Catalogued) -> CatalogueEntry<'static> {
     CatalogueEntry {
@@ -45,6 +45,7 @@ fn entry(row: Catalogued) -> CatalogueEntry<'static> {
         display_name: Cow::Borrowed(row.provider.display_name()),
         configured: row.configured,
         connected: row.connected,
+        label: row.label.map(Cow::Owned),
     }
 }
 
@@ -64,8 +65,10 @@ fn entry(row: Catalogued) -> CatalogueEntry<'static> {
     summary = "List connectors for a workspace",
     description = concat!(
         "Returns the providers available to the workspace. Each item shows ",
-        "whether the provider is ready and connected. Requires the ",
-        "`connector:read` scope. ",
+        "whether its application is configured and the workspace holds a saved ",
+        "connection, plus the connected account label when available. ",
+        "This read does not contact providers to check authorization health. ",
+        "Requires the `connector:read` scope.",
     ),
     params(
         afd_http::openapi::path::Workspace,
@@ -105,6 +108,7 @@ mod tests {
             provider,
             configured,
             connected,
+            label: None,
         }
     }
 
@@ -122,7 +126,7 @@ mod tests {
         }
     }
 
-    /// The archetype is the registry's, spelled as the wire contract.
+    /// The archetype is the registry's, spelled as the wire shape.
     ///
     /// Both strings are `afd_api_wire::connector`'s archetype constants — the
     /// dashboard switches on them to decide which connect flow to start, so a

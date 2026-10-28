@@ -62,11 +62,8 @@ pub(super) async fn a_provider_with_no_handle_reads_as_not_connected(
     );
 }
 
-/// The catalogue's `connected` column comes from the vault listing.
-///
-/// One listing and no decryption — the grant key IS the provider id — so this
-/// is the assertion that the listing is filtered by the registry rather than
-/// the other way round: an ordinary workspace secret must not add a row.
+/// One workspace response includes every card and its public connection label.
+/// The stored token never leaves the vault-backed service.
 pub(super) async fn the_catalogue_marks_only_what_is_held(
     router: &axum::Router,
     fixture: &Fixture,
@@ -82,6 +79,7 @@ pub(super) async fn the_catalogue_marks_only_what_is_held(
     let status = listed.status();
     let document = json_body(listed).await;
     assert_eq!(status, StatusCode::OK, "{document}");
+    assert!(!document.to_string().contains("private-value"));
     let rows = document.as_array().expect("the catalogue is a bare array");
     assert_eq!(
         rows.len(),
@@ -93,6 +91,10 @@ pub(super) async fn the_catalogue_marks_only_what_is_held(
             .get("id")
             .and_then(Value::as_str)
             .expect("a row names its provider");
+        assert_eq!(
+            row.get("label").and_then(Value::as_str),
+            (id == HELD.id()).then_some(LABEL)
+        );
         let connected = row.get("connected").and_then(Value::as_bool);
         assert_eq!(
             connected,
@@ -290,9 +292,28 @@ pub(super) async fn a_secret_that_is_not_a_connector_handle_is_not_a_connection(
          offering a disconnect for it would delete something they stored: \
          {document}"
     );
+    let listed = send(
+        router,
+        Method::GET,
+        &fixture.all(),
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    let document = json_body(listed).await;
+    assert!(
+        document
+            .as_array()
+            .expect("the catalogue is an array")
+            .iter()
+            .all(|row| row["connected"] == false && row["label"].is_null())
+    );
 }
 
 /// A stored connector handle, as `land` writes one.
 pub(super) fn handle(label: &str) -> String {
-    format!(r#"{{"integration":"{}","label":"{label}"}}"#, HELD.id())
+    format!(
+        r#"{{"integration":"{}","team_name":"{label}","bot_token":"private-value"}}"#,
+        HELD.id()
+    )
 }

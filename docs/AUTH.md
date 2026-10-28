@@ -902,7 +902,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | `session_id` and `verification_code` (device flow, M74_002) | secret ephemeral capabilities | 5 min (or terminal state) | see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) §"Log and audit redaction — `session_id` is sensitive" | see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) §"Log and audit redaction — `session_id` is sensitive" |
 | `AUTH_SESSION_CODE_PEPPER` | secret (catastrophic if disclosed) | until rotated | 1Password (item path in [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) §"Deployment requirements") · agentsfleetd process memory after Vault load · `~/.config/agentsfleet/agentsfleetd.env.local` (mode 0600, operator laptop only — see the note below) | disk anywhere but that one file, and in particular any path inside a repository checkout · logs · metrics · client bundles · environment-variable dumps · `op://` URI logged in any audit trail |
 | Fleet-trigger webhook secrets (per-provider HMAC keys) | secret | until rotated | vault items (`<source>` in workspace vault, field `webhook_secret`) · the signature check in `agentsfleetd` (`afd_api_ingress`) | logs · error bodies · diagnostic bundles · operator screenshots |
-| Connector per-install handle (`<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, access_token, expires_at_ms, …}`. (Datadog/Grafana/Fly are not connectors and write no per-install handle — their vendor keys are plain workspace secrets instead, governed by the standard workspace-vault write/read boundary above, not this connector-specific row.) | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`afd_connector`'s `bot_token` for the outbound poster, `afd_vault`'s `Vault::load` for every handle read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` / `{configured, connected}` flags, never key material) |
+| Connector per-install handle (`<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, connected_at_ms, label, …}`. (Datadog/Grafana/Fly are not connectors and write no per-install handle — their vendor keys are plain workspace secrets instead, governed by the standard workspace-vault write/read boundary above, not this connector-specific row.) | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`afd_connector`'s `bot_token` for the outbound poster, `afd_vault`'s `Vault::load` for every handle read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` or `{configured, connected, label}`, with an optional public label and no key material) |
 | Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}` and `github-app` → `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`) | secret except public identifiers (`app_id`, `app_slug`, `client_id`); catastrophic secrets are shared across every tenant | until rotated | admin-workspace vault (the workspace `PLATFORM_ADMIN_WORKSPACE_ID` names) · agentsfleetd process memory (connector exchange, token mint, inbound App-signature verify) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · auth logs |
 | Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve_reference`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/afr_providers/src/connect/mod.rs`, driven by the agent loop in `rustd/crates/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
@@ -1011,30 +1011,40 @@ Each of these is a real concern, named here so future fleets and security-review
 
 ## Manual fleet-webhook auth (separate surface)
 
-The three flows above (CLI, UI, API key) all converge on `Authorization: Bearer …`. **Inbound webhooks are a different surface entirely** — they never carry a Bearer token. The manual fleet-addressed HMAC routes, `/v1/webhooks/{fleet_id}/{source}` and `/v1/webhooks/{fleet_id}/github`, carry `Guard::WebhookSignature` in the route table (`rustd/crates/afd_http/src/route/webhook.rs`); the Svix route `/v1/webhooks/svix/{fleet_id}` carries `Guard::Svix`. The ingress handler reads the fleet's trigger binding and vault secret, then verifies the provider's signature before it parses the body (`verified`, `rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`); the HMAC itself is `Scheme::verify_at` (`rustd/crates/afd_webhook/src/scheme.rs`). GitHub App and Slack App ingress verify their platform App secrets inside their handlers because their payload routing fields identify the workspace and fleet only after authentication. No route falls back to Bearer auth.
+Manual fleet deliveries use `POST /v1/webhooks/{fleet_id}/{source}`, including Svix senders. GitHub keeps its event-aware `/{fleet_id}/github` handler. Both routes carry `Guard::WebhookSignature`.
 
-This is industry standard for inbound webhooks: GitHub (`X-Hub-Signature-256`), Slack (`X-Slack-Signature`), Stripe (`Stripe-Signature`), Linear (`linear-signature`), and Svix-fronted providers (Clerk, AgentMail) all ship HMAC-SHA256 over the raw body. Bearer tokens are for *outbound* API calls (where the caller authenticates itself); HMAC is for *inbound* (where the receiver verifies the body wasn't tampered with).
+The handler resolves the named stored trigger and its workspace credential, verifies the untouched body, then parses the document (`rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`). No request header can select a verifier or enable Bearer authentication.
 
-### Manual-route provider scheme registry
+### Manual-route signing recipes
 
-The schemes are a closed enum, `afd_webhook::Scheme` (`rustd/crates/afd_webhook/src/scheme.rs`): `BodyHex` (GitHub), `BodyHexBare` (Linear) and `SlackV0` (Slack). Each names its signature header, prefix and timestamp policy. These are also the only sources a webhook trigger may declare unsigned: `afd_fleet_runtime` refuses any other source at parse time unless the trigger names a Svix `signature.secret_ref`, verified on `/v1/webhooks/svix/{fleet_id}` (`rustd/crates/afd_fleet_runtime/src/config/trigger/mod.rs`). A trigger cannot override a scheme's header, prefix or timestamp; the signature block carries `secret_ref` alone.
+`afd_webhook::Family` is the closed recipe list (`rustd/crates/afd_webhook/src/family.rs`). GitHub, Linear and Slack use their registry recipe and reject a `verifier` override. Other lowercase-slug sources require a `verifier` object with one of these `scheme` tokens:
 
-| Provider | `sig_header` | `prefix` | Includes timestamp? | Drift |
-| --- | --- | --- | --- | --- |
-| GitHub | `x-hub-signature-256` | `sha256=` | no | n/a |
-| Slack | `x-slack-signature` | `v0=` | yes (`x-slack-request-timestamp`) | 5 min (`MAX_DRIFT_SECONDS`, `rustd/crates/afd_webhook/src/freshness.rs`) |
-| Linear | `linear-signature` | (none) | no | n/a |
+| Scheme | Signature header | Signed fields | Encoding |
+|---|---|---|---|
+| `body-hex-sha256` | required authored header | raw body | hex with `sha256=` prefix |
+| `body-hex` | required authored header | raw body | bare hex |
+| `body-base64-sha256` | required authored header | raw body | standard padded base64 |
+| `slack-v0` | `x-slack-signature` | version, timestamp, body | `v0=` and hex |
+| `svix-v1` | `svix-signature` | identifier, timestamp, body | Svix versioned base64 |
 
-Adding a new manual-route provider is one new `Scheme` variant, which the parser and the model prompt pick up from the same table (`VERIFIED_WEBHOOK_SOURCES`). No new guard. App-level ingress uses the corresponding ingress descriptor and platform secret described under *OAuth connectors*.
+The body recipes require an HTTP-token header name of 1–128 ASCII characters. Fixed-header recipes reject an authored header.
+
+Slack reads `x-slack-request-timestamp`; Svix reads `svix-id` and `svix-timestamp`. Both allow at most 300 seconds of clock drift. Svix suppresses replay by its signed identifier; the other recipes use the authenticated body digest.
+
+For example, a custom trigger declares `{"type":"webhook","source":"acme","credential_name":"acme-signing","verifier":{"scheme":"body-hex-sha256","header":"x-acme-signature"}}`. A Svix sender declares `{"type":"webhook","source":"clerk","credential_name":"clerk-signing","verifier":{"scheme":"svix-v1"}}`.
+
+Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address returns 404.
+
+These recipes verify incoming signed deliveries. They do not connect an account, create a vendor subscription, or grant outbound application actions. App-level ingress keeps its platform secret and provider-specific handler.
 
 ### Manual-route workspace-credential resolver
 
 The check itself is provider-agnostic. For the URL's `{fleet_id}` it takes two facts from the fleet's trigger binding (`rustd/crates/afd_ingress/src/binding/mod.rs`):
 
-1. **The scheme** — `Binding::scheme()`, set whenever one of the fleet's `triggers[].source` entries names a known scheme, even if the vault credential is missing. This is what makes "credential not configured" fail closed instead of silently falling back to anything else.
+1. **The recipe** — `Binding::family()` reads the named trigger's declaration or registry recipe, even if its vault credential is missing. This is what makes "credential not configured" fail closed instead of silently falling back to anything else.
 2. **The secret** — `Ingress::signing_secret` (`rustd/crates/afd_ingress/src/secret.rs`) loads the workspace vault entry named by `credential_name()` and reads its `webhook_secret` field (`{ "webhook_secret": "<key>", ... }`). The name defaults to the matching trigger's `source` value but can be overridden by the fleet's `x-agentsfleet.triggers[].credential_name` frontmatter for the per-fleet credential-scoping case — two fleets subscribing to the same source within one workspace can each point at distinct vault rows (e.g. multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
 
-The credential being workspace-scoped (not fleet-scoped) means rotating the secret once rotates it for every fleet in that workspace using the same source — single point of rotation, the property the architecture wants.
+Every recipe reads a JSON credential object containing `webhook_secret`. For Svix, that field contains the sender's `whsec_` string. Replacing one workspace credential changes verification for every fleet that names it; a raw Svix string is not a supported credential object.
 
 ### Manual-route error taxonomy
 
@@ -1042,9 +1052,9 @@ The check answers with exactly three error codes for webhook auth failures, each
 
 | Code | When it fires | What the operator should do |
 | --- | --- | --- |
-| `UZ-WH-020 webhook_credential_not_configured` (401) | Provider not recognized OR `<source>` vault row missing OR row has no `webhook_secret` field OR field is empty | `agentsfleet secret create <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
-| `UZ-WH-010 invalid_signature` (401) | Provider + secret are both configured, but the signature header is missing OR the body's MAC doesn't match | The webhook secret stored in the workspace vault doesn't match what the provider has registered. Re-rotate. |
-| `UZ-WH-011 stale_timestamp` (401) | Slack-style schemes only — the timestamp header is missing, or outside the 5-minute drift window | Clock skew or replay attempt. Investigate. |
+| `UZ-WH-020 webhook_credential_not_configured` (401) | Named credential missing, unusable `webhook_secret`, or malformed Svix key | `agentsfleet secret create <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
+| `UZ-WH-010 invalid_signature` (401) | Provider + secret are both configured, but a required signature or Svix header is missing, or body authentication fails | Check the sender's headers and that its registered secret matches the workspace vault. |
+| `UZ-WH-011 stale_timestamp` (401) | Slack timestamp missing, or a supplied Slack or Svix timestamp is invalid or outside the 300-second window | Clock skew or replay attempt. Investigate. |
 
 The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconfiguration, the second is either an attack or a real drift between provider config and our vault. Operators should respond differently to each.
 
@@ -1081,7 +1091,9 @@ A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or ide
 
 The rows themselves:
 
-- **Per-install handle** `<provider>` in the **workspace** vault — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, access_token, expires_at_ms, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`). Datadog/Grafana/Fly write **no** per-install handle at all — not being connectors, their keys live as ordinary named workspace secrets instead. This is the credential the broker/worker mints or reads from. RULE VLT — the token lives only here. (The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.)
+- **Per-install handle** `<provider>` in the **workspace** vault: Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, connected_at_ms, label, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`). Datadog/Grafana/Fly write **no** per-install handle; their keys live as ordinary named workspace secrets instead. This is the credential the broker/worker mints or reads from.
+
+  RULE VLT: the token lives only here. The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.
 - **`connector.installs`** — the non-secret external-account routing map: Slack stores `team_id → workspace_id`; GitHub stores `installation_id → workspace_id`. Tokens and App secrets never live here.
 
 Each callback completion and Disconnect commits its own vault and routing changes in one transaction.
@@ -1162,7 +1174,7 @@ Keep the credential owner and routing key straight:
 
 | | Manual fleet trigger | GitHub App events | Slack App events |
 | --- | --- | --- | --- |
-| Route | `/v1/webhooks/{fleet_id}/{source}` (`…/{fleet_id}/github` for GitHub; `/v1/webhooks/svix/{fleet_id}` for a Svix-signed source) | `/v1/ingress/github` | `/v1/connectors/slack/events` |
+| Route | `/v1/webhooks/{fleet_id}/{source}` (`…/{fleet_id}/github` for GitHub; every declared recipe uses its source URL) | `/v1/ingress/github` | `/v1/connectors/slack/events` |
 | Secret | workspace `<source>.webhook_secret` | admin `github-app.webhook_secret` | admin `slack-app.signing_secret` |
 | Scope | one workspace/fleet URL | one platform App, every tenant | one platform App, every tenant |
 | Routing | fleet identifier in URL | installation → workspace → repository/event/grant fleets | team → workspace → channel-resident fleet |
