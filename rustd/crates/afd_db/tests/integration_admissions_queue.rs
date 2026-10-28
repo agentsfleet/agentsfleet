@@ -13,6 +13,8 @@ const DISPATCH_DEADLINE_MIGRATION: i64 = 2130;
 const CLAIM_ORDER_MIGRATION: i64 = 2140;
 const GATE_DEADLINE_MIGRATION: i64 = 2150;
 const CONTEXT_CHECKPOINT_MIGRATION: i64 = 2160;
+const MESSAGE_SAVE_MIGRATION: i64 = 2170;
+const EVENT_TYPE_INDEX_MIGRATION: i64 = 2180;
 
 // M230 can land before M226: its higher slot must not hide the queue upgrade.
 static DISPATCH_ONLY: std::sync::LazyLock<Vec<afd_db::migration::Migration>> =
@@ -133,6 +135,8 @@ async fn test_receipt_drop_migration_applies_populated() {
             CLAIM_ORDER_MIGRATION,
             GATE_DEADLINE_MIGRATION,
             CONTEXT_CHECKPOINT_MIGRATION,
+            MESSAGE_SAVE_MIGRATION,
+            EVENT_TYPE_INDEX_MIGRATION,
         ]
     );
     let mut connection = db.acquire().await.expect("database");

@@ -52,7 +52,8 @@ authoring.drafts: id, workspace_id, tenant_id, user_id, title, status, tenant_mo
     instance_name, fleet_id, library_revision_id, last_message_sequence, \
     cancelled_through_sequence, resource_version, closed_at, expires_at, created_at, updated_at
 authoring.messages: id, draft_id, sequence, operation_id, status, tenant_model_id, user_text, \
-    answer_text, candidate_id, failure_reason, finished_at, created_at, updated_at
+    answer_text, candidate_id, failure_reason, save_requested, save_error_code, finished_at, \
+    created_at, updated_at
 authoring.candidates: id, draft_id, revision, definition, canonical_digest, policy_semantics, \
     created_at
 authoring.attempts: id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id, \

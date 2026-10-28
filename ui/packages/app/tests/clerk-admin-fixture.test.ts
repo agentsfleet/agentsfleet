@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSignInTicket,
   findUserIdByEmail,
+  mintTokens,
   revokeSession,
 } from "./e2e/acceptance/fixtures/clerk-admin";
 
@@ -36,6 +37,28 @@ describe("Clerk administration requests", () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("revokes an allocated session when token minting fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ id: "sess_fixture" }))
+      .mockResolvedValueOnce(new Response("token mint failed", { status: 500 }))
+      .mockResolvedValueOnce(Response.json({}));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(mintTokens(FIXTURE_USER_ID)).rejects.toThrow("tokens");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("https://api.clerk.com/v1/sessions/sess_fixture/revoke");
+  });
+
+  it("reports both failures when an unsuccessful mint cannot revoke its session", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ id: "sess_fixture" }))
+      .mockResolvedValueOnce(new Response("token mint failed", { status: 500 }))
+      .mockResolvedValueOnce(new Response("revoke failed", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const failure = await mintTokens(FIXTURE_USER_ID).catch(error => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.errors.map((error: Error) => error.message)).toEqual([
+      expect.stringContaining("/tokens"), expect.stringContaining("/revoke"),
+    ]);
   });
 
   it("should honor Retry-After before retrying a rate-limited lookup", async () => {

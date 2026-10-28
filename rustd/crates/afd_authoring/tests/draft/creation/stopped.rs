@@ -181,6 +181,7 @@ async fn save_after_stop_keeps_old_reports_accounting_only() {
                 c.base.access(),
                 &a.draft.id,
                 SendMessage {
+                    save: false,
                     message: "New reviewed request".into(),
                     operation_id: mint(),
                 },

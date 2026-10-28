@@ -33,6 +33,7 @@ async fn lease_pins_oldest_message_model_candidate_and_only_hashes_its_capabilit
             f.access(),
             &draft.id,
             SendMessage {
+                save: false,
                 message: "Second private question".into(),
                 operation_id: mint(),
             },

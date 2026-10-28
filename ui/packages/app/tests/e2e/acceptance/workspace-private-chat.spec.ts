@@ -7,7 +7,7 @@
  * person, because an authoring-model reply is not deterministic
  * (`fixtures/install-ui.ts` makes the same trade). Everything after that runs
  * through the shipped chat: the history entry, a reload, Save from the
- * keyboard, the saved fleet's Edit setup panel, Save changes, and a
+ * keyboard, the saved fleet's full authoring page, Save changes, and a
  * phone-width reread. Signs up a fresh teammate, so DEV only, like every
  * signup spec.
  */
@@ -23,7 +23,7 @@ import { DraftSchema } from "@/lib/api/draft-types";
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, historyEntry, openDraft, saveSetupButton, setupSummary,
+  CHAT_COPY, NEW_FLEET, draftHref, editSetupLink, historyEntry, openDraft, openSavedFleet, saveSetupButton, setupAction, setupSummary,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -81,30 +81,29 @@ async function saveFromTheKeyboard(page: Page): Promise<void> {
   await expect(save).toBeEnabled();
   await save.focus();
   await save.press("Enter");
-  await expect(page).toHaveURL(FLEET_PAGE, {timeout: SETUP_TIMEOUT_MS});
+  await openSavedFleet(page);
 }
 
-// Save opens the fleet it created; reloading preserves that durable identity.
+// Explicitly opening the saved fleet and reloading preserves its durable identity.
 async function openTheSavedFleet(page: Page, workspaceId: string, name: string): Promise<string> {
   await expect(page).toHaveURL(FLEET_PAGE, { timeout: SETUP_TIMEOUT_MS });
   const fleetId = new URL(page.url()).pathname.split("/").pop();
   if (!fleetId) throw new Error("Open fleet led to no fleet");
   expect((await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId)).name).toBe(name);
   await page.reload();
-  await expect(page.getByRole("button", {name: CHAT_COPY.improve, exact: true})).toBeVisible();
+  await expect(editSetupLink(page)).toBeVisible();
   return fleetId;
 }
 
 // Edit setup starts from the fleet header; saving moves the fleet to its next setup revision.
 async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: string): Promise<string> {
   const before = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
-  await page.getByRole("button", { name: CHAT_COPY.improve, exact: true }).click();
-  const panel = page.getByRole("complementary", {name: "Edit fleet setup", exact: true});
-  await expect(panel.getByLabel(CHAT_COPY.composer)).toBeVisible();
-  const editor = panel.getByRole("button", {name: "Edit instructions manually", exact: true});
-  await editor.click();
+  await editSetupLink(page).click();
+  await expect(page).toHaveURL(new RegExp(`/fleets/new\\?fleet=${fleetId}&setup_revision=${before.setup_revision}$`));
+  await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
+  await (await setupAction(page, CHAT_COPY.editSetup)).click();
+  const panel = page.getByRole("dialog", {name: CHAT_COPY.instructions, exact: true});
   await panel.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(IMPROVED_INSTRUCTIONS);
-  await expect(panel.getByRole("button", {name: CHAT_COPY.apply, exact: true})).toBeDisabled();
   const created = page.waitForResponse(response => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith(`/workspaces/${workspaceId}/drafts`));
   await panel.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
@@ -113,17 +112,15 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   const location = await response.headerValue("location");
   const draftId = DraftSchema.shape.id.parse(location?.split("/").at(-1));
   expect(location).toBe(`/v1/workspaces/${workspaceId}/drafts/${draftId}`);
-  await expect(editor).toHaveAttribute("aria-expanded", "false");
-  await panel.getByRole("button", {name: CHAT_COPY.apply, exact: true}).click();
   await expect(panel).toBeHidden({timeout: SETUP_TIMEOUT_MS});
-  await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}$`));
+  await openSavedFleet(page, String(BigInt(before.setup_revision) + 1n));
   const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   expect(after.setup_revision).toBe(String(BigInt(before.setup_revision) + 1n));
   expect(after.definition?.instructions_md).toBe(IMPROVED_INSTRUCTIONS);
   return draftId;
 }
 
-// A saved chat's address opens its fleet at phone width without overflow or accessibility violations.
+// A saved chat's address retains authoring at phone width and can open its fleet.
 async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId: string, fleetId: string): Promise<void> {
   const context = await browser.newContext({
     viewport: PHONE, isMobile: true, hasTouch: true,
@@ -133,8 +130,12 @@ async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId
     const page = await context.newPage();
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(draftHref(workspaceId, draftId));
+    await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
+    await expectNoPageOverflow(page);
+    await expectAccessible(page, "saved setup chat at phone width");
+    await page.getByRole("link", {name: CHAT_COPY.openFleet, exact: true}).click();
     await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}$`));
-    await expect(page.getByRole("button", {name: CHAT_COPY.improve, exact: true})).toBeVisible();
+    await expect(editSetupLink(page)).toBeVisible();
     await expectNoPageOverflow(page);
     await expectAccessible(page, "saved private chat at phone width");
   } finally {

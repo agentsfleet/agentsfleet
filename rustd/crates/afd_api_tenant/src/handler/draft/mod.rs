@@ -5,7 +5,7 @@ pub(crate) mod message;
 pub(crate) mod models;
 pub(crate) mod patch;
 pub(crate) mod read;
-mod render;
+pub(crate) mod render;
 pub(crate) mod stream;
 pub(crate) mod write;
 

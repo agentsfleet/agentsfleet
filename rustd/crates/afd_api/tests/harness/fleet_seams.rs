@@ -89,7 +89,8 @@ impl Fleet {
                 Entropy::new(),
             )),
             Grants::new(
-                SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new())
+                    .with_activity_streams(afd_dragonfly::FleetStreams::new(queue.clone())),
                 database,
                 Entropy::new(),
             ),
@@ -113,6 +114,9 @@ impl Fleet {
         queue: Dragonfly,
         budgets: afd_admission::Budgets,
     ) -> Self {
+        let streams = afd_dragonfly::FleetStreams::new(queue.clone());
+        self.secrets = self.secrets.with_activity_streams(streams.clone());
+        self.memories = self.memories.with_activity_streams(streams);
         self.creations = afd_authoring::Creations::new(
             self.authoring_setup.clone(),
             afd_admission::Admissions::for_tests(database.clone(), queue).with_budgets(budgets),

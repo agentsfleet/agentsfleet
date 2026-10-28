@@ -10,7 +10,7 @@ import {
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
 import { getFleetEvent as apiGetFleetEvent, type EventDetail } from "@/lib/api/events";
-import { forgetMemory as apiForgetMemory, setMemoryAccess as apiSetMemoryAccess } from "@/lib/api/memory";
+import { forgetMemory as apiForgetMemory, setMemoryAccess as apiSetMemoryAccess, listAllMemories } from "@/lib/api/memory";
 import type {
   MemoryAccess,
 } from "@/lib/types";
@@ -76,4 +76,8 @@ export async function setMemoryAccessAction(
   change: Partial<MemoryAccess>,
 ): Promise<ActionResult<MemoryAccess>> {
   return withToken((t) => apiSetMemoryAccess(workspaceId, fleetId, change, t));
+}
+
+export async function listFleetMemoriesAction(workspaceId: string, fleetId: string) {
+  return withToken(token => listAllMemories(workspaceId, fleetId, token));
 }

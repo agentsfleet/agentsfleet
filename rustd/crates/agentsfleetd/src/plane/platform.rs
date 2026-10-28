@@ -38,7 +38,8 @@ pub(super) fn connect_flow(
             Entropy::new(),
         )),
         afd_connector::Grants::new(
-            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new())
+                .with_activity_streams(afd_dragonfly::FleetStreams::new(queue.clone())),
             database.clone(),
             Entropy::new(),
         ),

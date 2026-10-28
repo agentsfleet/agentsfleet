@@ -72,6 +72,9 @@ impl MessageState {
 /// Lightweight creator-only collection item with no candidate or transcript.
 #[derive(Debug, Serialize)]
 pub struct DraftCard {
+    /// Opaque continuation after this card, omitted from the card's JSON.
+    #[serde(skip)]
+    pub continuation: String,
     /// Private draft identity.
     pub id: Uuid7,
     /// Display title.
@@ -173,6 +176,11 @@ pub struct Created {
 /// One role in a message pair; assistant output shares the request sequence.
 #[derive(Debug, Clone, Serialize)]
 pub struct Message {
+    /// Whether this accepted turn authorizes a server-side save.
+    pub save_requested: bool,
+    /// Safe registry code when the completed turn's save needs recovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub save_error_code: Option<String>,
     /// Decimal sequence naming the user request.
     pub sequence: String,
     /// Body operation key originally accepted.
@@ -246,6 +254,8 @@ mod tests {
     fn the_message_response_carries_its_operation_id() {
         let operation = "01890a5d-ac96-774b-bcce-b302099a8063";
         let message = super::Message {
+            save_requested: false,
+            save_error_code: None,
             sequence: "1".to_owned(),
             operation_id: super::Uuid7::parse(operation).expect("a UUIDv7 fixture"),
             role: "user",

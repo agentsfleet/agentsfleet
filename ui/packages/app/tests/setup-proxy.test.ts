@@ -99,6 +99,28 @@ describe("private setup proxy", () => {
     expect(target.searchParams.get("starting_after")).toBe("opaque+cursor");
     expect(target.searchParams.has("credential")).toBe(false);
   });
+  it("opens the saved editor through the authenticated proxy with only its opaque cursor", async () => {
+    const editor = {fleet: {id: FLEET_ID}, conversations: {items: [], next_cursor: null}};
+    upstream.mockResolvedValue(response(editor));
+    const query = new URLSearchParams({starting_after: "opaque+cursor", limit: "100", credential: "discard"});
+    const result = await proxy(["fleets", FLEET_ID, "authoring-context"], {}, `?${query}`);
+    expect(result.status).toBe(200); expect(await result.json()).toEqual(editor);
+    expect(result.headers.get("cache-control")).toBe("private, no-store");
+    const [url, request] = upstream.mock.calls[0]!;
+    const target = new URL(url);
+    expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}/authoring-context`);
+    expect([...target.searchParams]).toEqual([["starting_after", "opaque+cursor"]]);
+    expect(request.headers.get("Authorization")).toBe("Bearer synthetic-session");
+  });
+  it("refuses a signed-out editor read without calling the backend", async () => {
+    credential.mockResolvedValue(null);
+    const result = await proxy(["fleets", FLEET_ID, "authoring-context"]);
+    expect(result.status).toBe(401); expect(upstream).not.toHaveBeenCalled();
+  });
+  it.each([METHOD.post, METHOD.patch, METHOD.delete])("refuses an editor mutation (%s) before credential access", async method => {
+    expect((await proxy(["fleets", FLEET_ID, "authoring-context"], {method})).status).toBe(404);
+    expect(credential).not.toHaveBeenCalled(); expect(upstream).not.toHaveBeenCalled();
+  });
   it("streams progress without buffering and strips content types outside the allowed set", async () => {
     upstream.mockResolvedValueOnce(new Response("event: message.running\ndata: {}\n\n", {headers: {"Content-Type": "text/event-stream"}}));
     const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"]);
@@ -159,6 +181,7 @@ describe("setup route whitelist", () => {
     [["drafts", DRAFT_ID, "messages"], METHOD.get], [["drafts", DRAFT_ID, "messages"], METHOD.post],
     [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "events", "stream"], METHOD.get],
     [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
+    [["fleets", FLEET_ID, "authoring-context"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
     [["fleet-libraries"], METHOD.get], [["fleet-libraries"], METHOD.post], [["fleet-libraries", "owned"], METHOD.get],
@@ -168,6 +191,7 @@ describe("setup route whitelist", () => {
   it.each(allowed)("matches %s %s", (path, method) => {expect(matchSetupRoute(WORKSPACE, path, method)).toBeDefined();});
   it.each([
     ["models", DRAFT_ID], ["drafts", ".."], ["drafts", DRAFT_ID, "messages", "extra"], ["fleets", FLEET_ID, "secrets"],
+    ["fleets", FLEET_ID, "authoring-context", "extra"],
     ["fleet-libraries", "owned", "revisions"], ["fleet-libraries", ".."], ["fleet-libraries", "x".repeat(129)],
     ["fleet-libraries", LIBRARY_ID, "revisions", "invalid"], ["fleet-libraries", LIBRARY_ID, "other"],
   ])("rejects unsupported path %s", (...path) => {expect(matchSetupRoute(WORKSPACE, path, METHOD.get)).toBeUndefined();});

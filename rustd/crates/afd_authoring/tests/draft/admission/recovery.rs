@@ -176,6 +176,7 @@ async fn unknown_work_refuses_fresh_send_but_preserves_exact_replay() {
     let lease = claim(&f, &draft).await.expect("first attempt");
     unknown(&f, &lease).await;
     let original = SendMessage {
+        save: false,
         message: FIRST.into(),
         operation_id: operation,
     };
@@ -187,6 +188,7 @@ async fn unknown_work_refuses_fresh_send_but_preserves_exact_replay() {
     assert!(replay.replayed);
     assert_eq!(replay.sequence, "1");
     let input = SendMessage {
+        save: false,
         message: NEXT.into(),
         operation_id: mint(),
     };
@@ -230,6 +232,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
             f.access(),
             &draft.id,
             SendMessage {
+                save: false,
                 message: NEXT.into(),
                 operation_id: mint(),
             },

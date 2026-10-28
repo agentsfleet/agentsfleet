@@ -16,7 +16,7 @@
  *     stops returning `next_cursor`, asserting (a) no infinite loop — the
  *     walk is capped at MAX_PAGES, (b) cursor monotonicity — a re-emitted
  *     cursor aborts the walk, (c) every page is exit-0 with a parseable
- *     `{items, next_cursor}` envelope and a finite numeric `created_at` on
+ *     `{items, next_cursor}` envelope and a valid timestamp string on
  *     every row that carries one. The CLI streams the server's row order
  *     through untouched (`printJson(res)`) and promises NO ascending or
  *     descending direction, so the per-row check asserts only that
@@ -72,6 +72,7 @@ import {
 } from "./fixtures/logs-events-ops.ts";
 import type { EventItem, EventsEnvelope } from "./fixtures/logs-events-ops.ts";
 import { API_URL_ENV, NO_COLOR_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
+import { isInstant } from "../../src/lib/instant.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -256,7 +257,7 @@ if (!isLive) {
 /**
  * Per-page envelope shape: `{items: array, next_cursor: string|null}`.
  * `fetchEventsPage` already guarantees exit-0 and JSON parse — this
- * tightens the structural contract every page must satisfy.
+ * tightens the structural rules every page must satisfy.
  */
 function assertEnvelopeShape(page: EventsEnvelope, pageIndex: number): void {
   assert.ok(Array.isArray(page.items), `page ${pageIndex}: ${ITEMS_KEY} not an array`);
@@ -265,19 +266,19 @@ function assertEnvelopeShape(page: EventsEnvelope, pageIndex: number): void {
 }
 
 /**
- * Every `created_at` a row carries must be a finite number (epoch ms — the
- * shape `fleet_events.ts` feeds to `new Date(ev.created_at)`). The CLI
+ * Every `created_at` a row carries must match the daemon's timestamp string
+ * using the same validation as the command's read decoders. The CLI
  * passes the server's row order through verbatim and promises no
  * ascending/descending direction, so this asserts well-formedness only,
  * never ordering — a directional check would flake on a newest-first
  * timeline. Rows without a `created_at` are tolerated (not every event
- * row carries one) but a present-yet-non-finite value is a contract break.
+ * row carries one) but a present malformed value is a wire-format failure.
  */
 function assertTimestampsWellFormed(page: EventsEnvelope, pageIndex: number): void {
   for (const item of page.items as ReadonlyArray<EventItem>) {
     const raw = item[CREATED_AT_KEY];
     if (raw === undefined || raw === null) continue;
-    assert.ok(typeof raw === "number" && Number.isFinite(raw),
-      `page ${pageIndex}: ${CREATED_AT_KEY} present but not a finite number: ${JSON.stringify(raw)}`);
+    assert.ok(isInstant(raw),
+      `page ${pageIndex}: ${CREATED_AT_KEY} present but not a supported timestamp: ${JSON.stringify(raw)}`);
   }
 }

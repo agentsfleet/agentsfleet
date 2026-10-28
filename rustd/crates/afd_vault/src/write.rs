@@ -20,7 +20,7 @@ use afd_crypto::aad::Aad;
 use afd_crypto::envelope::Envelope;
 use jiff::Timestamp;
 
-use sqlx::{Acquire as _, Transaction};
+use sqlx::Transaction;
 
 use crate::error::{ErrorKind, Result, query};
 use crate::secret::{SecretBody, SecretName};
@@ -48,11 +48,15 @@ impl Vault {
         body: &SecretBody,
         now: Timestamp,
     ) -> Result<()> {
-        let mut connection = self.directory.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_CREATE))?;
-        self.create_in(&mut transaction, workspace, name, body, now)
+        let mut transaction = Transaction::begin(self.directory.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
+        let fleets = self
+            .create_in(&mut transaction, workspace, name, body, now)
             .await?;
-        transaction.commit().await.map_err(query(CONTEXT_CREATE))?;
+        self.commit_activity(transaction, fleets)
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
         Ok(())
     }
 
@@ -64,6 +68,7 @@ impl Vault {
     /// separately, a failure between them leaves routing describing one
     /// installation while the vault holds another's credential, which reads as
     /// connected and is not. See `afd_connector::grant`.
+    /// Returns the receipt announcement for [`Self::commit_activity`].
     ///
     /// # Errors
     /// As [`Self::create`]. The transaction is the caller's to commit; dropping
@@ -75,7 +80,7 @@ impl Vault {
         name: &SecretName,
         body: &SecretBody,
         now: Timestamp,
-    ) -> Result<()> {
+    ) -> Result<afd_events::activity::Announcement> {
         let envelope = self.seal(workspace, name, body)?;
         let id = self.entropy.uuid7(now)?;
         let projection = body.projection();
@@ -104,6 +109,9 @@ impl Vault {
         if written.rows_affected() == 0 {
             return Err(ErrorKind::NameTaken.into());
         }
+        let fleets = afd_events::activity::record_access_on(transaction, workspace, name.as_str())
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();
@@ -113,7 +121,7 @@ impl Vault {
             kind = secret_kind,
             event = "secret_created",
         );
-        Ok(())
+        Ok(fleets)
     }
 
     /// Replaces the whole body of a secret this workspace already holds.
@@ -133,11 +141,15 @@ impl Vault {
         name: &SecretName,
         body: &SecretBody,
     ) -> Result<()> {
-        let mut connection = self.directory.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_REPLACE))?;
-        self.replace_in(&mut transaction, workspace, name, body)
+        let mut transaction = Transaction::begin(self.directory.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
+        let fleets = self
+            .replace_in(&mut transaction, workspace, name, body)
             .await?;
-        transaction.commit().await.map_err(query(CONTEXT_REPLACE))?;
+        self.commit_activity(transaction, fleets)
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
         Ok(())
     }
 
@@ -147,6 +159,7 @@ impl Vault {
     /// the stored grant AND moves the routing row, and the two have to land or
     /// fail together. A replace that committed alone would leave the newer
     /// credential under the older routing.
+    /// Returns the receipt announcement for [`Self::commit_activity`].
     ///
     /// # Errors
     /// As [`Self::replace`].
@@ -156,7 +169,7 @@ impl Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-    ) -> Result<()> {
+    ) -> Result<afd_events::activity::Announcement> {
         let envelope = self.seal(workspace, name, body)?;
         let projection = body.projection();
 
@@ -183,6 +196,9 @@ impl Vault {
         if written.rows_affected() == 0 {
             return Err(ErrorKind::NotFound.into());
         }
+        let fleets = afd_events::activity::record_access_on(transaction, workspace, name.as_str())
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();
@@ -192,7 +208,7 @@ impl Vault {
             kind = secret_kind,
             event = "secret_replaced",
         );
-        Ok(())
+        Ok(fleets)
     }
 
     /// Seals `body` for the row at `(workspace, name)`.

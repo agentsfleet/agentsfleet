@@ -27,13 +27,18 @@ it("retains the latest proposal after leaving its chat without moving its neighb
 
 it("records the applied setup revision for both the open chat and retained history", async () => {
   fixture.current = PROPOSED;
-  fixture.override = ({path, method}) => path.endsWith("/drafts") ? response({items: [CARD], next_cursor: null})
-    : path.endsWith("/revisions") && method === "POST" ? response({fleet_id: FLEET_ID, setup_revision: "2",
-      setup_etag: '"setup-two"', etag: '"fleet-two"', schedules: []}, 201) : undefined;
+  fixture.override = ({path, method}) => {
+    if (path.endsWith("/drafts")) return response({items: [CARD], next_cursor: null});
+    if (path.endsWith("/revisions") && method === "POST") {
+      fixture.fleet = {...FLEET, setup_revision: "2"};
+      return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"setup-two"', etag: '"fleet-two"', schedules: []}, 201);
+    }
+    return undefined;
+  };
   const client = await fixture.ready(true);
   await client.apply();
   expect(client.getSnapshot().cards[0]?.setup_revision).toBe(2);
-  expect(client.getSnapshot().fleet).toBeNull();
+  expect(client.getSnapshot().fleet?.setup_revision).toBe("2");
   expect(client.getSnapshot().savedSetupRevision).toBe("2");
   client.fresh();
   expect(client.getSnapshot().savedSetupRevision).toBeNull();

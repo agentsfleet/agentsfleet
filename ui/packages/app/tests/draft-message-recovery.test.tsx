@@ -52,7 +52,7 @@ it("rechecks the client before admitting a retry from a stale eligible render", 
   const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
   fixture.messages = [{...MESSAGE, state: "failed"}, {...MESSAGE, role: "assistant", state: "failed", failure}];
   await client.resume(DRAFT.id);
-  render(<DraftConversation client={client} view={client.getSnapshot()} />);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={client.getSnapshot()} />);
   const pending = Promise.withResolvers<Response>();
   fixture.fetch.mockImplementationOnce(() => pending.promise);
   const renaming = client.rename("Another mutation owns this conversation");

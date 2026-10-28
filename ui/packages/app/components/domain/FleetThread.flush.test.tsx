@@ -5,6 +5,8 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
+import * as activity from "@/lib/events/fleet-activity";
+import * as messageRenderers from "./fleetMessageRenderers";
 import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 
 // The thread shell under a streamed reply, through the real runtime: every
@@ -130,6 +132,31 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+it("does not decode runtime bodies as receipts and tolerates a recorded event with no payload", () => {
+  const decode = vi.spyOn(activity, "readFleetActivity");
+  try {
+    shell.stream.mockReturnValue({...STABLE, events: [turn("Streaming", AGENTSFLEET_EVENT_STATUS.RECEIVED)]});
+    const view = render(thread());
+    expect(decode).not.toHaveBeenCalled();
+    flush(view, {...turn("", AGENTSFLEET_EVENT_STATUS.RECORDED), role: "system"});
+    expect(decode).toHaveBeenCalledWith("");
+    expect(screen.getByRole("log")).toBeTruthy();
+  } finally {decode.mockRestore();}
+});
+
+it("does not rerun message renderers when surrounding thread controls change", () => {
+  const paint = vi.spyOn(messageRenderers, "renderFleetMessage");
+  try {
+    const first = turn("First answer", AGENTSFLEET_EVENT_STATUS.PROCESSED);
+    shell.stream.mockReturnValue({...STABLE, events: [first]});
+    const view = render(<FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} modelLabel="First model" />);
+    paint.mockClear();
+    view.rerender(<FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} modelLabel="Second model" />);
+    expect(screen.getByText("First answer")).toBeTruthy();
+    expect(paint).not.toHaveBeenCalled();
+  } finally {paint.mockRestore();}
+});
 
 describe("a streamed reply and the thread around it", () => {
   it("test_flush_leaves_the_shell_alone: 100 text flushes render neither the viewport nor the composer", () => {

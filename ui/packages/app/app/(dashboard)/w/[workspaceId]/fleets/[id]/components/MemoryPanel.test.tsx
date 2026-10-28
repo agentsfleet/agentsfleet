@@ -1,14 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import MemoryPanel, {
-  MEMORY_ACCESS_PUBLISH_DESCRIPTION,
-  MEMORY_ACCESS_PUBLISH_LABEL,
-  MEMORY_ACCESS_READ_DESCRIPTION,
-  MEMORY_ACCESS_READ_LABEL,
-  MEMORY_SHARED_LABEL,
-  MEMORY_SHARED_TITLE,
-} from "./MemoryPanel";
+import MemoryPanel, { MEMORY_SHARED_LABEL } from "./MemoryPanel";
 import type { MemoryEntry } from "@/lib/types";
 import { MEMORY_EMPTY_TITLE, MEMORY_FETCH_UNAVAILABLE, MEMORY_FORGET_MISSING, OUTCOME } from "./console-copy";
 import { EVENTS } from "@/lib/analytics/events";
@@ -165,95 +158,6 @@ describe("MemoryPanel", () => {
 });
 
 describe("MemoryPanel shared memory", () => {
-  const CLOSED = { read: false, publish: false };
-  const describedBy = (el: HTMLElement) => document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent;
-
-  it("each shared-memory grant is a named switch with what it does", () => {
-    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={{ read: true, publish: false }} canGrant />);
-
-    const group = screen.getByRole("group", { name: MEMORY_SHARED_TITLE });
-    const read = within(group).getByRole("switch", { name: MEMORY_ACCESS_READ_LABEL });
-    const publish = within(group).getByRole("switch", { name: MEMORY_ACCESS_PUBLISH_LABEL });
-    expect(read.getAttribute("aria-checked")).toBe("true");
-    expect(publish.getAttribute("aria-checked")).toBe("false");
-    expect(describedBy(read)).toBe(MEMORY_ACCESS_READ_DESCRIPTION);
-    expect(describedBy(publish)).toBe(MEMORY_ACCESS_PUBLISH_DESCRIPTION);
-  });
-
-  it("flipping a grant sends only that grant and shows the route's answer", async () => {
-    setMemoryAccessAction.mockResolvedValue({ ok: true, data: { read: false, publish: true } });
-    const user = userEvent.setup({ delay: null });
-    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
-
-    const publish = screen.getByRole("switch", { name: MEMORY_ACCESS_PUBLISH_LABEL });
-    await user.click(publish);
-
-    expect(setMemoryAccessAction).toHaveBeenCalledWith("ws_1", "agt_1", { publish: true });
-    await waitFor(() => expect(publish.getAttribute("aria-checked")).toBe("true"));
-    expect(screen.getByRole("switch", { name: MEMORY_ACCESS_READ_LABEL }).getAttribute("aria-checked")).toBe("false");
-  });
-
-  it("a refused shared-memory change leaves the switch where it was", async () => {
-    setMemoryAccessAction.mockResolvedValue({ ok: false, status: 403, error: "scope", errorCode: "UZ-AUTH-022" });
-    const user = userEvent.setup({ delay: null });
-    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
-
-    const read = screen.getByRole("switch", { name: MEMORY_ACCESS_READ_LABEL });
-    await user.click(read);
-
-    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
-    expect(read.getAttribute("aria-checked")).toBe("false");
-    expect(read.getAttribute("aria-disabled")).toBeNull();
-  });
-
-  it("a flip whose save rejects releases both switches and says so", async () => {
-    setMemoryAccessAction.mockRejectedValueOnce(new Error("network down"));
-    setMemoryAccessAction.mockResolvedValueOnce({ ok: true, data: { read: false, publish: true } });
-    const user = userEvent.setup({ delay: null });
-    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
-
-    const read = screen.getByRole("switch", { name: MEMORY_ACCESS_READ_LABEL });
-    await user.click(read);
-    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
-    expect(read.getAttribute("aria-disabled")).toBeNull();
-    expect(read.getAttribute("aria-checked")).toBe("false");
-
-    await user.click(screen.getByRole("switch", { name: MEMORY_ACCESS_PUBLISH_LABEL }));
-    expect(setMemoryAccessAction).toHaveBeenCalledTimes(2);
-    expect(setMemoryAccessAction).toHaveBeenLastCalledWith("ws_1", "agt_1", { publish: true });
-  });
-
-  it("holds both switches while a flip is saving, and keeps the focus where it was", async () => {
-    let answer: (value: unknown) => void = () => undefined;
-    setMemoryAccessAction.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve;
-      }),
-    );
-    const user = userEvent.setup({ delay: null });
-    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
-
-    const read = screen.getByRole("switch", { name: MEMORY_ACCESS_READ_LABEL });
-    const publish = screen.getByRole("switch", { name: MEMORY_ACCESS_PUBLISH_LABEL });
-    await user.click(read);
-    for (const each of [read, publish]) {
-      expect(each.getAttribute("aria-disabled")).toBe("true");
-    }
-    expect(document.activeElement).toBe(read);
-
-    await user.click(publish);
-    expect(setMemoryAccessAction).toHaveBeenCalledTimes(1);
-
-    answer({ ok: true, data: { read: true, publish: false } });
-    await waitFor(() => expect(read.getAttribute("aria-disabled")).toBeNull());
-    expect(read.getAttribute("aria-checked")).toBe("true");
-  });
-
-  it("shows no switches to a viewer without fleet:write", () => {
-    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant={false} />);
-    expect(screen.queryByRole("switch")).toBeNull();
-  });
-
   it("marks a shared entry, and offers no forget on another fleet's", () => {
     const own = { ...ENTRY, visibility: "workspace" as const, writer_fleet_id: "agt_1" };
     const others = { ...ENTRY, key: "deploy_target", content: "deploy 812 broke iad", visibility: "workspace" as const, writer_fleet_id: "agt_2" };

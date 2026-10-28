@@ -1,57 +1,25 @@
-import type { ReactNode } from "react";
 import { claims, requireCredential } from "@/lib/auth/credential";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
 import { notFound, redirect } from "next/navigation";
-import { cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet } from "@/lib/api/fleets";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import {
-  startViewData,
-  runtimeModelLabel,
-  type ChatViewData,
-  type EventsViewData,
-  type MemoryViewData,
-  type ViewData,
-} from "./components/view-data";
-import { FleetActivity } from "./components/FleetActivity";
-import {
-  CURSOR_PAGE_SIZE_PARAM,
-  CURSOR_TRAIL_PARAM,
-  PAGE_SIZE_PARAM,
-  cursorForTrail,
-  cursorTrailFrom,
-  pageSizeFrom,
-} from "@/lib/pagination/cursor-trail";
-import MemoryPanel from "./components/MemoryPanel";
+import { startChatData, runtimeModelLabel, type ChatViewData } from "./components/view-data";
 import { ChatView } from "./components/ChatView";
 import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/events/run-summary";
 import { FleetRecovery } from "./components/FleetRecovery";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { namedMembers } from "@/lib/events/sender-names";
-import {
-  FleetSubnavigation,
-  FLEET_VIEW,
-  resolveFleetView,
-} from "./components/FleetSubnavigation";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
+import { FleetPendingChat } from "./components/FleetPendingChat";
 import type { FleetDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-type PageContext = {
-  workspaceId: string;
-  fleet: FleetDetail;
-  etag: string;
-  token: string;
-  /** Cursor of the events page named by the URL; null on the first page. */
-  eventsCursor: string | null;
-  eventsPageSize: number;
-};
 
 export default async function FleetDetailPage({
   params,
@@ -66,103 +34,32 @@ export default async function FleetDetailPage({
     : {};
   const token = await requireCredential();
 
-  const view = resolveFleetView(
-    typeof query.view === "string" ? query.view : undefined,
-  );
-  const eventsPageSize = pageSizeFrom(query[PAGE_SIZE_PARAM]);
-  const eventsCursor = cursorForTrail(
-    cursorTrailFrom(
-      query[CURSOR_TRAIL_PARAM],
-      eventsPageSize,
-      query[CURSOR_PAGE_SIZE_PARAM],
-    ),
-  );
-  if (!view) redirect(workspacePath(workspaceId, `fleets/${id}`));
-
-  // View data that needs only route params starts HERE, beside the fleet
-  // read — the detail read used to serialize every view fetch behind it.
-  const viewData = startViewData(view, {
-    workspaceId,
-    fleetId: id,
-    token,
-    eventsCursor,
-    eventsPageSize,
-  });
-  const [fleetResult, billing, workspaces, sessionClaims] = await Promise.all([
+  if (query.view && query.view !== "chat") redirect(workspacePath(workspaceId, `fleets/${id}`));
+  const viewData = startChatData({workspaceId, fleetId: id, token});
+  const [fleetResult, billing, workspaces, sessionClaims, canGrant] = await Promise.all([
     loadFleet(workspaceId, id, token),
     getTenantBillingCached(token).catch(() => null),
     listTenantWorkspacesCached(token).catch(() => null),
     claims(),
+    hasScope(SCOPE.FLEET_WRITE),
   ]);
   if (!fleetResult) notFound();
 
-  const { fleet, etag } = fleetResult;
-  const content = await loadFleetView(
-    {
-      workspaceId,
-      fleet,
-      etag,
-      token,
-      eventsCursor,
-      eventsPageSize,
-    },
-    viewData,
-  );
-  // Chat owns scrolling inside its transcript. Other tabs own a scrollable
-  // content area beneath the fixed header and navigation.
-  const claimsViewport = view === FLEET_VIEW.chat;
-
-  return (
-    <div
-      data-fleet-workspace
-      className={cn(
-        "flex h-full min-h-0 flex-1 flex-col overflow-clip",
-      )}
-    >
-      <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
-      <FleetSetupWorkspace account={workspaces?.items.find(item => item.id === workspaceId)?.account.tenant_id ?? null}
-        workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision}
-        model={typeof fleet.definition.config["x-agentsfleet"].model === "string" ? fleet.definition.config["x-agentsfleet"].model : "platform-default"}
-        viewer={typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null} header={<>
-      <FleetHeader
-        workspaceId={workspaceId}
-        fleet={fleet}
-        exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined}
-      />
-
-      <FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} />
-      </>}>
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col",
-          claimsViewport && "h-full overflow-clip",
-        )}
-      >
-        <div
-          className={cn(
-            "flex min-h-0 min-w-0 flex-1 flex-col gap-3xl",
-            claimsViewport && "h-full min-h-0 flex-1 gap-0 overflow-clip",
-          )}
-        >
-          <FleetSubnavigation
-            workspaceId={workspaceId}
-            fleetId={fleet.id}
-            activeView={view}
-          />
-          <div
-            key={view}
-            className={cn(
-              "page-entrance flex min-h-0 min-w-0 flex-1 flex-col",
-              claimsViewport ? "h-full overflow-clip" : "overflow-y-auto px-xl pb-xl sm:px-chat-inset",
-            )}
-          >
-            {content}
-          </div>
-        </div>
-      </div>
-      </FleetSetupWorkspace>
-    </div>
-  );
+  const {fleet} = fleetResult;
+  const account = workspaces?.items.find(item => item.id === workspaceId)?.account.tenant_id ?? null;
+  const pendingSetup = fleet.status === AGENTSFLEET_STATUS.INSTALLING;
+  const content = pendingSetup ? <FleetPendingChat account={account} workspace={workspaceId} fleet={fleet} canGrant={canGrant} />
+    : await loadChatView(workspaceId, fleet, viewData);
+  return <div data-fleet-workspace className="flex h-full min-h-0 flex-1 flex-col overflow-clip">
+    <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
+    <FleetSetupWorkspace account={account} fleet={fleet.id} revision={fleet.setup_revision}
+      model={typeof fleet.definition.config["x-agentsfleet"].model === "string" ? fleet.definition.config["x-agentsfleet"].model : "platform-default"}
+      workspace={workspaceId} viewer={typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null}
+      header={pendingSetup ? null : <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={canGrant}
+        exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined} />}>
+      <div className="page-entrance flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">{content}</div>
+    </FleetSetupWorkspace>
+  </div>;
 }
 
 async function loadFleet(workspaceId: string, id: string, token: string) {
@@ -172,22 +69,8 @@ async function loadFleet(workspaceId: string, id: string, token: string) {
   });
 }
 
-async function loadFleetView(
-  context: PageContext,
-  data: ViewData,
-): Promise<ReactNode> {
-  switch (data.view) {
-    case FLEET_VIEW.events:
-      return loadEventsView(context, data);
-    case FLEET_VIEW.memory:
-      return loadMemoryView(context, data);
-    default:
-      return loadChatView(context, data);
-  }
-}
-
 async function loadChatView(
-  { workspaceId, fleet }: PageContext,
+  workspaceId: string, fleet: FleetDetail,
   data: ChatViewData,
 ) {
   // The transcript is the one surface that genuinely wants the bodies: it
@@ -208,44 +91,13 @@ async function loadChatView(
       fleetId={fleet.id}
       senderLabel={fleet.name}
       setupRevision={fleet.setup_revision}
+      setup={<FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} showSaved />}
       modelLabel={runtimeModelLabel(models, fleet.definition.config["x-agentsfleet"].model)}
       initial={turns}
       initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
       approvalsHref={approvalsHref}
       viewer={typeof subject === "string" ? subject : null}
       senderNames={namedMembers(members ?? [])}
-    />
-  );
-}
-
-async function loadEventsView(
-  { fleet, eventsPageSize }: PageContext,
-  data: EventsViewData,
-) {
-  const result = await data.eventsInitial;
-  if (!result.ok) throw result.error;
-  const initial = result.page;
-  return (
-    <FleetActivity
-      fleetId={fleet.id}
-      initial={initial}
-      pageSize={eventsPageSize}
-    />
-  );
-}
-
-async function loadMemoryView(
-  { workspaceId, fleet }: PageContext,
-  data: MemoryViewData,
-) {
-  const [memories, canGrant] = await Promise.all([data.memories, hasScope(SCOPE.FLEET_WRITE)]);
-  return (
-    <MemoryPanel
-      workspaceId={workspaceId}
-      fleetId={fleet.id}
-      entries={memories?.items ?? null}
-      access={fleet.memory_access}
-      canGrant={canGrant}
     />
   );
 }

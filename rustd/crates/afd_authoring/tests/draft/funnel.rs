@@ -47,6 +47,7 @@ pub(super) fn about(f: &Fixture, event: &Telemetry, draft: &Uuid7) {
 
 fn follow_up(text: &str) -> SendMessage {
     SendMessage {
+        save: false,
         message: text.to_owned(),
         operation_id: mint(),
     }
@@ -91,6 +92,7 @@ async fn should_report_one_accepted_step_per_new_message_and_none_on_replay_or_r
         .expect("exact send replay");
     assert!(again.replayed);
     let changed = SendMessage {
+        save: false,
         message: "A different body".to_owned(),
         ..second
     };

@@ -55,6 +55,7 @@ use utoipa::OpenApi as _;
     crate::handler::fleet::native::patch::change,
     crate::handler::fleet::detail::purge,
     crate::handler::fleet::native::read::one,
+    crate::handler::fleet::native::context::read,
     crate::handler::fleet::native::create::save,
     crate::handler::fleet::list,
     crate::handler::fleet::memory::forget,

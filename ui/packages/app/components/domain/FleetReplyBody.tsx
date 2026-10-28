@@ -9,14 +9,12 @@ import { FLEET_OUTCOME_CLASS } from "./FleetFailedOutcome";
 import { FleetReplyFailure } from "./FleetReplyFailure";
 import { FleetReplyMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
-import { FleetExplored } from "./FleetExplored";
 import { FleetReplyFigures, OmittedCalls, Waiting } from "./FleetReplyFigures";
 import { FleetThought } from "./FleetThought";
 import { ToolCallList, ToolCallRow } from "./FleetToolCalls";
 import { messageOutcome } from "./fleetFailureCopy";
 import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readSubmittedAtMs, readText } from "./fleetMessageReaders";
 import { STATUS_AGENT_ERROR } from "./fleetMessageStatus";
-import { EXPLORE_TOOLS } from "./tool-call-explore";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
@@ -46,18 +44,13 @@ const MARKDOWN_TO_SPOKEN: ReadonlyArray<readonly [RegExp, string]> = [
   [/\|/g, " "],
   [/\s+/g, " "],
 ];
-// The library groups the parts: the reasoning becomes one Thought chip,
-// adjacent reads one Explored cell, and other adjacent tool calls one list. A
-// `tool-call:<name>` key outranks the plain one. Module scope keeps the
-// grouping's memo fingerprint stable across renders.
+// Reasoning has one disclosure; each tool call retains its own input, result and clock.
 const GROUP = {
   REASONING: "group-reasoning",
-  EXPLORE: "group-explore",
   TOOL: "group-tool",
 } as const;
 const REPLY_GROUP_BY = groupPartByType({
   reasoning: [GROUP.REASONING],
-  ...Object.fromEntries(EXPLORE_TOOLS.map((name) => [`tool-call:${name}`, [GROUP.EXPLORE]])),
   "tool-call": [GROUP.TOOL],
 });
 
@@ -142,9 +135,6 @@ export function renderReplyPart(
           {children}
         </FleetThought>
       );
-    case GROUP.EXPLORE:
-      // The group draws its own lines; its leaves stay unmounted.
-      return <FleetExplored content={reply.content} indices={part.indices} running={part.counts.running > 0} />;
     case GROUP.TOOL:
       return <ToolCallList>{children}</ToolCallList>;
     case "reasoning":
@@ -164,7 +154,8 @@ export function renderReplyPart(
     case "text":
       return <ReplyText streaming={reply.running} />;
     case "indicator":
-      return reply.contextProgress ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
+      return reply.contextProgress || reply.content.some(item => item.type === "tool-call" && item.result === undefined)
+        ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
     default:
       // A leaf that returns null gets the library's fallback UI; an empty
       // fragment keeps parts this reply never carries invisible.

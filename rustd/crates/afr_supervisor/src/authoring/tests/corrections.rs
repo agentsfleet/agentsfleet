@@ -69,10 +69,7 @@ async fn rejected_model_edits_receive_feedback_before_a_corrected_proposal_is_ap
             1
         );
         assert_eq!(report["outcome"], "completed");
-        assert_eq!(
-            report["answer"],
-            "Your setup is ready to review. Save it when you’re ready."
-        );
+        assert_eq!(report["answer"], "Private result");
         assert_eq!(report["usage"]["calls"], 2);
         assert_eq!(report["usage"]["provider_cost_nanos"], "2");
         assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);

@@ -14,6 +14,7 @@ use sqlx::{Connection as _, PgConnection};
 
 const CONTEXT: &str = "read private draft";
 
+#[derive(Clone)]
 pub(crate) struct Locked {
     pub(crate) id: Uuid7,
     pub(crate) status: DraftState,

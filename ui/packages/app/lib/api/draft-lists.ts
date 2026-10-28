@@ -3,8 +3,8 @@
 import type { z } from "zod";
 import type { Draft, DraftCard, WorkspaceModel } from "./draft-types";
 import { DraftCardsSchema, ModelsSchema } from "./draft-types";
-import { setupRequest } from "./draft-request";
-import { DRAFT_LIST, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
+import { losesAccess, setupRequest } from "./draft-request";
+import { DRAFT_LIST, DRAFT_LIST_STATUS, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
 type Page<T> = {readonly items: readonly T[]; readonly next_cursor: string | null};
 
 // Stop a bounded search once chat has a choice; retain other configured models for setup review.
@@ -67,6 +67,18 @@ export class DraftLists {
     if (card) this.#cards = this.#cards.some(item => item.id === id)
       ? this.#cards.map(item => item.id === id ? card : item) : [card, ...this.#cards];
     return this.view;
+  }
+
+  async refreshSummary(id: string, signal: AbortSignal,
+    update: (patch: Partial<DraftListsView> & {listStatus?: typeof DRAFT_LIST_STATUS.unavailable}) => void,
+    revoked: (cause: unknown) => void): Promise<void> {
+    try {
+      const lists = await this.refreshDraft(id, signal);
+      if (!signal.aborted) update(lists);
+    } catch (cause) {
+      if (signal.aborted) return;
+      if (losesAccess(cause)) revoked(cause); else update({listStatus: DRAFT_LIST_STATUS.unavailable});
+    }
   }
 
   async open(signal: AbortSignal): Promise<DraftListsView> {

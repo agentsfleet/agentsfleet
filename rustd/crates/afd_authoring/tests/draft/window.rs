@@ -80,6 +80,7 @@ pub(super) async fn send(
     text: &str,
 ) -> afd_authoring::Result<Accepted> {
     let request = SendMessage {
+        save: false,
         message: text.into(),
         operation_id: key.clone(),
     };

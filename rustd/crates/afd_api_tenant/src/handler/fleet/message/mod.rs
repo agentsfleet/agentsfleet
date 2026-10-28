@@ -23,8 +23,9 @@ use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT}
 use afd_validate::Limit;
 use afd_wire::event::ThreadResponse;
 use axum::Json;
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{Path, Query, RawQuery, State, rejection::QueryRejection};
 use axum::response::{IntoResponse as _, Response};
+use serde::Deserialize;
 
 use crate::auth::WorkspaceContext;
 use crate::handler::event::expanded;
@@ -42,6 +43,24 @@ const QUERY_STARTING_AFTER: &str = "starting_after";
 
 /// The `limit` parameter's name.
 const QUERY_LIMIT: &str = "limit";
+
+const DETAIL_EVENT_TYPE: &str = "event_type must contain 1 to 64 bytes without null characters";
+
+#[derive(Deserialize, garde::Validate)]
+pub(crate) struct EventFilter {
+    #[garde(inner(length(bytes, min = 1, max = 64), custom(afd_validate::nul_free)))]
+    event_type: Option<String>,
+}
+
+fn event_type(
+    asked: Result<Query<EventFilter>, QueryRejection>,
+) -> Result<Option<String>, Refusal> {
+    let Query(asked) = asked.map_err(|_invalid| Refusal::malformed(DETAIL_EVENT_TYPE))?;
+    let asked = garde::Unvalidated::new(asked)
+        .validate()
+        .map_err(|_invalid| Refusal::malformed(DETAIL_EVENT_TYPE))?;
+    Ok(asked.event_type.clone())
+}
 
 /// The refusal a page size outside the served band earns.
 const DETAIL_LIMIT: &str = "limit must be between 1 and 25";
@@ -93,6 +112,7 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         afd_http::openapi::path::Fleet,
         ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged."),
         ("limit" = Option<String>, Query),
+        ("event_type" = Option<String>, Query, description = "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued admissions. Omit for the mixed thread, including queued messages."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ThreadResponse),
@@ -109,16 +129,24 @@ pub(crate) async fn thread<D: Services>(
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
     RawQuery(query): RawQuery,
+    filter: Result<Query<EventFilter>, QueryRejection>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let query = query.unwrap_or_default();
     let limit = requested_limit(parameter(&query, QUERY_LIMIT))?;
     let after = parse_cursor(parameter(&query, QUERY_STARTING_AFTER))?;
+    let event_type = event_type(filter)?;
 
     // One row MORE than will be served, so has-more is a fact and not a guess.
     let fetched = services
         .events()
-        .thread_for_fleet(&owned.workspace, &fleet, after.as_ref(), limit + 1)
+        .thread_for_fleet(
+            &owned.workspace,
+            &fleet,
+            after.as_ref(),
+            limit + 1,
+            event_type.as_deref(),
+        )
         .await
         .map_err(Refusal::at(EVENT_THREAD))?;
 

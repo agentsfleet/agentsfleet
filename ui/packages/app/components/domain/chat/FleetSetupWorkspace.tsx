@@ -1,125 +1,42 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import nextDynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
-import { XIcon } from "lucide-react";
-import { Button, Section, Skeleton, cn } from "@agentsfleet/design-system";
-import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
+import type { ReactNode } from "react";
+import { createContext, useContext, useMemo } from "react";
+import Link from "next/link";
+import { Button } from "@agentsfleet/design-system";
 import { useCurrentUser } from "@/lib/auth/client";
 import { FleetStreamProvider } from "../FleetStreamProvider";
 import { useFleetModel, type FleetModelOwner } from "./useFleetModel";
 
-type Editor = {
-  open: (trigger: HTMLButtonElement) => void; close: () => void; enabled: boolean; editing: boolean;
-  headerTrigger: RefObject<HTMLButtonElement | null>;
-  saveTarget: HTMLSpanElement | null; setSaveTarget: (target: HTMLSpanElement | null) => void;
-  saveReady: boolean; setSaveReady: (ready: boolean) => void;
-  modelOwner: FleetModelOwner | null; modelChanging: boolean; modelState: ReturnType<typeof useFleetModel>;
-};
-const SetupContext = createContext<Editor | null>(null);
+type SetupLocation = {workspace: string; fleet: string; revision: string};
+type WorkspaceProps = SetupLocation & {account: string | null; model?: string; viewer: string | null; header: ReactNode; children: ReactNode};
+type FleetSetupState = {location: SetupLocation; modelOwner: FleetModelOwner | null; modelChanging: boolean; modelState: ReturnType<typeof useFleetModel>};
+const SetupContext = createContext<FleetSetupState | null>(null);
 export const useFleetSetup = () => useContext(SetupContext);
-const SetupChat = nextDynamic(() => import("./WorkspaceChat").then(module => module.WorkspaceChat), {
-  ssr: false, loading: () => <output className="contents" aria-label="Opening setup chat"><Skeleton className="min-h-0 flex-1" /></output>,
-});
 
-/** Server-rendered fleet content stays mounted while its private editor opens. */
-export function FleetSetupWorkspace({account, workspace, fleet, revision, model = "platform-default", viewer, header, children}: {
-  account: string | null; workspace: string; fleet: string; revision: string; model?: string; viewer: string | null; header: ReactNode; children: ReactNode;
-}) {
+export function FleetSetupWorkspace({account, workspace, fleet, revision, model = "platform-default", viewer, header, children}: WorkspaceProps) {
   const {userId, isLoaded} = useCurrentUser();
-  if (isLoaded && !userId) return null;
-  // Verified server identity keeps hydration from resetting an already open editor.
   const subject = isLoaded ? userId : viewer;
-  return <FleetStreamProvider key={`${account}:${workspace}:${subject}`}>
-    <FleetWorkspace account={account} workspace={workspace} fleet={fleet} revision={revision} model={model} subject={subject} header={header}>{children}</FleetWorkspace>
-  </FleetStreamProvider>;
-}
-
-function FleetWorkspace({account, workspace, fleet, revision, model, subject, header, children}: {
-  account: string | null; workspace: string; fleet: string; revision: string; model: string; subject: string | null; header: ReactNode; children: ReactNode;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [opened, setOpened] = useState(false);
-  const [saveTarget, setSaveTarget] = useState<HTMLSpanElement | null>(null);
-  const [saveReady, setSaveReady] = useState(false);
   const modelOwner = useMemo(() => account && subject ? {account, workspace, subject, fleet, revision, model} : null,
     [account, workspace, subject, fleet, revision, model]);
   const modelState = useFleetModel(modelOwner);
-  const modelChanging = modelState.saving || modelState.pending;
-  const trigger = useRef<HTMLButtonElement>(null);
-  const headerTrigger = useRef<HTMLButtonElement>(null);
-  const wasEditing = useRef(false);
-  const router = useRouter();
-  const open = useCallback((button: HTMLButtonElement) => {trigger.current = button; setOpened(true); setEditing(true);}, []);
-  const close = useCallback(() => setEditing(false), []);
-  useLayoutEffect(() => {
-    // The conversation must be visible before its inline opener can take focus.
-    if (wasEditing.current && !editing) {
-      const opener = trigger.current?.isConnected ? trigger.current : headerTrigger.current;
-      opener?.focus({preventScroll: true});
-    }
-    wasEditing.current = editing;
-  }, [editing]);
-  const saved = useCallback(() => {close(); setOpened(false); router.refresh();}, [close, router]);
-  const editor = useMemo(() => ({open, close, editing, enabled: Boolean(account) && !modelChanging, headerTrigger,
-    saveTarget, setSaveTarget, saveReady, setSaveReady, modelChanging, modelOwner, modelState}),
-  [open, close, account, editing, saveTarget, saveReady, modelChanging, modelOwner, modelState]);
-  return <SetupContext value={editor}>
-    {header}
-    <div className="relative flex min-h-0 flex-1 overflow-clip">
-      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", editing && "hidden md:flex")}>{children}</div>
-      {opened && account ? <SetupPanel hidden={!editing} account={account} workspace={workspace} fleet={fleet} revision={revision} close={close} saved={saved} /> : null}
-    </div>
-  </SetupContext>;
+  if (isLoaded && !userId) return null;
+  return <FleetStreamProvider key={`${account}:${workspace}:${subject}`}>
+    <SetupContext value={{location: {workspace, fleet, revision}, modelOwner, modelState, modelChanging: modelState.saving || modelState.pending}}>
+      {header}{children}
+    </SetupContext>
+  </FleetStreamProvider>;
 }
 
-export function EditSetupButton({ inline = false }: { inline?: boolean }) {
-  const editor = useContext(SetupContext);
-  if (!inline && editor?.editing) return <span className="inline-flex" aria-label="Save fleet setup">
-    <span ref={editor.setSaveTarget} className="contents" />
-    {editor.saveReady ? null : <Button size="sm" disabled>Save changes</Button>}
-  </span>;
-  return <Button ref={inline ? undefined : editor?.headerTrigger} variant={inline ? "link" : "outline"} size={inline ? "eyebrow" : "sm"} disabled={!editor?.enabled}
-    className={inline ? "h-auto px-0 align-baseline text-eyebrow" : undefined}
-    aria-label={inline ? "Edit fleet setup" : undefined}
-    title={editor?.enabled ? undefined : "Workspace access must be available to edit setup."}
-    aria-expanded={editor?.editing ?? false} onClick={(event) => editor?.open(event.currentTarget)}>Edit setup</Button>;
-}
-
-/** Render the same validated save action in the fleet header while editing. */
-export function SetupSaveAction({ children, fallback }: { children: ReactNode; fallback: ReactNode }) {
-  const editor = useContext(SetupContext);
-  const target = editor?.saveTarget;
-  const setReady = editor?.setSaveReady;
-  useLayoutEffect(() => {
-    if (!target || !setReady) return;
-    setReady(true);
-    return () => setReady(false);
-  }, [target, setReady]);
-  if (!editor) return fallback;
-  return editor.editing && target ? createPortal(children, target) : null;
-}
-
-function SetupPanel({account, workspace, fleet, revision, close, saved, hidden}: {
-  account: string; workspace: string; fleet: string; revision: string; close: () => void; saved: () => void; hidden: boolean;
-}) {
-  const source = useMemo(() => ({kind: SOURCE_KIND.fleet, fleet_id: fleet, setup_revision: revision}), [fleet, revision]);
-  useEffect(() => {
-    if (hidden) return;
-    const escape = (event: KeyboardEvent): void => {if (event.key === "Escape" && !event.defaultPrevented) close();};
-    window.addEventListener("keydown", escape);
-    return () => window.removeEventListener("keydown", escape);
-  }, [close, hidden]);
-  return <Section asChild className={cn("ph-no-capture ph-no-record min-h-0 w-full shrink-0 flex-col border-l border-border bg-background md:max-w-form", hidden ? "hidden" : "flex")}>
-    <aside aria-label="Edit fleet setup" hidden={hidden}>
-      <div className="fleet-setup-toolbar flex min-h-11 shrink-0 items-center justify-between gap-md border-b border-border px-xl sm:px-chat-inset">
-        <div className="min-w-0"><h2 className="text-body-sm font-semibold">Edit your fleet</h2><p className="text-eyebrow text-muted-foreground">Update its instructions and settings.</p></div>
-        <Button size="icon" variant="ghost" aria-label="Close setup editor" onClick={close}><XIcon className="size-4" aria-hidden="true" /></Button>
-      </div>
-      <SetupChat account={account} workspace={workspace} source={source} onSaved={saved} />
-    </aside>
-  </Section>;
+export function EditSetupButton(props: SetupLocation | {inline: true}) {
+  const setup = useFleetSetup();
+  const inline = "inline" in props;
+  const location = inline ? setup?.location : props;
+  if (!location) return <>Edit setup</>;
+  const query = new URLSearchParams({fleet: location.fleet, setup_revision: location.revision});
+  if (setup?.modelChanging) return <Button variant={inline ? "link" : "outline"} size="sm" disabled>Edit setup</Button>;
+  return <Button variant={inline ? "link" : "outline"} size={inline ? "eyebrow" : "sm"} asChild
+    className={inline ? "h-auto px-0 align-baseline text-eyebrow" : undefined}>
+    <Link href={`/w/${location.workspace}/fleets/new?${query}`}>Edit setup</Link>
+  </Button>;
 }

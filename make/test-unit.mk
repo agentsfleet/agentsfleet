@@ -43,6 +43,7 @@ test-unit-rustd-daemon:  ## Rust unit shard: agentsfleetd, the daemon binary and
 
 test-unit-rustd-daemon-libs:  ## Rust unit shard: the daemon's library crates (afd_*)
 	@bash scripts/local-dev-test.sh
+	@bash deploy/local/bootstrap_test.sh
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-daemon-libs.log,[rustd] unit: daemon libraries,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON_LIBS)))
 

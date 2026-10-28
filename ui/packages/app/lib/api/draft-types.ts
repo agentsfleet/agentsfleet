@@ -55,6 +55,7 @@ export const DraftSchema = z.object({
 });
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
 export const MessageSchema = z.object({
+  save_requested: z.boolean().optional(), save_error_code: z.string().optional(),
   sequence: decimal, operation_id: z.uuidv7(), role: z.enum(MESSAGE_ROLE), state: z.enum(MESSAGE_STATE),
   text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
   failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string(),

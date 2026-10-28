@@ -2,7 +2,7 @@
 
 use super::{
     super::{json_body, mint, send, send_with_headers},
-    fixture::Case,
+    fixture::{Case, runtime_history},
 };
 use afd_auth::Scope;
 use axum::{Router, response::Response};
@@ -136,7 +136,10 @@ async fn a_lost_notification_keeps_the_first_run_accepted_through_reload_and_ret
         assert_eq!(resumed["id"], fleet.as_str());
         assert_eq!(resumed["start"]["state"], "accepted");
         assert_eq!(resumed["start"]["event_id"], event.as_str());
-        assert_eq!(thread(&case, &path).await, std::slice::from_ref(&event));
+        assert_eq!(
+            thread(&case, &path, &fleet).await,
+            std::slice::from_ref(&event)
+        );
         assert_eq!(
             count(&case, &resumed).await,
             1,
@@ -173,13 +176,17 @@ async fn accepted_after_reload(case: &Case, path: &str) -> String {
         .as_str()
         .expect("an accepted run keeps its event identity")
         .to_owned();
-    assert_eq!(thread(case, path).await, std::slice::from_ref(&event));
+    let fleet = reloaded["id"].as_str().expect("fleet id");
+    assert_eq!(
+        thread(case, path, fleet).await,
+        std::slice::from_ref(&event)
+    );
     assert_eq!(count(case, &reloaded).await, 1);
     event
 }
 
-/// The event IDs the fleet's message thread lists, newest first.
-async fn thread(case: &Case, path: &str) -> Vec<String> {
+/// Runtime event IDs beside the verified setup receipts, newest first.
+async fn thread(case: &Case, path: &str, fleet: &str) -> Vec<String> {
     let messages = format!("{path}/messages");
     let response = send(
         &case.router,
@@ -191,10 +198,8 @@ async fn thread(case: &Case, path: &str) -> Vec<String> {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     let listed = json_body(response).await;
-    listed["items"]
-        .as_array()
-        .expect("message page")
-        .iter()
+    runtime_history(&listed, fleet, case.base.workspace.as_str())
+        .into_iter()
         .map(|item| item["event_id"].as_str().expect("event id").to_owned())
         .collect()
 }

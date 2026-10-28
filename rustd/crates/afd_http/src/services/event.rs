@@ -79,6 +79,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         fleet: &Uuid7,
         cursor: Option<&Cursor>,
         limit: i64,
+        event_type: Option<&str>,
     ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send;
 
     /// One event, inside this workspace and fleet, bodies included.
@@ -154,8 +155,9 @@ impl WorkspaceEvents for History {
         fleet: &Uuid7,
         cursor: Option<&Cursor>,
         limit: i64,
+        event_type: Option<&str>,
     ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send {
-        Self::thread_page(self, workspace, fleet, cursor, limit)
+        Self::filtered_thread_page(self, workspace, fleet, cursor, limit, event_type)
     }
 
     fn one(

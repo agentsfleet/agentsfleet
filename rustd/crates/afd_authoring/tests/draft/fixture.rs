@@ -129,6 +129,7 @@ impl Fixture {
 
     pub(super) fn request(&self, operation: Uuid7, message: Option<&str>) -> CreateDraft {
         CreateDraft {
+            save: false,
             source: Source::Definition {
                 definition: Box::new(super::definition()),
             },

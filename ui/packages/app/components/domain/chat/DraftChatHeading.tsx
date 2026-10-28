@@ -2,68 +2,133 @@
 
 import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
-import { useRef, useState } from "react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Alert, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label } from "@agentsfleet/design-system";
 import { EllipsisIcon } from "lucide-react";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
+import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { CHAT_TITLE_LIMIT, chatTitle, firstChatRequest } from "@/lib/api/draft-summary";
 import { DefinitionEditor } from "./DefinitionEditor";
-import { FleetSetupDetails } from "./FleetSetupDetails";
-import { FleetSetupActions } from "./FleetSetupActions";
+import { PublicationActions } from "./FleetSetupActions";
 import { DraftSaveButton } from "./DraftSaveBar";
+import { EditSetupButton } from "./FleetSetupWorkspace";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 
-type Props = {client: DraftClient; view: DraftView};
-const EDIT_LABEL = "Edit instructions";
+type Props = {client: DraftClient; view: DraftView; workspace: string; fleetPage?: boolean; menuItems?: ReactNode; onDirtyChange: (dirty: boolean) => void};
+const INSTRUCTIONS = "Instructions";
+const PUBLISH = "Publish to Library";
 const ignore = (): void => undefined;
 
-export function DraftChatHeading({client, view}: Props) {
-  if (view.inaccessible) return null;
-  if (!view.draft && !view.preview) return <div className="fleet-chat-heading flex w-full shrink-0 items-center gap-sm border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
-    <div className="min-w-0 flex-1"><h2 className="text-chat-title font-semibold">New fleet</h2><p className="mt-xs text-eyebrow text-muted-foreground">Private setup</p></div>
-    <DraftSaveButton client={client} view={view} />
-  </div>;
-  return <SetupChatHeading client={client} view={view} />;
+export function DraftChatHeading(props: Props) {
+  if (props.view.inaccessible) return null;
+  return <HeadingContent {...props} />;
 }
 
-function SetupChatHeading({client, view}: Props) {
-  const [editing, setEditing] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editorDirty, setEditorDirty] = useState(false);
-  const [title, setTitle] = useState("");
-  const trigger = useRef<HTMLButtonElement>(null);
+function HeadingContent({client, view, workspace, fleetPage, menuItems, onDirtyChange}: Props) {
+  const state = useHeadingState(client, view, onDirtyChange);
   const draft = view.draft;
   const recovery = chatRecovery(view);
-  const locked = view.busy || view.pending || recovery.pending || recovery.blocked || Boolean(draft && draft.state !== DRAFT_STATE.editing);
-  const label = draft ? chatTitle(draft.title, draft.id, firstChatRequest(view.messages) || draft.candidate?.definition.description) : "New fleet";
-  const canEdit = Boolean(draft?.candidate || view.preview);
-  return <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-    <div className="fleet-chat-heading flex w-full shrink-0 flex-wrap items-center gap-sm border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
-    {editing && draft ? <><Label htmlFor={`${draft.id}-title`} className="sr-only">Chat name</Label>
-      <Input id={`${draft.id}-title`} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={CHAT_TITLE_LIMIT} className="min-w-0 flex-1" />
-      <Button size="sm" disabled={locked || !title.trim()} onClick={() => {void client.rename(title.trim()).then(() => setEditing(false)).catch(ignore);}}>Save name</Button>
-      <Button variant="ghost" size="sm" disabled={locked} onClick={() => setEditing(false)}>Cancel</Button></>
-      : <div className="min-w-0 flex-1"><h2 className="truncate text-chat-title font-semibold">{label}</h2><p className="mt-xs text-eyebrow text-muted-foreground">{draft ? "Unfinished setup · Private to you" : "Private setup"}</p></div>}
-    {draft?.review?.effective.target_setup_revision === undefined ? <DraftSaveButton client={client} view={view} /> : null}
-    <DropdownMenu><DropdownMenuTrigger asChild><Button ref={trigger} variant="ghost" size="icon" aria-label="Setup chat actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onCloseAutoFocus={(event) => {if (editorOpen) event.preventDefault();}}>
-        <DropdownMenuItem disabled={locked || !canEdit} onSelect={() => setEditorOpen(true)}>{EDIT_LABEL}</DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={locked || !draft} onSelect={() => {setTitle(label); setEditing(true);}}>Rename chat</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+  const locked = view.busy || view.pending || recovery.pending || recovery.blocked
+    || Boolean(draft && draft.state !== DRAFT_STATE.editing && !savedDraft(view));
+  const label = view.fleet?.name ?? view.preview?.instanceName ?? (draft ? chatTitle(draft.title, draft.id, firstChatRequest(view.messages) || draft.candidate?.definition.description) : "New fleet");
+  const canEdit = Boolean(draft?.candidate || view.preview || view.fleet?.definition);
+  return <>
+    <div className="fleet-chat-heading flex w-full shrink-0 flex-wrap items-center gap-md border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
+      <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
+      {view.fleet ? fleetPage ? view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
+        ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} />
+        : <OpenCurrentFleet />
+        : <Button asChild size="sm" variant="ghost"><Link href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet</Link></Button> : null}
+      <DraftSaveButton client={client} view={view} dirty={state.dirty} />
+      {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}
     </div>
-    <DialogContent className="ph-no-capture ph-no-record bottom-0 left-auto right-0 top-0 h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 rounded-none sm:max-w-form"
-      onCloseAutoFocus={(event) => {event.preventDefault(); trigger.current?.focus();}}>
-      <DialogHeader><DialogTitle>{EDIT_LABEL}</DialogTitle><DialogDescription>Update the proposed instructions, then return to chat and save the fleet.</DialogDescription></DialogHeader>
-      {view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
-      {view.notice ? <output className="text-label text-muted-foreground">{view.notice}</output> : null}
-      <DefinitionEditor client={client} view={view} onDirtyChange={setEditorDirty} onUpdated={() => setEditorOpen(false)} />
-      {draft?.review ? <Accordion type="single" collapsible><AccordionItem value="review"><AccordionTrigger>Review and run options</AccordionTrigger>
-        <AccordionContent><FleetSetupDetails review={draft.review} /><FleetSetupActions client={client} view={view} setup={draft.review} dirty={editorDirty} onSaved={() => setEditorOpen(false)} /></AccordionContent>
-      </AccordionItem></Accordion> : null}
-      <DialogFooter><Button variant="ghost" onClick={() => setEditorOpen(false)}>Cancel editing</Button></DialogFooter>
+    <InstructionsDialog client={client} view={view} state={state} />
+    <Dialog open={state.publishing} onOpenChange={state.setPublishing}>
+      <DialogContent className="ph-no-capture ph-no-record"><DialogHeader><DialogTitle>{PUBLISH}</DialogTitle><DialogDescription>Only the saved setup is published when you confirm.</DialogDescription></DialogHeader>
+        {view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
+        {view.notice ? <output className="text-label text-muted-foreground">{view.notice}</output> : null}
+        {draft?.review ? <PublicationActions client={client} view={view} setup={draft.review} dirty={state.dirty} /> : null}
+      </DialogContent>
+    </Dialog>
+  </>;
+}
+
+function OpenCurrentFleet() {
+  const router = useRouter();
+  return <Button size="sm" variant="ghost" onClick={() => router.refresh()}>Open fleet</Button>;
+}
+
+type HeadingState = ReturnType<typeof useHeadingState>;
+
+function useHeadingState(client: DraftClient, view: DraftView, onDirtyChange: Props["onDirtyChange"]) {
+  const titleId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [title, setTitle] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const empty = !view.draft && !view.preview && !view.fleet;
+  useEffect(() => {
+    if (empty) {setRenaming(false); setEditorOpen(false); setPublishing(false); setDirty(false); onDirtyChange(false);}
+  }, [empty, onDirtyChange]);
+  const changed = (value: boolean): void => {setDirty(value); onDirtyChange(value);};
+  const closeEditor = (): void => {
+    if (dirty && !window.confirm("Discard your unsaved instruction changes?")) return;
+    setEditorOpen(false);
+    changed(false);
+  };
+  const finishEditor = (): void => {changed(false); setEditorOpen(false);};
+  const prepare = async (publish: boolean): Promise<void> => {
+    if (savedDraft(client.getSnapshot())) await client.refreshSetup();
+    if (publish) {
+      const current = client.getSnapshot();
+      if (!current.draft && current.preview) {
+        await client.edit({definition: current.preview.definition, instanceName: current.preview.instanceName});
+        await client.refreshSetup();
+      }
+      setPublishing(true);
+    } else setEditorOpen(true);
+  };
+  return {titleId, trigger, renaming, setRenaming, title, setTitle, editorOpen, publishing, setPublishing, dirty, changed, closeEditor, finishEditor, prepare};
+}
+
+function HeadingTitle({client, view, state, label, locked, primary}: {client: DraftClient; view: DraftView; state: HeadingState; label: string; locked: boolean; primary: boolean}) {
+  const Title = primary ? "h1" : "h2";
+  if (state.renaming && view.draft) return <>
+    <Title className="sr-only">{label}</Title>
+    <Label htmlFor={state.titleId} className="sr-only">Chat name</Label>
+    <Input id={state.titleId} value={state.title} onChange={event => state.setTitle(event.target.value)} maxLength={CHAT_TITLE_LIMIT} className="min-w-0 flex-1" />
+    <Button size="sm" disabled={locked || !state.title.trim()} onClick={() => {void client.rename(state.title.trim()).then(() => state.setRenaming(false)).catch(ignore);}}>Save name</Button>
+    <Button variant="ghost" size="sm" disabled={locked} onClick={() => state.setRenaming(false)}>Cancel</Button>
+  </>;
+  return <div className="min-w-0 flex-1"><Title className="truncate text-chat-title font-semibold">{label}</Title>
+    <p className="mt-xs text-eyebrow text-muted-foreground">Fleet setup{view.fleet ? ` · v${view.fleet.setup_revision}` : ""}</p></div>;
+}
+
+function HeadingMenu({state, label, canEdit, locked, canRename, children}: {state: HeadingState; label: string; canEdit: boolean; locked: boolean; canRename: boolean; children?: ReactNode}) {
+  return <DropdownMenu><DropdownMenuTrigger asChild><Button ref={state.trigger} variant="ghost" size="icon-compact" aria-label="Setup chat actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      <DropdownMenuItem disabled={locked || !canEdit} onSelect={() => {void state.prepare(false).catch(ignore);}}>{INSTRUCTIONS}</DropdownMenuItem>
+      <DropdownMenuItem disabled={locked || !canEdit} onSelect={() => {void state.prepare(true).catch(ignore);}}>{PUBLISH}</DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem disabled={locked || !canRename} onSelect={() => {state.setTitle(label); state.setRenaming(true);}}>Rename chat</DropdownMenuItem>
+      {children}
+    </DropdownMenuContent>
+  </DropdownMenu>;
+}
+
+function InstructionsDialog({client, view, state}: {client: DraftClient; view: DraftView; state: HeadingState}) {
+  return <Dialog open={state.editorOpen} onOpenChange={state.closeEditor}>
+    <DialogContent className="ph-no-capture ph-no-record bottom-0 left-auto right-0 top-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col rounded-none sm:max-w-form"
+      onCloseAutoFocus={event => {event.preventDefault(); state.trigger.current?.focus();}}>
+      <DialogHeader><DialogTitle>{INSTRUCTIONS}</DialogTitle><DialogDescription>Edit the instructions, then save your changes.</DialogDescription></DialogHeader>
+      <DefinitionEditor client={client} view={view} onDirtyChange={state.changed} onUpdated={() => {state.finishEditor();}}
+        onCancel={() => {state.finishEditor();}} />
     </DialogContent>
   </Dialog>;
 }

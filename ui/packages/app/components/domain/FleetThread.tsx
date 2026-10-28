@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/events/fleet-activity";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -31,6 +32,7 @@ import { FleetScopeProvider } from "./FleetScope";
 export type FleetThreadProps = {
   modelLabel?: string;
   setupRevision?: string;
+  setup?: ReactNode;
   workspaceId: string;
   fleetId: string;
   /** The console's own fleet — the name a fleet reply is labelled with. */
@@ -67,32 +69,42 @@ export type FleetThreadProps = {
  * folds; any other sender's reply, another tab's included, leaves it off
  * (`reportsOwnRun`).
  */
-export function FleetThread({
-  workspaceId,
-  fleetId,
-  senderLabel,
-  initial,
-  viewer,
-  senderNames, modelLabel, setupRevision,
-}: FleetThreadProps) {
-  const stream = useFleetEventStream(workspaceId, fleetId, initial);
-  // A connection cue floats above the transcript without changing its height.
-  // Removing a row here after the arrival animation shrank the scroll range
-  // mid-send, visibly pulling the conversation backwards before it re-pinned.
-  const arrived = useArrivalCue(stream.connectionStatus);
+export function FleetThread(props: FleetThreadProps) {
+  const {stream, arrived, names, ledger, delivery, runtime, setupEventId} = useThreadRuntime(props);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
-  // Every send this fleet has not heard back on, from submit to the 202 — and
-  // what Resend and the notice work from. Module state with a storage mirror,
-  // so it outlives this component and this document.
-  // Keyed by the signed-in user as well, so the next person on a shared
-  // browser never sees, or resends as themselves, what this one typed.
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
+        <SenderLabelProvider senderLabel={props.senderLabel}>
+          <SenderNamesProvider names={names}>
+            <DashboardPanel id="fleet-chat-transcript" padding="none"
+              className="relative flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background">
+              {settledLive ? null : <div data-testid="fleet-chat-header"
+                className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
+                <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
+              </div>}
+              <FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
+                eventsCount={stream.events.length} connectionStatus={stream.connectionStatus}
+                onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
+                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} />
+            </DashboardPanel>
+          </SenderNamesProvider>
+        </SenderLabelProvider>
+      </FleetScopeProvider>
+    </AssistantRuntimeProvider>
+  );
+}
+
+function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, setupRevision}: FleetThreadProps) {
+  const stream = useFleetEventStream(workspaceId, fleetId, initial);
+  // Connection chrome disappears after its arrival cue settles.
+  const arrived = useArrivalCue(stream.connectionStatus);
+  // The signed-in identity scopes the durable pending-send ledger.
   const { userId } = useCurrentUser();
   const subject = userId ?? viewer;
   const names = useMemo(() => senderNamesFrom(subject, senderNames), [subject, senderNames]);
   const ledger = useFleetPendingSends({ subject, workspaceId, fleetId });
-  // Pass the registry methods (each `useCallback([fleetId])`-stable), not
-  // the whole `stream` object — `stream` is a fresh reference on every SSE
-  // frame, so listing it would rebuild `onNew` per frame for no benefit.
+  // Stable registry methods keep delivery independent of streamed frames.
   const delivery = useMessageDelivery({
     workspaceId,
     fleetId,
@@ -102,21 +114,17 @@ export function FleetThread({
     discardOptimistic: stream.discardOptimistic,
     writers: ledger.writers,
   });
-  // Runs of identical activity render as one expandable row. Grouping is a
-  // pure view over the array the stream already ordered — it never reorders,
-  // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
-  // The runtime compares its adapter by identity: a fresh literal on a render
-  // that changed no message (a connection cue, a ledger entry) re-ran every
-  // assistant-ui selector in the thread for nothing.
-  // The steer rides assistant-ui's queue, so a run can be reported as one
-  // without closing the composer; the queue reaches the runtime through a ref
-  // because the runtime is built from the adapter that holds the queue.
+  const setupEventId = useMemo(() => stream.events.findLast(event => {
+    if (event.status !== FLEET_ACTIVITY.status) return false;
+    const activity = readFleetActivity(event.custom?.requestJson ?? "");
+    return activity
+      && activity.kind === ACTIVITY_KIND.setupSaved
+      && activity.revision === setupRevision;
+  })?.id, [stream.events, setupRevision]);
+  // Queueing permits another send while this viewer's newest reply runs.
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const queue = useFleetSteerQueue(delivery.onNew, runtimeRef);
-  // The newest turn only: assistant-ui anchors whatever turn is last while the
-  // thread runs, so a teammate's turn landing under the viewer's own running
-  // reply would otherwise be pinned to the top and pull the viewer off theirs.
   const isRunning = useMemo(() => reportsOwnRun(stream.events, subject), [stream.events, subject]);
   const adapter = useMemo(
     () => ({ isRunning, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew, queue }),
@@ -127,40 +135,5 @@ export function FleetThread({
     runtimeRef.current = runtime;
     return () => { runtimeRef.current = null; };
   }, [runtime]);
-  return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <FleetScopeProvider workspaceId={workspaceId} fleetId={fleetId}>
-        <SenderLabelProvider senderLabel={senderLabel}>
-          <SenderNamesProvider names={names}>
-            <DashboardPanel
-              id="fleet-chat-transcript"
-              padding="none"
-              className="relative flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background"
-            >
-              {/* Connection changes occupy no transcript space. Offline also
-                exposes the retry notice beside the composer. */}
-              {settledLive ? null : (
-                <div
-                  data-testid="fleet-chat-header"
-                  className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm"
-                >
-                  <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
-                </div>
-              )}
-              <FleetThreadViewport modelLabel={modelLabel} setupRevision={setupRevision}
-                eventsCount={stream.events.length}
-                connectionStatus={stream.connectionStatus}
-                onRetry={stream.retryConnection}
-                pending={ledger.pending}
-                onResend={delivery.resend}
-                onDismiss={ledger.writers.dismiss}
-                onRestored={delivery.noteRestored}
-                onDraft={delivery.noteDraft}
-              />
-            </DashboardPanel>
-          </SenderNamesProvider>
-        </SenderLabelProvider>
-      </FleetScopeProvider>
-    </AssistantRuntimeProvider>
-  );
+  return {stream, arrived, names, ledger, delivery, runtime, setupEventId};
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
-import { CELL_STATE, toolCopy, verbFor } from "./tool-call-copy";
+import { CELL_STATE, toolCopy } from "./tool-call-copy";
 import { patchDiff } from "./tool-call-copy-runner";
 import { DIFF_ROW } from "./tool-call-diff";
 import { ARGS_NOT_RECORDED, PLAN_STATUS, TOOL_BODY, TOOL_NAME } from "./tool-call-shape";
@@ -12,7 +12,7 @@ import { ARGS_LEAF_MAX_BYTES, CLIP_MARK } from "./tool-call-text";
 
 function header(name: string, args: ToolArgs | undefined, state: (typeof CELL_STATE)[keyof typeof CELL_STATE]): string {
   const copy = toolCopy(name, args);
-  return `${verbFor(copy.verbs, state)} ${copy.target}`.trim();
+  return `${(state === CELL_STATE.INTERRUPTED ? "Interrupted" : state === CELL_STATE.RUNNING ? copy.verbs.running : copy.verbs.done)} ${copy.target}`.trim();
 }
 
 const PATCH = [

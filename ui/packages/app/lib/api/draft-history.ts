@@ -22,6 +22,11 @@ export class DraftHistory {
   get truncated(): boolean { return this.#truncated; }
   clear(): void { this.#rows.clear(); this.#cursor = undefined; this.#highest = "0"; this.#truncated = false; this.#reading = undefined; }
 
+  seed(messages: readonly Message[], cursor: string | undefined, truncated: boolean): void {
+    this.clear(); this.#cursor = cursor; this.#truncated = truncated;
+    for (const message of messages) this.#remember(message);
+  }
+
   /** Queue one fresh read after an outstanding read; concurrent waiters share that successor. */
   async synchronize(path: string, signal: AbortSignal): Promise<DraftRead> {
     const previous = this.#reading;

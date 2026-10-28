@@ -18,12 +18,12 @@ const MEMBERSHIP: &str = "\
 INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
 VALUES ($1::uuid,$2::uuid,$3::uuid,'member',now())";
 
-struct Member {
-    id: Uuid7,
-    token: String,
+pub(super) struct Member {
+    pub(super) id: Uuid7,
+    pub(super) token: String,
 }
 
-async fn member(f: &mut Fixture) -> Member {
+pub(super) async fn member(f: &mut Fixture) -> Member {
     let (tenant, id) = (mint(), mint());
     f.own_tenant(&tenant);
     let token = format!("agt_t{}{}", mint(), mint()).replace('-', "");
@@ -59,7 +59,7 @@ async fn member(f: &mut Fixture) -> Member {
 }
 
 /// One router serving both people, each with every scope.
-fn router(f: &Fixture, member: &Member) -> Router {
+pub(super) fn router(f: &Fixture, member: &Member) -> Router {
     let services = f.services(&Scope::ALL);
     let _granted = services.capabilities().clone().with(
         &Subject::new(member.id.as_str()).expect("member subject"),

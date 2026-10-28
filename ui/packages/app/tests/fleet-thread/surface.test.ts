@@ -1,5 +1,5 @@
 import { ev, mockStream, renderThread, renderThreadWithInitial, routerRefreshMock, serverEvent, threadElement } from "./harness";
-import { cloneElement } from "react";
+import { cloneElement, createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/FleetThread";
@@ -17,11 +17,21 @@ describe("FleetThread — empty state", () => {
 });
 
 describe("FleetThread — header chrome", () => {
+  it("keeps saved and ready receipts distinct when readiness is attached to the saved revision", () => {
+    mockStream(["setup_saved", "setup_ready"].map((kind, index) => ev({id: kind, role: "system", actor: "system",
+      status: "recorded", text: kind === "setup_saved" ? "Save done v3" : "Setup done · v3", createdAt: new Date(Date.UTC(2026, 4, 15, 9, index)),
+      custom: {requestJson: JSON.stringify({kind, revision: "3"})}})));
+    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Save done v3")}));
+    expect(screen.getAllByText("Save done v3")).toHaveLength(1);
+    expect(screen.getByText("Setup done · v3")).toBeTruthy();
+  });
   it("shows the saved setup revision without treating it as a new run", () => {
     mockStream([]);
-    render(cloneElement(threadElement(), {setupRevision: "3"}));
-    expect(screen.getByText("Saved v3")).toBeTruthy();
-    expect(screen.getByText("Use Edit setup to change this fleet’s instructions, model, tools or repositories.")).toBeTruthy();
+    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Setup done · v3")}));
+    const setup = screen.getByRole("heading", {name: "Setup done · v3"});
+    expect(screen.getByRole("log").contains(setup)).toBe(true);
+    expect(screen.queryByText("Saved v3")).toBeNull();
+    expect(screen.queryByText("New runs use this setup. Edit setup to change it.")).toBeNull();
     expect(screen.getByPlaceholderText(/message your fleet/i)).toHaveProperty("disabled", false);
     expect(routerRefreshMock).not.toHaveBeenCalled();
   });

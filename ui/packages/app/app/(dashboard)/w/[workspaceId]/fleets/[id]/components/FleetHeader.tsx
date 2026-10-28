@@ -6,21 +6,18 @@ import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
 import { EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
-
-const LIFECYCLE_ACTION_STATUSES = new Set<string>([
-  AGENTSFLEET_STATUS.ACTIVE,
-  AGENTSFLEET_STATUS.PAUSED,
-  AGENTSFLEET_STATUS.STOPPED,
-]);
+import { MemoryMenu } from "./MemoryMenu";
 
 export function FleetHeader({
   workspaceId,
   fleet,
   exhaustedAt,
+  canGrant = false,
 }: {
   workspaceId: string;
   fleet: FleetDetail;
   exhaustedAt?: string | null;
+  canGrant?: boolean;
 }) {
   return (
     <div className="fleet-chat-heading flex shrink-0 items-center justify-between gap-md px-xl pb-sm pt-5 sm:px-chat-inset">
@@ -35,25 +32,22 @@ export function FleetHeader({
         {exhaustedAt !== undefined ? (
           <ExhaustionBadge exhaustedAt={exhaustedAt} />
         ) : null}
-        <EditSetupButton />
-        {fleet.status === AGENTSFLEET_STATUS.INSTALLING ? (
-          <Badge variant="cyan" aria-label="Fleet status: installing">
-            Installing
-          </Badge>
-        ) : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
+        <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} />
+        {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
           <FleetConfig
             workspaceId={workspaceId}
             fleetId={fleet.id}
             fleetName={fleet.name}
             etag={fleet.etag}
           />
-        ) : LIFECYCLE_ACTION_STATUSES.has(fleet.status) ? (
-          <KillSwitch workspaceId={workspaceId} fleet={fleet} />
         ) : (
           <Badge aria-label={`Fleet status: ${fleet.status}`}>
             {fleet.status}
           </Badge>
         )}
+        <KillSwitch workspaceId={workspaceId} fleet={fleet}>
+          <MemoryMenu workspaceId={workspaceId} fleetId={fleet.id} access={fleet.memory_access} canGrant={canGrant} />
+        </KillSwitch>
       </div>
     </div>
   );

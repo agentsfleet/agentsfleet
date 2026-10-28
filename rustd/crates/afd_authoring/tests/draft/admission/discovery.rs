@@ -34,6 +34,7 @@ async fn should_discover_two_queued_drafts_when_stopped_history_grows() {
                     f.access(),
                     &draft.id,
                     SendMessage {
+                        save: false,
                         message: "Fresh queued work".into(),
                         operation_id: mint(),
                     },

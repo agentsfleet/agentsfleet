@@ -130,6 +130,7 @@ impl Directory {
 #[derive(Debug, Clone)]
 pub struct Vault {
     directory: Directory,
+    activity_streams: Option<afd_dragonfly::FleetStreams>,
     kek: Arc<Kek>,
     /// Draws the per-row Data Encryption Key and both nonces.
     sealer: Sealer,
@@ -149,10 +150,31 @@ impl Vault {
     pub fn new(database: Db, kek: Arc<Kek>, entropy: Entropy) -> Self {
         Self {
             directory: Directory::new(database),
+            activity_streams: None,
             kek,
             sealer: Sealer::new(),
             entropy,
         }
+    }
+
+    /// Enables best-effort history notifications for this vault's writes.
+    #[must_use]
+    pub fn with_activity_streams(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+        self.activity_streams = Some(streams);
+        self
+    }
+
+    /// Commits a vault mutation and announces its receipts after releasing the connection.
+    ///
+    /// # Errors
+    /// Returns the commit refusal without publishing uncommitted history.
+    pub async fn commit_activity(
+        &self,
+        transaction: sqlx::Transaction<'static, sqlx::Postgres>,
+        announcement: afd_events::activity::Announcement,
+    ) -> Result<(), sqlx::Error> {
+        afd_events::activity::commit(transaction, announcement, self.activity_streams.as_ref())
+            .await
     }
 
     /// The key-less half — the list, and the delete.

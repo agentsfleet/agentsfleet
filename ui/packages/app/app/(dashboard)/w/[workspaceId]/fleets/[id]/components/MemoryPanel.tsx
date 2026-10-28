@@ -1,29 +1,22 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Badge,
   Button,
   Card,
   ConfirmDialog,
-  DashboardRow,
-  DashboardRowGroup,
-  DashboardPanelTitle,
   EmptyState,
-  Label,
-  EYEBROW_CLASS,
   List,
   ListItem,
-  Switch,
   Section,
-  cn,
   Time,
 } from "@agentsfleet/design-system";
 import { BrainIcon } from "lucide-react";
 import { byInstant } from "@/lib/api/decode";
-import type { MemoryAccess, MemoryEntry } from "@/lib/types";
-import { forgetMemoryAction, setMemoryAccessAction } from "../../actions";
+import type { MemoryEntry } from "@/lib/types";
+import { forgetMemoryAction } from "../../actions";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
 import { presentErrorString } from "@/lib/errors";
@@ -44,14 +37,8 @@ import {
 // leaves its list unchanged rather than treating it as a hard failure (§5).
 const NOT_FOUND = 404;
 
-export const MEMORY_SHARED_TITLE = "Shared memory";
-export const MEMORY_ACCESS_READ_LABEL = "Use shared memory";
-export const MEMORY_ACCESS_READ_DESCRIPTION = "See what other fleets in this workspace have shared.";
-export const MEMORY_ACCESS_PUBLISH_LABEL = "Share this fleet's memory";
-export const MEMORY_ACCESS_PUBLISH_DESCRIPTION = "Let this fleet share what it learns with other fleets in this workspace.";
 export const MEMORY_SHARED_LABEL = "shared";
 export const MEMORY_SHARED_BY_OTHER = "from another fleet";
-const MEMORY_ACCESS_ACTION = "change shared memory access";
 const VISIBILITY_WORKSPACE = "workspace";
 
 function writtenBy(entry: MemoryEntry, fleetId: string): boolean {
@@ -62,13 +49,9 @@ type Props = {
   workspaceId: string;
   fleetId: string;
   entries: MemoryEntry[] | null;
-  /** The fleet's grants; `null` when the daemon sent none. */
-  access?: MemoryAccess | null;
-  /** Whether the viewer holds `fleet:write`, which the access route takes. */
-  canGrant?: boolean;
 };
 
-export default function MemoryPanel({ workspaceId, fleetId, entries: initial, access = null, canGrant = false }: Props) {
+export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: Props) {
   const hiddenVersions = useRef(new Map<string, string>());
   const [entries, setEntries] = useState<MemoryEntry[]>(initial ?? []);
   const [pendingEntry, setPendingEntry] = useState<MemoryEntry | null>(null);
@@ -106,10 +89,6 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
 
   return (
     <Section className="gap-xl" aria-label={MEMORY_PANEL_TITLE}>
-      <DashboardPanelTitle>{MEMORY_PANEL_TITLE}</DashboardPanelTitle>
-      {access !== null && canGrant ? (
-        <AccessSwitches workspaceId={workspaceId} fleetId={fleetId} initial={access} />
-      ) : null}
       {initial === null ? <Alert variant="warning">{MEMORY_FETCH_UNAVAILABLE}</Alert> : null}
       {notice ? <Alert variant="warning">{notice}</Alert> : null}
       {initial === null ? null : entries.length === 0 ? (
@@ -133,91 +112,6 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
         onConfirm={pendingEntry ? () => forget(pendingEntry) : undefined}
       />
     </Section>
-  );
-}
-
-// The two grants as named switches. Each flip sends only the grant it changes,
-// and the switch shows the route's answer rather than its own guess.
-function AccessSwitches({ workspaceId, fleetId, initial }: { workspaceId: string; fleetId: string; initial: MemoryAccess }) {
-  const [access, setAccess] = useState<MemoryAccess>(initial);
-  const [saving, setSaving] = useState(false);
-  const inFlight = useRef(false);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  async function flip(grant: keyof MemoryAccess) {
-    // One change at a time: a second flip would send a grant computed from an
-    // access the first has not answered yet. The switches stay focusable while
-    // saving (aria-disabled), so a keyboard user keeps their place.
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setSaving(true);
-    setNotice(null);
-    try {
-      const result = await setMemoryAccessAction(workspaceId, fleetId, { [grant]: !access[grant] });
-      if (result.ok) {
-        setAccess(result.data);
-        return;
-      }
-      setNotice(presentErrorString({ errorCode: result.errorCode, message: result.error, action: MEMORY_ACCESS_ACTION }));
-    } catch {
-      // A transport failure rejects rather than answering; the switches must
-      // not stay held by it, and the notice reads from the action alone.
-      setNotice(presentErrorString({ action: MEMORY_ACCESS_ACTION }));
-    } finally {
-      inFlight.current = false;
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-xs">
-      <fieldset>
-        <legend className={cn("mb-xs text-muted-foreground", EYEBROW_CLASS)}>{MEMORY_SHARED_TITLE}</legend>
-        <DashboardRowGroup>
-          {ACCESS_GRANTS.map(({ grant, label, description }) => (
-            <AccessRow
-              key={grant}
-              label={label}
-              description={description}
-              checked={access[grant]}
-              busy={saving}
-              onFlip={() => void flip(grant)}
-            />
-          ))}
-        </DashboardRowGroup>
-      </fieldset>
-      {notice ? <Alert variant="warning">{notice}</Alert> : null}
-    </div>
-  );
-}
-
-const ACCESS_GRANTS: { grant: keyof MemoryAccess; label: string; description: string }[] = [
-  { grant: "read", label: MEMORY_ACCESS_READ_LABEL, description: MEMORY_ACCESS_READ_DESCRIPTION },
-  { grant: "publish", label: MEMORY_ACCESS_PUBLISH_LABEL, description: MEMORY_ACCESS_PUBLISH_DESCRIPTION },
-];
-
-type AccessRowProps = { label: string; description: string; checked: boolean; busy: boolean; onFlip: () => void };
-
-// One grant: its name labels the switch and its line describes it.
-function AccessRow({ label, description, checked, busy, onFlip }: AccessRowProps) {
-  const switchId = useId();
-  const descriptionId = useId();
-  return (
-    <DashboardRow
-      titleAs="div"
-      className="items-center"
-      title={<Label htmlFor={switchId}>{label}</Label>}
-      description={<span id={descriptionId}>{description}</span>}
-      action={
-        <Switch
-          id={switchId}
-          checked={checked}
-          aria-disabled={busy || undefined}
-          onCheckedChange={onFlip}
-          aria-describedby={descriptionId}
-        />
-      }
-    />
   );
 }
 

@@ -22,13 +22,18 @@ primary_region = "iad"
 # layout pushed from outside; one machine keeps the rig the integration lane
 # already proves on every run.
 #
-# performance-2x rather than otelcol-dev's shared-cpu-1x: Dragonfly is
-# thread-per-core, and four nodes at two proactor threads each would thrash a
-# shared vCPU. 4GB against a 2.25GB ceiling (4 x 512mb cluster nodes plus the
-# 256mb TLS node) leaves headroom for the page cache.
+# shared-cpu-1x, sized for cost, not speed (Indy, Oct 26, 2026: dev may be the
+# bottleneck; production is where latency is fixed). Measured on
+# performance-2x before the move: 154 MB resident across all five nodes and
+# about 2.8% of one core (user + system + softirq), under a shared vCPU's
+# 6.25% baseline, so the burst balance refills between bursts. Each node's
+# --maxmemory (512mb, the TLS node 256mb) is a ceiling below the machine's
+# 1 GB, which is what Dragonfly checks at boot; the 2.25 GB sum is never
+# resident at dev's data size. A dataset that grows toward it, or throttle
+# time in fly_instance_cpu_throttle, is the signal to size back up.
 [[vm]]
-  size = "performance-2x"
-  memory = "4gb"
+  size = "shared-cpu-1x"
+  memory = "1gb"
 
 # Dragonfly writes its cluster layout, its slot ownership and its minted
 # certificates under /data. On a machine without this they are lost on every

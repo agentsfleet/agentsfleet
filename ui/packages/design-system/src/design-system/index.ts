@@ -92,7 +92,7 @@ export {
   type RadioGroupProps,
   type RadioGroupItemProps,
 } from "./RadioGroup";
-export { Switch, type SwitchProps } from "./Switch";
+export { Switch, SwitchIndicator, type SwitchProps } from "./Switch";
 export {
   Accordion,
   AccordionItem,
