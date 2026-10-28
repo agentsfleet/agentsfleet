@@ -62,6 +62,8 @@ test-util = [
 ]
 
 [dev-dependencies]
+# The capacity refusal the steer unit tests hand the repeat decision.
+afd_admission = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
