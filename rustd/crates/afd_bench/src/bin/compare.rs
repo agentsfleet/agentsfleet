@@ -8,6 +8,10 @@
 //! regression sails through the muted gate. The one non-zero exit is a result
 //! file that will not parse, which is an absent measurement rather than a
 //! disappointing one.
+#![expect(
+    clippy::print_stdout,
+    reason = "a bench command's report is its stdout"
+)]
 
 use std::process::ExitCode;
 

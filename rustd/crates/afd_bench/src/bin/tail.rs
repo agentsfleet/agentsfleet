@@ -4,6 +4,10 @@
 //! allocations per delivered frame and heap per open stream, and only the
 //! process's allocator can see those. It is installed here rather than in the
 //! library so no other binary linking `afd_bench` pays for the counting.
+#![expect(
+    clippy::print_stdout,
+    reason = "a bench command's report is its stdout"
+)]
 
 use std::process::ExitCode;
 

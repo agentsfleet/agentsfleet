@@ -5,6 +5,10 @@
     clippy::expect_used,
     reason = "live-schema assertions fail loudly"
 )]
+#![expect(
+    clippy::print_stdout,
+    reason = "the lane prints its measured shape for the operator"
+)]
 
 use afd_billing::biller::WorkKey;
 use afd_billing::report::{Boundary, dimension};

@@ -98,8 +98,11 @@ fn sandbox(tenant: afr_sandbox::TenantDescriptors) -> ExitCode {
 ///
 /// Stderr rather than a subscriber: inside a sandbox no subscriber may start a
 /// thread before hardening, and the engine quotes this stream when it refuses.
+#[expect(
+    clippy::print_stderr,
+    reason = "stderr is the refusal the engine and the operator read"
+)]
 fn refused(error: &impl std::fmt::Display) -> ExitCode {
-    // logging: stderr is the refusal the engine and the operator read
     eprintln!("{error}");
     ExitCode::FAILURE
 }
@@ -107,12 +110,12 @@ fn refused(error: &impl std::fmt::Display) -> ExitCode {
 /// Prints the host's capability report and self-test checks as JSON.
 ///
 /// Succeeds only when this host can build a sandbox.
+#[expect(clippy::print_stdout, reason = "stdout is this command's answer")]
 fn probe() -> ExitCode {
     let host = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
     let answer = afr_supervisor::capability::probe_answer(&host);
     match serde_json::to_string_pretty(&answer) {
         Ok(rendered) => {
-            // logging: stdout is this command's answer
             println!("{rendered}");
         }
         Err(error) => return refused(&error),
