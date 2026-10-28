@@ -10,3 +10,9 @@ disallowed-methods = [
     { path = "reqwest::Client::new", reason = "build a client that must ignore an environment proxy with afd_identity::direct; any other client names its bounds on a builder" },
     { path = "reqwest::Client::builder", reason = "build a client that must ignore an environment proxy with afd_identity::direct" },
 ]
+
+# A test prints its measured evidence into the lane log, so the print lints
+# (`print_stdout`, `print_stderr`) skip test code instead of every test file
+# carrying an `#[expect]`. A harness-less test target is not test code to
+# clippy and still names its reason.
+allow-print-in-tests = true

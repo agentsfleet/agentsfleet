@@ -88,7 +88,12 @@ fn main() -> ExitCode {
 
 /// Hardens and serves; any refusal goes to stderr, which the engine reads.
 fn sandbox(tenant: afr_sandbox::TenantDescriptors) -> ExitCode {
-    match afr_sandbox::serve_sandboxed(tenant) {
+    exited(afr_sandbox::serve_sandboxed(tenant))
+}
+
+/// SUCCESS for an entry that ended cleanly, otherwise its refusal.
+fn exited(ended: Result<(), impl std::fmt::Display>) -> ExitCode {
+    match ended {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => refused(&error),
     }
@@ -98,29 +103,34 @@ fn sandbox(tenant: afr_sandbox::TenantDescriptors) -> ExitCode {
 ///
 /// Stderr rather than a subscriber: inside a sandbox no subscriber may start a
 /// thread before hardening, and the engine quotes this stream when it refuses.
+#[expect(
+    clippy::print_stderr,
+    reason = "stderr is the refusal the engine and the operator read"
+)]
 fn refused(error: &impl std::fmt::Display) -> ExitCode {
-    // logging: stderr is the refusal the engine and the operator read
     eprintln!("{error}");
     ExitCode::FAILURE
 }
 
 /// Prints the host's capability report and self-test checks as JSON.
-///
-/// Succeeds only when this host can build a sandbox.
 fn probe() -> ExitCode {
     let host = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
-    let answer = afr_supervisor::capability::probe_answer(&host);
-    match serde_json::to_string_pretty(&answer) {
-        Ok(rendered) => {
-            // logging: stdout is this command's answer
-            println!("{rendered}");
-        }
-        Err(error) => return refused(&error),
-    }
-    if afr_sandbox::BubblewrapRequirements::missing(&host).is_none() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
+    answer(&host, &mut std::io::stdout().lock())
+}
+
+/// Writes `host`'s capability report and self-test checks to `out` as JSON.
+///
+/// Succeeds only when the whole answer was written and `host` can build a
+/// sandbox.
+fn answer(host: &afr_sandbox::HostProbe, out: &mut impl std::io::Write) -> ExitCode {
+    let written =
+        serde_json::to_writer_pretty(&mut *out, &afr_supervisor::capability::probe_answer(host))
+            .map_err(std::io::Error::from)
+            .and_then(|()| writeln!(out));
+    match written {
+        Err(error) => refused(&error),
+        Ok(()) if afr_sandbox::BubblewrapRequirements::missing(host).is_none() => ExitCode::SUCCESS,
+        Ok(()) => ExitCode::FAILURE,
     }
 }
 

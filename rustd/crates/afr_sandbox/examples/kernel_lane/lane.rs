@@ -286,7 +286,7 @@ pub(crate) fn serve() -> ExitCode {
     let tenant = match afr_sandbox::TenantDescriptors::parse_from(std::env::args_os().skip(1)) {
         Ok(tenant) => tenant,
         Err(refused) => {
-            // logging: the sandbox side starts no subscriber; stderr is its only report
+            // the sandbox side starts no subscriber; stderr is its only report
             eprintln!("the sandbox was not told its tenant leaf: {refused}");
             return ExitCode::FAILURE;
         }

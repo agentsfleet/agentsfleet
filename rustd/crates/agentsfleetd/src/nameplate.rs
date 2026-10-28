@@ -204,7 +204,7 @@ pub fn show(
     // a detached terminal must not stop the daemon from coming up, and there is
     // no sensible recovery from failing to print a decoration.
     //
-    // logging: the nameplate is the process's terminal identity, painted and
+    // the nameplate is the process's terminal identity, painted and
     // read once by a person; through the structured logger it would become a
     // record with no consumer, and would be silenced entirely at the one moment
     // it exists for, since no subscriber is installed this early.

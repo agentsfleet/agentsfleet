@@ -309,3 +309,43 @@ fn test_the_openapi_subcommand_answers_without_an_environment() {
         "the document is a function of the route table, so an empty environment still answers"
     );
 }
+
+/// The document reaches its writer whole, as JSON ending in one newline.
+#[cfg(feature = "openapi")]
+#[test]
+fn test_the_openapi_document_reaches_its_writer_whole() {
+    let mut written = Vec::new();
+
+    let status = agentsfleetd::cli::openapi_to(&mut written);
+
+    assert_eq!(status, SUCCESS);
+    let text = String::from_utf8(written).expect("the document is UTF-8");
+    let document: serde_json::Value = serde_json::from_str(&text).expect("the document is JSON");
+    assert!(document.get("paths").is_some(), "{text}");
+    assert!(
+        text.ends_with("}\n"),
+        "one closing newline, as `println!` wrote"
+    );
+}
+
+/// A writer that takes nothing, as stdout redirected to a full disk does.
+#[cfg(feature = "openapi")]
+struct Full;
+
+#[cfg(feature = "openapi")]
+impl std::io::Write for Full {
+    fn write(&mut self, _bytes: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::ErrorKind::StorageFull.into())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A document that cannot be written exits 1 rather than claiming it answered.
+#[cfg(feature = "openapi")]
+#[test]
+fn test_an_openapi_document_that_cannot_be_written_fails() {
+    assert_eq!(agentsfleetd::cli::openapi_to(&mut Full), FAILURE);
+}

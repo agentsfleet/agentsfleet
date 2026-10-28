@@ -14,7 +14,7 @@
 //! attacker-computable, so two independent refusals is the right number.
 //!
 //! Nothing here logs the secret, its length, or any prefix of it. A length is a
-//! narrowing fact about a key (`docs/LOGGING_STANDARD.md` §6), and
+//! narrowing fact about a key (LOG-SECRET, `.orly/standards/domains/logging.md`), and
 //! [`afd_vault::Vault::load`] declines to log one for the same reason.
 
 use afd_core::id::Uuid7;

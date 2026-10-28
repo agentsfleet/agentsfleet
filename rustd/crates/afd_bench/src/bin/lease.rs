@@ -80,8 +80,8 @@ async fn measure() -> Result<String> {
             Shape::Default => drain::summary(report),
             Shape::Saturation => saturation::summary(report),
         };
-        // logging: the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
-        println!("{summary}");
+        // the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
+        cli::show(&summary);
     }
     let swept = sweep::everything(&stores.database, &prefix).await;
     cli::finish(lane, profile, measured, swept)

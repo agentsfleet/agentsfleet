@@ -139,7 +139,7 @@ impl Fire {
 
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression and coverage instrumentation scores
-        // the dead copy (`docs/LOGGING_STANDARD.md` §8A).
+        // the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
         let event_id = admitted.stored.id.as_str();
         let replayed = admitted.replayed;
         let schedule_id = schedule.as_str();

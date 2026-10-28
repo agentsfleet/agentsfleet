@@ -13,7 +13,9 @@ use tracing::Level;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, Layer};
 
-use super::{Cli, Command, RunArgs, log_filter};
+use afr_sandbox::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
+
+use super::{Cli, Command, RunArgs, answer, exited, log_filter};
 
 /// The engine starts the binary inside each sandbox by the sandbox crate's
 /// spelling of the sub-command and its tenant flags, so the two can never
@@ -226,4 +228,75 @@ fn a_quiet_log_level_quiets_the_journal_and_never_the_spans() {
         text.contains("an_error_line") && !text.contains("an_info_line"),
         "{text}"
     );
+}
+
+/// A host with every mechanism the bubblewrap engine needs, or with none.
+fn host(capable: bool) -> HostProbe {
+    HostProbe {
+        landlock: capable,
+        seccomp: capable,
+        cgroup_controllers: REQUIRED_CONTROLLERS
+            .iter()
+            .map(|&controller| controller.to_owned())
+            .collect(),
+        bubblewrap: capable,
+        kvm: Kvm::Absent,
+        toolbox_filesystem: capable,
+        workspace_direct_io: None,
+        egress: false,
+    }
+}
+
+/// `probe` answers with the whole report on either host, and succeeds only
+/// where a sandbox can be built.
+#[test]
+fn the_probe_answer_succeeds_only_where_a_sandbox_can_be_built() {
+    for (capable, status) in [
+        (true, std::process::ExitCode::SUCCESS),
+        (false, std::process::ExitCode::FAILURE),
+    ] {
+        let mut out = Vec::new();
+
+        let answered = answer(&host(capable), &mut out);
+
+        assert_eq!(answered, status, "capable: {capable}");
+        let text = String::from_utf8(out).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(
+            parsed
+                .get("checks")
+                .is_some_and(serde_json::Value::is_array),
+            "{text}"
+        );
+        assert!(text.ends_with("}\n"), "one closing newline");
+    }
+}
+
+/// A writer that takes nothing, as stdout redirected to a full disk does.
+struct Full;
+
+impl io::Write for Full {
+    fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+        Err(io::ErrorKind::StorageFull.into())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A probe that cannot write its answer fails even on a capable host.
+#[test]
+fn a_probe_answer_that_cannot_be_written_fails() {
+    assert_eq!(
+        answer(&host(true), &mut Full),
+        std::process::ExitCode::FAILURE
+    );
+}
+
+/// An entry that ended cleanly exits 0; one that refused exits 1.
+#[test]
+fn an_entry_exits_by_how_it_ended() {
+    assert_eq!(exited(Ok::<(), &str>(())), std::process::ExitCode::SUCCESS);
+    assert_eq!(exited(Err("bind refused")), std::process::ExitCode::FAILURE);
 }

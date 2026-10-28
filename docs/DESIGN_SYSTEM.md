@@ -356,12 +356,13 @@ Use `text-foreground`, `text-muted-foreground`, and `warning` utilities for new 
 Keep distinct roles such as card, popover, focus, and destructive even when their current values match.
 See the [CSS audit](reviews/design-system-css-audit.md) for existing duplicate names and compiler evidence.
 
-`.orly/audits/design-tokens.sh` checks named utilities, flat fills, and consumer font ownership.
-Its current flat-fill enforcement still rejects CSS gradients. A future gradient implementation requires a separately authorized, aligned enforcement change.
-This implementation uses layered token surfaces and light without changing that audit.
+Named utilities follow TS-TOKEN and TS-TOKENADD in [the TypeScript standard](../.orly/standards/languages/typescript.md), which the `orly-standards-reviewer` agent applies.
+This implementation uses layered token surfaces and light.
+
 Component tests verify defaults and state behavior.
 No app page or component overrides the font of a shared interface primitive, whether
 through an aliased import or a named class.
+
 Browser review checks both themes,
 narrow screens, and loading, empty, error, selected, and disabled states. Static checks
 cannot determine whether arbitrary prose is a technical value; that remains a review duty.

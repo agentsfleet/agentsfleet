@@ -29,7 +29,7 @@ pub fn audit(principal: &Principal, access: &Access, workspace: &Uuid7, method: 
         return;
     }
     // Hoisted fields: the `log` bridge duplicates every expression and
-    // llvm-cov scores the dead copy (`docs/LOGGING_STANDARD.md` §8A).
+    // llvm-cov scores the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
     let subject = principal.person().map(|person| person.subject().as_str());
     let acting_tenant = principal.tenant().map(Uuid7::as_str);
     let target_tenant = access.tenant.as_str();

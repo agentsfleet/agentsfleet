@@ -127,12 +127,13 @@ export AGENTSFLEET_API_URL="$(bash scripts/local-dev.sh url)"
 git config core.hooksPath .githooks
 ```
 
-Project facts live in [`AGENTS.md`](AGENTS.md). The operating model and the
-deterministic gate scripts are committed alongside them —
-[`.orly/AGENTS.md`](.orly/AGENTS.md), `.orly/dispatch/`, and `.orly/audits/` — materialised
-by [orly](https://github.com/agentsfleet/orly) and recorded in
-`.orly/orly.json`. A clone carries its own rules; nothing resolves out of a
-developer's home directory.
+Project facts live in [`AGENTS.md`](AGENTS.md). The operating model and its
+standards, [`.orly/AGENTS.md`](.orly/AGENTS.md) and `.orly/standards/`, are
+committed alongside them.
+
+[orly](https://github.com/agentsfleet/orly) materialises both and records
+them in `.orly/orly.json`. A clone carries its own rules; nothing resolves out
+of a developer's home directory.
 
 Install orly at the version this repository records, so a local run and
 Continuous Integration grade against the same rules:
@@ -148,8 +149,6 @@ orly gate work                  # what the pre-commit hook runs
 `--no-hooks` is not optional here: this repository owns `.githooks/pre-commit`
 and `.githooks/pre-push`, and orly declines to overwrite hooks it did not
 write.
-
-`make harness-verify` runs shared gates from `.orly/audits/` and repository-owned checks from `scripts/checks/`.
 
 Read about [architecture](docs/architecture/), start with the
 [operator playbooks](playbooks/README.md), or jump into

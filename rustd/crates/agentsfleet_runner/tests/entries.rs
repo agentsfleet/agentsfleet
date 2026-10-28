@@ -70,13 +70,36 @@ fn run_stops_at_boot_on_a_host_it_cannot_lease_on() {
     );
 }
 
+/// The tenant flags the engine passes, so `sandbox` parses and runs rather
+/// than stopping at a usage error. Outside a sandbox the bind refuses before
+/// either descriptor is touched.
+const TENANT: afr_sandbox::TenantDescriptors = afr_sandbox::TenantDescriptors {
+    tenant_procs: 5,
+    tenant_events: 6,
+};
+
+/// The exit code of an entry that ran and refused, as opposed to clap's 2 for
+/// a command line it would not parse.
+const REFUSED: i32 = 1;
+
+/// `sandbox` as the engine starts it, with `extra` in its environment.
+fn sandbox(extra: &[(&str, &str)]) -> Output {
+    Command::new(BINARY)
+        .arg(afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND)
+        .args(TENANT.arguments())
+        .env_remove(afd_core::env::LOG_LEVEL_VAR)
+        .envs(extra.iter().copied())
+        .output()
+        .expect("the runner binary starts")
+}
+
 /// Outside a sandbox there is no executor socket to bind, and on a host that
 /// cannot harden there is not even that far to go: `sandbox` never serves.
 #[test]
 fn sandbox_refuses_outside_a_sandbox() {
-    let served = entry("sandbox");
+    let served = sandbox(&[]);
 
-    assert!(!served.status.success());
+    assert_eq!(served.status.code(), Some(REFUSED));
     assert!(!served.stderr.is_empty(), "the refusal says why");
 }
 
@@ -178,19 +201,11 @@ fn run_refuses_a_credential_naming_the_knob() {
 /// entry never builds the export that would start a thread before it.
 #[test]
 fn test_sandbox_hardens_with_telemetry_configured() {
-    let sandbox = |extra: &[(&str, &str)]| {
-        Command::new(BINARY)
-            .arg("sandbox")
-            .env_remove(afd_core::env::LOG_LEVEL_VAR)
-            .envs(extra.iter().copied())
-            .output()
-            .expect("the runner binary starts")
-    };
-
     let plain = sandbox(&[]);
     let exporting = sandbox(&[(OTEL_ENDPOINT_KNOB, REFUSING_COLLECTOR)]);
 
-    assert_eq!(plain.status.code(), exporting.status.code());
+    assert_eq!(plain.status.code(), Some(REFUSED));
+    assert_eq!(exporting.status.code(), Some(REFUSED));
     assert_eq!(
         String::from_utf8_lossy(&plain.stderr),
         String::from_utf8_lossy(&exporting.stderr),

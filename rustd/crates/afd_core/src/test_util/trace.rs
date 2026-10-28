@@ -35,7 +35,8 @@ use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
 use tracing_subscriber::registry::{LookupSpan, Registry};
 
-/// The field every structured event names itself by (`docs/LOGGING_STANDARD.md` §3).
+/// The field every structured event names itself by (LOG-EVENT,
+/// `.orly/standards/domains/logging.md`).
 const EVENT_FIELD: &str = "event";
 
 /// The field a failure line carries its sentence in.
@@ -109,7 +110,7 @@ impl CapturedEvent {
 /// Asserts `reason` is a failure line's sentence: present, one line, uncoded.
 ///
 /// The registry code rides the line's own `error_code` field
-/// (`docs/LOGGING_STANDARD.md`), so a `[UZ-…]` prefix in the reason only
+/// (LOG-CODE, `.orly/standards/domains/logging.md`), so a `[UZ-…]` prefix in the reason only
 /// repeats it, and a second line is a backtrace that rode along. `context`
 /// names the line in the failure message.
 ///

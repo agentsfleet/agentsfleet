@@ -7,10 +7,11 @@
 //!
 //! # Why every one of these is worth a case
 //!
-//! These sentences are already on the wire. `docs/REST_API_DESIGN_GUIDELINES.md`
-//! §9 treats a narrowing of a served surface as a breaking change — so a value
-//! a client sends today that this refuses is a regression a dashboard hits, and
-//! a value this takes that it should refuse is a filter silently doing nothing.
+//! These sentences are already on the wire. HTTP-BREAK
+//! (`.orly/standards/domains/http-surface.md`) treats a narrowing of a served
+//! surface as a breaking change — so a value a client sends today that this
+//! refuses is a regression a dashboard hits, and a value this takes that it
+//! should refuse is a filter silently doing nothing.
 //! The strings below are spelled out rather than imported so that the test and
 //! the code under test cannot agree with each other by construction.
 //!

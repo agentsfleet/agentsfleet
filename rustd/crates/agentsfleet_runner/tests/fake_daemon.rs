@@ -55,6 +55,20 @@ impl FakeDaemon {
         network_policy: NetworkPolicy,
         registry: &[&'static str],
     ) -> Self {
+        Self::serve(network_policy, registry, Reports::Answered).await
+    }
+
+    /// Serves on a free loopback port and keeps each report it is sent, but
+    /// never answers one: the lease that posted it stays in flight.
+    pub(crate) async fn stalling_reports() -> Self {
+        Self::serve(NetworkPolicy::AllowAll, &[], Reports::Stalled).await
+    }
+
+    async fn serve(
+        network_policy: NetworkPolicy,
+        registry: &[&'static str],
+        reports_are: Reports,
+    ) -> Self {
         let (sent, reports) = mpsc::unbounded_channel();
         let granted = Arc::new(AtomicBool::new(false));
         let healthy = Arc::new(Healthy {
@@ -77,10 +91,11 @@ impl FakeDaemon {
                 let body = axum::body::to_bytes(request.into_body(), usize::MAX)
                     .await
                     .unwrap_or_default();
-                (
-                    [(header::CONTENT_TYPE, JSON)],
-                    answer(&method, &path, &body, (&sent, &granted, &healthy)).to_string(),
-                )
+                let answered = answer(&method, &path, &body, (&sent, &granted, &healthy));
+                if reports_are == Reports::Stalled && path == RUNNER_REPORTS {
+                    std::future::pending::<()>().await;
+                }
+                ([(header::CONTENT_TYPE, JSON)], answered.to_string())
             }
         });
         let server = crate::http_server::Server::serve(app)
@@ -100,6 +115,13 @@ impl FakeDaemon {
             .ok()
             .flatten()
     }
+}
+
+/// Whether the daemon answers the reports it keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reports {
+    Answered,
+    Stalled,
 }
 
 /// What the daemon keeps between calls: where reports go, whether the one

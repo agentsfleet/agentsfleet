@@ -80,9 +80,10 @@ pub trait Coded: std::error::Error {
     }
 }
 
-/// What a failure's log line says about it, named as the line's fields are
-/// (`LOGGING_STANDARD` §5 and §8A), so destructuring binds the locals the
-/// `tracing` call takes by shorthand.
+/// What a failure's log line says about it, named as the line's fields are.
+///
+/// Destructuring binds the locals the `tracing` call takes by shorthand
+/// (LOG-CODE and LOG-HOIST, `.orly/standards/domains/logging.md`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Logged {
     /// The registry code, as the `error_code` field spells it.

@@ -236,12 +236,22 @@ pub async fn migrate<E: EnvSource + ?Sized>(env: &E) -> u8 {
 #[cfg(feature = "openapi")]
 #[must_use]
 pub fn openapi() -> u8 {
-    match afd_api::openapi::document().to_pretty_json() {
-        Ok(document) => {
-            // logging: the document IS this subcommand's output, not a log record
-            println!("{document}");
-            SUCCESS
-        }
+    openapi_to(&mut std::io::stdout().lock())
+}
+
+/// [`openapi`], written to `out`.
+///
+/// FAILURE when the document does not reach `out` whole, so
+/// `agentsfleetd openapi > /dev/full` cannot exit 0 having written nothing.
+#[cfg(feature = "openapi")]
+#[must_use]
+pub fn openapi_to(out: &mut impl std::io::Write) -> u8 {
+    let written = afd_api::openapi::document()
+        .to_pretty_json()
+        .map_err(std::io::Error::from)
+        .and_then(|document| writeln!(out, "{document}"));
+    match written {
+        Ok(()) => SUCCESS,
         Err(error) => {
             crate::fatal::die(&error);
             FAILURE

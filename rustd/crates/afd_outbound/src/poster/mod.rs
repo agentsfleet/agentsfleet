@@ -192,7 +192,7 @@ pub async fn deliver_with_retry<S: Deliver>(
 /// Logs a job nothing can deliver and calls it permanent.
 ///
 /// The event name stays fixed so dashboards and alerts keep matching
-/// (`LOGGING_STANDARD` §8A EVENT-COMPAT), and `reason` is what separates the
+/// (LOG-RENAME, `.orly/standards/domains/logging.md`), and `reason` is what separates the
 /// two cases it covers — a provider no connector answers to, and one that
 /// connects but has no answer surface yet.
 fn unroutable(job: &OutboundDelivery, reason: &'static str) -> Verdict {

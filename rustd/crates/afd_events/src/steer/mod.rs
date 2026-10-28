@@ -190,7 +190,7 @@ impl Steer {
 
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression, and coverage instrumentation
-        // scores the dead copy (`docs/LOGGING_STANDARD.md` §8A).
+        // scores the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
         let id = admitted.stored.id.as_str();
         tracing::debug!(
             fleet_id = fleet,
@@ -246,13 +246,7 @@ impl Steer {
         admission: &Admission<'_>,
         refused: afd_admission::Error,
     ) -> Result<String> {
-        match self.repeat_of(admission).await {
-            Ok(Some(id)) => Ok(id),
-            Err(conflict) if conflict.is_operation_conflict() => Err(conflict),
-            // New work, an unkeyed send, or a lookup that failed too: the
-            // refusal the caller retries against stands.
-            _new_work => Err(refused.into()),
-        }
+        despite(self.repeat_of(admission).await, refused)
     }
 
     /// The first admission's event for a keyed steer with the same payload,
@@ -266,6 +260,21 @@ impl Steer {
             .await?
             .map(|repeated| answer_repeat(admission, repeated))
             .transpose()
+    }
+}
+
+/// What a capacity refusal answers once the repeat lookup has run.
+///
+/// A key whose row exists only after the budget check is a send racing its
+/// own retry, which no fixed test sequence reaches. The decision is kept
+/// apart from the lookup so every outcome is still tested.
+fn despite(repeat: Result<Option<String>>, refused: afd_admission::Error) -> Result<String> {
+    match repeat {
+        Ok(Some(id)) => Ok(id),
+        Err(conflict) if conflict.is_operation_conflict() => Err(conflict),
+        // New work, an unkeyed send, or a lookup that failed too: the
+        // refusal the caller retries against stands.
+        _new_work => Err(refused.into()),
     }
 }
 

@@ -18,8 +18,8 @@ use afd_bench::report::{Lane, compare};
 fn main() -> ExitCode {
     match rendered() {
         Ok(delta) => {
-            // logging: the comparison IS this command's output, printed for a reader rather than emitted as a signal.
-            print!("{delta}");
+            // the comparison IS this command's output, printed for a reader rather than emitted as a signal.
+            afd_bench::cli::show(&delta);
             ExitCode::SUCCESS
         }
         Err(refusal) => afd_bench::cli::exit("bench-compare", Err(refusal)),

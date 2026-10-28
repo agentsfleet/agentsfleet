@@ -118,7 +118,8 @@ async fn test_send_logs_carry_no_address() {
 }
 
 /// Every send opens with `invite_email_started` and closes with exactly one
-/// of completed or failed, each carrying `duration_ms` (`docs/LOGGING_STANDARD.md` §4).
+/// of completed or failed, each carrying `duration_ms` (LOG-PAIR,
+/// `.orly/standards/domains/logging.md`).
 #[tokio::test]
 async fn every_send_is_bracketed() {
     let id = id();
