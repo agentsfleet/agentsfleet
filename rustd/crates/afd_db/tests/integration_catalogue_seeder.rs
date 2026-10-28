@@ -1,4 +1,8 @@
 //! The operational seeder against the registered schema and real Postgres.
+#![expect(
+    clippy::print_stdout,
+    reason = "the seeder suite's own output is replayed into the lane log"
+)]
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::panic,
