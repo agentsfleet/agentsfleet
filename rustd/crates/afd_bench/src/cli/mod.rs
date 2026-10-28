@@ -82,6 +82,14 @@ pub fn finish(
     Ok(path.display().to_string())
 }
 
+/// Print a lane's report for the person who ran it, ending in one newline.
+///
+/// Every bin prints through here, so the print exemption at the crate root
+/// covers each of them.
+pub fn show(report: &str) {
+    println!("{}", report.trim_end());
+}
+
 /// Turn a lane's outcome into the process's, printing what a person needs.
 #[must_use]
 pub fn exit(name: &str, outcome: Result<String>) -> ExitCode {

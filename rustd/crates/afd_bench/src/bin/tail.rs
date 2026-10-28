@@ -4,10 +4,6 @@
 //! allocations per delivered frame and heap per open stream, and only the
 //! process's allocator can see those. It is installed here rather than in the
 //! library so no other binary linking `afd_bench` pays for the counting.
-#![expect(
-    clippy::print_stdout,
-    reason = "a bench command's report is its stdout"
-)]
 
 use std::process::ExitCode;
 
@@ -39,7 +35,7 @@ async fn measure() -> Result<String> {
     let measured = tail::run(profile, provenance, &stores, &prefix).await;
     if let Ok(report) = &measured {
         // the make target's output is what a reader of the ladder sees first; no daemon runs here to carry an event.
-        println!("{}", tail::summary(report));
+        cli::show(&tail::summary(report));
     }
     let swept = sweep::everything(&stores.database, &prefix).await;
     cli::finish(Lane::Tail, profile, measured, swept)

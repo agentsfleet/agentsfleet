@@ -4,10 +4,6 @@
     clippy::unwrap_used,
     reason = "live-schema test preconditions fail loudly"
 )]
-#![expect(
-    clippy::print_stdout,
-    reason = "the lane prints its measured shape for the operator"
-)]
 
 use afd_billing::sql::CHARGE_TYPE_AUTHORING;
 use afd_billing::tenant::cursor::Boundary;

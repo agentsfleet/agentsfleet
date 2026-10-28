@@ -1,8 +1,4 @@
 //! Barrier-synchronized calls share a bounded real pool and the same funded owner.
-#![expect(
-    clippy::print_stderr,
-    reason = "the test prints its measured evidence for the lane log"
-)]
 
 use super::fixture::{self, Provider};
 use crate::draft::{attempt::Attempt, fixture::Fixture};
