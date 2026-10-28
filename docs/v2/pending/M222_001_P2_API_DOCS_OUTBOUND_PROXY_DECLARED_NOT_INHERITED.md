@@ -75,7 +75,8 @@ The `schedule_client` caller list comes from `git grep -n 'schedule_client'` on 
 
 ## Applicable Rules
 
-- **`.orly/standards/code.md`** — NDC (the `schedule_client` `#[expect]` annotation and the `proxied_schedule_client` test seam die when their reason dies), NLR (the environment-proxy wording in `clients.rs`, `credentials.rs` and `clippy.toml` is rewritten, not left beside the new rule), NLG (no fallback to `HTTPS_PROXY` when the knob is unset; no alias knob), UFS (knob name, host names and log event names are named constants), OWN (one owner builds proxied clients), PSR (parse the knob with `url::Url`, never by hand), ECL (a refused proxy connect stays distinguishable from a vendor refusal in the scheduler error), TCF (each proxy test fails when the route is wrong, proven by a red run).
+- **`.orly/standards/code.md`** — NDC (the `schedule_client` `#[expect]` annotation and the `proxied_schedule_client` test seam die when their reason dies), NLR (the environment-proxy wording in `clients.rs`, `credentials.rs` and `clippy.toml` is rewritten, not left beside the new rule), NLG (no fallback to `HTTPS_PROXY` when the knob is unset; no alias knob), OWN (one owner builds proxied clients), PSR (parse the knob with `url::Url`, never by hand), ECL (a refused proxy connect stays distinguishable from a vendor refusal in the scheduler error). The knob name, host names and log event names are named constants.
+- `.orly/standards/tests.md` — TCF (each proxy test fails when the route is wrong, proven by a red run).
 - `.orly/standards/languages/rust.md` + `docs/RUST_ERROR_STANDARD.md` — the knob's parse failure is a new `ErrorKind` variant through `afd_core::error_shell!`, never a hand-written error type.
 - `.orly/standards/domains/logging.md` — the boot line naming the proxy host carries no userinfo and uses `error_code` on refusal.
 
