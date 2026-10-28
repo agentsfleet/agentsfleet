@@ -123,10 +123,14 @@ Registry sources `github`, `linear` and `slack` imply their signing recipe and
 reject an override. A custom source requires `verifier.scheme` from
 `body-hex-sha256`, `body-hex`, `body-base64-sha256`, `slack-v0` or `svix-v1`.
 The three body recipes require `verifier.header`, an HTTP token of 1–128
-characters. Slack and Svix use fixed headers and reject that field.
+characters.
+
+Slack and Svix use fixed headers and reject that field.
 
 Each trigger's `credential_name` selects a workspace credential; the name defaults
 to its source. Every credential is a JSON object with a `webhook_secret` string,
 including the `whsec_` value for Svix. Save returns one
-`/v1/webhooks/{fleet_id}/{source}` URL per trigger. A fleet can mix registry and
+`/v1/webhooks/{fleet_id}/{source}` URL per trigger.
+
+A fleet can mix registry and
 declared recipes without ordering its triggers for routing.

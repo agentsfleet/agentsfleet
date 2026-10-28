@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — one worktree and Pull Request (PR), with focused webhook and connector commits; expanded by the recorded user decision below
 **Branch:** codex/m228-webhooks-connectors
 **Baseline revision:** 289d226856e65d459f1b24de7b60519f897ef2d3
-**Test Baseline:** measured at the exact comparison revision — unit passed; integration stopped with 627 passed and one concurrent authoring pool-capacity failure. Full counts and setup limits are recorded below.
-**Baseline evidence:** `docs/v2/evidence/M228_VERIFICATION.md`; isolated baseline logs `/tmp/m228-baseline-unit-isolated.log` and `/tmp/m228-baseline-integration-isolated.log`.
+**Test Baseline:** unit=11866 integration=627 measured at the exact comparison revision; unit passed, integration stopped with one concurrent authoring pool-capacity failure. Counts are passed test runs; the evidence report includes ignored and failed cases.
+**Baseline evidence:** docs/v2/evidence/M228_VERIFICATION.md
 **Depends on:** M227_001 — adds `POST /v1/webhooks/{fleet_id}/{source}` (`receive_source_webhook`), deletes the bare `/v1/webhooks/{fleet_id}`, refuses webhook sources no verifier covers, and deletes the never-read `signature.header`/`prefix`/`ts_header`
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 16, 2026), from source reads of `afd_webhook`, `afd_ingress`, `afd_api_ingress` and the Zig daemon at `1ad07eb21`
 **Canonical architecture:** `docs/architecture/data_flow.md` §B (TRIGGER — three callers, one ingress); webhook authentication in `docs/AUTH.md` §Manual fleet-webhook auth
@@ -129,36 +129,36 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A webhook trigger names one family by token; families that sign the raw body alone (`body-hex-sha256`, `body-hex`, `body-base64-sha256`) also take the header the signature arrives in. `slack-v0` and `svix-v1` read fixed headers. Registry sources (`github`, `linear`, `slack`) imply their family and must not declare one. **Decided (D1):** families stay a closed enum in code, and only the header name is authored, because `scheme.rs` records that signed bytes expressed as configuration are a small language nobody reads.
 
-- **Dimension 1.1** — a `body-hex-sha256` declaration with header `x-acme-signature` verifies a signed delivery and refuses a wrong one → Test `a_declared_verifier_wakes_a_fleet_from_a_provider_outside_the_registry`
-- **Dimension 1.2** — `body-base64-sha256` verifies a base64 tag over the raw body → Test `a_base64_family_verifies_the_raw_body`
-- **Dimension 1.3** — a header on `slack-v0` or `svix-v1`, a registry source declaring a verifier, or a header outside the token charset is refused at parse with its sentence → Test `a_verifier_that_cannot_hold_is_refused_at_parse`
-- **Dimension 1.4** — an unknown family token is refused naming every accepted token; a source with no registry family and no declaration is refused naming the sources and families → Test `an_unverifiable_trigger_never_parses`
-- **Dimension 1.5** — every `Family` arm has a token and appears in `Family::ALL` → Test `every_family_is_declarable_and_listed`
+- **Dimension 1.1** — DONE — a `body-hex-sha256` declaration with header `x-acme-signature` verifies a signed delivery and refuses a wrong one → Test `a_declared_verifier_wakes_a_fleet_from_a_provider_outside_the_registry`
+- **Dimension 1.2** — DONE — `body-base64-sha256` verifies a base64 tag over the raw body → Test `a_base64_family_verifies_the_raw_body`
+- **Dimension 1.3** — DONE — a header on `slack-v0` or `svix-v1`, a registry source declaring a verifier, or a header outside the token charset is refused at parse with its sentence → Test `a_verifier_that_cannot_hold_is_refused_at_parse`
+- **Dimension 1.4** — DONE — an unknown family token is refused naming every accepted token; a source with no registry family and no declaration is refused naming the sources and families → Test `an_unverifiable_trigger_never_parses`
+- **Dimension 1.5** — DONE — every `Family` arm has a token and appears in `Family::ALL` → Test `every_family_is_declarable_and_listed`
 
 ### §2 — One URL per source, Svix included
 
 `POST /v1/webhooks/{fleet_id}/{source}` verifies under the stored trigger's family; a Svix delivery claims on its signed `svix-id`. `POST /v1/webhooks/svix/{fleet_id}` is deleted and answers 404 (RULE EP4: pre-launch, no deployed callers). **Decided (D2):** one route for every family, because the stored setup — not the path — chooses the verifier.
 
-- **Dimension 2.1** — a Svix-signed delivery to `/{fleet_id}/clerk` verifies under the stored `svix-v1` trigger → Test `a_signed_delivery_wakes_the_fleet_under_the_senders_own_identifier`
-- **Dimension 2.2** — Svix headers sent to a `body-hex-sha256` trigger, and a GitHub-style header sent to a `svix-v1` trigger, are refused `UZ-WH-010` → Test `a_family_never_borrows_another_familys_proof`
-- **Dimension 2.3** — a replayed `svix-id` within the claim window produces no second event → Test `a_retry_of_one_delivery_is_suppressed_and_a_new_one_is_not`
-- **Dimension 2.4** — `POST /v1/webhooks/svix/{fleet_id}` answers 404 and the route count drops by one → Test `the_first_trigger_svix_route_is_gone`
-- **Dimension 2.5** — a fleet with a `github` and a `svix-v1` trigger verifies each at its own URL, and Save advertises both → Test `two_families_on_one_fleet_each_verify_at_their_own_url`
+- **Dimension 2.1** — DONE — a Svix-signed delivery to `/{fleet_id}/clerk` verifies under the stored `svix-v1` trigger → Test `a_signed_delivery_wakes_the_fleet_under_the_senders_own_identifier`
+- **Dimension 2.2** — DONE — Svix headers sent to a `body-hex-sha256` trigger, and a GitHub-style header sent to a `svix-v1` trigger, are refused `UZ-WH-010` → Test `a_family_never_borrows_another_familys_proof`
+- **Dimension 2.3** — DONE — a replayed `svix-id` within the claim window produces no second event → Test `a_retry_of_one_delivery_is_suppressed_and_a_new_one_is_not`
+- **Dimension 2.4** — DONE — `POST /v1/webhooks/svix/{fleet_id}` answers 404 and the route count drops by one → Test `the_first_trigger_svix_route_is_gone`
+- **Dimension 2.5** — DONE — a fleet with a `github` and a `svix-v1` trigger verifies each at its own URL, and Save advertises both → Test `two_families_on_one_fleet_each_verify_at_their_own_url`
 
 ### §3 — Save, prompt, schema and docs say the same thing
 
-- **Dimension 3.1** — the model prompt lists every family token from the `Family` constants and nothing else → Test `the_prompt_lists_exactly_the_declarable_families`
-- **Dimension 3.2** — the published schema and the parser agree on the family list, the header bound and the fixed-header refusal → Test `the_verifier_schema_and_parser_agree`
+- **Dimension 3.1** — DONE — the model prompt lists every family token from the `Family` constants and nothing else → Test `the_prompt_lists_exactly_the_declarable_families`
+- **Dimension 3.2** — DONE — the published schema and the parser agree on the family list, the header bound and the fixed-header refusal → Test `the_verifier_schema_and_parser_agree`
 
 ### §4 — Diagnose Jira and make application connections dependable
 
 Preparation output: identify the boundary behind the observed `UZ-INTERNAL-003` callback using a safe error trace or a reproducing persistence test. The implementing agent may select the local repair once reproduced; changing permissions or choosing among several authorized Jira sites requires a separate user decision. Slack's registered redirect must equal `https://app-dev.agentsfleet.net/api/connectors/slack/callback` without a trailing slash; the authenticated backend POST is not the browser redirect.
 
-- **Dimension 4.1** — Jira's reproduced completion failure is repaired and a failed persistence attempt never reports connected → Test `a_jira_connect_lands_a_grant_naming_the_site_it_was_scoped_to`
-- **Dimension 4.2** — callback refusals, invalid redirects and deadlines return safe dashboard feedback with a fresh connection retry; authorization codes and state never appear in the landing URL → Test `connector-callback-route.test.ts`
-- **Dimension 4.3** — Connect Apps paints its heading and loading state before connector status completes; completed connections show authorization and provider-specific limits → Test `returns the page shell without waiting for connector data`
-- **Dimension 4.5** — one authorized workspace list supplies every connector, connection flag and public account label; unrelated workspace handles and token values never appear → Test `the_catalogue_marks_only_what_is_held`
-- **Dimension 4.4** — every provider uses its exact dashboard relay URL and an unsuccessful start becomes a visible retryable failure → Test `the_relay_spells_the_route_the_dashboard_mounts`
+- **Dimension 4.1** — DONE — Jira's reproduced completion failure is repaired and a failed persistence attempt never reports connected → Test `a_jira_connect_lands_a_grant_naming_the_site_it_was_scoped_to`
+- **Dimension 4.2** — DONE — callback refusals, invalid redirects and deadlines return safe dashboard feedback with a fresh connection retry; authorization codes and state never appear in the landing URL → Test `connector-callback-route.test.ts`
+- **Dimension 4.3** — DONE — Connect Apps paints its heading and loading state before connector status completes; completed connections show authorization and provider-specific limits → Test `returns the page shell without waiting for connector data`
+- **Dimension 4.5** — DONE — one authorized workspace list supplies every connector, connection flag and public account label; unrelated workspace handles and token values never appear → Test `the_catalogue_marks_only_what_is_held`
+- **Dimension 4.4** — DONE — every provider uses its exact dashboard relay URL and an unsuccessful start becomes a visible retryable failure → Test `the_relay_spells_the_route_the_dashboard_mounts`
 
 ## Interfaces
 
