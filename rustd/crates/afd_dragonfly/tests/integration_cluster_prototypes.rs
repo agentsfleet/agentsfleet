@@ -8,6 +8,10 @@
 //! key moves. The two-key script the crate ships today is pinned here as the
 //! `CROSSSLOT` it is, so the next reader does not have to rediscover it.
 #![expect(
+    clippy::print_stdout,
+    reason = "the test prints its measured evidence for the lane log"
+)]
+#![expect(
     clippy::expect_used,
     clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"

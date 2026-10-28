@@ -10,9 +10,17 @@
 //! inside bubblewrap, it hardens itself and serves the executor, exactly as
 //! `agentsfleet-runner sandbox` does.
 #![expect(
-    clippy::print_stdout,
     clippy::print_stderr,
-    reason = "the kernel lane is an operator-run example; its report and refusals are terminal output"
+    reason = "the kernel lane is an operator-run example; its refusals are terminal output"
+)]
+// The report prints only from the Linux-only modules, so elsewhere there is
+// no stdout print to expect.
+#![cfg_attr(
+    target_os = "linux",
+    expect(
+        clippy::print_stdout,
+        reason = "the kernel lane is an operator-run example; its report is terminal output"
+    )
 )]
 
 #[cfg(target_os = "linux")]

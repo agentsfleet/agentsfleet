@@ -16,10 +16,6 @@
 //! `unknown`, because there is no `.git` in the build context and nothing
 //! bridged the two. `build.mk` exports `GIT_COMMIT`, so the tag and the
 //! `/healthz` field now come from the same place.
-#![expect(
-    clippy::print_stdout,
-    reason = "cargo reads build-script instructions from stdout"
-)]
 
 use std::process::Command;
 

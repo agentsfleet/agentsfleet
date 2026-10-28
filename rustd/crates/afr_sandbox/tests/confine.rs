@@ -46,19 +46,22 @@ const CONNECT_TRIES: usize = 500;
     clippy::disallowed_methods,
     reason = "the scratch directory is a path the parent set as raw OS bytes; afd_core::env reads String values and would lose a non-Unicode path"
 )]
+#[expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "stdout is the child's answer to the parent that started it, and a harness-less test reports its failure on stderr"
+)]
 fn main() -> ExitCode {
     if std::env::var_os(CHILD).is_some() {
         let scratch = PathBuf::from(std::env::var_os(SCRATCH).unwrap_or_default());
         let said = afr_sandbox::serve_confined(&scratch.join(SOCKET), &scratch.join(ROOT))
             .map_or_else(|refused| refused.to_string(), |()| SERVED.to_owned());
-        // logging: stdout is this child's answer to the parent that started it
         println!("{said}");
         return ExitCode::SUCCESS;
     }
     match parent() {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
-            // logging: a harness-less test reports its failure on stderr
             eprintln!("confine: {failure}");
             ExitCode::FAILURE
         }

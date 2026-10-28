@@ -1,4 +1,8 @@
 //! Discovery must find fresh work without scanning stopped accounting history.
+#![expect(
+    clippy::print_stderr,
+    reason = "the test prints its measured evidence for the lane log"
+)]
 
 use super::{Fixture, claim, fixture::fund, history::seed, mint, now, queue, recovery::unknown};
 use afd_authoring::{

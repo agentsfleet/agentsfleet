@@ -1,4 +1,8 @@
 //! Real transport budgets and disconnect recovery, without a pub/sub replay promise.
+#![expect(
+    clippy::print_stderr,
+    reason = "the test prints its measured evidence for the lane log"
+)]
 
 #[path = "fleet_stream_transport_fixture.rs"]
 mod fixture;

@@ -2,6 +2,10 @@
 //!
 //! Shared by `integration_sync.rs` and `integration_sync_once.rs`; each
 //! self-skips outside `make test-integration-rustd`, which exports the knobs.
+#![expect(
+    clippy::print_stderr,
+    reason = "a self-skip names the missing knobs on stderr"
+)]
 
 use afd_core::env::{EnvSource, ProcessEnv};
 use afd_cron::ScheduleService as Reconciler;

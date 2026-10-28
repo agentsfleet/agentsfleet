@@ -1,4 +1,8 @@
 //! Queue polling must not scan a fleet's unrelated approval history.
+#![expect(
+    clippy::print_stderr,
+    reason = "the test prints its measured evidence for the lane log"
+)]
 
 use afd_db::config::DbRole;
 use sqlx::Connection as _;
