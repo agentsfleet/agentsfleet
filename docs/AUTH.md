@@ -1011,7 +1011,9 @@ Each of these is a real concern, named here so future fleets and security-review
 
 ## Manual fleet-webhook auth (separate surface)
 
-Manual fleet deliveries use `POST /v1/webhooks/{fleet_id}/{source}`, including Svix senders. GitHub keeps its event-aware `/{fleet_id}/github` handler. Both routes carry `Guard::WebhookSignature`. The handler resolves the named stored trigger and its workspace credential, verifies the untouched body, then parses the document (`rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`). No request header can select a verifier or enable Bearer authentication.
+Manual fleet deliveries use `POST /v1/webhooks/{fleet_id}/{source}`, including Svix senders. GitHub keeps its event-aware `/{fleet_id}/github` handler. Both routes carry `Guard::WebhookSignature`.
+
+The handler resolves the named stored trigger and its workspace credential, verifies the untouched body, then parses the document (`rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`). No request header can select a verifier or enable Bearer authentication.
 
 ### Manual-route signing recipes
 
@@ -1025,9 +1027,13 @@ Manual fleet deliveries use `POST /v1/webhooks/{fleet_id}/{source}`, including S
 | `slack-v0` | `x-slack-signature` | version, timestamp, body | `v0=` and hex |
 | `svix-v1` | `svix-signature` | identifier, timestamp, body | Svix versioned base64 |
 
-The body recipes require an HTTP-token header name of 1–128 ASCII characters. Fixed-header recipes reject an authored header. Slack reads `x-slack-request-timestamp`; Svix reads `svix-id` and `svix-timestamp`. Both allow at most 300 seconds of clock drift. Svix suppresses replay by its signed identifier; the other recipes use the authenticated body digest.
+The body recipes require an HTTP-token header name of 1–128 ASCII characters. Fixed-header recipes reject an authored header.
 
-For example, a custom trigger declares `{"type":"webhook","source":"acme","credential_name":"acme-signing","verifier":{"scheme":"body-hex-sha256","header":"x-acme-signature"}}`. A Svix sender declares `{"type":"webhook","source":"clerk","credential_name":"clerk-signing","verifier":{"scheme":"svix-v1"}}`. Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address returns 404.
+Slack reads `x-slack-request-timestamp`; Svix reads `svix-id` and `svix-timestamp`. Both allow at most 300 seconds of clock drift. Svix suppresses replay by its signed identifier; the other recipes use the authenticated body digest.
+
+For example, a custom trigger declares `{"type":"webhook","source":"acme","credential_name":"acme-signing","verifier":{"scheme":"body-hex-sha256","header":"x-acme-signature"}}`. A Svix sender declares `{"type":"webhook","source":"clerk","credential_name":"clerk-signing","verifier":{"scheme":"svix-v1"}}`.
+
+Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address returns 404.
 
 These recipes verify incoming signed deliveries. They do not connect an account, create a vendor subscription, or grant outbound application actions. App-level ingress keeps its platform secret and provider-specific handler.
 
@@ -1085,7 +1091,9 @@ A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or ide
 
 The rows themselves:
 
-- **Per-install handle** `<provider>` in the **workspace** vault — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, connected_at_ms, label, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`). Datadog/Grafana/Fly write **no** per-install handle at all — not being connectors, their keys live as ordinary named workspace secrets instead. This is the credential the broker/worker mints or reads from. RULE VLT — the token lives only here. (The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.)
+- **Per-install handle** `<provider>` in the **workspace** vault: Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, connected_at_ms, label, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`). Datadog/Grafana/Fly write **no** per-install handle; their keys live as ordinary named workspace secrets instead. This is the credential the broker/worker mints or reads from.
+
+  RULE VLT: the token lives only here. The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.
 - **`connector.installs`** — the non-secret external-account routing map: Slack stores `team_id → workspace_id`; GitHub stores `installation_id → workspace_id`. Tokens and App secrets never live here.
 
 Each callback completion and Disconnect commits its own vault and routing changes in one transaction.
