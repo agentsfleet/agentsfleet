@@ -313,7 +313,7 @@ A cycle that fills every batch re-arms within the minute rather than idling the 
 
 The lifetime counters survive pruning because they count transitions, not surviving rows. That is also why the counter backfill's conflict arm takes `GREATEST`: re-run after pruning, a recount is smaller than the truth, and it must never lower a tally.
 
-Pagination: [REST API design guidelines](../../.orly/docs/REST_API_DESIGN_GUIDELINES.md) §"Filtering, sorting, pagination" and the API reference introduction.
+Pagination: [HTTP standard](../../.orly/standards/domains/http-responses.md) HTTP-PAGE and the API reference introduction.
 
 ### The open policy questions
 

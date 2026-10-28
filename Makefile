@@ -12,7 +12,6 @@ WITH_PROGRESS := $(CURDIR)/scripts/with-progress.sh
 include make/dev.mk
 include make/quality.mk
 include make/check-safety-gates.mk
-include make/harness.mk
 include make/test.mk
 include make/build.mk
 .DEFAULT_GOAL := help
@@ -55,8 +54,6 @@ help:  ## Show all available Makefile targets
 	@echo "  bench                    Run the Tier-2 hey HTTP loadgen gate"
 	@echo ""
 	@echo "Verify:"
-	@echo "  harness-verify           Run every deterministic gate audit (full-codebase scope)"
-	@echo "  harness-verify-all       Whole-worktree variant for periodic deep audits"
 	@echo "  check-version            Verify rustd/Cargo.toml + cli/package.json match VERSION"
 	@echo ""
 	@echo "Build & Deploy:"

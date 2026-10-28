@@ -326,7 +326,7 @@ jiff = { version = "0.2.38", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
   # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in
-  # UTC (`.orly/docs/REST_API_DESIGN_GUIDELINES.md` §4), with no hand adapter.
+  # UTC (HTTP-TIME, `.orly/standards/domains/http-responses.md`), with no hand adapter.
   "serde",
 ] }
 # The sqlx bridge for `jiff::Timestamp` <-> `TIMESTAMPTZ`. The orphan rule keeps

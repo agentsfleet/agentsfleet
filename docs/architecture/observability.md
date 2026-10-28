@@ -547,7 +547,7 @@ One logging discipline serves both binaries, in three parts:
 
 The runner's records go to stderr, where the host supervisor keeps them and,
 once it is built, the runner collector reads them from the host's log store.
-Field rules: `.orly/docs/LOGGING_STANDARD.md`, committed in this repository.
+Field rules: `.orly/standards/domains/logging.md`, committed in this repository.
 
 ## The export path — one endpoint, and the collector owns the fan-out
 
