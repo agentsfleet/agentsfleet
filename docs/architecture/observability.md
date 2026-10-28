@@ -545,8 +545,8 @@ One logging discipline serves both binaries, in three parts:
   exporter counts failures without warning, so a failing exporter cannot feed
   itself (§"The Rust daemon's export path, as built").
 
-The runner's records go to stderr, where the host supervisor keeps them and,
-once it is built, the runner collector reads them from the host's log store.
+The runner's records go to stderr, where the host supervisor keeps them. Once
+it is built, the runner collector reads them from the host's log store.
 Field rules: `.orly/standards/domains/logging.md`, committed in this repository.
 
 ## The export path — one endpoint, and the collector owns the fan-out

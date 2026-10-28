@@ -358,9 +358,11 @@ See the [CSS audit](reviews/design-system-css-audit.md) for existing duplicate n
 
 Named utilities follow TS-TOKEN and TS-TOKENADD in [the TypeScript standard](../.orly/standards/languages/typescript.md), which the `orly-standards-reviewer` agent applies.
 This implementation uses layered token surfaces and light.
+
 Component tests verify defaults and state behavior.
 No app page or component overrides the font of a shared interface primitive, whether
 through an aliased import or a named class.
+
 Browser review checks both themes,
 narrow screens, and loading, empty, error, selected, and disabled states. Static checks
 cannot determine whether arbitrary prose is a technical value; that remains a review duty.
