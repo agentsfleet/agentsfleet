@@ -93,10 +93,9 @@ describe("EditSecretDialog dismiss guard", () => {
         onOpenChange,
       }),
     );
-    fireEvent.change(screen.getByLabelText(/Data \(JSON object\)/i), {
-      target: { value: '{"api_key":"sk-x"}' },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Rotate" }));
+    fireEvent.change(screen.getByLabelText("Field 1 name"), {target: {value: "api_key"}});
+    fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: "replacement-test-value"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
     await waitFor(() => {
       expect(document.querySelector('button[aria-busy="true"]')).not.toBeNull();
     });
@@ -196,8 +195,6 @@ describe("AddSecretDialog", () => {
 });
 
 // ── AddSecretForm (field/value builder) ─────────────────────────────────
-// (jsonParseErrorMessage + parseSecretDataObject now live in
-// tests/secret-data.test.ts, co-located with the pure module they cover.)
 
 describe("AddSecretForm component", () => {
   async function renderForm() {

@@ -40,6 +40,7 @@ fn switch_to(model: &Uuid7) -> DraftPatch {
 
 fn send(text: &str) -> SendMessage {
     SendMessage {
+        save: false,
         message: text.into(),
         operation_id: mint(),
     }

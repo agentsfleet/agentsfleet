@@ -46,7 +46,7 @@ RETIRED_APP_SECRETS = re.compile(r"GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY")
 # Each workflow family, the vault variable its secrets read and the env name
 # its vault-row seeding passes.
 FAMILIES = {"deploy-dev": ("VAULT_DEV", "dev"), "release": ("VAULT_PROD", "prod")}
-DAEMON_LOG_LEVEL = 'AGENTSFLEET_LOG_LEVEL="debug"'
+DAEMON_LOG_LEVEL = 'AGENTSFLEET_LOG_LEVEL="info"'
 DEAD_LOG_LEVEL = re.compile(r"^\s*LOG_LEVEL=", re.MULTILINE)
 DEV_FLY = "deploy-dev-fly.yml"
 # The collector stand-up: each deploy workflow and the Fly organisation it

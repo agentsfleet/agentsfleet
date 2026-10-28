@@ -6,26 +6,20 @@ import { moreLinesLabel, outputPreview } from "./tool-call-copy";
 import {
   PLAN_STATUS,
   TOOL_BODY,
-  showsOutput,
   type PlanStatus,
   type PlanStep,
-  type ToolBodyKind,
-  type ToolBodyOf,
   type ToolCopy,
 } from "./tool-call-shape";
 import { DIFF_ROW, type DiffRow, type LineDiff } from "./tool-call-diff";
 
-// What sits under a tool cell's header, as Codex lays it out: a command's
-// further lines on a `│` rail, an edit's diff, and the output's first rows
-// under `└` with what they left out. Output is text nodes, never markup.
+// Recorded input previews and returned output stay in separate disclosures.
+// Output is rendered as text nodes, never markup.
 
 export const SHOW_ALL_LABEL = "show all";
 export const CLIPPED_EDIT_NOTE = "Too long to diff here";
 /** Under output the runner kept only the edges of: a long line, or a few. */
 export const OUTPUT_CUT_LABEL = "… output continues";
 export const OUTPUT_RAIL = "└";
-const COMMAND_RAIL = "│";
-const MORE_COMMAND = "…";
 const RAIL_ROW = "flex min-w-0 gap-xs";
 const RAIL_TEXT = "min-w-0 whitespace-pre-wrap break-words";
 
@@ -71,40 +65,20 @@ const PLAN_TONE: Record<PlanStatus, string> = {
 /** Opens the full call; absent when there is nothing to read it by. */
 type OnShowAll = (() => void) | undefined;
 
-type ToolCallBodyProps = {
-  copy: ToolCopy;
-  outcome: ToolResult | undefined;
-  onShowAll: OnShowAll;
-};
-
-// The rows each body kind owns, one entry per kind: a kind with no entry here
-// does not compile. What came back follows them, when `showsOutput` says so.
-const ROWS_FOR: { [K in ToolBodyKind]: (body: ToolBodyOf<K>, onShowAll: OnShowAll) => ReactNode } = {
-  [TOOL_BODY.OUTPUT]: () => null,
-  [TOOL_BODY.COMMAND]: (body) => <CommandRail rail={body.rail} hiddenLines={body.hiddenLines} />,
-  [TOOL_BODY.DIFF]: (body) => <DiffRows diff={body.diff} />,
-  [TOOL_BODY.CLIPPED_EDIT]: (_body, onShowAll) => (
-    <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={onShowAll} /></RailRow>
-  ),
-  [TOOL_BODY.PLAN]: (body) => <PlanSteps explanation={body.explanation} steps={body.steps} />,
-};
-
-// The kind travels as its own argument: that is how TypeScript ties a table
-// entry to the body it draws.
-function rowsFor<K extends ToolBodyKind>(kind: K, body: ToolBodyOf<K>, onShowAll: OnShowAll): ReactNode {
-  return ROWS_FOR[kind](body, onShowAll);
+/** Input previews come from recorded arguments, not the tool's returned output. */
+export function ToolCallInputPreview({copy, onShowAll}: {copy: ToolCopy; onShowAll: OnShowAll}) {
+  const {body} = copy;
+  switch (body.kind) {
+    case TOOL_BODY.DIFF: return <DiffRows diff={body.diff} />;
+    case TOOL_BODY.PLAN: return <PlanSteps explanation={body.explanation} steps={body.steps} />;
+    case TOOL_BODY.CLIPPED_EDIT: return <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={onShowAll} /></RailRow>;
+    default: return null;
+  }
 }
 
-/** A settled cell's body: the rows its kind owns, then what came back when
- * the kind or the outcome asks for it. */
-export function ToolCallBody({ copy, outcome, onShowAll }: ToolCallBodyProps) {
-  const { body } = copy;
-  return (
-    <div className="flex min-w-0 flex-col pl-md">
-      {rowsFor(body.kind, body, onShowAll)}
-      {showsOutput(body, outcome?.status) ? <OutputPreview outcome={outcome} onShowAll={onShowAll} /> : null}
-    </div>
-  );
+/** Only the recorded result belongs under Output or Error. */
+export function ToolCallBody({outcome, onShowAll}: {outcome: ToolResult | undefined; onShowAll: OnShowAll}) {
+  return <div className="flex min-w-0 flex-col pl-md"><OutputPreview outcome={outcome} onShowAll={onShowAll} /></div>;
 }
 
 /** An edit's lines, indented under its cell, tinted by side. Exported for the
@@ -137,15 +111,6 @@ function PlanSteps({ explanation, steps }: { explanation: string | null; steps: 
           <span className="sr-only"> ({PLAN_SPOKEN[step.status]})</span>
         </RailRow>
       ))}
-    </>
-  );
-}
-
-function CommandRail({ rail, hiddenLines }: { rail: readonly string[]; hiddenLines: number }) {
-  return (
-    <>
-      {rail.map((line, index) => <RailRow key={index} glyph={COMMAND_RAIL}>{line}</RailRow>)}
-      {hiddenLines > 0 ? <RailRow glyph={COMMAND_RAIL}>{MORE_COMMAND} {moreLinesLabel(hiddenLines)}</RailRow> : null}
     </>
   );
 }

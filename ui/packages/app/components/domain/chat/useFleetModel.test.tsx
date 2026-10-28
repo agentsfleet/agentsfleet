@@ -195,3 +195,23 @@ it("does not publish a late model-list result after unmount", async () => {
   await loading;
   expect(fixture.mutations()).toEqual([]);
 });
+
+it("retains an accepted model save until its latest setup can be read", async () => {
+  const {result} = await open();
+  const normal = fixture.override;
+  let refuseRead = true;
+  fixture.override = call => {
+    if (call.path.endsWith(`/fleets/${MODEL_OWNER.fleet}`) && fixture.applied.size && refuseRead) {
+      refuseRead = false; return response({}, 503);
+    }
+    return normal(call);
+  };
+  await act(async () => {expect(await result.current.select(RUNTIME_MODEL.ref)).toBe(false);});
+  expect(result.current).toMatchObject({pending: true, locked: true, confirmed: null, retryable: true});
+  expect(fixture.applied.size).toBe(1);
+  await act(async () => {expect(await result.current.retry()).toBe(true);});
+  expect(result.current).toMatchObject({pending: false, confirmed: RUNTIME_MODEL});
+  expect(fixture.applied.size).toBe(1);
+  expect(fixture.applyKeys).toHaveLength(2);
+  expect(fixture.applyKeys[1]).toBe(fixture.applyKeys[0]);
+});

@@ -150,6 +150,9 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
                 .patch(handler::fleet::native::patch::change::<D>)
                 .delete(handler::fleet::detail::purge::<D>),
         ),
+        FleetRoute::AuthoringContext => Some(handler::draft::private(get(
+            handler::fleet::native::context::read::<D>,
+        ))),
         FleetRoute::Revisions => Some(post(handler::fleet::native::revision::apply::<D>)),
         FleetRoute::Events => Some(get(handler::event::fleet_list::<D>)),
         FleetRoute::Event => Some(get(handler::event::detail::<D>)),

@@ -222,7 +222,7 @@ test.describe("operator journey", () => {
     // active-workspace id now comes from the API-resolved id above rather than
     // scraped from a settings page. Billing stays a tenant-scoped root route.
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
-    await expect(page.getByTestId("balance-headline")).toBeVisible();
+    await expect(page.getByLabel("Period totals")).toBeVisible();
 
     await page.goto("/settings/api-keys");
     await expect(page).toHaveURL(/\/settings\/api-keys(\?|$)/);
@@ -256,7 +256,7 @@ test.describe("operator journey", () => {
     await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
     await stopFleet(page);
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
-    await expect(page.getByTestId("balance-headline")).toBeVisible();
+    await expect(page.getByLabel("Period totals")).toBeVisible();
 
     await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
     await resumeFleet(page);

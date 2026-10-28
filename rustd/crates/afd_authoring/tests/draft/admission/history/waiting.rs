@@ -123,6 +123,7 @@ async fn send(fixture: Arc<Fixture>, id: Uuid7, operation_id: Uuid7) -> Result<A
             fixture.access(),
             &id,
             SendMessage {
+                save: false,
                 message: "Next turn".into(),
                 operation_id,
             },

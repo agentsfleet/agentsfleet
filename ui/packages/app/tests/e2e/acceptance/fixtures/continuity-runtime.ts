@@ -10,6 +10,7 @@ import { visibleReply } from "./continuity-visible";
 const TERMINAL = /^(processed|fleet_error|gate_blocked)$/;
 const POLL_INTERVALS = [500, 1_000, 2_000];
 const PROCESSED = "processed";
+const SetupReceipt = z.object({kind: z.enum(["setup_saved", "setup_ready"]), revision: z.string()}).strict();
 const HTTP_ACCEPTED = 202;
 const AcceptedReceipt = z.object({status: z.literal("accepted"), event_id: z.string(), replayed: z.boolean()});
 type ExpectedTurn = {id: string; request: string; answer: string};
@@ -27,7 +28,7 @@ export class ContinuityRuntime {
       await this.send(name);
       console.log(JSON.stringify({fleet: name, runtime: revision, turn: this.turns.length, status: "PROCESSED"}));
     }
-    await this.assertHistory();
+    await this.assertHistory(revision);
   }
 
   private async send(name: string): Promise<void> {
@@ -57,12 +58,28 @@ export class ContinuityRuntime {
     this.turns.push({id: event!.event_id, request, answer: event!.response_text!});
   }
 
-  async assertHistory(): Promise<void> {
-    const rows = await runtimeHistory(this.client, this.scope);
+  async assertHistory(revision: number): Promise<void> {
+    const history = await runtimeHistory(this.client, this.scope);
+    const receipts = history.filter(row => row.event_type === "activity");
+    const expected = Array.from({length: revision}, (_,index) => [
+      {kind: "setup_saved", revision: String(index + 1)},
+      {kind: "setup_ready", revision: String(index + 1)},
+    ]).flat();
+    expect(receipts).toHaveLength(expected.length);
+    expect(receipts.map(row => {
+      expect(row.fleet_id).toBe(this.fleetId);
+      expect(row.workspace_id).toBe(this.workspace);
+      expect(row.actor).toBe("system");
+      expect(row.status).toBe("recorded");
+      expect(row.response_text).toBeNull();
+      return SetupReceipt.parse(JSON.parse(row.request_json));
+    })).toEqual(expect.arrayContaining(expected));
+    const rows = history.filter(row => row.event_type !== "activity");
     expect(rows).toHaveLength(this.turns.length);
     expect(new Set(rows.map(row => row.event_id)).size).toBe(this.turns.length);
     for (const turn of this.turns) {
       const row = rows.find(item => item.event_id === turn.id);
+      expect(row?.event_type).toBe("chat");
       expect(row?.status).toBe(PROCESSED);
       expect(z.object({message: z.string()}).parse(JSON.parse(row!.request_json)).message).toBe(turn.request);
       expect(row?.response_text).toBe(turn.answer);

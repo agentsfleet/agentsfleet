@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction, openSetupReview } from "./fixture";
+import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction, openPublication } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { CHAT_EXAMPLES, CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -40,16 +40,17 @@ describe("private chat Save", () => {
     expect(fixture.writes()).toHaveLength(1);
     expect(fixture.writes()[0]?.body).toMatchObject({message: CHAT_EXAMPLES[0]});
   });
-  it("sends ordinary text and saves from the header, then opens Fleet Chat", async () => {
+  it("sends ordinary text and saves from the header, and stays in setup chat", async () => {
     await converse();
     const message = fixture.writes()[0];
     expect(message?.body).toMatchObject({message: "Investigate failures", source: {kind: "blank"}});
     expect(fixture.saveAttempts).toBe(0);
     await setup();
     await chooseSetupAction("Save fleet");
-    await screen.findByRole("heading", {name: "Saved v1"});
+    await screen.findByRole("heading", {name: "Save done v1"});
     expect(fixture.saveAttempts).toBe(1);
-    await waitFor(() => expect(chatRouter.push).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`));
+    expect(chatRouter.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
     expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(0);
     const save = fixture.writes().find((call) => call.path.endsWith("/fleets"));
     expect(save?.headers.get("Idempotency-Key")).toBeTruthy();
@@ -63,7 +64,7 @@ describe("private chat Save", () => {
     await chooseSetupAction("Save fleet");
     await screen.findAllByText("The request could not be confirmed. Retry the same operation.");
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-    await screen.findByRole("heading", {name: "Saved v1"});
+    await screen.findByRole("heading", {name: "Save done v1"});
     const attempts = fixture.writes().filter((call) => call.path.endsWith("/fleets"));
     expect(attempts).toHaveLength(2);
     expect(attempts[1]?.body).toEqual(attempts[0]?.body);
@@ -73,28 +74,22 @@ describe("private chat Save", () => {
   it("publishes explicitly without creating a running fleet", async () => {
     await converse();
     await setup();
-    await openSetupReview();
-    const dialog = screen.getByRole("dialog", {name: "Edit instructions"});
-    fireEvent.click(within(dialog).getByRole("button", {name: "Publish to Fleet library"}));
+    await openPublication();
+    const dialog = screen.getByRole("dialog", {name: "Publish to Library"});
     fireEvent.click(await within(dialog).findByRole("button", {name: "Publish new entry"}));
     await waitFor(() => expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(1));
     expect(fixture.saveAttempts).toBe(0);
     expect(fixture.writes().find((call) => call.path.endsWith("/fleet-libraries"))?.body).toMatchObject({label: "repairer"});
   });
 
-  it("shows proposed instructions and returns from the editor after an instructions update", async () => {
+  it("edits instructions through the menu and keeps saving the fleet explicit", async () => {
     await converse();
-    await setup();
-    await openSetupReview();
-    const dialog = screen.getByRole("dialog", {name: "Edit instructions"});
-    expect(within(dialog).getByRole("region", {name: "Setup instructions"}).textContent).toContain("Investigate failures.");
-    expect(dialog.className).toContain("ph-no-capture"); expect(dialog.className).toContain("ph-no-record");
-
-    const editor = await screen.findByRole("dialog", {name: "Edit instructions"});
-    expect(editor.className).toContain("ph-no-capture"); expect(editor.className).toContain("ph-no-record");
-    fireEvent.click(within(editor).getByRole("button", {name: "Update instructions"}));
+    await chooseSetupAction("Instructions");
+    const dialog = screen.getByRole("dialog", {name: "Instructions"});
+    expect(within(dialog).getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", "Investigate failures.\n");
+    fireEvent.change(within(dialog).getByRole("textbox", {name: "Instructions"}), {target: {value: "Inspect failures safely"}});
+    fireEvent.click(within(dialog).getByRole("button", {name: "Save changes"}));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(within(dialog).queryByLabelText("Runtime config")).toBeNull();
     expect(fixture.saveAttempts).toBe(0);
   });
 

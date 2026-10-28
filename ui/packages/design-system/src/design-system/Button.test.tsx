@@ -160,7 +160,7 @@ describe("buttonVariants / buttonClassName", () => {
   });
 
   it("every size produces a distinct class string", () => {
-    const sizes = ["default", "sm", "lg", "icon"] as const;
+    const sizes = ["default", "sm", "lg", "icon", "icon-compact"] as const;
     const classes = sizes.map((s) => buttonVariants({ size: s }));
     expect(new Set(classes).size).toBe(sizes.length);
   });

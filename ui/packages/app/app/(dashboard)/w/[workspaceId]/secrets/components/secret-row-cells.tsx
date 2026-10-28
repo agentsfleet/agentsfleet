@@ -1,5 +1,5 @@
 import { CopyButton, IconAction, Time } from "@agentsfleet/design-system";
-import { PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, Trash2Icon } from "lucide-react";
 import type { Secret } from "@/lib/api/secrets";
 
 type SecretActionProps = {
@@ -35,17 +35,13 @@ export function SecretCreatedCell({ secret }: { secret: Secret }) {
   return <Time value={new Date(secret.created_at)} format="relative" className="font-sans text-body-sm leading-body-sm tabular-nums text-muted-foreground" />;
 }
 
-export function SecretNameCell({ secret, pending, onRename }: {
-  secret: Secret;
-  pending: boolean;
-  onRename: (name: string) => void;
-}) {
+export function SecretNameCell({ secret }: {secret: Secret}) {
   return (
     <div className="min-w-0">
       {/* The name is the interpolation key in ${secrets.<name>.<field>}; copying it
           avoids silent typos. It sits in one fixed slot that ellipsizes a long
-          name (the full name is the hover and what Copy copies), so the copy and
-          rename icons after it line up on every row. On a phone the slot gives
+          name (the full name is the hover and what Copy copies), so the copy
+          icons after it line up on every row. On a phone the slot gives
           way and the name takes what the row has left, or the row would push
           its actions behind a horizontal scroll. */}
       <div className="flex min-w-0 items-center gap-1">
@@ -53,9 +49,6 @@ export function SecretNameCell({ secret, pending, onRename }: {
           {secret.name}
         </span>
         <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />
-        <IconAction type="button" variant="ghost" onClick={() => onRename(secret.name)} disabled={pending} label={`Rename secret ${secret.name}`} title="Rename">
-          <PencilLineIcon size={14} />
-        </IconAction>
       </div>
       <div className="sm:hidden text-label leading-label text-muted-foreground">Created <SecretCreatedCell secret={secret} /></div>
     </div>

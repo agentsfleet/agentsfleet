@@ -110,10 +110,7 @@ async fn unknown_or_exhausted_usage_prevents_another_model_call() {
             assert_eq!(report["usage"]["output_tokens"], 2);
             assert_eq!(report["outcome"], "completed");
             assert_eq!(report["usage"]["knowledge"], "known");
-            assert_eq!(
-                report["answer"],
-                "Your setup is ready to review. Save it when you’re ready."
-            );
+            assert_eq!(report["answer"], "Private result");
         }
     }
 }

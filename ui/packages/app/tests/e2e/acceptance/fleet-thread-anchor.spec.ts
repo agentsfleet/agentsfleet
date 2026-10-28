@@ -217,23 +217,36 @@ async function readingHistory(chat: Locator, stream: ScheduledStream): Promise<v
   await expect(chat.getByRole("button", { name: JUMP_TO_LATEST })).toBeVisible();
 }
 
-// The element's top within the thread's scroll viewport, on every frame while
-// `act` runs and after. Measured against the viewport's own box, so the page
-// chrome around the thread moving it (a header row going) is not counted.
+// Measure against the viewport so movement of the surrounding chrome is excluded.
 async function sampleTop(target: Locator, ms: number, act: () => Promise<unknown>): Promise<number[]> {
-  const sampling = target.evaluate((el, window_) => new Promise<number[]>((resolve) => {
-    const tops: number[] = [];
-    const frame = el.closest('[role="presentation"]') ?? document.documentElement;
+  const sampling = target.evaluate((el, window_) => new Promise<{samples: Array<{top: number; scrollTop: number; height: number; viewport: number; reserve: number}>; afterLayout: Array<{top: number; at: number}>}>((resolve) => {
+    const samples: Array<{top: number; scrollTop: number; height: number; viewport: number; reserve: number}> = [];
+    const frame = (el.closest('[role="presentation"]') ?? document.documentElement) as HTMLElement;
     const t0 = performance.now();
+    const afterLayout: Array<{top: number; at: number}> = [];
+    const read = () => ({top: el.getBoundingClientRect().top - frame.getBoundingClientRect().top,
+      scrollTop: frame.scrollTop, height: frame.scrollHeight, viewport: frame.clientHeight,
+      reserve: frame.querySelector('[data-aui-top-anchor-reserve]')?.getBoundingClientRect().height ?? 0});
+    const observer = new ResizeObserver(() => {
+      const sample = read();
+      afterLayout.push({top: sample.top, at: performance.now() - t0});
+      // Layout and resize callbacks finish after animation callbacks, before paint.
+      // Refresh this frame, keeping corrections deferred to a later frame visible.
+      if (samples.length) samples[samples.length - 1] = sample;
+    });
+    observer.observe(el.closest('[data-testid="fleet-message"]') ?? el);
     const tick = () => {
-      tops.push(el.getBoundingClientRect().top - frame.getBoundingClientRect().top);
+      samples.push(read());
       if (performance.now() - t0 < window_) requestAnimationFrame(tick);
-      else resolve(tops);
+      else {observer.disconnect(); resolve({samples, afterLayout});}
     };
     requestAnimationFrame(tick);
   }), ms);
   await act();
-  return sampling;
+  const {samples, afterLayout} = await sampling;
+  await test.info().attach("reply-scroll-geometry", {contentType: "application/json", body: JSON.stringify(samples)});
+  await test.info().attach("reply-after-layout-geometry", {contentType: "application/json", body: JSON.stringify(afterLayout)});
+  return samples.map(sample => sample.top);
 }
 
 async function sampleScroll(viewport: Locator, ms: number, act: () => Promise<unknown>): Promise<number[]> {

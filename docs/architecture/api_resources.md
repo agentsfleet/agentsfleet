@@ -1,8 +1,8 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-10-24
-product_version: 0.65.0
+verified: 2026-10-27
+product_version: 0.70.0
 executable: false
 ---
 
@@ -49,7 +49,7 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 - Money, message sequences, candidate revisions, setup revisions, and fences use decimal strings. Charges, costs, rates, and budgets use unsigned `Nanos` decimal strings (`rustd/crates/afd_wire/src/nanos/mod.rs`). Wallet balances use `SignedNanos`, allowing negative debt (`rustd/crates/afd_wire/src/nanos/signed/mod.rs`).
 
   Times are RFC 3339 instants in UTC at millisecond precision under REST guide §4 (`rustd/crates/afd_wire/src/instant.rs`). Narrow caps/limits use safe JSON integers.
-- Lists accept `limit` and `starting_after` using `afd_core::paging::Cursor` (`rustd/crates/afd_core/src/paging/mod.rs:30`, `paging/cursor.rs:26`). General lists default 50/max 100; draft messages default 20/max 25. Cursors bind resource, creator, ordering, filters, and limit; no cross-subject cursor reuse.
+- Lists accept `limit` and `starting_after` using `afd_core::paging::Cursor` (`rustd/crates/afd_core/src/paging/mod.rs:30`, `paging/cursor.rs:26`). General lists default 50/max 100; draft messages default 20/max 25. Private draft cursors bind resource, creator, ordering, filters, and limit. Fleet-message cursors carry position; the authorized workspace, fleet, and event filter are reapplied on every read.
 - An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag. Fleet and platform Library clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag. GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
 - Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation, fleet revision application, and Library create/revision use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
 - Authoring creation keys bind actor, workspace, operation type and parent collection. Member keys bind workspace, operation type and resource, with the accepting actor recorded. Authorization runs before replay.
@@ -90,7 +90,13 @@ Requirements are derived immutable setup, not readiness results. Review digest e
 
 `Draft = {id,state,title,etag,authoring_model_ref,cancelled_through,candidate?,review?,linked_fleet_id?,publication?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate. `publication={library_id,revision_id,canonical_digest}` is a verified explicit publication receipt. Closing sets expiry 30 days later; linked active authoring/setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. Active authoring blocks PATCH and Save.
 
-`Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`. Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
+`Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,save_requested,save_error_code?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`. Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
+
+Create and Send accept an optional `save` boolean, defaulting to false. The accepted message records `save_requested`; replay includes this choice. Text alone grants no save authority.
+
+For a completed save-requested turn, the daemon saves the answer, accounting, and immutable setup together. Closing the browser does not cancel that save. Activation follows the commit and is retried on report replay.
+
+A checked save refusal retains the answer and editable candidate with a stable `save_error_code`. An internal save failure rolls back the report transaction. Cancelled or failed turns never save setup.
 
 `failure={reason,error_code,recovery_action,cause?}` is required on failed/timed_out messages and absent otherwise.
 The optional cause is `deadline|cancelled|provider_interrupted|completion_unverified`, recorded with the dispatch outcome.
@@ -141,17 +147,19 @@ GET reports current prerequisites in `setup.checks`; changes to a saved review d
 
 The serialized Definition or edit batch is bounded at 448 KiB; setup HTTP bodies allow 464 KiB including their wrapper. The runner model-call envelope has its separate 128 KiB limit. See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
 
+The next two tables preserve the workspace-chat cutover's 17 new and seven changed person routes. Subsequent fleet editor and history reads are listed separately below.
+
 ### New person routes: 17
 
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
 | N1 | GET W/models | No body; `purpose=authoring|runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{authoring,runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; owner's eligible enabled entries only | AUTH, INPUT, DEPENDENCY |
-| N2 | POST W/drafts | `{source:Source,authoring_model_ref,message?,operation_id}`; body UUIDv7 key only. The chat's initial `title` is the first line of `message`, else of the source's description, else `New fleet`, cut to 100 characters; a later title edit is never overwritten | 201 Draft, optional `accepted:{status:"accepted",sequence,replayed}` when first message exists; `Location:D`, ETag | INPUT, HIDDEN, MODEL, REPLAY, GONE, DEPENDENCY |
+| N2 | POST W/drafts | `{source:Source,authoring_model_ref,message?,save?,operation_id}`; `save:true` requires a message; body UUIDv7 key only. The chat's initial `title` is the first line of `message`, else of the source's description, else `New fleet`, cut to 100 characters; a later title edit is never overwritten | 201 Draft, optional `accepted:{status:"accepted",sequence,replayed}` when first message exists; `Location:D`, ETag | INPUT, HIDDEN, MODEL, REPLAY, GONE, DEPENDENCY |
 | N3 | GET W/drafts | No body; `state`, `linked_fleet_id` and `q` optional, paging; creator only. `q` (1..200 characters, trimmed) matches the title or any turn's text as a case-insensitive substring, LIKE metacharacters literal, and is bound into the cursor | 200 Page of `{id,title,state,etag,linked_fleet_id?,updated_at,expires_at?,candidate_revision,setup_revision,publication_revision}`; the three revisions are null until the chat reaches each (no candidate, no saved fleet, not published) | INPUT, CURSOR, AUTH, DEPENDENCY |
 | N4 | GET D | No body; creator + current membership | 200 Draft with latest candidate/review when available; ETag | HIDDEN, AUTH, DEPENDENCY |
 | N5 | PATCH D | If-Match; `{title?,instance_name?,authoring_model_ref?,runtime_model_ref?,config_ops?:ConfigOp[],instruction_edits?:InstructionEdit[]}`; at least one, editing and no running/queued messages | 200 Draft with new tag and current candidate/review; recheck owner eligibility; authoring selection applies to future sends only | PRECONDITION, STALE, STATE, INPUT, MODEL, POLICY |
 | N6 | DELETE D | No body; creator only, no If-Match | 204 after fencing and private-text deletion boundary; ongoing setup link may remain shared | HIDDEN, AUTH, DEPENDENCY; residual-copy bounds are in runner page |
-| N7 | POST D/messages | `{message,operation_id}`; text1..32,768 bytes; body UUIDv7 only; `editing` | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
+| N7 | POST D/messages | `{message,save?,operation_id}`; text1..32,768 bytes; body UUIDv7 only; `editing`; omitted `save` is false | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
 | N8 | GET D/messages | No body; creator; limit default 20/max 25, starting_after | 200 Page of Message; ordered sequence then role; states/usage included | HIDDEN, CURSOR, INPUT, DEPENDENCY |
 | N9 | POST D/cancellations | `{through_sequence}` decimal string, at most current last accepted sequence; no If-Match | 200 `{cancelled_through,stopped:[{sequence,state:"cancelled"}]}`; lower repeated cutoff returns standing watermark | INPUT, HIDDEN, DEPENDENCY |
 | N10 | GET D/events/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
@@ -178,6 +186,21 @@ Send atomically captures the draft's selected authoring model reference; admissi
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
 | C6 | POST W/fleet-libraries | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; library:write | 201 `{library_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
 | C7 | GET W/fleet-libraries | Existing gallery filters/paging; no body | 200 Page of LibraryCard (platform + owned), now head_revision_id and etag | existing library input/cursor errors, AUTH, DEPENDENCY |
+
+### Fleet editor and history reads
+
+| # | Method and resource | Exact input / preconditions | Success output | Specific failures |
+|---|---|---|---|---|
+| E1 | GET F/authoring-context | No body; fleet:write; optional starting_after for older creator conversations | 200 `{fleet,conversations[],activities:{items,total:null,next_cursor},next_cursor}`; private, no-store | HIDDEN, AUTH, INPUT, CURSOR, DEPENDENCY |
+| E2 | GET F/messages | Existing paging; optional event_type, 1..64 bytes without NUL; fleet:read | 200 existing message page, filtered before limit; `event_type=activity` excludes runtime bodies and undelivered admissions | INPUT, CURSOR, AUTH, DEPENDENCY |
+
+E1 returns at most three creator-private conversations, each with at most 25 recent message rows, plus 25 shared activity receipts. Runtime request bodies are excluded.
+
+The complete serialized response has a four-mebibyte ceiling. Older whole turns are trimmed first; older conversations move behind their continuation if metadata alone needs more space. The newest conversation keeps its current setup and latest turn.
+
+Conversation cursors bind creator, workspace, fleet, and ordering. Each conversation includes `draft`, `messages`, `messages_starting_after`, and `truncated`. Reuse its message boundary with N8 and `limit=25`; read N8 without a cursor for older text.
+
+The fleet, conversations, and receipts are bounded independent reads, rather than one database snapshot. Every private conversation checks current membership and creator ownership.
 
 The existing GET F/messages includes undelivered, unsettled steer admissions alongside delivered history in one statement snapshot (`rustd/crates/afd_events/src/history/statement/select_thread_page.sql` and `select_thread_page_after.sql`). It preserves the queued-message shape, logical event ID, ordering, cursor, and authorization across delivery and settlement.
 

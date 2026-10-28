@@ -2,7 +2,6 @@ import { FLEET_ID } from "../helpers/draft-fixtures";
 import { detailBody, detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { render } from "@testing-library/react";
 import { fetchMock, authMock as auth, listTenantWorkspacesCached } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail views", () => {
@@ -60,89 +59,11 @@ describe("fleets routes — detail views", () => {
     ).rejects.toThrow("Fleet read failed");
   });
 
-  it("fleet Activity view loads the URL-selected standard-table window", async () => {
-    mockFetchBilling(happyBilling);
-    const { default: Page } =
-      await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const page = await Page({
-      params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-      searchParams: Promise.resolve({ view: "events", ps: "50" }),
-    });
-    const markup = renderToStaticMarkup(page);
-    const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(urls).toContainEqual(
-      expect.stringContaining(`/fleets/${FLEET_ID}/events?limit=50`),
-    );
-    expect(urls.some((url) => url.includes("since="))).toBe(false);
-    expect(markup).toContain(
-      `href="/w/ws_1/fleets/${FLEET_ID}?view=events" aria-current="page"`,
-    );
-    const { findByText } = render(page);
-    expect(await findByText("Fleet activity appears here.")).toBeTruthy();
-  });
-
-  it("fleet Activity view threads the URL cursor into the events fetch", async () => {
-    mockFetchBilling(happyBilling);
-    const { default: Page } =
-      await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        // The cursor rides the same URL as the open view; the server fetches
-        // that page rather than resetting to the newest.
-        searchParams: Promise.resolve({
-          view: "events",
-          c: "tok_fleet",
-          cps: "25",
-        }),
-      }),
-    );
-    const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(urls.some((url) => url.includes("cursor=tok_fleet"))).toBe(true);
-  });
-
-  it("fleet Activity view propagates failed history to the retry boundary", async () => {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/events")) throw new Error("history down");
-      return detailResponse();
-    });
-    const { default: Page } =
-      await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    await expect(Page({
-      params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-      searchParams: Promise.resolve({ view: "events" }),
-    })).rejects.toThrow("history down");
-  });
-
-  it("fleet Memory view renders stored entries and a fetch failure separately", async () => {
-    mockFetchBilling(happyBilling);
-    const { default: Page } =
-      await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const emptyMarkup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        searchParams: Promise.resolve({ view: "memory" }),
-      }),
-    );
-    expect(emptyMarkup).toContain("Nothing learned yet");
-
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/memories")) throw new Error("memory down");
-      return detailResponse();
-    });
-    const unavailableMarkup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        searchParams: Promise.resolve({ view: "memory" }),
-      }),
-    );
-    expect(unavailableMarkup).toContain("Memory is temporarily unavailable");
+  it.each(["events", "memory", "setup"])("sends an old %s view link to the single fleet conversation", async view => {
+    const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    await expect(Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID}),
+      searchParams: Promise.resolve({view})})).rejects.toThrow(`redirect:/w/ws_1/fleets/${FLEET_ID}`);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fleet Chat remains available when the thread read fails, and never reads the inbox", async () => {
@@ -173,7 +94,7 @@ describe("fleets routes — detail views", () => {
     // no approvals read is issued to render it.
     expect(markup).toContain("2 approvals waiting");
     expect(asked.some((url) => url.includes("/approvals"))).toBe(false);
-    expect(markup).toContain("Chat");
+    expect(markup).toContain('data-fleet-workspace');
   });
 
   it("fleets detail page renders panels + exhaustion badge when tenant is exhausted", async () => {
@@ -189,32 +110,15 @@ describe("fleets routes — detail views", () => {
     expect(markup).toContain("Balance exhausted");
   });
 
-  it("renders fleet-local navigation with Chat as the focused default", async () => {
+  it("opens directly on conversation without a Chat, Activity or Memory tab row", async () => {
     mockFetchBilling(happyBilling);
-    const { default: Page } =
-      await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-      }),
-    );
-    expect(markup).toContain('aria-label="Fleet sections"');
-    expect(markup).toContain(`href="/w/ws_1/fleets/${FLEET_ID}" aria-current="page"`);
-    expect(markup).toContain("Chat");
-    expect(markup).toContain("Activity");
-    expect(markup).toContain("Memory");
-    expect(markup).not.toContain("?view=setup");
-    expect(markup).not.toContain("?view=trigger");
-    expect(markup).not.toContain("Settings");
-    // The panel paints in the same pass as the tabs. A skeleton between them
-    // stays up at least 300 ms once shown, and made Chat land later than its reads.
-    expect(markup).not.toContain('aria-label="Fleet summary"');
-    expect(markup).toContain('aria-label="Fleet lifecycle actions"');
-    expect(markup).not.toContain("fleet-header-alignment-spacer");
-    expect(markup).not.toContain("lg:w-56");
-    expect(markup).not.toContain(">Stop</button>");
+    const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
+    expect(markup).not.toContain('aria-label="Fleet sections"');
+    expect(markup).not.toContain('?view=events');
+    expect(markup).not.toContain('?view=memory');
     expect(markup).toContain('aria-label="Fleet actions"');
-    expect(markup).not.toContain("What it knows");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/memories"))).toBe(false);
   });
 
   it("fleets detail page renders without badge when not exhausted", async () => {
@@ -229,13 +133,12 @@ describe("fleets routes — detail views", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("opens private setup editing from the fleet header", async () => {
+  it("opens full-page setup editing from the fleet header", async () => {
     mockFetchBilling(happyBilling);
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
-    expect(markup).toContain("aria-expanded=\"false\"");
-    expect(markup).toContain(">Edit setup</button>");
-    expect(markup).not.toContain(`/fleets/new?fleet=${FLEET_ID}`);
+    expect(markup).toContain(">Edit setup</a>");
+    expect(markup).toContain(`/fleets/new?fleet=${FLEET_ID}&amp;setup_revision=1`);
     expect(markup).not.toContain("?view=setup");
   });
 
@@ -248,8 +151,8 @@ describe("fleets routes — detail views", () => {
     else listTenantWorkspacesCached.mockRejectedValueOnce(new TypeError("Workspace service unavailable"));
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
-    expect(markup).toContain('aria-label="Fleet sections"');
-    expect(markup).toContain(">Edit setup</button>");
-    expect(markup.includes('title="Workspace access must be available to edit setup."')).toBe(!available);
+    expect(markup).not.toContain('aria-label="Fleet sections"');
+    expect(markup).toContain(">Edit setup</a>");
+    expect(markup).toContain(`/fleets/new?fleet=${FLEET_ID}`);
   });
 });

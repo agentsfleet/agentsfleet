@@ -24,9 +24,6 @@ const { INNER_ATTR, PROPS_ATTR, innerStub } = vi.hoisted(() => {
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog", async () => ({
   default: innerStub("EditSecretDialog", (await import("react")).createElement),
 }));
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog", async () => ({
-  default: innerStub("RenameSecretDialog", (await import("react")).createElement),
-}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", async () => ({
   default: innerStub("AddSecretForm", (await import("react")).createElement),
 }));
@@ -65,7 +62,6 @@ vi.mock("next/dynamic", () => {
 });
 
 import EditCredentialDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
-import RenameCredentialDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
 import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
@@ -85,17 +81,6 @@ describe("dynamic island shims load their own inner component with the caller's 
       React.createElement(EditCredentialDialogDynamic, {
         workspaceId: "ws_1",
         name: "github",
-        open: true,
-        onOpenChange: noop,
-      }),
-    ],
-    [
-      "RenameCredentialDialogDynamic",
-      "RenameSecretDialog",
-      React.createElement(RenameCredentialDialogDynamic, {
-        workspaceId: "ws_1",
-        name: "github",
-        existingNames: [],
         open: true,
         onOpenChange: noop,
       }),

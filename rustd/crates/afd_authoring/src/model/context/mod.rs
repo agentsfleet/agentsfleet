@@ -19,6 +19,9 @@ pub(super) async fn prepare(
     continuations: Vec<continuation::Continuation>,
     editing: bool,
 ) -> Result<(Prepared, Snapshot)> {
+    let save =
+        crate::message::save_requested(connection, &attempt.draft_id, attempt.message_sequence)
+            .await?;
     let model = &attempt.model_snapshot;
     let settings = model.inference.as_ref().ok_or(ErrorKind::Model)?;
     let context =
@@ -27,13 +30,21 @@ pub(super) async fn prepare(
     let identity = Identity {
         scope: scope.identity(),
         model: replay::digest(model)?,
-        pinned: replay::digest(&provider::system(editing))?,
+        pinned: replay::digest(&provider::system(editing, save))?,
     };
     let checkpoint = Repository::new(connection, scope, attempt.id.clone())
         .load()
         .await?;
     let mut snapshot = Snapshot::new(attempt, editing, checkpoint.as_ref(), &continuations)?;
-    let mut estimator = estimator(request, model, continuations, editing, settings, context)?;
+    let mut estimator = estimator(
+        request,
+        model,
+        continuations,
+        editing,
+        save,
+        settings,
+        context,
+    )?;
     let mut source = source::Source::new(connection, attempt);
     let plan = afd_context::prepare(
         &mut source,
@@ -95,6 +106,7 @@ fn estimator<'a>(
     model: &'a afd_credential::provider::RegisteredModel,
     continuations: Vec<continuation::Continuation>,
     editing: bool,
+    save: bool,
     settings: &'a afd_wire::inference::ModelInference,
     context: u32,
 ) -> Result<estimate::Estimator<'a>> {
@@ -102,10 +114,10 @@ fn estimator<'a>(
         .iter()
         .map(|value| value.context_digest.clone())
         .collect();
-    let quoted = quoted(request, model, editing)?;
+    let quoted = quoted(request, model, editing, save)?;
     let mut body = provider::body(request, model, editing)?;
     continuation::restore(&mut body, request, continuations)?;
-    body = body.preamble(provider::system(editing));
+    body = body.preamble(provider::system(editing, save));
     Ok(estimate::Estimator {
         route: afd_inference::Configured::new(settings, context)?,
         model: &model.model,
@@ -178,6 +190,7 @@ fn quoted(
     request: &garde::Valid<ModelCallInput>,
     model: &afd_credential::provider::RegisteredModel,
     editing: bool,
+    save: bool,
 ) -> Result<rig_core::completion::CompletionRequest> {
     let mut quoted = (**request).clone();
     for message in &mut quoted.request.messages {
@@ -191,5 +204,5 @@ fn quoted(
         }
     }
     let quoted = garde::Unvalidated::new(quoted).validate()?;
-    Ok(provider::body(&quoted, model, editing)?.preamble(provider::system(editing)))
+    Ok(provider::body(&quoted, model, editing)?.preamble(provider::system(editing, save)))
 }

@@ -77,7 +77,7 @@ it("cancels a name change without saving and reopens with the saved name", async
 
 it("opens a pinned setup directly and cancels initialization when navigation leaves it", async () => {
   const view = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "definition", definition: DRAFT.candidate!.definition}} />);
-  await screen.findByRole("heading", {name: "Preparing your setup"});
+  await screen.findByRole("heading", {name: "repairer"});
   expect(screen.queryByText("What should your fleet do?")).toBeNull();
   view.unmount();
   const pending = Promise.withResolvers<Response>();

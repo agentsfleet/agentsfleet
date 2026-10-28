@@ -25,15 +25,36 @@ pub(super) async fn response<D: Services>(
     saved: SavedFleet,
     status: StatusCode,
 ) -> Result<Response, Refusal> {
+    let location = format!("/v1/workspaces/{workspace}/fleets/{}", saved.id);
+    let etag = saved.etag.clone();
     let schedules = services
         .schedules()
         .list(workspace, &saved.id)
         .await
         .map_err(Refusal::at(EVENT_SCHEDULES))?;
-    let location = format!("/v1/workspaces/{workspace}/fleets/{}", saved.id);
-    let etag = saved.etag.clone();
+    let payload = payload(services, saved, &schedules);
+    let mut response = (status, Json(payload)).into_response();
+    attach(&mut response, header::ETAG, &etag);
+    if status == StatusCode::CREATED {
+        attach(&mut response, header::LOCATION, &location);
+    }
+    Ok(response)
+}
+
+pub(super) type NativeFleet<'s> = FleetResponse<
+    afd_fleet_runtime::Definition,
+    afd_authoring::SetupProgress,
+    afd_authoring::types::StartOutcome,
+    afd_api_wire::schedule::View<'s>,
+>;
+
+pub(super) fn payload<'s, D: Services>(
+    services: &D,
+    saved: SavedFleet,
+    schedules: &'s [afd_cron::Schedule],
+) -> NativeFleet<'s> {
     let webhook_urls = webhook_urls(services.deployment(), &saved.id, saved.definition.runtime());
-    let payload = FleetResponse {
+    FleetResponse {
         id: saved.id.to_string(),
         name: saved.name,
         status: saved.status,
@@ -44,7 +65,7 @@ pub(super) async fn response<D: Services>(
         definition: saved.definition,
         setup: saved.setup,
         start: saved.start,
-        schedules: crate::handler::schedule::views(&schedules, services.now()),
+        schedules: crate::handler::schedule::views(schedules, services.now()),
         webhook_urls,
         created_at: saved.created_at,
         updated_at: saved.updated_at,
@@ -55,13 +76,7 @@ pub(super) async fn response<D: Services>(
             read: saved.memory_reads_workspace,
             publish: saved.memory_publishes_workspace,
         },
-    };
-    let mut response = (status, Json(payload)).into_response();
-    attach(&mut response, header::ETAG, &etag);
-    if status == StatusCode::CREATED {
-        attach(&mut response, header::LOCATION, &location);
     }
-    Ok(response)
 }
 
 /// Where each declared webhook trigger is delivered, on this deployment.

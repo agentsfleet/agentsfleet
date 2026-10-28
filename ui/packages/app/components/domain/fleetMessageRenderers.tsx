@@ -30,6 +30,7 @@ import {
 } from "./fleetMessageReaders";
 import { RENDER_KIND } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
 import { groupSpan } from "@/lib/events/event-grouping";
 import {
   eventLinkFrom,
@@ -133,7 +134,8 @@ function FleetActivityMessage({
   // The tick states the outcome itself — a delivery whose only content is its
   // outcome does not earn a second row. A real reply does, and then this is
   // its split trigger.
-  const outcome = working || isSplitTrigger ? undefined : messageOutcome(message);
+  const recorded = status === FLEET_ACTIVITY.status;
+  const outcome = working || isSplitTrigger || recorded ? undefined : messageOutcome(message);
   const link = eventLinkFrom(payload);
   const reference = link ? eventReferenceFrom(payload) : null;
   return (
@@ -153,7 +155,7 @@ function FleetActivityMessage({
           />
         }
       >
-        {payload ? <FleetPayloadDisclosure json={payload} inline /> : null}
+        {payload && !recorded ? <FleetPayloadDisclosure json={payload} inline /> : null}
       </FleetActivityRow>
     </>
   );

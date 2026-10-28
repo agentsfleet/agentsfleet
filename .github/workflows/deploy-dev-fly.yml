@@ -143,7 +143,7 @@ jobs:
           otlp_ingest="$(printf '%s:%s' "$GRAFANA_OTLP_INSTANCE_ID" "$GRAFANA_OTLP_API_KEY" | base64 | tr -d '\n')"
           echo "::add-mask::$otlp_ingest"
           flyctl secrets set \
-            AGENTSFLEET_LOG_LEVEL="debug" \
+            AGENTSFLEET_LOG_LEVEL="info" \
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             DRAGONFLY_URL="$DRAGONFLY_URL" \

@@ -1,6 +1,8 @@
 //! One retained fleet identity moves through bounded setup requests and checked activation.
 
 mod activate;
+mod chat_save;
+mod conversations;
 mod patch;
 mod progress;
 mod read;
@@ -31,6 +33,10 @@ pub struct Creations {
 }
 
 impl Creations {
+    pub(crate) fn activity_streams(&self) -> afd_dragonfly::FleetStreams {
+        self.admissions.streams()
+    }
+
     /// Shares the daemon's ledger, queue, pool and credential inspection service.
     #[must_use]
     pub fn new(setup: Setup, admissions: Admissions) -> Self {

@@ -7,8 +7,7 @@
  * way a real operator would: open the "Create secret" dialog, fill a secret name
  * plus a field+value row, click Create secret, assert the row appears in the
  * DataTable-based SecretsList, then rotate it through the Edit dialog and
- * assert it is still listed under the same name. The UI has no standalone
- * delete assertion here (rotate only; rename is its own dialog now) — delete is covered elsewhere;
+ * assert it is still listed under the same name. Delete is covered separately;
  * cleanup runs against the API in afterEach regardless of where the test
  * fails.
  */
@@ -82,8 +81,12 @@ test.describe("secrets lifecycle", () => {
     await page.getByRole("button", { name: `Edit secret ${name}` }).click();
     const editDialog = page.getByRole("dialog");
     await expect(editDialog).toBeVisible();
-    await editDialog.getByLabel("Data (JSON object)").fill('{"api_key":"ROTATED_TOKEN"}');
-    await editDialog.getByRole("button", { name: "Rotate" }).click();
+    await expect(editDialog.getByLabel("Secret name")).toHaveValue(name);
+    await expect(editDialog.getByLabel("Secret name")).toHaveAttribute("readonly", "");
+    await expect(editDialog.getByLabel("Field 1 value")).toHaveAttribute("type", "password");
+    await editDialog.getByLabel("Field 1 name").fill("api_key");
+    await editDialog.getByLabel("Field 1 value").fill("ROTATED_TOKEN");
+    await editDialog.getByRole("button", { name: "Save changes", exact: true }).click();
     await expect(editDialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
 
     // Still listed under the same name after rotation.

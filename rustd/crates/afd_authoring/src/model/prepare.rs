@@ -61,7 +61,7 @@ pub(super) fn body(
     let mut canonical = provider::body(request, model, editing)?;
     super::continuation::restore(&mut canonical, request, continuations)?;
     // Saved continuation indexes address conversation messages without the system prefix.
-    canonical = canonical.preamble(provider::system(editing));
+    canonical = canonical.preamble(provider::system(editing, false));
     let input = input_tokens(&route, &canonical, request, model)?;
     if input >= i64::from(context) {
         return Err(ErrorKind::Token.into());

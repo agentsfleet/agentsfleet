@@ -1,8 +1,12 @@
 import { FLEET_ID } from "../helpers/draft-fixtures";
 import { detailBody, happyBilling, mockFetchBilling } from "./harness";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { fetchMock } from "../helpers/dashboard-mocks";
+
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetPendingChat", () => ({
+  FleetPendingChat: ({fleet}: {fleet: {id: string}}) => `Setup conversation for ${fleet.id}`,
+}));
 
 describe("fleets routes — detail lifecycle states", () => {
   it("shows Delete instead of lifecycle controls after a fleet is killed", async () => {
@@ -55,7 +59,7 @@ describe("fleets routes — detail lifecycle states", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("shows saved setup readiness and recovery while a fleet waits for access", async () => {
+  it("routes an installing fleet to its setup conversation instead of the execution composer", async () => {
     mockFetchBilling(happyBilling, {fleet: {name: "fresh-bot", status: "installing"}});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -66,14 +70,10 @@ describe("fleets routes — detail lifecycle states", () => {
     );
     await stream.allReady;
     const markup = await new Response(stream).text();
-    // The saved fleet stays addressable while readiness blocks activation.
-    expect(markup).toContain("installing");
-    expect(markup).toContain('aria-label="Fleet status: installing"');
+    expect(markup).toContain(`Setup conversation for ${FLEET_ID}`);
+    expect(markup).not.toContain('aria-label="Fleet status: installing"');
     expect(markup).not.toContain(">Killed<");
-    expect(markup).toContain('aria-label="Saved fleet setup"');
-    expect(markup).toContain("fresh-bot setup is waiting");
-    expect(markup).toContain("Connect GitHub");
-    expect(markup).toContain("Continue setup");
+    expect(markup).not.toContain("Continue setup in chat");
     expect(markup).not.toContain("Pending approvals");
   });
 

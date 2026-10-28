@@ -1,13 +1,30 @@
 //! A release migration runs while the previous daemon may still accept work.
 
 use super::{Fixture, TestDatabase, mint};
-use crate::draft::attempt::Attempt;
-use afd_authoring::types::Source;
 use afd_core::id::Uuid7;
 use afd_db::{Migrator, config::DbRole, migration::MIGRATIONS};
 
 const DEADLINE_SLOT: i64 = 2130;
 const PENDING: &str = "pending";
+// Pin the writer that predates the deadline migration, including the old message
+// column list. Today's admission code requires later schema slots.
+const LEGACY_DRAFT: &str = "\
+INSERT INTO authoring.drafts
+    (id,workspace_id,tenant_id,user_id,title,status,source_type,tenant_model_id,
+     last_message_sequence,cancelled_through_sequence,resource_version,created_at,updated_at)
+VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'Dispatch upgrade','editing','blank',$5::uuid,
+        1,0,1,now(),now())";
+const LEGACY_MESSAGE: &str = "\
+INSERT INTO authoring.messages
+    (id,draft_id,sequence,operation_id,status,user_text,created_at,updated_at)
+VALUES ($1::uuid,$1::uuid,1,$1::uuid,'running','Investigate',now(),now())";
+const LEGACY_ATTEMPT: &str = "\
+INSERT INTO authoring.attempts
+    (id,lease_id,workspace_id,tenant_id,user_id,draft_id,message_sequence,fencing_token,
+     model_token_hash,model_snapshot,status,lease_expires_at,expires_at,reserved_nanos,
+     usage_unknown,call_count,output_token_count,reported_runtime_ms,last_activity_sequence,created_at,updated_at)
+VALUES ($1::uuid,$1::uuid,$2::uuid,$3::uuid,$4::uuid,$1::uuid,1,1,$1,$5::jsonb,'active',
+        now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
 const LEGACY_INSERT: &str = "\
 INSERT INTO authoring.dispatches
     (id,attempt_id,sequence,request_digest,status,private_expires_at,created_at,updated_at)
@@ -26,9 +43,9 @@ async fn dispatch_deadline_upgrade_preserves_old_rows_and_old_writers() {
         .await
         .expect("schema served by the previous daemon");
     let f = Fixture::in_lane(lane).await;
-    let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
+    let attempt = legacy_attempt(&f).await;
     sqlx::query("UPDATE authoring.attempts SET expires_at=clock_timestamp()+interval '5 seconds' WHERE id=$1::uuid")
-        .bind(attempt.id.as_str())
+        .bind(attempt.as_str())
         .execute(&mut *f.connection().await)
         .await
         .expect("an attempt shorter than a legacy physical call");
@@ -56,7 +73,44 @@ async fn dispatch_deadline_upgrade_preserves_old_rows_and_old_writers() {
     f.cleanup().await;
 }
 
-async fn assert_backfill(f: &Fixture, attempt: &Attempt) {
+async fn legacy_attempt(f: &Fixture) -> Uuid7 {
+    let id = mint();
+    let mut connection = f.connection().await;
+    let model = afd_credential::provider::registered_model(
+        &mut connection,
+        &f.tenant,
+        &f.model.to_string(),
+    )
+    .await
+    .expect("registered historical model")
+    .expect("fixture model exists");
+    sqlx::query(LEGACY_DRAFT)
+        .bind(id.as_str())
+        .bind(f.workspace.as_str())
+        .bind(f.tenant.as_str())
+        .bind(f.owner.as_str())
+        .bind(f.model.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("old writer creates its draft");
+    sqlx::query(LEGACY_MESSAGE)
+        .bind(id.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("old writer admits a message without future save columns");
+    sqlx::query(LEGACY_ATTEMPT)
+        .bind(id.as_str())
+        .bind(f.workspace.as_str())
+        .bind(f.tenant.as_str())
+        .bind(f.owner.as_str())
+        .bind(serde_json::to_string(&model).expect("historical model metadata"))
+        .execute(&mut *connection)
+        .await
+        .expect("old writer starts its physical call");
+    id
+}
+
+async fn assert_backfill(f: &Fixture, attempt: &Uuid7) {
     let backfilled: (i64, bool, bool) = sqlx::query_as(
         "\
 SELECT count(*),
@@ -65,7 +119,7 @@ SELECT count(*),
   FROM authoring.dispatches d JOIN authoring.attempts a ON a.id=d.attempt_id
  WHERE a.id=$1::uuid",
     )
-    .bind(attempt.id.as_str())
+    .bind(attempt.as_str())
     .fetch_one(&mut *f.connection().await)
     .await
     .expect("backfilled deadlines retain the old physical and attempt bounds");
@@ -84,11 +138,11 @@ SELECT failure_cause IS NULL AND
     assert!(compatible, "old writers need a usable physical deadline");
 }
 
-async fn legacy_insert(f: &Fixture, attempt: &Attempt, sequence: i32, age: f64) -> Uuid7 {
+async fn legacy_insert(f: &Fixture, attempt: &Uuid7, sequence: i32, age: f64) -> Uuid7 {
     let id = mint();
     sqlx::query(LEGACY_INSERT)
         .bind(id.as_str())
-        .bind(attempt.id.as_str())
+        .bind(attempt.as_str())
         .bind(sequence)
         .bind(PENDING)
         .bind(age)

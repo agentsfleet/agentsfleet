@@ -67,7 +67,7 @@ RUNNER = """\
 
 LOG_LEVEL = """\
       - run: |
-          export AGENTSFLEET_LOG_LEVEL="debug"
+          export AGENTSFLEET_LOG_LEVEL="info"
 """
 
 
@@ -122,7 +122,7 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
             "workflow-no-workspace-pointer": seeded("deploy-dev.yml", "./playbooks/founding", "PLATFORM_ADMIN_WORKSPACE_ID=x ./playbooks/founding"),
             "workflow-connector-boot-secret": seeded("release.yml", 'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"', "GITHUB_APP_ID=x"),
             "workflow-connector-signing-row": seeded("deploy-dev-fly.yml", "ENV=dev ./playbooks", "ENV=prod ./playbooks"),
-            "workflow-daemon-log-level": seeded("deploy-dev-fly.yml", 'export AGENTSFLEET_LOG_LEVEL="debug"', 'LOG_LEVEL="debug"'),
+            "workflow-daemon-log-level": seeded("deploy-dev-fly.yml", 'export AGENTSFLEET_LOG_LEVEL="info"', 'LOG_LEVEL="info"'),
             "workflow-collector-org": seeded("deploy-dev-fly.yml", "FLY_ORG: agentsfleet-dev", "FLY_ORG: agentsfleet-prod"),
             "workflow-vault-read-approval": seeded("release.yml", 'ALLOW_VAULT_READS: "1"', 'ALLOW_VAULT_READS: "0"'),
             "workflow-missing": {k: v for k, v in clean_tree().items() if not k.endswith("deploy-dev-metal.yml")},

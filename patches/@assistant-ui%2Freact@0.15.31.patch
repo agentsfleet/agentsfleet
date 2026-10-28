@@ -1,0 +1,186 @@
+diff --git a/dist/primitives/thread/topAnchor/createReserveObservers.d.ts b/dist/primitives/thread/topAnchor/createReserveObservers.d.ts
+index b9ec5925ff055d7de9644038066ec48075a856e8..08e44ff2889fcabb41839f3d337f81a66e1095c3 100644
+--- a/dist/primitives/thread/topAnchor/createReserveObservers.d.ts
++++ b/dist/primitives/thread/topAnchor/createReserveObservers.d.ts
+@@ -1,4 +1,4 @@
+-export declare const createReserveObservers: (onChange: () => void) => {
++export declare const createReserveObservers: (onChange: () => void, onResize?: () => void) => {
+     target: (viewport: HTMLElement, anchor: HTMLElement, target: HTMLElement) => void;
+     disconnect: () => void;
+ };
+diff --git a/dist/primitives/thread/topAnchor/createReserveObservers.js b/dist/primitives/thread/topAnchor/createReserveObservers.js
+index 6e4656d2b8775c65e901c2e6cb1c8314c1054f7c..c3e517edf2191452decfa39c982cb9e114f8dbcd 100644
+--- a/dist/primitives/thread/topAnchor/createReserveObservers.js
++++ b/dist/primitives/thread/topAnchor/createReserveObservers.js
+@@ -1,7 +1,7 @@
+ "use client";
+ //#region src/primitives/thread/topAnchor/createReserveObservers.ts
+-const createReserveObservers = (onChange) => {
+-	const resizeObserver = new ResizeObserver(onChange);
++const createReserveObservers = (onChange, onResize = onChange) => {
++	const resizeObserver = new ResizeObserver(onResize);
+ 	const mutationObserver = new MutationObserver(onChange);
+ 	let observedViewport = null;
+ 	let observedAnchor = null;
+diff --git a/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js b/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
+index 6d2603b29e65fda89ecd98936be9321935e0157b..d05db6ebb78f750126b3b4acf8c2f3251c3ce475 100644
+--- a/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
++++ b/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
+@@ -27,7 +27,6 @@ const mountTopAnchorReserve = (store) => {
+ 	let listenedViewport = null;
+ 	let lastScrollTop = 0;
+ 	let restoreScrollTop = null;
+-	let restoredThisTurn = false;
+ 	let lastAppliedTarget = null;
+ 	const clearRestore = () => {
+ 		restoreScrollTop = null;
+@@ -39,7 +38,7 @@ const mountTopAnchorReserve = (store) => {
+ 		if (!viewport) return;
+ 		const scrollTop = viewport.scrollTop;
+ 		const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+-		if (scrollTop < lastScrollTop && lastScrollTop > maxScrollTop + 1 && Math.abs(scrollTop - maxScrollTop) <= 1 && wasPinnedAtLastScroll() && !restoredThisTurn) {
++		if (scrollTop < lastScrollTop && lastScrollTop > maxScrollTop + 1 && Math.abs(scrollTop - maxScrollTop) <= 1 && wasPinnedAtLastScroll()) {
+ 			restoreScrollTop ??= lastScrollTop;
+ 			scheduler.schedule();
+ 		}
+@@ -49,7 +48,6 @@ const mountTopAnchorReserve = (store) => {
+ 		if (listenedViewport === viewport) return;
+ 		if (listenedViewport) listenedViewport.removeEventListener("scroll", handleScroll);
+ 		listenedViewport = viewport;
+-		restoredThisTurn = false;
+ 		clearRestore();
+ 		if (viewport) {
+ 			viewport.addEventListener("scroll", handleScroll, { passive: true });
+@@ -88,15 +86,13 @@ const mountTopAnchorReserve = (store) => {
+ 		reserve ??= createReserveElement();
+ 		if (reserve.parentElement !== target.parentElement || reserve.previousElementSibling !== target) target.after(reserve);
+ 		observers.target(viewport, anchor, target);
+-		if (setReserveHeight(reserve, computeTopAnchorReserve({
++		handleScroll();
++		setReserveHeight(reserve, computeTopAnchorReserve({
+ 			viewport,
+ 			anchor,
+ 			reserve,
+ 			...clamp
+-		}))) {
+-			scheduler.schedule();
+-			return;
+-		}
++		}));
+ 		const anchorId = getAnchorId(anchor);
+ 		const targetScrollTop = snapScrollTop(computeTopAnchorTargetScrollTop({
+ 			viewport,
+@@ -105,7 +101,6 @@ const mountTopAnchorReserve = (store) => {
+ 		}));
+ 		if (anchorId === void 0 || anchorId !== lastScrolledAnchorId) {
+ 			restoreScrollTop = null;
+-			restoredThisTurn = false;
+ 			if (Math.abs(viewport.scrollTop - targetScrollTop) > 1) viewport.scrollTo({
+ 				top: targetScrollTop,
+ 				behavior: "smooth"
+@@ -114,7 +109,6 @@ const mountTopAnchorReserve = (store) => {
+ 		} else if (restoreScrollTop !== null && lastAppliedTarget !== null) {
+ 			const desired = snapScrollTop(restoreScrollTop + (targetScrollTop - lastAppliedTarget));
+ 			restoreScrollTop = null;
+-			restoredThisTurn = true;
+ 			if (Math.abs(viewport.scrollTop - desired) > 1) viewport.scrollTo({
+ 				top: desired,
+ 				behavior: "instant"
+@@ -123,7 +117,7 @@ const mountTopAnchorReserve = (store) => {
+ 		lastAppliedTarget = targetScrollTop;
+ 	}
+ 	const scheduler = createFrameScheduler(apply);
+-	const observers = createReserveObservers(scheduler.schedule);
++	const observers = createReserveObservers(scheduler.schedule, apply);
+ 	scheduler.schedule();
+ 	const unsubscribe = store.subscribe(scheduler.schedule);
+ 	return () => {
+diff --git a/src/primitives/thread/topAnchor/createReserveObservers.ts b/src/primitives/thread/topAnchor/createReserveObservers.ts
+index 408a30546f768688cb6db79534ee6b47c2e1cc8e..1d4209514918d03c4e645fb8169ba709021de259 100644
+--- a/src/primitives/thread/topAnchor/createReserveObservers.ts
++++ b/src/primitives/thread/topAnchor/createReserveObservers.ts
+@@ -1,7 +1,7 @@
+ "use client";
+ 
+-export const createReserveObservers = (onChange: () => void) => {
+-  const resizeObserver = new ResizeObserver(onChange);
++export const createReserveObservers = (onChange: () => void, onResize: () => void = onChange) => {
++  const resizeObserver = new ResizeObserver(onResize);
+   const mutationObserver = new MutationObserver(onChange);
+ 
+   let observedViewport: HTMLElement | null = null;
+diff --git a/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts b/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts
+index 787754632270e8f290bae82b26e51b36c3cedadb..6893f6adb52675c0c30a795039190c853709f155 100644
+--- a/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts
++++ b/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts
+@@ -64,7 +64,6 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+   let listenedViewport: HTMLElement | null = null;
+   let lastScrollTop = 0;
+   let restoreScrollTop: number | null = null;
+-  let restoredThisTurn = false;
+   let lastAppliedTarget: number | null = null;
+ 
+   const clearRestore = () => {
+@@ -90,7 +89,7 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+       lastScrollTop > maxScrollTop + 1 &&
+       Math.abs(scrollTop - maxScrollTop) <= 1;
+ 
+-    if (isRangeClamp && wasPinnedAtLastScroll() && !restoredThisTurn) {
++    if (isRangeClamp && wasPinnedAtLastScroll()) {
+       restoreScrollTop ??= lastScrollTop;
+       scheduler.schedule();
+     }
+@@ -104,7 +103,6 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+       listenedViewport.removeEventListener("scroll", handleScroll);
+     }
+     listenedViewport = viewport;
+-    restoredThisTurn = false;
+     clearRestore();
+     if (viewport) {
+       viewport.addEventListener("scroll", handleScroll, { passive: true });
+@@ -165,16 +163,13 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+ 
+     observers.target(viewport, anchor, target);
+ 
+-    const reserveChanged = setReserveHeight(
++    // Capture a range clamp before restoring the space lost during a fold.
++    handleScroll();
++    setReserveHeight(
+       reserve,
+       computeTopAnchorReserve({ viewport, anchor, reserve, ...clamp }),
+     );
+ 
+-    if (reserveChanged) {
+-      scheduler.schedule();
+-      return;
+-    }
+-
+     const anchorId = getAnchorId(anchor);
+     const targetScrollTop = snapScrollTop(
+       computeTopAnchorTargetScrollTop({ viewport, anchor, ...clamp }),
+@@ -182,7 +177,6 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+ 
+     if (anchorId === undefined || anchorId !== lastScrolledAnchorId) {
+       restoreScrollTop = null;
+-      restoredThisTurn = false;
+       if (Math.abs(viewport.scrollTop - targetScrollTop) > 1) {
+         viewport.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+       }
+@@ -196,7 +190,6 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+         restoreScrollTop + (targetScrollTop - lastAppliedTarget),
+       );
+       restoreScrollTop = null;
+-      restoredThisTurn = true;
+       if (Math.abs(viewport.scrollTop - desired) > 1) {
+         viewport.scrollTo({ top: desired, behavior: "instant" });
+       }
+@@ -206,7 +199,8 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+   }
+ 
+   const scheduler = createFrameScheduler(apply);
+-  const observers = createReserveObservers(scheduler.schedule);
++  // Resize callbacks run before paint; another animation frame exposes the clamp.
++  const observers = createReserveObservers(scheduler.schedule, apply);
+ 
+   scheduler.schedule();
+   const unsubscribe = store.subscribe(scheduler.schedule);

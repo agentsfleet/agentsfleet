@@ -73,26 +73,41 @@ For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
 
 The coordinator and local deployment files live in `deploy/local/`.
 
-This command needs macOS and a dedicated OrbStack Linux machine with a registered local runner token.
-The machine needs a signed toolbox for the current runner version and architecture.
+This command needs macOS, OrbStack, Bun, Rust, cosign and the provisioned machine environment under `~/.config/agentsfleet/`.
+On first use it creates private worktree settings, an OrbStack Debian machine and a signed toolbox for the current runner version.
+It enrolls the runner through the authenticated local API using a dedicated test identity.
 It reuses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
+The first run may ask macOS to approve the local Caddy certificate in your login keychain; browser certificate verification stays enabled.
 
 The dashboard serves its ordinary production build from this checkout.
 Each invocation calls `acceptance-build`, starts the shipping runner service through `deploy/baremetal/deploy.sh`, and runs the selected acceptance targets.
 The dashboard is a child process and stops when the command exits; the development daemon, Caddy and Linux runner remain available.
 
-Keep trusted local settings in `<WORKTREE_STATE>/acceptance.env`, or select that file with `AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE`.
-Load the existing local platform settings there, including the encryption key for this database, and supply:
+The generated `<WORKTREE_STATE>/acceptance.env` preserves this database's encryption key across reruns.
+An existing database without its settings requires its original encryption key; bootstrap refuses to generate a replacement.
+To reuse a prepared stack, select its trusted settings file with `AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE`.
+These settings override the generated defaults:
 
 | Setting | Value |
 | --- | --- |
 | `ACCEPTANCE_LOCAL_RUNNER_MACHINE` | Dedicated OrbStack Linux machine name; uses the standard `agentsfleet-runner.service` |
 | `ACCEPTANCE_LOCAL_TOOLBOX_DIR` | Absolute Linux path containing the signed toolbox image and manifest |
 | `ACCEPTANCE_LOCAL_RUNNER_RECORD` | Private registration JSON containing `runner_id` and `runner_token` |
+| `ACCEPTANCE_LOCAL_SIGNING_VAULT` | Vault containing `toolbox-release-key`; required if metadata discovery is ambiguous |
+| `ACCEPTANCE_LOCAL_CONNECTOR_VAULT` | Development vault containing `github-app`; required if metadata discovery is ambiguous |
 
-The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply the existing development Clerk credentials.
-Before the first run, sign in to the local dashboard as a platform admin and open **Platform > Models**.
-Set a default model with its provider credential; the backend stores the credential in its encrypted vault.
+The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
+Initial setup uses the machine's `FIREWORKS_API_KEY` and the existing development GitHub App item to populate the local encrypted vault.
+The default model's settings and prices come from the checked catalogue; an existing platform default is preserved.
+Signing keys stay in the signing process's environment, and temporary setup sessions are revoked.
+
+An interrupted runner enrollment leaves a private `.enrolling` marker beside the registration file; another run refuses to enroll again.
+Keep that marker until the registration is recovered.
+If a valid private `.new` file exists, recover it as the registration file before removing the marker.
+
+If the enrollment response was lost, an operator with `runner:write` must rotate that runner's credential and restore its private registration file.
+The [runner authorization rules](AUTH.md) describe operator access; the bootstrap identity cannot rotate credentials.
+An existing registration with the same host name also blocks fresh enrollment.
 
 The tests select model references and make real provider calls through the backend; they do not need a provider API key.
 Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
@@ -167,7 +182,7 @@ See [datastore scaling](architecture/datastore_scaling.md#shared-local-developme
 
 ## TypeScript checks and builds
 
-TypeScript package scripts run the pinned `tsrs` compiler through Bun.
+TypeScript package scripts run `tsrs` `0.20.0-ts7.1.0-beta` through Bun, pinned in the root, command-line and user-interface package manifests.
 Use `make lint-cli`, `make lint-app`, `make lint-website` or `make lint-design-system` for the affected package.
 `make acceptance-build` also uses the migrated build scripts.
 

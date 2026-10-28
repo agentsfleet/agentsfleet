@@ -130,6 +130,7 @@ impl Seat {
             subject: self.owner.as_str(),
         };
         let request = CreateDraft {
+            save: false,
             source: Source::Definition {
                 definition: Box::new(definition()),
             },

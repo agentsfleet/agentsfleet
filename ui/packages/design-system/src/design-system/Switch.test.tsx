@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { Switch } from "./Switch";
+import { Switch, SwitchIndicator } from "./Switch";
 import { Label } from "./Label";
 
 const NAME = "Use shared memory";
@@ -24,6 +24,17 @@ function Controlled({ initial = false, onChange }: { initial?: boolean; onChange
 }
 
 describe("Switch", () => {
+  it("shares the switch appearance with a non-interactive menu indicator", () => {
+    const view = render(<SwitchIndicator checked={false} />);
+    const indicator = view.container.firstElementChild;
+    expect(indicator).toHaveAttribute("aria-hidden", "true");
+    expect(indicator).toHaveAttribute("data-state", "unchecked");
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    view.rerender(<SwitchIndicator checked />);
+    expect(indicator).toHaveAttribute("data-state", "checked");
+    expect(indicator?.firstElementChild).toHaveAttribute("data-state", "checked");
+  });
   it("a switch announces its state and flips on click", () => {
     const onChange = vi.fn();
     render(<Controlled onChange={onChange} />);

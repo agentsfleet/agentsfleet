@@ -24,6 +24,8 @@ const GRANT_WRITE: &[Scope] = &[Scope::GrantWrite];
 pub enum FleetRoute {
     /// One fleet: read it, steer it, or delete it.
     Detail,
+    /// Creator-private editor context with bounded conversations and receipts.
+    AuthoringContext,
     /// Apply a reviewed private improvement to this fleet's setup.
     Revisions,
     /// The fleet's message thread.
@@ -58,6 +60,7 @@ impl FleetRoute {
     /// Every fleet route.
     pub const ALL: &'static [Self] = &[
         Self::Detail,
+        Self::AuthoringContext,
         Self::Revisions,
         Self::Messages,
         Self::Schedules,
@@ -82,7 +85,8 @@ impl FleetRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::Events
+            Self::AuthoringContext
+            | Self::Events
             | Self::EventsStream
             | Self::Event
             | Self::ToolCall
@@ -108,6 +112,7 @@ impl FleetRoute {
         match self {
             Self::EventsStream => RouteClass::Stream,
             Self::Detail
+            | Self::AuthoringContext
             | Self::Revisions
             | Self::Messages
             | Self::Schedules
@@ -128,6 +133,7 @@ impl FleetRoute {
     const fn template(self) -> &'static str {
         match self {
             Self::Detail => fleet_path!(""),
+            Self::AuthoringContext => fleet_path!("/authoring-context"),
             Self::Revisions => fleet_path!("/revisions"),
             Self::Messages => fleet_path!("/messages"),
             Self::Schedules => fleet_path!("/schedules"),
@@ -169,7 +175,9 @@ impl FleetRoute {
             Self::Detail => Scopes::rwa(FLEET_READ, FLEET_WRITE, FLEET_ADMIN),
             // Who may read and publish shared memory is an edit to the fleet,
             // not a lifecycle transition, so it takes the write scope.
-            Self::Revisions | Self::Memory | Self::MemoryAccess => Scopes::Always(FLEET_WRITE),
+            Self::Revisions | Self::Memory | Self::MemoryAccess | Self::AuthoringContext => {
+                Scopes::Always(FLEET_WRITE)
+            }
             Self::Messages => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Schedules | Self::Schedule => Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             Self::ScheduleSync => Scopes::Always(SCHEDULE_WRITE),

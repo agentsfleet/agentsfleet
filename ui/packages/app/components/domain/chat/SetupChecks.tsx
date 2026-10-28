@@ -1,31 +1,39 @@
 "use client";
 
-import type { Review } from "@/lib/api/draft-types";
+import type { Definition, Review } from "@/lib/api/draft-types";
 import Link from "next/link";
-import { Button, List, ListItem, StatusPill } from "@agentsfleet/design-system";
+import { CheckIcon, CircleIcon, CircleAlertIcon } from "lucide-react";
+import { Button, List, ListItem } from "@agentsfleet/design-system";
 import { safeActionHref } from "./chat-defaults";
+import { SetupAccess } from "./SetupAccess";
 
-const CHECK_STATE = {ready: "ready", blocked: "blocked", missing: "missing"} as const;
+const READY = "ready";
+const BLOCKED = "blocked";
 const CHECK_LABELS: Readonly<Record<string, string>> = {
-  model: "Model availability", wallet: "Account balance", source: "Saved instructions", definition: "Saved instructions",
-  policy: "Access rules", stream: "Run delivery", activation: "Fleet activation",
-  credentials: "Connected account", credential: "Connected account", connections: "Integration connection", connection: "Integration connection",
-  grants: "Permission", grant: "Permission",
+  model: "Model", wallet: "Budget", source: "Instructions", definition: "Instructions",
+  policy: "Access rules", stream: "Run delivery", activation: "Activation",
 };
-const INTERNAL_KINDS = new Set(["model", "wallet", "source", "definition", "policy", "stream", "activation"]);
+const CREDENTIAL_KINDS = new Set(["credentials", "credential", "connections", "connection"]);
+const DEPENDENT_KINDS = new Set(["stream", "activation"]);
 
-export function SetupChecks({checks, label}: {checks: Review["readiness"]; label: string}) {
-  return <List variant="plain" divided aria-label={label}>{checks.map((check) => {
-    const href = safeActionHref(check.next_action?.href);
-    const variant = check.state === CHECK_STATE.ready ? "success" : check.state === CHECK_STATE.blocked ? "danger"
-      : check.state === CHECK_STATE.missing ? "warning" : "neutral";
-    return <ListItem key={`${check.kind}:${check.subject}`}>
-      <div className="flex flex-wrap items-center justify-between gap-sm">
-        <div className="min-w-0 space-y-xs"><p className="text-sm font-medium">{Object.hasOwn(CHECK_LABELS, check.kind) ? CHECK_LABELS[check.kind] : check.kind}</p>
-          {!INTERNAL_KINDS.has(check.kind) ? <p className="break-words text-xs text-muted-foreground">{check.subject}</p> : null}</div>
-        <StatusPill variant={variant}>{check.state}</StatusPill>
-        {href ? <Button variant="link" asChild><Link href={href}>{check.next_action?.label ?? "Resolve"}</Link></Button> : null}
-      </div>
-    </ListItem>;
-  })}</List>;
+export function SetupChecks({checks, label, workspace, definition, onRefresh}: {checks: Review["readiness"]; label: string; workspace?: string; definition?: Definition; onRefresh?: () => Promise<void>}) {
+  const visible = checks.filter(check => !DEPENDENT_KINDS.has(check.kind) || check.state === BLOCKED);
+  return <div className="space-y-xs">
+    <List variant="plain" className="flex flex-wrap gap-x-md gap-y-xs" aria-label={label}>{visible.map(check => {
+      const ready = check.state === READY;
+      const credential = CREDENTIAL_KINDS.has(check.kind);
+      const text = credential ? `${check.subject} access` : Object.hasOwn(CHECK_LABELS, check.kind) ? CHECK_LABELS[check.kind] : check.subject || check.kind;
+      const Icon = ready ? CheckIcon : check.state === BLOCKED ? CircleAlertIcon : CircleIcon;
+      const href = credential ? null : safeActionHref(check.next_action?.href);
+      return <ListItem key={`${check.kind}:${check.subject}`} className="p-0">
+        <span className={`inline-flex items-center gap-xs text-label ${ready ? "text-muted-foreground" : "text-warning"}`} title={check.state}>
+          <Icon className={`size-3.5 shrink-0 ${ready ? "text-success" : ""}`} aria-hidden="true" />
+          <span>{text}{ready ? "" : " needed"}</span><span className="sr-only">: {check.state}</span>
+        </span>
+        {href ? <Button variant="link" size="sm" asChild><Link href={href}>{check.next_action?.label ?? "Resolve"}</Link></Button> : null}
+      </ListItem>;
+    })}</List>
+    {workspace ? visible.filter(check => CREDENTIAL_KINDS.has(check.kind) && check.state !== READY).map(check =>
+      <SetupAccess key={`${check.kind}:${check.subject}`} workspace={workspace} name={check.subject} definition={definition} onRefresh={onRefresh} />) : null}
+  </div>;
 }

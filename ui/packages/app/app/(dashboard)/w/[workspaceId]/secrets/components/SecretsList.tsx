@@ -16,7 +16,6 @@ import type { Secret } from "@/lib/api/secrets";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
-import RenameSecretDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
 import { SecretActions, SecretCreatedCell, SecretNameCell } from "./secret-row-cells";
 import {
   DELETE_CONNECTION_CONFIRM,
@@ -37,13 +36,11 @@ function buildColumns({
   pending,
   protectedSecretName,
   onEdit,
-  onRename,
   onDelete,
 }: {
   pending: boolean;
   protectedSecretName: string | null;
   onEdit: (name: string) => void;
-  onRename: (name: string) => void;
   onDelete: (name: string) => void;
 }): DataTableColumn<Secret>[] {
   return [
@@ -51,7 +48,7 @@ function buildColumns({
       key: "name", primary: true,
       header: "Name",
       sortValue: (c) => c.name,
-      cell: (c) => <SecretNameCell secret={c} pending={pending} onRename={onRename} />,
+      cell: (c) => <SecretNameCell secret={c} />,
     },
     {
       key: "created_at",
@@ -80,25 +77,19 @@ function buildColumns({
 function SecretDialogs({
   workspaceId,
   editTarget,
-  renameTarget,
-  existingNames,
   target,
   connection,
   error,
   onEditClose,
-  onRenameClose,
   onDeleteClose,
   onConfirmDelete,
 }: {
   workspaceId: string;
   editTarget: string | null;
-  renameTarget: string | null;
-  existingNames: readonly string[];
   target: string | null;
   connection: string | undefined;
   error: string | null;
   onEditClose: () => void;
-  onRenameClose: () => void;
   onDeleteClose: () => void;
   onConfirmDelete: (name: string) => Promise<void>;
 }) {
@@ -109,13 +100,6 @@ function SecretDialogs({
         name={editTarget ?? ""}
         open={editTarget !== null}
         onOpenChange={onEditClose}
-      />
-      <RenameSecretDialogDynamic
-        workspaceId={workspaceId}
-        name={renameTarget ?? ""}
-        existingNames={existingNames}
-        open={renameTarget !== null}
-        onOpenChange={onRenameClose}
       />
       <ConfirmDialog
         open={target !== null}
@@ -138,20 +122,18 @@ function SecretTable({
   pending,
   protectedSecretName,
   onEdit,
-  onRename,
   onDelete,
 }: {
   secrets: Secret[];
   pending: boolean;
   protectedSecretName: string | null;
   onEdit: (name: string) => void;
-  onRename: (name: string) => void;
   onDelete: (name: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const query = useDeferredValue(search.trim().toLowerCase());
   const matches = useMemo(() => secrets.filter((secret) => secret.name.toLowerCase().includes(query)), [secrets, query]);
-  const columns = buildColumns({ pending, protectedSecretName, onEdit, onRename, onDelete });
+  const columns = buildColumns({ pending, protectedSecretName, onEdit, onDelete });
   return (
     <div className="flex min-h-0 flex-col gap-xl">
       <CollectionToolbar label="Search secrets" value={search} onChange={setSearch} summary={`${matches.length} of ${secrets.length} secrets`} />
@@ -179,7 +161,6 @@ export default function SecretsList({
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<string | null>(null);
-  const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The row leaves the table the moment the operator confirms; the server is
   // told inside the same transition. A rejected delete ends that transition and
@@ -246,10 +227,6 @@ export default function SecretsList({
             setError(null);
             setEditTarget(name);
           }}
-          onRename={(name) => {
-            setError(null);
-            setRenameTarget(name);
-          }}
           onDelete={(name) => {
             setError(null);
             setTarget(name);
@@ -259,13 +236,10 @@ export default function SecretsList({
       <SecretDialogs
         workspaceId={workspaceId}
         editTarget={editTarget}
-        renameTarget={renameTarget}
-        existingNames={visibleSecrets.map((s) => s.name)}
         target={target}
         connection={target !== null && Object.hasOwn(connections, target) ? connections[target] : undefined}
         error={error}
         onEditClose={() => setEditTarget(null)}
-        onRenameClose={() => setRenameTarget(null)}
         onDeleteClose={() => {
           setTarget(null);
           setError(null);

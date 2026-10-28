@@ -14,13 +14,11 @@ vi.mock("@/lib/api/memory", () => ({ listAllMemories: listAllMemoriesMock }));
 vi.mock("@/lib/api/tenant-members", () => ({ listWorkspaceMembers: listWorkspaceMembersMock }));
 vi.mock("@/lib/api/client", () => ({request: requestMock}));
 
-import { CHAT_TURNS, runtimeModelLabel, startViewData, type ChatViewData } from "./view-data";
+import { CHAT_TURNS, runtimeModelLabel, startChatData, type ChatViewData } from "./view-data";
 import { MODEL } from "@/tests/helpers/draft-fixtures";
-import { FLEET_VIEW } from "./FleetSubnavigation";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
 
-const CURSOR = "cur_1";
 const ARGS = {
   workspaceId: "ws_1",
   fleetId: "zom_1",
@@ -34,9 +32,7 @@ const UPSTREAM_DOWN = "upstream down";
 
 // The chat's data, narrowed by its tag rather than cast.
 function startChat(): ChatViewData {
-  const data = startViewData(FLEET_VIEW.chat, ARGS);
-  if (data.view !== FLEET_VIEW.chat) throw new Error(`chat started the ${data.view} view's data`);
-  return data;
+  return startChatData(ARGS);
 }
 
 function resetMocks() {
@@ -52,7 +48,7 @@ function resetMocks() {
   }
 }
 
-describe("startViewData", () => {
+describe("startChatData", () => {
   it("loads model labels once beside history and preserves the selected model on failed lookup", async () => {
     resetMocks();
     requestMock.mockResolvedValue({items: [{...MODEL, ref: "platform-default", label: "MiniMax M3.1 Flash"}], next_cursor: null});
@@ -67,7 +63,7 @@ describe("startViewData", () => {
 
   it("test_chat_single_thread_fetch: chat starts ONE thread read and no event fan-out", () => {
     resetMocks();
-    const data = startViewData(FLEET_VIEW.chat, ARGS);
+    const data = startChatData(ARGS);
 
     // The fetches are issued synchronously from route params — nothing here
     // waited on the fleet detail read.
@@ -78,33 +74,8 @@ describe("startViewData", () => {
     // The retired shape: an events-list read followed by per-turn detail reads.
     expect(listFleetEventsMock).not.toHaveBeenCalled();
     // The tag is what lets the chat loader take the thread fields directly.
-    expect(data.view).toBe(FLEET_VIEW.chat);
     expect(data).toHaveProperty("thread");
   });
-
-  it("test_detail_view_loaders_concurrent: events view fetch starts from route params alone", () => {
-    resetMocks();
-    const data = startViewData(FLEET_VIEW.events, {
-      ...ARGS,
-      eventsCursor: CURSOR,
-    });
-    expect(listFleetEventsMock).toHaveBeenCalledTimes(1);
-    expect(listFleetEventsMock).toHaveBeenCalledWith(ARGS.workspaceId, ARGS.fleetId, ARGS.token, {
-      limit: 25,
-      cursor: CURSOR,
-    });
-    expect(data.view).toBe(FLEET_VIEW.events);
-    expect(data).toHaveProperty("eventsInitial");
-  });
-
-  it("memory view starts its walk from route params alone", () => {
-    resetMocks();
-    startViewData(FLEET_VIEW.memory, ARGS);
-    expect(listAllMemoriesMock).toHaveBeenCalledTimes(1);
-    expect(listAllMemoriesMock).toHaveBeenCalledWith(ARGS.workspaceId, ARGS.fleetId, ARGS.token);
-  });
-
-
 
   it("a failed thread read degrades to null instead of failing the page", async () => {
     resetMocks();

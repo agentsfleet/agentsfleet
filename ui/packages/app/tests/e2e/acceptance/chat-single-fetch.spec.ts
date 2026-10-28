@@ -59,7 +59,7 @@ test.describe("chat view request profile", () => {
 
     test.skip(!(await resetAudit(page)), "workspace fetch audit route is disabled");
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByRole("navigation", { name: "Fleet sections" })).toBeVisible();
+    await expect(page.getByTestId("fleet-thread-root").getByRole("log")).toBeVisible();
 
     const snapshot = await readAudit(page);
     const threadFetches = snapshot.byPath[AUDITED_PATH.fleetMessages] ?? 0;

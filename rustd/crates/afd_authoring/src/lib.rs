@@ -35,7 +35,7 @@ pub use self::draft::Drafts;
 pub use self::error::{Error, Result};
 pub use self::lease::{ActivityInput, Claimed};
 pub use self::maintenance::Maintenance;
-pub use self::message::{Cancellation, Stopped};
+pub use self::message::{Cancellation, Conversation, Stopped};
 pub use self::model::{
     CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, ModelCallInput, ModelCallResult, ModelCalls,
     Network, ProviderRequest, ProviderResponse, Transport, draft_channel,

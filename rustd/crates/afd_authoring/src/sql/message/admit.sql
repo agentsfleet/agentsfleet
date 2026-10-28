@@ -27,9 +27,9 @@ WITH prior AS MATERIALIZED (
 ), message AS (
     INSERT INTO authoring.messages
         (id, draft_id, sequence, operation_id, status, tenant_model_id,
-         user_text, created_at, updated_at)
+         user_text, save_requested, created_at, updated_at)
     SELECT $3::uuid, $1::uuid, e.sequence, $4::uuid, $5, $6::uuid,
-           $7, now(), now()
+           $7, $16, now(), now()
       -- Finish deleting an expired receipt before its unique key is reused.
       FROM eligible e CROSS JOIN (SELECT count(*) FROM expired) expired_done
     RETURNING id
