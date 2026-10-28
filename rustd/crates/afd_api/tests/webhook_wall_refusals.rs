@@ -80,6 +80,22 @@ fn holding(triggers: &str, secret: Option<&[u8]>) -> Arc<Scripted> {
     })
 }
 
+#[tokio::test]
+async fn a_signed_but_unreadable_github_payload_is_refused_without_appending() {
+    let body = "{";
+    let proof = signed::signature(Scheme::BodyHex, signed::SECRET, body.as_bytes());
+    let ingress = holding(signed::TRIGGER_GITHUB, Some(signed::SECRET));
+    let router = Fleet::new().with_ingress(&ingress).router();
+    let headers = signed::github_headers(EVENT_WORKFLOW_RUN, signed::DELIVERY_ID, &proof);
+    let response = send_with_headers(&router, Method::POST, &path(), None, body, &headers).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        refusal_code(response).await,
+        error_code::WEBHOOK_MALFORMED.as_str()
+    );
+    assert!(ingress.deliveries().is_empty());
+}
+
 /// Every way a delivery can fail to prove itself earns one answer.
 ///
 /// An absent proof, a wrong key, a tampered body and a digest missing its
