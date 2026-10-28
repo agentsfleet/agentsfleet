@@ -72,7 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_authoring/src/model/provider/prompt.rs`; `rustd/crates/afd_authoring/src/review/credentials/purpose.rs` | EDIT | The prompt lists families from constants; credential purposes name the verifier |
 | `tests/fixtures/fleets/**/definition.json`; `tests/fixtures/fleets/definition/full.json`; `tests/fixtures/fleets/definition/with_model_and_context.json` | EDIT | Fixtures declaring `signature.secret_ref` move to `verifier` |
 | `public/openapi.json`; `public/llms.txt` | EDIT | Regenerate schema and update source URL discovery |
-| `docs/AUTH.md`; `docs/architecture/data_flow.md`; `docs/architecture/fleet_definitions.md` | EDIT | Families, declaration, one URL per source |
+| `docs/AUTH.md`; `docs/architecture/data_flow.md`; `docs/architecture/fleet_definitions.md`; `docs/architecture/user_flow.md` | EDIT | Families, declaration, one URL per source |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/last-delivery.ts` | EDIT | Its comment and delivery lookup assume a shared Svix URL |
 | `~/Projects/docs` `fleets/webhooks.mdx`; `fleets/connectors.mdx`; `api-reference/error-codes.mdx`; `changelog.mdx`; `docs.json` (own branch) | EDIT | Publish verifier setup, connector behavior, migration, matching error recovery and API navigation |
 | `ui/packages/app/app/api/connectors/[provider]/callback/route.ts`; `ui/packages/app/tests/connector-callback-route.test.ts` | EDIT | Bounded callback completion and safe dashboard failure feedback |
