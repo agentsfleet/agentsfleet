@@ -22,7 +22,7 @@ use afd_bench::report::{Lane, compare};
 fn main() -> ExitCode {
     match rendered() {
         Ok(delta) => {
-            // logging: the comparison IS this command's output, printed for a reader rather than emitted as a signal.
+            // the comparison IS this command's output, printed for a reader rather than emitted as a signal.
             print!("{delta}");
             ExitCode::SUCCESS
         }

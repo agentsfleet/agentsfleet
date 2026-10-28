@@ -16,7 +16,7 @@ use crate::turn::{Turn, take};
 
 impl Harness<'_, '_> {
     /// One model turn, its start and its end logged as a pair
-    /// (`docs/LOGGING_STANDARD.md` §4 rule 1, at `debug` because a run makes
+    /// (LOG-PAIR and LOG-HOT, `.orly/standards/domains/logging.md`, at `debug` because a run makes
     /// one per pass); `None` when the loop was stopped.
     pub(super) async fn turn(
         &mut self,

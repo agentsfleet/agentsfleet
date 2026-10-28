@@ -32,7 +32,7 @@ table has one obvious home and one obvious shape.
 4. **Timestamps.** Every instant is `TIMESTAMPTZ(3)`, and every instant column ends `_at`; no other
    column is a timestamp. Rust holds them as `jiff::Timestamp` and the API emits RFC 3339 in UTC.
    Statements write `created_at` and `updated_at` as `now()`; the clock rule for expiry checks is in
-   [SQL standard](../../.orly/standards/domains/sql.md) SQL-TIMECOL. Every table has `created_at`. Every table whose rows change has `updated_at`.
+   [SQL standard](../../.orly/standards/domains/sql.md) SQL-DEADLINE. Per SQL-TIMECOL, every table has `created_at`. Every table whose rows change has `updated_at`.
    Any other time column is one of: (a) a deadline, named `*expires_at`; (b) a NULL marker an index
    or trigger reads; (c) a domain instant the API returns that `updated_at` cannot carry; (d) an
    accounting cursor billing reads (`runner.leases.last_metered_at`).

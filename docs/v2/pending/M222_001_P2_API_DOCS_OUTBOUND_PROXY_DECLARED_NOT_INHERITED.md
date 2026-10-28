@@ -1,9 +1,7 @@
 <!--
 SPEC AUTHORING RULES (load-bearing — the one comment that survives):
-- Body order = the executing agent's read order. Fill via the orly-spec-new
-  skill (authoring order lives there); after filling, DELETE every "tpl:"
-  guidance comment — the SPEC TEMPLATE GATE blocks tpl residue, unfilled
-  {slots}, and missing required sections (.orly/audits/spec-template.sh --staged).
+- Body order = the executing agent's read order. Fill via the orly-spec
+  skill; after filling, DELETE every "tpl:" guidance comment.
 - No time/effort/hour/day estimates anywhere. No effort columns, complexity
   ratings, percentage-complete, implementation dates, assigned owners.
 - Priority (P0/P1/P2/P3) is the only sizing signal; Dependencies are the only
@@ -77,9 +75,9 @@ The `schedule_client` caller list comes from `git grep -n 'schedule_client'` on 
 
 ## Applicable Rules
 
-- **`.orly/docs/greptile-learnings/RULES.md`** — NDC (the `schedule_client` `#[expect]` annotation and the `proxied_schedule_client` test seam die when their reason dies), NLR (the environment-proxy wording in `clients.rs`, `credentials.rs` and `clippy.toml` is rewritten, not left beside the new rule), NLG (no fallback to `HTTPS_PROXY` when the knob is unset; no alias knob), UFS (knob name, host names and log event names are named constants), OWN (one owner builds proxied clients), PSR (parse the knob with `url::Url`, never by hand), ECL (a refused proxy connect stays distinguishable from a vendor refusal in the scheduler error), TCF (each proxy test fails when the route is wrong, proven by a red run).
-- `.orly/dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md` — the knob's parse failure is a new `ErrorKind` variant through `afd_core::error_shell!`, never a hand-written error type.
-- `.orly/docs/LOGGING_STANDARD.md` — the boot line naming the proxy host carries no userinfo and uses `error_code` on refusal.
+- **`.orly/standards/code.md`** — NDC (the `schedule_client` `#[expect]` annotation and the `proxied_schedule_client` test seam die when their reason dies), NLR (the environment-proxy wording in `clients.rs`, `credentials.rs` and `clippy.toml` is rewritten, not left beside the new rule), NLG (no fallback to `HTTPS_PROXY` when the knob is unset; no alias knob), UFS (knob name, host names and log event names are named constants), OWN (one owner builds proxied clients), PSR (parse the knob with `url::Url`, never by hand), ECL (a refused proxy connect stays distinguishable from a vendor refusal in the scheduler error), TCF (each proxy test fails when the route is wrong, proven by a red run).
+- `.orly/standards/languages/rust.md` + `docs/RUST_ERROR_STANDARD.md` — the knob's parse failure is a new `ErrorKind` variant through `afd_core::error_shell!`, never a hand-written error type.
+- `.orly/standards/domains/logging.md` — the boot line naming the proxy host carries no userinfo and uses `error_code` on refusal.
 
 ## Applicable Gates
 
@@ -216,7 +214,7 @@ Every "accepts zero connections" assertion is proven able to fail by a red run t
 | R4 | No proxy added outside the owner (§1) | `git grep -n '\.proxy(' -- rustd/crates ':!rustd/crates/afd_identity/src/proxy.rs' ':!**/tests/**'` | 0 matches | P0 | |
 | R5 | Operators find the knob (§4) | `grep -c 'OUTBOUND_PROXY_URL' docs/architecture/scaling.md docs/architecture/runner_fleet.md` | both counts ≥ 1 | P1 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
+| S1 | Commit gate green | `orly gate work` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
 | S3b | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
@@ -225,7 +223,7 @@ Every "accepts zero connections" assertion is proven able to fail by a red run t
 | S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 | S6 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
 
-**Command source rule:** copy every declared `conform` and `verify.*` invocation from `.orly/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. Missing configuration must be completed before authoring. See `.orly/dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
+**Command source rule:** copy every declared `verify.*` invocation from `.orly/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. Missing configuration must be completed before authoring. Baseline metadata (SPEC-BASELINE, `.orly/standards/spec.md`) is pending at opening and measured before the Pull Request.
 
 **Grading protocol (VERIFY):** run each spec-specific Verify command verbatim; Graded = ✅/❌ + one decisive output line. Repository-command rows point to the final `orly gate pr` results in Pull Request Session Notes, so recording those results does not require another code commit and suite run. **Ship gate:** every required check must pass before the Pull Request is ready; missing evidence or any ❌ returns to EXECUTE. A P1 ❌ requires an Indy-acked deferral quote in Discovery. A P0 may also be **MOVED** — see below.
 

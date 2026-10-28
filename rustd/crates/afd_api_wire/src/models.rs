@@ -3,7 +3,7 @@
 //! # `models`, not `items`
 //!
 //! The v1 response shipped with `models`, and renaming a shipped field is
-//! what `docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids — `total` and
+//! what HTTP-BREAK (`.orly/standards/domains/http-surface.md`) forbids — `total` and
 //! `next_cursor` were ADDED beside it when the page landed, so the envelope
 //! is navigable without breaking a client. `total` is always `null`: counting
 //! a keyset page costs the scan the pagination exists to avoid, and the key

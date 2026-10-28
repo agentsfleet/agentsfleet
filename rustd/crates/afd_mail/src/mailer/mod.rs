@@ -6,9 +6,9 @@
 //! happened against it. The send crosses a datastore and a network boundary,
 //! so it logs `invite_email_started` on entry and exactly one of
 //! `invite_email_completed` or `invite_email_failed` on every exit
-//! (`docs/LOGGING_STANDARD.md` §4). Each record carries the invite id, the
+//! (LOG-PAIR, `.orly/standards/domains/logging.md`). Each record carries the invite id, the
 //! attempt and the relay's reply code — never the recipient's address or the
-//! message body (§6).
+//! message body (LOG-SECRET).
 
 use std::time::{Duration, Instant};
 

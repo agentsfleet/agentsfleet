@@ -19,7 +19,7 @@ use afd_billing::{Accounts, Nanos};
 
 /// The credit pool cannot cover this run.
 ///
-/// `LOGGING_STANDARD.md` §3 `event` values. Dashboards match on these
+/// LOG-EVENT (`.orly/standards/domains/logging.md`) values. Dashboards match on these
 /// spellings, so changing one is an operator-visible change.
 const EVENT_BALANCE_EXHAUSTED: &str = "lease_balance_exhausted";
 

@@ -10,8 +10,9 @@
 //! is not the one this surface publishes — and `parse_since` answers with the
 //! same variant a bad cursor does, so one sentence could not serve both. The
 //! parse happens HERE, at two call sites that each know which parameter they
-//! were reading, so each names its own refusal. `docs/REST_API_DESIGN_GUIDELINES.md`
-//! §9 is what settles it: these strings are already on the wire.
+//! were reading, so each names its own refusal. HTTP-BREAK
+//! (`.orly/standards/domains/http-surface.md`) is what settles it: these
+//! strings are already on the wire.
 //!
 //! # Order of refusals
 //!

@@ -1,6 +1,6 @@
 //! Keyset pagination: the cursor, the limit, and why no query string reaches SQL.
 //!
-//! `docs/REST_API_DESIGN_GUIDELINES.md` mandates Stripe-style keyset paging,
+//! HTTP-PAGE (`.orly/standards/domains/http-responses.md`) mandates Stripe-style keyset paging,
 //! and every list endpoint on the tenant and workspace planes uses it. What
 //! makes it more than a `LIMIT`/`OFFSET` swap is that the ORDER BY varies:
 //! api-keys sort by creation time or by name, so the cursor has to carry the
