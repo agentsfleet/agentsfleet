@@ -94,6 +94,8 @@ fn a_verifier_that_cannot_hold_is_refused_at_parse() {
         ("github", json!({"scheme":"svix-v1"})),
         ("acme", json!({"scheme":"slack-v0","header":"x-proof"})),
         ("acme", json!({"scheme":"svix-v1","header":"x-proof"})),
+        ("acme", json!({"scheme":"slack-v0","extra":{"nested":true}})),
+        ("acme", json!({"scheme":"svix-v1","extra":{"nested":true}})),
         ("acme", json!({"scheme":"body-hex","header":"x acme"})),
         ("acme", json!({"scheme":"body-hex","header":"x\r\nproof"})),
         (

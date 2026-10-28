@@ -123,15 +123,15 @@ pub(crate) enum Verifier {
     SvixV1,
 }
 
-// Serde's unit-variant reader ignores remaining keys, so fixed recipes read an
-// empty map explicitly. The enum tag has already been consumed at this point.
+// Serde's unit-variant reader ignores remaining keys. Fixed recipes accept only
+// an empty map: its key type has no values. The scheme tag is already consumed.
 fn fixed_headers<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Error> {
-    FixedHeaders::deserialize(deserializer).map(|_headers| ())
+    std::collections::BTreeMap::<ForbiddenHeader, serde::de::IgnoredAny>::deserialize(deserializer)
+        .map(|_headers| ())
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct FixedHeaders {}
+#[derive(Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+enum ForbiddenHeader {}
 
 /// Bound on an authored signature header, in ASCII characters.
 pub(crate) const MAX_HEADER_LEN: usize = 128;
