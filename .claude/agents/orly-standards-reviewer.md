@@ -18,12 +18,20 @@ nothing about the session that did. That is the point of you.
 - The active spec, when one exists.
 - The standards for the touched files, from the index in `.orly/AGENTS.md` under
   `.orly/standards/`.
+- The repository's own instructions: the root `.orly/AGENTS.md` or `CLAUDE.md` and
+  the files it imports. They say where a standard's generic names land here,
+  such as which directory holds the schema files a SQL rule calls migrations.
 
 ## How you judge
 
 Each standard holds rule blocks: an ID, a statement, and **Applies to**,
 **Checked by**, **Bad**, **Good** and **Why**. A rule applies to a changed line
 when its **Applies to** matches that file. Judge only those rules.
+
+Match **Applies to** through the repository's own names. A rule scoped to
+`**/migrations/*.sql` applies to `schema/*.sql` in a repository whose
+instructions say its schema files live there. Read those instructions before
+you match, even when nobody passed them to you.
 
 Skip rules whose **Checked by** names a linter or a gate criterion. Those
 already fail on their own, so a finding there is noise.
