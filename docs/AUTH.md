@@ -1047,8 +1047,8 @@ The check answers with exactly three error codes for webhook auth failures, each
 | Code | When it fires | What the operator should do |
 | --- | --- | --- |
 | `UZ-WH-020 webhook_credential_not_configured` (401) | Named credential missing, unusable `webhook_secret`, or malformed Svix key | `agentsfleet secret create <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
-| `UZ-WH-010 invalid_signature` (401) | Provider + secret are both configured, but the signature header is missing OR the body's MAC doesn't match | The webhook secret stored in the workspace vault doesn't match what the provider has registered. Re-rotate. |
-| `UZ-WH-011 stale_timestamp` (401) | Slack or Svix timestamp missing or outside the 300-second window | Clock skew or replay attempt. Investigate. |
+| `UZ-WH-010 invalid_signature` (401) | Provider + secret are both configured, but a required signature or Svix header is missing, or body authentication fails | Check the sender's headers and that its registered secret matches the workspace vault. |
+| `UZ-WH-011 stale_timestamp` (401) | Slack timestamp missing, or a supplied Slack or Svix timestamp is invalid or outside the 300-second window | Clock skew or replay attempt. Investigate. |
 
 The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconfiguration, the second is either an attack or a real drift between provider config and our vault. Operators should respond differently to each.
 

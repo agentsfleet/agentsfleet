@@ -57,7 +57,7 @@ fn a_base64_family_verifies_the_raw_body() {
             Verdict::Refused(Refusal::Signature)
         );
     }
-    assert_each_byte_is_signed(&secret, proof, body);
+    assert_each_byte_is_signed(&secret, proof, *body);
     assert_eq!(
         Family::BodyBase64Sha256.verify_at(&SecretBytes::new(Vec::new()), proof, NOW),
         Verdict::Refused(Refusal::Unconfigured)
@@ -75,9 +75,9 @@ fn a_base64_family_verifies_the_raw_body() {
     );
 }
 
-fn assert_each_byte_is_signed(secret: &SecretBytes, proof: Proof<'_>, body: &[u8; 4]) {
+fn assert_each_byte_is_signed(secret: &SecretBytes, proof: Proof<'_>, body: [u8; 4]) {
     for index in 0..body.len() {
-        let mut changed = *body;
+        let mut changed = body;
         for (offset, byte) in changed.iter_mut().enumerate() {
             *byte ^= u8::from(offset == index);
         }
