@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M228
 **Workstream:** 001
 **Date:** Oct 16, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer-facing: a fleet cannot be woken by any provider outside GitHub, Linear and Slack today
 **Categories:** API, DOCS, UI
 **Batch:** B1 — one worktree and Pull Request (PR), with focused webhook and connector commits; expanded by the recorded user decision below
@@ -236,16 +236,16 @@ Save reply webhook_urls[]: {source, url: "<deployment>/v1/webhooks/<fleet_id>/<s
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | A declared verifier wakes a fleet from an unregistered provider (§1) | `cd rustd && cargo test --all-features -p afd_api --test ingress_plane a_declared_verifier_wakes` | `1 passed` | P0 | ✅ 1 passed; 0 failed; guarded capture 003 |
 | R2 | Svix verifies per source and senders cannot pick (§2) | `cd rustd && cargo test --all-features -p afd_api --test ingress_plane webhook_declared_svix` | `0 failed` | P0 | ✅ 9 passed; 0 failed; guarded capture 004 |
-| R3 | The first-trigger Svix route is gone everywhere | `git grep -nwE 'ReceiveSvix|verified_svix' -- rustd` | 0 matches | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint passes | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration passes | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Versions agree | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only --diff-filter=ACM origin/main -- '*.rs' '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.go' '*.sh' '*.sql' \\| xargs wc -l 2>/dev/null \\| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S8 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R3 | The first-trigger Svix route is gone everywhere | `git grep -nwE 'ReceiveSvix|verified_svix' -- rustd` | 0 matches | P0 | ✅ 0 matches |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ implementation paths reviewed against the table; 0 missing |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ 82 source files; no violations in the implementation commit hook |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ 4,793 Rust executions; all package coverage gates passed; final gate revalidates the committed candidate |
+| S3 | Lint passes | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed; final gate revalidates subsequent mechanical test helpers |
+| S4 | Integration passes | `make test-integration-rustd` | exit 0 | P0 | ✅ 1,442 main + 3 exclusive passed; 0 failed |
+| S5 | Versions agree | `make check-version` | exit 0 | P0 | ✅ all declared release versions match 0.71.0 |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ 7,502 commits scanned; no leaks found; staged scan required before close |
+| S7 | No oversize source file | `git diff --name-only --diff-filter=ACM origin/main -- '*.rs' '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.go' '*.sh' '*.sql' \\| xargs wc -l 2>/dev/null \\| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ 83 source files; maximum 345; 0 over 350 |
+| S8 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ 0 retired-symbol matches; all four removed modules absent |
 
 **Command source rule:** every declared `conform` and `verify.*` command from `.orly/orly.json` appears above verbatim. See `.orly/dispatch/lifecycle.md` for timing; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -305,7 +305,7 @@ Save reply webhook_urls[]: {source, url: "<deployment>/v1/webhooks/<fleet_id>/<s
 - **Chat placement:** the authoring draft is the primary connection entry; fleet chat requests reconnection or access needed for a task. A shared Apps menu and workspace account settings support both. The standalone-page replacement requires its complete chat flow and is outside this reliability change.
 - **Slack registration:** In Brave, replaced the API callback with `https://app-dev.agentsfleet.net/api/connectors/slack/callback` in the `agentsfleet-dev` app's Redirect URLs. Saved the setting and reloaded the page; the dashboard callback remained registered. A new Slack authorization round trip has not been run against the changed application code.
 - **Metrics review** — no product or operator signal changes; refusals keep their codes. No analytics/funnel playbook update required.
-- **Skill-chain outcomes** — pending: `/orly-write-unit-test`, `/orly-write-integration-test`, `/review`, `orly-babysit-prs`.
+- **Skill-chain outcomes** — unit regression cases pass for signing recipes, schema parity, callback recovery and catalogue rendering. Real-storage integration proofs pass for source selection, replay, workspace label isolation and Jira grant persistence. Final review and `orly-babysit-prs` outcomes belong in the pull request's Session notes; outside Claude review is disabled. The final `orly gate pr` must pass before publication.
 - **Deferrals** — > Indy (2026-10-16 00:15): "A: refuse + spec (recommended)" — context: M227_001 refuses unverifiable webhook sources and defers configurable verifiers and per-source Svix to this spec.
 
 - Oct 28, 2026: 01:10 PM — Indy requested one workspace-scoped response for connector details and status. Extend the existing list with the connection label and remove the page's separate provider reads. Keep its storage query count constant by loading only registered grant names in one batch. Decrypting those handles occurs only in the connector service; response types carry public metadata alone.

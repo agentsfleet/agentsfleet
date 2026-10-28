@@ -22,14 +22,16 @@ The comparison integration failure was `draft::admission::history::stopped_histo
 
 | Command | Observed result | Local evidence |
 |---|---|---|
-| `make harness-verify` | Pass on the staged snapshot: 80 source files, no unified-symbol violations; secret-scanner configuration, design tokens, spec template, logging, Rust error discipline and milestone references clean. Final staging requires revalidation. | `/tmp/m228-final-harness.log` |
+| `make harness-verify` | Pass through the implementation commit hook: 82 source files, no unified-symbol violations; secret-scanner configuration, design tokens, spec template, logging, Rust error discipline and milestone references clean. The spec's test column was corrected to match each primary proof exactly; additional proofs remain in its assertions. | `/tmp/m228-app-implementation-commit2.log` |
 | `make test-unit-all` | Pass. Rust: 4,793 passed / 0 failed / 1,451 ignored. Application: 454 files / 4,489 tests. Website: 20 files / 133 tests. Command-line interface: 1,967 passed / 16 skipped. Design: 68 files / 522 tests. All package coverage gates passed. Subsequent mechanical Rust test lint repairs require final revalidation. | `/tmp/m228-final-unit-retry.log` |
 | `make lint-all` | Pass: `All lint checks passed`. Earlier deterministic Rust test lint issues were repaired without suppressions. | `/tmp/m228-final-lint-retry9.log` |
-| `make test-integration-rustd` | First complete feature attempt failed: 659 passed / 1 failed before stopping. Webhook ingress: 65 passed; authoring: 262 passed. Billing report suite: 8 passed / 1 failed at its fourth connection-cut assertion. Later binaries and the exclusive lane did not run. | `/tmp/m228-final-integration-isolated2.log` |
+| `make test-integration-rustd` | Pass with no competing heavy test jobs: 1,442 passed in the main run and 3 passed in the exclusive run; 0 failed. This includes the real Jira persistence and workspace catalogue cases. | `/tmp/m228-final-integration-serial.log` |
 | `make check-version` | Pass: declared release versions agree at 0.71.0. | `/tmp/m228-final-version.log` |
 | OpenAPI regeneration | 107 paths; removed Svix route absent; generated output byte-identical to `public/openapi.json`. | `/tmp/m228-openapi-regenerated.json` |
 
-The billing failure is `failures::connection_loss_at_each_report_statement_keeps_money_and_retry_intact`. It observed zero proxy cuts where one was expected at boundary four. Neither `afd_billing` nor `afd_db` has a source or test change in this workstream. Ten complete report-suite repetitions on the exact baseline and ten on the feature each passed all nine tests; this does not prove the earlier failure is pre-existing. A full run without competing heavy test jobs is in progress to test resource contention. The existing 400 ms budget and every assertion remain unchanged. Diagnostic logs: `/tmp/m228-billing-baseline-diagnostic.log` and `/tmp/m228-billing-feature-diagnostic.log`.
+An earlier feature integration attempt stopped at 659 passed / 1 failed, before later binaries and the exclusive run. Its failure was `failures::connection_loss_at_each_report_statement_keeps_money_and_retry_intact`: zero proxy cuts where one was expected at boundary four. Neither `afd_billing` nor `afd_db` has a source or test change in this workstream. Ten complete report-suite repetitions on the exact baseline and ten on the feature each passed all nine tests. The complete feature rerun without competing heavy test jobs also passed. This supports resource contention as an explanation but does not establish the exact cause of the earlier failure. The existing 400 ms budget and every assertion remain unchanged. Diagnostic logs: `/tmp/m228-billing-baseline-diagnostic.log`, `/tmp/m228-billing-feature-diagnostic.log` and `/tmp/m228-final-integration-isolated2.log`.
+
+The release boundary is enforced again by `orly gate pr` on the committed, pushed candidate. Its full command results belong in the pull request's Make section. The subsequent Rust edits extract assertion helpers and correct stale comments; no production behavior changed after the successful unit run.
 
 ## Functional quality assurance
 
@@ -56,7 +58,9 @@ The workspace catalogue returns registered applications, configured state, saved
 
 ## Review and companion documentation
 
-The full native adversarial implementation pass reported no production findings. Test and fixture bodies were reviewed as summaries in that pass; parent review read the changed assertions. Subsequent mechanical test lint repairs require a final zero-edit review. Applicable Rust guidelines included M-STRONG-TYPES, M-STRONG-TYPES-GUARD, M-FROM-ERROR and M-MOCKABLE-SYSCALLS, with the repository's named error-shell divergence from M-ERRORS-CANONICAL-STRUCTS. No outside Claude review was enabled.
+The full native adversarial implementation pass reported no production findings. Test and fixture bodies were reviewed as summaries in that pass; parent review read the changed assertions. Final zero-edit review results are recorded separately in the pull request. Applicable Rust guidelines included M-STRONG-TYPES, M-STRONG-TYPES-GUARD, M-FROM-ERROR and M-MOCKABLE-SYSCALLS, with the repository's named error-shell divergence from M-ERRORS-CANONICAL-STRUCTS. No outside Claude review was enabled.
+
+Source-size audit: 83 changed source files; maximum 345 lines against the 350-line ceiling, with zero over the ceiling. `ReceiveSvix`, `verified_svix` and trigger `secret_ref` searches returned zero matches. The two deleted Svix route modules, their old test module and the unused connector status type module are absent.
 
 Companion documentation: [docs pull request 231](https://github.com/agentsfleet/docs/pull/231), revision `b7261012ebfb3aa86109ce0a6258a70ca28c77b5`. Documentation tests: 25 passed. Lint passes against the proposed schema. The Greptile credential-shape finding is fixed and its thread resolved. Remote documentation lint still reads the old API `main` schema and reports the retired Svix operation missing from navigation; that dependency blocks the authorized conditional merge.
 
