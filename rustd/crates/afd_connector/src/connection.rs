@@ -8,14 +8,14 @@
 //! type over the same pair would be a second thing for a composition root to
 //! build and a second seam for a suite to stub.
 //!
-//! # The catalogue is a join of two listings, not five reads
+//! # Two independent storage reads answer the catalogue
 //!
 //! `configured` is a fact about the DEPLOYMENT and `connected` a fact about the
 //! workspace, so the two come from two different vaults and neither depends on
-//! the other. Two listings answer both columns for every provider at once, each
-//! an owned set the catalogue is joined against.
+//! the other. The app-name listing and a bounded batch of workspace handles run
+//! concurrently. Only public labels leave the opened workspace handles.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
@@ -32,7 +32,7 @@ use crate::registry::Archetype;
 /// for each — an OAuth consent hop and an App installation are not the same
 /// button — and it is the registry's fact rather than the card's, so a sixth
 /// connector cannot arrive with the wrong one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalogued {
     /// What this row is about.
     pub provider: Provider,
@@ -43,6 +43,8 @@ pub struct Catalogued {
     pub configured: bool,
     /// Whether THIS workspace holds a landed grant for it.
     pub connected: bool,
+    /// The public name of the saved connection, when supplied.
+    pub label: Option<String>,
 }
 
 impl Catalogued {
@@ -51,7 +53,7 @@ impl Catalogued {
     /// Answered from the registry rather than stored, so the two cannot drift:
     /// a provider that changed archetype changes this with it.
     #[must_use]
-    pub const fn is_app_install(self) -> bool {
+    pub const fn is_app_install(&self) -> bool {
         matches!(self.provider.archetype(), Archetype::AppInstall(_))
     }
 }
@@ -123,8 +125,10 @@ impl Connectors {
         admin: Option<&Uuid7>,
         workspace: &Uuid7,
     ) -> Result<Vec<Catalogued>> {
-        let configured = self.app.provisioned(admin).await?;
-        let connected = self.grants.held(workspace).await?;
+        let (configured, connected) = tokio::try_join!(
+            self.app.provisioned(admin),
+            self.grants.connections(workspace)
+        )?;
         Ok(rows(&configured, &connected))
     }
 
@@ -138,19 +142,25 @@ impl Connectors {
     }
 }
 
-/// The catalogue, joined from the two membership sets.
+/// The catalogue, joined from deployment names and workspace connections.
 ///
 /// Lifted out of the read so the join is provable without a datastore: the
 /// interesting part is that a provider in neither set still LISTS, and pinning
 /// that through a vault would need two workspaces and a seeded row.
-fn rows(configured: &BTreeSet<Provider>, connected: &BTreeSet<Provider>) -> Vec<Catalogued> {
+fn rows(
+    configured: &BTreeSet<Provider>,
+    connected: &BTreeMap<Provider, Connection>,
+) -> Vec<Catalogued> {
     Provider::ALL
         .iter()
         .copied()
         .map(|provider| Catalogued {
             provider,
             configured: configured.contains(&provider),
-            connected: connected.contains(&provider),
+            connected: connected.contains_key(&provider),
+            label: connected
+                .get(&provider)
+                .and_then(|connection| connection.label.clone()),
         })
         .collect()
 }
@@ -162,9 +172,10 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::rows;
+    use crate::Connection;
     use crate::provider::Provider;
 
     /// Every shipped provider lists, however little is held.
@@ -177,7 +188,7 @@ mod tests {
     fn a_deployment_holding_nothing_still_lists_every_provider() {
         let none = BTreeSet::new();
 
-        let catalogue = rows(&none, &none);
+        let catalogue = rows(&none, &BTreeMap::new());
 
         assert_eq!(catalogue.len(), Provider::ALL.len());
         assert!(
@@ -196,11 +207,16 @@ mod tests {
     #[test]
     fn the_configured_and_connected_columns_come_from_their_own_sets() {
         let configured = BTreeSet::from([Provider::Slack, Provider::Jira]);
-        let connected = BTreeSet::from([Provider::Slack]);
+        let connected = BTreeMap::from([(
+            Provider::Slack,
+            Connection {
+                label: Some("Support".into()),
+            },
+        )]);
 
         let catalogue = rows(&configured, &connected);
         let row = |provider| {
-            *catalogue
+            catalogue
                 .iter()
                 .find(|row| row.provider == provider)
                 .expect("every provider lists")
@@ -219,10 +235,13 @@ mod tests {
     /// two columns into one would hide exactly that.
     #[test]
     fn a_grant_outlives_the_app_bag_it_was_minted_through() {
-        let row = rows(&BTreeSet::new(), &BTreeSet::from([Provider::Zoho]))
-            .into_iter()
-            .find(|row| row.provider == Provider::Zoho)
-            .expect("every provider lists");
+        let row = rows(
+            &BTreeSet::new(),
+            &BTreeMap::from([(Provider::Zoho, Connection { label: None })]),
+        )
+        .into_iter()
+        .find(|row| row.provider == Provider::Zoho)
+        .expect("every provider lists");
 
         assert!(row.connected);
         assert!(!row.configured);

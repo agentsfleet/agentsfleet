@@ -472,8 +472,11 @@ Approval resolution still creates a continuation admission.
    MANUAL     Custom providers and the old GitHub workflow_run path retain
    WEBHOOK      POST /v1/webhooks/{fleet_id}/{source}   (one per webhook trigger)
                  POST /v1/webhooks/{fleet_id}/github
-               with a workspace `<source>.webhook_secret`. The fleet identifier
-               is already in the URL, so this route does not require
+               with a workspace credential's `webhook_secret` field. The named
+               stored trigger selects its registry or declared recipe. Svix uses
+               this same source URL and claims its signed delivery identifier;
+               other recipes claim the authenticated body digest. The fleet
+               identifier is already in the URL, so this route does not require
                `repositories` and does not use `connector.installs`.
 
                The internal Clerk endpoint that bootstraps our own tenants

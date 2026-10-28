@@ -36,6 +36,8 @@ const ACQUIRE_TIMEOUT_MS: &str = "50";
 /// The empty JSON object the fixtures send where a body or address is unused.
 const EMPTY_OBJECT: &str = "{}";
 
+const SOURCE: &str = "github";
+
 /// The production ingress, over three handles that answer nothing.
 fn refusing() -> Ingress {
     let environment = MapEnv::from_pairs([
@@ -89,13 +91,13 @@ fn binding() -> Binding {
         &serde_json::json!({
             "name": "adapter",
             "x-agentsfleet": {
-                "triggers": [{"type": "webhook", "source": "github"}],
+                "triggers": [{"type": "webhook", "source": SOURCE}],
                 "tools": ["bash"],
                 "budget": {"daily_nanos": afd_core::money::NANOS_PER_USD.to_string()},
             },
         })
         .to_string(),
-        None,
+        SOURCE,
     )
     .expect("the fixture document parses")
     .expect("the fixture document declares a webhook trigger")
@@ -103,8 +105,8 @@ fn binding() -> Binding {
 
 /// Every method on the seam reaches the store it names.
 ///
-/// Seven one-line delegations, and the reason they are worth a test is that
-/// the compiler cannot tell them apart: `svix_secret` forwarding to
+/// Six one-line delegations, and the reason they are worth a test is that
+/// the compiler cannot tell them apart: `platform_secret` forwarding to
 /// `signing_secret` type-checks perfectly and silently verifies a Svix
 /// delivery against the HMAC family's field — a security boundary crossed
 /// by a copied line. Reaching a refusing store proves each one arrives
@@ -120,20 +122,11 @@ async fn every_reader_on_the_seam_reaches_a_store() {
     let held = binding();
 
     assert!(refused(
-        &WebhookIngress::binding(&ingress, &fleet, None).await
+        &WebhookIngress::binding(&ingress, &fleet, SOURCE).await
     ));
     assert!(refused(
         &WebhookIngress::signing_secret(&ingress, &held).await
     ));
-    // The one reader that answers WITHOUT a store, and the asymmetry is the
-    // point: a trigger declaring no Svix ref has no Svix secret, which is a
-    // configuration fact rather than a failure. Reaching the vault to
-    // discover it would make an outage and an unconfigured fleet the same
-    // answer, and only one of them is worth waking somebody for.
-    assert!(
-        matches!(WebhookIngress::svix_secret(&ingress, &held).await, Ok(None)),
-        "a trigger with no signature ref short-circuits before the vault"
-    );
     assert!(refused(
         &WebhookIngress::platform_secret(&ingress, &fleet, "github-app").await
     ));

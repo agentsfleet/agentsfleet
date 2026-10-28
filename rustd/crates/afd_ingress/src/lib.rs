@@ -34,7 +34,7 @@
 //!      ▼
 //!   Ingress::binding        fleet row → workspace, status, webhook trigger
 //!      │                    absent ⇒ UZ-WH-001, and so is a fleet with no
-//!      │                    webhook trigger — see `Binding::read`
+//!      │                    webhook trigger — see `Binding::read_for_source`
 //!      ▼
 //!   Ingress::signing_secret vault → the shared secret, or None
 //!      │                    None ⇒ Refusal::Unconfigured ⇒ UZ-WH-020
@@ -124,20 +124,14 @@ impl Ingress {
     /// answer the same `UZ-WH-001`, and distinguishing them would confirm a
     /// fleet id to whoever guessed it.
     ///
-    /// `source` is the provider the URL names, when it names one. The
-    /// per-fleet GitHub route knows it is GitHub's, so a fleet declaring Slack
-    /// before GitHub is measured on its GitHub trigger — the allow-list and
-    /// the secret that route was addressed for — rather than on whichever
-    /// webhook trigger the document lists first. The bare `/v1/webhooks/{id}`
-    /// route names no provider and passes `None`, which takes the first, as
-    /// [`Binding::read`] says. A fleet declaring no trigger for the named
-    /// source is `Ok(None)` too: to that route it has no webhook.
+    /// `source` is the provider named in the URL. A fleet declaring no trigger
+    /// for it resolves to `Ok(None)`, regardless of declaration order.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a row this build cannot read,
     /// a stored status it cannot name, and a stored document that no longer
     /// parses.
-    pub async fn binding(&self, fleet: &Uuid7, source: Option<&str>) -> Result<Option<Binding>> {
+    pub async fn binding(&self, fleet: &Uuid7, source: &str) -> Result<Option<Binding>> {
         let mut connection = self.database.acquire().await?;
         let row: Option<IngressRow> = sqlx::query_as(sql::SELECT_FLEET_INGRESS)
             .bind(fleet.as_str())
@@ -156,16 +150,7 @@ impl Ingress {
         let workspace = Uuid7::parse(&row.workspace_id)
             .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))?;
 
-        match source {
-            Some(source) => Binding::read_for_source(
-                fleet.clone(),
-                workspace,
-                &row.status,
-                &row.document,
-                source,
-            ),
-            None => Binding::read(fleet.clone(), workspace, &row.status, &row.document),
-        }
+        Binding::read_for_source(fleet.clone(), workspace, &row.status, &row.document, source)
     }
 }
 

@@ -7,7 +7,7 @@
 
 use afd_fleet_lifecycle::FleetStatus;
 
-use super::{Binding, FLEET, READABLE, WORKSPACE, binding_of, document, id, read};
+use super::{Binding, FLEET, READABLE, WORKSPACE, binding_of, document, id};
 
 /// The resolution a named provider gets, for the App-ingress tests.
 fn read_source(triggers: &str, source: &str) -> Option<Binding> {
@@ -21,14 +21,7 @@ fn read_source(triggers: &str, source: &str) -> Option<Binding> {
     .expect(READABLE)
 }
 
-/// The defect this reader exists to prevent, stated as a test.
-///
-/// A fleet declaring Slack before GitHub resolves to its SLACK trigger under
-/// [`Binding::read`], because that reader takes the first webhook trigger and
-/// the per-fleet URL cannot say which. On the App ingress the provider IS in
-/// the URL, and measuring a GitHub delivery against a Slack trigger would read
-/// the wrong allow-list and the wrong repository set — quietly, with no error
-/// anywhere, because both triggers are valid.
+/// Source selection is independent of declaration order.
 #[test]
 fn the_source_selects_the_trigger_rather_than_declaration_order() {
     let both = r#"[
@@ -36,14 +29,7 @@ fn the_source_selects_the_trigger_rather_than_declaration_order() {
         {"type":"webhook","source":"github","repositories":["owner/repo"],"events":["pull_request"]}
     ]"#;
 
-    let first = read(both, FleetStatus::Active.as_str()).expect("a webhook trigger is declared");
     let named = read_source(both, "github").expect("a github webhook trigger is declared");
-
-    assert_eq!(
-        first.source(),
-        "slack",
-        "declaration order still wins when no source is named"
-    );
     assert_eq!(named.source(), "github");
     assert!(
         named.admits("pull_request") && !named.admits("message"),

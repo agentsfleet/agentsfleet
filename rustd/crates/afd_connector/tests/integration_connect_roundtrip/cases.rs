@@ -5,7 +5,7 @@ use super::*;
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_jira_connect_lands_a_grant_naming_the_site_it_was_scoped_to() {
-    let vendor = FakeAtlassian::serving().await;
+    let vendor = FakeAtlassian::serving_with_token("a".repeat(afd_vault::MAX_DATA_BYTES + 1)).await;
     let round = Round::create(&vendor).await;
     round.configure_jira().await;
     let now = NOW;
@@ -61,7 +61,7 @@ async fn a_jira_connect_lands_a_grant_naming_the_site_it_was_scoped_to() {
     // The handoff, asserted where it lands rather than where it is passed.
     let grant = round.landed_grant().await;
     assert_eq!(field_of(&grant, "integration"), Some("jira"));
-    assert_eq!(field_of(&grant, "access_token"), Some(vendor::ACCESS_TOKEN));
+    assert_eq!(field_of(&grant, "access_token"), None);
     assert_eq!(
         field_of(&grant, "refresh_token"),
         Some(vendor::REFRESH_TOKEN)

@@ -77,6 +77,10 @@ pub(crate) const SOURCE_LINEAR: &str = "linear";
 /// A webhook trigger from [`SOURCE_LINEAR`].
 pub(crate) const TRIGGER_LINEAR: &str = r#"[{"type":"webhook","source":"linear"}]"#;
 
+/// A custom source using the Svix recipe at its own URL.
+pub(crate) const TRIGGER_SVIX: &str =
+    r#"[{"type":"webhook","source":"clerk","verifier":{"scheme":"svix-v1"}}]"#;
+
 /// A stored document carrying `triggers` and nothing else varying.
 ///
 /// The surrounding keys are the ones [`afd_fleet_runtime::FleetConfig::stored`]
@@ -108,9 +112,23 @@ pub(crate) fn binding_with_status(triggers: &str, status: &str) -> Binding {
 
 /// The same, for a fleet a test identifies.
 pub(crate) fn binding_of(fleet: &str, triggers: &str, status: &str) -> Binding {
-    Binding::stored(id(fleet), id(WORKSPACE), status, &document(triggers), None)
-        .expect("the fixture document parses and its status is one this build knows")
-        .expect("the fixture document declares a webhook trigger")
+    let authored: serde_json::Value = serde_json::from_str(triggers).expect("fixture triggers");
+    let source = authored
+        .as_array()
+        .expect("trigger list")
+        .iter()
+        .find(|trigger| trigger["type"] == "webhook")
+        .and_then(|trigger| trigger["source"].as_str())
+        .expect("fixture webhook source");
+    Binding::stored(
+        id(fleet),
+        id(WORKSPACE),
+        status,
+        &document(triggers),
+        source,
+    )
+    .expect("the fixture document parses and its status is one this build knows")
+    .expect("the fixture document declares a webhook trigger")
 }
 
 /// A fixture identifier, parsed once so no test spells the check twice.

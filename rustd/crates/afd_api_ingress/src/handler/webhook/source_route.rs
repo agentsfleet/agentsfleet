@@ -23,22 +23,17 @@
 //! kind from the payload's shape would let a sender holding the secret present
 //! a body that classifies as an event their allow-list admits.
 //!
-//! # Why the claim key is the body's digest
-//!
-//! No header on this surface is both universal and signed. So the identity of a
-//! delivery is the delivery — [`afd_ingress::replay_id`], the same
-//! authenticated identity the App ingress keys on: a value the signature
-//! covers cannot be varied without invalidating the proof. A sender that means
-//! to fire the same fleet twice with a byte-identical body inside the claim
-//! window is suppressed the second time, which is the safe direction; every
-//! real payload varies by carrying its own timestamp or identifier.
+//! Svix signs its delivery identifier, which becomes the replay key. Other
+//! recipes authenticate only the body, so they claim its digest. Header values
+//! that a recipe does not sign cannot create a second delivery.
 
 use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
+use axum::response::IntoResponse as _;
 use axum::response::Response;
-use http::HeaderMap;
+use http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 
 use crate::handler::{Refusal, webhook};
@@ -47,6 +42,9 @@ use afd_http::handler::parse_fleet_id;
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_source_append_failed";
+
+/// The removed address overlaps the generic path template. It names no fleet.
+const RETIRED_SVIX_SEGMENT: &str = "svix";
 
 /// The fleet and the webhook source a delivery's path names, still text.
 #[derive(Debug, Deserialize)]
@@ -96,12 +94,15 @@ pub(crate) async fn receive<D: Services>(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Refusal> {
+    if fleet_id == RETIRED_SVIX_SEGMENT {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
     let fleet = parse_fleet_id(&fleet_id)?;
     webhook::within_cap(&body)?;
 
     // Nothing above this line has read the body as anything but bytes.
-    let proven = webhook::verified(&services, &fleet, Some(&source), &headers, body).await?;
+    let proven = webhook::verified(&services, &fleet, &source, &headers, body).await?;
 
-    let event_id = afd_ingress::replay_id(&proven.body);
+    let event_id = proven.replay_id.clone();
     super::delivery::deliver(services.as_ref(), proven, &event_id, EVENT_APPEND).await
 }

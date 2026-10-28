@@ -45,8 +45,7 @@ The QStash schedule ingress uses QStash delivery signatures instead of a bearer 
 ## Execution model
 A Fleet is a long-lived, event-driven autonomous worker scoped to a workspace.
 Events reach it from its triggers (signed webhooks at
-`POST /v1/webhooks/{fleet_id}/{source}`, Svix-signed ones at
-`POST /v1/webhooks/svix/{fleet_id}`, schedules and chat mentions) and from
+`POST /v1/webhooks/{fleet_id}/{source}`, including Svix-signed sources, schedules and chat mentions) and from
 steer messages. Each accepted event is committed to `fleet.admissions`.
 The control plane (`agentsfleetd`) claims queued admissions and leases them to a
 host-resident `agentsfleet-runner`. The runner runs the Fleet's loop, which can call tools, update state,

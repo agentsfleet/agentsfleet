@@ -46,7 +46,7 @@ pub struct CredentialInspection {
     pub usable: bool,
     /// The stored object contains the nonempty signing field used by keyed ingress.
     pub webhook_usable: bool,
-    /// Raw stored bytes parse as the signing key used by Svix ingress.
+    /// The signing field parses as the Svix key used by ingress.
     pub svix_usable: bool,
     /// Public provider installation identity, never an access token.
     pub connection_id: Option<String>,
@@ -111,10 +111,7 @@ impl Vault {
             supply,
             usable,
             webhook_usable: handle.as_ref().is_some_and(Handle::webhook_usable),
-            svix_usable: std::str::from_utf8(plaintext.expose())
-                .ok()
-                .and_then(afd_webhook::vendor::svix::SvixSecret::parse)
-                .is_some(),
+            svix_usable: handle.as_ref().is_some_and(Handle::svix_usable),
             connection_id,
             integration: connector
                 .map(|connector| connector.name().to_owned())

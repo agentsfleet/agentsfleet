@@ -71,6 +71,13 @@ impl Handle<'_> {
         nonempty_secret(self.webhook_secret)
     }
 
+    pub(super) fn svix_usable(&self) -> bool {
+        self.webhook_secret
+            .and_then(|raw| serde_json::from_str::<String>(raw.get()).ok())
+            .map(Zeroizing::new)
+            .is_some_and(|secret| afd_webhook::vendor::svix::SvixSecret::parse(&secret).is_some())
+    }
+
     fn has_refresh_token(&self) -> bool {
         nonempty_secret(self.refresh_token)
     }
