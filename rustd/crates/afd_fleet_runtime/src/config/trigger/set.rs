@@ -1,7 +1,6 @@
 //! The trigger set as a whole: its size, its uniqueness, and which route can
 //! deliver to each webhook in it.
 
-use afd_webhook::Scheme;
 use garde::{Unvalidated, Valid};
 
 use super::{MAX_TRIGGERS, Trigger};
@@ -16,10 +15,6 @@ const REASON_DUPLICATE_SOURCE: &str = "two webhook triggers share one source";
 const REASON_DUPLICATE_CRON: &str = "a fleet may hold only one cron trigger";
 /// See [`REASON_SET_TOO_LARGE`].
 const REASON_DUPLICATE_MENTION: &str = "a fleet may attach to only one channel";
-/// See [`REASON_SET_TOO_LARGE`].
-pub(super) const REASON_SVIX_NOT_FIRST: &str = "a Svix-signed webhook source must be the fleet's first \
-     webhook trigger: the Svix route delivers only to the first";
-
 /// The authored trigger set, bounded in count before any entry is read.
 #[derive(Debug, garde::Validate)]
 struct Set {
@@ -54,33 +49,7 @@ fn read_set(set: Valid<Set>) -> Result<Box<[Trigger]>> {
         .collect::<Result<Box<[Trigger]>>>()?;
 
     prove_unique(&triggers)?;
-    prove_svix_first(&triggers).map(|()| triggers)
-}
-
-/// Proves every Svix-signed webhook is one the Svix route can reach.
-///
-/// That route's URL carries only the fleet id, so the ingress resolves the
-/// fleet's first webhook trigger (`afd_ingress` `webhook_trigger` with no
-/// source). A Svix-signed source anywhere else would be advertised an address
-/// whose deliveries bind to another trigger and are refused, so it is refused
-/// here instead. A source with a scheme of its own has its own route.
-fn prove_svix_first(triggers: &[Trigger]) -> Result<()> {
-    let misplaced = triggers
-        .iter()
-        .filter_map(|trigger| match trigger {
-            Trigger::Webhook(hook) => Some(hook),
-            Trigger::Cron(_) | Trigger::Mention(_) => None,
-        })
-        .skip(1)
-        .any(|hook| Scheme::for_source(&hook.source).is_none());
-
-    if misplaced {
-        return Err(ErrorKind::InvalidTriggerSet {
-            reason: REASON_SVIX_NOT_FIRST,
-        }
-        .into());
-    }
-    Ok(())
+    Ok(triggers)
 }
 
 /// Proves no two triggers would fire for the same thing.

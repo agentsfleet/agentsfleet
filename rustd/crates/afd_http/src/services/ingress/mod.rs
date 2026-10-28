@@ -33,7 +33,7 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
     fn binding(
         &self,
         fleet: &Uuid7,
-        source: Option<&str>,
+        source: &str,
     ) -> impl Future<Output = IngressResult<Option<Binding>>> + Send;
 
     /// The shared secret this fleet's provider signs with.
@@ -42,21 +42,6 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
     /// Reports a datastore that would not answer and an envelope that would not
     /// open. Every way a fleet can have no usable secret is `Ok(None)`.
     fn signing_secret(
-        &self,
-        binding: &Binding,
-    ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send;
-
-    /// The Svix `whsec_…` this fleet's trigger names.
-    ///
-    /// A separate reader from [`Self::signing_secret`] because it is a separate
-    /// stored SHAPE, not a separate policy: the HMAC family stores a JSON
-    /// object and reads one field out of it, and Svix stores the raw string.
-    /// Two readers over one vault, which is what keeps the parsing in the crate
-    /// that knows the shape rather than in the route that wanted a key.
-    ///
-    /// # Errors
-    /// As [`Self::signing_secret`].
-    fn svix_secret(
         &self,
         binding: &Binding,
     ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send;
@@ -191,7 +176,7 @@ impl WebhookIngress for Ingress {
     fn binding(
         &self,
         fleet: &Uuid7,
-        source: Option<&str>,
+        source: &str,
     ) -> impl Future<Output = IngressResult<Option<Binding>>> + Send {
         Self::binding(self, fleet, source)
     }
@@ -201,13 +186,6 @@ impl WebhookIngress for Ingress {
         binding: &Binding,
     ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send {
         Self::signing_secret(self, binding)
-    }
-
-    fn svix_secret(
-        &self,
-        binding: &Binding,
-    ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send {
-        Self::svix_secret(self, binding)
     }
 
     fn platform_secret(

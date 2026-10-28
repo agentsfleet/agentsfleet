@@ -41,6 +41,27 @@ async fn the_vault_never_reads_another_workspaces_key() {
 
     assert_eq!(opened(&lane, &lane.workspace).await.as_deref(), Some(MINE));
     assert_eq!(opened(&lane, &neighbour).await.as_deref(), Some(THEIRS));
+    for (workspace, expected) in [(&lane.workspace, MINE), (&neighbour, THEIRS)] {
+        let opened = lane
+            .vault
+            .load_many(workspace, &[named(SHARED_NAME), named("absent")])
+            .await
+            .expect("the scoped batch opens");
+        assert_eq!(opened.len(), 1);
+        assert_eq!(
+            opened
+                .get(SHARED_NAME)
+                .map(afd_crypto::secret::SecretBytes::expose),
+            Some(expected.as_bytes())
+        );
+        assert!(
+            lane.vault
+                .load_many(workspace, &[])
+                .await
+                .expect("an empty selection opens nothing")
+                .is_empty()
+        );
+    }
     let described = lane
         .keyless_directory()
         .describe(&neighbour, &[SHARED_NAME])

@@ -195,7 +195,7 @@ pub(crate) enum ErrorKind {
     },
 
     /// A webhook trigger no route can verify: its source names no signature
-    /// scheme this daemon ships, and it declares no Svix `signature.secret_ref`.
+    /// scheme this daemon ships, and it declares no verifier recipe.
     ///
     /// The supported sources are rendered from `afd_webhook::Scheme::ALL`, the
     /// table the ingress verifies with, so the sentence cannot name a source
@@ -203,21 +203,22 @@ pub(crate) enum ErrorKind {
     /// [`ErrorKind::InvalidSignatureConfig`] gives.
     #[error(
         "the webhook source `{provider}` cannot be verified: use {}, or declare \
-         `signature.secret_ref` for a Svix-signed source",
-        verifiable_sources()
+         `verifier` with one of {}",
+        verifiable_sources(),
+        verifiable_families()
     )]
     UnverifiableWebhookSource {
         /// The source the trigger named.
         provider: Box<str>,
     },
 
-    /// A webhook trigger's signature block names no secret.
+    /// A webhook trigger's verifier declaration is incoherent.
     ///
     /// The field is `provider` rather than `source` because `thiserror` reads a
     /// field named `source` as the error's CAUSE and would try to walk this
     /// string as one. Naming it for what it holds avoids relying on an
     /// attribute to suppress a convention.
-    #[error("the signature block on `{provider}` is not usable: {reason}")]
+    #[error("the verifier on `{provider}` is not usable: {reason}")]
     InvalidSignatureConfig {
         /// The trigger source it hangs off.
         provider: Box<str>,
@@ -264,9 +265,21 @@ impl Error {
 /// `` `github`, `linear`, `slack` ``, read from the scheme table the ingress
 /// verifies with.
 fn verifiable_sources() -> String {
-    afd_webhook::Scheme::ALL
-        .iter()
-        .map(|scheme| format!("`{}`", scheme.source()))
+    listed_tokens(
+        afd_webhook::Scheme::ALL
+            .iter()
+            .map(|scheme| scheme.source()),
+    )
+}
+
+/// Declarable recipes, read from the verification wall's closed set.
+fn verifiable_families() -> String {
+    listed_tokens(afd_webhook::Family::ALL.iter().map(|family| family.token()))
+}
+
+fn listed_tokens(tokens: impl Iterator<Item = &'static str>) -> String {
+    tokens
+        .map(|token| format!("`{token}`"))
         .collect::<Vec<_>>()
         .join(", ")
 }

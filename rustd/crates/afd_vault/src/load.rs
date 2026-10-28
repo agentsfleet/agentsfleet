@@ -77,4 +77,43 @@ impl Vault {
         );
         Ok(Some(opened))
     }
+
+    /// Opens the requested names in one workspace-scoped read.
+    ///
+    /// Callers pass validated internal names; unrelated secrets are not selected.
+    /// Plaintext remains zeroed on drop and must never be returned by a route.
+    ///
+    /// # Errors
+    /// Reports storage failures, malformed envelopes or a failed open.
+    pub async fn load_many(
+        &self,
+        workspace: &Uuid7,
+        names: &[SecretName],
+    ) -> Result<std::collections::BTreeMap<String, SecretBytes>> {
+        let selected: Vec<&str> = names.iter().map(SecretName::as_str).collect();
+        let mut connection = self.directory.database.acquire().await?;
+        let rows = sqlx::query_as::<_, NamedEnvelope>(sql::SELECT_NAMED_ENVELOPES)
+            .bind(workspace.as_str())
+            .bind(&selected)
+            .fetch_all(connection.as_mut())
+            .await
+            .map_err(query(CONTEXT_LOAD))?;
+        drop(connection);
+        rows.into_iter()
+            .map(|row| {
+                let envelope = row.envelope.into_envelope()?;
+                let opened =
+                    envelope.open(&self.kek, &Aad::new(workspace.as_str(), &row.key_name))?;
+                Ok((row.key_name, opened))
+            })
+            .collect()
+    }
+}
+
+/// The name binds each returned envelope to its own associated data.
+#[derive(sqlx::FromRow)]
+struct NamedEnvelope {
+    key_name: String,
+    #[sqlx(flatten)]
+    envelope: crate::StoredEnvelope,
 }

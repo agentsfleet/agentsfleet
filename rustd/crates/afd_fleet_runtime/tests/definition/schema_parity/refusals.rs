@@ -147,7 +147,7 @@ fn trigger_refusals() -> Vec<(&'static str, Change)> {
             Set(
                 runtime("/triggers"),
                 json!([{"type": "webhook", "source": "github",
-                    "signature": {"secret_ref": "github_secret", "header": "x-hub-signature-256"}}]),
+                    "verifier": {"scheme": "svix-v1", "header": "x-hub-signature-256"}}]),
             ),
         ),
         (

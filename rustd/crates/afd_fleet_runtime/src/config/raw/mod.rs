@@ -54,7 +54,7 @@ pub(crate) use self::document::{Document, Runtime};
 pub(crate) use self::gates::{Access, Behavior, Pattern};
 pub(crate) use self::gates::{AnomalyRule, GateRule, Gates};
 pub(crate) use self::policy::{Budget, Context, Knob, Network};
-pub(crate) use self::trigger::{Signature, Trigger};
+pub(crate) use self::trigger::{Trigger, Verifier};
 
 /// Most events one trigger may name.
 const MAX_EVENTS: usize = 16;

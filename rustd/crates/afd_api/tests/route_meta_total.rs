@@ -85,6 +85,9 @@ const BILLING_REPORT_ADDITIONS: usize = 2;
 /// The creator-private editor read joins the current fleet with bounded history.
 const AUTHORING_CONTEXT_ADDITIONS: usize = 1;
 
+/// The first-trigger Svix URL was replaced by the existing per-source route.
+const RETIRED_WEBHOOK_ROUTES: usize = 1;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -92,7 +95,8 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + CHAT_AUTHORING_ADDITIONS
     + CONTEXT_CHECKPOINT_ADDITIONS
     + BILLING_REPORT_ADDITIONS
-    + AUTHORING_CONTEXT_ADDITIONS;
+    + AUTHORING_CONTEXT_ADDITIONS
+    - RETIRED_WEBHOOK_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.

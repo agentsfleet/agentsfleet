@@ -18,7 +18,7 @@ use jiff::Timestamp;
 use super::{ENTRY_ID_SEQUENCE, HarnessIngress, Recorded, Scripted};
 
 impl WebhookIngress for HarnessIngress {
-    async fn binding(&self, fleet: &Uuid7, source: Option<&str>) -> IngressResult<Option<Binding>> {
+    async fn binding(&self, fleet: &Uuid7, source: &str) -> IngressResult<Option<Binding>> {
         match self {
             Self::Unreachable(ingress) => ingress.binding(fleet, source).await,
             Self::Scripted(scripted) => {
@@ -26,7 +26,7 @@ impl WebhookIngress for HarnessIngress {
                     .asked
                     .lock()
                     .expect("no test holds this lock across a panic")
-                    .push(source.map(str::to_owned));
+                    .push(source.to_owned());
                 Ok(scripted.binding.clone())
             }
         }
@@ -36,13 +36,6 @@ impl WebhookIngress for HarnessIngress {
         match self {
             Self::Unreachable(ingress) => ingress.signing_secret(binding).await,
             Self::Scripted(scripted) => Ok(scripted.secret.clone()),
-        }
-    }
-
-    async fn svix_secret(&self, binding: &Binding) -> IngressResult<Option<SecretBytes>> {
-        match self {
-            Self::Unreachable(ingress) => ingress.svix_secret(binding).await,
-            Self::Scripted(scripted) => Ok(scripted.svix.clone()),
         }
     }
 

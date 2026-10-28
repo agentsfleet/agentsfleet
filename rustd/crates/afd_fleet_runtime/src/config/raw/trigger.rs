@@ -2,13 +2,15 @@
 
 use afd_validate::charset;
 use garde::Validate;
-use serde::Deserialize;
+use serde::de::{Error as _, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 
 use super::predicate::{is_not_reserved_source, is_repository, is_token};
 use super::{
     MAX_CHANNEL_ID_LEN, MAX_CREDENTIAL_LEN, MAX_EVENT_LEN, MAX_EVENTS, MAX_REFERENCE_LEN,
     MAX_REPOSITORIES, MAX_REPOSITORY_LEN, MENTION_CHANNELS,
 };
+use crate::error::Result;
 use crate::name::is_slug_char;
 
 /// One way a fleet can start a run. `type` selects the kind.
@@ -51,7 +53,7 @@ pub(crate) enum Trigger {
         credential_name: Option<String>,
         /// How the delivery proves it came from the provider.
         #[garde(dive)]
-        signature: Option<Signature>,
+        verifier: Option<Verifier>,
     },
     /// Starts on a schedule.
     Cron {
@@ -85,16 +87,89 @@ pub(crate) enum Trigger {
     },
 }
 
-/// A Svix-signed webhook: the secret its deliveries are verified with, at
-/// `/v1/webhooks/svix/{fleet_id}`.
-// Closed: the header, prefix and timestamp keys this once carried were never
-// read by any route, so a document still naming them is told so.
+/// The complete signing recipe. Fixed-header recipes accept no extra fields.
 #[derive(Debug, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionWebhookSignature))]
-pub(crate) struct Signature {
-    /// The secret name that holds the Svix signing secret.
-    #[garde(inner(length(chars, min = 1, max = MAX_CREDENTIAL_LEN)))]
-    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
-    pub(crate) secret_ref: Option<String>,
+#[serde(tag = "scheme", deny_unknown_fields)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionWebhookVerifier))]
+pub(crate) enum Verifier {
+    /// Raw body with a prefixed hex digest.
+    #[serde(rename = "body-hex-sha256")]
+    BodyHexSha256 {
+        /// Header holding the signature.
+        #[garde(inner(length(chars, min = 1, max = MAX_HEADER_LEN), custom(charset(is_header_char))))]
+        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
+        header: Option<String>,
+    },
+    /// Raw body with a bare hex digest.
+    #[serde(rename = "body-hex")]
+    BodyHex {
+        /// Header holding the signature.
+        #[garde(inner(length(chars, min = 1, max = MAX_HEADER_LEN), custom(charset(is_header_char))))]
+        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
+        header: Option<String>,
+    },
+    /// Raw body with a base64 digest.
+    #[serde(rename = "body-base64-sha256")]
+    BodyBase64Sha256 {
+        /// Header holding the signature.
+        #[garde(inner(length(chars, min = 1, max = MAX_HEADER_LEN), custom(charset(is_header_char))))]
+        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
+        header: Option<String>,
+    },
+    /// Fixed Slack headers with a signed timestamp.
+    #[serde(rename = "slack-v0", deserialize_with = "fixed_headers")]
+    SlackV0,
+    /// Fixed Svix headers with a signed identifier and timestamp.
+    #[serde(rename = "svix-v1", deserialize_with = "fixed_headers")]
+    SvixV1,
+}
+
+// Serde's unit-variant reader ignores remaining keys, so fixed recipes read an
+// empty map explicitly. The enum tag has already been consumed at this point.
+fn fixed_headers<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Error> {
+    deserializer.deserialize_map(FixedHeaders)
+}
+
+struct FixedHeaders;
+
+impl<'de> Visitor<'de> for FixedHeaders {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a verifier with no configurable headers")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        match map.next_key::<String>()? {
+            Some(key) => Err(A::Error::unknown_field(&key, &[])),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Bound on an authored signature header, in ASCII characters.
+pub(crate) const MAX_HEADER_LEN: usize = 128;
+/// HTTP token grammar; a header name cannot inject whitespace or delimiters.
+#[cfg(feature = "openapi")]
+pub(crate) const HEADER_PATTERN: &str = "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$";
+
+const fn is_header_char(character: char) -> bool {
+    character.is_ascii_alphanumeric()
+        || matches!(
+            character,
+            '!' | '#'
+                | '$'
+                | '%'
+                | '&'
+                | '\''
+                | '*'
+                | '+'
+                | '-'
+                | '.'
+                | '^'
+                | '_'
+                | '`'
+                | '|'
+                | '~'
+        )
 }
