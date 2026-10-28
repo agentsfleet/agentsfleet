@@ -128,11 +128,12 @@ git config core.hooksPath .githooks
 ```
 
 Project facts live in [`AGENTS.md`](AGENTS.md). The operating model and its
-standards are committed alongside them —
-[`.orly/AGENTS.md`](.orly/AGENTS.md) and `.orly/standards/` — materialised
-by [orly](https://github.com/agentsfleet/orly) and recorded in
-`.orly/orly.json`. A clone carries its own rules; nothing resolves out of a
-developer's home directory.
+standards, [`.orly/AGENTS.md`](.orly/AGENTS.md) and `.orly/standards/`, are
+committed alongside them.
+
+[orly](https://github.com/agentsfleet/orly) materialises both and records
+them in `.orly/orly.json`. A clone carries its own rules; nothing resolves out
+of a developer's home directory.
 
 Install orly at the version this repository records, so a local run and
 Continuous Integration grade against the same rules:

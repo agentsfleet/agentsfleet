@@ -6,8 +6,9 @@ commit; an existing one is not exempt because it predates the rule.
 The rules themselves, their examples and the divergence from
 `M-ERRORS-CANONICAL-STRUCTS` are ERR-RS, RS-FROM, RS-MAPERR and RS-SOURCE in
 [the Rust standard](../.orly/standards/languages/rust.md). **This file is the local
-override:** what `rustd/` generates instead of hand-writing, which crates take
-the hull and which do not, and where a crate is deliberately off the rule.
+override:** it records what `rustd/` generates instead of hand-writing, and
+which crates take the hull and which do not. It also names where a crate is
+deliberately off the rule.
 
 ## The four rules, and how this repository meets them
 
@@ -16,14 +17,17 @@ guideline both describe something this repository does not hand-write.
 
 > [!IMPORTANT]
 > **`afd_core::error_shell!` is the implementation. Do not hand-write the error
-> type.** `M-ERRORS-CANONICAL-STRUCTS` prescribes a situation-specific `struct`
-> carrying a `Backtrace`; the Rust standard (RS-FROM) prescribes a `#[from]`-composed
-> flat enum behind one alias. Under `rustd/` a crate writes neither by hand: it
-> declares a private `ErrorKind`, calls `error_shell!` for the boxed `struct
-> Error` with its captured backtrace, its `[CODE] message` `Display` and its
-> self-skipping `source()`, and calls `error_lifts!` for the per-source `From`
-> impls. A hand-rolled `struct Error` in a new crate is a defect even though both
-> upstream texts describe one.
+> type.** A hand-rolled `struct Error` in a new crate is a defect, even though
+> both upstream texts describe one.
+
+`M-ERRORS-CANONICAL-STRUCTS` prescribes a situation-specific `struct` carrying
+a `Backtrace`. The Rust standard (RS-FROM) prescribes a `#[from]`-composed flat
+enum behind one alias. Under `rustd/` a crate writes neither by hand.
+
+A crate declares a private `ErrorKind` and calls `error_shell!` for the boxed
+`struct Error`. That type carries a captured backtrace, a `[CODE] message`
+`Display` and a self-skipping `source()`. `error_lifts!` generates the
+per-source `From` impls.
 
 | # | Rule | Met here by | Decided by |
 |---|---|---|---|
