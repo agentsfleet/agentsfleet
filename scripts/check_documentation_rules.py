@@ -155,7 +155,7 @@ def lint_openapi_document(path: Path, source: str) -> list[str]:
 
     The YAML linter also refused release numbers in prose under the label
     DOC-31. That label names a different rule (the required version fields on
-    a page), and no rule in DOCUMENTATION_RULES.md forbids a release number in
+    a page), and no rule in .orly/standards/docs.md forbids a release number in
     API prose, so the check is retired here rather than carried under a name
     it never had. A rule that wants it back declares it first.
     """
