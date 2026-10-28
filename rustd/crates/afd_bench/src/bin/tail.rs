@@ -38,7 +38,7 @@ async fn measure() -> Result<String> {
     // that skipped it would be the one place an orphan could hide.
     let measured = tail::run(profile, provenance, &stores, &prefix).await;
     if let Ok(report) = &measured {
-        // logging: the make target's output is what a reader of the ladder sees first; no daemon runs here to carry an event.
+        // the make target's output is what a reader of the ladder sees first; no daemon runs here to carry an event.
         println!("{}", tail::summary(report));
     }
     let swept = sweep::everything(&stores.database, &prefix).await;

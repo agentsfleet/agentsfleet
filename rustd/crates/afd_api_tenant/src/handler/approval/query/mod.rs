@@ -8,7 +8,7 @@
 //!
 //! The approvals inbox issues `{millis}:{id}` with no encoding, unlike the
 //! event listings, which wrap the same pair in base64url.
-//! `docs/REST_API_DESIGN_GUIDELINES.md` §9 settles which form this endpoint
+//! HTTP-BREAK (`.orly/standards/domains/http-surface.md`) settles which form this endpoint
 //! keeps: a dashboard holds a cursor across a deploy, so the published form
 //! cannot change under it. So this reads [`afd_core::paging::Cursor`], the type
 //! that spells the clear form.

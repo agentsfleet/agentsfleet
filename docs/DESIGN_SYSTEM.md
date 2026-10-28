@@ -357,8 +357,7 @@ Keep distinct roles such as card, popover, focus, and destructive even when thei
 See the [CSS audit](reviews/design-system-css-audit.md) for existing duplicate names and compiler evidence.
 
 Named utilities follow TS-TOKEN and TS-TOKENADD in [the TypeScript standard](../.orly/standards/languages/typescript.md), which the `orly-standards-reviewer` agent applies.
-Fills stay flat: a CSS gradient needs a separately authorized design change.
-This implementation uses layered token surfaces and light without changing that audit.
+This implementation uses layered token surfaces and light.
 Component tests verify defaults and state behavior.
 No app page or component overrides the font of a shared interface primitive, whether
 through an aliased import or a named class.

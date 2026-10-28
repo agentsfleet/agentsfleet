@@ -169,6 +169,6 @@ fn record_issued(lease_id: &Uuid7, runner_id: &Uuid7, acquired: &Acquired) {
 
 /// A lease was written and handed to a runner.
 ///
-/// `LOGGING_STANDARD.md` §3 `event` value. Dashboards match on this spelling,
+/// LOG-EVENT (`.orly/standards/domains/logging.md`) value. Dashboards match on this spelling,
 /// so changing it is an operator-visible change.
 const EVENT_LEASE_ISSUED: &str = "lease_issued";

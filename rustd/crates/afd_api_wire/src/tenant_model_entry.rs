@@ -17,7 +17,7 @@
 //!
 //! An absent `provider` or `base_url` is omitted rather than sent as null —
 //! that is the shape the dashboard's union narrows on. `total` and
-//! `next_cursor` are the exception: `docs/REST_API_DESIGN_GUIDELINES.md` §3
+//! `next_cursor` are the exception: HTTP-LIST (`.orly/standards/domains/http-responses.md`)
 //! requires both to be PRESENT on every page including the last, so they are
 //! always emitted.
 //!
@@ -129,7 +129,7 @@ pub struct PlatformDefaultRow<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelEntriesResponse<'a> {
     // `models`, not `items`: renaming a shipped v1 field is what
-    // `docs/REST_API_DESIGN_GUIDELINES.md` §9 forbids. `total` and
+    // HTTP-BREAK (`.orly/standards/domains/http-surface.md`) forbids. `total` and
     // `next_cursor` were ADDED beside it, so the page became navigable without
     // breaking a client.
     /// The registered models, newest first.

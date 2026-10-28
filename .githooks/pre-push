@@ -59,9 +59,9 @@ since() { printf '%s' "$(fmt_elapsed "$(( $(date +%s) - $1 ))")"; }
 
 # --- no orly gate here, deliberately -----------------------------------------
 # `orly gate work` already ran at every commit in .githooks/pre-commit, and
-# `orly gate pr` is the comprehensive tier, run by hand at CHORE(close) and in
-# Continuous Integration (CI). Running it here would hold the push open for
-# the stretch github.com kept dropping.
+# `orly gate pr` is the comprehensive tier, run by hand at CHORE(close).
+# Running it here would hold the push open for the stretch github.com kept
+# dropping.
 
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   upstream_ref='@{u}'

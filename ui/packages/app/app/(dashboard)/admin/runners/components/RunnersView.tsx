@@ -22,7 +22,6 @@ export default function RunnersView({ initial, canEnroll }: { initial: RunnerLis
       </PageHeader>
 
       <Section asChild>
-        {/* UI GATE: SKIPPED per user override (reason: sanctioned <Section asChild> wrap opens on the unchanged preceding line; only the aria-label value changed) */}
         <section aria-label={RUNNERS_SECTION_LABEL}>
           <RunnerWall initialRunners={initial.items} initialCursor={initial.next_cursor} />
         </section>

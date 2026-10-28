@@ -41,7 +41,7 @@ pub enum Forgotten {
 /// answers for that fleet alone; another fleet's shared entries are read, never
 /// written. A backend that crosses a network boundary logs a `_started` and a
 /// `_completed` or `_failed` pair for each call, at `debug` because a run makes
-/// many (`docs/LOGGING_STANDARD.md` §4 rules 1 and 3).
+/// many (LOG-PAIR and LOG-HOT, `.orly/standards/domains/logging.md`).
 #[async_trait::async_trait]
 pub trait MemoryBackend: Send + Sync + fmt::Debug {
     /// Stores `entry`, replacing what its key held.

@@ -84,7 +84,7 @@ async fn measure() -> Result<String> {
             Shape::Default => drain::summary(report),
             Shape::Saturation => saturation::summary(report),
         };
-        // logging: the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
+        // the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
         println!("{summary}");
     }
     let swept = sweep::everything(&stores.database, &prefix).await;
