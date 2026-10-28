@@ -37,6 +37,8 @@ pub struct Binding {
     status: FleetStatus,
     /// The webhook trigger this delivery is measured against.
     trigger: Webhook,
+    /// Resolved at construction, so every binding names a usable recipe.
+    family: Family,
 }
 
 impl Binding {
@@ -82,11 +84,19 @@ impl Binding {
         let status = error::stored_status(stored_status)?;
         let config = FleetConfig::stored(document)?;
 
-        Ok(webhook_trigger(&config, source).map(|trigger| Self {
-            fleet,
-            workspace,
-            status,
-            trigger: trigger.clone(),
+        Ok(webhook_trigger(&config, source).and_then(|trigger| {
+            trigger
+                .verifier
+                .as_ref()
+                .map(WebhookVerifier::family)
+                .or_else(|| Family::for_source(&trigger.source))
+                .map(|family| Self {
+                    fleet,
+                    workspace,
+                    status,
+                    trigger: trigger.clone(),
+                    family,
+                })
         }))
     }
 
@@ -135,12 +145,8 @@ impl Binding {
 
     /// The stored declaration or registry source selects the recipe.
     #[must_use]
-    pub fn family(&self) -> Option<Family> {
-        self.trigger
-            .verifier
-            .as_ref()
-            .map(WebhookVerifier::family)
-            .or_else(|| Family::for_source(self.source()))
+    pub const fn family(&self) -> Family {
+        self.family
     }
 
     /// The signature header selected by the stored trigger.

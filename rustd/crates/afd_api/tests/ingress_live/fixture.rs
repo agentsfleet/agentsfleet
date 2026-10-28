@@ -81,7 +81,7 @@ pub(super) struct Fixture {
     queue: Dragonfly,
     subject: String,
     tenant: String,
-    workspace: Uuid7,
+    pub(super) workspace: Uuid7,
     user: String,
     /// The fleet a delivery is addressed to.
     pub(super) fleet: Uuid7,

@@ -8,13 +8,12 @@
 //!
 //! 1. **Resolve the fleet.** No row, or no webhook trigger ⇒ `UZ-WH-001`. Both
 //!    are one answer: distinguishing them confirms a fleet id to a guesser.
-//! 2. **Resolve the scheme.** A source this daemon ships no scheme for ⇒
-//!    `UZ-WH-020`, never a pass.
-//! 3. **Open the secret.** Absent, unparseable, or empty ⇒ `UZ-WH-020`.
-//! 4. **Verify.** `afd_webhook` decides, in constant time.
-//! 5. **Only now** is the body handed back to be parsed.
+//!    The binding already carries the recipe selected by the stored trigger.
+//! 2. **Open the secret.** Absent, unparseable, or empty ⇒ `UZ-WH-020`.
+//! 3. **Verify.** `afd_webhook` decides, in constant time.
+//! 4. **Only now** is the body handed back to be parsed.
 //!
-//! Nothing before step 5 reads the body as anything but bytes to hash.
+//! Nothing before step 4 reads the body as anything but bytes to hash.
 
 use std::sync::Arc;
 
@@ -81,12 +80,7 @@ pub(crate) async fn verified<D: Services>(
             Refusal::coded(error_code::WEBHOOK_FLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND)
         })?;
 
-    // A source with no declared scheme is refused BEFORE the vault is asked.
-    // Reading a secret first would spend a decrypt on a delivery that cannot be
-    // verified either way, and would let a probe measure the difference.
-    let Some(family) = binding.family() else {
-        return Err(wall(WallRefusal::Unconfigured));
-    };
+    let family = binding.family();
 
     let Some(secret) = services
         .ingress()

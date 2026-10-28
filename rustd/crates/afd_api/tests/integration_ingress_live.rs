@@ -93,6 +93,7 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
     fixture.seed(Runnable::Active, Secret::Stored).await;
     let router = fixture.router();
 
+    let capture = afd_core::test_util::trace::Capture::install();
     let woken = deliver(&router, &fixture.fleet, SIGNING_SECRET).await;
     let status = woken.status();
     let document = json_body(woken).await;
@@ -102,6 +103,17 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
         Some(false),
         "the first arrival of a delivery is not a replay: {document}"
     );
+
+    let opened = capture.only("secret_opened");
+    assert_eq!(opened.field("workspace"), Some(fixture.workspace.as_str()));
+    assert_eq!(opened.field("name"), Some(CREDENTIAL));
+    let fields: std::collections::BTreeSet<_> = opened.fields.keys().map(String::as_str).collect();
+    assert_eq!(
+        fields,
+        ["event", "name", "workspace"].into_iter().collect(),
+        "vault diagnostics expose only scope, never key material or length"
+    );
+    drop(capture);
 
     fixture.cleanup().await;
 }

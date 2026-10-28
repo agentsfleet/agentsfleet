@@ -2,7 +2,6 @@
 
 use afd_validate::charset;
 use garde::Validate;
-use serde::de::{Error as _, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
 use super::predicate::{is_not_reserved_source, is_repository, is_token};
@@ -127,25 +126,12 @@ pub(crate) enum Verifier {
 // Serde's unit-variant reader ignores remaining keys, so fixed recipes read an
 // empty map explicitly. The enum tag has already been consumed at this point.
 fn fixed_headers<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Error> {
-    deserializer.deserialize_map(FixedHeaders)
+    FixedHeaders::deserialize(deserializer).map(|_headers| ())
 }
 
-struct FixedHeaders;
-
-impl<'de> Visitor<'de> for FixedHeaders {
-    type Value = ();
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a verifier with no configurable headers")
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        match map.next_key::<String>()? {
-            Some(key) => Err(A::Error::unknown_field(&key, &[])),
-            None => Ok(()),
-        }
-    }
-}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FixedHeaders {}
 
 /// Bound on an authored signature header, in ASCII characters.
 pub(crate) const MAX_HEADER_LEN: usize = 128;

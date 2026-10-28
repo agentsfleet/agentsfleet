@@ -153,3 +153,46 @@ async fn a_declared_verifier_wakes_a_fleet_from_a_provider_outside_the_registry(
         assert_eq!(ingress.deliveries().len(), 1);
     }
 }
+
+#[tokio::test]
+async fn slack_recipes_require_their_signed_timestamp_and_untouched_body() {
+    let timestamp = harness::frozen_unix_seconds().to_string();
+    let proof = signed::signature_at(
+        afd_webhook::Scheme::SlackV0,
+        signed::SECRET,
+        Some(&timestamp),
+        PAYLOAD.as_bytes(),
+    );
+    for (source, declaration) in [
+        ("slack", ""),
+        ("acme", r#", "verifier":{"scheme":"slack-v0"}"#),
+    ] {
+        let triggers = format!(r#"[{{"type":"webhook","source":"{source}"{declaration}}}]"#);
+        let ingress = Arc::new(
+            Scripted::new()
+                .resolving(signed::binding(&triggers))
+                .signing(signed::SECRET),
+        );
+        let router = Fleet::new().with_ingress(&ingress).router();
+        let endpoint = path(&format!("/{source}"));
+        let headers = signed::slack_headers(&proof, &timestamp);
+        let accepted =
+            send_with_headers(&router, Method::POST, &endpoint, None, PAYLOAD, &headers).await;
+        assert_eq!(accepted.status(), StatusCode::ACCEPTED, "{source}");
+        assert_eq!(ingress.deliveries().len(), 1);
+        for (body, headers, code) in [
+            (format!("{PAYLOAD} "), headers.clone(), "UZ-WH-010"),
+            (
+                PAYLOAD.to_owned(),
+                vec![(signed::name("x-slack-signature"), proof.as_str())],
+                "UZ-WH-011",
+            ),
+        ] {
+            let refused =
+                send_with_headers(&router, Method::POST, &endpoint, None, &body, &headers).await;
+            assert_eq!(refused.status(), StatusCode::UNAUTHORIZED, "{source}");
+            assert_eq!(harness::refusal_code(refused).await, code);
+            assert_eq!(ingress.deliveries().len(), 1, "a refusal appends nothing");
+        }
+    }
+}

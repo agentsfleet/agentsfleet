@@ -12,9 +12,7 @@
 
 use afd_core::money::NANOS_PER_USD;
 use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::{
-    Trigger, VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WebhookVerifier,
-};
+use afd_fleet_runtime::config::{Trigger, VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL};
 use afd_validate::rules::OUTSIDE_CHARSET;
 use serde_json::{Value, json};
 
@@ -122,8 +120,19 @@ fn every_recipe_parses_and_keeps_its_header_policy() {
         };
         let config = FleetConfig::authored(&document_with("acme", Some(declaration)))
             .unwrap_or_else(|refused| panic!("{}: {}", family.token(), chain(&refused)));
-        assert!(matches!(config.triggers(), [Trigger::Webhook(hook)]
-            if hook.verifier.as_ref().map(WebhookVerifier::family) == Some(*family)));
+        let [Trigger::Webhook(hook)] = config.triggers() else {
+            panic!("one webhook")
+        };
+        let verifier = hook
+            .verifier
+            .as_ref()
+            .unwrap_or_else(|| panic!("declared recipe"));
+        assert_eq!(verifier.family(), *family);
+        let expected_header = match family {
+            afd_webhook::Family::SlackV0 | afd_webhook::Family::SvixV1 => None,
+            _ => Some("x-acme-proof"),
+        };
+        assert_eq!(verifier.header(), expected_header);
     }
 }
 

@@ -176,7 +176,7 @@ fn a_custom_source_resolves_to_its_declared_recipe() {
             .expect(READABLE)
             .expect("declared source")
             .family(),
-        Some(afd_webhook::Family::SvixV1)
+        afd_webhook::Family::SvixV1
     );
 }
 
@@ -185,8 +185,23 @@ fn a_declared_source_resolves_to_the_walls_own_scheme() {
     let github = r#"[{"type":"webhook","source":"github"}]"#;
 
     let binding = binding_of(github);
-    assert_eq!(binding.family(), Some(afd_webhook::Family::BodyHexSha256));
+    assert_eq!(binding.family(), afd_webhook::Family::BodyHexSha256);
     assert_eq!(binding.signature_header(), Some("x-hub-signature-256"));
+}
+
+#[test]
+fn an_undeclared_recipe_cannot_become_a_binding() {
+    let triggers = r#"[{"type":"webhook","source":"acme"}]"#;
+    let refused = Binding::read_for_source(
+        id(FLEET),
+        id(WORKSPACE),
+        "active",
+        &document(triggers),
+        "acme",
+    )
+    .expect_err("a custom source must declare its recipe before resolving a binding");
+    let cause = std::error::Error::source(&refused).expect("the configuration refusal is retained");
+    assert!(cause.to_string().contains("acme"));
 }
 
 #[test]

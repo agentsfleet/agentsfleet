@@ -90,3 +90,16 @@ async fn the_first_trigger_svix_route_is_gone() {
     let response = harness::send_with_headers(&router, Method::POST, &path, None, "{}", &[]).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn an_unstorable_credential_name_is_unconfigured_without_a_datastore_read() {
+    let ingress = harness::unreachable_ingress(afd_db::test_util::unreachable_db());
+    let credential = "n".repeat(65);
+    let triggers =
+        format!(r#"[{{"type":"webhook","source":"github","credential_name":"{credential}"}}]"#);
+    let secret = ingress.signing_secret(&signed::binding(&triggers)).await;
+    assert!(
+        matches!(secret, Ok(None)),
+        "an invalid vault name must never reach the unavailable store: {secret:?}"
+    );
+}
