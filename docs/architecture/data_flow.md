@@ -301,7 +301,7 @@ Every request-path Postgres read takes exactly one pooled connection and holds
 it for the life of the handler. A read that acquires a second while holding the
 first is how a pool deadlocks under load — two requests each holding one and
 waiting for another — so a handler never holds two pool connections at once
-(RULE CNX, `.orly/docs/greptile-learnings/RULES.md`).
+(CNX in `.orly/standards/domains/sql.md`).
 
 An acquire can fail two ways, and they are **different operator problems**:
 

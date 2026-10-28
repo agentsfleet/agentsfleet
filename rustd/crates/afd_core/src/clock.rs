@@ -35,7 +35,7 @@
 //!
 //! A timestamp a statement stores is not read here at all. Lifecycle stamps
 //! are the database's `now()` and deadlines its `clock_timestamp()`
-//! (`.orly/docs/SCHEMA_CONVENTIONS.md` §Timestamps); this clock is for
+//! (SQL-STAMP and SQL-DEADLINE, `.orly/standards/domains/sql.md`); this clock is for
 //! decisions the daemon makes in memory.
 
 use std::time::{Duration, SystemTime};

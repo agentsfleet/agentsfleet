@@ -2,7 +2,7 @@
 //!
 //! Every `_at` field is a `jiff::Timestamp` carrying `#[serde(with =
 //! "crate::instant")]` (or [`option`] for an optional one). Output is jiff's
-//! standard serialization (`.orly/docs/REST_API_DESIGN_GUIDELINES.md` §4):
+//! standard serialization (HTTP-TIME, `.orly/standards/domains/http-responses.md`):
 //! `2026-10-17T18:06:49.123Z`, and `2026-10-17T18:06:49Z` for a whole second,
 //! the shape GitHub's API and JavaScript's `Date` parse alike. The strings are
 //! not fixed-width, so a client orders instants by value, never by text.

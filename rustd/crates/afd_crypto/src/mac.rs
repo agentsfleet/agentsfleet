@@ -3,8 +3,8 @@
 //! Used where the daemon must recognise a value it issued — an API-key hash, a
 //! session code — without storing the value itself. The comparison is the part
 //! that matters: a byte-by-byte `==` returns early on the first difference, and
-//! the time it takes leaks how much of a guess was correct. RULE CTM in
-//! `docs/greptile-learnings/RULES.md` exists because of exactly that.
+//! the time it takes leaks how much of a guess was correct. CTM in
+//! `.orly/standards/domains/auth.md` exists because of exactly that.
 
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;

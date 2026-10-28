@@ -252,16 +252,15 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 - **Clippy is pre-push's, not pre-commit's.** `lint-rustd` compiles the whole
   workspace under `-D warnings`, which measured 36s to 3m16s per commit — a tax
   on every commit including the small ones. Pre-commit keeps the checks that
-  cost seconds: the partial-staging reject, `orly gate work` (the `conform`
-  row — UFS (the named-constants gate), RUST ERR, LOGGING and the rest, over the staged diff), gitleaks,
-  and the fast per-surface gates. This is the split `.orly/docs/VERIFY_TIERS.md`
-  already describes; the hooks had drifted from it.
+  cost seconds: the partial-staging reject, `orly gate work` (branch shape
+  and declared commands), gitleaks and its config self-test, and the fast
+  per-surface gates.
 - **Pre-commit asserts the orly engine pin before it gates.**
   `.orly/orly.json` records `orly_version`; CI installs exactly that version
   before gating, and `scripts/check_orly_pin.sh` now proves the local binary
   matches it. It exists because a stale global orly reads the pin, proceeds
   anyway, and grades a narrower criteria set than the repository declares —
-  one of the five declared commands, while printing a complete-looking list —
+  one of the declared commands, while printing a complete-looking list —
   and `orly doctor` on a stale engine printed thirty red "managed file was
   edited" lines and still exited 0. The check asserts rather than installs
   (the commit tier costs seconds, and reinstalling global tooling per commit
