@@ -1,6 +1,6 @@
 //! What a stored row resolves to, proved with no datastore in the test.
 //!
-//! [`Binding::read`] takes three strings and answers, so every rule this file
+//! [`Binding::read_for_source`] takes three strings and answers, so every rule this file
 //! covers — which trigger wins, which vault key it names, whether an event is
 //! admitted, whether the fleet will take work — is reachable without a
 //! Postgres, a Dragonfly or a vault. That is the property worth keeping: the rules
@@ -64,7 +64,13 @@ fn read(triggers: &str, status: &str) -> Option<Binding> {
 
 /// The resolution INCLUDING its failure arm, for the tests that expect one.
 fn resolve(triggers: &str, status: &str) -> crate::error::Result<Option<Binding>> {
-    Binding::read(id(FLEET), id(WORKSPACE), status, &document(triggers))
+    Binding::read_for_source(
+        id(FLEET),
+        id(WORKSPACE),
+        status,
+        &document(triggers),
+        "github",
+    )
 }
 
 #[test]
@@ -84,21 +90,6 @@ fn a_fleet_with_no_trigger_resolves_to_nothing() {
     assert!(read("[]", FleetStatus::Active.as_str()).is_none());
 }
 
-/// The first-webhook-trigger rule, asserted where it lives.
-///
-/// Two triggers with different sources is a document the schema accepts, and
-/// the URL carries `fleet_id` alone — so SOMETHING has to decide, and it must
-/// be the same something every time. Declaration order is that rule.
-#[test]
-fn the_first_webhook_trigger_declared_is_the_one_that_binds() {
-    let two = r#"[
-        {"type":"webhook","source":"github"},
-        {"type":"webhook","source":"slack"}
-    ]"#;
-
-    assert_eq!(binding_of(two).source(), "github");
-}
-
 /// A URL that names a source binds that source's trigger, wherever it sits.
 ///
 /// The per-source route's reason to exist: on a fleet with two webhook
@@ -116,7 +107,7 @@ fn a_named_source_binds_its_own_trigger() {
             id(WORKSPACE),
             FleetStatus::Active.as_str(),
             &document(two),
-            Some(source),
+            source,
         )
         .expect(READABLE)
     };
@@ -175,28 +166,42 @@ fn an_authored_credential_name_overrides_the_source_as_the_vault_key() {
     assert_eq!(binding.credential_name(), "github-second-app");
 }
 
-/// A source with no declared scheme must resolve to `None`, never to a
-/// neighbour's.
-///
-/// `None` becomes `Refusal::Unconfigured` at the ingress, which is the
-/// fail-closed answer. Borrowing another provider's scheme would verify a
-/// delivery against the wrong canonicalisation.
+/// A custom source is measured with its stored verifier.
 #[test]
-fn an_undeclared_source_resolves_to_no_scheme() {
-    // Parseable only because it names a Svix secret: the Svix route verifies
-    // it, and the HMAC wall must still answer "no scheme" for it.
-    let jira = r#"[{"type":"webhook","source":"jira","signature":{"secret_ref":"jira_svix"}}]"#;
+fn a_custom_source_resolves_to_its_declared_recipe() {
+    let jira = r#"[{"type":"webhook","source":"jira","credential_name":"jira_svix","verifier":{"scheme":"svix-v1"}}]"#;
 
-    assert!(binding_of(jira).scheme().is_none());
+    assert_eq!(
+        Binding::read_for_source(id(FLEET), id(WORKSPACE), "active", &document(jira), "jira")
+            .expect(READABLE)
+            .expect("declared source")
+            .family(),
+        afd_webhook::Family::SvixV1
+    );
 }
 
 #[test]
 fn a_declared_source_resolves_to_the_walls_own_scheme() {
     let github = r#"[{"type":"webhook","source":"github"}]"#;
 
-    let scheme = binding_of(github).scheme().expect("github is declared");
+    let binding = binding_of(github);
+    assert_eq!(binding.family(), afd_webhook::Family::BodyHexSha256);
+    assert_eq!(binding.signature_header(), Some("x-hub-signature-256"));
+}
 
-    assert_eq!(scheme.signature_header(), "x-hub-signature-256");
+#[test]
+fn an_undeclared_recipe_cannot_become_a_binding() {
+    let triggers = r#"[{"type":"webhook","source":"acme"}]"#;
+    let refused = Binding::read_for_source(
+        id(FLEET),
+        id(WORKSPACE),
+        "active",
+        &document(triggers),
+        "acme",
+    )
+    .expect_err("a custom source must declare its recipe before resolving a binding");
+    let cause = std::error::Error::source(&refused).expect("the configuration refusal is retained");
+    assert!(cause.to_string().contains("acme"));
 }
 
 #[test]

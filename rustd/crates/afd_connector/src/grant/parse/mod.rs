@@ -18,7 +18,7 @@
 
 use afd_core::credential::FIELD_REFRESH_TOKEN;
 use afd_core::json::non_empty_str;
-use jiff::{SignedDuration, Timestamp};
+use jiff::Timestamp;
 use serde_json::{Map, Value};
 
 use crate::provider::Provider;
@@ -40,10 +40,6 @@ const HANDLE_TEAM_NAME: &str = "team_name";
 /// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_SCOPES: &str = "scopes";
 /// See [`HANDLE_BOT_TOKEN`].
-const HANDLE_ACCESS_TOKEN: &str = "access_token";
-/// See [`HANDLE_BOT_TOKEN`].
-const HANDLE_EXPIRES_AT: &str = "expires_at_ms";
-/// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_CONNECTED_AT: &str = "connected_at_ms";
 /// See [`HANDLE_BOT_TOKEN`].
 pub(crate) const HANDLE_LABEL: &str = "label";
@@ -63,7 +59,7 @@ const WIRE_ID: &str = "id";
 /// See [`WIRE_OK`].
 const WIRE_NAME: &str = "name";
 /// See [`WIRE_OK`]. Spelled apart from the handle field of the same name: one
-/// is Slack's wire contract and the other is this daemon's stored shape, and
+/// is Slack's wire shape and the other is this daemon's stored shape, and
 /// they are free to diverge even though they agree today.
 const WIRE_BOT_USER_ID: &str = "bot_user_id";
 
@@ -181,26 +177,17 @@ pub fn refresh_triple(
     connected_at: Timestamp,
     extras: Map<String, Value>,
 ) -> Option<Grant> {
-    let expires_in = body.get(WIRE_EXPIRES_IN)?.as_i64()?;
+    // Validate the complete exchange, but never persist the initial access token.
+    // The broker mints from the refresh token and caches its own access expiry.
+    body.get(WIRE_EXPIRES_IN)?.as_i64()?;
+    non_empty_str(body, WIRE_ACCESS_TOKEN)?;
 
     let mut handle = extras;
     handle.insert(HANDLE_INTEGRATION.into(), provider.id().into());
     handle.insert(
-        HANDLE_ACCESS_TOKEN.into(),
-        non_empty_str(body, WIRE_ACCESS_TOKEN)?.into(),
-    );
-    handle.insert(
         FIELD_REFRESH_TOKEN.into(),
         non_empty_str(body, FIELD_REFRESH_TOKEN)?.into(),
     );
-    // Stored as epoch milliseconds under `*_at_ms` keys: the handle is a
-    // sealed document the runner plane reads by those names, so the unit is
-    // its shape. `saturating_add` answers an error only for calendar units,
-    // which a `SignedDuration` is not.
-    let expires_at = connected_at
-        .saturating_add(SignedDuration::from_secs(expires_in))
-        .unwrap_or(Timestamp::MAX);
-    handle.insert(HANDLE_EXPIRES_AT.into(), expires_at.as_millisecond().into());
     handle.insert(
         HANDLE_CONNECTED_AT.into(),
         connected_at.as_millisecond().into(),

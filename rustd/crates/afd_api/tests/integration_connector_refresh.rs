@@ -29,9 +29,8 @@ use crate::integration_connector_callback::{complete, start_connect};
 
 /// The lifetime every fixture exchange reports, in seconds.
 ///
-/// Named because the seal-time resolution is the claim: the grant stores an
-/// INSTANT, so this value and the `expires_at_ms` assertion are one fact, and
-/// a literal spelled on both sides could drift on one and still read as a pass.
+/// The exchange must include expiry even though the broker mints and caches
+/// its own access token; only the refresh grant is stored.
 const EXPIRES_IN_SECONDS: u32 = 3600;
 
 /// The triple every refresh-token provider's exchange answers.
@@ -82,17 +81,14 @@ async fn connected_grant(provider: Provider, body: &str) -> Value {
 /// per-tenant site to name — the provider's own name is the documented label.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn a_linear_connect_seals_the_refresh_triple_under_the_display_name() {
+async fn a_linear_connect_seals_only_its_refresh_grant_under_the_display_name() {
     let grant = connected_grant(Provider::Linear, &triple_answer("")).await;
 
     assert_eq!(
         grant.get("integration").and_then(Value::as_str),
         Some(Provider::Linear.id())
     );
-    assert_eq!(
-        grant.get("access_token").and_then(Value::as_str),
-        Some("at-fixture-access")
-    );
+    assert!(grant.get("access_token").is_none());
     assert_eq!(
         grant.get("refresh_token").and_then(Value::as_str),
         Some("rt-fixture-refresh"),
@@ -103,14 +99,7 @@ async fn a_linear_connect_seals_the_refresh_triple_under_the_display_name() {
         grant.get("label").and_then(Value::as_str),
         Some(Provider::Linear.display_name())
     );
-    assert!(
-        grant
-            .get("expires_at_ms")
-            .and_then(Value::as_i64)
-            .is_some_and(|at| at > 0),
-        "the expiry is resolved to an instant at seal time, not stored as a \
-         duration a later reader would have to anchor"
-    );
+    assert!(grant.get("expires_at_ms").is_none());
 }
 
 /// Zoho's completion carries its data centre, resolved from the callback.

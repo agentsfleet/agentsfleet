@@ -14,7 +14,7 @@ use super::{
     AnomalyRule, Budget, Context, Document, GateRule, Gates, MAX_ALLOW_ENTRIES, MAX_ALLOW_LEN,
     MAX_BASE_BRANCH_LEN, MAX_CHANNEL_ID_LEN, MAX_CREDENTIAL_LEN, MAX_CREDENTIALS, MAX_EVENT_LEN,
     MAX_EVENTS, MAX_REFERENCE_LEN, MAX_REPOSITORIES, MAX_REPOSITORY_LEN, MAX_TOOL_LEN, MAX_TOOLS,
-    MENTION_CHANNELS, Network, Runtime, Signature, Trigger,
+    MENTION_CHANNELS, Network, Runtime, Trigger, Verifier,
 };
 use crate::config::anomaly::{MAX_ANOMALY_REPEATS, MAX_ANOMALY_WINDOW_S};
 use crate::config::budget::MAX_NANOS_DIGITS;
@@ -74,9 +74,16 @@ pub(crate) fn published() -> Vec<Published> {
         runtime(),
         trigger(),
         Published {
-            component: Signature::name,
+            component: Verifier::name,
             closed: true,
-            bounds: vec![("secret_ref", required(MAX_CREDENTIAL_LEN))],
+            bounds: vec![(
+                "header",
+                Bound::Text(Text {
+                    min: NOT_EMPTY,
+                    max: super::trigger::MAX_HEADER_LEN,
+                    pattern: Some(super::trigger::HEADER_PATTERN),
+                }),
+            )],
         },
         network(),
         Published {

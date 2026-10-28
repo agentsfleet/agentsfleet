@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONNECTOR_STATUS } from "../lib/api/connectors-types";
 
 // Pure API-client tests for lib/api/connectors — exercise the real client against
 // a stubbed fetch (no module mocks), so the provider path builder and both
@@ -18,23 +17,6 @@ afterEach(() => {
 });
 
 describe("lib/api/connectors", () => {
-  it("getConnector('github', …) sends GET with bearer to the connector status path", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ status: "connected" }),
-    });
-    const mod = await import("../lib/api/connectors");
-    const res = await mod.getConnector("github", "ws_1", "tkn");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/connectors/github"),
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
-      }),
-    );
-    expect(res.status).toBe(CONNECTOR_STATUS.connected);
-  });
 
   it("startConnect('github', …) POSTs to the /connect sub-path and returns the install URL", async () => {
     const install_url = "https://github.com/apps/agentsfleet/installations/new?state=signed";
@@ -55,24 +37,6 @@ describe("lib/api/connectors", () => {
     expect(res.install_url).toBe(install_url);
   });
 
-  it("getConnector('slack', …) sends GET with bearer and surfaces status + team", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ status: "connected", team: "Acme HQ" }),
-    });
-    const mod = await import("../lib/api/connectors");
-    const res = await mod.getConnector("slack", "ws_1", "tkn");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/connectors/slack"),
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
-      }),
-    );
-    expect(res.status).toBe(CONNECTOR_STATUS.connected);
-    expect(res.team).toBe("Acme HQ");
-  });
 
   it("startConnect('slack', …) POSTs to the /connect sub-path and returns the authorize URL", async () => {
     const install_url = "https://slack.com/oauth/v2/authorize?state=signed";
@@ -110,8 +74,8 @@ describe("lib/api/connectors", () => {
 
   it("getConnectorCatalog(…) GETs the workspace-nested /connectors collection and returns the entries", async () => {
     const entries = [
-      { id: "slack", archetype: "oauth2", display_name: "Slack", configured: true, connected: true },
-      { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: false },
+      { id: "slack", archetype: "oauth2", display_name: "Slack", configured: true, connected: true, label: "Support" },
+      { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: false, label: null },
     ];
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => entries });
     const mod = await import("../lib/api/connectors");
@@ -123,6 +87,8 @@ describe("lib/api/connectors", () => {
         headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
       }),
     );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(res[0]?.label).toBe("Support");
     expect(res).toHaveLength(2);
     expect(res[1]?.archetype).toBe(mod.CONNECTOR_ARCHETYPE.appInstall);
   });

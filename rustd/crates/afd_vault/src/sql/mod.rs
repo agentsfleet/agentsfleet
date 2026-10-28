@@ -94,13 +94,9 @@ pub(crate) const SELECT_SECRET_DESCRIPTORS: &str = include_str!("select_secret_d
 ///
 /// `$1` workspace · `$2` name.
 ///
-/// The one statement in this crate that projects ciphertext, and it is scoped
-/// to a SINGLE name rather than to a workspace. That is the difference between
-/// it and [`SELECT_SECRET_PROJECTIONS`]: a list cannot become a bulk decrypt by
-/// accident here, because there is no shape of this statement that returns more
-/// than one row. Read by `load.rs`, which is on the half of the crate that
-/// holds a key; see that module on which guarantee this does and does not
-/// touch.
+/// A single named read. The bounded batch beside it opens only the names its
+/// caller supplies. Both are internal vault reads, and the keyless directory
+/// still lists public projections alone.
 pub(crate) const SELECT_SECRET_ENVELOPE: &str = include_str!("select_secret_envelope.sql");
 
 // ── The reference lock ──────────────────────────────────────────────────────
@@ -166,3 +162,6 @@ pub(crate) const LOCK_SELECTION: &str = include_str!("lock_selection.sql");
 ///
 /// `$1` workspace · `$2` name.
 pub(crate) const DELETE_SECRET: &str = include_str!("delete_secret.sql");
+
+/// Envelopes for a validated set of names in exactly one workspace.
+pub(crate) const SELECT_NAMED_ENVELOPES: &str = include_str!("select_named_envelopes.sql");

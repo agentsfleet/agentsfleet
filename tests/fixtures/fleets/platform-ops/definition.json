@@ -16,9 +16,7 @@
         {
           "type": "webhook",
           "source": "github",
-          "signature": {
-            "secret_ref": "github_secret"
-          }
+          "credential_name": "github_secret"
         }
       ],
       "tools": [

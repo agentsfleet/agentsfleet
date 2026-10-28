@@ -50,6 +50,10 @@ pub(crate) struct FakeAtlassian {
 impl FakeAtlassian {
     /// Binds a loopback port and serves both calls until dropped.
     pub(crate) async fn serving() -> Self {
+        Self::serving_with_token(ACCESS_TOKEN.to_owned()).await
+    }
+
+    pub(crate) async fn serving_with_token(access_token: String) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port is available");
@@ -70,7 +74,7 @@ impl FakeAtlassian {
                     if let Some(code) = form_field(&received, "code") {
                         *recorder.lock().await = Some(code);
                     }
-                    token()
+                    token(&access_token)
                 };
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
@@ -107,9 +111,9 @@ impl Drop for FakeAtlassian {
 }
 
 /// The token endpoint's answer.
-fn token() -> String {
+fn token(access_token: &str) -> String {
     format!(
-        r#"{{"access_token":"{ACCESS_TOKEN}","refresh_token":"{REFRESH_TOKEN}","expires_in":{EXPIRES_IN},"token_type":"Bearer"}}"#
+        r#"{{"access_token":"{access_token}","refresh_token":"{REFRESH_TOKEN}","expires_in":{EXPIRES_IN},"token_type":"Bearer"}}"#
     )
 }
 

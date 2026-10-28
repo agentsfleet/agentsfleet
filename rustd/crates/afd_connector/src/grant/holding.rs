@@ -8,20 +8,11 @@
 //! subtree. Reaching them from a sibling would need accessors, and an accessor
 //! on a store is an invitation to make some other call through it.
 //!
-//! # Answering a question about a connection rarely opens an envelope
+//! # Public metadata stays separate from tokens
 //!
-//! The catalogue answer comes from [`afd_vault::Directory`], which holds no
-//! key: it asks which names exist and nothing else, so rendering the catalogue
-//! decrypts no credential the workspace holds.
-//!
-//! Two reads DO open one row each, and they are opening it for different
-//! things. [`Grants::connection`] opens a handle to read the label a person
-//! sees — public data that happens to be stored beside a secret. [`Grants::
-//! bot_identity`] opens it for the secret itself, has exactly one caller
-//! (`afd_outbound`, posting a fleet's answer back), and hands the bytes on
-//! still wrapped so they zero on drop. The split is the point: [`Connection`]
-//! carries no field that could hold a token, so a status surface reaching for
-//! one does not compile.
+//! The catalogue opens a bounded batch of registered handles to read labels.
+//! [`Connection`] holds only public metadata, while [`BotIdentity`] carries a
+//! zeroing token for outbound calls. No status response can serialize a token.
 //!
 //! # A disconnect leaves the provider alone
 //!
@@ -31,8 +22,6 @@
 //! revoked upstream, or whose install drifted, presses Connect again and the
 //! flow starts clean.
 
-use std::collections::BTreeSet;
-
 use afd_core::id::Uuid7;
 use afd_core::json::non_empty_str;
 use afd_crypto::secret::SecretString;
@@ -40,7 +29,7 @@ use afd_vault::{Deleted, SecretName};
 use sqlx::Acquire as _;
 
 use super::Grants;
-use super::parse::{HANDLE_BOT_TOKEN, HANDLE_BOT_USER_ID, HANDLE_INTEGRATION, HANDLE_LABEL};
+use super::parse::{HANDLE_BOT_TOKEN, HANDLE_BOT_USER_ID, HANDLE_INTEGRATION};
 use crate::error::{Result, query};
 use crate::provider::Provider;
 use crate::sql;
@@ -107,39 +96,12 @@ impl Grants {
         workspace: &Uuid7,
         provider: Provider,
     ) -> Result<Option<Connection>> {
-        let handle = self.landed_handle(workspace, provider).await?;
-        Ok(handle.map(|handle| Connection {
-            label: non_empty_str(&handle, HANDLE_LABEL).map(str::to_owned),
-        }))
-    }
-
-    /// Which providers this workspace holds a handle for.
-    ///
-    /// One listing, no decryption: a connector's grant key IS its provider id
-    /// (see [`Provider::grant_key`]), so membership answers the whole catalogue
-    /// column without opening a single envelope.
-    ///
-    /// A name that is not a shipped provider — an ordinary workspace secret —
-    /// simply matches nothing, which is why this filters the registry by the
-    /// listing rather than the listing by the registry.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub async fn held(&self, workspace: &Uuid7) -> Result<BTreeSet<Provider>> {
-        let stored: BTreeSet<String> = self
+        let name = SecretName::parse(provider.grant_key())?;
+        Ok(self
             .vault
-            .directory()
-            .list(workspace)
+            .load(workspace, &name)
             .await?
-            .into_iter()
-            .map(|secret| secret.name)
-            .collect();
-
-        Ok(Provider::ALL
-            .iter()
-            .copied()
-            .filter(|provider| stored.contains(provider.grant_key()))
-            .collect())
+            .and_then(|stored| Connection::from_bytes(provider, stored.expose())))
     }
 
     /// The bot this workspace's grant speaks as: its token, and the user id the
@@ -197,7 +159,10 @@ impl Grants {
             return Ok(None);
         };
         let handle = serde_json::from_slice::<serde_json::Value>(stored.expose()).ok();
-        Ok(handle.filter(|handle| handle.get(HANDLE_INTEGRATION).is_some()))
+        Ok(
+            handle
+                .filter(|handle| non_empty_str(handle, HANDLE_INTEGRATION) == Some(provider.id())),
+        )
     }
 
     /// Forgets this workspace's connection to `provider`.
@@ -257,7 +222,8 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{HANDLE_INTEGRATION, HANDLE_LABEL, non_empty_str};
+    use super::{HANDLE_INTEGRATION, non_empty_str};
+    use crate::grant::parse::HANDLE_LABEL;
 
     /// A handle with no label still names a connection.
     ///
@@ -306,3 +272,6 @@ mod tests {
         assert_eq!(non_empty_str(&handle, HANDLE_LABEL), Some("Acme Site"));
     }
 }
+
+#[path = "catalogue.rs"]
+mod catalogue;

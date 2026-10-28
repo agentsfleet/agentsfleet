@@ -1,4 +1,4 @@
-//! `POST /v1/webhooks/svix/{fleet_id}` — deliveries proven by a vendored verifier.
+//! `POST /v1/webhooks/{fleet_id}/clerk` — deliveries proven by a vendored verifier.
 //!
 //! The third way a delivery reaches one fleet, and the only one whose signature
 //! this daemon does not check with its own canon: Svix publishes a scheme, and
@@ -49,7 +49,7 @@ const OTHER_PAYLOAD: &str = r#"{"type":"invoice.paid","data":{"id":"in_1Qfixture
 const NOT_JSON: &str = "invoice.paid in_1QfixtureA";
 
 /// What a fleet's history records as having woken it.
-const ACTOR_GITHUB: &str = "webhook:github";
+const ACTOR_CLERK: &str = "webhook:clerk";
 
 /// The reason a delivery to a fleet that is not runnable is dropped.
 const REASON_PAUSED: &str = "fleet_paused";
@@ -68,15 +68,15 @@ fn now() -> i64 {
 
 /// Where a Svix-fronted delivery for one fleet arrives.
 fn path(fleet: &str) -> String {
-    format!("/v1/webhooks/svix/{fleet}")
+    format!("/v1/webhooks/{fleet}/clerk")
 }
 
 /// A fleet resolving to `status`, whose workspace holds the Svix secret.
 fn fleet_in(status: &str) -> Arc<Scripted> {
     Arc::new(
         Scripted::new()
-            .resolving(signed::binding_with_status(signed::TRIGGER_GITHUB, status))
-            .svix_signing(signed::SVIX_SECRET),
+            .resolving(signed::binding_with_status(signed::TRIGGER_SVIX, status))
+            .signing(signed::SVIX_SECRET.as_bytes()),
     )
 }
 
@@ -118,7 +118,7 @@ async fn a_signed_delivery_wakes_the_fleet_under_the_senders_own_identifier() {
     assert_eq!(appends.len(), 1);
     let append = appends.first().expect("the delivery was appended");
     assert_eq!(append.surface, Surface::Fleet);
-    assert_eq!(append.actor, ACTOR_GITHUB);
+    assert_eq!(append.actor, ACTOR_CLERK);
     assert_eq!(
         append.event_id,
         signed::SVIX_DELIVERY,
@@ -166,7 +166,7 @@ async fn a_retry_of_one_delivery_is_suppressed_and_a_new_one_is_not() {
 #[tokio::test]
 async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
     // An unidentified delivery earns a refusal, never a narrower claim: the
-    // route has no id of its own to fall back to, because `verified_svix`
+    // route has no id of its own to fall back to, because `verified`
     // hands the claim key back only on the path where `svix::verify_at`
     // already refused an empty `svix-id`. This test is what holds that shut —
     // a fallback reintroduced here would put every unidentified delivery on
@@ -274,7 +274,7 @@ async fn a_fleet_whose_workspace_holds_no_svix_secret_verifies_nothing() {
     // Fail-closed, and not a degradation: with no secret there is nothing to
     // check a signature against, and accepting an unverified delivery on a
     // public endpoint is strictly worse than serving none.
-    let ingress = Arc::new(Scripted::new().resolving(signed::binding(signed::TRIGGER_GITHUB)));
+    let ingress = Arc::new(Scripted::new().resolving(signed::binding(signed::TRIGGER_SVIX)));
     let refused = deliver(&ingress, signed::SVIX_DELIVERY, PAYLOAD).await;
 
     let status = refused.status();
@@ -296,7 +296,7 @@ async fn a_delivery_to_a_fleet_this_daemon_does_not_serve_is_not_found() {
     // Before any secret is read: a fleet that resolves to nothing is the same
     // `UZ-WH-001` on this surface as on the HMAC ones, so a probe cannot use
     // the Svix route to learn which fleets exist.
-    let ingress = Arc::new(Scripted::new().svix_signing(signed::SVIX_SECRET));
+    let ingress = Arc::new(Scripted::new().signing(signed::SVIX_SECRET.as_bytes()));
     let refused = deliver(&ingress, signed::SVIX_DELIVERY, PAYLOAD).await;
 
     let status = refused.status();
@@ -308,8 +308,8 @@ async fn a_delivery_to_a_fleet_this_daemon_does_not_serve_is_not_found() {
     );
     assert_eq!(
         ingress.sources_asked(),
-        vec![None],
-        "the Svix route names no provider, so it asks for the first trigger"
+        vec!["clerk".to_owned()],
+        "the URL binds only the declared clerk trigger"
     );
     assert!(
         ingress.deliveries().is_empty(),
@@ -325,8 +325,8 @@ async fn a_stored_svix_secret_that_will_not_parse_verifies_nothing() {
     // rotate a key that is not the problem.
     let ingress = Arc::new(
         Scripted::new()
-            .resolving(signed::binding(signed::TRIGGER_GITHUB))
-            .svix_signing("not-a-whsec-secret"),
+            .resolving(signed::binding(signed::TRIGGER_SVIX))
+            .signing(b"not-a-whsec-secret"),
     );
     let refused = deliver(&ingress, signed::SVIX_DELIVERY, PAYLOAD).await;
 
