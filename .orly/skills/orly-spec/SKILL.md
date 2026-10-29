@@ -16,7 +16,7 @@ and its shape in `.orly/standards/spec-template.md`.
 ## Steps
 
 1. **Check the setup.** Run `orly doctor`. Stop on any red line and show it:
-   the skill needs orly at the repository's pin and gstack and EGM at orly's pins.
+   the skill needs the repository's rules installed and gstack and EGM present.
 2. **Explore.** Restate the idea in your own words. Find prior art in this
    repository and its siblings under `~/Projects`, then run EGM's
    `egm-brainstorm` on the idea.
