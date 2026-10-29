@@ -103,18 +103,11 @@ fi
 # The tree is dirty by construction inside a commit hook — that is what is
 # being committed — so the tree criterion is told so rather than failing.
 #
-# The engine is checked BEFORE it is trusted to grade anything. `.oracle/orly.json`
-# pins a version and a stale global orly reads that pin, proceeds anyway, and
-# grades a narrower criteria set than the repository declares — so the gate below
-# can print a complete-looking list while running one of five declared commands.
-# CI installs the pinned version before it gates (.github/workflows/governance.yml);
-# this asserts it and names the install command rather than reinstalling global
-# tooling on every commit, which is the cost this tier exists to avoid.
-#
-# The `command -v orly` guard this replaced said only "installed or not". The
-# assertion answers that too — absence exits 1 naming the pinned version — so
-# there is one presence check here, not two overlapping ones.
-bash scripts/check_orly_pin.sh || exit 1
+# `orly doctor` proves the setup before the gate trusts it: the installed rules
+# match `.orly/orly.json`, and each agent runtime has gstack and EGM. Any orly
+# version may commit; CI installs the latest before it gates
+# (.github/workflows/governance.yml).
+step "orly doctor" orly doctor || exit 1
 step "orly gate work" orly gate work --accept-dirty || exit 1
 
 # --- gitleaks on staged content ----------------------------------------------

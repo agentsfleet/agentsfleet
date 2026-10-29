@@ -26,13 +26,12 @@ jobs:
         with:
           bun-version: 1.4.4
 
-      # Pinned to the version .orly/orly.json records, so CI proves the
-      # ruleset this repository actually installed, not whatever is latest.
-      - name: Install orly at the pinned version
+      # The latest orly, as on every developer machine; `orly update` keeps
+      # .orly/orly.json current with it.
+      - name: Install the latest orly
         run: |
-          version="$(jq -r '.orly_version' .orly/orly.json)"
-          echo "orly_version from .orly/orly.json: $version"
-          npm install --global "@agentsfleet/orly@${version}"
+          npm install --global @agentsfleet/orly@latest
+          orly --version
 
       # scripts/checks/gitleaks-config.sh refuses to guess and exits on a
       # missing binary. The runner image carries no gitleaks, and the
