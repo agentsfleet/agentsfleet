@@ -256,8 +256,8 @@ not in any contributor's dotfiles. Hook fixes are normal repo PRs.
   (branch shape and declared commands), gitleaks and its config self-test,
   and fast per-surface gates.
 - **Pre-commit runs `orly doctor` before it gates.** Doctor proves the
-  installed rules match `.orly/orly.json` and that each agent runtime has
-  gstack and the Elephant-Goldfish Model (EGM). It does not compare orly
+  installed rules match `.orly/orly.json`. It also proves each agent runtime
+  has gstack and the Elephant-Goldfish Model (EGM). It does not compare orly
   versions: any local orly may commit, and CI installs the latest orly before
   it gates (`.github/workflows/governance.yml`).
 - **The merge trap:** merging `origin/main` *into* a branch makes the pushed
