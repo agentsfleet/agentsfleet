@@ -104,7 +104,7 @@ One worktree per active stream; stay inside it. A new spec mid-stream → ask be
 
 **Skills hold the steps:** `orly-spec` (idea → reviewed spec), `orly-build` (open the stream, build Section by Section), `orly-ship` (review, close, `orly gate pr`, PR, babysit, land). Outside Claude Code, gstack skills carry a `gstack-` prefix (`/review` is `gstack-review` in Codex).
 
-**`orly doctor` proves the setup:** orly at the repository's pin, and gstack and the Elephant-Goldfish Model (EGM) at orly's pins. It checks every agent runtime on the machine, and a skill stops while it is red.
+**`orly doctor` proves the setup:** the installed rules match `.orly/orly.json`, and every agent runtime on the machine has gstack and the Elephant-Goldfish Model (EGM). A skill stops while it is red.
 
 **🚦 Gate-flag triage.** A gate fires → never silence it. **Mechanical** fix (format, lint autofix, split, dead code): apply it, say so in one line. **Judgment** (design call, weakened guarantee, security, possible false positive): stop and ask — 📟 flagged (symbol·file·line) · 🔦 fix scope · 📈 gain · 💥 if not fixed · ☠️ my call.
 
