@@ -255,22 +255,11 @@ not in any contributor's dotfiles. Hook fixes are normal repo PRs.
   checks that cost seconds: the partial-staging reject, `orly gate work`
   (branch shape and declared commands), gitleaks and its config self-test,
   and fast per-surface gates.
-- **Pre-commit asserts the orly engine pin before it gates.**
-  `.orly/orly.json` records `orly_version`, and CI installs exactly that
-  version before gating. `scripts/check_orly_pin.sh` now proves the local
-  binary matches it.
-
-  It exists because a stale global orly reads the pin and proceeds anyway. It
-  then grades a narrower criteria set than the repository declares (one of the
-  declared commands) while printing a complete-looking list. And `orly doctor`
-  on a stale engine printed thirty red "managed file was edited" lines and
-  still exited 0.
-
-  The check asserts rather than installs: the commit tier costs seconds, and
-  reinstalling global tooling per commit is a surprise. On failure it prints
-  both versions and names the install command for the manager the binary
-  actually resolves under. A bun-installed orly and an npm-installed one do not
-  replace each other.
+- **Pre-commit runs `orly doctor` before it gates.** Doctor proves the
+  installed rules match `.orly/orly.json` and that each agent runtime has
+  gstack and the Elephant-Goldfish Model (EGM). It does not compare orly
+  versions: any local orly may commit, and CI installs the latest orly before
+  it gates (`.github/workflows/governance.yml`).
 - **The merge trap:** merging `origin/main` *into* a branch makes the pushed
   range include all of main's recent source files. Pre-push then runs
   `lint-rustd` and the TypeScript unit lanes for what was a docs-only intent.
