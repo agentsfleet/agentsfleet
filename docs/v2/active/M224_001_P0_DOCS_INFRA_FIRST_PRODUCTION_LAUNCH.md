@@ -8,20 +8,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M224_001: First production launch — tag `v0.65.0` ships the signed Rust runner release to production, with three new production fleet proofs and one inherited development proof
+# M224_001: First production launch — tag `v0.71.0` ships the signed Rust runner release to production, with three new production fleet proofs and one inherited development proof
 
 **Prototype:** v2.0.0
 **Milestone:** M224
 **Workstream:** 001
 **Date:** Oct 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — first production installation; release and hostname proofs are still required
 **Categories:** DOCS, INFRA
 **Batch:** B1 — one launch; Indy pushes the tag
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** feat/m224-dev-first-launch
+**Baseline revision:** 7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1
 **Test Baseline:** pending — measure unit/integration lanes before the Pull Request (PR)
-**Baseline evidence:** pending — revision, environment, commands, counts and report path/run URL
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M224_001-launch.md`; repository lane counts remain pending.
 **Depends on:** M213_001 transferred release and fleet proofs (Discovery); founding steps 01–06 must be verified before the first tag (§1)
 **Provenance:** drafted with Claude Opus 5.5 from M213_001; reconciled with current founding and native-authoring runbooks. Historical runs are in Discovery.
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Toolbox and the scenario pages in Read First
@@ -30,15 +30,25 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal:** Release `v0.65.0` serves the production API through its intended tunnel, ships the static runner, signed content-addressed toolbox, software bill of materials (SBOM) and offline bundle, and registers every configured production runner without degradation. Three reference fleets deliver the results in Dimensions 3.1–3.3 on production after their development proofs; the fourth result is inherited development evidence only.
+**Goal:** Release `v0.71.0` serves the production API through its intended tunnel, ships the static runner, signed content-addressed toolbox, software bill of materials (SBOM) and offline bundle, and registers every configured production runner without degradation. Three reference fleets deliver the results in Dimensions 3.1–3.3 on production after their development proofs; the fourth result is inherited development evidence only.
 **Problem:** M213_001 transferred its unexecuted first production release and three remaining fleet proofs here. Smoke run 38176618397 failed to resolve `api.agentsfleet.net`; a development build does not prove production installation or delivery.
 **Solution summary:** Verify foundational inputs, deploy the control plane with runners disabled, prepare hosts and real runner tokens, then rerun the same release for canary, approved fleet and acceptance. Author, review and Save each fleet using the supported private-draft path; send its trigger only after setup is active. Record correlated final results, not just processed events.
+
+## Execution order
+
+1. Verify the existing development installation and workspace inputs under §1.
+2. Run all three development demonstrations under §3; resolve gaps before production.
+3. Verify production prerequisites under §1 after development evidence passes.
+4. Release the production control plane, then prepare and deploy its runners under §2.
+5. Repeat all three demonstrations in production under §3.
+6. Record final evidence and complete the acceptance rubric before closing.
 
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** chore(m224): record the first production launch and its bundle proofs
 - **Intent:** A production fleet owner receives the promised failure diagnosis or draft fix on the Rust runner.
-- **Handshake** — pending at PLAN: restate Intent and `ASSUMPTIONS I'M MAKING`; reconcile mismatches before execution.
+- **Handshake:** Start with development readiness and the three development demonstrations. Production readiness, release, runners and repeated demonstrations follow passing development evidence.
+- **ASSUMPTIONS I'M MAKING:** Current authorization covers development inspection and preparation. Indy supplies workspace selection, external approvals and demonstration triggers.
 
 ## Implementing agent — read these first
 
@@ -54,7 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | EDIT | the spec itself: Dimensions, Graded column and Discovery evidence |
+| `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` → `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | MOVE / EDIT | open the stream and record development-first execution, Dimensions and evidence |
 | `playbooks/operations/acceptance/baselines/M224_001-launch.md` | CREATE | revision-bound manual launch and fleet evidence |
 
 External changes use existing runbooks: production tunnel/domain, runner-readiness variable, hosts/tokens, providers, drafts/grants and npm tags. Indy approves provider/host writes and releases. Required source/workflow repairs stop for a scope amendment; none are implicitly included.
@@ -79,13 +89,22 @@ External changes use existing runbooks: production tunnel/domain, runner-readine
 
 ## Sections (implementation slices)
 
-### §1 — Preflight: production can receive its first release
+### §1 — Development readiness before production preflight
+
+Verify development first using `playbooks/founding/06_verify_dev/001_playbook.md`; do not start another deployment for this inspection.
+Record the deployed revision, API health/readiness, runner deployment and browser/command-line acceptance results.
+Confirm current workspace binding with `agentsfleet --api https://api-dev.agentsfleet.net doctor --json`.
+Check runtime models, balance, connections, secret existence, repair grants and both real log sources before §3 triggers.
+Record outstanding allowlisting, observability and provider verification separately from a green deployment.
+Run the three development demonstrations under §3 before continuing to production preflight.
+
+- **Dimension 1.2** — Development deployment evidence, live API checks, workspace binding and demonstration inputs pass → Test `test_dev_readiness_passes`
 
 First verify founding steps 01–06 read-only; resume at the first missing result. Indy creates missing accounts/resources and approves billing through those runbooks before the tag. This inspection can start now; the routine-deploy route assumes an installed system.
 
-Start the read-only readiness inspection after Pull Request #784 is complete. Keep this spec pending until launch work starts.
+Pull Request #784 merged at `89415c2a0`. Development readiness inspection has started; no production release is authorized by this opening.
 
-Record the selected commit and its `VERSION`; `0.65.0` is the current planning example. Recheck before Indy pushes. A changed version requires aligning the title, goal and tag example first.
+Record the selected commit and its `VERSION`; `0.71.0` is the current planning example. Recheck before Indy pushes. A changed version requires aligning the title, goal and tag example first.
 
 Run `ENV=prod STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh`. Indy supplies named missing credentials directly to the environment-selected vault. Under founding step 03 §3, Indy routes `api.agentsfleet.net` through the production Cloudflare tunnel to `agentsfleetd-prod.internal:3000`. Record tunnel identifier, hostname and origin without secrets. A DNS answer alone cannot prove the route; live `/readyz` follows deployment.
 
@@ -131,7 +150,7 @@ People retain merge/deploy authority. Post-merge linkage/verification is unimple
 ## Interfaces
 
 ```
-git tag v0.65.0 && git push origin v0.65.0          # Indy; recheck the selected commit's VERSION first
+git tag v0.71.0 && git push origin v0.71.0          # Indy; recheck the selected commit's VERSION first
 GET /v1/fleets/runners/{runner_id}                  # achievable{landlock,seccomp,cgroup_controllers,bubblewrap,egress_enforcement}, degraded
 GET /v1/workspaces/{ws}/fleets/{fleet}/events/{id}  # correlate trigger, status=processed, failure_label=null
 POST /v1/workspaces/{ws}/fleets                   # reviewed candidate or Library revision + review_digest; retain idempotency key
@@ -167,6 +186,7 @@ All rows are manual operational acceptance: Indy supplies approvals/triggers; th
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |---|---|---|---|
+| 1.2 | manual | `test_dev_readiness_passes` | exact-revision development deployment jobs pass; live health/readiness succeed; doctor proves the selected workspace binding. Models, balance, connections, secret existence, approved repair access and actual GitHub/Grafana reads pass. Required development operational checks are recorded. Missing inputs block demonstrations. |
 | 1.1 | manual | `test_prod_preflight_passes` | founding prerequisites verified and credential gate exits 0; recorded hostname/tunnel identifier/origin match production configuration. A nonempty DNS answer routed elsewhere fails; a missing credential blocks the tag. |
 | 2.1 | manual | `test_release_artifacts_are_static_and_addressed` | exact tag/commit release artifacts: zero binary `NEEDED`; toolbox digest and signature verify, length ≤262,848,512 bytes; Release lists runner, signed manifest, SBOM and offline bundle. Tag mismatch or oversize image refuses publication. |
 | 2.2 | manual | `test_prod_runner_registers_with_capabilities` | retained run shows control-plane readiness before host/token preparation and canary before approved remaining rollout. Every inventory runner reports all named capabilities and `degraded: false`; exact-version live acceptance, provider gates, API/dashboard and npm `latest` checks pass. Missing token or red canary blocks rollout; skips or one healthy runner do not pass. |
@@ -178,6 +198,7 @@ All rows are manual operational acceptance: Indy supplies approvals/triggers; th
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
+| R0 | Development readiness and three development demonstrations (§1, §3) | manual — inspect development readiness, operational checks and 3.1–3.3 result links in launch baseline | all development assertions pass before production preflight; no placeholder inputs or source gaps | P0 | INCOMPLETE — authenticated workspace, API and runner checks pass; source access, setup grants and demonstrations remain incomplete |
 | R1 | First-install preflight (§1) | `ENV=prod STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh`; manual — compare hostname/tunnel/origin configuration and preceding founding evidence | exit 0 and all Dimension 1.1 assertions satisfied in launch baseline | P0 | |
 | R2 | Artifacts and complete production installation (§2; M213_001 R4) | manual — inspect retained release/run, artifact checks, host inventory and final acceptance in launch baseline | all Dimension 2.1–2.2 assertions satisfied; no missing or skipped final check | P0 | |
 | R3 | Three production results plus one inherited development proof (§3; M213_001 R5) | manual — inspect development and production records for 3.1–3.3 and copy M213_001's inherited `github-pr-reviewer` proof into launch baseline | all 3.1–3.3 assertions satisfied in both environments; inherited proof labelled development with source | P0 | |
@@ -225,5 +246,8 @@ N/A — no files deleted.
   Known blockers found while closing M213_001: `api.agentsfleet.net` does not resolve (smoke run 38176618397, `ENOTFOUND`); the dev platform library holds only `github-pr-reviewer`; no `incident-repairer` source repository exists; the dev workspace holds no secrets.
 - **Authoring reconciliation** — Founding 07–09 replace the routine-deploy assumption; `latest` promotion follows final acceptance. Draft authoring removes the historical source-repository prerequisite. The Slack log-storage read remains an execution prerequisite; no runtime success is claimed.
 - **Metrics review** — no analytics or funnel playbook update required: no product signal changes.
-- **Skill-chain outcomes** — pending.
+- **Development-first opening:** Indy: "But should we do like check in dev and then go to production readiness and production release, and production runners, and demonstrate again for production and close?" Then: "Can you start on that what do you need for development readiness? 1  - 2" Development inspection and preparation start here; production work remains dependent on passing development results and its named approvals.
+- **Opening evidence:** `orly doctor` passes. Development run [41006375734](https://github.com/agentsfleet/agentsfleet/actions/runs/41006375734) passes on the comparison revision. Native `curl` reports version `0.71.0`, commit `7148b1d` and readiness true. Workspace commands report `AUTH_REQUIRED`. Linkwarden exposes no Actions runs or registered workflows to the current GitHub identity. See the launch baseline for commands and remaining inputs.
+- **Fresh-session continuation:** The environment API key authenticates `nkishore@megam.io`; doctor passes for workspace `01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e`. Private candidates are reviewed but unsaved. Channel `C0ARL465ZJP` has resident-delivery evidence and reviewed specialist mention bindings. Missing telemetry credentials, grants, failed development runs and fleet-owned log access block the demonstrations. The launch baseline records immutable candidate identifiers and review digests. No production action occurred.
+- **Skill-chain outcomes** — `orly-build` opened the stream; development acceptance and repository verification remain pending.
 - **Deferrals** — none.
