@@ -288,3 +288,20 @@ The failed setup-chat edits therefore remain a provider-failure investigation, d
 
 A local state-writer argument error briefly saved environment data to the private CLI workspace-state file.
 The file was immediately replaced with workspace-only state and its mode verified as `600`; no values were printed or committed.
+
+## Workspace secret update: Oct 30, 2026
+
+Indy confirmed adding `grafana` through `app-dev.agentsfleet.net` as `nkishore@megam.io`.
+The native development CLI returned `name: grafana`, `exists: true`, created `2026-10-30T07:37:07.891Z`.
+No secret value was read or printed.
+
+The responder draft was rereviewed at `2026-10-30T07:39:02.923Z`.
+Its Grafana credential check is now ready; its only missing setup check is the GitHub grant.
+The updated review digest is `authoring:v1:sha256:6606e0efc60fd159e78401fc6db8fd72b5664ed34fe1d2c952a582c9b3f1f11e`.
+
+This readiness result does not prove the fleet can query Grafana or obtain relevant fresh logs.
+No Save, grant approval or demonstration trigger occurred in this update.
+
+Indy: "I think only have grafana for now, we will elastic later".
+Elasticsearch setup is deferred until a later continuation; incident Dimension 3.3 remains incomplete and blocks closure.
+The two Slack demonstrations can continue preparation independently of Elasticsearch.
