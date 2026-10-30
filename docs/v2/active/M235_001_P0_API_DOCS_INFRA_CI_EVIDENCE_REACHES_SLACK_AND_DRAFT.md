@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Date:** Oct 30, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P0, fleet-owned job-log reads block M224's development demonstrations
 
@@ -24,13 +24,13 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Batch:** B1, independent support for M224 development acceptance
 
-**Branch:** pending, set at CHORE(open)
+**Branch:** `feat/m235-ci-evidence`
 
-**Baseline revision:** pending, set to the full comparison commit at CHORE(open)
+**Baseline revision:** 7b18cd4166b87b9289c9d94cd31000f96d500e15
 
 **Test Baseline:** pending, measured before the Pull Request (PR)
 
-**Baseline evidence:** pending, set to the measured implementation report before the Pull Request
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md`; test counts remain pending
 
 **Depends on:** none; use existing native definitions, guarded tools, Slack mentions and development access
 
@@ -103,6 +103,7 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/afd_fleet_runtime/tests/definition/corpus.rs` | EDIT | check GitHub-only responder reach and exact reviewed download hosts |
 | `tests/fixtures/fleets/ci-responder/definition.json` | EDIT | select the exact attempt, read logs/source and stop on missing evidence |
 | `tests/fixtures/fleets/ci-repairer/definition.json` | EDIT | reread required evidence and reconcile bounded writes |
+| `tests/fixtures/fleets/github-log-reader/definition.json` | CREATE | verify exact GitHub job-log retrieval in a separate read-only fleet |
 | `rustd/crates/agentsfleetd/tests/support/https.rs` | EDIT | return real redirect/text responses and simulate dropped write replies |
 | `rustd/crates/agentsfleetd/tests/support/definition_responder.rs` | EDIT | script GitHub job text without a Grafana prerequisite |
 | `rustd/crates/agentsfleetd/tests/support/definition_repair.rs` | EDIT | model remote ref/draft state and uncertain-write reconciliation |
@@ -278,6 +279,7 @@ Verify the actual Slack answer and draft-link visibility separately from event p
 - **Dimension 5.2** — Missing, contradictory or stale records fail the evidence checker → Test `should_reject_incomplete_ci_drill_evidence`
 - **Dimension 5.3** — Real source reads, same-thread answer, bounded draft and regression result correlate → Test `test_development_ci_thread_has_verified_draft`
 - **Dimension 5.4** — Zero-tool completion has an explicit empty trace, while unavailable data stays unknown → Test `should_report_known_zero_tool_calls`
+- **Dimension 5.5** — A separate read-only fleet retrieves the exact GitHub job log through its own tool call → Test `test_separate_fleet_reads_github_job_log`
 
 ## Interfaces
 
@@ -360,6 +362,7 @@ The named tests are requirements, not claims that tests already exist. Local net
 | 5.2 | unit | `should_reject_incomplete_ci_drill_evidence` | empty/missing/duplicate cases, unsupported/mixed/cross-case witnesses, invalid UTF-8 spans, stale digests, absent approval/settings/health/deployment, settings drift with unchanged setup, wrong model/freeze/timing/variant/prompt, conflicting variant mappings, skipped job, mismatched runtime/event/run/head, absent trace/executor or unreviewed grade → nonzero; complete known-positive record and prompt-grounded zero-tool clarification pass |
 | 5.3 | manual | `test_development_ci_thread_has_verified_draft` | selected live failure → fleet source reads → visible same-thread answer → explicit repair → actual bounded draft → same regression red before and green at its exact head; missing receipt, link or test result fails |
 | 5.4 | integration | `should_report_known_zero_tool_calls` | native loop reply without tools → API trace with zero calls/omissions; unavailable or rejected trace stays null and cannot prove zero; no dummy source read is added |
+| 5.5 | manual | `test_separate_fleet_reads_github_job_log` | separate read-only development fleet verifies run/job identities and returns actual log text through its own HTTP call; retain accepted setup, event/tool evidence and source quote; native terminal retrieval alone cannot pass |
 
 Indy supplies external approvals and triggers; the agent captures sanitized records and runs the offline checker. Manual case inputs, source refusal variants, review procedure and grading reasons belong in the revised drill and fixed corpus. Deterministic same-event replay and response-loss tests use local boundaries; never manufacture faults against a customer's live provider.
 
@@ -434,6 +437,7 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 - **Document check finding:** Architecture checks rejected the pending format's location and parsed JSON-member names as SQL table references. The proposed acceptance format now lives alongside its playbook. No gate, implementation grade or spec status changed.
 - **Review limits:** Critic review used five rounds and one additional confirmation; no owner waiver is claimed. Readiness fixes remain root-reviewed after the allowed re-audit.
 - **Open blockers:** Required source/instruction changes, evaluation cases, test lanes and external development proofs are unimplemented. M224's incident demonstration retains its independent source blockers.
+- **Implementation opening:** Indy requested testing and fixing the redirect gap, with verification in a separate fleet. Work starts with guarded downloads and the isolated read-only probe; later Sections remain incomplete. Latest fetched main remains `7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1`, version `0.71.0`.
 - **Metrics review:** A safe redirect start and paired terminal outcome are specified; no new metric family or label set is proposed.
 - **Skill-chain outcomes:** Authored and reviewed through `orly-spec`; the cloud handoff retains local documents. Implementation verification, live acceptance and publication remain pending.
 - **Deferrals and transfers:** None; M224 keeps its existing rubric outcomes and recorded Elasticsearch deferral. This spec introduces supporting requirements without moving launch rows.

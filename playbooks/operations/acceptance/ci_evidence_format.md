@@ -1,7 +1,7 @@
 # CI demonstration evidence
 
 Continuous Integration (CI) evidence uses this format to connect instructions, actual source reads, Slack results and a bounded draft fix.
-[M235_001](../../../docs/v2/pending/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md) defines the proposed checker and its implementation scope.
+[M235_001](../../../docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md) defines the proposed checker and its implementation scope.
 Implementation and live demonstration grades remain pending.
 
 ## Report format
