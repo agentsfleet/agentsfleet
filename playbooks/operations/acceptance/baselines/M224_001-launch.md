@@ -535,3 +535,16 @@ The new spec has five Sections and twenty Dimensions with matching test rows; it
 
 Fresh-context EGM review findings and their dispositions are summarized in M235 Discovery.
 These document checks leave every implementation grade empty; repository unit/integration lanes and live fleet acceptance were not run for this amendment.
+
+## Review finding follow-up
+
+Indy requested fixing the review finding after the authoring commit.
+The two final readiness findings concern model/settings attribution and the corpus/claim-witness interface.
+Their follow-up pins native-field joins, capture times, operator confirmation, exact prompt matching and case-local witness validation in `playbooks/operations/acceptance/ci_evidence_format.md`.
+
+M235's checker test requirements now reject mismatched model confirmation, inconsistent variants, cross-case witnesses and invalid UTF-8 spans.
+The change remains documentation only; implementation checks and all three development demonstrations remain pending.
+
+The architecture check rejected a pending format under current architecture documentation and interpreted report JSON members as SQL table names.
+The format now lives alongside the acceptance playbook, with its pending-spec link preserved.
+No checker, suppression or milestone status was changed to pass that check.

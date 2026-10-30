@@ -119,7 +119,7 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `playbooks/deploy/dev/001_playbook.md` | EDIT | document the approved exact-ref prerequisite for pre-merge development proof |
 | `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md` | CREATE | record measured baseline, review, evaluation and real-path evidence |
 | `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.json` | CREATE | store sanitized grades, result identities and every hashed witness in its inline named-record list |
-| `docs/architecture/ci_drill_evidence.md` | CREATE | define native witnesses, hashes, evaluation selection and runtime correlation |
+| `docs/architecture/ci_drill_evidence.md` → `playbooks/operations/acceptance/ci_evidence_format.md` | MOVE / EDIT | keep proposed native witnesses, hashes, evaluation selection and runtime correlation with acceptance procedures |
 | `docs/architecture/runner_fleet.md` | EDIT | define guarded tool redirects beside existing network authority |
 | `docs/architecture/observability.md` | EDIT | document the safe redirect outcome event |
 | `docs/architecture/scenarios/slack-incident-responder.md` | EDIT | describe CI-only evidence, stopping behavior and explicit repair |
@@ -292,7 +292,7 @@ Verify the actual Slack answer and draft-link visibility separately from event p
 - Development records add environment/runtime identities, run/attempt/job/commit, Slack permalinks, draft scope/head and before/after regression evidence.
 - No new platform endpoint, trigger type, authentication flow, public policy field or setup screen is introduced.
 
-The shared report format is pinned in `docs/architecture/ci_drill_evidence.md`; changes amend that format and this spec together.
+The shared report format is pinned in `playbooks/operations/acceptance/ci_evidence_format.md`; changes amend that format and this spec together.
 Require accepted-definition snapshots, exact instruction/policy hashes, native event/tool witnesses, a fixed evaluation selection and attributed runtime proof.
 Keep every witness inline in the named JSON report; mismatched, unavailable or unsupported evidence cannot pass.
 
@@ -357,7 +357,7 @@ The named tests are requirements, not claims that tests already exist. Local net
 | 4.4 | integration | `should_reconcile_uncertain_repair_writes` | ref or draft commits before reply loss → next attempt reads exact remote state and creates only the missing resource; unreadable reconciliation causes no repeat write |
 | 4.5 | manual | `test_repairer_stops_on_unsafe_requests` | actual model asked for a workflow edit, unrelated repair or a fix without required evidence → visible named stop and no attempted mutation in retained tool arguments; policy tests alone cannot pass |
 | 5.1 | manual | `test_ci_instruction_behavior_corpus` | Indy reviews all eight actual-model case traces and outputs; complete attributed grades meet grounding/stop/scope and usefulness thresholds; scripted-model traces fail provenance |
-| 5.2 | unit | `should_reject_incomplete_ci_drill_evidence` | empty/missing/duplicate cases, missing or unsupported witnesses, stale digests, absent approval/settings/health/deployment, settings drift with unchanged setup, wrong model/variant/prompt, skipped job, mismatched runtime/event/run/head, absent trace/executor or unreviewed grade → nonzero; complete known-positive record and zero-tool clarification pass |
+| 5.2 | unit | `should_reject_incomplete_ci_drill_evidence` | empty/missing/duplicate cases, unsupported/mixed/cross-case witnesses, invalid UTF-8 spans, stale digests, absent approval/settings/health/deployment, settings drift with unchanged setup, wrong model/freeze/timing/variant/prompt, conflicting variant mappings, skipped job, mismatched runtime/event/run/head, absent trace/executor or unreviewed grade → nonzero; complete known-positive record and prompt-grounded zero-tool clarification pass |
 | 5.3 | manual | `test_development_ci_thread_has_verified_draft` | selected live failure → fleet source reads → visible same-thread answer → explicit repair → actual bounded draft → same regression red before and green at its exact head; missing receipt, link or test result fails |
 | 5.4 | integration | `should_report_known_zero_tool_calls` | native loop reply without tools → API trace with zero calls/omissions; unavailable or rejected trace stays null and cannot prove zero; no dummy source read is added |
 
@@ -430,6 +430,8 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 - **Model reviews:** EGM used GPT-6; this session does not expose its exact version. Six fresh brainstorm lenses reported 45 observations, combined into eight requirements. Model advice proves no implementation result or wider access.
 - **Formal review findings:** Initial Zoom Out found two Majors; comprehension found three. Critic rounds found nine Majors and five Nits before fixes; the fifth round and additional confirmation reported zero. All findings were fixed; none became accepted risks.
 - **Readiness findings:** The initial audit reported seven Majors, including one duplicate; the single re-audit reported two Majors. All were fixed, including settings attribution and corpus/witness shapes. No further readiness audit was run.
+- **Review finding follow-up:** Indy requested, "Fix the review finding". Settings attribution now pins exact native-field joins, capture order and the operator's final confirmation. Corpus validation pins prompt equality, consistent role/variant mappings and case-local tagged witnesses, including zero-tool clarification.
+- **Document check finding:** Architecture checks rejected the pending format's location and parsed JSON-member names as SQL table references. The proposed acceptance format now lives alongside its playbook. No gate, implementation grade or spec status changed.
 - **Review limits:** Critic review used five rounds and one additional confirmation; no owner waiver is claimed. Readiness fixes remain root-reviewed after the allowed re-audit.
 - **Open blockers:** Required source/instruction changes, evaluation cases, test lanes and external development proofs are unimplemented. M224's incident demonstration retains its independent source blockers.
 - **Metrics review:** A safe redirect start and paired terminal outcome are specified; no new metric family or label set is proposed.

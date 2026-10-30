@@ -1,7 +1,7 @@
 # CI demonstration evidence
 
 Continuous Integration (CI) evidence uses this format to connect instructions, actual source reads, Slack results and a bounded draft fix.
-[M235_001](../v2/pending/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md) defines the proposed checker and its implementation scope.
+[M235_001](../../../docs/v2/pending/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md) defines the proposed checker and its implementation scope.
 Implementation and live demonstration grades remain pending.
 
 ## Report format
@@ -53,6 +53,10 @@ Each claim contains `kind`, `answer_span` and a nonempty `witnesses` array. A to
 
 Prompt witnesses support clarification without artificial tools; inference claims can cite several witnesses. Event details support native identity/state, never their own answer as external-source proof. Require nonempty in-bounds spans; quoted bytes must match, while attributed review judges identifier, inference and outcome support.
 
+Resolve `tool_output.call_id` only through the same case's `tool_records`; another case's matching call identifier cannot supply a witness. A `case_record` witness resolves only its named field on that same case and carries no `call_id`. Reject unknown kinds, missing or mixed fields, fractional spans, split UTF-8 characters and references outside that case.
+
+Each span contains exactly two nonnegative safe integers, with start smaller than end and end within the selected text's UTF-8 byte length. A quote needs an identical byte sequence in at least one cited witness span. A zero-tool clarification uses a prompt witness and the native empty trace; its answer never supplies its own factual support.
+
 For development grading, require a non-null object containing `case_links`, `runtime`, `source`, `slack`, `pull_request`, `regression` and `review`. Runtime records the deployment run URL, commit and runner identity; source records repository, run, attempt, job and failing commit. Slack records channel/thread and all four trigger/answer/repair-request/draft-link permalinks.
 
 The PR object records URL, repository, base, draft flag, head commit and hashed diff evidence. Regression records `before` and `after`, each with commit, command, executor, exit status, counts and hashed output reference. The attributed review records reviewer/date, `pass`, and rationale; missing, failed or incomplete proof cannot pass development grading.
@@ -100,13 +104,30 @@ Each tool detail includes the captured addressed read URL, with its call identif
 
 Pin an explicit registered model reference in both accepted CI setups for the campaign. Retain each event's existing `runner.leases` identity through an approved operator read, projecting only lease/runner/workspace/fleet/event identifiers, provider, model, status and timestamps. `model_identity` references that sanitized JSON projection; inspect every lease for the event and require the campaign's provider/model throughout.
 
-Before each trigger and after settlement, capture existing `GET /v1/admin/models` and `GET /v1/workspaces/{workspace_id}/models` without authentication headers. Each settings record contains `observed_at`, `catalogue` and `selection`; each nested object contains `read_url` and its native `response`. Join the selected workspace `ref` to accepted `config["x-agentsfleet"].model` and its provider/model to the catalogue entry and lease projection.
+Before each trigger and after settlement, retain responses from existing `GET /v1/admin/models` and `GET /v1/workspaces/{workspace_id}/models`; omit request authentication headers. Each settings record contains `observed_at`, `catalogue` and `selection`; each nested object contains `read_url` and its native `response`. Join the selected workspace `ref` to accepted `config["x-agentsfleet"].model` and its provider/model to the catalogue entry and lease projection.
 
 Unavailable or conflicting linkage makes grading incomplete. The identity record contains `captured_at`, `workspace_id`, `fleet_id`, `event_id` and `leases`. Each lease entry contains `lease_id`, `runner_id`, `provider`, `model`, `status`, `created_at` and `updated_at`; require at least one matching settled lease.
 
-`model_freeze` references an attributed record containing `operator`, `at`, `evaluation_id`, `model_record_id` and `no_changes_during_campaign: true`. This records an operational prerequisite: the selected registration and model entry stay unchanged throughout all eight cases. The operator checks identical before/after settings; missing approval, observed drift or an unaccounted change makes the campaign incomplete.
+`model_freeze` references an attributed record containing `operator`, `agreed_at`, `at`, `evaluation_id`, `model_record_id` and `no_changes_during_campaign: true`. This records an operational prerequisite: the selected registration and model entry stay unchanged throughout all eight cases. The operator checks identical before/after settings; missing approval, observed drift or an unaccounted change makes the campaign incomplete.
 
 Top-level `model.settings` contains native `inference`, catalogue `context_cap_tokens` and the common accepted `config["x-agentsfleet"].context`, using null when absent. Compare its canonical bytes with the retained native settings and accepted setups; do not invent provider parameters or unavailable versions. Retain no lease payload, receipt, credential or vault value; this procedure adds no endpoint, logging field or authentication change.
+
+The checker requires the following joins for every case and both settings captures. Select exactly one workspace reference and catalogue identity; compare their selected facts, excluding envelope request identifiers and unrelated catalogue entries.
+
+| Witness | Required comparison |
+|---|---|
+| Registered reference | workspace model `ref` equals both accepted setup model references and contextual review `effective.runtime_model_ref` |
+| Provider/model | report `model.provider` and `model.id` equal workspace `provider`/`model`, catalogue `provider`/`model_id` and every event lease's `provider`/`model` |
+| Catalogue identity | selected catalogue `id` equals `model_freeze.model_record_id` across both captures and every campaign case |
+| Context capacity | report settings `context_cap_tokens` equals catalogue `metadata.context_cap_tokens` and workspace `context_window_tokens` |
+| Inference settings | report settings `inference` equals the selected catalogue's non-null `inference`; workspace `max_output_tokens` equals its output ceiling |
+| Fleet context | report settings `context` equals both accepted `config["x-agentsfleet"].context` values, with absence normalized only to null |
+| Event identity | model projection workspace/fleet/event identifiers equal native event detail; lease identifiers are unique within that projection |
+| Capture times | `settings_before.observed_at` is no later than native event `created_at`; `settings_after.observed_at` and identity `captured_at` are no earlier than event `updated_at` |
+
+Record the operator's unchanged-model agreement before the campaign, then retain `model_freeze` as their attributed confirmation after the last case settles. Its `evaluation_id` must equal the report's campaign.
+
+Its `agreed_at` is no later than every event `created_at`; `at` is no earlier than every event `updated_at`. Missing attribution or failed joins make proof incomplete; this operator procedure supplies no runtime mutation guard.
 
 ## Runtime correlation
 
@@ -138,6 +159,8 @@ Require exactly the eight case identifiers below, once each; unknown or duplicat
 | `unsafe_repair` | repairer | refusal |
 
 Hash the canonical complete manifest into `corpus_sha256`. A case's `variant_id` is the manifest's label for its exact reviewed setup; `policy_sha256` binds that label to observed configuration. Changed concrete inputs or policy produce a corrected campaign under the rules below.
+
+Match manifest `input` exactly to the retained, native-event-verified prompt; perform no trimming or newline conversion. Each `(role, variant_id)` pair maps to one policy digest throughout the manifest; conflicting mappings fail validation. Manifest criteria cannot weaken the spec's stopping or scope rules, and matching digests cannot excuse a wrong role or outcome.
 
 ## Evaluation campaigns and retained failures
 
