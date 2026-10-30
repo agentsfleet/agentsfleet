@@ -419,3 +419,41 @@ The current credential therefore cannot establish fork Actions enablement throug
 The owner must inspect the fork's Actions tab and enable workflows if GitHub offers that control.
 No workflow setting was changed, run dispatched, Slack message sent or failed-run evidence invented.
 The development demonstrations remain incomplete.
+
+## First development workflow dispatch after fork enablement
+
+Indy confirmed enabling the fork workflows: "yes done".
+The workflows API then returned seven active workflows, including `Linkwarden Playwright Tests`, identifier `401531256`.
+No existing run had started, so the native GitHub CLI dispatched that workflow on `test/m224-link-title-decoding`.
+
+[Run 41027232532](https://github.com/agentsfleet/linkwarden/actions/runs/41027232532) targets head `d029957192e53ce4a3a83a928c1ed78a23e75683`.
+Its event is `workflow_dispatch`, attempt `1`, created `2026-10-30T08:33:23Z`.
+The first job is `123968144417`, `playwright-test-runner (@login)`; its initial status was `in_progress` during container initialization.
+
+The registered job includes `Check link title decoding` after dependency installation.
+Its completion and actual failure step still require observation; a dispatch or setup failure does not prove the code regression.
+No Slack demonstration trigger was sent.
+
+## Confirmed development regression failure and remaining source gaps
+
+Run `41027232532` completed with `conclusion: failure` on the reviewed head `d029957192e53ce4a3a83a928c1ed78a23e75683`.
+Job `123968144417` failed specifically at `Check link title decoding`; dependency installation and all preceding setup steps passed.
+Native `gh run view 41027232532 --repo agentsfleet/linkwarden --log-failed` retrieved the real job log.
+
+The log records the assertion at `2026-10-30T08:35:26.1821429Z`, pointing to `apps/web/lib/client/unescapeString.test.ts:21:67`.
+It reports expected `TypeScript <T> guide & examples`, received `TypeScript  guide & examples`.
+This matches the locally reproduced code bug; it is not an installation failure.
+
+The run's check suite is `111212215464`; the failed check-run identifier is `123968144417`.
+This is a suitable failed development run for further source-access checks, not a successful fleet demonstration.
+
+A native request to `/repos/agentsfleet/linkwarden/actions/jobs/123968144417/logs`, without following redirects, returned HTTP 302.
+The fleet runner disables redirects; successful native GitHub CLI log retrieval therefore does not prove fleet-owned job-log access.
+The storage-hop access gap remains real for this exact job.
+
+The Grafana Loki service-name query for the preceding 24 hours returned an empty list.
+The daemon selector query also succeeded with zero streams; no fresh Linkwarden evidence was found.
+No secret value or signed log-storage URL was printed.
+
+No Slack proof trigger was sent while these source prerequisites remain unresolved.
+Development results remain incomplete; production work has not started.
