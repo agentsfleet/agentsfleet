@@ -457,3 +457,38 @@ No secret value or signed log-storage URL was printed.
 
 No Slack proof trigger was sent while these source prerequisites remain unresolved.
 Development results remain incomplete; production work has not started.
+
+## GitHub Slack subscription and rerun
+
+Indy confirmed that `#all-agentsfleet` is the same channel, identifier `C0ARL465ZJP`; no fleet binding changed.
+Indy then reported "yes subscribed" after the supplied GitHub Slack workflow subscription command.
+The requested subscription filter selected `Linkwarden Playwright Tests`, event `workflow_dispatch`, branch `test/m224-link-title-decoding`.
+
+The agent ran `gh run rerun 41027232532 --repo agentsfleet/linkwarden` after that confirmation.
+GitHub reports attempt `2`, started `2026-10-30T08:49:16Z`, on the unchanged head `d029957192e53ce4a3a83a928c1ed78a23e75683`.
+
+Attempt `2` completed with `conclusion: failure`; job `123974018367` failed at `Check link title decoding`.
+Dependency installation passed, and the annotation repeats the expected `<T>` versus missing `<T>` assertion.
+
+The user was asked to confirm the GitHub Slack notification and supply its thread link.
+Reported subscription is not proof of delivery; no notification thread or specialist reply was fabricated.
+No agent-authored Slack message or fleet trigger was sent.
+
+## Subscription discrepancy and fresh-run check
+
+Indy reported no Slack notification after attempt 2.
+His subscription confirmation listed `issues`, `pulls`, `commits`, `releases` and `deployments`, with no `workflows` feature.
+That confirmation did not establish an Actions notification subscription.
+
+The upstream `integrations/slack` README confirms that workflow notifications are disabled by default and require Actions-event authorization.
+It also documents that a bare `workflows` subscription defaults to pull requests targeting the repository's default branch.
+A manual development dispatch requires appropriate event filters; the feature-list response remains the authority for the configured subscription.
+
+After further setup instructions, Indy reported "yes i have set it up".
+
+The agent started fresh run `41031339072`, attempt `1`, created `2026-10-30T09:09:14Z` on the same reviewed head.
+Its event is `workflow_dispatch`; it completed with `conclusion: failure`.
+Job `123981544786` failed at `Check link title decoding` after successful dependency installation.
+
+Indy was asked for the notification thread link, or `/github subscribe list features` output if no notification appeared.
+No further delivery claim is made from the user's setup confirmation alone.
