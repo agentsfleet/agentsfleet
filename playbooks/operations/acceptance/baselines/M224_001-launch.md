@@ -492,3 +492,13 @@ Job `123981544786` failed at `Check link title decoding` after successful depend
 
 Indy was asked for the notification thread link, or `/github subscribe list features` output if no notification appeared.
 No further delivery claim is made from the user's setup confirmation alone.
+
+## Confirmed workflow-event filter and notification test
+
+Indy supplied GitHub Slack's confirmation including `workflows:{event:"pull_request","push","workflow_dispatch"}`.
+This replaces the earlier default pull-request-only filter; no workflow-name restriction appears in the supplied confirmation.
+The agent then dispatched the existing development workflow once on the unchanged reviewed branch.
+
+[Run 41031988482](https://github.com/agentsfleet/linkwarden/actions/runs/41031988482) was created `2026-10-30T09:14:34Z`.
+Its head is `d029957192e53ce4a3a83a928c1ed78a23e75683`; the observed status is `in_progress`.
+Its Slack notification thread and fleet response have not yet been verified; no completion or demonstration pass is claimed.
