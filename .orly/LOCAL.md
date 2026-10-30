@@ -105,8 +105,11 @@ repository:
 
 ## Running lanes here
 
-- One Rust lane per machine, and only with at least 50 GB free. Reclaim space
-  with `cargo clean`, never `trash`.
+- Run one Rust lane per machine. On the 32 GB cloud machine, disable development
+  and test debug info and incremental compilation; limit Cargo to two jobs.
+  Use `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`,
+  `CARGO_INCREMENTAL=0` and `CARGO_BUILD_JOBS=2`. Check free space before each
+  lane. Reclaim build space with `cargo clean`, never `trash`.
 - Cargo results count only from `rustd/` with `--all-features` over a lane's
   crate set. Retry a `-p` failure workspace-wide; `--no-fail-fast` goes before
   `--`.
