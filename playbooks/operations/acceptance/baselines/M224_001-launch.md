@@ -362,3 +362,16 @@ The separate app-originated `Howdy` response is not owed to that Slack destinati
 
 The fleet setup checks do not replace the missing failed-run selection or fleet-owned GitHub/Grafana evidence.
 Development Dimensions 3.1–3.2 remain unproved; the incident demonstration remains blocked on the deferred Elasticsearch setup.
+
+## First specialist Slack mention
+
+The responder received Slack event `01a18bc9-1dd9-7c2e-b387-fe62a3f0643f`, created `2026-10-30T07:49:35.908Z`.
+Its event detail reports channel `C0ARL465ZJP`, reply thread `1793343578.665139`, four fetched context messages, and no truncation.
+The request said “Yes i need help in debugging an issues”; routing selected `ci-dev-responder` with verdict `sole`.
+
+The event completed with `failure_label: null`; its stored answer asks for a failed `agentsfleet/linkwarden` Actions run URL.
+No failed-run link appeared in the supplied context, so no correlated diagnosis or repair result was established.
+The answer's visibility in Slack remains unconfirmed; processed status alone does not prove outbound delivery.
+
+No repairer demonstration event appeared in the corresponding event-list check.
+Development Dimensions 3.1–3.3 remain incomplete.
