@@ -305,3 +305,38 @@ No Save, grant approval or demonstration trigger occurred in this update.
 Indy: "I think only have grafana for now, we will elastic later".
 Elasticsearch setup is deferred until a later continuation; incident Dimension 3.3 remains incomplete and blocks closure.
 The two Slack demonstrations can continue preparation independently of Elasticsearch.
+
+## Development GitHub approval requests created
+
+Indy authorized continuing: "go" after requesting the GitHub grant approvals.
+Both current Slack candidates were rereviewed; the channel, repository access and repair base matched the reviewed setups.
+The native CLI saved each with `start.kind: none`; neither Save admitted a demonstration message.
+
+| Fleet | Identifier | Save idempotency key | Pending GitHub gate |
+|---|---|---|---|
+| `ci-dev-responder` | `01a18bc4-509c-7d9c-9aed-17d3ea58ffbe` | `01a18bc3-d430-76c4-8f44-09de6c1d0ad1` | `01a18bc4-509c-7aae-8b5d-1629a66df09c` |
+| `ci-dev-repairer` | `01a18bc4-566c-76b4-a874-fdde34302db0` | `01a18bc3-d430-76c4-8f44-0ec89462685c` | `01a18bc4-566c-74e4-a434-9432e7e659e0` |
+
+`approvals list --json` returned both gates with `gate_type: integration_grant`, `tool_name: github`, and `status: pending`.
+Both saved fleets report `installing`; GitHub grants, runtime stream and activation remain pending.
+Approvals are at `https://app-dev.agentsfleet.net/w/01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e/approvals`.
+
+The responder's reviewed access is read-only for `agentsfleet/linkwarden`.
+The repairer's reviewed access permits bounded writes and one draft Pull Request against trusted base `dev` in that repository.
+The agent did not resolve either human approval.
+
+The CLI returned exit 1 with setup recovery metadata because installation is pending, not because fleet creation failed.
+Any retry must reuse the retained key, candidate and digest; do not create duplicate fleets.
+Two earlier CLI invocations failed local operation-identity validation before a request; they created no resource.
+
+### Reported resident app-chat reply gap
+
+A subsequent resident event `01a18bc1-d47c-7003-98b2-fba3847cc642` was a dashboard steer, not a Slack mention.
+The event-detail API returned request `Howdy`, `status: processed`, `failure_label: null`, and a nonempty stored reply.
+
+The reply was: “Hey there! Twice as friendly now 😄 What do you need a hand with?”
+
+This confirms answer generation and durable storage for that app-chat event, not display in the user's browser.
+
+The earlier explanation about unmentioned Slack replies does not explain a missing dashboard-chat answer.
+A refresh check is pending to distinguish live update from history display; no application source was edited.
