@@ -340,3 +340,25 @@ This confirms answer generation and durable storage for that app-chat event, not
 
 The earlier explanation about unmentioned Slack replies does not explain a missing dashboard-chat answer.
 A refresh check is pending to distinguish live update from history display; no application source was edited.
+
+## Human approvals and completed setup
+
+The approvals API identifies `Kishorekumar Neelamegam` as the approver of both GitHub integration grants.
+The repairer gate resolved at `2026-10-30T07:46:40.652Z`; the responder gate resolved at `2026-10-30T07:46:41.835Z`.
+These are observed API audit records, separate from the agent's Save operations.
+
+The same retained Save operations were resumed after approval; both returned exit 0 and the original fleet identifiers.
+Each fleet now reports `status: active`, `setup.state: ready`, and all setup checks ready, including grants, stream and activation.
+Both retain setup revision `1`, `start.kind: none`, and no schedules; no demonstration trigger was sent.
+
+| Record | Development URL |
+|---|---|
+| Responder approval | `https://app-dev.agentsfleet.net/w/01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e/approvals/01a18bc4-509c-7aae-8b5d-1629a66df09c` |
+| Repairer approval | `https://app-dev.agentsfleet.net/w/01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e/approvals/01a18bc4-566c-74e4-a434-9432e7e659e0` |
+
+The user's later screenshot shows plain replies “wow cool” and “Did you respond back” without another bot mention.
+Those messages do not enter the deployed `app_mention` trigger path; the original Slack answer is visible in the same thread.
+The separate app-originated `Howdy` response is not owed to that Slack destination; the surfaces do not mirror messages.
+
+The fleet setup checks do not replace the missing failed-run selection or fleet-owned GitHub/Grafana evidence.
+Development Dimensions 3.1–3.2 remain unproved; the incident demonstration remains blocked on the deferred Elasticsearch setup.
