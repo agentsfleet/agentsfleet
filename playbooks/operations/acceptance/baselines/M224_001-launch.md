@@ -502,3 +502,36 @@ The agent then dispatched the existing development workflow once on the unchange
 [Run 41031988482](https://github.com/agentsfleet/linkwarden/actions/runs/41031988482) was created `2026-10-30T09:14:34Z`.
 Its head is `d029957192e53ce4a3a83a928c1ed78a23e75683`; the observed status is `in_progress`.
 Its Slack notification thread and fleet response have not yet been verified; no completion or demonstration pass is claimed.
+
+## Instruction-driven CI source amendment
+
+Indy requested updating M224 and specifying the supporting work through `orly-spec`.
+The chosen design keeps investigation and stopping rules in native Markdown instructions.
+The platform supplies generic guarded HTTP reads, reviewed permissions and existing Slack reply delivery.
+
+M224 Dimensions 1.2 and 3.1–3.2 now use GitHub run, job, log and source evidence without requiring Grafana.
+The separate incident demonstration retains its `elastic`, `grafana`, `github` and Library requirements.
+Earlier entries describe the prerequisites and observations recorded at their time; they are not new acceptance passes.
+
+The pending support spec is `docs/v2/pending/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md`.
+It specifies exact attempt and timestamp reads, required-source stopping, admitted download hops, private target handling and an explicit bounded-repair request.
+It also requires visible same-thread answers and actual regression validation at the returned draft head.
+
+Fresh `git fetch origin main` reports comparison revision `7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1`.
+The remote documentation tree's highest milestone is M234, leaving M235 unused.
+`orly doctor` reports both installed-rule and Codex skill checks green.
+
+A fresh native request to job `123968144417`'s log endpoint returned HTTP 302.
+Its safe destination origin is `https://productionresultssa6.blob.core.windows.net`; no signed path/query or credential was displayed or saved.
+That host still needs exact reviewed reach for both fleets before their own log reads can pass.
+
+No source, live fleet revision, approval or authentication behavior changed during this authoring amendment.
+No new Slack trigger, answer, fleet-produced draft or passing demonstration is claimed.
+The three development demonstrations remain incomplete, and production work remains gated on them.
+
+Authoring checks passed: `orly gate work`, changed-document prose checks, full new-spec prose checks and `git diff --check`.
+The new spec has five Sections and twenty Dimensions with matching test rows; its evidence-format JSON example parses.
+`make check-documentation-rules` passed nine documentation-check tests, eleven parity tests and both documentation checks.
+
+Fresh-context EGM review findings and their dispositions are summarized in M235 Discovery.
+These document checks leave every implementation grade empty; repository unit/integration lanes and live fleet acceptance were not run for this amendment.
