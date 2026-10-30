@@ -401,3 +401,21 @@ Workflow editing requires explicit approval; the agent requested it and made no 
 Actions permission reads returned HTTP 403, so fork enablement still needs owner confirmation.
 No failed GitHub run, fleet-owned job log, relevant Grafana line or successful diagnosis/repair is claimed from this local reproduction.
 The agent did not send a Slack trigger or open a fleet-produced repair pull request.
+
+## Approved development regression step
+
+Indy approved the named workflow amendment: "Approve the test step".
+The agent added `Check link title decoding` immediately after `Install packages` in Linkwarden `.github/workflows/playwright-tests.yml`.
+Its command is `yarn test run apps/web/lib/client/unescapeString.test.ts`; no other workflow behavior was changed.
+
+The change was pushed to draft pull request #3 as `d029957192e53ce4a3a83a928c1ed78a23e75683`.
+`actionlint .github/workflows/playwright-tests.yml` and the staged Gitleaks and whitespace checks passed.
+The scoped local regression rerun remained `1 failed | 2 passed (3)` with the same expected and received title strings.
+
+After the push, GitHub reported that exact pull request head, empty status checks, zero registered workflows and zero Actions runs.
+The Actions-settings endpoint again returned HTTP 403 `Resource not accessible by integration`.
+The current credential therefore cannot establish fork Actions enablement through that endpoint.
+
+The owner must inspect the fork's Actions tab and enable workflows if GitHub offers that control.
+No workflow setting was changed, run dispatched, Slack message sent or failed-run evidence invented.
+The development demonstrations remain incomplete.
