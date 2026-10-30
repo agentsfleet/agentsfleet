@@ -375,3 +375,29 @@ The answer's visibility in Slack remains unconfirmed; processed status alone doe
 
 No repairer demonstration event appeared in the corresponding event-list check.
 Development Dimensions 3.1–3.3 remain incomplete.
+
+## Linkwarden development draft prepared
+
+Indy requested: "you have the github keys, can you check the agentsfleet/linkwarden PR, if not create one".
+The only open pull request was the older main-targeted probe #1; no development-targeted pull request or Actions run existed.
+The agent created [draft pull request #3](https://github.com/agentsfleet/linkwarden/pull/3), targeting `dev` from `test/m224-link-title-decoding`.
+
+Source base: `46303b321a43b6a8227c4dfdfcccce01ab37e55f`; draft head: `b56973918dff5a6995f5a2f0757c17400fec3dad`.
+The sole changed file is `apps/web/lib/client/unescapeString.test.ts`; no implementation, authentication or workflow file changed.
+The test reproduces existing title corruption: `TypeScript <T> guide &amp; examples` loses its literal `<T>` through `DOMParser`.
+
+A scoped Vitest 4.1.0/jsdom 22.1.0 run returned `1 failed | 2 passed (3)`.
+Expected: `TypeScript <T> guide & examples`; received: `TypeScript  guide & examples`.
+The runtime dependencies were installed in a task-local tools directory; full repository installation and browser acceptance were not run.
+
+The draft records the expected failing regression openly; no application regression was introduced to manufacture a failure.
+The branch's staged Gitleaks scan and diff whitespace check passed.
+After creation, the pull request remained draft with empty status checks and the Actions API still returned zero runs.
+
+The existing Playwright workflow selects `@login` tests and does not run the new Vitest test.
+A proposed step after dependency installation would run `yarn test run apps/web/lib/client/unescapeString.test.ts`.
+Workflow editing requires explicit approval; the agent requested it and made no workflow change.
+
+Actions permission reads returned HTTP 403, so fork enablement still needs owner confirmation.
+No failed GitHub run, fleet-owned job log, relevant Grafana line or successful diagnosis/repair is claimed from this local reproduction.
+The agent did not send a Slack trigger or open a fleet-produced repair pull request.
