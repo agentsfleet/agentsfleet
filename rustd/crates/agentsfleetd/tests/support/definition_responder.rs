@@ -14,7 +14,10 @@ use crate::https::{Reply, Route};
 /// The run, jobs and commits the responder reads, under its one repository.
 pub(crate) const RUN: &str = "/repos/agentsfleet/linkwarden/actions/runs/101";
 const JOBS: &str = "/repos/agentsfleet/linkwarden/actions/runs/101/jobs";
-const JOB_LOG: &str = "/repos/agentsfleet/linkwarden/actions/jobs/202/logs";
+pub(crate) const JOB_LOG: &str = "/repos/agentsfleet/linkwarden/actions/jobs/202/logs";
+/// The separate source probe's explicitly allowed download origin and actual body.
+pub(crate) const LOG_READER_HOST: &str = "productionresultssa6.blob.core.windows.net";
+pub(crate) const JOB_LOG_LINE: &str = "2026-10-30T08:34:00Z assertion failed: decoded title";
 const COMMITS: &str = "/repos/agentsfleet/linkwarden/commits";
 pub(crate) const RUN_URL: &str = "https://github.com/agentsfleet/linkwarden/actions/runs/101";
 pub(crate) const FAILED_STEP: &str = "Run unit tests";
@@ -63,6 +66,43 @@ pub(crate) fn responder_upstream() -> Vec<Route> {
     let mut routes = github_routes();
     routes.extend(grafana_routes());
     routes
+}
+
+/// A separate fleet reads a real text response behind GitHub's redirect.
+pub(crate) fn log_reader_routes(status: u16) -> Vec<Route> {
+    vec![
+        Route::new(
+            GITHUB,
+            Method::GET,
+            RUN,
+            ok(&json!({"id":101,"run_attempt":1,"head_sha":"c0ffee1"})),
+        ),
+        Route::new(
+            GITHUB,
+            Method::GET,
+            "/repos/agentsfleet/linkwarden/actions/jobs/202",
+            ok(&json!({"id":202,"run_id":101,"run_attempt":1,"head_sha":"c0ffee1"})),
+        ),
+        Route::new(
+            GITHUB,
+            Method::GET,
+            JOB_LOG,
+            vec![Reply::found(&format!(
+                "https://{LOG_READER_HOST}/download/job?{LOG_SIGNATURE}"
+            ))],
+        ),
+        Route::new(
+            LOG_READER_HOST,
+            Method::GET,
+            "/download/job",
+            vec![Reply::text(
+                status,
+                &format!(
+                    "{JOB_LOG_LINE}\necho=https://{LOG_READER_HOST}/download/job?{LOG_SIGNATURE}\njob=202"
+                ),
+            )],
+        ),
+    ]
 }
 
 /// One `200` answering `body`.

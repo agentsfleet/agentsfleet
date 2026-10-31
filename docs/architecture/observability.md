@@ -249,6 +249,10 @@ Runner logs go to stderr; heartbeat, renewal and reports carry liveness and resu
 
 Fleet-runtime leases run inside `runner.lease` spans. Private authoring takes a separate path without that span (`afr_supervisor/src/worker_pool/mod.rs`).
 
+A followed tool GET emits `http_redirect_started` and exactly one `http_redirect_completed` or `http_redirect_failed` in the parent tool-call context (`afr_egress/src/redirect/mod.rs`). The terminal record carries hop count, upstream status, whether headers were stripped, a fixed safe reason and elapsed milliseconds.
+
+Cancellation and the aggregate deadline end with failure. No destination path, query, signature or response body enters these records; existing `tool_refused` records remain in place.
+
 **What the runner reads.** The endpoint, protocol and timeout knobs the daemon
 reads, and no header knob: `OTEL_EXPORTER_OTLP_HEADERS`, any signal's own
 header knob (`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_HEADERS`, which the

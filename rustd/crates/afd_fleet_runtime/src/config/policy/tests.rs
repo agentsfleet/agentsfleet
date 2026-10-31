@@ -9,6 +9,39 @@ use serde_json::{Map, json};
 use crate::config::raw;
 use crate::error::ErrorKind;
 
+#[test]
+fn should_default_http_egress_to_restricted_and_refuse_unknown_modes() {
+    let mut input: serde_json::Value = serde_json::from_str(&chunked(0.75)).expect("fixture");
+    for (network, expected) in [
+        (json!({}), super::HttpEgress::Restricted),
+        (
+            json!({"http_egress":"restricted"}),
+            super::HttpEgress::Restricted,
+        ),
+        (
+            json!({"http_egress":"public", "package_manager_domains":true}),
+            super::HttpEgress::Public,
+        ),
+    ] {
+        input["x-agentsfleet"]["network"] = network;
+        let parsed = crate::FleetConfig::authored(&input.to_string()).expect("valid policy");
+        let policy = parsed.network().expect("network");
+        assert_eq!(policy.http_egress(), expected);
+        assert_eq!(
+            policy.package_manager_domains(),
+            expected == super::HttpEgress::Public
+        );
+        assert!(policy.allow().is_empty());
+    }
+    for network in [
+        json!({"http_egress":"all"}),
+        json!({"package_manager_domains":"yes"}),
+    ] {
+        input["x-agentsfleet"]["network"] = network;
+        assert!(crate::FleetConfig::authored(&input.to_string()).is_err());
+    }
+}
+
 /// A configuration declaring `threshold` as its stage-chunk threshold.
 fn chunked(threshold: f64) -> String {
     json!({"name": "probe", "x-agentsfleet": {

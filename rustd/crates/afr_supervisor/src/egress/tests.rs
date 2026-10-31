@@ -11,12 +11,12 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 
 use afd_core::error_code::INTERNAL_OPERATION_FAILED;
-use afd_wire::policy::NetworkPolicy as FleetNetwork;
+use afd_wire::policy::{HttpEgress, NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
 use afd_wire::runner::NetworkPolicy;
 use afr_egress::SystemResolver;
 use afr_sandbox::{ALLOWLIST_ADDRESSES_MAX, Allowlist, Network};
 
-use super::{Bound, DEFAULT_REGISTRY, Egress, Named};
+use super::{Bound, Egress, Named};
 use crate::test_support::{FakeResolver, assigned};
 
 /// Two registry hosts, and a fleet host one of them shares.
@@ -52,6 +52,7 @@ fn fleet(hosts: &[&'static str], read_only: bool) -> FleetNetwork<'static> {
         allow: hosts.iter().copied().map(Cow::Borrowed).collect(),
         read_only,
         read_post_paths: Vec::new(),
+        ..FleetNetwork::default()
     }
 }
 
@@ -114,7 +115,7 @@ fn test_egress_plan_merges_and_excludes_read_only() {
     assert_eq!(names(&egress.hosts(&fleet(&[B, C], true))), [A, B]);
     assert_eq!(
         names(&allow_list(&[]).hosts(&fleet(&[], false))),
-        DEFAULT_REGISTRY,
+        PACKAGE_MANAGER_DOMAINS,
         "an operator who named no registry gets the runner's own"
     );
 }
@@ -330,4 +331,19 @@ async fn test_a_host_with_one_blocked_address_is_refused_on_both_egress_paths() 
 
     assert!(bound.is_egress_blocked(), "{bound}");
     assert!(afr_egress::blocked_address(&sent), "{sent}");
+}
+
+#[test]
+fn should_keep_http_settings_out_of_the_sandbox_allowlist() {
+    let assigned = allow_list(&[A]);
+    let mut policy = fleet(&[C], false);
+    let original = assigned.hosts(&policy);
+    policy.http_egress = HttpEgress::Public;
+    policy.package_manager_domains = true;
+    assert_eq!(assigned.hosts(&policy), original);
+    policy.read_only = true;
+    assert_eq!(
+        assigned.hosts(&policy),
+        vec![(A.to_owned(), Named::Registry)]
+    );
 }

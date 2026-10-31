@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|
 | 1 | Agent | Confirm this is an existing development installation. | Agent | Steps 01 through 06 of the founding sequence have green evidence. | Yes |
 | 2 | Agent | Run the development deployment-input gate. | `02_preflight/00_gate.sh` | Green output with no missing deployment input. | Yes |
-| 3 | Agent | Report the exact `main` commit and deployment target to the Human. | Human | The request to start this deployment. | Yes |
+| 3 | Agent | Report the exact commit and development target to the Human. Use `main`, or the reviewed candidate procedure below. | Human | The request approving this exact deployment. | Yes |
 
 Run the read-only gate:
 
@@ -47,6 +47,26 @@ gh run watch "$run_id" \
 ```
 
 ## Verification
+
+### Reviewed development candidate
+
+When a development demonstration needs an unmerged runtime fix, first finish its local checks, standards review and commits.
+Indy approves the exact full commit, feature branch and development API/runner target before branch publication or workflow dispatch.
+That approval authorizes only the named development deployment; it grants neither production nor merge authority.
+
+Use the existing `deploy-dev.yml` workflow with the approved branch as `--ref`, keeping the workflow and authentication unchanged.
+Record the approval, dispatch time, workflow URL and returned `headSha`; it must equal the approved commit.
+A newer commit needs a new exact-revision approval.
+
+Require `check-credentials` and every enabled deployment/verification job to pass, including the runner deployment.
+Confirm the API commit stamp maps unambiguously to that revision.
+Record active runner identity and compare its installed executable checksum with the workflow's runner binary.
+An unavailable runner identity/checksum witness leaves runtime correlation incomplete.
+
+Only then trigger the reviewed demonstration fleet and retain its native event, addressed full tool records and actual answer.
+A successful deployment or processed event alone is not a successful demonstration.
+
+### Required pipeline jobs
 
 | Pipeline job | What it proves |
 |---|---|

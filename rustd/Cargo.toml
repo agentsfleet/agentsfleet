@@ -44,7 +44,7 @@ percent-encoding = "2.3.2"
 # secret. Already in the graph through `regex`.
 aho-corasick = { version = "1.1.5", default-features = false, features = ["std", "perf-literal"] }
 # Anonymous sparse mappings exercise matcher size refusals without allocating their contents.
-memmap2 = { version = "0.9.11", default-features = false }
+memmap2 = { version = "0.9.12", default-features = false }
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
@@ -219,7 +219,7 @@ garde = { version = "0.23.0", default-features = false, features = ["derive", "p
 # A refusal sentence built from the bound it names, at compile time.
 # `Sentences` tables are `const` and std cannot format a number in a `const`,
 # so without it every sentence would spell the bound a second time.
-const_format = { version = "0.2.36", default-features = false }
+const_format = { version = "0.2.37", default-features = false }
 
 # The command line, derived rather than hand-rolled.
 #
@@ -276,7 +276,7 @@ getrandom = { version = "0.4.3", default-features = false }
 # than a new dependency.
 url = { version = "2.5.8", default-features = false }
 
-uuid = { version = "1.28.0", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.0", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -374,7 +374,7 @@ base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 # question askable at all. Enabling them because a build failed — rather than
 # reading which call site failed and why — is how a compatibility shim becomes
 # permanent.
-aws-lc-rs = { version = "1.18.2", default-features = false, features = [
+aws-lc-rs = { version = "1.19.0", default-features = false, features = [
     "aws-lc-sys",
     "alloc",
 ] }
@@ -385,7 +385,7 @@ rustls-pki-types = { version = "1.15.1", default-features = false, features = ["
 
 # Product analytics: the async client only. It still compiles reqwest's
 # blocking client and chrono, which nothing here calls.
-posthog-rs = { version = "0.27.0", default-features = false, features = ["async-client"] }
+posthog-rs = { version = "0.30.0", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
@@ -431,7 +431,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["form", "r
 # Held at 0.88 for M229 (Indy decides later, 2026-10-18): 0.89's `worktree-mutation` also pulls
 # `status`, `dirwalk` and `gix-worktree/remove`, nine crates (dua-core,
 # crossbeam among them) the checkout never calls.
-gix = { version = "0.89.0", default-features = false, features = ["sha1"] }
+gix = { version = "0.90.0", default-features = false, features = ["sha1"] }
 # The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
@@ -483,7 +483,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 # through redis and sqlx's own feature sets — naming it here makes three
 # existing call sites (`hub.rs`, `jwks/cache.rs`) depend on a stated feature
 # rather than on unification holding.
-tokio = { version = "1.54.0", default-features = false, features = ["rt", "sync", "time", "macros"] }
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "sync", "time", "macros"] }
 # Redis. The crate owns the RESP parsing, connection pooling and pub/sub
 # plumbing a hand-rolled client would carry. `connection-manager` is the piece
 # that earns it: one multiplexed connection that reconnects itself, rather than
@@ -496,7 +496,7 @@ tokio = { version = "1.54.0", default-features = false, features = ["rt", "sync"
 # `cluster-async` is the Dragonfly Swarm half: slot routing, MOVED/ASK
 # following, per-node connections and sharded pub/sub over RESP3, all the
 # driver's. This workspace never parses a redirect itself.
-redis = { version = "1.7.1", default-features = false, features = [
+redis = { version = "1.8.1", default-features = false, features = [
     "tokio-comp",
     "tokio-rustls-comp",
     "connection-manager",
@@ -597,6 +597,7 @@ tower-http = { version = "0.7.1", default-features = false, features = [
 # `client` for the dev-only side of one suite: the protocol-negotiation test
 # drives the same listener with an HTTP/1.1 client and an HTTP/2 one, and there
 # is no other way to prove the auto builder serves both.
+h2 = { version = "0.4.20", default-features = false }
 hyper = { version = "1.12.0", default-features = false, features = ["server", "client", "http1", "http2"] }
 # The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
 # what lets a `tokio::net::TcpStream` be served by a hyper connection.
@@ -832,7 +833,7 @@ serde_ignored = { version = "0.1.14", default-features = false }
 # uses (`codex-rs/linux-sandbox/Cargo.toml`): safe system calls for process
 # groups, signals, `no_new_privs` and mounts; Landlock rulesets; a seccomp
 # program compiled to classic BPF in Rust, the library Firecracker ships.
-rustix = { version = "1.1.5", default-features = false, features = ["std", "fs", "mount", "process", "thread"] }
+rustix = { version = "1.1.6", default-features = false, features = ["std", "fs", "mount", "process", "thread"] }
 landlock = { version = "0.4.7", default-features = false }
 seccompiler = { version = "0.5.0", default-features = false }
 # The JSON-RPC 2.0 envelope the executor protocol rides — request, response,

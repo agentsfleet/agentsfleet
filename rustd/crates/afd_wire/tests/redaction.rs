@@ -31,6 +31,7 @@ fn policy() -> ExecutionPolicy<'static> {
             allow: vec![],
             read_only: true,
             read_post_paths: vec![],
+            ..NetworkPolicy::default()
         },
         tools: vec![],
         secrets_map: Some(serde_json::json!({ "github": { "token": SECRET } })),

@@ -70,6 +70,7 @@ pub fn policy(read_only: bool) -> ExecutionPolicy<'static> {
                 .into(),
             read_only,
             read_post_paths: vec![Cow::Borrowed(ELASTIC_QUERY)],
+            ..NetworkPolicy::default()
         },
         tools: Vec::new(),
         secrets_map: Some(secrets()),

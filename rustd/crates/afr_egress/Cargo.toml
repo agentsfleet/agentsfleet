@@ -23,6 +23,8 @@ afd_wire.workspace = true
 # A minted token is a `Secret`; the lease's static credentials are read through
 # `StaticSecrets`; a minted token joins the one masker, `Scrub`.
 afr_secrets.workspace = true
+# Location values are bounded before parsing or admission.
+garde.workspace = true
 # When a minted token stops being honoured.
 jiff.workspace = true
 # `Mint` and `Transport` are `dyn`: production holds the daemon's verb and
@@ -50,5 +52,8 @@ test-util = ["afd_core/test-util", "tokio/sync"]
 
 [dev-dependencies]
 afd_core = { workspace = true, features = ["test-util"] }
+# Match the workspace's HTTP/2 transport in standalone protocol-failure tests.
+h2.workspace = true
+reqwest = { workspace = true, features = ["http2"] }
 # `start_paused`, so a request that never hears back runs out its timeout at once.
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "test-util", "time"] }

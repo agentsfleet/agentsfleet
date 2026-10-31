@@ -216,7 +216,22 @@ pub fn inbound(status: u16, body: &str) -> Inbound {
         content_type: None,
         body: body.to_owned(),
         truncated: false,
+        lossy: false,
+        redirect: None,
+        followed_redirects: 0,
     }
+}
+
+/// One redirect, preserving opaque metadata for the composing tool's tests.
+#[must_use]
+pub fn redirected(status: u16, from: &reqwest::Url, target: &str) -> Inbound {
+    let mut response = inbound(status, "");
+    response.redirect = crate::redirect::Target::new(from, target).ok();
+    response.location = response
+        .redirect
+        .as_ref()
+        .map(crate::redirect::Target::origin);
+    response
 }
 
 /// The policy a closed guard admits under: no host, no credential.
@@ -227,6 +242,7 @@ static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPo
         allow: Vec::new(),
         read_only: true,
         read_post_paths: Vec::new(),
+        ..NetworkPolicy::default()
     },
     tools: Vec::new(),
     secrets_map: None,

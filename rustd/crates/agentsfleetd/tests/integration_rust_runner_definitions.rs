@@ -35,6 +35,9 @@ use crate::integration_tool_trace::{stored_trace, tenant_get};
 const REMEMBERED: &str =
     "SELECT content FROM memory.entries WHERE fleet_id = $1::uuid AND key = $2";
 
+#[path = "integration_rust_runner_definitions/redirect.rs"]
+mod redirect;
+
 /// Dimension 6.1. The responder is offered exactly its policy's tools, reads
 /// GitHub with a minted token and Grafana with its sealed one, reads the 302's
 /// origin and not its signed target, names an unreadable source, stores a
