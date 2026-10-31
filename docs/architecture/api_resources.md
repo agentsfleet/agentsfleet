@@ -1,8 +1,8 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-10-27
-product_version: 0.70.0
+verified: 2026-11-01
+product_version: 0.71.0
 executable: false
 ---
 
@@ -88,6 +88,10 @@ next_action = {kind:"account_models"|"billing"|"workspace_connections"|"approval
 
 Requirements are derived immutable setup, not readiness results. Review digest excludes observation timestamps and includes candidate, selections, source/target revisions, policy marker, and effective access/model resolution versions. Effective setup changes →409 plus fresh `review_digest`; missing live checks instead appear in `installing` setup progress. GET library Inspect computes equivalent review context without pretending the Library's requirements changed.
 
+Save and Apply accept optional `origin` display metadata, with values `cli`, `dashboard` or `chat`. The field grants no access. The first accepted revision records the origin in its immutable `setup_saved` activity.
+
+Retries exclude `origin` when comparing request bodies and retain the original receipt. Changing only the origin with the same operation key creates no additional fleet, revision or receipt. Older clients may omit the field; older receipts retain their generic saved-version label.
+
 `Draft = {id,state,title,etag,authoring_model_ref,cancelled_through,candidate?,review?,linked_fleet_id?,publication?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate. `publication={library_id,revision_id,canonical_digest}` is a verified explicit publication receipt. Closing sets expiry 30 days later; linked active authoring/setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. Active authoring blocks PATCH and Save.
 
 `Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,save_requested,save_error_code?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`. Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
@@ -163,7 +167,7 @@ The next two tables preserve the workspace-chat cutover's 17 new and seven chang
 | N8 | GET D/messages | No body; creator; limit default 20/max 25, starting_after | 200 Page of Message; ordered sequence then role; states/usage included | HIDDEN, CURSOR, INPUT, DEPENDENCY |
 | N9 | POST D/cancellations | `{through_sequence}` decimal string, at most current last accepted sequence; no If-Match | 200 `{cancelled_through,stopped:[{sequence,state:"cancelled"}]}`; lower repeated cutoff returns standing watermark | INPUT, HIDDEN, DEPENDENCY |
 | N10 | GET D/events/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
-| N11 | POST F/revisions | If-Match setup tag + Idempotency-Key; `{draft_candidate_id,review_digest}`; own authorized idle improvement draft targets this fleet | 201 `{fleet_id,setup_revision,setup_etag,etag,review_digest,schedules[]}`; Location F, ETag resource tag | PRECONDITION, STALE, REVIEW, POLICY, REPLAY, HIDDEN, STATE |
+| N11 | POST F/revisions | If-Match setup tag + Idempotency-Key; `{draft_candidate_id,review_digest,origin?}`; own authorized idle improvement draft targets this fleet | 201 `{fleet_id,setup_revision,setup_etag,etag,review_digest,schedules[]}`; Location F, ETag resource tag | PRECONDITION, STALE, REVIEW, POLICY, REPLAY, HIDDEN, STATE |
 | N12 | GET W/fleet-libraries/owned | No tier/owned query; ordinary limit/starting_after allowed; fleet:read | 200 Page of LibraryCard, tenant visibility only | INPUT, CURSOR, AUTH, DEPENDENCY |
 | N13 | GET G | No body; optional `revision_id` to Inspect a pinned revision; fleet:read | 200 Library; selected revision and review; ETag | HIDDEN, INPUT, DEPENDENCY |
 | N14 | DELETE G | No body; library:write; owned only | 204 deletes entry and Library history; installed fleets retain independent fleet revisions | HIDDEN (platform or foreign), AUTH, DEPENDENCY |
@@ -179,7 +183,7 @@ Send atomically captures the draft's selected authoring model reference; admissi
 
 | # | Method and resource | Exact target input | Target success output | Specific failures |
 |---|---|---|---|---|
-| C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"library",library_id,revision_id},name,review_digest,start:Start}`; draft must be creator-owned/idle, Library install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
+| C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"library",library_id,revision_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle, Library install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
 | C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `killed` cancels setup, otherwise existing allowed transitions | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; a killed fleet returns 404 `UZ-AGT-009` after write preconditions pass |
 | C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 existing `{status:"accepted",event_id,replayed}`; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
