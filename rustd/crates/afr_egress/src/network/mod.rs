@@ -17,12 +17,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(test)]
+use reqwest::Url;
 use reqwest::dns::{self, Addrs, Name, Resolving};
-use reqwest::header::{CONTENT_TYPE, HeaderName, LOCATION};
+use reqwest::header::{CONTENT_TYPE, HeaderName};
 use reqwest::redirect::Policy;
-use reqwest::{Client, ClientBuilder, Response, Url};
+use reqwest::{Client, ClientBuilder, Response};
 
 use crate::error::{Error, Result, raise};
+use crate::redirect::{self, Target};
 use crate::resolve::{BlockedAddress, Resolve, SystemResolver, unblocked};
 use crate::transport::{Inbound, Outbound, Transport};
 
@@ -30,9 +33,10 @@ use crate::transport::{Inbound, Outbound, Transport};
 pub const RESPONSE_MAX_BYTES: usize = 1 << 20;
 
 /// How long one request may take, connection to last byte.
-const TIMEOUT: Duration = Duration::from_secs(30);
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long connecting may take.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const _: () = assert!(CONNECT_TIMEOUT.as_secs() <= REQUEST_TIMEOUT.as_secs());
 /// What the runner calls itself; GitHub refuses a request that names nothing.
 const USER_AGENT: &str = concat!("agentsfleet-runner/", env!("CARGO_PKG_VERSION"));
 
@@ -82,19 +86,25 @@ impl Network {
     }
 
     fn build(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> Result<Self> {
-        let client = guarded_by(builder, resolver)
-            .https_only(true)
-            .timeout(TIMEOUT)
-            .connect_timeout(CONNECT_TIMEOUT)
-            .user_agent(USER_AGENT)
-            .build()?;
+        let client = tool_client(builder, resolver).build()?;
         Ok(Self { client })
     }
+}
+
+/// The tool transport's configuration, separate from inference's guarded client.
+fn tool_client(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> ClientBuilder {
+    guarded_by(builder, resolver)
+        .https_only(true)
+        .timeout(REQUEST_TIMEOUT)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .retry(reqwest::retry::never())
+        .user_agent(USER_AGENT)
 }
 
 #[async_trait::async_trait]
 impl Transport for Network {
     async fn send(&self, outbound: Outbound) -> Result<Inbound> {
+        let discard_redirect_body = outbound.discard_redirect_body;
         let host = outbound.host().to_owned();
         let mut request = self
             .client
@@ -108,19 +118,32 @@ impl Transport for Network {
             .await
             .map_err(|failed| unreached(&host, &failed))?;
         let status = response.status().as_u16();
-        let location =
-            header(&response, &LOCATION).and_then(|target| origin_of(response.url(), &target));
+        let target = Target::from_headers(response.url(), response.headers());
+        let location = target.as_ref().map(Target::origin);
         let content_type = header(&response, &CONTENT_TYPE);
-        let read = Capped::read(response, RESPONSE_MAX_BYTES)
-            .await
-            .map_err(|_unread| raise::upstream_unreachable(&host, NOT_READ))?;
+        let read = if discard_redirect_body && redirect::follows(status) {
+            Capped::default()
+        } else {
+            Capped::read(response, RESPONSE_MAX_BYTES)
+                .await
+                .map_err(|_unread| raise::upstream_unreachable(&host, NOT_READ))?
+        };
+        let (body, lossy) = match String::from_utf8(read.bytes) {
+            Ok(text) => (text, false),
+            Err(invalid) => (
+                String::from_utf8_lossy(invalid.as_bytes()).into_owned(),
+                true,
+            ),
+        };
         Ok(Inbound {
             status,
             location,
             content_type,
-            body: String::from_utf8(read.bytes)
-                .unwrap_or_else(|invalid| String::from_utf8_lossy(invalid.as_bytes()).into_owned()),
+            body,
             truncated: read.truncated,
+            lossy,
+            redirect: target,
+            followed_redirects: 0,
         })
     }
 }
@@ -134,11 +157,11 @@ fn header(response: &Response, name: &HeaderName) -> Option<String> {
 }
 
 /// The origin a redirect `target` points at, resolved against the request.
+#[cfg(test)]
 fn origin_of(request: &Url, target: &str) -> Option<String> {
-    request
-        .join(target)
+    Target::new(request, target)
         .ok()
-        .map(|resolved| resolved.origin().ascii_serialization())
+        .map(|target| target.origin())
 }
 
 /// The refusal a failed send answers with.
@@ -239,3 +262,7 @@ impl Capped {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "admission/tests.rs"]
+mod public_scope_tests;

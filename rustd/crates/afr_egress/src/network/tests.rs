@@ -10,6 +10,7 @@
 use std::io::{Read as _, Write as _};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use reqwest::header::HeaderMap;
@@ -114,6 +115,7 @@ async fn should_answer_address_not_allowed_when_the_resolver_refuses_the_name() 
         url: Url::parse(&format!("https://{INSIDE}:9/")).unwrap(),
         headers: HeaderMap::new(),
         body: None,
+        discard_redirect_body: false,
     };
 
     let refused = network().send(outbound).await.err().as_ref().map(shown);
@@ -128,6 +130,7 @@ async fn should_answer_unreachable_when_the_name_does_not_resolve() {
         url: Url::parse(&format!("https://{NOWHERE}/")).unwrap(),
         headers: HeaderMap::new(),
         body: None,
+        discard_redirect_body: false,
     };
 
     let refused = network().send(outbound).await.err().as_ref().map(shown);
@@ -159,6 +162,7 @@ async fn should_answer_timed_out_when_the_host_never_answers() {
         url: Url::parse(&format!("https://{address}/")).unwrap(),
         headers: HeaderMap::new(),
         body: None,
+        discard_redirect_body: false,
     };
 
     let refused = network().send(outbound).await.err().as_ref().map(shown);
@@ -204,6 +208,7 @@ async fn should_hand_back_a_body_that_is_not_utf8_with_its_bad_bytes_replaced() 
         url: Url::parse(&format!("http://{address}/")).unwrap(),
         headers: HeaderMap::new(),
         body: None,
+        discard_redirect_body: false,
     };
 
     let inbound = network.send(outbound).await.unwrap();
@@ -212,6 +217,7 @@ async fn should_hand_back_a_body_that_is_not_utf8_with_its_bad_bytes_replaced() 
         (inbound.status, inbound.body.as_str(), inbound.truncated),
         (200, "ok\u{fffd}", false)
     );
+    assert!(inbound.lossy);
 }
 
 #[tokio::test]
@@ -222,4 +228,94 @@ async fn should_answer_every_address_of_a_host_none_of_whose_addresses_is_blocke
         resolved.collect::<Vec<_>>(),
         [SocketAddr::new(PUBLIC_ADDRESS, 0)]
     );
+}
+
+#[tokio::test]
+async fn should_discard_redirect_bodies_before_waiting_for_them() {
+    let address = answering_and_holding(
+        b"HTTP/1.1 302 Found\r\nlocation: https://logs.example/download?sig=private-target\r\ntransfer-encoding: chunked\r\n\r\n",
+    );
+    let network = Network {
+        client: Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
+            .build()
+            .unwrap(),
+    };
+    let outbound = Outbound {
+        method: Method::GET,
+        url: Url::parse(&format!("http://{address}/")).unwrap(),
+        headers: HeaderMap::new(),
+        body: None,
+        discard_redirect_body: false,
+    };
+    let response = tokio::time::timeout(PROMPTLY, network.send(outbound.for_redirect_read()))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(response.status, 302);
+    assert_eq!(response.body, "");
+    assert_eq!(response.location.as_deref(), Some("https://logs.example"));
+    assert!(!format!("{response:?}").contains("private-target"));
+}
+
+/// Observe actual HTTP/2 request headers, then refuse that stream.
+async fn resetting_server() -> (SocketAddr, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind(ANY_LOOPBACK_PORT)
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+    let seen = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&seen);
+    let task = tokio::spawn(async move {
+        let mut connections = tokio::task::JoinSet::new();
+        while let Ok((stream, _peer)) = listener.accept().await {
+            let count = Arc::clone(&count);
+            connections.spawn(async move {
+                let mut connection = h2::server::handshake(stream).await.unwrap();
+                while let Some(request) = connection.accept().await {
+                    let (_headers, mut reply) = request.unwrap();
+                    count.fetch_add(1, Ordering::SeqCst);
+                    reply.send_reset(h2::Reason::REFUSED_STREAM);
+                }
+            });
+        }
+    });
+    (address, seen, task)
+}
+
+#[tokio::test]
+async fn should_disable_implicit_tool_request_retries() {
+    for method in [Method::GET, Method::POST] {
+        for guarded_tool in [true, false] {
+            let (address, seen, task) = resetting_server().await;
+            let builder = Client::builder().http2_prior_knowledge();
+            let builder = if guarded_tool {
+                super::tool_client(builder, resolver())
+            } else {
+                // Inference uses this shared guard and retains reqwest's default
+                // two retries of a remote REFUSED_STREAM protocol failure.
+                super::guarded_by(builder, resolver())
+            };
+            // Only HTTPS is relaxed for the local wire fixture. The production
+            // tool configuration, including its retry override, is unchanged.
+            let network = Network {
+                client: builder.https_only(false).build().unwrap(),
+            };
+            let outbound = Outbound {
+                method: method.clone(),
+                url: Url::parse(&format!("http://{address}/reset")).unwrap(),
+                headers: HeaderMap::new(),
+                body: None,
+                discard_redirect_body: false,
+            };
+            let refused = network.send(outbound).await.err().unwrap();
+            assert_eq!(refused.refusal(), Some(crate::Refusal::UpstreamUnreachable));
+            assert_eq!(
+                seen.load(Ordering::SeqCst),
+                if guarded_tool { 1 } else { 3 }
+            );
+            task.abort();
+        }
+    }
 }

@@ -1,14 +1,12 @@
 //! Each response field's stability class, as `x-stability` (REST §9).
 //!
-//! # Why this is derived and not annotated
-//!
-//! `utoipa` 5.5's `ToSchema` derive takes no extensions on a field, so the
-//! class cannot be written beside the field it describes. The table below is
-//! the next-closest place: one line per field that is not `stable`, checked by
-//! a test that every line still names a field the document publishes. A field
-//! left out is `stable`, which is the guidelines' binding default.
+//! `utoipa` field extensions do not survive a reference-valued field. The
+//! table keeps field classes together and tests every declared property in
+//! the published document. A field left out is `stable`, which is the
+//! guidelines' binding default.
 
 use utoipa::openapi::extensions::Extensions;
+use utoipa::openapi::schema::OneOf;
 use utoipa::openapi::{OpenApi, RefOr, Schema};
 
 /// The extension a field's class is published under.
@@ -26,6 +24,11 @@ const BETA_NOTE: &str = "Beta: this field may change shape before it is stable."
 /// The tool-call fields are read by the chat while its rendering is still
 /// being built, and the runner that fills them is new; both may reshape them.
 pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
+    ("NetworkPolicy", &["http_egress", "package_manager_domains"]),
+    (
+        "DefinitionNetwork",
+        &["http_egress", "package_manager_domains"],
+    ),
     ("EventDetail", &["tool_calls"]),
     (
         "ToolCallDetail",
@@ -57,37 +60,60 @@ pub(super) fn declare_beta<'a>(
     let mut missing = Vec::new();
     for &(schema, properties) in fields {
         for &property in properties {
-            match property_of(document, schema, property).and_then(parts_of) {
-                Some((extensions, description)) => {
-                    extensions
-                        .get_or_insert_with(Extensions::default)
-                        .insert(STABILITY.to_owned(), BETA.into());
-                    *description = Some(match description.take() {
-                        Some(text) => format!("{text} {BETA_NOTE}"),
-                        None => BETA_NOTE.to_owned(),
-                    });
-                }
-                None => missing.push((schema, property)),
+            if !property_of(document, schema, property).is_some_and(publish_beta) {
+                missing.push((schema, property));
             }
         }
     }
     missing
 }
 
-/// One inline property of one named object schema.
+/// One property of one named object schema.
 fn property_of<'d>(
     document: &'d mut OpenApi,
     schema: &str,
     property: &str,
-) -> Option<&'d mut Schema> {
+) -> Option<&'d mut RefOr<Schema>> {
     let components = document.components.as_mut()?;
     let RefOr::T(Schema::Object(object)) = components.schemas.get_mut(schema)? else {
         return None;
     };
-    match object.properties.get_mut(property)? {
-        RefOr::T(found) => Some(found),
-        RefOr::Ref(_) => None,
+    object.properties.get_mut(property)
+}
+
+/// A reference needs an inline wrapper to publish field metadata beside its target.
+fn publish_beta(field: &mut RefOr<Schema>) -> bool {
+    match field {
+        RefOr::T(schema) => annotate_beta(schema),
+        RefOr::Ref(reference) => {
+            let mut reference = reference.clone();
+            let description = (!reference.description.is_empty())
+                .then(|| std::mem::take(&mut reference.description));
+            let mut wrapper = Schema::OneOf(
+                OneOf::builder()
+                    .item(reference)
+                    .description(description)
+                    .build(),
+            );
+            let published = annotate_beta(&mut wrapper);
+            *field = wrapper.into();
+            published
+        }
     }
+}
+
+fn annotate_beta(schema: &mut Schema) -> bool {
+    let Some((extensions, description)) = parts_of(schema) else {
+        return false;
+    };
+    extensions
+        .get_or_insert_with(Extensions::default)
+        .insert(STABILITY.to_owned(), BETA.into());
+    *description = Some(match description.take() {
+        Some(text) => format!("{text} {BETA_NOTE}"),
+        None => BETA_NOTE.to_owned(),
+    });
+    true
 }
 
 /// Where a field's schema keeps its extensions and its description.

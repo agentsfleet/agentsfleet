@@ -6,8 +6,10 @@
 //! should find the answer beside the assertion that proves it.
 
 use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::{Access, RepositoryBinding as Authored};
-use afd_wire::policy::{NetworkPolicy, RepositoryAccess, RepositoryBinding};
+use afd_fleet_runtime::config::{
+    Access, HttpEgress as AuthoredEgress, RepositoryBinding as Authored,
+};
+use afd_wire::policy::{HttpEgress, NetworkPolicy, RepositoryAccess, RepositoryBinding};
 
 /// The fleet's egress policy, or the deny-all a fleet that declared none gets.
 ///
@@ -21,8 +23,14 @@ pub(super) fn network(config: &FleetConfig) -> NetworkPolicy<'_> {
             allow: Vec::new(),
             read_only: false,
             read_post_paths: Vec::new(),
+            ..NetworkPolicy::default()
         },
         |declared| NetworkPolicy {
+            http_egress: match declared.http_egress() {
+                AuthoredEgress::Restricted => HttpEgress::Restricted,
+                AuthoredEgress::Public => HttpEgress::Public,
+            },
+            package_manager_domains: declared.package_manager_domains(),
             allow: declared
                 .allow()
                 .iter()
@@ -82,20 +90,34 @@ mod tests {
 
         assert_eq!(policy.allow, [] as [std::borrow::Cow<'_, str>; 0]);
         assert!(!policy.read_only);
+        assert_eq!(policy.http_egress, afd_wire::policy::HttpEgress::Restricted);
+        assert!(!policy.package_manager_domains);
         assert_eq!(policy.read_post_paths, [] as [std::borrow::Cow<'_, str>; 0]);
     }
 
     #[test]
-    fn a_declared_network_block_carries_all_three_fields() {
+    fn a_declared_network_block_carries_all_fields() {
         let declared = config(
             r#","network":{"allow":["api.stripe.com"],"read_only":true,
-               "read_post_paths":["/v1/graphql"]}"#,
+               "read_post_paths":["/v1/graphql"],"http_egress":"public",
+               "package_manager_domains":true}"#,
         );
         let policy = network(&declared);
 
         assert_eq!(policy.allow, vec!["api.stripe.com"]);
         assert!(policy.read_only);
         assert_eq!(policy.read_post_paths, vec!["/v1/graphql"]);
+        assert_eq!(policy.http_egress, afd_wire::policy::HttpEgress::Public);
+        assert!(policy.package_manager_domains);
+    }
+
+    #[test]
+    fn an_empty_network_block_keeps_http_restricted() {
+        let declared = config(r#","network":{}"#);
+        assert_eq!(
+            network(&declared),
+            afd_wire::policy::NetworkPolicy::default()
+        );
     }
 
     #[test]

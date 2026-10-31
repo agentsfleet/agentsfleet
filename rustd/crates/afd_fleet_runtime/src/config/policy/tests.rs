@@ -9,6 +9,48 @@ use serde_json::{Map, json};
 use crate::config::raw;
 use crate::error::ErrorKind;
 
+#[test]
+fn should_default_http_egress_to_restricted_and_refuse_unknown_modes() -> crate::Result<()> {
+    let input = |network| {
+        json!({"name":"probe","x-agentsfleet":{
+            "tools":[],"network":network,"budget":{"daily_nanos":NANOS_PER_USD.to_string()}
+        }})
+        .to_string()
+    };
+    for (network, expected) in [
+        (json!({}), super::HttpEgress::Restricted),
+        (
+            json!({"http_egress":"restricted"}),
+            super::HttpEgress::Restricted,
+        ),
+        (
+            json!({"http_egress":"public", "package_manager_domains":true}),
+            super::HttpEgress::Public,
+        ),
+    ] {
+        let parsed = crate::FleetConfig::authored(&input(network))?;
+        assert_eq!(
+            parsed.network().map(|policy| (
+                policy.http_egress(),
+                policy.package_manager_domains(),
+                policy.allow().len()
+            )),
+            Some((expected, expected == super::HttpEgress::Public, 0))
+        );
+    }
+    for network in [
+        json!({"http_egress":"all"}),
+        json!({"package_manager_domains":"yes"}),
+    ] {
+        let refused = crate::FleetConfig::authored(&input(network)).err();
+        assert_eq!(
+            refused.map(|error| error.code()),
+            Some(error_code::AGENTSFLEET_INVALID_CONFIG)
+        );
+    }
+    Ok(())
+}
+
 /// A configuration declaring `threshold` as its stage-chunk threshold.
 fn chunked(threshold: f64) -> String {
     json!({"name": "probe", "x-agentsfleet": {

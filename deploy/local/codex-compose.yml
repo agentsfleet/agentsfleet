@@ -1,0 +1,7 @@
+# Linux loopback stays local to this VM; no acceptance port is exposed on its interfaces.
+services:
+  caddy:
+    network_mode: host
+    ports: !reset []
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${LOCAL_ACCEPTANCE_ADMIN_PORT}/config/"]

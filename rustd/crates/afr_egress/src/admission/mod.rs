@@ -11,7 +11,9 @@
 use std::borrow::Cow;
 use std::fmt;
 
-use afd_wire::policy::{ExecutionPolicy, HttpOriginPolicy, Mintable, NetworkPolicy};
+use afd_wire::policy::{
+    ExecutionPolicy, HttpEgress, HttpOriginPolicy, Mintable, NetworkPolicy, PACKAGE_MANAGER_DOMAINS,
+};
 use afr_secrets::{FIELD_HOST, FIELD_TOKEN, StaticSecrets};
 use reqwest::header::{AUTHORIZATION, HOST};
 use reqwest::{Method, Url};
@@ -206,7 +208,10 @@ impl<'p> Admission<'p> {
                 .filter_map(|entry| allowlist_host(entry))
                 .any(|allowed| allowed == wanted)
         });
-        named
+        let public = self.network.http_egress == HttpEgress::Public;
+        let package =
+            self.network.package_manager_domains && PACKAGE_MANAGER_DOMAINS.contains(&host);
+        (public || package || named)
             .then_some(())
             .ok_or_else(|| raise::host_not_allowed(host))
     }
@@ -334,3 +339,7 @@ mod credential_tests;
 
 #[cfg(test)]
 mod allowlist_tests;
+
+#[cfg(test)]
+#[path = "http_egress/tests.rs"]
+mod http_egress_tests;

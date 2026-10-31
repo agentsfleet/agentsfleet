@@ -8,9 +8,16 @@
 use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result};
 
+pub(crate) mod http_egress;
+use http_egress::HttpEgress;
+
 /// Where a fleet may reach.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Network {
+    /// Destination scope for HTTP tools alone.
+    http_egress: HttpEgress,
+    /// Whether HTTP tools admit the package registry preset.
+    package_manager_domains: bool,
     /// Hosts it may reach at all.
     allow: Box<[Box<str>]>,
     /// Whether egress is read-only.
@@ -20,6 +27,18 @@ pub struct Network {
 }
 
 impl Network {
+    /// Destination scope for HTTP tools; sandbox networking is configured separately.
+    #[must_use]
+    pub const fn http_egress(&self) -> HttpEgress {
+        self.http_egress
+    }
+
+    /// Whether HTTP tools may reach the standard package registry domains.
+    #[must_use]
+    pub const fn package_manager_domains(&self) -> bool {
+        self.package_manager_domains
+    }
+
     /// Hosts this fleet may reach.
     #[must_use]
     pub fn allow(&self) -> &[Box<str>] {
@@ -54,6 +73,8 @@ impl TryFrom<raw::Network> for Network {
         };
 
         Ok(Self {
+            http_egress: authored.http_egress.unwrap_or_default(),
+            package_manager_domains: authored.package_manager_domains.unwrap_or_default(),
             allow: entries(authored.allow),
             // Absent reads as false: the permissive value is the one an author
             // gets by not thinking about it, and it is what every existing

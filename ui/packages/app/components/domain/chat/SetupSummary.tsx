@@ -9,9 +9,14 @@ import { FleetTriggerSummary } from "@/components/domain/FleetTriggerSummary";
 
 const ConfigSchema = z.object({"x-agentsfleet": z.object({triggers: z.array(FleetTriggerSchema).optional()})});
 const AmountSchema = z.string().regex(/^[1-9][0-9]*$/);
+const NetworkSchema = z.object({
+  http_egress: z.enum(["restricted", "public"]).optional(),
+  package_manager_domains: z.boolean().optional(),
+  allow: z.array(z.string()).optional(), read_only: z.boolean().optional(),
+});
 const RequirementsSchema = z.object({
   credentials: z.array(z.string()), repositories: z.array(z.string()), tools: z.array(z.string()),
-  network: z.object({allow: z.array(z.string()).optional(), read_only: z.boolean().optional()}).optional(),
+  network: NetworkSchema.optional(),
   budget: z.object({daily_nanos: AmountSchema, monthly_nanos: AmountSchema.optional()}),
 });
 const NANO_DIGITS = 9;
@@ -47,12 +52,23 @@ function AccessSummary({requirements}: {requirements: Review["requirements"]}) {
       <ListItem><span className="font-medium">Tools: </span>{tools.length ? tools.join(", ") : "No tools requested."}</ListItem>
       <ListItem><span className="font-medium">Connected accounts: </span>{credentials.length ? credentials.join(", ") : "None requested."}</ListItem>
       <ListItem><span className="font-medium">Repositories: </span>{repositories.length ? repositories.join(", ") : "None requested."}</ListItem>
-      <ListItem><span className="font-medium">Network: </span>{network?.allow === undefined ? "No explicit host limit shown here. Confirm the network policy before saving."
-        : network.allow.length ? `Requests to ${network.allow.join(", ")}.${network.read_only ? " Read-only policy enabled." : ""}` : "Outbound requests are blocked."}</ListItem>
+      <ListItem><span className="font-medium">HTTP egress: </span>{networkDescription(network)}</ListItem>
       <ListItem><span className="font-medium">Spending limit: </span>{dollars(budget.daily_nanos)} per day{budget.monthly_nanos ? `; ${dollars(budget.monthly_nanos)} per month` : "; no monthly limit"}.</ListItem>
     </List>
     <p className="text-xs text-muted-foreground">These are limits, not a fixed charge. Actual spending depends on usage.</p>
   </Section>;
+}
+
+function networkDescription(network: z.infer<typeof NetworkSchema> | undefined): string {
+  const readOnly = network?.read_only ? " Read-only policy enabled." : "";
+  if (network?.http_egress === "public") return `Public HTTPS destinations.${readOnly}`;
+  if (network?.package_manager_domains) {
+    const additional = network.allow?.length ? ` Additional domains: ${network.allow.join(", ")}.` : "";
+    return `Standard package registry domains.${additional}${readOnly}`;
+  }
+  if (network?.allow === undefined) return "No explicit host limit shown here. Confirm the network policy before saving.";
+  if (network.allow.length === 0) return "HTTP requests are blocked.";
+  return `Requests to ${network.allow.join(", ")}.${readOnly}`;
 }
 
 function dollars(nanos: string): string {

@@ -209,7 +209,7 @@ fn test_trace_bounds_come_from_afd_wire() {
     for number in 1..=(TRACE_MAX_CALLS as u64 + 1) {
         counted.push(number, "update_plan", Map::new(), ended("4"));
     }
-    let counted = counted.finish().unwrap();
+    let counted = counted.finish();
     assert_eq!(counted.calls.len(), TRACE_MAX_CALLS);
     assert_eq!(counted.omitted_call_count, 1);
     assert_eq!(counted.validate(), Ok(()));
@@ -220,7 +220,7 @@ fn test_trace_bounds_come_from_afd_wire() {
     for number in 1..=70 {
         sized.push(number, "http_request", Map::new(), ended(&edge));
     }
-    let sized = sized.finish().unwrap();
+    let sized = sized.finish();
     assert_eq!(sized.validate(), Ok(()));
     assert!(serde_json::to_vec(&sized).unwrap().len() <= TRACE_MAX_BYTES);
     assert!(sized.calls.first().unwrap().output_head.is_some());
@@ -236,6 +236,9 @@ fn test_trace_bounds_come_from_afd_wire() {
 }
 
 #[test]
-fn should_finish_with_no_trace_for_a_run_that_called_nothing() {
-    assert!(Trace::default().finish().is_none());
+fn should_finish_with_a_known_empty_trace_when_no_tool_ran() {
+    assert_eq!(
+        json!(Trace::default().finish()),
+        json!({"calls": [], "omitted_call_count": 0})
+    );
 }

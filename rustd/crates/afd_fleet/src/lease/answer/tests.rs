@@ -57,6 +57,7 @@ fn policy() -> ExecutionPolicy<'static> {
             allow: Vec::new(),
             read_only: true,
             read_post_paths: Vec::new(),
+            ..NetworkPolicy::default()
         },
         tools: Vec::new(),
         secrets_map: None,

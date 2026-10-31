@@ -57,7 +57,9 @@ impl Handler for HttpRequest {
     const DESCRIPTION: &'static str = "Send one HTTPS request to a host this fleet's \
         network policy allows, and read back its status and up to 1 MiB of its body. \
         Write a credential as ${secrets.NAME.FIELD} in the Authorization header; it is \
-        put in place when the request is sent.";
+        put in place when the request is sent. A GET without a body follows up to \
+        three redirects, admitting every target under the same policy. All supplied \
+        headers are removed permanently after an origin change; temporary URLs stay private.";
     type Arguments = Request;
 
     async fn run(&self, arguments: Request, context: ToolContext<'_, '_>) -> ToolOutput {
@@ -70,7 +72,13 @@ impl Handler for HttpRequest {
             body: arguments.body,
             placement: Placement::Authorization,
         };
-        match egress::send(Self::ENTRY, self.transport.as_ref(), context.lease, draft).await {
+        let response = if draft.method.eq_ignore_ascii_case(DEFAULT_METHOD) && draft.body.is_none()
+        {
+            egress::send_get(Self::ENTRY, self.transport.as_ref(), context.lease, draft).await
+        } else {
+            egress::send(Self::ENTRY, self.transport.as_ref(), context.lease, draft).await
+        };
+        match response {
             Ok(inbound) => egress::answered(inbound.status, render(&inbound)),
             Err(refused) => refused,
         }
@@ -86,15 +94,33 @@ fn render(inbound: &Inbound) -> String {
         .map(|origin| format!("Location: {origin}\n"))
         .unwrap_or_default();
     let cut = if inbound.truncated {
-        format!("\n[Response truncated at {RESPONSE_MAX_BYTES} bytes]")
+        format!("[Response truncated at {RESPONSE_MAX_BYTES} bytes]\n")
+    } else {
+        String::new()
+    };
+    let content_type = inbound
+        .content_type
+        .as_ref()
+        .map(|value| format!("Content-Type: {value}\n"))
+        .unwrap_or_default();
+    let lossy = if inbound.lossy {
+        "[Response contains replaced non-UTF-8 bytes]\n"
+    } else {
+        ""
+    };
+    let hops = if inbound.followed_redirects > 0 {
+        format!("Redirects followed: {}\n", inbound.followed_redirects)
     } else {
         String::new()
     };
     format!(
-        "Status: {}\n{location}\nResponse Body:\n{}{cut}",
+        "Status: {}\n{location}{content_type}{hops}{cut}{lossy}\nResponse Body:\n{}",
         inbound.status, inbound.body
     )
 }
 
+#[cfg(test)]
+#[path = "redirect/tests.rs"]
+mod redirect_tests;
 #[cfg(test)]
 mod tests;
