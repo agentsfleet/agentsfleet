@@ -12,7 +12,13 @@ use super::{MAX_ALLOW_ENTRIES, MAX_ALLOW_LEN};
 #[derive(Debug, Deserialize, Validate)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionNetwork))]
 pub(crate) struct Network {
-    /// The hosts the fleet may reach. An empty list blocks every outbound request.
+    /// HTTP destination scope. Omit for restricted access.
+    #[garde(skip)]
+    pub(crate) http_egress: Option<crate::config::HttpEgress>,
+    /// Whether HTTP tools may reach standard package registry domains.
+    #[garde(skip)]
+    pub(crate) package_manager_domains: Option<bool>,
+    /// Additional exact hosts the fleet may reach.
     #[garde(inner(
         length(max = MAX_ALLOW_ENTRIES),
         inner(length(chars, min = 1, max = MAX_ALLOW_LEN), custom(is_token))

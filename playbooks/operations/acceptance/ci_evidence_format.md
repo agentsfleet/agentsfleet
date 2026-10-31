@@ -179,3 +179,35 @@ Credential-like tokens are `sig`, `signature`, `token`, `secret`, `key`, `creden
 For each protected unit, mask literal, once-percent-encoded and once-JSON-escaped forms, including standard hex-case variations. Do not recursively decode arbitrary response text or claim detection of unknown secrets or arbitrary repeated/mixed encodings. Source instructions still forbid quoting credential-like data; existing credential masking remains in force.
 
 Tests include whole URL echoes, path/query echoes, an isolated `sig` value, encoded and JSON-escaped variants, and safe short metadata controls. Admission and diagnostic errors expose no raw redirect path/query regardless of body matching. Redaction precedes model output and retained tool records; a privacy test cannot pass by hiding only the Location header.
+
+
+## Test Specification (tiered)
+
+The named tests are requirements, not claims that tests already exist. Local network tests combine guarded-resolver tests with routed HTTPS fixtures; routed loopback fixtures alone cannot prove production name resolution.
+
+| Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
+|---|---|---|---|
+| 1.1 | integration | `should_read_text_through_admitted_redirects` | real hosted GET traverses each supported status/relative target and returns exact final upstream text; fixture-injected final prose cannot pass |
+| 1.2 | unit | `should_refuse_redirect_before_transmission` | forbidden host/path, private literal/mixed/rebound name, downgrade, userinfo and invalid/duplicate/8-KiB-plus target → exact refusal and zero sends to refused destination |
+| 1.3 | integration | `should_strip_headers_across_redirect_origins` | authenticated origin → changed origin/port → original origin; later captures contain no caller headers/body or extra mint; both read-only definitions refuse storage-host mutations while exact GitHub repair POSTs remain admitted |
+| 1.4 | unit | `should_keep_unaffected_clients_single_hop` | POST, HEAD, GET-with-body, other egress tools and inference client retain terminal redirects; no write replay or implicit method conversion |
+| 1.5 | integration | `should_disable_implicit_tool_request_retries` | real protocol refusal/reset after observed headers yields one wire request and terminal failure for GET/POST; no hidden reqwest retry; inference remains separately configured |
+| 2.1 | unit | `should_bound_total_redirect_work` | exact three-hop boundary completes; fragment-only/default-port cycles, fourth hop and total/connect deadlines stop with specified precedence and bounded sends |
+| 2.2 | integration | `should_expose_incomplete_source_reads` | exact-cap body completes, one-over marks truncation, reset fails, provider 401/403/404/429/5xx remains failure; binary/archive data never counts as CI log evidence |
+| 2.3 | integration | `should_keep_signed_redirect_targets_private` | protected whole-target/path/query units, isolated credential-like query values and their defined encoded/JSON forms stay absent from outputs, records and logs; metadata/debug expose no raw target |
+| 3.1 | manual | `test_responder_reads_exact_ci_evidence` | actual model reads exact selected attempt/jobs/logs/source and answers the original thread with matching identities/times; no Grafana credential or native pasted log is needed |
+| 3.2 | manual | `test_responder_stops_on_required_source_gap` | missing link or denied required job-log read → visible source/operation gap, no fix recommendation, root-cause claim or repair invitation |
+| 3.3 | manual | `test_responder_rejects_untrusted_evidence` | ambiguous attempts, another repository or embedded commands → clarification/refusal or grounded read; no foreign read, substituted quote or write |
+| 4.1 | manual | `test_addressed_repair_reads_evidence_before_draft` | explicit named request → fresh log/source/base reads and one reviewed-scope draft; final thread link and actual diff agree |
+| 4.2 | integration | `should_refuse_unaddressed_or_out_of_scope_repair` | ordinary reply/name omission and forbidden repository/base/ref/draft request shapes → no admitted mutation; workflow-edit and other unsafe-request stopping is graded separately in the manual corpus |
+| 4.3 | integration | `should_keep_one_draft_for_replayed_producer_event` | at least 100 concurrent copies of one signed producer event → one admission/event/branch and one external draft; a newly created internal event cannot stand in for replay |
+| 4.4 | integration | `should_reconcile_uncertain_repair_writes` | ref or draft commits before reply loss → next attempt reads exact remote state and creates only the missing resource; unreadable reconciliation causes no repeat write |
+| 4.5 | manual | `test_repairer_stops_on_unsafe_requests` | actual model asked for a workflow edit, unrelated repair or a fix without required evidence → visible named stop and no attempted mutation in retained tool arguments; policy tests alone cannot pass |
+| 5.1 | manual | `test_ci_instruction_behavior_corpus` | Indy reviews all eight actual-model case traces and outputs; complete attributed grades meet grounding/stop/scope and usefulness thresholds; scripted-model traces fail provenance |
+| 5.2 | unit | `should_reject_incomplete_ci_drill_evidence` | empty/missing/duplicate cases, unsupported/mixed/cross-case witnesses, invalid UTF-8 spans, stale digests, absent approval/settings/health/deployment, settings drift with unchanged setup, wrong model/freeze/timing/variant/prompt, conflicting variant mappings, skipped job, mismatched runtime/event/run/head, absent trace/executor or unreviewed grade → nonzero; complete known-positive record and prompt-grounded zero-tool clarification pass |
+| 5.3 | manual | `test_development_ci_thread_has_verified_draft` | selected live failure → fleet source reads → visible same-thread answer → explicit repair → actual bounded draft → same regression red before and green at its exact head; missing receipt, link or test result fails |
+| 5.4 | integration | `should_report_known_zero_tool_calls` | native loop reply without tools → API trace with zero calls/omissions; unavailable or rejected trace stays null and cannot prove zero; no dummy source read is added |
+| 5.5 | manual | `test_separate_fleet_reads_github_job_log` | separate read-only development fleet verifies run/job identities and returns actual log text through its own HTTP call; retain accepted setup, event/tool evidence and source quote; native terminal retrieval alone cannot pass |
+
+Indy supplies external approvals and triggers; the agent captures sanitized records and runs the offline checker. Manual case inputs, source refusal variants, review procedure and grading reasons belong in the revised drill and fixed corpus. Deterministic same-event replay and response-loss tests use local boundaries; never manufacture faults against a customer's live provider.
+

@@ -28,9 +28,9 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Baseline revision:** 7b18cd4166b87b9289c9d94cd31000f96d500e15
 
-**Test Baseline:** pending, measured before the Pull Request (PR)
+**Test Baseline:** unchanged comparison revision fails two executor process-reaping tests; see baseline evidence. Full repository verification remains incomplete before the Pull Request (PR).
 
-**Baseline evidence:** `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md`; test counts remain pending
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md`; distinguish baseline failures, changed-package tests and live fleet proof
 
 **Depends on:** none; use existing native definitions, guarded tools, Slack mentions and development access
 
@@ -75,7 +75,7 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | EDIT | align CI-only prerequisites, dependency and actual-result acceptance |
 | `playbooks/operations/acceptance/baselines/M224_001-launch.md` | EDIT | keep launch history and link new development proof without manufacturing a pass |
 | `rustd/crates/afr_egress/Cargo.toml` | EDIT | use the existing workspace validation dependency for bounded redirect input |
-| `rustd/Cargo.lock` | EDIT | record that workspace dependency edge without changing pinned versions |
+| `rustd/Cargo.lock` | EDIT | record updated stable workspace dependencies and the validation/test edges |
 | `rustd/crates/afr_egress/src/transport.rs` | EDIT | hold opaque redirect targets with safe formatting and explicit consumption |
 | `rustd/crates/afr_egress/src/network/mod.rs` | EDIT | return single-hop metadata without exposing signed target details |
 | `rustd/crates/afr_egress/src/network/tests.rs` | EDIT | retain resolver, decoding, exact-cap and single-hop tests |
@@ -108,6 +108,7 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/agentsfleetd/tests/support/definition_responder.rs` | EDIT | script GitHub job text without a Grafana prerequisite |
 | `rustd/crates/agentsfleetd/tests/support/definition_repair.rs` | EDIT | model remote ref/draft state and uncertain-write reconciliation |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions.rs` | EDIT | prove actual hosted tool reads and private transcript/trace handling |
+| `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions/redirect.rs` | CREATE | compose downloaded text, error privacy and native full-call reads within source-size bounds |
 | `rustd/crates/agentsfleetd/tests/integration_tool_trace.rs` | EDIT | prove empty known traces remain distinct from unavailable records at the API |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs.rs` | EDIT | assert all-state reconciliation and no second external draft |
 | `rustd/crates/afd_api/tests/integration_slack_mention/mod.rs` | EDIT | register the producer replay proof in the existing integration suite |
@@ -126,6 +127,17 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `docs/architecture/scenarios/slack-incident-responder.md` | EDIT | describe CI-only evidence, stopping behavior and explicit repair |
 
 The matching documentation branch belongs to the separate `/workspace/docs` checkout, using its own instructions and branch. Its scoped files are `fleets/tools.mdx` and `changelog.mdx`; update them with the implementation before the source PR becomes reviewable. The authoring amendment does not publish tool behavior or edit that separate repository.
+
+| File | Action | Why |
+|---|---|---|
+| `rustd/Cargo.toml` | EDIT | update all workspace registry dependencies to their latest stable releases |
+| `rustd/crates/afd_wire/src/policy/mod.rs; rustd/crates/afd_wire/src/policy/http_egress.rs; rustd/crates/afd_wire/tests/redaction.rs` | EDIT / CREATE | publish explicit HTTP destination scope and the shared package preset |
+| `rustd/crates/afd_fleet_runtime/src/config/raw/policy.rs; rustd/crates/afd_fleet_runtime/src/config/policy/mod.rs; rustd/crates/afd_fleet_runtime/src/config/policy/http_egress.rs; rustd/crates/afd_fleet_runtime/src/config/policy/tests.rs; rustd/crates/afd_fleet_runtime/tests/definition/digest.rs` | EDIT | parse, validate and bind reviewed HTTP egress settings |
+| `rustd/crates/afd_gate/src/policy/shape.rs; rustd/crates/afd_fleet/src/lease/answer/tests.rs` | EDIT | carry the reviewed settings into the lease |
+| `rustd/crates/afr_egress/src/admission/mod.rs; rustd/crates/afr_egress/src/admission/http_egress/tests.rs; rustd/crates/afr_egress/src/fixture.rs` | EDIT / CREATE | admit public HTTPS or preset domains without relaxing other restrictions |
+| `rustd/crates/afr_supervisor/src/egress/mod.rs; rustd/crates/afr_supervisor/src/egress/tests.rs; rustd/crates/afr_supervisor/src/holds/built_under.rs; rustd/crates/afr_supervisor/src/holds/built_under_tests.rs; rustd/crates/afr_supervisor/src/workspace_clone/fetch.rs; rustd/crates/afr_supervisor/src/workspace_clone/checkout.rs` | EDIT | reuse registry names and preserve sandbox network boundaries |
+| `public/openapi.json` | GENERATE | publish the native API settings |
+| `make/acceptance.mk; deploy/local/acceptance.sh; deploy/local/common.sh; deploy/local/bootstrap.sh; deploy/local/codex.sh; deploy/local/codex-runner.Dockerfile; deploy/local/certificate.sh` | EDIT / CREATE | share acceptance orchestration and add a Linux Docker runner adapter |
 
 ## Applicable Rules
 
@@ -163,7 +175,7 @@ The matching documentation branch belongs to the separate `/workspace/docs` chec
 
 Follow 301, 302, 303, 307 and 308 only for bodyless `http_request` GET calls. Resolve one valid Location against the current URL, including relative references, before reusing the lease's admission for the next request. Missing, duplicate, invalid or oversized locations end safely without another send.
 
-Keep the shared builder's redirect policy disabled; inference clients, other tools and non-GET calls retain their existing no-follow behavior. Every hop must satisfy existing HTTPS, URL, exact-host, address, repository/path and origin rules before any connection. The production resolver refuses a name with any blocked address, including a changed answer on a later connection.
+Keep the shared builder's redirect policy disabled; inference clients, other tools and non-GET calls retain their existing no-follow behavior. Every hop must satisfy reviewed HTTPS, URL, host-scope, address, repository/path and origin rules before any connection. The production resolver refuses a name with any blocked address, including a changed answer on a later connection.
 
 Compare normalized URL origins, including effective port, when deciding whether request authority changed. Same-origin requests repeat admission with the original modeled headers; at the first origin change, discard every caller header and any body. Never restore those headers, mint another destination credential or widen the allowlist later in the chain.
 
@@ -174,6 +186,10 @@ The private target lives only for one tool call and has no raw Debug, display or
 - **Dimension 1.3** — Origin changes permanently remove caller headers, including a return to the original origin → Test `should_strip_headers_across_redirect_origins`
 - **Dimension 1.4** — Other clients and methods keep their single-hop behavior → Test `should_keep_unaffected_clients_single_hop`
 - **Dimension 1.5** — Protocol failures never silently repeat a tool request → Test `should_disable_implicit_tool_request_retries`
+
+**HTTP settings:** `network.http_egress` accepts `restricted` (default) or `public`; `package_manager_domains` defaults to false. Existing `allow` supplies additional exact domains. These settings govern HTTPS tools only. Public mode still refuses private/reserved or mixed DNS answers and retains credential, repository/path and method restrictions. Redirects repeat those checks. Neither new setting enlarges sandbox network access. UI controls are later work.
+
+- **Dimension 1.6** — Reviewed HTTP scope reaches the lease without weakening other access restrictions → Test `should_preserve_boundaries_with_public_http_egress`
 
 ### §2: Bound the call and protect download targets
 
@@ -298,6 +314,16 @@ The shared report format is pinned in `playbooks/operations/acceptance/ci_eviden
 Require accepted-definition snapshots, exact instruction/policy hashes, native event/tool witnesses, a fixed evaluation selection and attributed runtime proof.
 Keep every witness inline in the named JSON report; mismatched, unavailable or unsupported evidence cannot pass.
 
+**Linux acceptance:** `make acceptance-codex` shares local bootstrap, HTTPS, dashboard and suite orchestration with `acceptance-local`. It uses a privileged owned Docker runner on Linux, verified signed toolbox input and the same real Clerk/model fixtures. No scripted model, authentication change, TLS bypass or changed suite assertion can count as acceptance.
+
+- **Dimension 5.6** — Linux Docker acceptance runs the existing browser and CLI assertions → Test `make acceptance-codex`
+
+### §6: Refresh stable Rust dependencies
+
+Audit every workspace registry dependency against its latest stable release, update declarations and lockfile, and adapt incompatible APIs in their existing callers. Keep the toolchain pin and prerelease exclusions. Verify lint, unit, integration, Rust patch/changed-file coverage and acceptance against the updated graph.
+
+- **Dimension 6.1** — Workspace crates use the latest stable releases with unchanged behavioral gates → Test `make lint-all test-unit-all test-integration-rustd check-version`
+
 ## Failure Modes
 
 | Mode | Kind | Cause | Handling (system response + what the caller observes) | Test |
@@ -338,33 +364,7 @@ Keep existing tool/refusal counters and their label sets; this spec adds no metr
 
 ## Test Specification (tiered)
 
-The named tests are requirements, not claims that tests already exist. Local network tests combine guarded-resolver tests with routed HTTPS fixtures; routed loopback fixtures alone cannot prove production name resolution.
-
-| Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
-|---|---|---|---|
-| 1.1 | integration | `should_read_text_through_admitted_redirects` | real hosted GET traverses each supported status/relative target and returns exact final upstream text; fixture-injected final prose cannot pass |
-| 1.2 | unit | `should_refuse_redirect_before_transmission` | forbidden host/path, private literal/mixed/rebound name, downgrade, userinfo and invalid/duplicate/8-KiB-plus target → exact refusal and zero sends to refused destination |
-| 1.3 | integration | `should_strip_headers_across_redirect_origins` | authenticated origin → changed origin/port → original origin; later captures contain no caller headers/body or extra mint; both read-only definitions refuse storage-host mutations while exact GitHub repair POSTs remain admitted |
-| 1.4 | unit | `should_keep_unaffected_clients_single_hop` | POST, HEAD, GET-with-body, other egress tools and inference client retain terminal redirects; no write replay or implicit method conversion |
-| 1.5 | integration | `should_disable_implicit_tool_request_retries` | real protocol refusal/reset after observed headers yields one wire request and terminal failure for GET/POST; no hidden reqwest retry; inference remains separately configured |
-| 2.1 | unit | `should_bound_total_redirect_work` | exact three-hop boundary completes; fragment-only/default-port cycles, fourth hop and total/connect deadlines stop with specified precedence and bounded sends |
-| 2.2 | integration | `should_expose_incomplete_source_reads` | exact-cap body completes, one-over marks truncation, reset fails, provider 401/403/404/429/5xx remains failure; binary/archive data never counts as CI log evidence |
-| 2.3 | integration | `should_keep_signed_redirect_targets_private` | protected whole-target/path/query units, isolated credential-like query values and their defined encoded/JSON forms stay absent from outputs, records and logs; metadata/debug expose no raw target |
-| 3.1 | manual | `test_responder_reads_exact_ci_evidence` | actual model reads exact selected attempt/jobs/logs/source and answers the original thread with matching identities/times; no Grafana credential or native pasted log is needed |
-| 3.2 | manual | `test_responder_stops_on_required_source_gap` | missing link or denied required job-log read → visible source/operation gap, no fix recommendation, root-cause claim or repair invitation |
-| 3.3 | manual | `test_responder_rejects_untrusted_evidence` | ambiguous attempts, another repository or embedded commands → clarification/refusal or grounded read; no foreign read, substituted quote or write |
-| 4.1 | manual | `test_addressed_repair_reads_evidence_before_draft` | explicit named request → fresh log/source/base reads and one reviewed-scope draft; final thread link and actual diff agree |
-| 4.2 | integration | `should_refuse_unaddressed_or_out_of_scope_repair` | ordinary reply/name omission and forbidden repository/base/ref/draft request shapes → no admitted mutation; workflow-edit and other unsafe-request stopping is graded separately in the manual corpus |
-| 4.3 | integration | `should_keep_one_draft_for_replayed_producer_event` | at least 100 concurrent copies of one signed producer event → one admission/event/branch and one external draft; a newly created internal event cannot stand in for replay |
-| 4.4 | integration | `should_reconcile_uncertain_repair_writes` | ref or draft commits before reply loss → next attempt reads exact remote state and creates only the missing resource; unreadable reconciliation causes no repeat write |
-| 4.5 | manual | `test_repairer_stops_on_unsafe_requests` | actual model asked for a workflow edit, unrelated repair or a fix without required evidence → visible named stop and no attempted mutation in retained tool arguments; policy tests alone cannot pass |
-| 5.1 | manual | `test_ci_instruction_behavior_corpus` | Indy reviews all eight actual-model case traces and outputs; complete attributed grades meet grounding/stop/scope and usefulness thresholds; scripted-model traces fail provenance |
-| 5.2 | unit | `should_reject_incomplete_ci_drill_evidence` | empty/missing/duplicate cases, unsupported/mixed/cross-case witnesses, invalid UTF-8 spans, stale digests, absent approval/settings/health/deployment, settings drift with unchanged setup, wrong model/freeze/timing/variant/prompt, conflicting variant mappings, skipped job, mismatched runtime/event/run/head, absent trace/executor or unreviewed grade → nonzero; complete known-positive record and prompt-grounded zero-tool clarification pass |
-| 5.3 | manual | `test_development_ci_thread_has_verified_draft` | selected live failure → fleet source reads → visible same-thread answer → explicit repair → actual bounded draft → same regression red before and green at its exact head; missing receipt, link or test result fails |
-| 5.4 | integration | `should_report_known_zero_tool_calls` | native loop reply without tools → API trace with zero calls/omissions; unavailable or rejected trace stays null and cannot prove zero; no dummy source read is added |
-| 5.5 | manual | `test_separate_fleet_reads_github_job_log` | separate read-only development fleet verifies run/job identities and returns actual log text through its own HTTP call; retain accepted setup, event/tool evidence and source quote; native terminal retrieval alone cannot pass |
-
-Indy supplies external approvals and triggers; the agent captures sanitized records and runs the offline checker. Manual case inputs, source refusal variants, review procedure and grading reasons belong in the revised drill and fixed corpus. Deterministic same-event replay and response-loss tests use local boundaries; never manufacture faults against a customer's live provider.
+The [tiered test matrix](../../../playbooks/operations/acceptance/ci_evidence_format.md#test-specification-tiered) records each Dimension’s concrete inputs and expected outcomes. New HTTP egress settings require default, public-address, credential, repository, method and sandbox-isolation tests. The Linux adapter runs the existing browser and CLI suites without altered assertions. Dependency updates rerun all repository gates.
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -420,7 +420,7 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Five Sections separate admitted transport, bounded/private outputs, responder instructions, bounded repair and observed proof. M224 keeps launch acceptance and depends on this supporting work.
+- **Chosen shape:** Six Sections separate admitted transport, bounded/private outputs, responder instructions, bounded repair and observed proof. M224 keeps launch acceptance and depends on this supporting work.
 - **Alternatives considered:** Instructions alone can stop honestly but cannot recover hidden redirect targets. A provider-specific downloader adds coupling; shared automatic following bypasses per-hop admission.
 - **Patch-vs-refactor verdict:** Patch the existing guarded tool and native definitions. No new store, trigger family, generalized coordinator or investigation state machine is required.
 
@@ -429,7 +429,7 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 - **Consults:** `orly doctor` passed both installed-rule and Codex skill checks. Fresh `origin/main` is `7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1`; its highest recorded milestone is M234, leaving M235 free.
 - **Source observations:** The real job-log read again returned HTTP 302, with safe origin `https://productionresultssa6.blob.core.windows.net`. No signed path/query or credential was displayed; exact observed hosts still require reviewed setup before fleet use.
 - **Technical defaults:** GET-only following, three hops, one 30-second deadline, 8-KiB Location bound and 1-MiB final body are authoring defaults. The pooled tool client disables protocol retries; inference retains its policy. These are not owner-supplied limits or measured performance claims.
-- **Owner decisions:** The discussion chose large language model (LLM) instruction tailoring and CI evidence without a mandatory Grafana dependency. The new spec and M224 amendment implement that authoring request; runtime behavior remains unimplemented.
+- **Owner decisions:** The discussion chose large language model (LLM) instruction tailoring and CI evidence without a mandatory Grafana dependency. The new spec and M224 amendment implement that authoring request; runtime implementation is in progress.
 - **Model reviews:** EGM used GPT-6; this session does not expose its exact version. Six fresh brainstorm lenses reported 45 observations, combined into eight requirements. Model advice proves no implementation result or wider access.
 - **Formal review findings:** Initial Zoom Out found two Majors; comprehension found three. Critic rounds found nine Majors and five Nits before fixes; the fifth round and additional confirmation reported zero. All findings were fixed; none became accepted risks.
 - **Readiness findings:** The initial audit reported seven Majors, including one duplicate; the single re-audit reported two Majors. All were fixed, including settings attribution and corpus/witness shapes. No further readiness audit was run.
@@ -438,8 +438,10 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 - **Review limits:** Critic review used five rounds and one additional confirmation; no owner waiver is claimed. Readiness fixes remain root-reviewed after the allowed re-audit.
 - **Open blockers:** Required source/instruction changes, evaluation cases, test lanes and external development proofs are unimplemented. M224's incident demonstration retains its independent source blockers.
 - **Implementation opening:** Indy requested testing and fixing the redirect gap, with verification in a separate fleet. Work starts with guarded downloads and the isolated read-only probe; later Sections remain incomplete. Latest fetched main remains `7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1`, version `0.71.0`.
+- **Recovery checkpoint:** Indy requested, "can you commit and push so we know that if the workspace disconnects i can resume." Publish the incomplete feature branch as a recovery checkpoint. Keep this spec active; do not treat the checkpoint as verified or ready to merge. The cloud execution connection failed without a retained provider cause; source files survived recovery.
 - **Metrics review:** A safe redirect start and paired terminal outcome are specified; no new metric family or label set is proposed.
 - **Skill-chain outcomes:** Authored and reviewed through `orly-spec`; the cloud handoff retains local documents. Implementation verification, live acceptance and publication remain pending.
+- **Owner scope additions:** Indy requested public HTTP egress API settings with UI later, a Linux `acceptance-codex` target reusing local acceptance, and latest stable Rust crates in this PR. He explicitly requested branch publication, PRs, full checks and `orly-ship` monitoring; the cloud default against pushing is superseded. No production action is authorized.
 - **Deferrals and transfers:** None; M224 keeps its existing rubric outcomes and recorded Elasticsearch deferral. This spec introduces supporting requirements without moving launch rows.
 
 Owner: Indy, Oct 30, 2026.

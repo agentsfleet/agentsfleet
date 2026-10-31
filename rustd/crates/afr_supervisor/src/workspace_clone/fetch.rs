@@ -17,6 +17,8 @@ pub(crate) type GitResult<T> = std::result::Result<T, GitError>;
 
 /// The remote every mirror fetches from, and every working copy names.
 pub(super) const ORIGIN: &str = "origin";
+/// Keep mirror branches under the same remote-tracking namespace as working copies.
+pub(super) const ORIGIN_REFSPEC: &str = "+refs/heads/*:refs/remotes/origin/*";
 /// The configuration key an extra request header is set under.
 const EXTRA_HEADER: &str = "http.extraHeader";
 
@@ -68,7 +70,12 @@ pub(super) fn fetch(
         gix::create::Kind::Bare,
         gix::create::Options::default(),
         options(),
-    )?;
+    )?
+    .configure_remote(|remote| {
+        Ok(remote
+            .with_refspecs([ORIGIN_REFSPEC], Direction::Fetch)?
+            .with_fetch_tags(gix::remote::fetch::Tags::All))
+    });
     prepare.fetch_only(gix::progress::Discard, stop)?;
     Ok(Fetched::Cloned)
 }

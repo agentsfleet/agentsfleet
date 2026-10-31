@@ -641,6 +641,28 @@ A scope that fails to build is torn down with its sandbox, and the lease is refu
 >
 > **Second residual: shared front ends.** The kernel set matches destination addresses alone, and the default registry hosts sit on front ends shared with other sites. A sandbox can reach any of those sites by naming it in Server Name Indication (SNI). A hard boundary needs `registry_allowlist` pointed at a mirror on addresses the operator owns.
 
+### Guarded tool downloads
+
+`http_request` follows 301, 302, 303, 307 and 308 only for a bodyless GET.
+
+The shared HTTP builder still disables automatic redirects. The tool composes continuations through the same lease's admission before each send (`afr_tools/src/egress/mod.rs`, `afr_egress/src/redirect/mod.rs`). HTTPS, exact-host, address and origin request rules remain authoritative at every hop.
+
+The guarded resolver checks every returned address at connection time.
+
+A call follows at most three redirects within one 30-second deadline, including admission and credential minting. Each connect retains a 10-second ceiling within that deadline.
+
+The pooled tool client disables implicit retries; inference retains its own policy. Intermediate response bodies are dropped unread. The final body retains the 1-MiB cap and reports truncation or lossy decoding before its text.
+
+One bounded Location is resolved relative to the current URL. Both raw and resolved values pass an 8-KiB `garde` bound before their respective parsing or admission. Loop identity is the pinned URL library's serialized absolute URL with its fragment removed; a repeated identity stops before admission or send.
+
+Missing, duplicate, malformed or oversized targets stop safely.
+
+At the first origin change, including effective port, the chain permanently drops all modeled headers. Later hops cannot restore them or mint another credential. The lease guard covers admission and minting, then releases before every transport wait.
+
+Private targets have no raw Debug or serialized projection. The model sees only a safe origin on a redirect refusal. Final response text and content type mask the finite known target spellings, including credential-like query values (`afr_egress/src/redirect/privacy.rs`).
+
+Unknown secrets and arbitrary repeated encodings are outside that detection claim. Redirect outcome records carry bounded status, counts and reasons; see [observability](./observability.md).
+
 ## Scaling
 
 The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N fleets and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `agentsfleetd` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `agt_r`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment, shipped) / M85_001 (label placement, shipped) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.

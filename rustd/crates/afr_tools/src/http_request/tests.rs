@@ -227,13 +227,16 @@ async fn should_answer_a_status_outside_2xx_as_failed_with_where_a_redirect_poin
         content_type: None,
         body: String::new(),
         truncated: true,
+        lossy: false,
+        redirect: None,
+        followed_redirects: 0,
     };
     let (transport, _sent) = RecordingTransport::answering(move |_outbound| Ok(reply.clone()));
 
     let output = request_through(
         false,
         Arc::new(transport),
-        json!({"url": "https://api.github.com/repos/acme/widgets/actions/jobs/7/logs"}),
+        json!({"url": format!("https://{GRAFANA}/logs"), "method": "HEAD"}),
     )
     .await;
 
@@ -241,8 +244,8 @@ async fn should_answer_a_status_outside_2xx_as_failed_with_where_a_redirect_poin
     assert_eq!(
         output.text,
         format!(
-            "[upstream_status] Status: 302\nLocation: https://logs.example.net\n\nResponse Body:\n\n\
-             [Response truncated at {RESPONSE_MAX_BYTES} bytes]"
+            "[upstream_status] Status: 302\nLocation: https://logs.example.net\n\
+             [Response truncated at {RESPONSE_MAX_BYTES} bytes]\n\nResponse Body:\n"
         )
     );
 }

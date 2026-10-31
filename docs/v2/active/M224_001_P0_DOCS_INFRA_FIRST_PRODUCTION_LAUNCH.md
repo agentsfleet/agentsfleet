@@ -66,7 +66,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` → `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | MOVE / EDIT | open the stream and record development-first execution, Dimensions and evidence |
 | `playbooks/operations/acceptance/baselines/M224_001-launch.md` | CREATE | revision-bound manual launch and fleet evidence |
-| `docs/v2/pending/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` | CREATE | specify the separate supporting source repair, Markdown instructions and development acceptance |
+| `docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` | EDIT | specify the separate supporting source repair, Markdown instructions and development acceptance |
 | `docs/architecture/ci_drill_evidence.md` → `playbooks/operations/acceptance/ci_evidence_format.md` | MOVE / EDIT | keep the pending proof format and attribution procedures alongside the acceptance playbook |
 
 External changes use existing runbooks: production tunnel/domain, runner-readiness variable, hosts/tokens, providers, drafts/grants and npm tags. Indy approves provider/host writes and releases. Required source/workflow repairs stop for a scope amendment; none are implicitly included.
@@ -281,5 +281,5 @@ N/A — no files deleted.
 
   > "Okay update the M224 and the above must be spec out using orly-spec skill?"
 
-- **Scope of the amendment:** M235_001 is a pending source-repair dependency with independent review and verification. The amendment supplies no passing fleet evidence, production authorization or authentication change. Dimension 3.3 keeps its `elastic`, `grafana`, Library and workflow-run requirements.
+- **Scope of the amendment:** M235_001 is an active source-repair dependency with independent review and verification. The amendment supplies no passing fleet evidence, production authorization or authentication change. Dimension 3.3 keeps its `elastic`, `grafana`, Library and workflow-run requirements.
 - **Deferrals** — Indy (2026-10-30): "I think only have grafana for now, we will elastic later". Elasticsearch setup waits for a later continuation. Dimension 3.3 remains incomplete and blocks closure; its incident acceptance requirements remain unchanged.

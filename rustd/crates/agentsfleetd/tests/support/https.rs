@@ -46,6 +46,7 @@ pub(crate) struct Reply {
     /// Stream the body, then fail the stream, so the connection closes
     /// mid-read after the declared length promised more.
     cut: bool,
+    content_type: &'static str,
 }
 
 impl Reply {
@@ -56,6 +57,7 @@ impl Reply {
             location: None,
             body: body.to_string(),
             cut: false,
+            content_type: JSON,
         }
     }
 
@@ -66,6 +68,7 @@ impl Reply {
             location: Some(location.to_owned()),
             body: String::new(),
             cut: false,
+            content_type: JSON,
         }
     }
 
@@ -77,6 +80,18 @@ impl Reply {
             location: None,
             body: body.to_owned(),
             cut: true,
+            content_type: JSON,
+        }
+    }
+
+    /// Downloaded job text or an upstream error, without a JSON wrapper.
+    pub(crate) fn text(status: u16, body: &str) -> Self {
+        Self {
+            status: StatusCode::from_u16(status).expect("a scripted status is valid"),
+            location: None,
+            body: body.to_owned(),
+            cut: false,
+            content_type: "text/plain",
         }
     }
 }
@@ -283,7 +298,7 @@ async fn answer(
         reply.unwrap_or_else(|| Reply::json(404, &serde_json::json!({"message": "Not Found"})));
     let mut response = Response::builder()
         .status(reply.status)
-        .header(CONTENT_TYPE, JSON);
+        .header(CONTENT_TYPE, reply.content_type);
     if let Some(location) = &reply.location {
         response = response.header(LOCATION, location);
     }

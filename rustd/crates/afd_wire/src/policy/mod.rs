@@ -8,7 +8,10 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+mod http_egress;
 pub mod repository;
+
+pub use http_egress::{HttpEgress, PACKAGE_MANAGER_DOMAINS};
 
 /// Provider-name prefix routing a custom OpenAI-compatible endpoint through the
 /// compatible-provider path with a configured base URL.
@@ -19,14 +22,20 @@ pub const CUSTOM_PROVIDER_PREFIX: &str = "custom:";
 
 /// Allowed hosts for HTTP tools.
 ///
-/// An empty `allow` list blocks these requests. Sandbox network access also depends on the
+/// Restricted mode with no allowed hosts blocks these requests. Sandbox network access also depends on the
 /// runner's network policy and registry allowlist.
 // Keeps the bare name: `runner::NetworkPolicy` is a different shape with the
 // same Rust name and publishes as `RunnerNetworkPolicy`, the name the
 // hand-written contract gave it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkPolicy<'a> {
+    /// HTTP destination scope; omitted means restricted to named hosts.
+    #[serde(default)]
+    pub http_egress: HttpEgress,
+    /// Admit the standard package registry hosts through HTTP tools.
+    #[serde(default)]
+    pub package_manager_domains: bool,
     /// Exact hostnames HTTP tools may reach.
     #[serde(borrow)]
     pub allow: Vec<Cow<'a, str>>,
