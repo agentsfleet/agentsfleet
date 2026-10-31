@@ -49,7 +49,6 @@ async fn should_refuse_mixed_dns_after_public_http_admission() {
             discard_redirect_body: false,
         })
         .await
-        .err()
-        .expect("a mixed public/private answer is refused whole");
+        .expect_err("a mixed public/private answer is refused whole");
     assert_eq!(refused.refusal(), Some(crate::Refusal::AddressNotAllowed));
 }

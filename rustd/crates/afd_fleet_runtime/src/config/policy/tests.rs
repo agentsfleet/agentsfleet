@@ -10,8 +10,13 @@ use crate::config::raw;
 use crate::error::ErrorKind;
 
 #[test]
-fn should_default_http_egress_to_restricted_and_refuse_unknown_modes() {
-    let mut input: serde_json::Value = serde_json::from_str(&chunked(0.75)).expect("fixture");
+fn should_default_http_egress_to_restricted_and_refuse_unknown_modes() -> crate::Result<()> {
+    let input = |network| {
+        json!({"name":"probe","x-agentsfleet":{
+            "tools":[],"network":network,"budget":{"daily_nanos":NANOS_PER_USD.to_string()}
+        }})
+        .to_string()
+    };
     for (network, expected) in [
         (json!({}), super::HttpEgress::Restricted),
         (
@@ -23,23 +28,27 @@ fn should_default_http_egress_to_restricted_and_refuse_unknown_modes() {
             super::HttpEgress::Public,
         ),
     ] {
-        input["x-agentsfleet"]["network"] = network;
-        let parsed = crate::FleetConfig::authored(&input.to_string()).expect("valid policy");
-        let policy = parsed.network().expect("network");
-        assert_eq!(policy.http_egress(), expected);
+        let parsed = crate::FleetConfig::authored(&input(network))?;
         assert_eq!(
-            policy.package_manager_domains(),
-            expected == super::HttpEgress::Public
+            parsed.network().map(|policy| (
+                policy.http_egress(),
+                policy.package_manager_domains(),
+                policy.allow().len()
+            )),
+            Some((expected, expected == super::HttpEgress::Public, 0))
         );
-        assert!(policy.allow().is_empty());
     }
     for network in [
         json!({"http_egress":"all"}),
         json!({"package_manager_domains":"yes"}),
     ] {
-        input["x-agentsfleet"]["network"] = network;
-        assert!(crate::FleetConfig::authored(&input.to_string()).is_err());
+        let refused = crate::FleetConfig::authored(&input(network)).err();
+        assert_eq!(
+            refused.map(|error| error.code()),
+            Some(error_code::AGENTSFLEET_INVALID_CONFIG)
+        );
     }
+    Ok(())
 }
 
 /// A configuration declaring `threshold` as its stage-chunk threshold.

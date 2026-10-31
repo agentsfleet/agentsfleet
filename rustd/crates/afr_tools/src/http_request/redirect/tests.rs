@@ -152,7 +152,10 @@ async fn should_keep_unaffected_clients_single_hop() {
         let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
         let mut arguments = json!({"url": format!("https://{GRAFANA}/logs"), "method": method});
         if let Some(body) = body {
-            arguments["body"] = json!(body);
+            arguments
+                .as_object_mut()
+                .expect("request arguments are an object")
+                .insert("body".to_owned(), json!(body));
         }
         let output = call(tool.as_ref(), &run.lease(), arguments).await;
         assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamStatus));
@@ -178,7 +181,7 @@ async fn should_bound_the_whole_http_read_deadline() {
     let output = call(tool.as_ref(), &lease, json!({"url": INITIAL})).await;
     assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
     assert!(output.text.contains("deadline exceeded"));
-    assert!(lease.egress.try_lock().is_ok());
+    drop(lease.egress.try_lock().expect("guard released during send"));
 }
 
 #[tokio::test]
@@ -271,12 +274,12 @@ struct SlowHops;
 
 #[async_trait::async_trait]
 impl Transport for SlowHops {
-    async fn send(&self, request: Outbound) -> afr_egress::Result<afr_egress::Inbound> {
+    async fn send(&self, outbound: Outbound) -> afr_egress::Result<afr_egress::Inbound> {
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
         Ok(redirected(
             302,
-            request.url(),
-            &format!("{}/next", request.url().path()),
+            outbound.url(),
+            &format!("{}/next", outbound.url().path()),
         ))
     }
 }
