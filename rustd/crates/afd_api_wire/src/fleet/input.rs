@@ -2,6 +2,19 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Display-only provenance; it grants no authority or access.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveOrigin {
+    /// Native command-line client.
+    Cli,
+    /// Dashboard setup controls.
+    Dashboard,
+    /// A completed setup-chat save turn.
+    Chat,
+}
+
 /// One immutable source accepted by Save.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Deserialize, Serialize)]
@@ -40,6 +53,8 @@ pub enum Start {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SaveFleetRequest {
+    /// Optional client-reported save surface, used only in the activity notice.
+    pub origin: Option<SaveOrigin>,
     /// Exact source that was reviewed.
     pub source: SaveSource,
     /// Validated instance slug.

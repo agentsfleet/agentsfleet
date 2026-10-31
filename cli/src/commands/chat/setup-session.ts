@@ -55,7 +55,7 @@ export class SetupSession {
   saveCandidate(candidateId: string, name: string, reviewDigest: string, start: Start) {
     return Effect.suspend<Fleet, SetupError, never>(() => {
       if (this.#publish.pending || this.#apply.pending) return unresolved();
-      const body = {source: {kind: "draft", draft_candidate_id: candidateId}, name, review_digest: reviewDigest, start};
+      const body = {source: {kind: "draft", draft_candidate_id: candidateId}, name, review_digest: reviewDigest, start, origin: "cli"};
       return this.#save.run(body, (key) => {
         this.#recovery = {action: SETUP_ACTION.save, operation_id: key, draft_candidate_id: candidateId,
           name, review_digest: reviewDigest, start_kind: start.kind};
@@ -111,7 +111,7 @@ export class SetupSession {
     return Effect.suspend<Applied, SetupError, never>(() => {
       if (this.#save.pending || this.#publish.pending) return unresolved();
       const path = `${this.#transport.fleets}/${encodeURIComponent(fleetId)}/revisions`;
-      const body = {draft_candidate_id: candidateId, review_digest: reviewDigest};
+      const body = {draft_candidate_id: candidateId, review_digest: reviewDigest, origin: "cli"};
       return this.#apply.run({path, body, setupTag}, (key) => {
         this.#recovery = {action: SETUP_ACTION.apply, operation_id: key, draft_candidate_id: candidateId,
           fleet_id: fleetId, review_digest: reviewDigest, setup_etag: setupTag};

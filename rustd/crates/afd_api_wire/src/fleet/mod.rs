@@ -7,7 +7,7 @@ mod output;
 mod revision;
 
 pub use collection::{FleetSummary, FleetsResponse, Triggers};
-pub use input::{PatchFleetRequest, PatchStatus, SaveFleetRequest, SaveSource, Start};
+pub use input::{PatchFleetRequest, PatchStatus, SaveFleetRequest, SaveOrigin, SaveSource, Start};
 pub use memory::{MemoryAccess, MemoryAccessRequest};
 pub use output::{FleetResponse, WebhookUrl};
 pub use revision::{AppliedRevision, ApplyRevision};

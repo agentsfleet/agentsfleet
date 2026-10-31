@@ -39,6 +39,7 @@ async fn improvement(c: &Case, saved: &SavedFleet) -> (Uuid7, ApplyRevision) {
         .await
         .expect("the improvement reviews");
     let apply = ApplyRevision {
+        origin: None,
         draft_candidate_id: reviewed.candidate.expect("source candidate").id,
         review_digest: reviewed.review.expect("live review").review_digest,
     };
@@ -84,6 +85,7 @@ async fn an_improvement_chat_inherits_the_model_its_fleet_resolved_at_save() {
         .await
         .expect("review resolves the owner's default");
     let request = SaveFleet {
+        origin: None,
         source: SaveSource::Draft {
             draft_candidate_id: reviewed.candidate.expect("candidate").id,
         },
@@ -204,6 +206,7 @@ async fn a_candidate_under_retired_policy_semantics_cannot_be_applied() {
         .await
         .expect("the retired candidate still reviews");
     let apply = ApplyRevision {
+        origin: None,
         draft_candidate_id: retired,
         review_digest: reviewed.review.expect("live review").review_digest,
     };

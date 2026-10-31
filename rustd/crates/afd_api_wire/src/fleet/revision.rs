@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApplyRevision {
+    /// Optional client-reported save surface, used only in the activity notice.
+    pub origin: Option<super::SaveOrigin>,
     /// Creator-owned immutable candidate `UUIDv7`.
     pub draft_candidate_id: String,
     /// Fresh contextual review digest.

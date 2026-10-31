@@ -10,8 +10,8 @@ import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 
 const SAVED = {...FLEET, setup_revision: "3", status: "active", setup: {state: "ready", checks: []}};
 const SAVE = "Save";
-const SAVING = "Saving setup";
-const ACKNOWLEDGEMENT = "Save done v3";
+const SAVING = "Saving";
+const ACKNOWLEDGEMENT = "Setup saved · v3";
 const MESSAGES = "/messages";
 const FLEETS = "/fleets";
 
@@ -59,7 +59,7 @@ async function requestSave(): Promise<void> {
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
   fireEvent.change(input, {target: {value: SAVE}});
   fireEvent.click(screen.getByRole("button", {name: "Send message"}));
-  await screen.findByLabelText(SAVING);
+  await screen.findByText(SAVING, {exact: true});
 }
 
 it("shows saving through model finalization and confirms only after the write succeeds", async () => {
@@ -70,7 +70,7 @@ it("shows saving through model finalization and confirms only after the write su
   expect(fixture.writes().find(call => call.path.endsWith(MESSAGES))?.body).toMatchObject({save: true});
   expect(fixture.writes().some(call => call.path.endsWith(FLEETS))).toBe(false);
   await screen.findByRole("heading", {name: ACKNOWLEDGEMENT});
-  await waitFor(() => expect(screen.queryByLabelText(SAVING)).toBeNull());
+  await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
   expect(screen.getByRole("textbox")).toHaveProperty("disabled", false);
@@ -80,7 +80,7 @@ it("shows saving through model finalization and confirms only after the write su
 it("ends progress and preserves chat when the database refuses the save", async () => {
   await requestSave();
   await act(async () => fixture.finishModel(MESSAGE_STATE.completed, true));
-  await waitFor(() => expect(screen.queryByLabelText(SAVING)).toBeNull());
+  await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
   expect(screen.getByText(SAVE, {exact: true})).toBeTruthy();
   expect(screen.getByRole("alert")).toBeTruthy();
@@ -90,7 +90,7 @@ it("ends progress and preserves chat when the database refuses the save", async 
 it("does not write a setup when the model turn fails", async () => {
   await requestSave();
   await act(async () => fixture.finishModel(MESSAGE_STATE.failed));
-  await waitFor(() => expect(screen.queryByLabelText(SAVING)).toBeNull());
+  await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   expect(fixture.saveAttempts).toBe(0);
   expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
   expect(screen.getByText(SAVE, {exact: true})).toBeTruthy();
@@ -102,7 +102,7 @@ it("keeps chatting available after the save message is refused", async () => {
   await requestSave();
   await act(async () => admission.resolve(response({}, 409)));
   await screen.findByRole("alert");
-  await waitFor(() => expect(screen.queryByLabelText(SAVING)).toBeNull());
+  await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   fireEvent.change(screen.getByRole("textbox"), {target: {value: "Which apps can it watch?"}});
   expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", false);
   fixture.messageResponse = undefined;

@@ -56,7 +56,7 @@ export async function saveSetupButton(page: Page): Promise<Locator> {
 
 /** Saving keeps authoring open; opening runtime is a separate, explicit action. */
 export async function openSavedFleet(page: Page, revision = "1"): Promise<string> {
-  await expect(page.getByText(`Save done v${revision}`, {exact: true})).toBeVisible({timeout: SAVE_TIMEOUT_MS});
+  await expect(page.getByRole("log").getByText(`Setup saved · v${revision}`, {exact: true})).toBeVisible({timeout: SAVE_TIMEOUT_MS});
   await expect(page).toHaveURL(workspaceUrlPattern(NEW_FLEET));
   await expect(page.getByLabel(CHAT_COPY.composer).getByRole("textbox")).toBeEnabled();
   await page.getByRole("link", {name: CHAT_COPY.openFleet, exact: true}).click();

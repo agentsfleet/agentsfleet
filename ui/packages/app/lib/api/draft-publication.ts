@@ -9,6 +9,7 @@ import { REQUEST_METHOD, SetupUnavailable } from "./draft-request";
 export type PlatformPublisher = (body: StagePlatform, operation: string) => Promise<unknown>;
 type Request = <T>(request: SetupRequest, parser: z.ZodType<T>) => Promise<T>;
 type ReadyDraft = Draft & {candidate: NonNullable<Draft["candidate"]>};
+export const PUBLISHED_NOTICE = "Setup published.";
 
 /** Library writes retain the operation identity supplied by the private chat owner. */
 export class DraftPublication {
@@ -27,8 +28,8 @@ export class DraftPublication {
   }
 
   async publish(request: SetupRequest, key: string): Promise<string> {
-    const receipt = await this.request({...request, headers: {...request.headers, [SETUP_HEADERS.key]: key}}, PublishedSchema);
-    return `Published Library revision ${receipt.revision_id}. Running fleets keep their pinned setup.`;
+    await this.request({...request, headers: {...request.headers, [SETUP_HEADERS.key]: key}}, PublishedSchema);
+    return PUBLISHED_NOTICE;
   }
 
   async stage(draft: ReadyDraft, label: string, key: string): Promise<string> {

@@ -11,7 +11,7 @@ use crate::{
         raise::{query, stored},
     },
     replay, review,
-    types::{DraftState, InitialStart, SaveFleet, Start},
+    types::{DraftState, InitialStart, SaveFleet, SaveOrigin, Start},
 };
 use afd_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
@@ -76,6 +76,7 @@ impl Creations {
         let mut captured = self
             .capture(&mut tx, access, &person, &request.source)
             .await?;
+        captured.origin = request.origin;
         // Waiting on the private source can let an identical Save commit.
         // Its receipt wins before the new lifecycle state is interpreted.
         if let Some(id) = replay::find(
@@ -178,6 +179,7 @@ impl Creations {
         insert_fleet(connection, id, &revision, captured, &instance).await?;
         let accepted = Accepted::from_review(captured, checked);
         let head = Head {
+            origin: captured.origin,
             id: &revision,
             number: INITIAL_VERSION,
             accepted: &accepted,
@@ -210,6 +212,7 @@ impl Creations {
 /// One immutable revision: which it is, the setup it accepted and the model
 /// review settled on.
 pub(super) struct Head<'a> {
+    pub(super) origin: Option<SaveOrigin>,
     pub(super) id: &'a Uuid7,
     pub(super) number: i64,
     pub(super) accepted: &'a Accepted,
@@ -244,7 +247,10 @@ pub(super) async fn insert_revision(
         &head.accepted.context.workspace_id,
         fleet,
         &identity,
-        afd_events::activity::Activity::SetupSaved { revision: &number },
+        afd_events::activity::Activity::SetupSaved {
+            revision: &number,
+            origin: head.origin.map(SaveOrigin::as_str),
+        },
     )
     .await
     .map_err(query(CONTEXT))?;

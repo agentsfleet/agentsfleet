@@ -52,7 +52,7 @@ function AccessSummary({requirements}: {requirements: Review["requirements"]}) {
       <ListItem><span className="font-medium">Tools: </span>{tools.length ? tools.join(", ") : "No tools requested."}</ListItem>
       <ListItem><span className="font-medium">Connected accounts: </span>{credentials.length ? credentials.join(", ") : "None requested."}</ListItem>
       <ListItem><span className="font-medium">Repositories: </span>{repositories.length ? repositories.join(", ") : "None requested."}</ListItem>
-      <ListItem><span className="font-medium">HTTP egress: </span>{networkDescription(network)}</ListItem>
+      <ListItem><span className="font-medium">Internet access: </span>{networkDescription(network)}</ListItem>
       <ListItem><span className="font-medium">Spending limit: </span>{dollars(budget.daily_nanos)} per day{budget.monthly_nanos ? `; ${dollars(budget.monthly_nanos)} per month` : "; no monthly limit"}.</ListItem>
     </List>
     <p className="text-xs text-muted-foreground">These are limits, not a fixed charge. Actual spending depends on usage.</p>
@@ -61,14 +61,14 @@ function AccessSummary({requirements}: {requirements: Review["requirements"]}) {
 
 function networkDescription(network: z.infer<typeof NetworkSchema> | undefined): string {
   const readOnly = network?.read_only ? " Read-only policy enabled." : "";
-  if (network?.http_egress === "public") return `Public HTTPS destinations.${readOnly}`;
+  if (network?.http_egress === "public") return `Public internet access. HTTPS requests to public destinations.${readOnly}`;
   if (network?.package_manager_domains) {
     const additional = network.allow?.length ? ` Additional domains: ${network.allow.join(", ")}.` : "";
-    return `Standard package registry domains.${additional}${readOnly}`;
+    return `Restricted access. Standard package registry domains.${additional}${readOnly}`;
   }
-  if (network?.allow === undefined) return "No explicit host limit shown here. Confirm the network policy before saving.";
-  if (network.allow.length === 0) return "HTTP requests are blocked.";
-  return `Requests to ${network.allow.join(", ")}.${readOnly}`;
+  if (network?.allow === undefined) return "Internet access could not be confirmed. Review the network policy before saving.";
+  if (network.allow.length === 0) return "Restricted access. No domains allowed.";
+  return `Restricted access. Allowed domains: ${network.allow.join(", ")}.${readOnly}`;
 }
 
 function dollars(nanos: string): string {

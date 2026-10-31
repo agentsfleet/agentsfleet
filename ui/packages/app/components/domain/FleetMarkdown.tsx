@@ -2,9 +2,10 @@
 
 import { createContext, memo, useContext, type ReactNode } from "react";
 import { MarkdownTextPrimitive, memoizeMarkdownComponents } from "@assistant-ui/react-markdown";
+import { useAuiState } from "@assistant-ui/react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-
+import { MessageExpansion } from "./MessageExpansion";
 
 /**
  * A fleet's reply, as markdown.
@@ -83,17 +84,21 @@ const REPLY_COMPONENTS = memoizeMarkdownComponents(COMPONENTS);
 
 /** Keep the library's text-part renderer mounted through streaming and completion. */
 export const FleetReplyMarkdown = memo(function FleetReplyMarkdown() {
-  return <MarkdownTextPrimitive className={BODY_CLASS} components={REPLY_COMPONENTS}
-    remarkPlugins={REMARK_PLUGINS} smooth defer />;
+  const length = useAuiState(state => state.message.content.reduce((total, part) => total + (part.type === "text" ? part.text.length : 0), 0));
+  const running = useAuiState(state => state.message.status?.type === "running");
+  return <MessageExpansion length={length} running={running}>{display => <MarkdownTextPrimitive className={BODY_CLASS} components={REPLY_COMPONENTS}
+    remarkPlugins={REMARK_PLUGINS} preprocess={display} smooth defer />}</MessageExpansion>;
 });
 
-export const FleetMarkdown = memo(function FleetMarkdown({ children }: { children: string }) {
+export const FleetMarkdown = memo(function FleetMarkdown({ children, expandable = false }: { children: string; expandable?: boolean }) {
   return (
+    <MessageExpansion length={expandable ? children.length : 0}>{display =>
     <div className={BODY_CLASS}>
       <Markdown components={COMPONENTS} remarkPlugins={REMARK_PLUGINS}>
-        {children}
+        {display(children)}
       </Markdown>
     </div>
+    }</MessageExpansion>
   );
 });
 

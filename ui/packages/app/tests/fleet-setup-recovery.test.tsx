@@ -55,7 +55,7 @@ it.each([new Error("Transport failed"), "uncertain"])("retains a failed continua
   await screen.findByRole("alert");
   fireEvent.click(screen.getByRole("button", {name: "Finish setup"}));
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
 });
 
 it("shows the scope recovery message instead of internal continuation detail", async () => {

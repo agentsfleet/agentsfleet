@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ApplyRevision {
+    /// The first accepted receipt keeps this label; it cannot change replay identity.
+    #[serde(default, skip_serializing)]
+    #[garde(skip)]
+    pub origin: Option<super::SaveOrigin>,
     /// Immutable candidate owned by the authenticated creator.
     #[garde(skip)]
     pub draft_candidate_id: Uuid7,

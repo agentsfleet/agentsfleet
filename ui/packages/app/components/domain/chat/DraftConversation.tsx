@@ -18,7 +18,7 @@ import { setupActivity } from "@/lib/api/draft-activity";
 import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
 import { DraftMessage, DraftRetryProvider } from "./DraftMessage";
 
-export function DraftConversation({client, view, workspace, children, unfinished, instructionsDirty = false}: {client: DraftClient; view: DraftView; workspace: string; children?: ReactNode; unfinished?: ReactNode; instructionsDirty?: boolean}) {
+export function DraftConversation({client, view, workspace, children, unfinished, instructionsDirty = false, onOpenFleet}: {client: DraftClient; view: DraftView; workspace: string; children?: ReactNode; unfinished?: ReactNode; instructionsDirty?: boolean; onOpenFleet?: () => void}) {
   const recovery = chatRecovery(view);
   const [project] = useState(createDraftThreadProjection);
   const messages = useMemo(() => project(view), [project, view]);
@@ -39,7 +39,7 @@ export function DraftConversation({client, view, workspace, children, unfinished
     <AssistantRuntimeProvider runtime={runtime}>
       <DraftRetryProvider client={client} disabled={view.busy || view.pending || recovery.pending || view.inaccessible || !view.model}>
       <ChatThread label="Fleet setup conversation" autoScroll={!empty}
-        footer={<ChatComposer client={client} view={view} canStop={recovery.canStop} blocked={recovery.blocked || instructionsDirty} />}>
+        footer={<ChatComposer client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} canStop={recovery.canStop} blocked={recovery.blocked || instructionsDirty} dirty={instructionsDirty} />}>
         <div role="log" aria-live="off" className="mx-auto flex w-full max-w-chat flex-1 flex-col py-3xl">
           {empty ? <><ChatEntrance /><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} />{unfinished}</> : null}
           {view.truncated ? <p className="text-sm text-muted-foreground">Showing the latest conversation messages. Earlier messages remain in this setup chat.

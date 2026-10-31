@@ -4,6 +4,30 @@ use super::{MAX_MESSAGE_BYTES, MAX_MODEL_REF_BYTES};
 use afd_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
+/// Save provenance is display metadata and never an authorization input.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveOrigin {
+    /// Native command-line client.
+    Cli,
+    /// Dashboard setup controls.
+    Dashboard,
+    /// Completed authoring chat save.
+    Chat,
+}
+
+impl SaveOrigin {
+    /// The stable activity spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cli => "cli",
+            Self::Dashboard => "dashboard",
+            Self::Chat => "chat",
+        }
+    }
+}
+
 /// Immutable setup selected by a reviewed Save.
 #[derive(Debug, Clone, Deserialize, Serialize, garde::Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -46,6 +70,10 @@ pub enum Start {
 #[derive(Debug, Clone, Deserialize, Serialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct SaveFleet {
+    /// The first accepted receipt keeps this label; it cannot change replay identity.
+    #[serde(default, skip_serializing)]
+    #[garde(skip)]
+    pub origin: Option<SaveOrigin>,
     /// Candidate or pinned Library source.
     #[garde(dive)]
     pub source: SaveSource,

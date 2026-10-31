@@ -45,7 +45,7 @@ describe("runner activity history", () => {
     item("policy", {event_type: RUNNER_EVENT_TYPE.policyAssigned,
       metadata: {sandbox_tier: "landlock_full", network_policy: "deny_all_egress", worker_count: 4}})]);
     expect(screen.getByText("Host: runner-prod · Isolation: Landlock")).toBeTruthy();
-    expect(screen.getByText("Isolation: Landlock · Network: No egress · Workers: 4")).toBeTruthy();
+    expect(screen.getByText("Isolation: Landlock · Network: No internet access · Workers: 4")).toBeTruthy();
   });
   it("explains missing metadata without fabricating details or hiding the event", () => {
     show([item("offline", {event_type: RUNNER_EVENT_TYPE.offline, metadata: null})]);

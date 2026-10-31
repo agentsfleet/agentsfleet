@@ -85,7 +85,7 @@ describe("EditPolicyDialog", () => {
     render(<EditPolicyDialog runnerId="r-edit-1" current={CURRENT} onSaved={onSaved} />);
 
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    expect((screen.getByLabelText(/allowlist/i) as HTMLInputElement).value).toBe("pypi.org");
+    expect((screen.getByLabelText(/allowed registry domains/i) as HTMLInputElement).value).toBe("pypi.org");
     expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe("2");
 
     fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "4" } });
@@ -129,7 +129,7 @@ describe("EditPolicyDialog", () => {
     const onSaved = vi.fn();
     render(<EditPolicyDialog runnerId="r-edit-3" current={CURRENT} onSaved={onSaved} />);
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    fireEvent.change(screen.getByLabelText(/allowlist/i), {
+    fireEvent.change(screen.getByLabelText(/allowed registry domains/i), {
       target: { value: "http://not a host" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

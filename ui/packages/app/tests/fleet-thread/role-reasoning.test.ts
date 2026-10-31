@@ -201,8 +201,8 @@ describe("FleetThread — reasoning disclosure", () => {
       mockStream([ev({ role: "assistant", actor: "fleet", status: "received", submittedAtMs: 1,
         tools: [{ name: "memory_recall", startedAtMs: 1, ms: null, done: false }] })]);
       renderThread();
-      // A recall folds under Explored, which is the first thing the reply shows.
-      expect(screen.getByText("memory_recall")).toBeTruthy();
+      // The grouped command disclosure is visible before its individual calls.
+      expect(screen.getByRole("button", {name: "Ran commands"})).toBeTruthy();
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       expect(measure).toHaveBeenCalledWith(FIRST_VISIBLE_MEASURE, expect.objectContaining({ start: 1 }));
