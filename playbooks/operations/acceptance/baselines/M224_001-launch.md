@@ -1,5 +1,117 @@
 # M224_001 development and production launch evidence
 
+## Approved toolbox refresh: Oct 31, 2026
+
+Indy approved the prepared snapshot patch: "yes approved the patch."
+The repository manifest now selects `20261031T000000Z`; M224's file scope records that specific repair.
+The package-index and patch checks below support preparation only; rebuilt-image size, scan, signing and deployment remain unverified.
+
+The workspace remains empty after the requested CLI cleanup.
+Fresh fleets wait for successful development deployment and acceptance.
+Build-output reuse across pull requests, merges and tags remains a design discussion; no workflow changed here.
+
+## Fleet reset and blocked rollout: Oct 31, 2026
+
+This checkpoint supersedes the fleet inventory and prepared improvements below.
+Indy directed a fresh start:
+
+> "use my cli to cleanup the existing fleets and let us start new"
+>
+> "create fresh fleets and lets work through them"
+
+The native CLI killed and deleted all six existing workspace fleets after saving their definitions and event summaries.
+The final `list --json` response contains `items: []` and `next_cursor: null`.
+Both newly prepared Improve drafts were also deleted; neither improvement was applied.
+
+The deleted fleets were `github-log-verification`, `ci-dev-responder`, `ci-dev-repairer`, the channel resident, `dev-perf-watch` and `dev-acceptance-20261021-0517`.
+Their identifiers and preceding observations below remain historical evidence, not targets for subsequent commands.
+Fresh fleets have not been created; Indy requested waiting for development deployment first.
+
+[Deployment 41203703412](https://github.com/agentsfleet/agentsfleet/actions/runs/41203703412) completed with failure on the merged revision.
+Both native binary builds passed, but job `124546902652`, `build / build-toolbox`, failed its vulnerability scan with exit `2`.
+The scan identifies Critical `CVE-2026-111497` in `libbrotli1 1.1.0-2+b7`, fixed in `1.1.0-2+deb13u1`.
+
+The image push, API and runner rollout, dashboard deployment and acceptance were skipped.
+The API still reports revision `7148b1d`; neither a matching runtime nor successful fleet proof is claimed.
+No unchanged deployment or Linkwarden rerun was requested.
+
+The manifest pins Debian snapshot `20261015T000000Z` across its existing main, updates and security archives.
+A prepared one-line proposal advances that pin to `20261031T000000Z`; the repository manifest remains unchanged pending its scope amendment.
+The new snapshot's security package index contains the exact fixed amd64 package, and its main and updates release files are available.
+
+The fixed package's index checksum is `db46824c60fee46aff3cc0be3e5f736bc606cae669b1fb17516a41e8073251a9`.
+`git apply --check` accepts the proposed patch; a rebuilt image, size check and vulnerability scan remain unverified.
+The existing scan threshold and signing requirements remain required.
+
+Indy also required goal-focused execution rather than stopping after one reply.
+The runner loops across tool turns, but a response without tool calls ends the run (`rustd/crates/afr_agent/src/loop/mod.rs:209`).
+Fresh instructions must require actual result checks before a final answer; instructions alone supply no durable automatic continuation guarantee.
+
+## Post-merge continuation: Oct 31, 2026
+
+This section records development checks after M235 merged.
+M224 remains incomplete; its production prerequisites remain unmet.
+
+### Source and native client
+
+Source Pull Request [792](https://github.com/agentsfleet/agentsfleet/pull/792) merged at `765ed4a6828c0a5b4e4fdb50f13ed53456329f48`.
+`git fetch origin main` and `git show origin/main:VERSION` confirm that revision and `0.71.0`.
+The isolated checkout is `/workspace/agentsfleet-m224`, branch `feat/m224-dev-first-launch`; the existing checkout remains untouched.
+
+`gh pr checks 792` reports passing source checks, including Greptile; the production-only checks skip.
+The review-thread API reports the overlapping-redaction thread resolved, with no other inline thread.
+Documentation Pull Request [235](https://github.com/agentsfleet/docs/pull/235) remains draft, with passing lint, Gitleaks and Greptile checks and no inline threads.
+
+`orly doctor` passes the installed-rules and Codex skill checks.
+This continuation follows the repository's `orly-build` and `orly-ship` skills.
+The native command-line interface (CLI) was built once from the merged source; retained M235 implementation verification remains authoritative.
+
+The environment API-key binding is present; no credential value was printed or saved.
+`whoami --json` identifies `nkishore@megam.io`, using `tenant_api_key` from `environment`.
+`doctor --json` passes connectivity, workspace selection and binding for `01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e`.
+
+### Development rollout and source preparation
+
+[Development deployment 41203703412](https://github.com/agentsfleet/agentsfleet/actions/runs/41203703412) targets the merged revision.
+Its credential job passes; API and runner builds are still running at this checkpoint.
+The observed `/healthz` still reports `7148b1d`; `/readyz` reports database and queue ready.
+
+The runner inventory reports `01a154d8-ae2c-7ee2-89a1-9c19f0f60ba2` active, online and not degraded, with `build_id: null`.
+Its reported Landlock, seccomp, bubblewrap and egress checks pass; the controller list includes `cpu`, `io`, `memory` and `pids`.
+This inventory does not identify the executable revision; checksum correlation and completed rollout acceptance remain pending.
+
+The selected Linkwarden source is [run 41199403249](https://github.com/agentsfleet/linkwarden/actions/runs/41199403249), attempt `1`, commit `95a173dfb71746d8e5ed01b420815668e34806f3`.
+`gh api` confirms job `124532028003` failed at `Check link title decoding`, after successful earlier steps.
+That step ran from `2026-10-31T12:05:37Z` through `2026-10-31T12:05:39Z`; no new rerun was requested.
+
+### Prepared installed-fleet improvements
+
+Native fleet reads confirm both existing Slack fleets are active and their GitHub grants remain ready.
+Their current setup revision is `1`; its responder still requires Grafana and both fleets lack the log-storage host.
+New private Improve drafts use the merged reference instructions and allow only GitHub plus the reviewed log-storage host.
+
+The drafts retain the installed names, channel `C0ARL465ZJP`, model and budgets.
+The responder requires GitHub alone; the repairer retains repository `agentsfleet/linkwarden`, base `dev` and bounded write access.
+Both contextual reviews report every readiness check ready; neither improvement has been applied at this checkpoint.
+
+| Fleet | Improve draft | Candidate | Review digest |
+|---|---|---|---|
+| `ci-dev-responder` | `01a19213-d1c2-7a80-a5b1-175679d40cc6` | `01a19214-569e-7e30-b0f4-a703c30e24b0`, revision `2` | `authoring:v1:sha256:f4b0b99bda312cef44b36bc61806b354887139611ecaec29beb931eb80ce355a` |
+| `ci-dev-repairer` | `01a19213-d6ca-7fd5-aacd-2301996ee50b` | `01a19214-580c-7c28-9ffe-989effe31680`, revision `2` | `authoring:v1:sha256:3705073c75b12f7ccd9b0e17a44c323f0408ae27fd4b403ee328ec4c539d4719` |
+
+### Independent prerequisites
+
+The separate `github-log-verification` fleet remains active with all setup checks ready.
+Its retained October 30 event explicitly stopped at an unfollowed HTTP 302; that historical result supplies no successful log-read proof.
+A fresh source-read proof waits for the matching API and runner rollout and acceptance checks.
+
+Workspace secret metadata confirms `grafana` exists and `elastic` remains absent.
+Grafana health returns HTTP 200; the daemon Loki query for the preceding 24 hours succeeds with zero streams.
+The incident demonstration remains incomplete under the recorded Elasticsearch deferral.
+
+The current deployment workflow runs short browser acceptance and command-line acceptance.
+Full Linux acceptance still requires its separately approved workflow and supported host; no unchanged proxy-only attempt was repeated.
+
 ## Fresh-session continuation: Oct 30, 2026
 
 This section supersedes earlier authentication, workspace and source-readiness observations.

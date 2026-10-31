@@ -66,6 +66,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` → `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | MOVE / EDIT | open the stream and record development-first execution, Dimensions and evidence |
 | `playbooks/operations/acceptance/baselines/M224_001-launch.md` | CREATE | revision-bound manual launch and fleet evidence |
+| `scripts/toolbox/manifest.txt` | EDIT | refresh the approved Debian snapshot to include the patched Brotli package blocking development deployment |
 | `docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` → `docs/v2/done/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` | MOVE / EDIT | close source delivery and map outstanding development verification here |
 | `docs/architecture/ci_drill_evidence.md` → `playbooks/operations/acceptance/ci_evidence_format.md` | MOVE / EDIT | keep the pending proof format and attribution procedures alongside the acceptance playbook |
 | `rustd/crates/afd_api/tests/integration_slack_mention/mod.rs` | EDIT | register the producer replay proof in the existing integration suite |
@@ -373,6 +374,12 @@ For Linux acceptance, Indy identified the agent environment as the blocker:
 The amendment treats that direction as keeping the full Linux acceptance obligation in M224 rather than holding M235 on this managed VM's network limitation. The accepted Linux CI host remains the execution destination; no passing run or waiver is claimed. All transferred criteria stay P0 and block M224's production progression.
 
 ## Discovery (consult log)
+
+- **Approved toolbox snapshot repair (Oct 31, 2026):** Development deployment `41203703412` failed its Critical vulnerability gate on `libbrotli1 1.1.0-2+b7`. Indy approved the proposed one-line change from snapshot `20261015T000000Z` to `20261031T000000Z`:
+
+  > "yes approved the patch."
+
+  The newer security index contains fixed package `1.1.0-2+deb13u1`; the main and updates release files are available. This amendment covers only the manifest refresh and its evidence. A rebuilt image and passing scan remain required; no workflow, scan threshold, signing requirement or production approval changes.
 
 - **Consults** — Transfer from M213_001 (Oct 12, 2026). Inherited whole: M213_001 R4 and Dimension 1.1 → this spec's R2 and Dimension 2.1; M213_001 R5 and the three unproved bundles of its Dimension 1.3 → this spec's R3 and Dimensions 3.1–3.3. The fourth bundle, `github-pr-reviewer`, settled on dev in M213_001 (event `1791777420543-1356`) and carries over as a link, not a Dimension.
   > Indy (2026-10-12): "release tag - defer/park i will push a production push later" — context: M213_001 R4, the first production launch.
