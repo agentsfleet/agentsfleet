@@ -6,6 +6,15 @@ name: deploy-dev / verify
 
 on:
   workflow_call:
+    inputs:
+      build-commit:
+        description: Original compiled candidate revision expected from healthz.
+        type: string
+        required: true
+      version:
+        description: Candidate version expected from healthz.
+        type: string
+        required: true
 
 jobs:
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
@@ -87,7 +96,10 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
-      - name: Wait for agentsfleetd-dev to go green
+      - name: Wait for the selected candidate to go green
+        env:
+          EXPECTED_COMMIT: ${{ inputs.build-commit }}
+          EXPECTED_VERSION: ${{ inputs.version }}
         # Poll /healthz via Cloudflare Tunnel until green or timeout (3 min).
         # Prints HTTP status + response body on each attempt for diagnostics.
         run: |
@@ -98,15 +110,18 @@ jobs:
               https://api-dev.agentsfleet.net/healthz 2>&1 || echo -e "\n000")
             STATUS=$(echo "$BODY" | tail -1)
             RESP=$(echo "$BODY" | head -1)
-            if [ "$STATUS" = "200" ]; then
+            if [ "$STATUS" = "200" ] && printf '%s' "$RESP" | jq -e \
+              --arg commit "$EXPECTED_COMMIT" --arg version "$EXPECTED_VERSION" \
+              '.commit == $commit and .version == $version' >/dev/null; then
               echo "✓ /healthz green after $((i * 10))s"
+              MATCHED=true
               break
             fi
             echo "  attempt $i: status=$STATUS body=$RESP — retrying in 10s..."
             sleep 10
           done
-          if [ "$STATUS" != "200" ]; then
-            echo "✗ /healthz did not return 200 after 180s (last status=$STATUS)"
+          if [ "${MATCHED:-false}" != true ]; then
+            echo "✗ /healthz did not return the expected candidate after 180s (last status=$STATUS)"
             exit 1
           fi
 

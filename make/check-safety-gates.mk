@@ -12,6 +12,12 @@
 # validating the playbooks surface can never skip the guardrail that protects it.
 
 .PHONY: check-vault-gate-parity check-architecture-doc check-deploy-safety
+.PHONY: check-release-candidate
+
+check-gh-actions-valid: check-release-candidate
+
+check-release-candidate: ## Prove candidate promotion rejects untrusted, mismatched and tampered artifacts
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_release_candidate.py
 
 check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the vault calls both approval + auth gates
 	@echo "→ [playbooks] vault-gate parity — every operations script that reads the vault passes both gates..."
