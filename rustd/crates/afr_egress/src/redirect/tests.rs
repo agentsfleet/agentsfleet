@@ -45,8 +45,8 @@ fn should_refuse_repeated_normalized_targets_before_the_hop_limit() {
 #[test]
 fn should_refuse_invalid_or_ambiguous_locations() {
     let base = Url::parse(FIRST).expect("fixture URL");
-    assert!(Target::new(&base, &"x".repeat(8193)).is_err());
-    assert!(Target::new(&base, "https://[").is_err());
+    Target::new(&base, &"x".repeat(8193)).expect_err("oversized Location");
+    Target::new(&base, "https://[").expect_err("malformed URL");
     let mut headers = HeaderMap::new();
     assert!(Target::from_headers(&base, &headers).is_none());
     headers.append(LOCATION, HeaderValue::from_static("/one"));
@@ -74,22 +74,14 @@ fn should_drop_modeled_headers_permanently_after_an_origin_change() {
         1
     );
     let mut port = redirected(302, &base, "https://api.github.com:8443/other-port");
-    assert!(
-        chain
-            .next(&mut port)
-            .expect("hop")
-            .expect("draft")
-            .headers
-            .is_empty()
+    assert_eq!(
+        chain.next(&mut port).expect("hop").expect("draft").headers,
+        Vec::new()
     );
     let mut back = redirected(303, &base, "/returned");
-    assert!(
-        chain
-            .next(&mut back)
-            .expect("hop")
-            .expect("draft")
-            .headers
-            .is_empty()
+    assert_eq!(
+        chain.next(&mut back).expect("hop").expect("draft").headers,
+        Vec::new()
     );
     for status in [301, 302, 303, 307, 308] {
         assert!(follows(status));

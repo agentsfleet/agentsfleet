@@ -170,7 +170,7 @@ fn log_reader_definition_is_an_isolated_read_only_probe() {
     );
     let network = config.network().expect("policy");
     assert!(network.read_only());
-    assert!(network.read_post_paths().is_empty());
+    assert_eq!(network.read_post_paths(), []);
     assert_eq!(
         network
             .allow()
@@ -182,7 +182,9 @@ fn log_reader_definition_is_an_isolated_read_only_probe() {
             "productionresultssa6.blob.core.windows.net"
         ]
     );
-    assert!(parsed.validate_for_save().is_ok());
+    parsed
+        .validate_for_save()
+        .expect("isolated reader is ready to save");
 }
 
 #[test]

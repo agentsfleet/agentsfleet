@@ -17,7 +17,17 @@ fn should_bind_http_egress_settings_to_the_reviewed_definition_digest() {
         ("package_manager_domains", json!(true)),
     ] {
         let mut changed = input.clone();
-        changed["config"]["x-agentsfleet"]["network"][field] = selected;
+        let network = input
+            .pointer("/config/x-agentsfleet/network")
+            .and_then(serde_json::Value::as_object)
+            .expect("fixture network");
+        let mut network = network.clone();
+        network.insert(field.to_owned(), selected);
+        set(
+            &mut changed,
+            "/config/x-agentsfleet/network",
+            json!(network),
+        );
         assert_ne!(
             canonical_digest(&parse(&changed)).expect("digest"),
             original

@@ -10,7 +10,7 @@ use crate::refusal::Refusal;
 const UNLISTED: &str = "https://downloads.example.net/log.txt";
 
 #[test]
-fn should_admit_public_hosts_only_when_selected() {
+fn should_admit_public_hosts_only_when_selected() -> crate::Result<()> {
     let mut policy = policy(true);
     policy.network_policy.allow.clear();
     assert!(
@@ -19,15 +19,12 @@ fn should_admit_public_hosts_only_when_selected() {
             .is_err()
     );
     policy.network_policy.http_egress = HttpEgress::Public;
-    assert!(
-        Admission::new(&policy)
-            .admit(draft("GET", UNLISTED, &[], None))
-            .is_ok()
-    );
+    Admission::new(&policy).admit(draft("GET", UNLISTED, &[], None))?;
+    Ok(())
 }
 
 #[test]
-fn should_admit_only_exact_preset_and_additional_hosts_in_restricted_mode() {
+fn should_admit_only_exact_preset_and_additional_hosts_in_restricted_mode() -> crate::Result<()> {
     let mut policy = policy(true);
     policy.network_policy.allow = vec!["extra.example.net".into()];
     policy.network_policy.package_manager_domains = true;
@@ -36,11 +33,7 @@ fn should_admit_only_exact_preset_and_additional_hosts_in_restricted_mode() {
         .into_iter()
         .chain(["extra.example.net"])
     {
-        assert!(
-            admission
-                .admit(draft("GET", &format!("https://{host}/index"), &[], None))
-                .is_ok()
-        );
+        admission.admit(draft("GET", &format!("https://{host}/index"), &[], None))?;
     }
     for host in [
         "other.example.net",
@@ -55,6 +48,7 @@ fn should_admit_only_exact_preset_and_additional_hosts_in_restricted_mode() {
             Some(Refusal::HostNotAllowed)
         );
     }
+    Ok(())
 }
 
 #[test]

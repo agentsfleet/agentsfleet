@@ -214,3 +214,9 @@ It also expands the hosted redirect test across all five supported statuses and 
 
 Source logs: `/workspace/m235-evidence/privacy-regression-red.log`, `privacy-regression-green.log` and `verify-final.log`.
 These local tests supply no deployed-runtime, real-model, Slack or draft-repair acceptance.
+
+The full `orly gate verify` rerun now passes. Its `make lint-all` and `make check-version` invocations both exit zero; versions match `0.71.0`.
+
+The lint corrections preserve each assertion and add no suppressions. Full unit, integration, coverage and Linux acceptance remain pending.
+
+Deciding log: `/workspace/m235-evidence/verify-complete.log`.

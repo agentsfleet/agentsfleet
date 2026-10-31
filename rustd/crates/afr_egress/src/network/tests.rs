@@ -254,7 +254,7 @@ async fn should_discard_redirect_bodies_before_waiting_for_them() {
         .unwrap()
         .unwrap();
     assert_eq!(response.status, 302);
-    assert!(response.body.is_empty());
+    assert_eq!(response.body, "");
     assert_eq!(response.location.as_deref(), Some("https://logs.example"));
     assert!(!format!("{response:?}").contains("private-target"));
 }
