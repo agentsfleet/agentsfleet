@@ -35,7 +35,7 @@ use crate::integration_tool_trace::{stored_trace, tenant_get};
 const REMEMBERED: &str =
     "SELECT content FROM memory.entries WHERE fleet_id = $1::uuid AND key = $2";
 
-#[path = "integration_rust_runner_definitions/redirect.rs"]
+#[path = "integration_rust_runner_definitions/redirect/tests.rs"]
 mod redirect;
 
 /// Dimension 6.1. The responder is offered exactly its policy's tools, reads

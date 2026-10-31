@@ -90,8 +90,13 @@ dev_snapshot_check() {
 
 dev_compose() {
   dev_snapshot_check
+  local extra=()
+  if [ -n "${LOCAL_DEV_COMPOSE_FILE:-}" ]; then
+    [ -f "$LOCAL_DEV_COMPOSE_FILE" ] || dev_fail 'selected local Compose overlay does not exist'
+    extra=(--file "$LOCAL_DEV_COMPOSE_FILE")
+  fi
   docker compose --project-name "$DEV_PROJECT" --project-directory "$DEV_INFRA" \
-    --env-file "$DEV_INFRA/ports.env" --file "$DEV_INFRA/compose.yml" "$@"
+    --env-file "$DEV_INFRA/ports.env" --file "$DEV_INFRA/compose.yml" ${extra[@]+"${extra[@]}"} "$@"
 }
 
 dev_snapshot() {

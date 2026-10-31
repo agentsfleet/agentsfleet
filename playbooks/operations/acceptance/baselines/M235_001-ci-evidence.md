@@ -37,6 +37,7 @@ Native CLI identity is `nkishore@megam.io`, authenticated by the environment's t
 | Review digest | `authoring:v1:sha256:7f9eb35335b0fd003fe83f7c203b4d6f5244f3e52cd5db9672ebe9b190ed1b5a` |
 
 Indy replied, “Approved in development”. The native approval record was still pending when reread, so the agent posted that exact approval through `agentsfleet approvals approve`; it resolved at `2026-10-30T16:36:50.026Z`.
+
 Resuming the original Save operation returned setup `READY`, all nine checks ready, and fleet `ACTIVE`.
 The fleet has only `http_request`, GitHub read access to `agentsfleet/linkwarden`, read-only networking, no triggers, and exact reviewed API/download hosts.
 
@@ -49,7 +50,8 @@ Native event detail and addressed full-call reads report three calls, zero omitt
 | `1:2` | job `123968144417` | HTTP 200; matching run/attempt/commit; failed step “Check link title decoding”, `08:35:24Z`–`08:35:26Z` |
 | `1:3` | that job's `/logs` | `upstream_status`; HTTP 302; safe storage origin; empty body |
 
-The actual answer begins “Result: log content NOT retrieved — stopping at the gap” and states “Log body access was not verified.”
+The actual answer begins “Result: log content NOT retrieved — stopping at the gap”.
+It also states “Log body access was not verified.”
 This is a fleet-owned reproduction of the missing source, not a passing log-read demonstration.
 The event's `processed` status records settlement only.
 
@@ -75,14 +77,20 @@ An earlier negative privacy test caught a once-encoded URL hex-case leak; the co
 
 The initial 477-pass selection used an injected retry classifier and observed one tool request versus two control requests after a connection failure.
 Checking the complete Cargo feature graph then showed HTTP/2 enabled transitively by `gix-transport`, while the earlier standalone egress selection lacked it.
-The final regression uses a real HTTP/2 server returning `REFUSED_STREAM` after observing headers, expecting one tool GET/POST request versus the shared guard's original request and two default retries.
+
+The final regression uses a real HTTP/2 server returning `REFUSED_STREAM` after observing headers.
+It expects one tool GET/POST request versus the shared guard’s original request and two default retries.
 
 Dev-only dependencies make that protocol test explicit in standalone selections, using already-locked `h2` 0.4.20 and `reqwest` 0.13.5.
-No production protocol, dependency version or inference retry policy changed.
+That protocol test changed no production protocol or inference retry policy. Later dependency updates are recorded separately.
+
 The final HTTP/2 regression passed in the repository runner unit selection, observing the required one-versus-three request counts for GET and POST.
 
-The composing privacy tests return protected target echoes in HTTP 200, 403 and 500 bodies and content types, then assert sanitized model output and paired structured events.
-The scoped hosted integration passed after the local proxy correction below, checking real TLS downloads and native full-record reads for both HTTP 200 and 403 responses.
+The composing privacy tests return protected target echoes in HTTP 200, 403 and 500 bodies and content types.
+They assert sanitized model output and paired structured events.
+
+The scoped hosted integration passed after the local proxy correction below.
+It checked real TLS downloads and native full-record reads for HTTP 200 and 403 responses.
 This scripted-model result proves wiring, not actual-model development acceptance.
 
 Full integration setup required the session proxy's trusted certificate inside the disposable QStash container, supplied through an external temporary Compose override.
@@ -92,7 +100,9 @@ No tracked workflow, test harness or deployment configuration was altered for ei
 Later repository lanes run under task-local `tini -s`, version `0.19.0`, to reap orphan processes normally; its official release checksum was verified before use.
 The named make commands, assertions and source are unchanged.
 
-The first executing full integration attempt was stopped after 1,343 passes in completed suites and 53 failed test lines in the daemon suite; it has no passing final verdict.
+The first full integration attempt stopped with 1,343 passes in completed suites.
+The daemon suite reported 53 failed test lines; the attempt has no passing final verdict.
+
 Its first failure, `integration_cluster_outcomes::test_cluster_preserves_application_outcomes`, was isolated with fresh schemas and make's exported environment.
 The expected heartbeat HTTP 200 was HTTP 403 because the test addresses the daemon's `[::]` listener through the inherited proxy.
 
@@ -102,12 +112,21 @@ After a clean reset/migration, the isolated cluster test passed one test and the
 
 The first `make test-unit-all` run under the reaper passed the executor suite's 56 tests and the new HTTP/2 retry regression.
 It then failed at the unchanged toolbox image mode assertion: actual `0400`, expected `0444`, under the cloud process's `umask 0077`.
-The subsequent full unit command uses process-local `umask 022`; evidence logs retain explicit mode `0600`, and no test assertion or repository source was changed for this adjustment.
+
+The subsequent full unit command uses process-local `umask 022`.
+Evidence logs retain explicit mode `0600`; no test assertion or repository source changed for this adjustment.
 Full repository unit, integration and lint verdicts remain pending.
 
 ## Review and documentation
 
-The first standards review found five material issues: mixed-case GET selection, a URI-component signature spelling, absent wire retry coverage, vacuous composing privacy checks, and missing safe stop context.
+The first standards review found five material issues:
+
+- Mixed-case GET selection.
+- A URI-component signature spelling.
+- Absent wire retry coverage.
+- Vacuous composing privacy checks.
+- Missing safe stop context.
+
 Confirmation review found all five addressed with zero new material findings.
 The final protocol-test review also found zero material findings after the expected lockfile dependency edge was refreshed.
 
@@ -125,7 +144,8 @@ GitHub still lists successful development deployment `41006375734` at the matchi
 Optional native download-size preparation reached the job-log redirect but the local session proxy refused the reviewed storage-origin tunnel with HTTP 403.
 No download size or local source-read pass is asserted from that check; the development fleet uses its own runner network.
 
-Review and approve the exact implementation revision for the existing development deployment workflow, then correlate the deployed API/runner revision and health before triggering the same separate fleet again.
+Review and approve the exact implementation revision for the existing development deployment workflow.
+Then correlate the deployed API/runner revision and health before triggering the same separate fleet again.
 Require its own final HTTP 200 log result, reported redirect count, usable actual failure excerpt and native full tool records.
 
 Do not substitute native log retrieval, scripted-model wiring, a queued event or this before-fix stopped answer for that proof.
@@ -134,8 +154,46 @@ M224's three development demonstrations and production gates remain incomplete.
 
 ### Recovery checkpoint
 
-The cloud execution service disconnected during verification and subsequently reported the environment unavailable. On recovery the provider reported `running`, `connected`, no failure reason and no retained diagnostic records. Kernel logs are inaccessible, so the cause remains unknown. Worktree files survived.
+The cloud terminal service disconnected during verification and subsequently reported the environment unavailable.
+Worktree files survived.
 
-Indy explicitly requested a commit and feature-branch push to preserve the work. This is an incomplete checkpoint, not acceptance or merge approval. The redirect fix, separate-fleet before-fix evidence, nine stable dependency updates and HTTP egress API settings are present. The Linux acceptance adapter remains planned.
+On recovery the provider reported `running`, `connected`, no failure reason and no retained diagnostic records.
+Kernel logs are inaccessible, so the cause remains unknown.
 
-The focused post-update run passed the runtime, gate, wire and HTTP admission packages. It exposed 20 supervisor checkout failures after `gix` 0.90 changed bare-clone branch placement. An explicit remote refspec restored 19 tests; the detached-default-branch refusal test still fails because upstream now guesses a default branch. Full unit verification stopped at that remaining failure. Lint, full integration, coverage, live positive fleet proof and PR checks remain incomplete.
+Indy explicitly requested a commit and feature-branch push to preserve the work. This is an incomplete checkpoint, not acceptance or merge approval.
+
+The redirect fix, separate-fleet before-fix evidence, nine stable dependency updates and HTTP egress API settings are present. The Linux acceptance adapter remains planned.
+
+The focused post-update run passed the runtime, gate, wire and HTTP admission packages. It exposed 20 supervisor checkout failures after `gix` 0.90 changed bare-clone branch placement.
+
+An explicit remote refspec restored 19 tests; the detached-default-branch refusal test still fails because upstream now guesses a default branch. Full unit verification stopped at that remaining failure.
+
+Lint, full integration, coverage, live positive fleet proof and PR checks remain incomplete.
+
+
+### Linux adapter and dependency follow-up
+
+The three Rust make unit shards passed: runner 1,462; daemon 139; daemon libraries 3,338. Total: 4,939 passed, zero failures.
+The checkout refusal now passes after preserving the remote’s advertised detached HEAD instead of accepting the library’s inferred branch.
+
+The full unit command then encountered 29 frontend analytics failures. The cloud environment explicitly disables analytics, while these existing tests set a fixture key and expect the unset switch’s default.
+
+A focused rerun with `NEXT_PUBLIC_POSTHOG_ENABLED=` passed all 41 analytics tests. The full command was stopped after the failure; it has no passing final verdict.
+
+The Docker runner image built successfully. Five focused Linux adapter tests passed, covering signature/version refusal, certificate ownership/cleanup and Compose overlay argument handling.
+
+The local development launcher suite passed 26 tests. The browser and CLI acceptance suites have not yet passed through the new adapter.
+
+The existing development toolbox was recovered through the GitHub connector from workflow `41006375734`, record `12955698432`. Its signature verified against the runner’s compiled release key and its manifest admits version `0.71.0`.
+No release key was loaded or used to sign new material.
+
+OpenAPI was regenerated with the built native command `agentsfleetd --no-banner openapi`. It publishes `network.http_egress` and `package_manager_domains` in definitions and leases.
+
+
+The next frontend coverage attempt reported 451 passing files, four failing files and one failed assertion. All four failures referenced missing machine environment files.
+
+The configured UI, daemon and runner file paths are absent even after home-directory expansion. Existing credential bindings remain available in the process.
+
+Private task-local file paths now preserve those bindings without copying their values. A fresh local session-code pepper is stored only in the private daemon settings file.
+
+The four affected frontend test files then passed all 25 tests using those task-local paths. Full coverage verification remains pending.

@@ -4,12 +4,17 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/local-dev.sh
 source deploy/local/bootstrap.sh
-source deploy/local/certificate.sh
 dev_state
 
 action="${1:-all}"
 case "$action" in all|e2e|cli|execution) ;; *) dev_fail 'expected e2e, cli or execution (default: both suites)' ;; esac
-[ "$(uname -s)" = Darwin ] || dev_fail 'local acceptance requires macOS with a dedicated OrbStack Linux machine'
+backend="${2:-orbstack}"
+case "$backend" in
+  orbstack) source deploy/local/orbstack.sh ;;
+  codex) source deploy/local/codex.sh ;;
+  *) dev_fail 'expected orbstack or codex acceptance backend' ;;
+esac
+acceptance_adapter
 export LOCAL_DEV_ENV_FILE="${AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE:-$DEV_STATE/acceptance.env}"
 dev_lock "$DEV_STATE/acceptance.lock"
 set -a
@@ -23,7 +28,7 @@ model_bootstrap_key="${FIREWORKS_API_KEY:-}"
 unset OPENROUTER_API_KEY FIREWORKS_API_KEY
 case "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" in pk_test_*) ;; *) dev_fail 'local acceptance requires development Clerk credentials' ;; esac
 : "${CLERK_SECRET_KEY:?development Clerk secret is required}"
-: "${ACCEPTANCE_LOCAL_RUNNER_MACHINE:?dedicated OrbStack machine is required}"
+acceptance_adapter_build
 : "${ACCEPTANCE_LOCAL_TOOLBOX_DIR:?signed Linux toolbox directory is required}"
 : "${ACCEPTANCE_LOCAL_RUNNER_RECORD:?local runner registration file is required}"
 
@@ -35,6 +40,7 @@ cleanup() {
     wait "$ui_pid" || true
   fi
   if [ -n "${LOCAL_ACCEPTANCE_CA:-}" ]; then acceptance_untrust_certificate "$LOCAL_ACCEPTANCE_CA" || status=$?; fi
+  acceptance_adapter_cleanup || status=$?
   rmdir "$DEV_LOCK" || status=$?
   exit "$status"
 }
@@ -49,37 +55,13 @@ export LOCAL_ACCEPTANCE_UI_TLS_PORT="${ACCEPTANCE_LOCAL_UI_TLS_PORT:-$((DEV_PORT
 export LOCAL_ACCEPTANCE_CA="$LOCAL_ACCEPTANCE_STATE/caddy-data/caddy/pki/authorities/local/root.crt"
 export NEXT_PUBLIC_API_URL="https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT"
 export APP_URL="https://localhost:$LOCAL_ACCEPTANCE_UI_TLS_PORT"
-export ACCEPTANCE_RUNNER_MACHINE="$ACCEPTANCE_LOCAL_RUNNER_MACHINE" CARGO_TARGET_DIR="$DEV_SHARED/build"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$DEV_SHARED/build}"
 mkdir -p "$LOCAL_ACCEPTANCE_STATE"
 acceptance_machine
 acceptance_toolbox
 if [ ! -f "$LOCAL_ACCEPTANCE_STATE/audit-token" ]; then openssl rand -hex 32 >"$LOCAL_ACCEPTANCE_STATE/audit-token"; fi
 export AGENTSFLEET_E2E_AUDIT=1 AGENTSFLEET_E2E_AUDIT_TOKEN
 AGENTSFLEET_E2E_AUDIT_TOKEN="$(cat "$LOCAL_ACCEPTANCE_STATE/audit-token")"
-
-start_runner() {
-  orb -m "$ACCEPTANCE_LOCAL_RUNNER_MACHINE" sudo bash -s -- "$DEV_ROOT" \
-    "$ACCEPTANCE_LOCAL_TOOLBOX_DIR" "$LOCAL_ACCEPTANCE_STATE/runner.env" "$LOCAL_ACCEPTANCE_CA" "$LOCAL_ACCEPTANCE_TLS_PORT" <<'LINUX'
-set -euo pipefail
-root="$1" toolbox="$2" env_file="$3" ca="$4" port="$5"
-source "$root/deploy/baremetal/deploy.sh"
-check_deploy_inputs "$root/dist/acceptance/agentsfleet-runner" "$toolbox" "$env_file"
-install -d -m 0755 "$HOST_DEPLOY_DIR" "$RUNNER_STORAGE_HOME_DEFAULT"
-for entry in "${HOST_DEPLOY_FILES[@]}"; do
-  install -m "${entry##*:}" "$root/deploy/baremetal/${entry%:*}" "$HOST_DEPLOY_DIR/${entry%:*}"
-done
-install -m 0600 "$env_file" "$HOST_ENV_FILE"
-cat /etc/ssl/certs/ca-certificates.crt "$ca" >"$RUNNER_STORAGE_HOME_DEFAULT/ca.pem"
-chmod 0644 "$RUNNER_STORAGE_HOME_DEFAULT/ca.pem"
-printf '[Socket]\nListenStream=127.0.0.1:%s\n' "$port" >/run/systemd/system/agentsfleet-runner-tls.socket
-printf '[Service]\nExecStart=/usr/lib/systemd/systemd-socket-proxyd host.orb.internal:%s\nNoNewPrivileges=yes\nProtectSystem=strict\nProtectHome=yes\n' "$port" \
-  >/run/systemd/system/agentsfleet-runner-tls.service
-systemctl daemon-reload
-systemctl stop agentsfleet-runner-tls.socket agentsfleet-runner-tls.service
-systemctl start agentsfleet-runner-tls.socket
-bash "$HOST_DEPLOY_DIR/deploy.sh" runner "$(cat "$root/VERSION")" "$root/dist/acceptance/agentsfleet-runner" "$toolbox"
-LINUX
-}
 
 start_dashboard() {
   local deadline next
@@ -109,16 +91,20 @@ if (typeof token !== "string" || !/^[!-~]{1,4096}$/.test(token))
 process.stdout.write(token);
 ' "$ACCEPTANCE_LOCAL_RUNNER_RECORD")"
 mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config"
-printf 'https://localhost:443 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\nhttps://localhost:444 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\n' \
-  "$DEV_PORT" "$LOCAL_ACCEPTANCE_UI_PORT" >"$LOCAL_ACCEPTANCE_STATE/Caddyfile"
-docker compose --project-name "$DEV_PROJECT-$DEV_ID-acceptance" --file deploy/local/compose.yml up --detach --wait
+acceptance_proxy_config
+acceptance_proxy up --detach --wait
 deadline=$(( $(date +%s) + DEV_READY_SECONDS ))
 until curl --silent --fail --max-time 2 --cacert "$LOCAL_ACCEPTANCE_CA" "https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT/readyz" >/dev/null; do
   [ "$(date +%s)" -lt "$deadline" ] || dev_fail 'Caddy HTTPS readiness timed out; inspect docker compose logs'
   sleep 0.2
 done
 acceptance_trust_certificate "$LOCAL_ACCEPTANCE_CA"
-export NODE_EXTRA_CA_CERTS="$LOCAL_ACCEPTANCE_CA"
+if [ -n "${NODE_EXTRA_CA_CERTS:-}" ]; then
+  cat "$NODE_EXTRA_CA_CERTS" "$LOCAL_ACCEPTANCE_CA" >"$LOCAL_ACCEPTANCE_STATE/client-ca.pem"
+else
+  cp "$LOCAL_ACCEPTANCE_CA" "$LOCAL_ACCEPTANCE_STATE/client-ca.pem"
+fi
+export NODE_EXTRA_CA_CERTS="$LOCAL_ACCEPTANCE_STATE/client-ca.pem"
 start_dashboard
 printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nSSL_CERT_FILE=/var/lib/agentsfleet-runner/ca.pem\n' \
   "$LOCAL_ACCEPTANCE_TLS_PORT" "$ACCEPTANCE_RUNNER_TOKEN" >"$LOCAL_ACCEPTANCE_STATE/runner.env"

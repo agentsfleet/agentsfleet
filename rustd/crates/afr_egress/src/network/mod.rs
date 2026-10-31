@@ -262,3 +262,7 @@ impl Capped {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "admission/tests.rs"]
+mod public_scope_tests;

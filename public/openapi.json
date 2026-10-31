@@ -20955,6 +20955,14 @@
         },
         "additionalProperties": false
       },
+      "DefinitionHttpEgress": {
+        "type": "string",
+        "description": "Which public HTTPS destinations a definition admits through HTTP tools.",
+        "enum": [
+          "restricted",
+          "public"
+        ]
+      },
       "DefinitionInstructionEdit": {
         "type": "object",
         "description": "A UTF-8 byte range against the exact base instructions.",
@@ -20998,8 +21006,26 @@
               "maxLength": 255,
               "minLength": 1
             },
-            "description": "The hosts the fleet may reach. An empty list blocks every outbound request.",
+            "description": "Additional exact hosts the fleet may reach.",
             "maxItems": 64
+          },
+          "http_egress": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DefinitionHttpEgress",
+                "description": "HTTP destination scope. Omit for restricted access."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "package_manager_domains": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether HTTP tools may reach standard package registry domains."
           },
           "read_only": {
             "type": [
@@ -22771,6 +22797,14 @@
           "stop"
         ]
       },
+      "HttpEgress": {
+        "type": "string",
+        "description": "Which public HTTPS destinations HTTP tools may reach.",
+        "enum": [
+          "restricted",
+          "public"
+        ]
+      },
       "HttpJsonFieldRule": {
         "type": "object",
         "description": "One required top-level JSON field, with exactly one expected value set.",
@@ -24532,7 +24566,7 @@
       },
       "NetworkPolicy": {
         "type": "object",
-        "description": "Allowed hosts for HTTP tools.\n\nAn empty `allow` list blocks these requests. Sandbox network access also depends on the\nrunner's network policy and registry allowlist.",
+        "description": "Allowed hosts for HTTP tools.\n\nRestricted mode with no allowed hosts blocks these requests. Sandbox network access also depends on the\nrunner's network policy and registry allowlist.",
         "required": [
           "allow",
           "read_only",
@@ -24545,6 +24579,14 @@
               "type": "string"
             },
             "description": "Exact hostnames HTTP tools may reach."
+          },
+          "http_egress": {
+            "$ref": "#/components/schemas/HttpEgress",
+            "description": "HTTP destination scope; omitted means restricted to named hosts."
+          },
+          "package_manager_domains": {
+            "type": "boolean",
+            "description": "Admit the standard package registry hosts through HTTP tools."
           },
           "read_only": {
             "type": "boolean",

@@ -78,13 +78,13 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/Cargo.lock` | EDIT | record updated stable workspace dependencies and the validation/test edges |
 | `rustd/crates/afr_egress/src/transport.rs` | EDIT | hold opaque redirect targets with safe formatting and explicit consumption |
 | `rustd/crates/afr_egress/src/network/mod.rs` | EDIT | return single-hop metadata without exposing signed target details |
-| `rustd/crates/afr_egress/src/network/tests.rs` | EDIT | retain resolver, decoding, exact-cap and single-hop tests |
+| `rustd/crates/afr_egress/src/network/tests.rs`; `rustd/crates/afr_egress/src/network/admission/tests.rs` | EDIT | retain resolver, decoding, exact-cap and single-hop tests |
 | `rustd/crates/afr_egress/src/egress/mod.rs` | EDIT | admit each next request and scrub private redirect material |
 | `rustd/crates/afr_egress/src/redirect/mod.rs` | CREATE | own one bounded GET redirect chain and safe terminal outcomes |
 | `rustd/crates/afr_egress/src/redirect/target.rs` | CREATE | validate the bounded opaque target and its safe projection |
 | `rustd/crates/afr_egress/src/redirect/privacy.rs` | CREATE | scrub known target echoes and redirect-derived failures |
 | `rustd/crates/afr_egress/src/redirect/tests.rs` | CREATE | test target admission, headers, loops, budgets and private state |
-| `rustd/crates/afr_egress/src/redirect/privacy_tests.rs` | CREATE | isolate signed-target output tests within source-size bounds |
+| `rustd/crates/afr_egress/src/redirect/privacy/tests.rs` | CREATE | isolate signed-target output tests within source-size bounds |
 | `rustd/crates/afr_egress/src/lib.rs` | EDIT | connect the redirect mechanism to its first caller |
 | `rustd/crates/afr_egress/src/testing/mod.rs` | EDIT | record scripted hop requests and opaque target responses |
 | `rustd/crates/afr_egress/src/admission/tests.rs` | EDIT | prove existing repository/path and URL refusals on later hops |
@@ -99,7 +99,7 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/afr_tools/src/egress/tests.rs` | EDIT | protect single-hop behavior of unaffected callers |
 | `rustd/crates/afr_tools/src/http_request/mod.rs` | EDIT | select bodyless GET following and render safe outcomes |
 | `rustd/crates/afr_tools/src/http_request/tests.rs` | EDIT | exercise the composing tool, privacy and unlocked guard during network waits |
-| `rustd/crates/afr_tools/src/http_request/redirect_tests.rs` | CREATE | isolate composing-tool redirect scenarios within source-size bounds |
+| `rustd/crates/afr_tools/src/http_request/redirect/tests.rs` | CREATE | isolate composing-tool redirect scenarios within source-size bounds |
 | `rustd/crates/afd_fleet_runtime/tests/definition/corpus.rs` | EDIT | check GitHub-only responder reach and exact reviewed download hosts |
 | `tests/fixtures/fleets/ci-responder/definition.json` | EDIT | select the exact attempt, read logs/source and stop on missing evidence |
 | `tests/fixtures/fleets/ci-repairer/definition.json` | EDIT | reread required evidence and reconcile bounded writes |
@@ -108,7 +108,7 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/agentsfleetd/tests/support/definition_responder.rs` | EDIT | script GitHub job text without a Grafana prerequisite |
 | `rustd/crates/agentsfleetd/tests/support/definition_repair.rs` | EDIT | model remote ref/draft state and uncertain-write reconciliation |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions.rs` | EDIT | prove actual hosted tool reads and private transcript/trace handling |
-| `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions/redirect.rs` | CREATE | compose downloaded text, error privacy and native full-call reads within source-size bounds |
+| `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions/redirect/tests.rs` | CREATE | compose downloaded text, error privacy and native full-call reads within source-size bounds |
 | `rustd/crates/agentsfleetd/tests/integration_tool_trace.rs` | EDIT | prove empty known traces remain distinct from unavailable records at the API |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs.rs` | EDIT | assert all-state reconciliation and no second external draft |
 | `rustd/crates/afd_api/tests/integration_slack_mention/mod.rs` | EDIT | register the producer replay proof in the existing integration suite |
@@ -137,7 +137,7 @@ The matching documentation branch belongs to the separate `/workspace/docs` chec
 | `rustd/crates/afr_egress/src/admission/mod.rs; rustd/crates/afr_egress/src/admission/http_egress/tests.rs; rustd/crates/afr_egress/src/fixture.rs` | EDIT / CREATE | admit public HTTPS or preset domains without relaxing other restrictions |
 | `rustd/crates/afr_supervisor/src/egress/mod.rs; rustd/crates/afr_supervisor/src/egress/tests.rs; rustd/crates/afr_supervisor/src/holds/built_under.rs; rustd/crates/afr_supervisor/src/holds/built_under_tests.rs; rustd/crates/afr_supervisor/src/workspace_clone/fetch.rs; rustd/crates/afr_supervisor/src/workspace_clone/checkout.rs` | EDIT | reuse registry names and preserve sandbox network boundaries |
 | `public/openapi.json` | GENERATE | publish the native API settings |
-| `make/acceptance.mk; deploy/local/acceptance.sh; deploy/local/common.sh; deploy/local/bootstrap.sh; deploy/local/codex.sh; deploy/local/codex-runner.Dockerfile; deploy/local/certificate.sh` | EDIT / CREATE | share acceptance orchestration and add a Linux Docker runner adapter |
+| `make/acceptance.mk; Makefile; README.md; docs/development.md; scripts/local-dev-state.sh; deploy/local/acceptance.sh; deploy/local/bootstrap.sh; deploy/local/bootstrap_test.sh; deploy/local/orbstack.sh; deploy/local/codex.sh; deploy/local/codex-runner.Dockerfile; deploy/local/codex-runner.sh; deploy/local/codex-compose.yml; deploy/local/codex-certificate.sh; deploy/local/codex_test.sh` | EDIT / CREATE | share acceptance orchestration and add a Linux Docker runner adapter |
 
 ## Applicable Rules
 

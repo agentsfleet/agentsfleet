@@ -198,6 +198,7 @@ fn identity(url: &Url) -> String {
 }
 
 #[cfg(test)]
+#[path = "privacy/tests.rs"]
 mod privacy_tests;
 #[cfg(test)]
 mod tests;

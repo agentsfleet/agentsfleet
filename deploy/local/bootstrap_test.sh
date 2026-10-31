@@ -49,6 +49,13 @@ class EnvironmentTests(unittest.TestCase):
         self.assertNotEqual(self.run_bootstrap().returncode, 0)
         self.assertFalse(self.file.exists())
 
+    def test_existing_signed_toolbox_directory_can_be_selected(self):
+        selected = self.root / 'verified toolbox'
+        self.env['ACCEPTANCE_LOCAL_TOOLBOX_DIR'] = str(selected)
+        result = self.run_bootstrap()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('verified\\ toolbox', self.file.read_text())
+
     def test_symlink_cannot_replace_another_environment(self):
         other = self.root / 'other.env'
         other.write_text('keep this file\n')
@@ -233,3 +240,4 @@ unittest.main(argv=['acceptance-bootstrap'])
 PY
 
 bash "$(dirname "$0")/certificate_test.sh"
+bash "$(dirname "$0")/codex_test.sh"
