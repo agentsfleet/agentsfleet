@@ -4,7 +4,7 @@ use regex::Regex;
 use reqwest::Url;
 
 use super::{Stop, Target};
-use crate::Inbound;
+use crate::{Inbound, RESPONSE_MAX_BYTES};
 
 const MASK: &str = "«secret:redirect»";
 const CREDENTIAL_KEYS: [&str; 11] = [
@@ -28,8 +28,15 @@ pub(super) struct Privacy {
 
 impl Privacy {
     pub(super) fn add(&mut self, target: &Target) {
-        self.units
-            .extend([target.raw.clone(), target.resolved.to_string()]);
+        // Pure navigation carries no private path; its resolved URL stays protected.
+        if target
+            .raw
+            .chars()
+            .any(|c| !matches!(c, '/' | '.' | '?' | '#'))
+        {
+            self.units.push(target.raw.clone());
+        }
+        self.units.push(target.resolved.to_string());
         let path = &target.resolved[url::Position::BeforePath..url::Position::AfterQuery];
         if path != "/" && !path.is_empty() {
             self.units.push(path.to_owned());
@@ -72,12 +79,44 @@ impl Privacy {
         }
         let patterns = patterns.join("|");
         let matcher = Regex::new(&patterns).map_err(|_invalid| Stop::Privacy)?;
-        response.body = matcher.replace_all(&response.body, MASK).into_owned();
+        let (body, truncated) = mask_bounded(&matcher, &response.body);
+        response.body = body;
+        response.truncated |= truncated;
         if let Some(content_type) = &mut response.content_type {
-            *content_type = matcher.replace_all(content_type, MASK).into_owned();
+            let (masked, truncated) = mask_bounded(&matcher, content_type);
+            if truncated {
+                return Err(Stop::Privacy);
+            }
+            *content_type = masked;
         }
         Ok(())
     }
+}
+
+/// Keep redactions whole and never build an expanded response beyond its budget.
+fn mask_bounded(matcher: &Regex, text: &str) -> (String, bool) {
+    let mut result = String::with_capacity(text.len().min(RESPONSE_MAX_BYTES));
+    let mut parts = matcher.split(text);
+    if !append_bounded(&mut result, parts.next().unwrap_or_default()) {
+        return (result, true);
+    }
+    for part in parts {
+        if RESPONSE_MAX_BYTES - result.len() < MASK.len() {
+            return (result, true);
+        }
+        result.push_str(MASK);
+        if !append_bounded(&mut result, part) {
+            return (result, true);
+        }
+    }
+    (result, false)
+}
+
+fn append_bounded(result: &mut String, text: &str) -> bool {
+    let room = RESPONSE_MAX_BYTES - result.len();
+    let end = text.floor_char_boundary(room.min(text.len()));
+    result.push_str(text.get(..end).unwrap_or_default());
+    end == text.len()
 }
 
 fn spellings(value: &str) -> Result<[String; 5], Stop> {

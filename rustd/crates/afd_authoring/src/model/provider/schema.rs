@@ -6,6 +6,7 @@ use afd_fleet_runtime::definition::{
     MAX_INSTRUCTIONS_CHARS,
 };
 use afd_wire::authoring::DECIMAL_BYTES_MAX;
+use afd_wire::policy::HttpEgress;
 use serde_json::{Value, json};
 
 const KEY_ENUM: &str = "enum";
@@ -116,11 +117,7 @@ fn configuration() -> Value {
                     KEY_TOOLS:list(&json!({KEY_TYPE:TYPE_STRING})),
                     "credentials":list(&json!({KEY_TYPE:TYPE_STRING})),
                     "triggers":list(&json!({KEY_TYPE:TYPE_OBJECT})),
-                    "network":object(&json!({
-                        "allow":list(&json!({KEY_TYPE:TYPE_STRING})),
-                        "read_only":{KEY_TYPE:"boolean"},
-                        "read_post_paths":list(&json!({KEY_TYPE:TYPE_STRING}))
-                    }), &[]),
+                    "network":network(),
                     "gates":object(&json!({
                         "timeout_ms":{KEY_TYPE:TYPE_INTEGER},
                         "rules":list(&json!({KEY_TYPE:TYPE_OBJECT})),
@@ -135,6 +132,21 @@ fn configuration() -> Value {
             }
         }),
         &[KEY_NAME, KEY_POLICY],
+    )
+}
+
+fn network() -> Value {
+    object(
+        &json!({
+            "http_egress":{KEY_TYPE:TYPE_STRING,KEY_ENUM:[HttpEgress::Restricted,HttpEgress::Public],
+                KEY_DESCRIPTION:"Default restricted. Use public HTTPS only when the customer explicitly requests public egress."},
+            "package_manager_domains":{KEY_TYPE:"boolean",
+                KEY_DESCRIPTION:"Default false. Permit standard package registry domains through HTTP tools when requested."},
+            "allow":list(&json!({KEY_TYPE:TYPE_STRING})),
+            "read_only":{KEY_TYPE:"boolean"},
+            "read_post_paths":list(&json!({KEY_TYPE:TYPE_STRING}))
+        }),
+        &[],
     )
 }
 

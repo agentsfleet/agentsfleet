@@ -22,4 +22,5 @@ for image in /toolbox/toolbox-*.erofs; do
   done
 done
 cat /etc/ssl/certs/ca-certificates.crt /acceptance-ca.crt >"$storage/ca.pem"
+if [ -f /run/session-ca.pem ]; then cat /run/session-ca.pem >>"$storage/ca.pem"; fi
 exec /usr/local/bin/agentsfleet-runner run

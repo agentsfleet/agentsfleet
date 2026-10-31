@@ -69,7 +69,7 @@ pub(crate) fn responder_upstream() -> Vec<Route> {
 }
 
 /// A separate fleet reads a real text response behind GitHub's redirect.
-pub(crate) fn log_reader_routes(status: u16) -> Vec<Route> {
+pub(crate) fn log_reader_routes(redirect_status: u16, status: u16) -> Vec<Route> {
     vec![
         Route::new(
             GITHUB,
@@ -87,9 +87,16 @@ pub(crate) fn log_reader_routes(status: u16) -> Vec<Route> {
             GITHUB,
             Method::GET,
             JOB_LOG,
-            vec![Reply::found(&format!(
-                "https://{LOG_READER_HOST}/download/job?{LOG_SIGNATURE}"
-            ))],
+            vec![Reply::redirect(redirect_status, "log-content")],
+        ),
+        Route::new(
+            GITHUB,
+            Method::GET,
+            "/repos/agentsfleet/linkwarden/actions/jobs/202/log-content",
+            vec![Reply::redirect(
+                redirect_status,
+                &format!("https://{LOG_READER_HOST}/download/job?{LOG_SIGNATURE}"),
+            )],
         ),
         Route::new(
             LOG_READER_HOST,
@@ -131,9 +138,10 @@ fn github_routes() -> Vec<Route> {
             GITHUB,
             Method::GET,
             JOB_LOG,
-            vec![Reply::found(&format!(
-                "{LOG_STORE}/logs/202?{LOG_SIGNATURE}"
-            ))],
+            vec![Reply::redirect(
+                302,
+                &format!("{LOG_STORE}/logs/202?{LOG_SIGNATURE}"),
+            )],
         ),
         Route::new(
             GITHUB,

@@ -18,43 +18,52 @@ use crate::integration_tool_trace::{stored_trace, tenant_get};
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn should_read_text_through_admitted_redirects() {
     let provider = provider_listener().await;
-    for status in [200, 403] {
-        let mut supervisor = Supervisor::new();
-        let run =
-            install_definition(&mut supervisor, "github-log-reader", &[], Some(&provider)).await;
-        let upstream = Upstream::serve(log_reader_routes(status)).await;
-        let (model, transcript) = FakeModel::new(vec![
-            vec![
-                github_get("run", RUN),
-                github_get("job", "/repos/agentsfleet/linkwarden/actions/jobs/202"),
-            ],
-            vec![github_get("log", JOB_LOG)],
-            vec![say("Source read inspected.")],
-        ]);
-        let settled = run_event(&run, &run.event_id, &upstream, model).await;
-        assert_eq!(
-            (settled.status.as_str(), settled.answer.as_str()),
-            ("processed", "Source read inspected.")
-        );
-        let asked = transcript.asked();
-        let results = &asked.last().expect("model read its tool results").results;
-        assert!(results.iter().any(|output| output.contains(JOB_LOG_LINE)
-            && output.contains(&format!("Status: {status}"))
-            && output.contains("Redirects followed: 1")));
-        assert!(results.iter().all(|output| !output.contains(LOG_SIGNATURE)));
-        let seen = upstream.seen();
-        let downloads = seen
-            .iter()
-            .filter(|request| request.host == LOG_READER_HOST)
-            .collect::<Vec<_>>();
-        assert_eq!(downloads.len(), 1);
-        assert!(downloads[0].headers.get("authorization").is_none());
-        assert_eq!(downloads[0].query, LOG_SIGNATURE);
-        assert_token_stayed_on_the_wire(&seen, &asked);
-        assert_retained_read(&run, status).await;
-        supervisor.shutdown().await;
-        run.cleanup().await;
+    for redirect in [301, 302, 303, 307, 308] {
+        for status in [200, 403] {
+            read_redirect_case(&provider, redirect, status).await;
+        }
     }
+}
+
+async fn read_redirect_case(provider: &str, redirect: u16, status: u16) {
+    let mut supervisor = Supervisor::new();
+    let run = install_definition(&mut supervisor, "github-log-reader", &[], Some(provider)).await;
+    let upstream = Upstream::serve(log_reader_routes(redirect, status)).await;
+    let (model, transcript) = FakeModel::new(vec![
+        vec![
+            github_get("run", RUN),
+            github_get("job", "/repos/agentsfleet/linkwarden/actions/jobs/202"),
+        ],
+        vec![github_get("log", JOB_LOG)],
+        vec![say("Source read inspected.")],
+    ]);
+    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    assert_eq!(
+        (settled.status.as_str(), settled.answer.as_str()),
+        ("processed", "Source read inspected.")
+    );
+    let asked = transcript.asked();
+    let results = &asked.last().expect("model read its tool results").results;
+    assert!(results.iter().any(|output| output.contains(JOB_LOG_LINE)
+        && output.contains(&format!("Status: {status}"))
+        && output.contains("Redirects followed: 2")));
+    assert!(results.iter().all(|output| !output.contains(LOG_SIGNATURE)));
+    let seen = upstream.seen();
+    assert_download(&seen);
+    assert_token_stayed_on_the_wire(&seen, &asked);
+    assert_retained_read(&run, status).await;
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+fn assert_download(seen: &[crate::https::Seen]) {
+    let downloads = seen
+        .iter()
+        .filter(|request| request.host == LOG_READER_HOST)
+        .collect::<Vec<_>>();
+    assert_eq!(downloads.len(), 1);
+    assert!(downloads[0].headers.get("authorization").is_none());
+    assert_eq!(downloads[0].query, LOG_SIGNATURE);
 }
 
 async fn assert_retained_read(run: &Scenario, status: u16) {
