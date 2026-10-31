@@ -66,6 +66,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` → `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | MOVE / EDIT | open the stream and record development-first execution, Dimensions and evidence |
 | `playbooks/operations/acceptance/baselines/M224_001-launch.md` | CREATE | revision-bound manual launch and fleet evidence |
+| `scripts/toolbox/manifest.txt` | EDIT | refresh the approved Debian snapshot to include the patched Brotli package blocking development deployment |
+| `.github/workflows/test.yml; .github/workflows/build-candidate.yml` | EDIT / CREATE | require optimized, unsigned release candidates and the shipping toolbox vulnerability gate before merge |
+| `.github/actions/build-toolbox/action.yml; .github/actions/toolbox-tools/action.yml; .github/actions/scan-toolbox/action.yml; .github/actions/sign-toolbox/action.yml` | EDIT / CREATE | separate unsigned construction and scanning from trusted signing without changing size, vulnerability or signature requirements |
+| `.github/workflows/deploy-dev-build.yml; .github/workflows/deploy-dev.yml; .github/workflows/deploy-dev-fly.yml; .github/workflows/deploy-dev-metal.yml; .github/workflows/deploy-dev-verify.yml` | EDIT | verify and promote the tested candidate, deploy its immutable image, check its original build identity and retain successful development evidence |
+| `.github/workflows/release.yml` | EDIT / CREATE | publish the development-verified native binaries and images on a tag without compiling them again; retain production approvals |
+| `scripts/candidate.py; scripts/build-candidate.sh; scripts/release_candidate/; scripts/test_release_candidate.py; make/check-safety-gates.mk; make/release-candidate.mk; Makefile` | CREATE / EDIT | validate source/run identities, payload checksums and retained artifact handoffs with focused failure tests called by Continuous Integration |
+| `docs/architecture/release_candidates.md` | CREATE | document each job change, promotion rules, recovery and remaining environment-specific builds |
 | `docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` → `docs/v2/done/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` | MOVE / EDIT | close source delivery and map outstanding development verification here |
 | `docs/architecture/ci_drill_evidence.md` → `playbooks/operations/acceptance/ci_evidence_format.md` | MOVE / EDIT | keep the pending proof format and attribution procedures alongside the acceptance playbook |
 | `rustd/crates/afd_api/tests/integration_slack_mention/mod.rs` | EDIT | register the producer replay proof in the existing integration suite |
@@ -81,7 +88,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 External changes use existing runbooks: production tunnel/domain, runner-readiness variable, hosts/tokens, providers, drafts/grants and npm tags. Indy approves provider/host writes and releases. Required source/workflow repairs stop for a scope amendment; none are implicitly included.
 
-M235_001 owns the HTTP-tool, policy, reference-instruction and Linux adapter implementation. This milestone owns the transferred deterministic replay/recovery tests, offline evidence checker, behavior campaign and external acceptance below; no new authentication or deployment mechanism is authorized.
+M235_001 owns the HTTP-tool, policy, reference-instruction and Linux adapter implementation. This milestone owns the transferred deterministic replay/recovery tests, offline evidence checker, behavior campaign and external acceptance below. The approved build amendment below adds candidate promotion to the existing deployment workflows; authentication and production approval boundaries remain unchanged.
 
 ## Applicable Rules
 
@@ -373,6 +380,22 @@ For Linux acceptance, Indy identified the agent environment as the blocker:
 The amendment treats that direction as keeping the full Linux acceptance obligation in M224 rather than holding M235 on this managed VM's network limitation. The accepted Linux CI host remains the execution destination; no passing run or waiver is claimed. All transferred criteria stay P0 and block M224's production progression.
 
 ## Discovery (consult log)
+
+- **Approved build reuse amendment (Oct 31, 2026):** Indy requested moving the shipping toolbox Software Bill of Materials and vulnerability check into pull requests, avoiding compilation after merge, and promoting the same native outputs on release tags:
+
+  > "Can you ensure the about build improvements are done in this Pr"
+
+  > "Okay fix with Github action yml in this PR"
+
+  > "Just look how we do builds in the current cI and follow accordingly"
+
+  This authorizes the workflow/action/helper files listed above in Pull Request #793. Pull requests build all existing native release platforms with `dist`, build the runtime containers once, and scan an unsigned toolbox. Trusted development verifies a successful matching source-tree candidate, rescans with current vulnerability data, signs and deploys those outputs. A successful development rollout retains a verified GitHub Actions artifact for 90 days; tags consume it without recompiling native binaries or rebuilding runtime/toolbox images. Missing, stale, tampered or unverified candidates fail closed. Unit, instrumented coverage/kernel tests, environment-specific dashboard builds and npm packaging keep their own requirements. No merge, production tag, production deployment, Dagger migration or new native adversarial review is authorized by this amendment.
+
+- **Approved toolbox snapshot repair (Oct 31, 2026):** Development deployment `41203703412` failed its Critical vulnerability gate on `libbrotli1 1.1.0-2+b7`. Indy approved the proposed one-line change from snapshot `20261015T000000Z` to `20261031T000000Z`:
+
+  > "yes approved the patch."
+
+  The newer security index contains fixed package `1.1.0-2+deb13u1`; the main and updates release files are available. This amendment covers only the manifest refresh and its evidence. A rebuilt image and passing scan remain required; no workflow, scan threshold, signing requirement or production approval changes.
 
 - **Consults** — Transfer from M213_001 (Oct 12, 2026). Inherited whole: M213_001 R4 and Dimension 1.1 → this spec's R2 and Dimension 2.1; M213_001 R5 and the three unproved bundles of its Dimension 1.3 → this spec's R3 and Dimensions 3.1–3.3. The fourth bundle, `github-pr-reviewer`, settled on dev in M213_001 (event `1791777420543-1356`) and carries over as a link, not a Dimension.
   > Indy (2026-10-12): "release tag - defer/park i will push a production push later" — context: M213_001 R4, the first production launch.

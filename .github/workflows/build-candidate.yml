@@ -1,0 +1,135 @@
+name: candidate
+
+on:
+  workflow_call:
+
+# PR jobs have neither registry writes nor release signing credentials.
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            cache: cargo-dist-amd64
+            runner: ubuntu-latest
+            package: agentsfleetd
+            binary: agentsfleetd
+            filename: agentsfleetd-rs-linux-amd64
+          - arch: arm64
+            cache: cargo-dist-arm64
+            runner: ubuntu-24.04-arm
+            package: agentsfleetd
+            binary: agentsfleetd
+            filename: agentsfleetd-rs-linux-arm64
+          - arch: amd64
+            cache: cargo-dist-runner-amd64
+            runner: ubuntu-latest
+            package: agentsfleet_runner
+            binary: agentsfleet-runner
+            filename: agentsfleet-runner-linux-amd64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          key: ${{ matrix.cache }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml', 'playbooks/operations/ci_rust_images/versions.env') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ matrix.cache }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml', 'playbooks/operations/ci_rust_images/versions.env') }}-
+            ${{ matrix.cache }}-
+
+      # Separate Cargo invocations preserve each binary's own feature graph.
+      - name: Compile the shipping profile and verify static ELF
+        env:
+          CANDIDATE_PACKAGE: ${{ matrix.package }}
+          CANDIDATE_BINARY: ${{ matrix.binary }}
+          CANDIDATE_FILENAME: ${{ matrix.filename }}
+          CANDIDATE_ARCH: ${{ matrix.arch }}
+        run: make candidate-native-linux
+
+      - name: Build and exercise the runtime image once
+        if: matrix.binary == 'agentsfleetd'
+        env:
+          CANDIDATE_ARCH: ${{ matrix.arch }}
+          CANDIDATE_FILENAME: ${{ matrix.filename }}
+        run: make candidate-image
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate-part-${{ matrix.filename }}
+          path: dist/candidate/
+          if-no-files-found: error
+          retention-days: 3
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rustd/target
+          key: cargo-dist-darwin-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}-${{ github.sha }}
+          restore-keys: cargo-dist-darwin-
+      - name: Compile the macOS release download
+        run: make candidate-native-macos
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate-part-darwin-arm64
+          path: dist/candidate/
+          if-no-files-found: error
+          retention-days: 3
+
+  toolbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/build-toolbox
+      - name: Retain vulnerability evidence on a failed scan too
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: toolbox-audit
+          path: |
+            dist/candidate/toolbox/*.sbom.spdx.json
+            dist/candidate/toolbox/*.scan.json
+          retention-days: 90
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate-part-toolbox
+          path: dist/candidate/
+          if-no-files-found: error
+          retention-days: 3
+
+  assemble:
+    needs: [linux, macos, toolbox]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: candidate-part-*
+          merge-multiple: true
+          path: dist/candidate
+      - name: Record source tree, workflow attempt and every payload checksum
+        env:
+          RUN_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: make candidate-create
+      - id: identity
+        run: make candidate-identity
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-${{ steps.identity.outputs.tree }}
+          path: dist/candidate/
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true

@@ -1,12 +1,12 @@
 name: deploy (dev)
 
-# A clean rebuild runs twice: first with DEV_RUNNER_READY=false for the control
+# Deployment runs twice: first with DEV_RUNNER_READY=false for the control
 # plane, then with it true after the runner bootstrap.
 #
 # This file is the job graph only. Each stage's jobs live in a called
 # workflow (deploy-dev-*.yml) so every file stays within the repository's
 # 350-line bound and a stage can be read and reviewed on its own:
-#   deploy-dev-build.yml       compile-runner + push-ghcr
+#   deploy-dev-build.yml       verify + sign + promote prebuilt images
 #   deploy-dev-fly.yml         deploy-fly
 #   deploy-dev-metal.yml      deploy-metal (+ result output)
 #   deploy-dev-verify.yml      verify
@@ -22,18 +22,11 @@ name: deploy (dev)
 # Metal additionally needs Fly — see the note on the metal job for why its
 # own readiness gate cannot run while the API is still cycling.
 
-# AUTOMATIC ON MERGE, and manual as well.
-#
-# The push trigger was removed on 2026-08-23 (b9163ed32) for one stated reason:
-# the daemon this lane deployed was the frozen predecessor, and rebuilding a
-# codebase being replaced on every merge bought nothing. That commit named the
-# condition for its return — "Deploying the Rust daemon is M181's job" — and
-# `compile-daemon` now does exactly that: `cargo build --profile dist --bin
-# agentsfleetd`, published as `agentsfleetd-rs-linux-amd64`. The premise is
-# spent, so the trigger comes back.
-#
-# `workflow_dispatch` stays beside it, unchanged and load-bearing: redeploying
-# an older digest by hand is the rollback path.
+# Automatic on merge to main. Promotion requires a successful PR candidate
+# whose full source tree matches this merge. No candidate means failure;
+# deployment does not silently compile replacement artifacts.
+# workflow_dispatch redeploys the selected tree through the same verification.
+
 on:
   push:
     branches:
@@ -41,6 +34,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -64,7 +58,7 @@ jobs:
           VAULT_PROD: ${{ vars.VAULT_PROD }}
         run: ENV=dev STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
 
-  # ── 1. Compile + push dev-latest ────────────────────────────────────────
+  # ── 1. Verify and promote the PR candidate ─────────────────────────────
   build:
     needs: check-credentials
     uses: ./.github/workflows/deploy-dev-build.yml
@@ -74,6 +68,8 @@ jobs:
   fly:
     needs: build
     uses: ./.github/workflows/deploy-dev-fly.yml
+    with:
+      image: ${{ needs.build.outputs.image }}
     secrets: inherit
 
   # ── 3. Deploy the development runner to bare metal via Tailscale SSH ────
@@ -90,6 +86,8 @@ jobs:
   metal:
     needs: [build, fly]
     uses: ./.github/workflows/deploy-dev-metal.yml
+    with:
+      build-commit: ${{ needs.build.outputs.build-commit }}
     secrets: inherit
 
   # Build, deploy, and retain the same dashboard and command-line outputs
@@ -101,8 +99,11 @@ jobs:
 
   # ── 4. Wait for the Fly development environment to go green ─────────────
   verify:
-    needs: fly
+    needs: [fly, build]
     uses: ./.github/workflows/deploy-dev-verify.yml
+    with:
+      build-commit: ${{ needs.build.outputs.build-commit }}
+      version: ${{ needs.build.outputs.version }}
     secrets: inherit
 
   # ── 5. Release gates: quality assurance (QA) smoke + acceptance suites ──
@@ -121,10 +122,47 @@ jobs:
     uses: ./.github/workflows/deploy-dev-acceptance.yml
     secrets: inherit
 
+  # Only actual runner + dashboard + acceptance success qualifies a release.
+  # The documented bootstrap skip can deploy control-plane components but
+  # deliberately cannot produce a development-qualified candidate.
+  qualify-candidate:
+    needs: [build, fly, metal, dashboard, verify, acceptance]
+    if: >-
+      needs.fly.outputs.result == 'success' && needs.metal.outputs.result == 'success' &&
+      needs.dashboard.result == 'success' && needs.verify.result == 'success' &&
+      needs.acceptance.outputs.qa == 'success' && needs.acceptance.outputs.acceptance == 'success' &&
+      needs.acceptance.outputs.cli == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: promoted-candidate
+          path: dist/candidate
+      - name: Record the verified candidate and actual development gate results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GATE_FLY: ${{ needs.fly.outputs.result }}
+          GATE_METAL: ${{ needs.metal.outputs.result }}
+          GATE_DASHBOARD: ${{ needs.dashboard.result }}
+          GATE_VERIFY: ${{ needs.verify.result }}
+          GATE_QA: ${{ needs.acceptance.outputs.qa }}
+          GATE_ACCEPTANCE: ${{ needs.acceptance.outputs.acceptance }}
+          GATE_CLI: ${{ needs.acceptance.outputs.cli }}
+        id: identity
+        run: make candidate-qualify
+      - uses: actions/upload-artifact@v7
+        with:
+          name: development-candidate-${{ steps.identity.outputs.tree }}
+          path: dist/candidate
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
+
   # ── 6. Discord notify ────────────────────────────────────────────────────
   notify:
     runs-on: ubuntu-latest
-    needs: [build, fly, acceptance, metal, dashboard]
+    needs: [build, fly, acceptance, metal, dashboard, qualify-candidate]
     if: always()
     steps:
       - uses: actions/checkout@v7
@@ -152,6 +190,7 @@ jobs:
           TOOLBOX_BUILD: ${{ needs.build.outputs.toolbox }}
           DAEMON_BUILD: ${{ needs.build.outputs.daemon }}
           GHCR_RESULT: ${{ needs.build.outputs.ghcr }}
+          QUALIFICATION_RESULT: ${{ needs.qualify-candidate.result }}
           DASHBOARD_RESULT: ${{ needs.dashboard.result }}
           FLY_RESULT: ${{ needs.fly.outputs.result }}
           QA_RESULT: ${{ needs.acceptance.outputs.qa }}
@@ -173,12 +212,12 @@ jobs:
           ACCEPTANCE_RESULT="${ACCEPTANCE_RESULT:-skipped}"
           CLI_RESULT="${CLI_RESULT:-skipped}"
           METAL_RESULT="${METAL_RESULT:-skipped}"
-          for entry in "compile-runner=$RUNNER_BUILD" "build-toolbox=$TOOLBOX_BUILD" "compile-daemon=$DAEMON_BUILD" "push-ghcr=$GHCR_RESULT" "deploy-fly=$FLY_RESULT" "dashboard=$DASHBOARD_RESULT" "qa=$QA_RESULT" "acceptance-e2e=$ACCEPTANCE_RESULT" "acceptance-cli=$CLI_RESULT" "ten-fleets=$TEN_FLEETS_RESULT" "deploy-metal=$METAL_RESULT"; do
+          for entry in "verify-runner=$RUNNER_BUILD" "scan-sign-toolbox=$TOOLBOX_BUILD" "verify-daemon=$DAEMON_BUILD" "push-ghcr=$GHCR_RESULT" "qualify-candidate=$QUALIFICATION_RESULT" "deploy-fly=$FLY_RESULT" "dashboard=$DASHBOARD_RESULT" "qa=$QA_RESULT" "acceptance-e2e=$ACCEPTANCE_RESULT" "acceptance-cli=$CLI_RESULT" "ten-fleets=$TEN_FLEETS_RESULT" "deploy-metal=$METAL_RESULT"; do
             echo "dev_release_acceptance_summary job=${entry%%=*} result=${entry#*=} commit=$SHORT_SHA"
           done
 
           if [ "$DASHBOARD_RESULT" = success ] && [ "$QA_RESULT" = success ] && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
-            && { [ "$METAL_RESULT" = success ] || [ "$METAL_RESULT" = skipped ]; }; then
+            && { { [ "$METAL_RESULT" = success ] && [ "$QUALIFICATION_RESULT" = success ]; } || [ "$METAL_RESULT" = skipped ]; }; then
             STATUS=success
             MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | acceptance-cli: passed | ten-fleets: ${TEN_FLEETS_RESULT} | metal: ${METAL_RESULT} | dashboard: ${DASHBOARD_RESULT}\\n→ ten-fleet check awaits Indy's manual run"
           else

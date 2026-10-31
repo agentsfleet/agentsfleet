@@ -11,6 +11,11 @@ name: deploy-dev / metal
 
 on:
   workflow_call:
+    inputs:
+      build-commit:
+        description: Original seven-character revision compiled into the runner.
+        type: string
+        required: true
     outputs:
       result:
         description: deploy-metal job result (success | failure | cancelled | skipped)
@@ -56,10 +61,12 @@ jobs:
 
       - name: Deploy runner
         run: |
+          [[ "$CANDIDATE_BUILD_COMMIT" =~ ^[0-9a-f]{7}$ ]]
           RUNNER_BINARY=dist/agentsfleet-runner-linux-amd64 \
-          RUNNER_VERSION="dev-${GITHUB_SHA::7}" \
+          RUNNER_VERSION="dev-$CANDIDATE_BUILD_COMMIT" \
             ./playbooks/founding/05_runner_bootstrap_dev/deploy.sh
         env:
+          CANDIDATE_BUILD_COMMIT: ${{ inputs.build-commit }}
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           ALLOW_VAULT_READS: "1"
@@ -98,7 +105,7 @@ jobs:
           status: ${{ needs.deploy-metal.result }}
           message: >-
             ${{ needs.deploy-metal.result == 'success'
-            && format('✅ DEV agentsfleet-runner deployed — `dev-{0}`', github.sha)
-            || format('❌ DEV agentsfleet-runner deploy {0} — `dev-{1}`\nCheck: {2}/{3}/actions/runs/{4}', needs.deploy-metal.result, github.sha, github.server_url, github.repository, github.run_id) }}
+            && format('✅ DEV agentsfleet-runner deployed — `dev-{0}`', inputs.build-commit)
+            || format('❌ DEV agentsfleet-runner deploy {0} — `dev-{1}`\nCheck: {2}/{3}/actions/runs/{4}', needs.deploy-metal.result, inputs.build-commit, github.server_url, github.repository, github.run_id) }}
           op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           vault: ${{ vars.VAULT_PROD }}
