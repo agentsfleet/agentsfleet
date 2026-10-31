@@ -415,6 +415,12 @@ The live streamed-reply acceptance file was type-checked, but the full Linux acc
 An initial local retry inherited the machine's disabled-analytics flag and failed 29 analytics tests.
 The successful retry cleared that flag, matching the earlier successful lane; no assertion or product behavior changed.
 
+The final local gate passed integration, unit coverage and version checks but rejected CSS/font reads inside the browser test.
+Those asset-compilation reads now live in its fixture helper; rendered-component assertions remain unchanged.
+The unchanged repository lint still rejects source-text assertions in test files.
+`make lint-all` then passed, including its 19 test-rule self-tests and clean source-read scan.
+The focused browser rerun passed both desktop and mobile cases with the extracted fixture assets.
+
 ## Build reuse amendment: Oct 31, 2026
 
 Indy requested these improvements in the same Pull Request #793 and confirmed
