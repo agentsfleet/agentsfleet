@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Display-only provenance; it grants no authority or access.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveOrigin {
     /// Native command-line client.
