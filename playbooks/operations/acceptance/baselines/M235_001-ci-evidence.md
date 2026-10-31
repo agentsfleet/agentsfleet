@@ -16,7 +16,7 @@ Authenticated native metadata identifies job `123968144417`, run `41027232532`, 
 The completed job failed; its recorded interval is `2026-10-30T08:33:29Z` through `2026-10-30T08:35:32Z`.
 Its log endpoint again returned HTTP `302`, with safe destination origin `https://productionresultssa6.blob.core.windows.net`.
 
-No signed URL or credential was displayed or saved.
+Retained fleet source-probe records contain no signed URLs or credential values.
 Native development doctor passes for workspace `01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e`.
 The separate fleet's own successful log read remains unproved.
 
@@ -197,3 +197,20 @@ The configured UI, daemon and runner file paths are absent even after home-direc
 Private task-local file paths now preserve those bindings without copying their values. A fresh local session-code pepper is stored only in the private daemon settings file.
 
 The four affected frontend test files then passed all 25 tests using those task-local paths. Full coverage verification remains pending.
+
+## Review corrections and resume checkpoint
+
+The next checkpoint adds accurate HTTP egress review text and model proposal fields.
+It also expands the hosted redirect test across all five supported statuses and a relative hop.
+
+- Focused `SetupSummary` coverage: 30 tests pass; statements, branches, functions and lines are 100%.
+- Regression run before the masking repair: 89 egress tests pass and two new tests fail; 257 tool tests pass.
+- Regression run after the masking repair: 91 egress tests and 257 tool tests pass. A subsequent media-type budget case still needs its run.
+- The root-navigation case preserves source paths and media types. Bounded replacement prevents short signatures from expanding returned bodies beyond the response budget.
+- Local bootstrap checks pass: 14 environment tests, five macOS certificate tests and six Linux adapter tests.
+- The cleanup regression failed before repair and passes after repair, including a failed log command and an unwritable destination.
+- Companion docs `orly gate verify` passes with documentation, OpenAPI drift, site validation and link checks.
+- Main `orly gate verify` found four lint errors in the new wire-shape test. They were corrected without suppressions; the full rerun remains pending.
+
+Source logs: `/workspace/m235-evidence/privacy-regression-red.log`, `privacy-regression-green.log` and `verify-final.log`.
+These local tests supply no deployed-runtime, real-model, Slack or draft-repair acceptance.

@@ -65,6 +65,22 @@ fn initialization_exposes_policy_collection_and_scalar_types() {
     );
 }
 
+// Value: protects=customer-requested HTTP settings are visible to the authoring model;
+// fails_when=the closed proposal schema excludes fields accepted by native validation.
+#[test]
+fn initialization_exposes_reviewed_http_destination_settings() {
+    let schema = tool(false);
+    let network = "/parameters/properties/proposal/properties/definition/properties/config/properties/x-agentsfleet/properties/network/properties";
+    assert_eq!(
+        schema.pointer(&format!("{network}/http_egress/enum")),
+        Some(&json!(["restricted", "public"]))
+    );
+    assert_eq!(
+        schema.pointer(&format!("{network}/package_manager_domains/type")),
+        Some(&json!("boolean"))
+    );
+}
+
 // Value: protects=only the action permitted by the locked draft consumes context;
 // fails_when=initialization fields are sent during edits or edits without a base.
 #[test]

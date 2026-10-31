@@ -17,6 +17,36 @@ const AUTH: &str = "Bearer ${secrets.github.token}";
 const LOG: &str = "2026-10-30T08:34:00Z assertion failed: decoded title";
 
 #[tokio::test]
+async fn should_expose_incomplete_source_reads_before_the_body() {
+    for lossy in [false, true] {
+        let run = Run::new(true);
+        let (transport, _sent) = RecordingTransport::answering(move |request| {
+            if request.url().path().ends_with("/logs") {
+                Ok(redirected(
+                    302,
+                    request.url(),
+                    "/repos/acme/widgets/download",
+                ))
+            } else {
+                let mut response = inbound(200, "source text");
+                response.content_type = Some("text/plain".to_owned());
+                response.lossy = lossy;
+                Ok(response)
+            }
+        });
+        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
+        let (notices, body) = output
+            .text
+            .split_once("Response Body:")
+            .expect("body label");
+        assert!(notices.contains("Content-Type: text/plain"));
+        assert_eq!(notices.contains("replaced non-UTF-8 bytes"), lossy);
+        assert_eq!(body.trim(), "source text");
+    }
+}
+
+#[tokio::test]
 async fn should_read_text_through_admitted_redirects() {
     for status in [301, 302, 303, 307, 308] {
         let run = Run::new(true);

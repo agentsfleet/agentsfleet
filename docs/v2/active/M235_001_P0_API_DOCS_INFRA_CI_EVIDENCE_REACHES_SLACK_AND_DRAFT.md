@@ -137,6 +137,8 @@ The matching documentation branch belongs to the separate `/workspace/docs` chec
 | `rustd/crates/afr_egress/src/admission/mod.rs; rustd/crates/afr_egress/src/admission/http_egress/tests.rs; rustd/crates/afr_egress/src/fixture.rs` | EDIT / CREATE | admit public HTTPS or preset domains without relaxing other restrictions |
 | `rustd/crates/afr_supervisor/src/egress/mod.rs; rustd/crates/afr_supervisor/src/egress/tests.rs; rustd/crates/afr_supervisor/src/holds/built_under.rs; rustd/crates/afr_supervisor/src/holds/built_under_tests.rs; rustd/crates/afr_supervisor/src/workspace_clone/fetch.rs; rustd/crates/afr_supervisor/src/workspace_clone/checkout.rs` | EDIT | reuse registry names and preserve sandbox network boundaries |
 | `public/openapi.json` | GENERATE | publish the native API settings |
+| `rustd/crates/afd_authoring/src/model/provider/schema.rs; rustd/crates/afd_authoring/src/model/provider/tests/proposals.rs; rustd/crates/afd_wire/tests/policy_shapes.rs` | EDIT | expose reviewed HTTP settings to authoring and prove wire defaults |
+| `ui/packages/app/components/domain/chat/SetupSummary.tsx; ui/packages/app/tests/workspace-chat/setup-summary.test.tsx` | EDIT | describe reviewed HTTP egress accurately without adding settings controls |
 | `make/acceptance.mk; Makefile; README.md; docs/development.md; scripts/local-dev-state.sh; deploy/local/acceptance.sh; deploy/local/bootstrap.sh; deploy/local/bootstrap_test.sh; deploy/local/orbstack.sh; deploy/local/codex.sh; deploy/local/codex-runner.Dockerfile; deploy/local/codex-runner.sh; deploy/local/codex-compose.yml; deploy/local/codex-certificate.sh; deploy/local/codex_test.sh` | EDIT / CREATE | share acceptance orchestration and add a Linux Docker runner adapter |
 
 ## Applicable Rules
@@ -203,7 +205,9 @@ Keep the visible HTTP status, origin-only Location and explicit body-truncation 
 
 An interrupted body returns the existing safe upstream-read failure, without claiming partial text as a complete read.
 
-Keep raw targets opaque in metadata, errors, Debug and tracing; scrub the defined protected units from final/error bodies before model output. Protected units include raw Location, resolved URL, its non-root path/query string and credential-like query values under the evidence format's finite matching rules. Test literal, once-percent-encoded and JSON-escaped echoes, including an isolated signature; unknown secrets and arbitrary repeated encodings are not an asserted detection guarantee.
+Keep raw targets opaque in metadata, errors, Debug and tracing; scrub protected units from final/error bodies before model output. Units include informative raw Location, resolved URL, non-root path/query and credential-like query values under the evidence format's finite rules. Pure navigation references, such as `/` or `.`, are not standalone masks; their resolved URLs stay protected.
+
+Test literal, once-percent-encoded and JSON-escaped echoes, including an isolated signature. Masking preserves the response budget and whole redaction markers; unknown secrets and arbitrary repeated encodings are outside the detection claim.
 
 Loop identity is the pinned URL library's serialized absolute URL after removing its fragment; keep query order and encoded octets unchanged. Seed the initial URL, then reject a repeated normalized target before checking the three-hop ceiling, admitting or sending it. Default-port/host normalization follows `url` 2.5.8; changed fragments cannot cause another send.
 
@@ -308,7 +312,7 @@ Verify the actual Slack answer and draft-link visibility separately from event p
 - Reports use `schema_version: 1`, one selected `evaluation_id` and retained prior-report commit references; all eight active cases share that campaign's subject.
 - Require eight unique case/event records, hashed prompt/tool/answer references, factual-claim witnesses, review identity/date and explicit findings, including an empty findings list.
 - Development records add environment/runtime identities, run/attempt/job/commit, Slack permalinks, draft scope/head and before/after regression evidence.
-- No new platform endpoint, trigger type, authentication flow, public policy field or setup screen is introduced.
+- No new platform endpoint, trigger type, authentication flow or settings screen is introduced. The HTTP policy fields are the explicit exception described in §1.
 
 The shared report format is pinned in `playbooks/operations/acceptance/ci_evidence_format.md`; changes amend that format and this spec together.
 Require accepted-definition snapshots, exact instruction/policy hashes, native event/tool witnesses, a fixed evaluation selection and attributed runtime proof.

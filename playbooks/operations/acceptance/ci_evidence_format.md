@@ -172,7 +172,11 @@ A corrected campaign changes the relevant instructions, input/policy manifest or
 
 ## Protected redirect units
 
-Raw redirect metadata always stays opaque; the body scrubber protects a finite set of known units. Include raw Location, resolved absolute URL, and its path-plus-query when that unit is more than a bare root slash. Include raw and once-decoded query values whose names contain credential-like tokens or whose values span at least 16 bytes.
+Raw redirect metadata always stays opaque; the body scrubber protects a finite set of known units. Include informative raw Location, resolved absolute URL, and non-root path-plus-query.
+
+Pure navigation references containing only slashes, dots, question marks or fragment markers are not standalone masks. Their resolved URLs remain protected, while ordinary punctuation and media types stay readable.
+
+Include raw and once-decoded query values whose names contain credential-like tokens or whose values span at least 16 bytes. Build masked bodies within the response budget, preserving whole redaction markers and reporting truncation before the body.
 
 Credential-like tokens are `sig`, `signature`, `token`, `secret`, `key`, `credential`, `password`, `auth`, `authorization`, `code` and `session`. Match names case-insensitively after splitting non-alphanumeric separators; this is a generic field rule, not a provider list. Ordinary short metadata values stay readable unless their names identify credentials.
 

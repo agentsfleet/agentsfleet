@@ -148,6 +148,33 @@ dev_compose up --detach
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn('overlay does not exist', missing.stderr)
 
+    def test_teardown_still_runs_when_log_capture_fails(self):
+        for unwritable in (False, True):
+            state = self.root / str(unwritable)
+            if unwritable:
+                state.write_text('this is not a directory')
+            else:
+                state.mkdir()
+            calls = self.root / f'calls-{unwritable}'
+            result = self.shell('''
+source "$DEV_ROOT/deploy/local/codex.sh"
+acceptance_runner_started=1
+acceptance_runner_container=owned-fixture
+docker() {
+  printf '%s\\n' "$1" >>"$TEST_CALLS"
+  if [ "$1" = logs ]; then return 7; fi
+}
+status=0
+acceptance_adapter_cleanup || status=$?
+printf '%s %s\\n' "$status" "$acceptance_runner_started"
+''', LOCAL_ACCEPTANCE_STATE=str(state), TEST_CALLS=str(calls))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            status, owned = result.stdout.split()
+            self.assertNotEqual(status, '0')
+            self.assertEqual(owned, '0')
+            self.assertEqual(calls.read_text().splitlines(),
+                             ['stop', 'rm'] if unwritable else ['logs', 'stop', 'rm'])
+
     def test_linux_requirement_refuses_before_any_docker_mutation(self):
         result = self.shell('''
 source "$DEV_ROOT/deploy/local/codex.sh"

@@ -217,6 +217,7 @@ async fn should_hand_back_a_body_that_is_not_utf8_with_its_bad_bytes_replaced() 
         (inbound.status, inbound.body.as_str(), inbound.truncated),
         (200, "ok\u{fffd}", false)
     );
+    assert!(inbound.lossy);
 }
 
 #[tokio::test]

@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule};
+use afd_wire::policy::{HttpEgress, HttpMethod, HttpPathMatch, HttpRequestRule, NetworkPolicy};
 
 /// The stage fraction is published as what the parser enforces: a fraction of
 /// the context window, 0 to 1, so a reader never writes a percentage.
@@ -64,4 +64,26 @@ fn test_an_open_rule_omits_permitted_fields_and_a_closed_one_carries_it() {
     )
     .expect("a null list decodes");
     assert_eq!(nulled.permitted_fields, None);
+}
+
+// Value: protects=older policy payloads retain restricted HTTP destinations;
+// fails_when=an omitted setting widens access or a misspelled mode is accepted.
+#[test]
+fn http_destination_scope_defaults_and_round_trips() {
+    let payload = serde_json::json!({"allow":[],"read_only":true,"read_post_paths":[]});
+    let encoded = payload.to_string();
+    let restricted: NetworkPolicy<'_> = serde_json::from_str(&encoded).expect("old payload");
+    assert_eq!(restricted.http_egress, HttpEgress::Restricted);
+    assert!(!restricted.package_manager_domains);
+    for mode in [HttpEgress::Restricted, HttpEgress::Public] {
+        let payload = serde_json::json!({"allow":[],"read_only":true,"read_post_paths":[],
+            "http_egress":mode,"package_manager_domains":true});
+        let encoded = payload.to_string();
+        let policy: NetworkPolicy<'_> = serde_json::from_str(&encoded).expect("HTTP policy");
+        assert_eq!(policy.http_egress, mode);
+        assert!(policy.package_manager_domains);
+        assert_eq!(serde_json::to_value(policy).expect("round trip"), payload);
+    }
+    let invalid = serde_json::json!({"allow":[],"read_only":true,"read_post_paths":[],"http_egress":"unknown"});
+    serde_json::from_str::<NetworkPolicy<'_>>(&invalid.to_string()).expect_err("unknown mode");
 }

@@ -4,11 +4,10 @@ FROM mirror.gcr.io/library/debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b57
 # A session CA is public trust material; credentials never enter this image.
 RUN --mount=type=secret,id=session-ca,required=false \
     set -eu; \
-    mkdir -p /usr/local/share/ca-certificates; \
+    set --; \
     if [ -f /run/secrets/session-ca ]; then \
-      cp /run/secrets/session-ca /usr/local/share/ca-certificates/session-proxy.crt; \
+      set -- -o Acquire::https::CaInfo=/run/secrets/session-ca; \
     fi; \
-    if command -v update-ca-certificates >/dev/null; then update-ca-certificates; fi; \
-    apt-get update && apt-get install --yes --no-install-recommends \
+    apt-get "$@" update && apt-get "$@" install --yes --no-install-recommends \
       bubblewrap ca-certificates e2fsprogs iproute2 nftables util-linux \
     && update-ca-certificates && rm -rf /var/lib/apt/lists/*

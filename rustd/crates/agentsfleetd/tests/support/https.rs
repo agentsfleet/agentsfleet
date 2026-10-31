@@ -62,9 +62,9 @@ impl Reply {
     }
 
     /// A redirect to `location`, as GitHub answers a job's log.
-    pub(crate) fn found(location: &str) -> Self {
+    pub(crate) fn redirect(status: u16, location: &str) -> Self {
         Self {
-            status: StatusCode::FOUND,
+            status: StatusCode::from_u16(status).expect("a scripted status is valid"),
             location: Some(location.to_owned()),
             body: String::new(),
             cut: false,
