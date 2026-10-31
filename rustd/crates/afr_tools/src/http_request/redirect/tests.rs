@@ -119,11 +119,23 @@ async fn should_strip_headers_across_redirect_origins() {
 
 #[tokio::test]
 async fn should_refuse_redirect_before_transmission() {
-    for target in [
-        "https://unlisted.example/logs?sig=private-signature",
-        "http://api.github.com/download",
-        "https://127.0.0.1/private",
-        "https://user:password@api.github.com/private",
+    for (target, expected) in [
+        (
+            "https://unlisted.example/logs?sig=private-signature",
+            ToolErrorCode::HostNotAllowed,
+        ),
+        (
+            "http://api.github.com/download",
+            ToolErrorCode::HttpsRequired,
+        ),
+        (
+            "https://127.0.0.1/private",
+            ToolErrorCode::AddressNotAllowed,
+        ),
+        (
+            "https://user:password@api.github.com/private",
+            ToolErrorCode::CredentialPlacementNotAllowed,
+        ),
     ] {
         let run = Run::new(true);
         let (transport, sent) = RecordingTransport::answering(move |request| {
@@ -131,7 +143,11 @@ async fn should_refuse_redirect_before_transmission() {
         });
         let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
         let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
-        assert!(output.error_code.is_some());
+        assert_eq!(output.error_code, Some(expected));
+        assert!(
+            output.text.contains("Status: 302")
+                && output.text.contains("Redirect request did not complete")
+        );
         assert_eq!(sent.try_iter().count(), 1);
         assert!(!output.text.contains("private-signature"));
         assert!(!output.text.contains("password"));
@@ -175,6 +191,7 @@ impl Transport for Never {
 
 #[tokio::test(start_paused = true)]
 async fn should_bound_the_whole_http_read_deadline() {
+    let capture = afd_core::test_util::trace::Capture::install();
     let run = Run::new(true);
     let tool = Typed::boxed(HttpRequest::new(Arc::new(Never)));
     let lease = run.lease();
@@ -182,6 +199,14 @@ async fn should_bound_the_whole_http_read_deadline() {
     assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
     assert!(output.text.contains("deadline exceeded"));
     drop(lease.egress.try_lock().expect("guard released during send"));
+    let failed = capture.only("http_read_deadline_exceeded");
+    assert_eq!(failed.level, tracing::Level::WARN);
+    assert_eq!(failed.field("tool"), Some("http_request"));
+    assert_eq!(failed.field("lease_id"), Some(lease.lease_id));
+    assert_eq!(
+        failed.field("error_code"),
+        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
 }
 
 #[tokio::test]

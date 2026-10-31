@@ -253,6 +253,8 @@ A followed tool GET emits `http_redirect_started` and exactly one `http_redirect
 
 Cancellation and the aggregate deadline end with failure. No destination path, query, signature or response body enters these records; existing `tool_refused` records remain in place.
 
+Completed redirects log at info; failed redirects log at warn with a registered error code. A GET that exhausts its aggregate deadline also emits `http_read_deadline_exceeded` at warn, including when it expires before observing a redirect (`afr_tools/src/egress/mod.rs`). That record carries only the lease, tool, fixed reason and registered error code.
+
 **What the runner reads.** The endpoint, protocol and timeout knobs the daemon
 reads, and no header knob: `OTEL_EXPORTER_OTLP_HEADERS`, any signal's own
 header knob (`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_HEADERS`, which the

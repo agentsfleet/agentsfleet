@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use reqwest::Url;
 
-use crate::{Draft, Inbound, Placement};
+use crate::{Draft, Inbound, Placement, Result};
 
 mod privacy;
 mod target;
@@ -174,19 +174,32 @@ impl Chain {
 impl Drop for Chain {
     fn drop(&mut self) {
         if self.started {
-            let event = if self.ending == "completed" {
-                "http_redirect_completed"
+            let hop_count = self.hops;
+            let status = self.status;
+            let stripped_headers = self.stripped;
+            let reason = self.ending;
+            let elapsed_ms = self.began.elapsed().as_millis();
+            if self.ending == "completed" {
+                tracing::info!(
+                    event = "http_redirect_completed",
+                    hop_count,
+                    status,
+                    stripped_headers,
+                    reason,
+                    elapsed_ms
+                );
             } else {
-                "http_redirect_failed"
-            };
-            tracing::info!(
-                event,
-                hop_count = self.hops,
-                status = self.status,
-                stripped_headers = self.stripped,
-                reason = self.ending,
-                elapsed_ms = self.began.elapsed().as_millis()
-            );
+                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+                tracing::warn!(
+                    event = "http_redirect_failed",
+                    hop_count,
+                    status,
+                    stripped_headers,
+                    reason,
+                    elapsed_ms,
+                    error_code
+                );
+            }
         }
     }
 }

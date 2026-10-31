@@ -1,14 +1,12 @@
 //! Each response field's stability class, as `x-stability` (REST §9).
 //!
-//! # Why this is derived and not annotated
-//!
-//! `utoipa` 5.5's `ToSchema` derive takes no extensions on a field, so the
-//! class cannot be written beside the field it describes. The table below is
-//! the next-closest place: one line per field that is not `stable`, checked by
-//! a test that every line still names a field the document publishes. A field
-//! left out is `stable`, which is the guidelines' binding default.
+//! `utoipa` field extensions do not survive a reference-valued field. The
+//! table keeps field classes together and tests every declared property in
+//! the published document. A field left out is `stable`, which is the
+//! guidelines' binding default.
 
 use utoipa::openapi::extensions::Extensions;
+use utoipa::openapi::schema::OneOf;
 use utoipa::openapi::{OpenApi, RefOr, Schema};
 
 /// The extension a field's class is published under.
@@ -26,6 +24,11 @@ const BETA_NOTE: &str = "Beta: this field may change shape before it is stable."
 /// The tool-call fields are read by the chat while its rendering is still
 /// being built, and the runner that fills them is new; both may reshape them.
 pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
+    ("NetworkPolicy", &["http_egress", "package_manager_domains"]),
+    (
+        "DefinitionNetwork",
+        &["http_egress", "package_manager_domains"],
+    ),
     ("EventDetail", &["tool_calls"]),
     (
         "ToolCallDetail",
@@ -84,7 +87,21 @@ fn property_of<'d>(
     let RefOr::T(Schema::Object(object)) = components.schemas.get_mut(schema)? else {
         return None;
     };
-    match object.properties.get_mut(property)? {
+    let field = object.properties.get_mut(property)?;
+    // A single-reference union preserves validation while carrying field metadata.
+    if let RefOr::Ref(reference) = field {
+        let mut reference = reference.clone();
+        let description =
+            (!reference.description.is_empty()).then(|| std::mem::take(&mut reference.description));
+        *field = Schema::OneOf(
+            OneOf::builder()
+                .item(reference)
+                .description(description)
+                .build(),
+        )
+        .into();
+    }
+    match field {
         RefOr::T(found) => Some(found),
         RefOr::Ref(_) => None,
     }

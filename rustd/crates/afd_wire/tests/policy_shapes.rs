@@ -85,5 +85,12 @@ fn http_destination_scope_defaults_and_round_trips() {
         assert_eq!(serde_json::to_value(policy).expect("round trip"), payload);
     }
     let invalid = serde_json::json!({"allow":[],"read_only":true,"read_post_paths":[],"http_egress":"unknown"});
-    serde_json::from_str::<NetworkPolicy<'_>>(&invalid.to_string()).expect_err("unknown mode");
+    let encoded = invalid.to_string();
+    let error = serde_json::from_str::<NetworkPolicy<'_>>(&encoded).expect_err("unknown mode");
+    assert_eq!(error.classify(), serde_json::error::Category::Data);
+    assert_eq!(error.line(), 1);
+    assert_eq!(
+        error.column(),
+        encoded.find("unknown").expect("mode") + "unknown".len() + 1
+    );
 }

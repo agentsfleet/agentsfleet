@@ -4,7 +4,7 @@ use regex::Regex;
 use reqwest::Url;
 
 use super::{Stop, Target};
-use crate::{Inbound, RESPONSE_MAX_BYTES};
+use crate::{Inbound, RESPONSE_MAX_BYTES, Result};
 
 const MASK: &str = "«secret:redirect»";
 const CREDENTIAL_KEYS: [&str; 11] = [

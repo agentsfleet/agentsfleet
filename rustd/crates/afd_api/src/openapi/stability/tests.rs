@@ -42,11 +42,26 @@ fn every_beta_field_is_published_beta() {
 }
 
 #[test]
+fn http_destination_settings_are_published_beta() {
+    let document = crate::openapi::document();
+    let value = serde_json::to_value(&document).expect("document serializes");
+    for schema in ["NetworkPolicy", "DefinitionNetwork"] {
+        for property in ["http_egress", "package_manager_domains"] {
+            assert_eq!(
+                published_class(&document, schema, property).as_deref(),
+                Some("beta"),
+                "{schema}.{property}: {:?}",
+                value.pointer(&format!(
+                    "/components/schemas/{schema}/properties/{property}"
+                ))
+            );
+        }
+    }
+}
+
+#[test]
 fn a_field_the_document_lacks_is_answered_not_invented() {
-    let object = Object::builder()
-        .property("inline", Object::new())
-        .property("shared", Ref::from_schema_name("Shared"))
-        .build();
+    let object = Object::builder().property("inline", Object::new()).build();
     let mut document = OpenApiBuilder::new()
         .components(Some(
             ComponentsBuilder::new()
@@ -58,7 +73,7 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
     let missing = declare_beta(
         &mut document,
         &[
-            ("Holder", &["inline", "shared", "absent"]),
+            ("Holder", &["inline", "absent"]),
             ("Listed", &["items"]),
             ("Nowhere", &["field"]),
         ],
@@ -66,7 +81,6 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
     assert_eq!(
         missing,
         [
-            ("Holder", "shared"),
             ("Holder", "absent"),
             ("Listed", "items"),
             ("Nowhere", "field"),
@@ -78,6 +92,30 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
     );
     let mut bare = OpenApiBuilder::new().build();
     assert_eq!(declare_beta(&mut bare, &[("A", &["b"])]), [("A", "b")]);
+}
+
+#[test]
+fn a_referenced_field_keeps_its_target_and_carries_its_class() {
+    let reference = Ref::from_schema_name("Shared");
+    let object = Object::builder().property("shared", reference).build();
+    let mut document = OpenApiBuilder::new()
+        .components(Some(
+            ComponentsBuilder::new()
+                .schema("Holder", object)
+                .schema("Shared", Object::new())
+                .build(),
+        ))
+        .build();
+    assert!(declare_beta(&mut document, &[("Holder", &["shared"])]).is_empty());
+    assert_eq!(
+        published_class(&document, "Holder", "shared").as_deref(),
+        Some("beta")
+    );
+    let encoded = serde_json::to_value(&document).expect("document serializes");
+    assert_eq!(
+        encoded.pointer("/components/schemas/Holder/properties/shared/oneOf/0/$ref"),
+        Some(&serde_json::json!("#/components/schemas/Shared"))
+    );
 }
 
 #[test]
