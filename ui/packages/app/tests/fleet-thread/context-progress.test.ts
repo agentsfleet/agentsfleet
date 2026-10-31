@@ -1,6 +1,6 @@
 import { ev, mockStream, renderThread, threadElement } from "./harness";
 import { expect, it } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { CONTEXT_STATE } from "@/lib/context-progress";
 
 const start = {generation: 1, state: CONTEXT_STATE.summarizing};
@@ -15,7 +15,8 @@ it("announces summary progress once beside tools and a partial answer, then remo
   const view = renderThread();
   expect(screen.getAllByText("Context summarizing…")).toHaveLength(1);
   expect(screen.getByText("Original partial answer")).toBeTruthy();
-  expect(screen.getByRole("list", {name: "Tool calls"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Ran commands"}));
+  expect(screen.getByRole("list", {name: "Ran commands"})).toBeTruthy();
   mockStream([{...running, contextProgress: end}]);
   view.rerender(threadElement());
   expect(screen.getAllByText("Context summarized, resuming…")).toHaveLength(1);

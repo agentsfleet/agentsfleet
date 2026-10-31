@@ -4,6 +4,51 @@ use super::{Fleet, Method, StatusCode, json_body, mint, send};
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn an_applied_revision_records_its_origin_once() {
+    for origin in ["cli", "dashboard", "chat"] {
+        let fleet = Fleet::create().await;
+        let (_, mut request) = fleet.improvement().await;
+        request["origin"] = serde_json::json!(origin);
+        let key = mint();
+        let tag = fleet.saved["setup_etag"].as_str().expect("base setup tag");
+        let response = fleet.apply(key.as_str(), tag, &request).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(json_body(response).await["setup_revision"], "2");
+        let replay = fleet.apply(key.as_str(), tag, &request).await;
+        assert_eq!(replay.status(), StatusCode::CREATED);
+        assert_eq!(json_body(replay).await["setup_revision"], "2");
+        request["origin"] = serde_json::json!(if origin == "cli" { "dashboard" } else { "cli" });
+        let replay = fleet.apply(key.as_str(), tag, &request).await;
+        assert_eq!(replay.status(), StatusCode::CREATED);
+        assert_eq!(json_body(replay).await["setup_revision"], "2");
+        let receipt: serde_json::Value = sqlx::query_scalar(
+            "SELECT request_json::jsonb FROM fleet.events WHERE fleet_id=$1::uuid \
+             AND event_type='activity' AND request_json::jsonb->>'kind'='setup_saved' \
+             AND request_json::jsonb->>'revision'='2'",
+        )
+        .bind(fleet.saved["id"].as_str().expect("accepted fleet ID"))
+        .fetch_one(
+            &mut *fleet
+                .case
+                .base
+                .db
+                .acquire()
+                .await
+                .expect("receipt connection"),
+        )
+        .await
+        .expect("one durable Apply receipt");
+        assert_eq!(
+            receipt,
+            serde_json::json!({"kind":"setup_saved","revision":"2","origin":origin})
+        );
+        assert_eq!(fleet.revision_count().await, 2);
+        fleet.case.cleanup().await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_improvement_advances_only_setup_and_replays_after_the_private_draft_closes() {
     let fleet = Fleet::create().await;
     let (draft, request) = fleet.improvement().await;

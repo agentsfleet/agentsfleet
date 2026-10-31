@@ -6,6 +6,7 @@ import { DraftClient } from "@/lib/api/drafts";
 import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DraftChatHeading } from "@/components/domain/chat/DraftChatHeading";
 import { FleetSetup } from "@/components/domain/chat/FleetSetup";
+import { SetupStatusFlap } from "@/components/domain/chat/SetupStatusFlap";
 import { ChatFixture, CHAT_PROPS, chooseSetupAction } from "./fixture";
 import { DRAFT, FLEET_ID, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
@@ -24,6 +25,7 @@ function LiveSetup() {
   return <>{view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
     <DraftChatHeading client={client} view={view} workspace={WORKSPACE} onDirtyChange={setDirty} />
     <FleetSetup client={client} view={view} workspace={WORKSPACE} />
+    <SetupStatusFlap view={view} workspace={WORKSPACE} dirty={dirty} />
     {dirty ? <output>Manual changes pending</output> : null}</>;
 }
 
@@ -32,7 +34,7 @@ it("saves once from the heading without opening a review or starting a run", asy
   expect(screen.getAllByRole("button", {name: "Save fleet"})).toHaveLength(1);
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
   await chooseSetupAction("Save fleet");
-  await screen.findByRole("heading", {name: "Save done v1"});
+  await screen.findByRole("heading", {name: "Setup saved · v1"});
   expect(fixture.writes()).toHaveLength(1);
   expect(fixture.writes()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
@@ -45,7 +47,9 @@ it("keeps publishing in its own explicit menu action", async () => {
   fireEvent.change(await screen.findByLabelText("Library name"), {target: {value: "Checked recipe"}});
   expect(fixture.writes()).toEqual([]);
   fireEvent.click(screen.getByRole("button", {name: "Publish new entry"}));
-  await screen.findAllByText(/Published Library revision/);
+  await screen.findByText("Setup published");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?library=${PUBLICATION.library_id}&revision=${PUBLICATION.revision_id}`);
   expect(fixture.writes()[0]?.body).toMatchObject({label: "Checked recipe"});
   expect(fixture.saveAttempts).toBe(0);
 });
@@ -85,8 +89,9 @@ it("retains a refused next Library revision without claiming publication or chan
   await chooseSetupAction("Publish to Library");
   fireEvent.click(await screen.findByRole("button", {name: "Publish next revision"}));
   await screen.findAllByText("Library revision changed");
-  expect(screen.queryByText(/Published Library revision/)).toBeNull();
-  expect(screen.getByRole("button", {name: "Publish next revision"})).toHaveProperty("disabled", false);
+  expect(screen.queryByText(/Setup published/)).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(client.getSnapshot().draft?.publication?.revision_id).toBe(PUBLICATION.revision_id);
   expect(fixture.saveAttempts).toBe(0);
 });
 
@@ -131,6 +136,6 @@ it("keeps a refused improvement editable and never claims another revision was s
   });
   render(<LiveSetup />); await chooseSetupAction("Save changes");
   await screen.findByText("The saved fleet changed");
-  expect(screen.queryByRole("heading", {name: "Save done v2"})).toBeNull();
+  expect(screen.queryByRole("heading", {name: "Setup saved · v2"})).toBeNull();
   expect(screen.getByRole("button", {name: "Save changes"})).toHaveProperty("disabled", false);
 });

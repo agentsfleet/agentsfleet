@@ -62,6 +62,7 @@ impl Creations {
         let tenant = Uuid7::parse(&tenant.ok_or(ErrorKind::Hidden)?)?;
         let name = setup.definition.runtime().name().as_str();
         let captured = Captured {
+            origin: None,
             candidate: Candidate {
                 id: self.setup.drafts.mint(now)?,
                 revision: INITIAL_VERSION.to_string(),

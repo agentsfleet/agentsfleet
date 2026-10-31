@@ -67,7 +67,7 @@ it("opens a new private chat pinned to the inspected Library revision", async ()
   }));
   render(<LibraryWorkspace workspace={WORKSPACE} />);
   fireEvent.click(await screen.findByRole("button", {name: "Inspect"}));
-  fireEvent.click(await screen.findByRole("button", {name: "Start chat from this revision"}));
+  fireEvent.click(await screen.findByRole("button", {name: "New fleet"}));
   expect(push).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/new?library=${LIBRARY_CARD.id}&revision=${LIBRARY.head.id}`);
 });
 
@@ -117,12 +117,12 @@ it("removes stale actions while inspecting history and uses the selected immutab
   }));
   render(<LibraryBrowser {...PROPS} />);
   fireEvent.click(await screen.findByRole("button", {name: "Inspect"}));
-  await screen.findByRole("button", {name: "Start chat from this revision"});
+  await screen.findByRole("button", {name: "New fleet"});
   fireEvent.click(await screen.findByRole("button", {name: "Inspect revision 0"}));
-  expect(screen.queryByRole("button", {name: "Start chat from this revision"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "New fleet"})).toBeNull();
   expect(screen.getByText("Loading selected revision")).not.toBeNull();
   await act(async () => historical.resolve(response({...LIBRARY, head: {...LIBRARY.head, id: FLEET_ID, revision: "0"}})));
-  fireEvent.click(await screen.findByRole("button", {name: "Start chat from this revision"}));
+  fireEvent.click(await screen.findByRole("button", {name: "New fleet"}));
   expect(PROPS.onSelect).toHaveBeenCalledWith({kind: SOURCE_KIND.library, library_id: LIBRARY_CARD.id, revision_id: FLEET_ID});
 });
 
@@ -141,7 +141,7 @@ it("aborts inspection on close and ignores its delayed response", async () => {
   view.unmount();
   expect(signal?.aborted).toBe(true);
   await act(async () => inspection.resolve(response(LIBRARY)));
-  expect(screen.queryByRole("button", {name: "Start chat from this revision"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "New fleet"})).toBeNull();
   expect(PROPS.onSelect).not.toHaveBeenCalled();
 });
 
@@ -157,9 +157,9 @@ it.each([200, 503])("can inspect the same recipe again after its first answer is
   render(<LibraryBrowser {...PROPS} />);
   fireEvent.click(await screen.findByRole("button", {name: "Inspect"}));
   if (status === 503) await screen.findByRole("alert");
-  else await screen.findByRole("button", {name: "Start chat from this revision"});
+  else await screen.findByRole("button", {name: "New fleet"});
   fireEvent.click(screen.getByRole("button", {name: "Inspect"}));
-  await screen.findByRole("button", {name: "Start chat from this revision"});
+  await screen.findByRole("button", {name: "New fleet"});
   expect(screen.queryByText("Loading selected revision")).toBeNull();
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -199,7 +199,7 @@ it("can page recipes and revision history and inspect the same historical revisi
   await waitFor(() => expect(screen.queryByRole("button", {name: "Older revisions"})).toBeNull());
   for (let attempt = 0; attempt < 2; attempt += 1) {
     fireEvent.click(screen.getByRole("button", {name: "Inspect revision 0"}));
-    await screen.findByRole("button", {name: "Start chat from this revision"});
+    await screen.findByRole("button", {name: "New fleet"});
   }
   expect(paths.some((path) => path.includes("starting_after=page-two"))).toBe(true);
   expect(paths.some((path) => path.includes("starting_after=older"))).toBe(true);
@@ -218,7 +218,7 @@ it.each([403, 503])("handles revision history refusal %i with the correct recove
   const alert = await screen.findByRole("alert");
   expect(alert.getAttribute("data-slot")).toBe("unavailable-state");
   if (status === 403) {
-    expect(screen.queryByRole("button", {name: "Start chat from this revision"})).toBeNull();
+    expect(screen.queryByRole("button", {name: "New fleet"})).toBeNull();
     fireEvent.click(screen.getByRole("button", {name: "Retry Library"}));
     await screen.findByText(LIBRARY_CARD.name);
   } else {

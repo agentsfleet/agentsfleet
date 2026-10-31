@@ -19,10 +19,10 @@ describe("FleetThread — empty state", () => {
 describe("FleetThread — header chrome", () => {
   it("keeps saved and ready receipts distinct when readiness is attached to the saved revision", () => {
     mockStream(["setup_saved", "setup_ready"].map((kind, index) => ev({id: kind, role: "system", actor: "system",
-      status: "recorded", text: kind === "setup_saved" ? "Save done v3" : "Setup done · v3", createdAt: new Date(Date.UTC(2026, 4, 15, 9, index)),
+      status: "recorded", text: kind === "setup_saved" ? "Setup saved · v3" : "Setup done · v3", createdAt: new Date(Date.UTC(2026, 4, 15, 9, index)),
       custom: {requestJson: JSON.stringify({kind, revision: "3"})}})));
-    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Save done v3")}));
-    expect(screen.getAllByText("Save done v3")).toHaveLength(1);
+    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Setup saved · v3")}));
+    expect(screen.getAllByText("Setup saved · v3")).toHaveLength(1);
     expect(screen.getByText("Setup done · v3")).toBeTruthy();
   });
   it("shows the saved setup revision without treating it as a new run", () => {

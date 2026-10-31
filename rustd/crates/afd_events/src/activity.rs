@@ -58,6 +58,9 @@ pub enum Activity<'a> {
     SetupSaved {
         /// The saved decimal revision.
         revision: &'a str,
+        /// Optional display provenance; never a permission or identity claim.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        origin: Option<&'a str>,
     },
     /// The setup's checked activation committed.
     SetupReady {

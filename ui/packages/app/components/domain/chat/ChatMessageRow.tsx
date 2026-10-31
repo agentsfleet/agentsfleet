@@ -11,7 +11,7 @@ export function ChatMessageRow({sender, operator, children, messageRole, dimmed,
   return <div className="w-full motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream"
     data-role={messageRole} data-optimistic={dimmed || undefined} data-failed={failed || undefined}>
     <div className={cn("flex w-full py-md", operator ? "justify-end" : "justify-start")}>
-      <div className={cn("flex min-w-0 flex-col gap-sm", operator ? "max-w-prose items-end" : "w-full items-start")}>
+      <div className={cn("flex min-w-0 flex-col gap-sm", operator ? "max-w-11/12 items-end sm:max-w-4/5" : "w-full items-start")}>
         {!operator || showSender ? <span aria-hidden="true" data-testid="fleet-message-sender"
           className="inline-flex items-center gap-sm text-label leading-label text-muted-foreground">
           {!operator ? <BrandMark className="size-3.5 shrink-0 text-pulse" /> : null}{sender}

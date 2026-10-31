@@ -47,10 +47,10 @@ describe("private chat Save", () => {
     expect(fixture.saveAttempts).toBe(0);
     await setup();
     await chooseSetupAction("Save fleet");
-    await screen.findByRole("heading", {name: "Save done v1"});
+    await screen.findByRole("heading", {name: "Setup saved · v1"});
     expect(fixture.saveAttempts).toBe(1);
     expect(chatRouter.push).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
+    expect((await screen.findByRole("link", {name: "Open fleet"})).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
     expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(0);
     const save = fixture.writes().find((call) => call.path.endsWith("/fleets"));
     expect(save?.headers.get("Idempotency-Key")).toBeTruthy();
@@ -64,7 +64,7 @@ describe("private chat Save", () => {
     await chooseSetupAction("Save fleet");
     await screen.findAllByText("The request could not be confirmed. Retry the same operation.");
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-    await screen.findByRole("heading", {name: "Save done v1"});
+    await screen.findByRole("heading", {name: "Setup saved · v1"});
     const attempts = fixture.writes().filter((call) => call.path.endsWith("/fleets"));
     expect(attempts).toHaveLength(2);
     expect(attempts[1]?.body).toEqual(attempts[0]?.body);

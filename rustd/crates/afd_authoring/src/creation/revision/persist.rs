@@ -32,6 +32,7 @@ impl Creations {
             .ok_or_else(|| crate::error::raise::invalid("Setup revision is exhausted"))?;
         let accepted = Accepted::from_review(captured, checked);
         let head = Head {
+            origin: captured.origin,
             id: revision,
             number,
             accepted: &accepted,

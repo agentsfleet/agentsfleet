@@ -2,7 +2,54 @@
 
 use super::super::{fixture::now, mint};
 use super::fixture::Case;
-use afd_authoring::types::Start;
+use afd_authoring::types::{SaveOrigin, Start};
+
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn save_provenance_is_recorded_once_and_bound_to_the_accepted_operation() {
+    for origin in [
+        None,
+        Some(SaveOrigin::Cli),
+        Some(SaveOrigin::Dashboard),
+        Some(SaveOrigin::Chat),
+    ] {
+        let c = Case::create().await;
+        let (_, mut request) = c.request("save-provenance", Start::None).await;
+        request.origin = origin;
+        let key = mint();
+        let saved = c.save(&key, request.clone()).await;
+        assert_eq!(c.save(&key, request.clone()).await.id, saved.id);
+        request.origin = Some(if matches!(origin, Some(SaveOrigin::Cli)) {
+            SaveOrigin::Dashboard
+        } else {
+            SaveOrigin::Cli
+        });
+        assert_eq!(c.save(&key, request).await.id, saved.id);
+        let receipts: Vec<String> = sqlx::query_scalar(
+            "SELECT request_json::text FROM fleet.events WHERE fleet_id=$1::uuid AND event_type=$2",
+        )
+        .bind(saved.id.as_str())
+        .bind(afd_events::activity::EVENT_TYPE_ACTIVITY)
+        .fetch_all(&mut *c.base.connection().await)
+        .await
+        .expect("the durable save receipt reads");
+        assert_eq!(
+            receipts.len(),
+            1,
+            "replaying Save creates no second receipt"
+        );
+        let receipt: serde_json::Value =
+            serde_json::from_str(&receipts[0]).expect("stored activity JSON");
+        assert_eq!(receipt["kind"], "setup_saved");
+        assert_eq!(receipt["revision"], "1");
+        assert_eq!(
+            receipt.get("origin").and_then(serde_json::Value::as_str),
+            origin.map(SaveOrigin::as_str)
+        );
+        assert_eq!(c.fleet_count().await, 1);
+        c.cleanup().await;
+    }
+}
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]

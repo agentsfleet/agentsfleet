@@ -6,7 +6,7 @@ use crate::handler::{
     input::{body, uuid},
 };
 use afd_api_wire::fleet as wire;
-use afd_authoring::types::{SaveFleet, SaveSource, Start};
+use afd_authoring::types::{SaveFleet, SaveOrigin, SaveSource, Start};
 
 const INVALID: &str = "Fleet setup input violates the supported shape or bounds";
 pub(super) fn save(bytes: &[u8]) -> Result<SaveFleet, Refusal> {
@@ -28,11 +28,20 @@ pub(super) fn save(bytes: &[u8]) -> Result<SaveFleet, Refusal> {
         wire::Start::RunNow { message } => Start::RunNow { message },
     };
     Ok(SaveFleet {
+        origin: request.origin.map(origin),
         source,
         start,
         name: request.name,
         review_digest: request.review_digest,
     })
+}
+
+pub(super) const fn origin(value: wire::SaveOrigin) -> SaveOrigin {
+    match value {
+        wire::SaveOrigin::Cli => SaveOrigin::Cli,
+        wire::SaveOrigin::Dashboard => SaveOrigin::Dashboard,
+        wire::SaveOrigin::Chat => SaveOrigin::Chat,
+    }
 }
 
 pub(super) fn patch(bytes: &[u8]) -> Result<wire::PatchFleetRequest, Refusal> {

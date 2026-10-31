@@ -3,8 +3,6 @@
 import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label } from "@agentsfleet/design-system";
 import { EllipsisIcon } from "lucide-react";
@@ -39,10 +37,8 @@ function HeadingContent({client, view, workspace, fleetPage, menuItems, onDirtyC
   return <>
     <div className="fleet-chat-heading flex w-full shrink-0 flex-wrap items-center gap-md border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
-      {view.fleet ? fleetPage ? view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
-        ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} />
-        : <OpenCurrentFleet />
-        : <Button asChild size="sm" variant="ghost"><Link href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet</Link></Button> : null}
+      {view.fleet && fleetPage && view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
+        ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} /> : null}
       <DraftSaveButton client={client} view={view} dirty={state.dirty} />
       {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}
     </div>
@@ -51,15 +47,10 @@ function HeadingContent({client, view, workspace, fleetPage, menuItems, onDirtyC
       <DialogContent className="ph-no-capture ph-no-record"><DialogHeader><DialogTitle>{PUBLISH}</DialogTitle><DialogDescription>Only the saved setup is published when you confirm.</DialogDescription></DialogHeader>
         {view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
         {view.notice ? <output className="text-label text-muted-foreground">{view.notice}</output> : null}
-        {draft?.review ? <PublicationActions client={client} view={view} setup={draft.review} dirty={state.dirty} /> : null}
+        {draft?.review ? <PublicationActions client={client} view={view} setup={draft.review} dirty={state.dirty} onPublish={() => state.setPublishing(false)} /> : null}
       </DialogContent>
     </Dialog>
   </>;
-}
-
-function OpenCurrentFleet() {
-  const router = useRouter();
-  return <Button size="sm" variant="ghost" onClick={() => router.refresh()}>Open fleet</Button>;
 }
 
 type HeadingState = ReturnType<typeof useHeadingState>;

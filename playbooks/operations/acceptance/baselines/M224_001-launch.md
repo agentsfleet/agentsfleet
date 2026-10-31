@@ -1,5 +1,427 @@
 # M224_001 development and production launch evidence
 
+## Overnight development review: Oct 31, 2026
+
+This checkpoint supersedes the earlier blocked rollout and deleted fleet inventories.
+M224 remains `IN_PROGRESS`; none of the production actions below was performed.
+
+Indy approved the chat improvements and authorized merging their follow-up PR only
+after all required checks pass and every Greptile thread is answered and resolved.
+The fleet-produced Linkwarden repair remains a draft for owner review.
+
+### Matching merged development rollout
+
+Pull Request [793](https://github.com/agentsfleet/agentsfleet/pull/793) merged as
+`3f2ba3faccf8556c9717fdefd9dee9ab72556660`, version `0.71.0`.
+Its tree is `1538fdf13f356396730a85cf26e3b77779227ac7`.
+The tested synthetic merge `3623b6682e7d9db9031bb9fcf743d324004a8655`
+has the same tree; reused binaries correctly retain stamp `3623b66`.
+
+Source test run `41221228786` passed all 13 jobs, including its six native
+candidate jobs. Development deployment
+[41222658107](https://github.com/agentsfleet/agentsfleet/actions/runs/41222658107),
+attempt 1, completed successfully at `2026-10-31T17:17:17Z`.
+Native GitHub job reads establish these results:
+
+| Job | Identifier | Result |
+| --- | --- | --- |
+| Candidate promotion | `124600470129` | success |
+| API deployment | `124601119883` | success |
+| Runner deployment | `124601888555` | success; `dev-3623b66`, readiness retained for 30 seconds |
+| Deployment verification | `124601888570` | success |
+| Dashboard deployment | `124601889071` | success |
+| Browser acceptance | `124602401511` | 10 passed; post-deployment subset |
+| CLI acceptance | `124602401525` | deterministic 209/209 and live 174/174; no skips |
+| QA acceptance | `124602401571` | 4 passed |
+| Candidate qualification | `124603383879` | all seven required inputs succeeded |
+
+The deployed runtime digest is
+`sha256:4aea4ffaeba9fbf0761367e18979ec6f639462f0dbf55c7f3ebaa05a013cf7a6`.
+The signed toolbox digest is
+`sha256:e9ec4038e304b5cabc6baf000d760355dea24a88cad5f916647ef474928d13c2`.
+
+Qualification bundle `13050569607` has digest
+`sha256:36585e8a1afcc66589c4fcb4833479210e353e439a678d4d4996e18e9d63d813`
+and expires `2027-01-29T17:03:39Z`.
+Live health/readiness reads passed with native stamp `3623b66`.
+
+The runner reports online and non-degraded, but `build_id` is null.
+Downloading runner bundle `13050598033` failed with HTTP 403 at its storage host;
+the observer did not bypass that refusal or rerun the build.
+
+Host executable checksum and attestation therefore remain unverified.
+These deployment results do not prove the full browser and CLI acceptance required by §4.7.
+
+### Workspace, clean onboarding and accepted fleet revisions
+
+Native CLI doctor selected workspace `01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e`.
+The existing source checkout was preserved; this follow-up uses isolated branch
+`feat/m224-dev-verification` from the merged main revision above.
+The managed environment identifier is a workspace provider identifier, not a
+verified underlying VM identifier.
+
+The model catalogue reported the platform-default MiniMax M3.1 Flash available.
+GitHub and Slack were connected. Grafana was reachable, but its preceding-day
+Loki query returned no streams or entries; Elastic was absent.
+
+The incident proposal was neither saved natively nor published to any Library.
+
+Indy requested deleting unfinished private setups. Native `chat delete --yes`
+removed 14 editing drafts and then nine remaining closed/saving drafts.
+The second batch corrected an editing-only filter that did not match the UI.
+
+Deleting their private conversations retained the independently saved fleets.
+After applying improvements, the observer deleted only its own four temporary
+Improve chats. Final native `chat list --json` returned `items: []` and no cursor.
+
+No approvals were silently granted or deleted by the observer.
+
+| Fleet | Identifier | Accepted setup |
+| --- | --- | --- |
+| ci-responder | `01a192f8-f35b-77c8-92ad-e02e823c3d5b` | active revision 3 |
+| ci-repairer | `01a192f8-faa3-754d-a537-2ed28a0b1d7a` | active revision 3 |
+
+Native Review/Save created both fleets. Indy approved their GitHub grants at
+`17:22:01Z` and `17:22:03Z`; resuming the same operations made revision 1 active.
+The original Save operation identifiers are
+`01a192f8-f2fa-739c-8a1f-45e33cca2b7e` and
+`01a192f8-fa3b-70fc-a5aa-5873edada13d`.
+
+Their respective native review digests were
+`authoring:v1:sha256:cd8c219d74ac92f81979a7a03fccaf93c7e7cd2fc8da27b89478380425006412`
+and
+`authoring:v1:sha256:74f26d1c55299766f2808db64b5ce0c6d0965d19f443006d0930461c79d942d9`.
+
+Revision 2 opened public HTTP reach at Indy's explicit request.
+HTTP tools retained their read-only boundary; only the repairer's separately
+reviewed repository write scope permits its bounded repair.
+Revision 3 changed instruction guidance: explicit Bearer authentication,
+repository contents reads, terminal source refusals and no invented delivery claims.
+
+Native Review/Apply receipts were verified against the expected definitions.
+
+| Revision 3 witness | Responder | Repairer |
+| --- | --- | --- |
+| Review digest suffix, after `authoring:v1:sha256:` | `d05e9c946ca5016a0169366413ec90b0206a55159b16f7eb0b7e2f58a05ac580` | `92ac584aff4380da104e056c1fe11f87917af4da4812985c2503a7264beac8b9` |
+| Exact instruction UTF-8 SHA-256 | `be95d4a44a5056c6305cd392119ca27d9c9f9d7db66a28bff3e839dbd9500f1f` | `1e77b482f4d3ca4d1a5b38703621c4bd507855bb9065e7e13b9a379bd8ef2ea3` |
+| Sorted compact definition JSON SHA-256 | `5f810eec6c50c614698338b218398a03285c7074ae557270b2a70e91c2e08895` | `088a6b6ad7ab5777ff2d834afd001ad64795a2d172e99f24fa2f723dd0732557` |
+| Native setup ETag, without quotes | `a9200baafe04171faec193c9caf35c3e7c07394b6197c2fe7881e7c8c114259d` | `5112620e97908064baf5f447aca773ae416d5324a70e6e34911f75259066b67e` |
+
+The locally sorted JSON hashes are capture hashes, distinct from native review
+digests and ETags. Origin labels in the pending source change do not backfill
+these older receipts.
+
+### Human Slack triggers and actual fleet-owned evidence
+
+Indy sent every trigger using the real `@agentsfleet-dev` mention in channel
+`C0ARL465ZJP`, existing thread `1793448204.424979`.
+The observer sent no Slack messages.
+
+The fixture is Linkwarden run `41199403249`, attempt 1, job `124532028003`,
+head `95a173dfb71746d8e5ed01b420815668e34806f3`, trusted `dev`
+`46303b321a43b6a8227c4dfdfcccce01ab37e55f`.
+The actual failed step is `Check link title decoding`, `12:05:37Z–12:05:39Z`.
+
+| Fleet/setup | Native event | Observation and limitation |
+| --- | --- | --- |
+| Responder v1 | `01a192fe-43ff-7813-9f8d-189fcd9a7e75` | Log redirect selected unapproved `productionresultssa3.blob.core.windows.net`; continued to 64 calls after refusal. Failed stopping and evidence proof. |
+| Responder v2 | `01a19312-7a63-75d0-a333-b39d2450e00b` | Job log 200 with complete text; accurate diagnosis delivered visibly in Slack. Call `2:13` code search was denied, followed by further calls; failed stopping proof. |
+| Repairer v2 | `01a19316-8751-79f2-923f-41a923983456` | Log read 403; stopped at call 5 without writes. Trace used a bare token placeholder rather than Bearer authentication. The API message alone does not prove missing administrator permission. |
+| Repairer v3 | `01a1931f-816f-71c0-bdb1-156afa7db2a2` | Short `fix this` inherited the thread target; complete job log and source reads led to draft #4. Failed source probes were followed by writes; regression execution remained unverified. |
+
+Responder v2 completed `17:48:32.776Z` with 24 calls and zero omitted calls.
+Its addressed job-log call `2:4` and trusted-source call `2:9` both returned
+`truncated: false` and `truncated_arguments: false`.
+Indy pasted the visible Slack answer, confirming delivery for that response.
+
+Repairer v3 ran `18:01:18.063Z–18:04:04.055Z`, 33 calls, zero omitted calls,
+1,137,475 tokens and 165,748 ms.
+Fresh native reads used `Cache-Control: no-cache`; an earlier cached response
+still said received and was not used to infer a delivery delay.
+Full addressed calls `2:3–7`, `2:14–15`, `2:17–18`, `2:23–28` and `2:30`
+were captured individually with both truncation flags false.
+
+The exact JSON capture SHA-256 for job-log call `2:3` is
+`d4c4f0078325f48478a1493a240ac461bf1dffbdc1cf40ff4cd1e0cb3ba85784`;
+the capture is 44,813 bytes and includes arguments and native output metadata.
+Signed storage URLs, raw private conversations and credentials are not committed.
+
+Required-source probe `2:6` found the regression absent on `dev` (404).
+Probe `2:15` guessed a wrong source path and returned 404, then the fleet continued.
+Branch-absence probe `2:18` was expected reconciliation, not proof of a source read.
+
+At least the wrong-path continuation violates the required first-failure boundary;
+an accurate final explanation and bounded writes do not erase that observation.
+
+### Fleet-produced bounded repair
+
+GitHub confirms [draft #4](https://github.com/agentsfleet/linkwarden/pull/4),
+created `18:03:33Z` by `agentsfleet-dev[bot]`, against `dev`.
+Its daemon-issued branch is
+`agentsfleet-repair/MDFhMTkzMWYtODE2Zi03MWMwLWJkYjEtMTU2YWZhN2RiMmEy`.
+One commit, `9d114c7e36fcb6274236a1ce07357fe31fd24e81`, has the trusted `dev`
+revision above as its sole parent.
+
+The diff contains exactly two files:
+`apps/web/lib/client/unescapeString.ts` and its new regression test.
+The implementation escapes literal `<` before parsing HTML character references.
+No workflow, repository permission or deployment was changed.
+
+Native write calls `2:23–28` created two blobs, a tree, commit, ref and one draft;
+subsequent reads reconciled the same branch, files and single draft.
+
+Playwright job `124614658321` and branch-check job `124614659398` succeeded.
+The i18n write job `124614659598` was skipped as designed.
+Those checks did not run the regression step present only on fixture PR #3.
+
+Indy's later Slack capture shows Playwright #5 succeeded and an i18n failure card.
+A fresh GitHub API read reports Playwright run `41227520547` as successful.
+Manage i18n pull requests run `41227520482`, attempt 1, was skipped at the same repair head.
+
+Its workflow admits only a branch named `i18n`; the repair branch does not match.
+The Slack card and current run result differ. No rerun or workflow change was made.
+
+The fleet explicitly reported that it had not run Vitest; no before/after
+regression pass at the draft head is attributed to this run.
+The v3 final response is stored natively, but its Slack visibility has not been
+independently confirmed after Indy left. Processed status alone is insufficient.
+
+The observer did not merge, mark ready or modify this draft.
+
+The observer subsequently fetched the exact trusted-base and draft-head source
+through GitHub, alongside the unchanged regression from the draft.
+An isolated Vitest `4.1.0` / jsdom `22.1.0` installation ran
+`bunx --bun vitest run base/unescapeString.test.ts`: exit 1,
+`1 failed | 2 passed (3)`.
+The same test at the repair head ran as
+`bunx --bun vitest run repair/unescapeString.test.ts`: exit 0, `3 passed (3)`.
+
+Git blob hashes matched base `fe0807aae16c0d20abfe9250f1614e5410de93b6`,
+repair `57fc3e4d2f2fe206b94674025b45f8c6a664307a`, and identical test
+`ff0b47366c02cbf165321919c5cb5b2980836c74`.
+
+The observer validated the proposed code. The fleet did not run these checks.
+Its stopping and delivery gaps remain.
+
+### Remaining acceptance boundaries
+
+The CI fleets demonstrated actual source reads and draft creation.
+Required-source stopping and same-thread repair-link visibility remain incomplete.
+Independent regression checks passed at the recorded draft head.
+
+The recovery/replay fixtures, eight-case corpus/checker and full Linux acceptance remain P0 obligations.
+The incident case still needs relevant Elastic/Grafana evidence, native Library setup and its real trigger.
+Production qualification, release tags, production runners and production demonstrations remain unperformed.
+
+### Implementation verification baseline
+
+Native GitHub job logs retain the isolated checkout used by the merged change:
+`HEAD is now at 3623b66 Merge 221fb6359e9f7fb693bbfe2ca0a648e6c214224f into 765ed4a6828c0a5b4e4fdb50f13ed53456329f48`.
+Its source tree matches the merged baseline revision above; these are existing
+CI measurements, not a new local baseline run.
+
+Rust unit run `41221228766` reports 3,342 daemon-library, 139 daemon and
+1,484 runner tests passed: 4,965 total. Its 1,457 ignored tests belong to the
+live-datastore lane rather than a new exclusion.
+
+Coverage run `41221228752` reports 948 runner-crate, two runner/daemon,
+5,055 substrate, three exclusive and 242 daemon tests passed: 6,250 combined
+unit/integration cases. Kernel job `124596018233` also passed.
+Merge job `124599998116` graded 75,842/76,101 lines, 99.6597%, above 99.5%.
+
+That kernel result does not satisfy §4.7's separate `make acceptance-codex`.
+
+TypeScript run `41221228786` reports app 4,521 passed, website 133 passed and
+design-system 522 passed, all at 100% coverage. CLI reported 1,966 passed,
+17 environment-dependent skips and 100% function/line coverage.
+The CLI skip count is executor-dependent and is retained rather than compared
+as a code-change delta.
+
+An earlier UI checkpoint's `make test-coverage-all` passed: app 4,567,
+website 133, CLI 1,967 (16 existing environment-dependent skips), and
+design-system 522 tests passed. All four packages reached 100% of their
+measured lines/functions; the Vitest packages also reached 100% branches and
+statements. A subsequent active-command icon change requires fresh verification.
+
+A Chromium component preview used the application CSS and fallback fonts,
+assistant-ui runtime and production chat components, with fixture command data.
+Keyboard activation opened the group and individual commands; two long messages
+expanded independently.
+
+Browser errors were empty, and the 390-pixel viewport
+had exactly 390 pixels of body width. Reduced-motion command disclosures had
+no animation.
+
+The original preview's font URLs were unresolved; waiting for `document.fonts.ready` did not prove successful loading.
+The corrected comparison below embeds the shipped font files and asserts successful font loads.
+
+This preview establishes component rendering, not live dashboard
+or native API acceptance. Companion documentation is in
+[docs PR #236](https://github.com/agentsfleet/docs/pull/236).
+
+### Chat performance and layout follow-up
+
+The Appsmith `release` reference was cloned at
+`8ebc6c14b1853be074563564a33c581c88326b9b` under `/workspace/appsmith`.
+Its [store](https://github.com/appsmithorg/appsmith/blob/8ebc6c14b1853be074563564a33c581c88326b9b/app/client/src/store.ts#L30)
+installs Redux batching and saga middleware separately.
+
+Its [selectors](https://github.com/appsmithorg/appsmith/blob/8ebc6c14b1853be074563564a33c581c88326b9b/app/client/src/selectors/dataTreeSelectors.ts#L57)
+cache derived state, while its
+[evaluation saga](https://github.com/appsmithorg/appsmith/blob/8ebc6c14b1853be074563564a33c581c88326b9b/app/client/src/sagas/EvaluationsSaga.ts#L409)
+sends tree evaluation to a worker.
+These source observations do not establish that migrating this chat to Redux/Saga would improve performance.
+
+The chat retains assistant-ui's external-store runtime, grouped message parts and elapsed-call hook.
+Its existing converter caches each unchanged tool call's result and timing by object identity.
+The follow-up uses React's `lazy` and `Suspense` for full output and one table for outcome labels, colors and icons.
+
+Production app commands `bun run build` and `bun run size` passed before and after this follow-up.
+The comparison starts at checkpoint `cede65b`; both builds use the same dependency versions.
+The tool reports decimal kB, with gzip compression:
+
+| Entry | Before (kB) | After (kB) | Existing limit (kB) |
+| --- | --- | --- | --- |
+| Dashboard shared | 267.88 | 267.88 | 276.48 |
+| Fleet list incremental | 56.38 | 56.77 | 102.40 |
+| Fleet detail incremental | 94.19 | 94.56 | 102.40 |
+| New fleet incremental | 97.02 | 97.41 | 102.40 |
+
+No size limit changed. The full-output module is a separate 2,014-byte gzip chunk.
+It appears in none of the 27 initial-entry checks.
+
+Across every route and deferred chunk, gzip bytes increased from 1,165,375 to 1,167,685, a 2,310-byte increase.
+
+A Chromium probe used React's production profiling build, the real assistant-ui runtime and the native message converter.
+Each state received 60 text updates with 200 tool calls, including 199 unchanged calls.
+The 95th percentile measures React commit time, in milliseconds:
+
+| Command group | Before p95 / maximum (ms) | After p95 / maximum (ms) | Mounted call rows |
+| --- | --- | --- | --- |
+| Collapsed | 0.6 / 1.8 | 0.7 / 2.0 | 0 |
+| Expanded | 5.2 / 14.6 | 4.6 / 16.3 | 200 |
+
+Both probes recorded zero mutations in unchanged tool-call Document Object Model (DOM) nodes and no browser errors.
+These are single unthrottled component probes, not a Redux/Saga comparison or a live response-latency result.
+The expanded group's frame-interval p95 was 25.1 ms before and 24.0 ms after.
+
+Those earlier header probes used fallback fonts; the 4.6 ms value is a historical checkpoint, not a final scrolling measurement.
+
+Desktop measurements show a 582.39-pixel user bubble within the 728-pixel assistant column.
+Mobile measurements show 328.16 pixels within 358 pixels, with matching right edges.
+The 390-pixel mobile page has no horizontal overflow; reduced-motion disclosures have no animation.
+
+Private reports are `chat-profile-baseline.json`, `chat-profile-optimized.json`,
+`app-bundle-before-size.log`, `app-bundle-final-size.log` and `full-output-chunk-check.json`
+under `/tmp/agentsfleet-m224-review`.
+The current captures are `chat-optimized-desktop.png` and `chat-optimized-mobile.png` in that directory.
+
+The final local Rust coverage run completed 6,253 cases with zero test failures.
+Its changed-line grade was 100%, 27/27 lines, and all 12 measured changed source files reached at least 99%.
+The lowest whole-file result was 218/220 lines, 99.0909%.
+
+The local combined profile excludes the kernel lane: 75,484/76,126 lines, 99.1567%.
+The command therefore exits nonzero against the unchanged 99.5% aggregate floor.
+The PR must supply its kernel report and pass the complete merged grade before merge.
+
+Local test processes used a child subreaper, a normal `0022` umask and proxy exclusions for loopback listeners.
+The temporary Docker Compose override trusts the existing network certificate authority for QStash.
+No source assertion or coverage floor was removed.
+
+`make lint-all` and `make check-version` passed after the wire origin enum adopted the existing `Clone, Copy` pattern.
+`make dry-app` passed 4,569 app tests and 40 desktop/mobile Chromium checks.
+The full TypeScript coverage gate must also pass on the final source revision.
+
+### Long-output library experiment
+
+Checkpoint `96d5f6612` preserves the React and assistant-ui implementation before this experiment.
+Appsmith's pinned `BaseVirtualList.tsx` uses react-window for its table rows.
+This follow-up uses react-window `2.5.2`, whose peer dependencies include React 19,
+only inside the existing deferred full-output dialog.
+
+The library owns row windowing, wrapped-height measurement and resize handling.
+The application supplies literal numbered rows and a local search query.
+Assistant-ui continues to own the conversation runtime and message parts.
+
+The corrected Chromium probe used the production profiling build, application CSS and shipped fonts.
+Both font families were explicitly loaded and checked before releasing the fixture response.
+Each version ran five times with fourfold CPU throttling and one 2,000-line / 57,953-byte fixture.
+
+Both output panes were 384 pixels high; the baseline received that height through fixture-only CSS.
+Opening time spans response release through two animation frames.
+Native Chromium mouse gestures scrolled 40,000 pixels at 20,000 pixels per second, without per-frame geometry reads.
+
+The values below are component measurements, not live API latency or a state-library comparison.
+
+| Measurement | Baseline `96d5f6612` | Library experiment |
+| --- | --- | --- |
+| Median output opening (ms) | 576.5 | 70.9 |
+| Median initial React commit (ms) | 39.0 | 11.0 |
+| Native scroll-frame interval p95 (ms) | 16.8 | 16.7 |
+| Maximum observed mounted rows | 2,000 | 22 |
+
+Opening improved about 88%; native scroll timing was essentially unchanged.
+Retain the library viewer for its faster opening and bounded rendered rows.
+
+The original 427.8/122.4 ms comparison used fallback fonts and mismatched pane heights; it is superseded by this comparison.
+The earlier scripted scroll driver also read geometry every frame, adding layout work to the windowed case.
+Its 17.3/18.9 ms frame comparison does not establish a user scrolling regression.
+
+A trial grouping eight lines per library row opened faster but failed the checked-in desktop keyboard-End assertion.
+That trial was reverted; the shipped viewer retains individual measured lines and the library's default overscan.
+
+Every run reached line 2,000 and copied the complete original string.
+Additional browser checks covered search, keyboard Home/End, wrapped rows after a
+390-pixel resize and absence of horizontal overflow or browser errors.
+
+Component tests cover case-insensitive search beyond the former 2,000-line cap,
+empty results and clearing the query, while preserving truncated-output notices.
+The focused coverage command passed 16 tests and measured all three viewer files at 100%.
+The checked-in browser regression covers keyboard reachability and wrapped rows on desktop and mobile, with actual font assets.
+
+Reports `output-profile-baseline-fonts-native-normalized.json` and
+`output-profile-virtualized-fonts-native-normalized.json` are under `/tmp/agentsfleet-m224-review`.
+The same directory holds `virtualized-output-desktop.png` and `virtualized-output-mobile.png`.
+
+`bun run build` and `bun run size` passed with every initial-entry value unchanged
+from the preceding checkpoint. No bundle limit changed.
+
+The deferred full-output chunk grew from 2,014 to 8,789 gzip bytes.
+It still appears in none of the 27 initial-entry checks.
+Total gzip bytes across all route and deferred chunks grew from 1,167,685 to 1,174,462, adding 6,777 bytes.
+
+Bundle reports are `app-bundle-virtualized-final-size.log`,
+`app-bundle-virtualized-final-chunks.json` and `virtual-output-chunk-check.json`
+in the same private evidence directory.
+
+### Pull Request review follow-up
+
+[Implementation PR #794](https://github.com/agentsfleet/agentsfleet/pull/794) opened at `b1bc6f3d8` after `orly gate pr` passed.
+All 43 successful check runs on that revision completed without a failure; environment-specific smoke checks were skipped.
+Rust merge job `124662689286` graded 75,867/76,126 lines, 99.6598%, and patch coverage 27/27, 100%.
+
+Its explicit per-file check reports all 12 measured changed files at or above 99%.
+That CI result supersedes the local aggregate failure from the kernel-free profile.
+The final review-fix revision requires its own green checks before merge.
+
+Greptile requested visible outcomes in collapsed commands and a checked-in browser regression for long output.
+The follow-up exposes the existing status label and adds the regression to the normal desktop/mobile lane.
+It also updates the streamed-reply acceptance test's retired control names without changing its frame budget.
+
+The final review follow-up's `make dry-app` passed 4,572 unit tests and 42 desktop/mobile browser cases.
+Its package build and all 27 bundle checks passed; shared and fleet-route sizes remain unchanged at the reported precision.
+The live streamed-reply acceptance file was type-checked, but the full Linux acceptance obligation remains open.
+
+An initial local retry inherited the machine's disabled-analytics flag and failed 29 analytics tests.
+The successful retry cleared that flag, matching the earlier successful lane; no assertion or product behavior changed.
+
+The final local gate passed integration, unit coverage and version checks but rejected CSS/font reads inside the browser test.
+Those asset-compilation reads now live in its fixture helper; rendered-component assertions remain unchanged.
+The unchanged repository lint still rejects source-text assertions in test files.
+
+`make lint-all` then passed, including its 19 test-rule self-tests and clean source-read scan.
+The focused browser rerun passed both desktop and mobile cases with the extracted fixture assets.
+
 ## Build reuse amendment: Oct 31, 2026
 
 Indy requested these improvements in the same Pull Request #793 and confirmed

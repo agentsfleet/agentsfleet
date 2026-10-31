@@ -3,7 +3,7 @@
 import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
 import type { Source } from "@/lib/api/draft-types";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,7 @@ import { DraftCache } from "@/lib/api/draft-cache";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { appliedNotice, isRunning } from "@/lib/api/draft-types";
+import { PUBLISHED_NOTICE } from "@/lib/api/draft-publication";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
 import { ChatAvailability, ChatModelAvailability } from "./ChatAvailability";
@@ -83,6 +84,8 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
 }
 
 function ChatSurface({client, source, initialSourceRevision, workspace, subject, opening, selected, reload, canManagePlatformModels, fleetPage, menuItems}: {source?: Source; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
+  const router = useRouter();
+  const openFleet = useCallback(() => router.refresh(), [router]);
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   useSavedSetupUrl(workspace, source, view, opening, fleetPage);
   const [instructionsDirty, setInstructionsDirty] = useState(false);
@@ -99,11 +102,11 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
   return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
     {view.error ? <ChatError client={client} view={view} source={source} workspace={workspace} reload={reload} onStartOver={() => setInstructionsDirty(false)} /> : null}
-    {view.notice && view.notice !== appliedNotice([]) ? <Alert>{view.notice}</Alert> : null}
+    {view.notice && view.notice !== appliedNotice([]) && view.notice !== PUBLISHED_NOTICE ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
     <ChatModelAvailability canManagePlatformModels={canManagePlatformModels} client={client} view={view} workspace={workspace} />
-    <DraftConversation client={client} view={view} workspace={workspace} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <DraftConversation client={client} view={view} workspace={workspace} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       <FleetSetup client={client} view={view} workspace={workspace} />
     </DraftConversation>
     </>}

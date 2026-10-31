@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  SignalSpinner,
   TerminalPanel,
   cn,
 } from "@agentsfleet/design-system";
@@ -19,6 +20,8 @@ import { DiffRows } from "./FleetToolCallBody";
 import type { ToolResult } from "./fleetReplyMessage";
 import { fullDiff } from "./tool-call-copy";
 import { outputLines } from "./tool-call-text";
+import { FleetOutputLine, type NumberedRow } from "./FleetOutputLine";
+import { FleetVirtualOutput } from "./FleetVirtualOutput";
 
 // "Show all": one call read in full, its output with line numbers, its edit as
 // a whole diff, and its arguments. When the runner kept no full output, the
@@ -29,12 +32,9 @@ export const NOT_KEPT_NOTE = "Full output wasn't kept for this call.";
 export const READ_FAILED_NOTE = "Couldn't read the full output; this is what the thread kept.";
 export const OUTPUT_CUT_NOTE = "The output was cut short.";
 export const ARGS_NOT_KEPT_NOTE = "The arguments were too large to keep.";
-/** Lines the dialog lays out; a longer output is one copy away in full. */
-export const MAX_SHOWN_ROWS = 2_000;
-const COPY_TO_READ = "copy the output to read";
+const INLINE_OUTPUT_ROWS = 200;
 const OUTPUT_TITLE = "Output";
 const COPY_OUTPUT_LABEL = "Copy output";
-const SKIPPED_LINES = "⋯";
 const NOTE_CLASS = "text-body-sm text-text-subtle";
 
 type FleetToolOutputDialogProps = {
@@ -84,7 +84,7 @@ function useToolCallRead({ workspaceId, fleetId }: FleetScope, eventId: string, 
 }
 
 function ReadBody({ read, name, outcome }: { read: ToolCallRead | null; name: string; outcome: ToolResult | undefined }) {
-  if (read === null) return <output className={NOTE_CLASS}>{LOADING_LABEL}</output>;
+  if (read === null) return <output className={cn(NOTE_CLASS, "inline-flex items-center gap-xs")}><SignalSpinner className="text-pulse" aria-hidden="true" />{LOADING_LABEL}</output>;
   if (read.kind === TOOL_CALL_READ.FULL) return <FullCall call={read.call} name={name} />;
   return (
     <>
@@ -108,8 +108,6 @@ function FullCall({ call, name }: { call: ToolCallFull; name: string }) {
   );
 }
 
-type NumberedRow = { number: number | null; text: string };
-
 /** Lines beside their numbers; a row numbered null marks lines left out. */
 function NumberedOutput({ rows, copyValue }: { rows: readonly NumberedRow[]; copyValue: string | null }) {
   return (
@@ -118,29 +116,13 @@ function NumberedOutput({ rows, copyValue }: { rows: readonly NumberedRow[]; cop
       tag={copyValue === null ? undefined : <CopyButton value={copyValue} label={COPY_OUTPUT_LABEL} />}
       bodyClassName="bg-surface-deep"
     >
-      <pre className="grid grid-cols-[auto_1fr] gap-x-md p-lg font-mono text-mono leading-mono text-foreground">
-        {rows.slice(0, MAX_SHOWN_ROWS).map((row, index) => (
-          <NumberedLine key={index} row={row} />
+      {rows.length > INLINE_OUTPUT_ROWS ? <FleetVirtualOutput rows={rows} /> : <pre className="grid grid-cols-[auto_1fr] gap-x-md p-lg font-mono text-mono leading-mono text-foreground">
+        {rows.map((row, index) => (
+          <FleetOutputLine key={index} row={row} />
         ))}
-      </pre>
-      {rows.length > MAX_SHOWN_ROWS ? <p className={cn(NOTE_CLASS, "px-lg pb-lg")}>{moreRowsNote(rows.length - MAX_SHOWN_ROWS)}</p> : null}
+      </pre>}
     </TerminalPanel>
   );
-}
-
-function NumberedLine({ row }: { row: NumberedRow }) {
-  return (
-    <>
-      <span data-line-number={row.number ?? undefined} aria-hidden="true" className="select-none text-right tabular-nums text-text-subtle">
-        {row.number ?? SKIPPED_LINES}
-      </span>
-      <span className="min-w-0 whitespace-pre-wrap break-words">{row.text}</span>
-    </>
-  );
-}
-
-function moreRowsNote(hidden: number): string {
-  return hidden === 1 ? `1 more line; ${COPY_TO_READ} it.` : `${hidden} more lines; ${COPY_TO_READ} them all.`;
 }
 
 /** What the trace kept: the head from line 1, then the tail where it falls,

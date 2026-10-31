@@ -127,6 +127,6 @@ function LibraryInspection({entry, onUse}: {entry: Library; onUse: () => void}) 
   return <div className="space-y-md border-t border-border pt-lg">
     <h3 className="font-medium">{entry.card.name} · revision {entry.head.revision}</h3>
     <FleetSetupDetails review={entry.review} />
-    <Button onClick={onUse}>Start chat from this revision</Button>
+    <Button onClick={onUse}>New fleet</Button>
   </div>;
 }

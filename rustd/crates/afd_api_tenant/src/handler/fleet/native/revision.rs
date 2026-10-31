@@ -46,6 +46,7 @@ pub(crate) async fn apply<D: Services>(
             input::expected(&headers)?,
             &input::operation(&headers)?,
             ApplyRevision {
+                origin: request.origin.map(super::input::origin),
                 draft_candidate_id: input::uuid(&request.draft_candidate_id)?,
                 review_digest: request.review_digest,
             },

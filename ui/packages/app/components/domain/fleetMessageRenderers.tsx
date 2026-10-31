@@ -13,6 +13,7 @@ import {
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
 import { useNameSender } from "./SenderNames";
 import { FleetReply } from "./FleetReplyBody";
+import { FleetMarkdown } from "./FleetMarkdown";
 import {
   STATUS_AGENT_ERROR,
   STATUS_IN_FLIGHT,
@@ -100,7 +101,7 @@ function FleetMessage({ message }: { message: MessageState }) {
           showSender={sender.shown}
           createdAt={message.createdAt}
         >
-          <span>{trigger}</span>
+          <FleetMarkdown expandable>{trigger}</FleetMarkdown>
         </FleetMessageRow>
       )}
       {isSplitTrigger ? null : (

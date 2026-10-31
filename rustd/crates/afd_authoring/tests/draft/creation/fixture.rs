@@ -107,6 +107,7 @@ impl Case {
         (
             draft.id,
             SaveFleet {
+                origin: None,
                 source: SaveSource::Draft {
                     draft_candidate_id: reviewed.candidate.expect("candidate").id,
                 },

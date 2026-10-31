@@ -69,7 +69,7 @@ it("refreshes the fleet page after checking newly authorized setup access", asyn
   fireEvent.click(screen.getByRole("button", {name: "Check again"}));
   await waitFor(() => expect(api.refresh).toHaveBeenCalledOnce());
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(api.create).not.toHaveBeenCalled();
 });
 

@@ -9,12 +9,12 @@ index b9ec5925ff055d7de9644038066ec48075a856e8..08e44ff2889fcabb41839f3d337f81a6
      disconnect: () => void;
  };
 diff --git a/dist/primitives/thread/topAnchor/createReserveObservers.js b/dist/primitives/thread/topAnchor/createReserveObservers.js
-index 6e4656d2b8775c65e901c2e6cb1c8314c1054f7c..c3e517edf2191452decfa39c982cb9e114f8dbcd 100644
+index 1c79cb68c8ef35e48b63746e9372f90363f5f30c..157bb547c2d6f9a0d84c2356a0306be95db4f171 100644
 --- a/dist/primitives/thread/topAnchor/createReserveObservers.js
 +++ b/dist/primitives/thread/topAnchor/createReserveObservers.js
 @@ -1,7 +1,7 @@
  "use client";
- //#region src/primitives/thread/topAnchor/createReserveObservers.ts
+ // src/primitives/thread/topAnchor/createReserveObservers.ts
 -const createReserveObservers = (onChange) => {
 -	const resizeObserver = new ResizeObserver(onChange);
 +const createReserveObservers = (onChange, onResize = onChange) => {
@@ -23,7 +23,7 @@ index 6e4656d2b8775c65e901c2e6cb1c8314c1054f7c..c3e517edf2191452decfa39c982cb9e1
  	let observedViewport = null;
  	let observedAnchor = null;
 diff --git a/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js b/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
-index 6d2603b29e65fda89ecd98936be9321935e0157b..d05db6ebb78f750126b3b4acf8c2f3251c3ce475 100644
+index d054826556100492005c41bcd1ad3426b5121b47..ad35ffd6f72fb0d8d55803c5b098c99c8af8c62d 100644
 --- a/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
 +++ b/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
 @@ -27,7 +27,6 @@ const mountTopAnchorReserve = (store) => {
