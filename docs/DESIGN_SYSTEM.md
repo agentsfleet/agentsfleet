@@ -341,6 +341,10 @@ Long messages offer Show more and Show less; replies already being read stay ope
 Group tool calls under Ran commands, with individual expandable commands and recorded outcomes.
 Load full output when requested. Pair loading and running labels with the shared animated signal indicator.
 
+Use react-window for output above 200 retained lines so long output mounts only the visible rows.
+Preserve wrapped lines, original line numbers, keyboard scrolling and literal text.
+Provide search across every retained line and copy the complete output, including lines outside the current viewport.
+
 The compact setup status shows actual reading, sending, saving and publishing progress.
 Show a success tick only for a confirmed saved version or publication.
 A new authoring request replaces the previous confirmation and its fleet action.

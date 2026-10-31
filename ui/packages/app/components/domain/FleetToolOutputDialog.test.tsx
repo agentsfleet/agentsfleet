@@ -7,7 +7,6 @@ import {
   ARGS_NOT_KEPT_NOTE,
   FleetToolOutputDialog,
   LOADING_LABEL,
-  MAX_SHOWN_ROWS,
   NOT_KEPT_NOTE,
   OUTPUT_CUT_NOTE,
   READ_FAILED_NOTE,
@@ -68,7 +67,10 @@ describe("FleetToolOutputDialog", () => {
     renderDialog();
     expect(screen.getByRole("dialog", { name: TITLE })).toBeTruthy();
     expect(screen.getByText(LOADING_LABEL)).toBeTruthy();
-    await waitFor(() => expect(numbers()).toHaveLength(224));
+    await screen.findByText("224 lines");
+    expect(numbers().length).toBeLessThan(100);
+    fireEvent.change(screen.getByRole("searchbox", {name: "Find in output"}), {target: {value: "line 224"}});
+    await waitFor(() => expect(numbers()).toEqual(["224"]));
     expect(numbers().at(-1)).toBe("224");
     expect(screen.getByText("line 224")).toBeTruthy();
     // The id is encoded once, through the same-origin proxy.
@@ -151,19 +153,30 @@ describe("FleetToolOutputDialog", () => {
     expect(screen.queryByText("Details")).toBeNull();
   });
 
-  it("test_output_dialog_caps_its_rows", async () => {
-    const output = Array.from({ length: MAX_SHOWN_ROWS + 5 }, (_, index) => `l${index}`).join("\n");
+  it("keeps distant lines searchable without mounting the entire output", async () => {
+    const output = Array.from({ length: 2_005 }, (_, index) => `l${index}`).join("\n");
     stubRead(200, { arguments: {}, output });
     renderDialog();
-    await waitFor(() => expect(numbers()).toHaveLength(MAX_SHOWN_ROWS));
-    expect(screen.getByText("5 more lines; copy the output to read them all.")).toBeTruthy();
+    await screen.findByText("2005 lines");
+    expect(numbers().length).toBeLessThan(100);
+    fireEvent.change(screen.getByRole("searchbox", {name: "Find in output"}), {target: {value: "L2004"}});
+    await screen.findByText("1 of 2005 lines");
+    expect(screen.getByText("l2004")).toBeTruthy();
+    expect(numbers()).toEqual(["2005"]);
     expect(screen.getByRole("button", { name: "Copy output" })).toBeTruthy();
   });
 
-  it("should count one hidden line as one", async () => {
-    stubRead(200, { arguments: {}, output: Array.from({ length: MAX_SHOWN_ROWS + 1 }, (_, index) => `l${index}`).join("\n") });
+  it("explains an empty search and restores the output when the query is cleared", async () => {
+    stubRead(200, { arguments: {}, output: Array.from({ length: 201 }, (_, index) => `l${index}`).join("\n") });
     renderDialog();
-    await waitFor(() => expect(screen.getByText("1 more line; copy the output to read it.")).toBeTruthy());
+    await screen.findByText("201 lines");
+    const search = screen.getByRole("searchbox", {name: "Find in output"});
+    fireEvent.change(search, {target: {value: "absent"}});
+    expect(screen.getByText("No lines match your search.")).toBeTruthy();
+    expect(numbers()).toEqual([]);
+    fireEvent.change(search, {target: {value: ""}});
+    await screen.findByText("201 lines");
+    expect(numbers()[0]).toBe("1");
   });
 
   it("should draw the full output as literal text, never markup", async () => {
