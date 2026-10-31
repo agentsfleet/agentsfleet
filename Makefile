@@ -14,6 +14,7 @@ include make/quality.mk
 include make/check-safety-gates.mk
 include make/test.mk
 include make/build.mk
+include make/release-candidate.mk
 .DEFAULT_GOAL := help
 
 help:  ## Show all available Makefile targets

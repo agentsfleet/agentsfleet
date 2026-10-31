@@ -1,0 +1,28 @@
+name: Scan an existing toolbox SBOM
+description: Update the vulnerability database and reject fixable Critical vulnerabilities without rebuilding.
+inputs:
+  output-dir:
+    description: Directory containing one content-addressed toolbox and its SBOM.
+    default: dist/candidate/toolbox
+  report:
+    description: Optional destination for a fresh promotion report; preserves the PR report.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Scan with current vulnerability data
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        REPORT: ${{ inputs.report }}
+        GRYPE_DB_CACHE_DIR: ${{ runner.temp }}/toolbox-grype-db
+      run: |
+        set -euo pipefail
+        images=("$OUTPUT_DIR"/toolbox-*.erofs)
+        [ "${#images[@]}" = 1 ]
+        source deploy/baremetal/toolbox.sh
+        digest="$(toolbox_digest_of "${images[0]}")"
+        report="${REPORT:-$OUTPUT_DIR/toolbox-$digest.scan.json}"
+        grype db update
+        GRYPE_DB_AUTO_UPDATE=false grype "sbom:$OUTPUT_DIR/toolbox-$digest.sbom.spdx.json" \
+          --only-fixed --fail-on critical -o table -o "json=$report"

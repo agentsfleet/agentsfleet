@@ -1,5 +1,40 @@
 # M224_001 development and production launch evidence
 
+## Build reuse amendment: Oct 31, 2026
+
+Indy requested these improvements in the same Pull Request #793 and confirmed
+"Okay fix with Github action yml in this PR". The active M224 spec records the
+approved workflow scope; [the candidate guide](../../../../docs/architecture/release_candidates.md)
+lists each YAML/job change and its Make entry points.
+
+The implementation moves shipping `dist` builds for Linux daemon amd64/arm64,
+Linux runner amd64 and macOS daemon arm64 into pull requests. The shipping
+toolbox is built unsigned and scanned there. Merge verifies the candidate's
+successful source-tree/run identity and checksums, rescans, signs and deploys
+its original outputs. A passing development rollout retains qualified evidence
+for 90 days. Tags verify that evidence and promote the same native files and
+runtime image digest. Unit/coverage/kernel compilation, dashboard builds and
+npm packaging remain separate.
+
+Parsing the before/after workflow graphs with `yq` reports 7 added job
+definitions, 9 removed and 32 retained. Four YAML files are added (one workflow,
+three composite actions), eight existing YAML files are updated and none are
+deleted. These counts concern definitions; the PR Linux matrix runs three jobs.
+
+Local checks: the focused Python promotion suite passes 22 tests; workflow
+actionlint, existing workflow/pin/reset-order guards, documentation checks and
+version consistency pass. A read-only GitHub API check against successful
+`test.yml` run `41216020113` verifies the actual PR synthetic-merge/source
+relationship used by the promotion verifier. `orly doctor` and `orly gate work`
+pass. No native adversarial review was launched for this amendment.
+
+The updated PR's full optimized builds, image preflights, size limit and shipping
+vulnerability scan still require Continuous Integration evidence. Merge/signing,
+development rollout/acceptance and tag promotion remain unverified until their
+respective workflows run. No merge, production tag or production deployment was
+performed. Fresh fleet creation remains dependent on a successful matching
+development rollout.
+
 ## Approved toolbox refresh: Oct 31, 2026
 
 Indy approved the prepared snapshot patch: "yes approved the patch."
@@ -8,7 +43,8 @@ The package-index and patch checks below support preparation only; rebuilt-image
 
 The workspace remains empty after the requested CLI cleanup.
 Fresh fleets wait for successful development deployment and acceptance.
-Build-output reuse across pull requests, merges and tags remains a design discussion; no workflow changed here.
+At this earlier snapshot-only checkpoint, build-output reuse remained a design discussion.
+The approved build amendment above supersedes that scope limitation.
 
 ## Fleet reset and blocked rollout: Oct 31, 2026
 

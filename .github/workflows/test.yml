@@ -15,6 +15,7 @@ on:
   # a first-run failure is most expensive. `bench.yml` and `cache-prune.yml`
   # already carry this for the same reason.
   workflow_dispatch:
+  merge_group:
 
 permissions:
   contents: read
@@ -145,94 +146,9 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://api-test.agentsfleet.net
 
-  # ── Cross-compile proof for the Rust daemon ─────────────────────────────
-  #
-  # THE FAILURE THIS EXISTS TO PREVENT.
-  #
-  # Pull requests prove both binaries are fully static on amd64, the platform
-  # deployed by Fly and shipped in the runner tarball. `release.yml` proves
-  # arm64 with its own build and static checks. Keep the matrix so another
-  # architecture can be added here without changing the job.
-  #
-  # The cache key matches `release.yml`'s `cargo-dist-<arch>-`, so compilation
-  # work from the default branch can be reused. Release binaries are always
-  # rebuilt from the tagged tree.
-  #
-  # This gate builds `fast-profile` (release with LTO off), not `dist`. LTO is
-  # link-time optimization across crates; `dist` uses fat LTO on one codegen
-  # unit, which was most of this job's 13 minutes. Static linking, and the
-  # NEEDED/INTERP check below, do not depend on LTO. Release keeps building `dist`.
+  # Build the exact shipping outputs once; merge and tag only promote them.
   build-daemon-musl:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v7
-
-      # Saves on pull requests too. deploy-dev-build's main entry holds only the
-      # daemon build; this job builds both binaries, so a branch keeps its own
-      # completed runner build for later pushes.
-      - uses: actions/cache@v6
-        with:
-          path: |
-            .cargo-cache/registry
-            .cargo-cache/git
-            rustd/target
-          # Its own key: fast-profile artifacts must not share an exact hit with the
-          # `dist` entry deploy-dev-build writes, or a hit skips saving them.
-          key: cargo-fast-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: cargo-fast-${{ matrix.arch }}-
-
-      # `docker run` rather than a job `container:`: JS actions cannot run
-      # inside an Alpine container on an ARM64 runner, which is the constraint
-      # release.yml documents on the same build.
-      # One `cargo build` per binary, as deploy-dev-build.yml builds them: a
-      # single invocation unifies features across both dependency graphs and
-      # would pass a binary that only compiles with the other's features.
-      - name: Build both binaries in the pinned builder (musl-native)
-        run: |
-          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
-          # DERIVED, never spelled twice — see check_builder_pin.sh.
-          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
-          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
-          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
-          echo "→ building for linux/${{ matrix.arch }} in $BUILDER"
-          docker run --rm \
-            -v "$PWD:/w" \
-            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
-            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
-            -e GIT_COMMIT="${GITHUB_SHA::7}" \
-            -w /w/rustd \
-            "$BUILDER" \
-            sh -c '
-              set -e
-              cargo build --profile fast-profile -p agentsfleetd --bin agentsfleetd
-              cargo build --profile fast-profile -p agentsfleet_runner --bin agentsfleet-runner
-            '
-          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
-
-      # The distroless runtime carries no loader and no libc. A binary with a
-      # NEEDED entry or an INTERP section builds green here and dies at boot
-      # there, so the assertion belongs on this side of the wall.
-      - name: Verify static ELF — zero NEEDED, no INTERP
-        run: |
-          for bin in rustd/target/fast-profile/agentsfleetd rustd/target/fast-profile/agentsfleet-runner; do
-            test -f "$bin"
-            if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
-              echo "FAIL: $bin has dynamic NEEDED entries"
-              readelf -d "$bin" | grep NEEDED
-              exit 1
-            fi
-            if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
-              echo "FAIL: $bin has INTERP (dynamic linker) section"
-              exit 1
-            fi
-            echo "✓ linux/${{ matrix.arch }} $bin: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
-          done
+    uses: ./.github/workflows/build-candidate.yml
 
   test:
     runs-on: ubuntu-latest
