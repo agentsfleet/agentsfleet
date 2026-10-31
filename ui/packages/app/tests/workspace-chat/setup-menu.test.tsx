@@ -171,12 +171,13 @@ it("removes the save action when the current viewer loses access", () => {
 
 // Value: protects=opening the current fleet after activation; fails_when=the heading navigates to stale setup or writes a new revision;
 // why_new=existing heading tests used no fleet or an installing fleet; seam=none; no_claim=server refresh success.
-it("refreshes the current active fleet instead of exposing its installation action", () => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client}
-    fleetPage view={{...client.getSnapshot(), fleet: {...FLEET, status: "active"}}} />);
+it("opens the current active fleet from the composer without writing a revision", async () => {
+  render(<WorkspaceChat {...CHAT_PROPS} fleetPage source={{kind: "fleet", fleet_id: FLEET.id, setup_revision: "1"}} />);
+  const open = await screen.findByRole("button", {name: "Open fleet"});
   expect(screen.getByRole("heading", {name: FLEET.name})).toBeTruthy();
   expect(screen.queryByRole("link", {name: "Edit setup"})).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Open fleet"}));
+  expect(screen.getByTestId("fleet-chat-footer").contains(open)).toBe(true);
+  fireEvent.click(open);
   expect(chatRouter.refresh).toHaveBeenCalledOnce();
   expect(chatRouter.push).not.toHaveBeenCalled();
   expect(fixture.writes()).toEqual([]);

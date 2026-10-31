@@ -34,7 +34,7 @@ it.each(["running", "failed", "completed"] as const)("keeps an existing setup ab
   const summary = screen.getByRole("region", {name: SUMMARY});
   expect(before(screen.getByText("Original proposal"), summary)).toBe(true);
   expect(before(summary, screen.getByText(HEY))).toBe(true);
-  if (state === "running") expect(before(summary, screen.getByRole("status", {name: "Working"}))).toBe(true);
+  if (state === "running") expect(before(summary, screen.getByRole("status", {name: "Refining setup"}))).toBe(true);
 });
 
 it("places a source preview before its first pending message", () => {
@@ -77,7 +77,7 @@ it("keeps an unsaved proposal conversational without a ready or review heading",
 it("does not label an unchanged fleet-source chat as having unsaved changes", () => {
   const draft = {...DRAFT, linked_fleet_id: FLEET.id, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   render(<FleetSetup client={client} view={{...client.getSnapshot(), draft}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(screen.queryByText(/Unsaved changes/)).toBeNull();
   expect(screen.queryByText(/New runs use v2/)).toBeNull();
 });
@@ -86,14 +86,14 @@ it("keeps saved fleet status separate from a resumed draft proposal", () => {
   const draft = {...DRAFT, linked_fleet_id: FLEET.id, candidate: {...DRAFT.candidate!, revision: "2"},
     review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   render(<FleetSetup client={client} view={{...client.getSnapshot(), draft}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(screen.queryByText(/Unsaved changes/)).toBeNull();
   expect(screen.getByText(/Save changes when you’re ready|You can keep chatting here/)).toBeTruthy();
 });
 
 it("summarizes a saved fleet without opening its full setup report", () => {
   render(<FleetSetup client={client} view={{...client.getSnapshot(), fleet: {...FLEET, status: "active", setup: {state: "ready", checks: []}}}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(screen.getByText(/You can keep chatting here|Save changes when you’re ready/)).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Saved fleet setup"})).toBeNull();
   expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
@@ -102,15 +102,15 @@ it("summarizes a saved fleet without opening its full setup report", () => {
 it.each(["2", "3"])("shows confirmed saved v%s without labeling the draft as saved or unsaved", (revision) => {
   const snapshot = {...client.getSnapshot(), savedSetupRevision: revision};
   const view = render(<FleetSetup client={client} view={snapshot} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: `Save done v${revision}`})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: `Setup saved · v${revision}`})).toBeTruthy();
   view.rerender(<FleetSetup client={client} view={{...snapshot, draft: {...DRAFT, candidate: {...DRAFT.candidate!, id: FLEET.id}}}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: `Save done v${revision}`})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: `Setup saved · v${revision}`})).toBeTruthy();
   expect(screen.getByText(/Save changes when you’re ready|You can keep chatting here/)).toBeTruthy();
 });
 
 it("does not hide an unconfirmed first run behind a saved-success summary", () => {
   render(<FleetSetup client={client} view={{...client.getSnapshot(), fleet: {...FLEET, status: "active", start: {kind: "run_now", state: "pending"}}}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(screen.queryByRole("button", {name: DETAILS})).toBeNull();
   expect(screen.getByRole("button", {name: "Retry first run"})).toBeTruthy();
 });
@@ -123,10 +123,10 @@ it("suppresses the fallback acknowledgement only for a recorded setup receipt of
   const page = render(<FleetSetup client={client} view={snapshot} workspace={WORKSPACE} />);
   const unrelated = ["{", JSON.stringify({kind: "access_saved", service: "fly"}), JSON.stringify({kind: "setup_saved", revision: "0"})];
   page.rerender(<FleetSetup client={client} view={{...snapshot, activities: unrelated.map((request_json, index) => ({...activity, event_id: String(index), request_json}))}} workspace={WORKSPACE} />);
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   for (const kind of ["setup_saved", "setup_ready"]) {
     page.rerender(<FleetSetup client={client} view={{...snapshot, activities: [{...activity, request_json: JSON.stringify({kind, revision: "1"})}]}} workspace={WORKSPACE} />);
-    expect(screen.queryByRole("heading", {name: "Save done v1"})).toBeNull();
+    expect(screen.queryByRole("heading", {name: "Setup saved · v1"})).toBeNull();
     expect(screen.getByText("You can keep chatting here to change the setup.")).toBeTruthy();
   }
 });

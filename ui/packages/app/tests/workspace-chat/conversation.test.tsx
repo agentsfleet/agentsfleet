@@ -41,7 +41,7 @@ it("folds a long request without losing its full text", async () => {
   const text = `Investigate the development environment. ${"Include concrete evidence. ".repeat(60)}End of the full request.`;
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), messages: [{...MESSAGE, text}]}} />);
   expect(screen.queryByText(/End of the full request/)).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Show full message"}));
+  fireEvent.click(screen.getByRole("button", {name: "Show more"}));
   expect(screen.getByText(/End of the full request/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "Show less"}));
   expect(screen.queryByText(/End of the full request/)).toBeNull();
@@ -54,9 +54,9 @@ it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved o
     MESSAGE, {...MESSAGE, sequence: "2", text: "Change the setup", state: "running" as const, created_at: "1970-01-01T00:00:02Z"},
   ]};
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}><p>Configuration readiness</p></DraftConversation>);
-  const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Save done v1" : "Setup done · v1");
+  const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Setup saved · v1" : "Setup done · v1");
   const checks = screen.getByText("Configuration readiness");
-  const working = screen.getByRole("status", {name: "Working"});
+  const working = screen.getByRole("status", {name: "Refining setup"});
   expect(saved.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(checks.compareDocumentPosition(working) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
@@ -66,7 +66,7 @@ it("keeps saved setup actions inside the conversation history", () => {
     <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} />
   </DraftConversation>);
-  const saved = screen.getByRole("heading", {name: "Save done v1"});
+  const saved = screen.getByRole("heading", {name: "Setup saved · v1"});
   expect(screen.getByRole("log").contains(saved)).toBe(true);
   expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
 });
@@ -81,7 +81,7 @@ it.each([false, true])("shows the new-fleet entrance only before an empty draft 
   if (saved) {
     expect(entrance).toBeNull();
     expect(suggestion).toBeNull();
-    expect(screen.getByRole("log").contains(screen.getByRole("heading", {name: "Save done v1"}))).toBe(true);
+    expect(screen.getByRole("log").contains(screen.getByRole("heading", {name: "Setup saved · v1"}))).toBe(true);
   } else {
     expect(entrance).toBeTruthy();
     expect(suggestion).toBeTruthy();
@@ -100,11 +100,11 @@ it("stops authoring at the durable watermark and replaces Working with the termi
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<LiveConversation />);
-  expect(screen.getByRole("status", {name: "Working"})).toBeTruthy();
+  expect(screen.getByRole("status", {name: "Refining setup"})).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   expect(await screen.findByText("Request stopped.")).toBeTruthy();
   await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
-  expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
+  expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
 });
 
 it.each([

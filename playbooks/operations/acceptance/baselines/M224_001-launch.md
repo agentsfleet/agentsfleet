@@ -1,5 +1,192 @@
 # M224_001 development and production launch evidence
 
+## Overnight development review: Oct 31, 2026
+
+This checkpoint supersedes the earlier blocked rollout and deleted fleet inventories.
+M224 remains `IN_PROGRESS`; none of the production actions below was performed.
+Indy approved the chat improvements and authorized merging their follow-up PR only
+after all required checks pass and every Greptile thread is answered and resolved.
+The fleet-produced Linkwarden repair remains a draft for owner review.
+
+### Matching merged development rollout
+
+Pull Request [793](https://github.com/agentsfleet/agentsfleet/pull/793) merged as
+`3f2ba3faccf8556c9717fdefd9dee9ab72556660`, version `0.71.0`.
+Its tree is `1538fdf13f356396730a85cf26e3b77779227ac7`.
+The tested synthetic merge `3623b6682e7d9db9031bb9fcf743d324004a8655`
+has the same tree; reused binaries correctly retain stamp `3623b66`.
+
+Candidate run `41221228786` passed all six jobs. Development deployment
+[41222658107](https://github.com/agentsfleet/agentsfleet/actions/runs/41222658107),
+attempt 1, completed successfully at `2026-10-31T17:17:17Z`.
+Native GitHub job reads establish these results:
+
+| Job | Identifier | Result |
+| --- | --- | --- |
+| Candidate promotion | `124600470129` | success |
+| API deployment | `124601119883` | success |
+| Runner deployment | `124601888555` | success; `dev-3623b66`, readiness retained for 30 seconds |
+| Deployment verification | `124601888570` | success |
+| Dashboard deployment | `124601889071` | success |
+| Browser acceptance | `124602401511` | 10 passed; post-deployment subset |
+| CLI acceptance | `124602401525` | deterministic 209/209 and live 174/174; no skips |
+| QA acceptance | `124602401571` | 4 passed |
+| Candidate qualification | `124603383879` | all seven required inputs succeeded |
+
+The deployed runtime digest is
+`sha256:4aea4ffaeba9fbf0761367e18979ec6f639462f0dbf55c7f3ebaa05a013cf7a6`.
+The signed toolbox digest is
+`sha256:e9ec4038e304b5cabc6baf000d760355dea24a88cad5f916647ef474928d13c2`.
+Qualification artifact `13050569607` has digest
+`sha256:36585e8a1afcc66589c4fcb4833479210e353e439a678d4d4996e18e9d63d813`
+and expires `2027-01-29T17:03:39Z`.
+Live health/readiness reads passed with native stamp `3623b66`.
+
+The runner reports online and non-degraded, but `build_id` is null.
+Downloading runner artifact `13050598033` failed with HTTP 403 at its storage host;
+the observer did not bypass that refusal or rerun the build.
+Host executable checksum and attestation therefore remain unverified.
+These deployment results do not prove the outstanding full Linux kernel acceptance.
+
+### Workspace, clean onboarding and accepted fleet revisions
+
+Native CLI doctor selected workspace `01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e`.
+The existing source checkout was preserved; this follow-up uses isolated branch
+`feat/m224-dev-verification` from the merged main revision above.
+The managed environment identifier is a workspace provider identifier, not a
+verified underlying VM identifier.
+
+The model catalogue reported the platform-default MiniMax M3.1 Flash available.
+GitHub and Slack were connected. Grafana was reachable, but its preceding-day
+Loki query returned no streams or entries; Elastic was absent.
+The incident proposal was neither saved natively nor published to any Library.
+
+Indy requested deleting unfinished private setups. Native `chat delete --yes`
+removed 14 editing drafts and then nine remaining closed/saving drafts.
+The second batch corrected an editing-only filter that did not match the UI.
+Deleting their private conversations retained the independently saved fleets.
+After applying improvements, the observer deleted only its own four temporary
+Improve chats. Final native `chat list --json` returned `items: []` and no cursor.
+No approvals were silently granted or deleted by the observer.
+
+| Fleet | Identifier | Accepted setup |
+| --- | --- | --- |
+| ci-responder | `01a192f8-f35b-77c8-92ad-e02e823c3d5b` | active revision 3 |
+| ci-repairer | `01a192f8-faa3-754d-a537-2ed28a0b1d7a` | active revision 3 |
+
+Native Review/Save created both fleets. Indy approved their GitHub grants at
+`17:22:01Z` and `17:22:03Z`; resuming the same operations made revision 1 active.
+The original Save operation identifiers are
+`01a192f8-f2fa-739c-8a1f-45e33cca2b7e` and
+`01a192f8-fa3b-70fc-a5aa-5873edada13d`.
+Their respective native review digests were
+`authoring:v1:sha256:cd8c219d74ac92f81979a7a03fccaf93c7e7cd2fc8da27b89478380425006412`
+and
+`authoring:v1:sha256:74f26d1c55299766f2808db64b5ce0c6d0965d19f443006d0930461c79d942d9`.
+
+Revision 2 opened public HTTP reach at Indy's explicit request.
+HTTP tools retained their read-only boundary; only the repairer's separately
+reviewed repository write scope permits its bounded repair.
+Revision 3 changed instruction guidance: explicit Bearer authentication,
+repository contents reads, terminal source refusals and no invented delivery claims.
+Native Review/Apply receipts were verified against the expected definitions.
+
+| Revision 3 witness | Responder | Repairer |
+| --- | --- | --- |
+| Review digest suffix, after `authoring:v1:sha256:` | `d05e9c946ca5016a0169366413ec90b0206a55159b16f7eb0b7e2f58a05ac580` | `92ac584aff4380da104e056c1fe11f87917af4da4812985c2503a7264beac8b9` |
+| Exact instruction UTF-8 SHA-256 | `be95d4a44a5056c6305cd392119ca27d9c9f9d7db66a28bff3e839dbd9500f1f` | `1e77b482f4d3ca4d1a5b38703621c4bd507855bb9065e7e13b9a379bd8ef2ea3` |
+| Sorted compact definition JSON SHA-256 | `5f810eec6c50c614698338b218398a03285c7074ae557270b2a70e91c2e08895` | `088a6b6ad7ab5777ff2d834afd001ad64795a2d172e99f24fa2f723dd0732557` |
+| Native setup ETag, without quotes | `a9200baafe04171faec193c9caf35c3e7c07394b6197c2fe7881e7c8c114259d` | `5112620e97908064baf5f447aca773ae416d5324a70e6e34911f75259066b67e` |
+
+The locally sorted JSON hashes are capture hashes, distinct from native review
+digests and ETags. Origin labels in the pending source change do not backfill
+these older receipts.
+
+### Human Slack triggers and actual fleet-owned evidence
+
+Indy sent every trigger using the real `@agentsfleet-dev` mention in channel
+`C0ARL465ZJP`, existing thread `1793448204.424979`.
+The observer sent no Slack messages.
+The fixture is Linkwarden run `41199403249`, attempt 1, job `124532028003`,
+head `95a173dfb71746d8e5ed01b420815668e34806f3`, trusted `dev`
+`46303b321a43b6a8227c4dfdfcccce01ab37e55f`.
+The actual failed step is `Check link title decoding`, `12:05:37Z–12:05:39Z`.
+
+| Fleet/setup | Native event | Observation and limitation |
+| --- | --- | --- |
+| Responder v1 | `01a192fe-43ff-7813-9f8d-189fcd9a7e75` | Log redirect selected unapproved `productionresultssa3.blob.core.windows.net`; continued to 64 calls after refusal. Failed stopping and evidence proof. |
+| Responder v2 | `01a19312-7a63-75d0-a333-b39d2450e00b` | Job log 200 with complete text; accurate diagnosis delivered visibly in Slack. Call `2:13` code search was denied, followed by further calls; failed stopping proof. |
+| Repairer v2 | `01a19316-8751-79f2-923f-41a923983456` | Log read 403; stopped at call 5 without writes. Trace used a bare token placeholder rather than Bearer authentication. The API message alone does not prove missing administrator permission. |
+| Repairer v3 | `01a1931f-816f-71c0-bdb1-156afa7db2a2` | Short `fix this` inherited the thread target; complete job log and source reads led to draft #4. Failed source probes were followed by writes; regression execution remained unverified. |
+
+Responder v2 completed `17:48:32.776Z` with 24 calls and zero omitted calls.
+Its addressed job-log call `2:4` and trusted-source call `2:9` both returned
+`truncated: false` and `truncated_arguments: false`.
+Indy pasted the visible Slack answer, confirming delivery for that response.
+
+Repairer v3 ran `18:01:18.063Z–18:04:04.055Z`, 33 calls, zero omitted calls,
+1,137,475 tokens and 165,748 ms.
+Fresh native reads used `Cache-Control: no-cache`; an earlier cached response
+still said received and was not used to infer a delivery delay.
+Full addressed calls `2:3–7`, `2:14–15`, `2:17–18`, `2:23–28` and `2:30`
+were captured individually with both truncation flags false.
+The exact JSON capture SHA-256 for job-log call `2:3` is
+`d4c4f0078325f48478a1493a240ac461bf1dffbdc1cf40ff4cd1e0cb3ba85784`;
+the capture is 44,813 bytes and includes arguments and native output metadata.
+Signed storage URLs, raw private conversations and credentials are not committed.
+
+Required-source probe `2:6` found the regression absent on `dev` (404).
+Probe `2:15` guessed a wrong source path and returned 404, then the fleet continued.
+Branch-absence probe `2:18` was expected reconciliation, not proof of a source read.
+At least the wrong-path continuation violates the required first-failure boundary;
+an accurate final explanation and bounded writes do not erase that observation.
+
+### Fleet-produced bounded repair
+
+GitHub confirms [draft #4](https://github.com/agentsfleet/linkwarden/pull/4),
+created `18:03:33Z` by `agentsfleet-dev[bot]`, against `dev`.
+Its daemon-issued branch is
+`agentsfleet-repair/MDFhMTkzMWYtODE2Zi03MWMwLWJkYjEtMTU2YWZhN2RiMmEy`.
+One commit, `9d114c7e36fcb6274236a1ce07357fe31fd24e81`, has the trusted `dev`
+revision above as its sole parent. The diff contains exactly two files:
+`apps/web/lib/client/unescapeString.ts` and its new regression test.
+The implementation escapes literal `<` before parsing HTML character references.
+No workflow, repository permission or deployment was changed.
+Native write calls `2:23–28` created two blobs, a tree, commit, ref and one draft;
+subsequent reads reconciled the same branch, files and single draft.
+
+Playwright job `124614658321` and branch-check job `124614659398` succeeded.
+The i18n write job `124614659598` was skipped as designed.
+Those checks did not execute the regression step present only on fixture PR #3.
+The fleet explicitly reported that it had not run Vitest; no before/after
+regression pass at the draft head is attributed to this run.
+The v3 final response is stored natively, but its Slack visibility has not been
+independently confirmed after Indy left. Processed status alone is insufficient.
+The observer did not merge, mark ready or modify this draft.
+
+The observer subsequently fetched the exact trusted-base and draft-head source
+through GitHub, alongside the unchanged regression from the draft.
+An isolated Vitest `4.1.0` / jsdom `22.1.0` installation ran
+`bunx --bun vitest run base/unescapeString.test.ts`: exit 1,
+`1 failed | 2 passed (3)`.
+The same test at the repair head ran as
+`bunx --bun vitest run repair/unescapeString.test.ts`: exit 0, `3 passed (3)`.
+Git blob hashes matched base `fe0807aae16c0d20abfe9250f1614e5410de93b6`,
+repair `57fc3e4d2f2fe206b94674025b45f8c6a664307a`, and identical test
+`ff0b47366c02cbf165321919c5cb5b2980836c74`.
+This is observer validation of the proposed code, not fleet-owned test execution,
+and does not repair the run's stopping or delivery evidence gaps.
+
+### Remaining acceptance boundaries
+
+The CI source read and actual draft creation are demonstrated capabilities;
+the complete M224 cases remain incomplete because stopping behavior, same-thread
+repair-link visibility and matching regression execution have not all passed.
+The recovery/replay fixtures, eight-case corpus/checker and full Linux acceptance
+remain P0 obligations. The incident case still needs relevant Elastic/Grafana
+evidence, native Library setup and its real trigger. Production qualification,
+release tags, production runners and production demonstrations remain unperformed.
+
 ## Build reuse amendment: Oct 31, 2026
 
 Indy requested these improvements in the same Pull Request #793 and confirmed

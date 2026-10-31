@@ -10,13 +10,14 @@ use crate::{
         raise::{query, stored},
     },
     review,
-    types::{Candidate, SaveSource, SourcePin},
+    types::{Candidate, SaveOrigin, SaveSource, SourcePin},
 };
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::Definition;
 use sqlx::PgConnection;
 
 pub(super) struct Captured {
+    pub(super) origin: Option<SaveOrigin>,
     pub(super) candidate: Candidate,
     pub(super) context: review::Context,
     pub(super) draft: Option<draft::read::Locked>,
@@ -49,6 +50,7 @@ impl Creations {
                 }
                 let candidate = candidate::read(connection, &id, draft_candidate_id).await?;
                 Ok(Captured {
+                    origin: None,
                     candidate,
                     context: review::Context::from(&locked),
                     draft: Some(locked),
@@ -94,6 +96,7 @@ async fn library(
     let row = row.ok_or(ErrorKind::Hidden)?;
     let definition: Definition = serde_json::from_str(&row.definition).map_err(stored)?;
     Ok(Captured {
+        origin: None,
         context: review::Context {
             subject: review::Subject::Library {
                 library_id: library.to_owned(),

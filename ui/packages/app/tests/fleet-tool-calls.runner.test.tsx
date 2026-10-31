@@ -21,7 +21,8 @@ function call(name: string, args: FleetToolCall["args"]): FleetToolCall {
 function renderCalls(tools: FleetToolCall[]) {
   mockStream([ev({ id: "evt_runner", role: "user", actor: "operator", text: "Go", status: "processed", tools })]);
   renderThread();
-  for (const button of screen.queryAllByRole("button", {name: /^(Input|Output|Error)$/})) fireEvent.click(button);
+  fireEvent.click(screen.getByRole("button", {name: TOOL_CALLS_LABEL}));
+  for (const button of screen.queryAllByRole("button", {name: /^(Ran|Running) command /})) fireEvent.click(button);
 }
 
 const cell = (name: string) => document.querySelector<HTMLElement>(`li[data-tool="${name}"]`)!;

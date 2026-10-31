@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { fleetActivityText, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+
 import { draftThreadMessages } from "@/lib/api/draft-thread-messages";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { readSetupActivity } from "@/lib/api/draft-activity";
@@ -12,6 +13,16 @@ const RECEIPT = {event_id: "setup_saved:one", event_type: FLEET_ACTIVITY.type, s
   request_json: JSON.stringify({kind: "setup_saved", revision: "1"}), created_at: "2026-10-26T08:00:00Z"};
 beforeEach(() => {fixture.mount(); fixture.fleet = FLEET_DETAIL;});
 afterEach(() => fixture.dispose());
+
+it.each([
+  {origin: "cli", expected: "Setup saved via CLI · v1"},
+  {origin: "dashboard", expected: "Setup saved · v1"},
+  {origin: "chat", expected: "Setup saved · v1"},
+  {origin: undefined, expected: "Setup saved · v1"},
+  {origin: "unrecognized", expected: "Activity recorded"},
+])("uses only recorded save provenance ($origin)", ({origin, expected}) => {
+  expect(fleetActivityText(JSON.stringify({kind: "setup_saved", revision: "1", origin}))).toBe(expected);
+});
 
 it("reads a durable setup occurrence again after the client is recreated", async () => {
   fixture.current = {...DRAFT, state: "closed", linked_fleet_id: FLEET_ID};

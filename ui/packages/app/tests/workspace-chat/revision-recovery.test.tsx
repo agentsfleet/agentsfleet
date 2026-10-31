@@ -34,11 +34,11 @@ it("defers a new source revision until the accepted turn completes", async () =>
   };
   const source = {kind: SOURCE_KIND.fleet, fleet_id: FLEET_ID, setup_revision: "1"};
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={source} />);
-  await screen.findByRole("status", {name: "Working"});
+  await screen.findByRole("status", {name: "Refining setup"});
   await waitFor(() => expect(FakeEventSource.instances.at(-1)).toBeTruthy());
   fixture.fleet = {...fixture.fleet, setup_revision: "2", name: "Updated incident watch"};
   page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{...source, setup_revision: "2"}} />);
-  expect(screen.getByRole("status", {name: "Working"})).toBeTruthy();
+  expect(screen.getByRole("status", {name: "Refining setup"})).toBeTruthy();
   expect(contextReads).toBe(1);
   expect(fixture.mutations()).toEqual([]);
   messages = [MESSAGE, {...MESSAGE, role: MESSAGE_ROLE.assistant, text: "The accepted turn finished."}];

@@ -134,7 +134,7 @@ export class DraftClient {
         async () => {await this.#read(this.#draft().id); return this.#draft();}, (draft, review) => this.#targetSetup(draft, review));
       if (refreshed.preview) this.#update({preview: refreshed.preview});
       return refreshed.edit;
-    });
+    }, false, "reading");
   }
   refreshFleetSetup(readinessOnly = false, currentRevision = false): Promise<void> {
     if (readinessOnly && !this.#snapshot.fleet) return this.refreshSetup().then(() => undefined);
@@ -146,7 +146,7 @@ export class DraftClient {
       if (readinessOnly && this.#snapshot.draft) await this.#read(this.#snapshot.draft.id);
       if (!readinessOnly && patch.draft) this.#history.seed(this.#snapshot.messages, patch.messagesStartingAfter ?? undefined, this.#snapshot.truncated);
       this.#startWatching();
-    });
+    }, false, "reading");
   }
   loadEarlierConversations(): Promise<void> {
     return this.#act(async () => {
@@ -184,7 +184,7 @@ export class DraftClient {
       this.#idle();
       const {draft, review} = await this.#readySetup();
       const body = {source: {kind: "draft", draft_candidate_id: draft.candidate.id}, name: review.effective.instance_name,
-        review_digest: review.review_digest, start};
+        review_digest: review.review_digest, start, origin: "dashboard"};
       await this.#operation.run({save: body}, async (key) => {
         const request = {path: `${this.#base}/fleets`, method: REQUEST_METHOD.post, body, headers: {[SETUP_HEADERS.key]: key}};
         this.#continueSave = async () => {
@@ -194,7 +194,7 @@ export class DraftClient {
         };
         await this.#continueSave();
       });
-    });
+    }, false, "saving");
   }
   apply(): Promise<void> {
     return this.#act(async () => {
@@ -203,7 +203,7 @@ export class DraftClient {
       await applySavedSetup(this.#base, draft, review, this.#setupTarget, this.#operation,
         AbortSignal.any([this.#owner.signal, this.#view.signal]), fleet => this.#savedSetup(draft.id, fleet));
       this.#update({notice: appliedNotice(this.#snapshot.schedules)});
-    });
+    }, false, "saving");
   }
   publish(label: string, append: boolean): Promise<void> {
     return this.#act(async () => {
@@ -214,7 +214,7 @@ export class DraftClient {
         this.#update({notice: await this.#publication.publish(publication, key)});
         await this.#read(draft.id); await this.#refreshSummary(draft.id);
       });
-    });
+    }, false, "publishing");
   }
   stagePlatform(label: string): Promise<void> {
     return this.#act(async () => {
@@ -233,7 +233,7 @@ export class DraftClient {
       else if (this.#continueSave) await this.#continueSave();
       else await retrySavedSetup(this.#base, this.#snapshot, AbortSignal.any([this.#owner.signal, this.#view.signal]), (id, fleet) => this.#savedSetup(id, fleet), id => this.#read(id));
       this.#startWatching();
-    });
+    }, false, this.#snapshot.setupAction);
   }
   syncSchedule(schedule: Schedule): Promise<void> {
     const path = scheduleSyncPath(this.#base, schedule);
@@ -321,12 +321,12 @@ export class DraftClient {
       failed: cause => this.#failed(cause),
     });
   }
-  async #act<T>(action: () => Promise<T>, opening = false): Promise<T> {
+  async #act<T>(action: () => Promise<T>, opening = false, setupAction: DraftView["setupAction"] = null): Promise<T> {
     if (this.#snapshot.inaccessible) throw new SetupUnavailable("Reload this page to check access before continuing.", 403);
     if (this.#snapshot.busy) throw new SetupUnavailable("A setup request is still in progress.", 409);
-    this.#update({busy: true, error: null, notice: null});
+    this.#update({busy: true, error: null, notice: null, setupAction: this.#operation.pending ? this.#snapshot.setupAction : setupAction});
     try { return await action(); } catch (cause) { if (!this.#owner.signal.aborted && !this.getSnapshot().inaccessible) this.#failed(cause, opening); throw cause; }
-    finally { this.#update({busy: false, pending: this.#operation.pending}); }
+    finally { this.#update({busy: false, pending: this.#operation.pending, setupAction: this.#operation.pending ? this.#snapshot.setupAction : null}); }
   }
   #failed(cause: unknown, opening = false): void {
     const error = setupErrorMessage(cause, opening);
@@ -337,7 +337,7 @@ export class DraftClient {
   #reset(): void {
     this.#view.abort(); this.#view = new AbortController(); this.#history.clear(); this.#replies.clear(); this.#operation.clear();
     this.#continueSave = undefined; this.#setupTarget = undefined; this.#watching.stop();
-    this.#update({draft: null, messages: [], previousDrafts: [], conversationCursor: null, activityCursor: null, messagesStartingAfter: null, activities: [], optimistic: null, liveReply: null, contextProgress: null, preview: null, fleet: null, savedSetupRevision: null, schedules: [], error: null, notice: null, truncated: false, focusRevision: this.#snapshot.focusRevision + 1});
+    this.#update({draft: null, messages: [], previousDrafts: [], conversationCursor: null, activityCursor: null, messagesStartingAfter: null, activities: [], optimistic: null, liveReply: null, contextProgress: null, preview: null, fleet: null, savedSetupRevision: null, setupAction: null, schedules: [], error: null, notice: null, truncated: false, focusRevision: this.#snapshot.focusRevision + 1});
   }
   #refreshSummary(id: string): Promise<void> {
     return this.#lists.refreshSummary(id, AbortSignal.any([this.#owner.signal, this.#view.signal]), patch => this.#update(patch), cause => this.#failed(cause));

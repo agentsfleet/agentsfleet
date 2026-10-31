@@ -22,7 +22,7 @@
     "decimal.js": "^10.6.0"
   },
   "patchedDependencies": {
-    "@assistant-ui/react@0.15.31": "patches/@assistant-ui%2Freact@0.15.31.patch",
-    "@assistant-ui/store@0.3.22": "patches/@assistant-ui%2Fstore@0.3.22.patch"
+    "@assistant-ui/store@0.3.22": "patches/@assistant-ui%2Fstore@0.3.22.patch",
+    "@assistant-ui/react@0.15.32": "patches/@assistant-ui%2Freact@0.15.32.patch"
   }
 }

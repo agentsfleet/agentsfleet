@@ -6,7 +6,7 @@ use crate::{
     error::{ErrorKind, raise::query},
     lease::guard::{Attempt, Guarded},
     message, review,
-    types::{DraftState, MessageState, SourcePin, Start},
+    types::{DraftState, MessageState, SaveOrigin, SourcePin, Start},
 };
 use afd_core::{id::Uuid7, problem::Problem};
 use afd_events::activity::Announcement;
@@ -83,6 +83,7 @@ impl Creations {
             return Err(ErrorKind::Policy.into());
         }
         let mut captured = Captured {
+            origin: Some(SaveOrigin::Chat),
             candidate,
             context: review::Context::from(locked),
             draft: Some(locked.clone()),

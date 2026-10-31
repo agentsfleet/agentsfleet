@@ -67,7 +67,7 @@ it("recovers a failed setup continuation from the conversation without reopening
   expect(continued).toBe(false);
   fireEvent.click(retry);
   await waitFor(() => expect(screen.queryByRole("button", {name: "Finish setup"})).toBeNull());
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(continued).toBe(true);
 });
 

@@ -64,8 +64,8 @@ export const ISOLATION_ASSIGNMENT_DESCRIPTION =
 // wrong. That belongs on a page, not in five form descriptions.
 const RUNNER_POLICY_DOC_URL = "https://docs.agentsfleet.net/runners";
 const NETWORK_ASSIGNMENT_LABEL = "Network policy";
-const REGISTRY_ASSIGNMENT_LABEL = "Allowlist (optional)";
-const REGISTRY_ASSIGNMENT_DESCRIPTION = "Registry hosts the sandbox may reach.";
+const REGISTRY_ASSIGNMENT_LABEL = "Allowed registry domains (optional)";
+const REGISTRY_ASSIGNMENT_DESCRIPTION = "Registry hosts the sandbox may reach. Separate hosts with commas.";
 const WORKERS_ASSIGNMENT_LABEL = "Workers";
 const WORKERS_ASSIGNMENT_DESCRIPTION = `Concurrent workers on the host (${MIN_WORKER_COUNT}–${MAX_WORKER_COUNT}).`;
 

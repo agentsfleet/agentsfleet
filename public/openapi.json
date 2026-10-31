@@ -18291,6 +18291,17 @@
             "type": "string",
             "description": "Creator-owned immutable candidate `UUIDv7`."
           },
+          "origin": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SaveOrigin",
+                "description": "Optional client-reported save surface, used only in the activity notice."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "review_digest": {
             "type": "string",
             "description": "Fresh contextual review digest."
@@ -27099,6 +27110,17 @@
             "type": "string",
             "description": "Validated instance slug."
           },
+          "origin": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SaveOrigin",
+                "description": "Optional client-reported save surface, used only in the activity notice."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "review_digest": {
             "type": "string",
             "description": "Copy `review.review_digest` from the source review after inspecting it.\n\nFor a draft, read `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. Reload the\nreview before saving if it changes."
@@ -27113,6 +27135,15 @@
           }
         },
         "additionalProperties": false
+      },
+      "SaveOrigin": {
+        "type": "string",
+        "description": "Display-only provenance; it grants no authority or access.",
+        "enum": [
+          "cli",
+          "dashboard",
+          "chat"
+        ]
       },
       "SaveSource": {
         "oneOf": [

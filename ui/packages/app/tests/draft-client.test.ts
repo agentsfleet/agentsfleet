@@ -91,7 +91,7 @@ describe("private setup editing and recovery boundaries", () => {
 
   it("publishes a new entry and clears a deleted conversation", async () => {
     const instance = await ready(true); await instance.refreshSetup(); await instance.publish("recipe", false);
-    expect(instance.getSnapshot().notice).toContain(PUBLICATION.revision_id);
+    expect(instance.getSnapshot().notice).toBe("Setup published.");
     expect(mutations()[0]?.body).toEqual({draft_candidate_id: DRAFT.candidate?.id, label: "recipe"});
     fixture.override = ({method}) => method === "DELETE" ? response(null, 204) : undefined;
     await instance.remove();
