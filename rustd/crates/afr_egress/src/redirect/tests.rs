@@ -45,7 +45,7 @@ fn should_refuse_repeated_normalized_targets_before_the_hop_limit() {
 #[test]
 fn should_refuse_invalid_or_ambiguous_locations() {
     let base = Url::parse(FIRST).expect("fixture URL");
-    for raw in ["".to_owned(), "../".repeat(2731), "https://[".to_owned()] {
+    for raw in [String::new(), "../".repeat(2731), "https://[".to_owned()] {
         assert_eq!(
             Target::new(&base, &raw).expect_err("invalid Location"),
             Stop::InvalidTarget
