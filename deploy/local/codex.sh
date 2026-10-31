@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Linux adapter; the runner keeps its shipping sandbox and signed-toolbox checks.
 source "$DEV_ROOT/deploy/local/codex-certificate.sh"
-acceptance_runner_started=0
+acceptance_runner_owned=0
 
 acceptance_adapter() {
   [ "$(uname -s)" = Linux ] || dev_fail 'acceptance-codex requires Linux and privileged Docker'
@@ -75,7 +75,7 @@ start_runner() {
   if docker container inspect "$acceptance_runner_container" >/dev/null 2>&1; then
     dev_fail 'the acceptance runner container already exists; inspect its owner before removing it'
   fi
-  local args=(--detach --init --name "$acceptance_runner_container" --privileged --cgroupns=private --network host
+  local args=(--init --name "$acceptance_runner_container" --privileged --cgroupns=private --network host
     --mount "type=bind,src=$DEV_ROOT/dist/acceptance/agentsfleet-runner,dst=/usr/local/bin/agentsfleet-runner,readonly"
     --mount "type=bind,src=$DEV_ROOT/deploy/local/codex-runner.sh,dst=/usr/local/bin/acceptance-runner,readonly"
     --mount "type=bind,src=$ACCEPTANCE_LOCAL_TOOLBOX_DIR,dst=/toolbox,readonly"
@@ -84,18 +84,19 @@ start_runner() {
   if [ -n "${CODEX_PROXY_CERT:-}" ]; then
     args+=(--mount "type=bind,src=$CODEX_PROXY_CERT,dst=/run/session-ca.pem,readonly")
   fi
-  docker run "${args[@]}" "$acceptance_runner_image" \
-    bash /usr/local/bin/acceptance-runner >/dev/null
-  acceptance_runner_started=1
+  acceptance_runner_container="$(docker create "${args[@]}" "$acceptance_runner_image" \
+    bash /usr/local/bin/acceptance-runner)"
+  acceptance_runner_owned=1
+  docker start "$acceptance_runner_container" >/dev/null
 }
 
 acceptance_adapter_cleanup() {
   local status=0
-  if [ "$acceptance_runner_started" = 1 ]; then
+  if [ "$acceptance_runner_owned" = 1 ]; then
     docker logs "$acceptance_runner_container" >"$LOCAL_ACCEPTANCE_STATE/runner.log" 2>&1 || status=$?
     docker stop --time 30 "$acceptance_runner_container" >/dev/null || status=$?
     if docker rm "$acceptance_runner_container" >/dev/null; then
-      acceptance_runner_started=0
+      acceptance_runner_owned=0
     else
       status=$?
     fi

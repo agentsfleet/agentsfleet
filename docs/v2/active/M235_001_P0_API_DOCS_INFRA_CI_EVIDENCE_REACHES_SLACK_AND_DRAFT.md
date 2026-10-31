@@ -190,7 +190,13 @@ The private target lives only for one tool call and has no raw Debug, display or
 - **Dimension 1.4** — Other clients and methods keep their single-hop behavior → Test `should_keep_unaffected_clients_single_hop`
 - **Dimension 1.5** — Protocol failures never silently repeat a tool request → Test `should_disable_implicit_tool_request_retries`
 
-**HTTP settings:** `network.http_egress` accepts `restricted` (default) or `public`; `package_manager_domains` defaults to false. Existing `allow` supplies additional exact domains. These settings govern HTTPS tools only. Public mode still refuses private/reserved or mixed DNS answers and retains credential, repository/path and method restrictions. Redirects repeat those checks. Neither new setting enlarges sandbox network access. UI controls are later work.
+**HTTP settings:** `network.http_egress` accepts `restricted` (default) or `public`; `package_manager_domains` defaults to false.
+
+Existing `allow` supplies additional exact domains and can also admit sandbox destinations when `read_only` is false, within the runner's policy.
+The two new settings govern HTTPS tools and do not enlarge sandbox access.
+
+Public mode still refuses private/reserved or mixed DNS answers and retains credential, repository/path and method restrictions.
+Redirects repeat those checks. UI controls are later work.
 
 - **Dimension 1.6** — Reviewed HTTP scope reaches the lease without weakening other access restrictions → Test `should_preserve_boundaries_with_public_http_egress`
 

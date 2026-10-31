@@ -238,3 +238,25 @@ At `2026-10-31T06:22:19Z`, the local API at `http://127.0.0.1:32374` returned HT
 Local acceptance therefore requires a runtime with supported direct HTTPS access to the existing identity and model endpoints. A configured API key cannot repair a signing-key network failure. The local failure supplies no evidence of a development API outage.
 
 Deciding records: `/workspace/m235-evidence/acceptance-codex-current.log` and `/home/agent/.local/state/agentsfleet/dev-1000-673e2eb5/worktrees/wt_ffa68dde/daemon.log`, events `jwks_fetch_failed` and `jwks_refresh_failed`. The earlier `make acceptance-local` attempt refused this Linux host because it requires macOS and OrbStack; it has no passing verdict here.
+
+## Full gate and container ownership follow-up
+
+At `a83a4f957958d9985fd7419955ee8cf484633801`, `orly gate pr` ran every declared make command. Integration passed 1,443 ordinary and three exclusive tests; version checking matched `0.71.0`.
+
+The Rust unit shards passed 1,469 runner, 139 daemon and 3,342 library tests: 4,950 total, zero failed. The overall unit command still failed the command-line coverage floor at `cli/src/services/config.ts:93`: the inherited live API key prevented its no-key branch from running.
+
+The lint command found one assertion-style violation in the new OpenAPI reference test. Its assertion was corrected without a suppression. The full gate therefore has no passing verdict at that checkpoint.
+
+The subsequent command `env -u AGENTSFLEET_API_KEY make test-coverage-all`, through the task's existing verification wrapper, passed every package coverage gate. App, website and design-system metrics are 100%; the command-line gate reports 100% functions and lines. No command-line authentication source was changed. Logs: `/workspace/m235-evidence/pr-gate-checkpoint.log` and `coverage-typescript-isolated.log`.
+
+A further review found that Docker can create a container and fail before starting it. The adapter now records ownership of the returned container identifier immediately after creation, then starts it separately. Cleanup uses that identifier even after startup failure.
+
+`make test-unit-rustd-daemon-libs` failed the new startup regression before the correction, with one failure among seven adapter tests. After correction, all seven adapter tests and 3,342 library tests passed. A subsequent ownership-variable clarification also passed all seven focused adapter tests. Logs: `/workspace/m235-evidence/container-start-red.log`, `container-start-green.log` and `container-ownership-focused.log`.
+
+The HTTP-only sandbox guarantee now names `http_egress` and `package_manager_domains` explicitly. Existing `allow` entries retain their conditional sandbox effect under the runner's policy.
+
+Companion documentation is in draft PR `https://github.com/agentsfleet/docs/pull/235`, at `b610427ea04dad678c3c7692a4257124796d3abb`. Its isolated baseline passed 25 tests; its work and PR gates passed. Two subsequent polls showed successful lint and Gitleaks checks, a skipped draft preview, and no review comments.
+
+The full source baseline at `7b18cd4166b87b9289c9d94cd31000f96d500e15` remains incomplete. A brief environment-unavailable report interrupted observation; tools subsequently reconnected and the pending command returned. The cause is unconfirmed. No final baseline, Rust coverage, Linux acceptance or live positive fleet result is claimed.
+
+Indy reports a passing macOS `acceptance-local` run. Its revision and test totals have been requested and are not yet recorded here.
