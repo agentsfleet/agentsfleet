@@ -681,7 +681,7 @@ Missing, duplicate, malformed or oversized targets stop safely.
 
 At the first origin change, including effective port, the chain permanently drops all modeled headers. Later hops cannot restore them or mint another credential. The lease guard covers admission and minting, then releases before every transport wait.
 
-Private targets have no raw Debug or serialized projection. The model sees only a safe origin on a redirect refusal. Final response text and content type mask the finite known target spellings, including credential-like query values (`afr_egress/src/redirect/privacy.rs`).
+Private targets have no raw Debug or serialized projection. The model sees only a safe origin on a redirect refusal. Final response text and content type mask the finite known target spellings, including credential-like query values (`afr_egress/src/redirect/privacy/mod.rs`).
 
 Unknown secrets and arbitrary repeated encodings are outside that detection claim. Redirect outcome records carry bounded status, counts and reasons; see [observability](./observability.md).
 

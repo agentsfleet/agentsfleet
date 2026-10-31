@@ -113,6 +113,81 @@ async fn an_unreachable_origin_keeps_the_mirror() {
 }
 
 #[tokio::test]
+async fn an_origin_without_fetch_refspecs_refuses_and_keeps_the_mirror() {
+    let fixture = Fixture::new();
+    fixture
+        .check_out(&fixture.workspace("lease_1"), BASE)
+        .await
+        .unwrap();
+    git(
+        &fixture.mirror(),
+        &["config", "--unset-all", "remote.origin.fetch"],
+    );
+
+    let refused = fixture
+        .check_out(&fixture.workspace("lease_2"), BASE)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert!(
+        refused.to_string().contains("could not be fetched"),
+        "{refused}"
+    );
+    assert!(refused.to_string().contains(REPOSITORY), "{refused}");
+    let cause = std::error::Error::source(&refused).unwrap().to_string();
+    assert!(
+        cause.contains("without any configured ref-specs"),
+        "{cause}"
+    );
+    assert_eq!(
+        git(&fixture.mirror(), &["rev-parse", "origin/main"]),
+        git(&fixture.remote(), &["rev-parse", BASE])
+    );
+}
+
+#[tokio::test]
+async fn a_symlink_with_a_nul_target_refuses_the_checkout() {
+    let fixture = Fixture::new();
+    let remote = fixture.remote();
+    fs::write(remote.join("invalid-target"), b"bad\0target").unwrap();
+    let blob = git(&remote, &["hash-object", "-w", "invalid-target"]);
+    git(
+        &remote,
+        &[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("120000,{blob},broken-link"),
+        ],
+    );
+    git(
+        &remote,
+        &["commit", "--quiet", "--message", "invalid symlink target"],
+    );
+
+    let refused = fixture
+        .check_out(&fixture.workspace("lease_1"), BASE)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert!(refused.to_string().contains(REPOSITORY), "{refused}");
+    assert!(
+        refused.to_string().contains("could not be checked out"),
+        "{refused}"
+    );
+    let cause = std::error::Error::source(&refused).unwrap().to_string();
+    assert_eq!(cause, "file name contained an unexpected NUL byte");
+}
+
+#[tokio::test]
 async fn an_interrupt_raises_stop_and_still_waits_for_the_work() {
     let interrupt = CancellationToken::new();
     interrupt.cancel();

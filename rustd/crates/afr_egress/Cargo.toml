@@ -32,6 +32,7 @@ jiff.workspace = true
 async-trait.workspace = true
 # The placeholder grammar, `${secrets.NAME.FIELD}`.
 regex.workspace = true
+regex-automata.workspace = true
 # The one client every egress tool sends through, and its resolver seam.
 reqwest.workspace = true
 # Origin rules lock fields of a JSON body, read by a visitor that refuses a

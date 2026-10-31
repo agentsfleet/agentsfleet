@@ -61,7 +61,10 @@ fn http_destination_settings_are_published_beta() {
 
 #[test]
 fn a_field_the_document_lacks_is_answered_not_invented() {
-    let object = Object::builder().property("inline", Object::new()).build();
+    let object = Object::builder()
+        .property("inline", Object::new())
+        .property("unsupported", Array::new(Object::new()))
+        .build();
     let mut document = OpenApiBuilder::new()
         .components(Some(
             ComponentsBuilder::new()
@@ -73,7 +76,7 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
     let missing = declare_beta(
         &mut document,
         &[
-            ("Holder", &["inline", "absent"]),
+            ("Holder", &["inline", "absent", "unsupported"]),
             ("Listed", &["items"]),
             ("Nowhere", &["field"]),
         ],
@@ -82,6 +85,7 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
         missing,
         [
             ("Holder", "absent"),
+            ("Holder", "unsupported"),
             ("Listed", "items"),
             ("Nowhere", "field"),
         ]
