@@ -77,7 +77,7 @@ it("makes absent access and network permissions explicit and describes a ceiling
   render(<SetupSummary definition={definition([])} requirements={EMPTY_REQUIREMENTS} />);
   expect(screen.getByText(/No tools requested/)).toBeTruthy();
   expect(screen.getAllByText(/None requested/)).toHaveLength(2);
-  expect(screen.getByText(/HTTP requests are blocked/)).toBeTruthy();
+  expect(screen.getByText(/Restricted access. No domains allowed/)).toBeTruthy();
   expect(screen.getByText(/\$1\.00 per day; no monthly limit/)).toBeTruthy();
   expect(screen.getByText(/limits, not a fixed charge/)).toBeTruthy();
 });
@@ -89,35 +89,35 @@ it("shows declared access and exact daily and monthly limits without rounding la
   expect(screen.getByText(/Connected accounts:/).closest("li")?.textContent).toContain(SOURCE);
   expect(screen.getByText(/Repositories:/).closest("li")?.textContent).toContain("owner/repo");
   expect(screen.getByText(/Tools:/).closest("li")?.textContent).toContain("read_file");
-  expect(screen.getByText(/HTTP egress:/).closest("li")?.textContent).toContain("Read-only policy enabled.");
+  expect(screen.getByText(/Internet access:/).closest("li")?.textContent).toContain("Read-only policy enabled.");
   // Pin test: exact decimal limits must survive values beyond Number.MAX_SAFE_INTEGER.
   expect(screen.getByText(/Spending limit:/).closest("li")?.textContent).toContain("$0.000000001 per day; $9223372036.854775807 per month.");
 });
 
 it("does not infer a read-only policy for an allowed host", () => {
   render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network: {allow: ["example.com"]}}} />);
-  expect(screen.getByText(/Requests to example.com/)).toBeTruthy();
+  expect(screen.getByText(/Allowed domains: example.com/)).toBeTruthy();
   expect(screen.queryByText(/Read-only policy enabled/)).toBeNull();
 });
 
 it.each([undefined, {}])("does not invent network restrictions when the allow list is absent: %s", (network) => {
   render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network}} />);
-  expect(screen.getByText(/No explicit host limit shown here/)).toBeTruthy();
-  expect(screen.queryByText(/HTTP requests are blocked/)).toBeNull();
+  expect(screen.getByText(/Internet access could not be confirmed/)).toBeTruthy();
+  expect(screen.queryByText(/Restricted access. No domains allowed/)).toBeNull();
 });
 
 it.each([
-  {network: {http_egress: "public"}, description: "Public HTTPS destinations."},
-  {network: {http_egress: "public", allow: [], read_only: true}, description: "Public HTTPS destinations. Read-only policy enabled."},
-  {network: {http_egress: "restricted", allow: []}, description: "HTTP requests are blocked."},
-  {network: {package_manager_domains: true}, description: "Standard package registry domains."},
-  {network: {package_manager_domains: true, allow: []}, description: "Standard package registry domains."},
+  {network: {http_egress: "public"}, description: "Public internet access. HTTPS requests to public destinations."},
+  {network: {http_egress: "public", allow: [], read_only: true}, description: "Public internet access. HTTPS requests to public destinations. Read-only policy enabled."},
+  {network: {http_egress: "restricted", allow: []}, description: "Restricted access. No domains allowed."},
+  {network: {package_manager_domains: true}, description: "Restricted access. Standard package registry domains."},
+  {network: {package_manager_domains: true, allow: []}, description: "Restricted access. Standard package registry domains."},
   {network: {package_manager_domains: true, allow: ["example.com"], read_only: true},
-    description: "Standard package registry domains. Additional domains: example.com. Read-only policy enabled."},
-  {network: {http_egress: "public", package_manager_domains: true, allow: ["example.com"]}, description: "Public HTTPS destinations."},
+    description: "Restricted access. Standard package registry domains. Additional domains: example.com. Read-only policy enabled."},
+  {network: {http_egress: "public", package_manager_domains: true, allow: ["example.com"]}, description: "Public internet access. HTTPS requests to public destinations."},
 ])("describes reviewed HTTP destination scope: $network", ({network, description}) => {
   render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network}} />);
-  expect(screen.getByText(/HTTP egress:/).closest("li")?.textContent).toBe(`HTTP egress: ${description}`);
+  expect(screen.getByText(/Internet access:/).closest("li")?.textContent).toBe(`Internet access: ${description}`);
 });
 
 it.each([

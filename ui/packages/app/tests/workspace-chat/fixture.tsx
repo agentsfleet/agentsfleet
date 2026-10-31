@@ -31,7 +31,12 @@ export class ChatFixture {
       status: "active", setup: {state: "ready", checks: []}}, conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null});
     if (path.endsWith("/models")) return response({items: [MODEL], next_cursor: null});
     if (path.endsWith("/drafts") && call.method === "GET") return response({items: [], next_cursor: null});
-    if (path.endsWith("/drafts") && call.method === "POST") return response({...this.draft, accepted: {status: "accepted", sequence: "1", replayed: false}}, 201);
+    if (path.endsWith("/drafts") && call.method === "POST") {
+      const request = body as {operation_id: string; message: string};
+      this.messages = this.messages.map(message => ({...message, operation_id: request.operation_id,
+        text: message.role === "user" ? request.message : message.text}));
+      return response({...this.draft, accepted: {status: "accepted", sequence: "1", replayed: false}}, 201);
+    }
     if (path.includes("/fleets/") && path.endsWith("/messages")) return response({items: [], next_cursor: null});
     if (path.endsWith("/messages")) return response({items: this.messages, next_cursor: null});
     if (path.endsWith(`/drafts/${this.draft.id}`)) return response(this.draft);
@@ -41,7 +46,10 @@ export class ChatFixture {
       return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}}, 201);
     }
     if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}});
-    if (path.endsWith("/fleet-libraries") && call.method === "POST") return response(PUBLICATION, 201);
+    if (path.endsWith("/fleet-libraries") && call.method === "POST") {
+      this.draft = {...this.draft, publication: {...PUBLICATION, canonical_digest: this.draft.candidate?.canonical_digest ?? ""}};
+      return response(PUBLICATION, 201);
+    }
     throw new Error(`Unexpected chat fixture request ${call.method} ${path}`);
   });
   mount(): void {

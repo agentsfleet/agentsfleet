@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-10-18
+**Direction:** Clear Signal · **Updated:** 2026-11-01
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -322,7 +322,35 @@ These controls have different jobs and share typography. Changing the setup conv
 On the authoring page for a saved fleet, the header offers Save changes.
 Reuse the reviewed draft's save action, including validation, pending state, and conflict handling. Do not add a second save action above the composer.
 
-Explain when changes affect the fleet in plain language. Keep revision numbers within setup details.
+Explain when changes affect the fleet in plain language. Show confirmed saved versions in the compact status above the composer.
+Keep full revision and access details in setup inspection.
+
+### Chat state and activity
+
+Use assistant-ui's runtime, message parts, streaming renderer and elapsed-call hook.
+The native API adapter owns requests, cancellation and retry identities; the Rust API owns saved versions and durable outcomes.
+React owns local interactions such as open dialogs and expanded rows.
+
+Keep derived message projections pure and preserve unchanged row identities.
+Reuse the existing scoped caches and per-call result cache before adding another state store.
+Measure production bundles and representative updates before adopting a new state library.
+
+Assistant replies use the full reading column. User messages and steering requests use narrower, right-aligned bubbles.
+Long messages offer Show more and Show less; replies already being read stay open when streaming finishes.
+
+Group tool calls under Ran commands, with individual expandable commands and visible outcome labels.
+Load full output when requested. Pair loading and running labels with the shared animated signal indicator.
+
+Use react-window for output above 200 retained lines so long output mounts only the visible rows.
+Preserve wrapped lines, original line numbers, keyboard scrolling and literal text.
+Provide search across every retained line and copy the complete output, including lines outside the current viewport.
+
+The compact setup status shows actual reading, sending, saving and publishing progress.
+Show a success tick only for a confirmed saved version or publication.
+A new authoring request replaces the previous confirmation and its fleet action.
+
+Saving offers Open fleet. Publishing offers New fleet pinned to the published Library revision.
+Keep those navigation actions separate from the Save changes control.
 
 Completed replies keep the same markdown renderer and text nodes used while streaming.
 Reserve reply-action space before completion. Completing a live reply must not enable layout skipping or change its scroll position.
@@ -381,10 +409,17 @@ Make movement explain arrival, focus, selection, and disclosure. A finished inte
 
 Use shared `PageLayout` for page arrivals and the shared entrance class for fleet sections.
 Animate opacity and transforms for entrance effects. End without a retained transform so fixed dialogs keep their viewport positioning.
+
 Avoid JavaScript animation loops, animated blur, and continuous decorative movement across large surfaces.
 Keep conversation rows and controls stable while typing. Hover must not shift neighboring content or resize a target.
+
 The live indicator may pulse only when the underlying entity is live.
-Reduced motion leaves a static, readable state without dimming the content.
+Animate genuine loading and running work by default, using the shared signal indicator beside a clear status label.
+
+Stop the indicator when that work succeeds, fails or stops. Keep the final result visible with its icon and text.
+
+Honor an explicit OS Reduce Motion preference with static icons, readable status text and immediate state changes.
+Reduced motion must preserve progress and outcomes without dimming content.
 Terminal demonstrations may reveal lines when their final content remains available without animation.
 
 ## Website product entrance
@@ -576,3 +611,4 @@ Historical decisions below record prior directions; the current sections above s
 
 | 2026-10-15 | Shared table hierarchy and Runner navigation | Live visual approval covers sentence-case table headings, readable rows, shared pagination, dialogs, Runner cards and controls, and workspace Activity placement. Table colors, spacing, and elevations remain shared tokens. |
 | 2026-10-18 | Fluid, visually rich app surfaces within the approved identity | Indy authorized modernizing this guidance, deliberate gradients and motion, and an app-wide browser review. Branding, font families, and the PR #752 / M227 palette stay unchanged. Shared components own visual behavior; app widgets own product composition. |
+| 2026-11-01 | Animate ongoing work and keep chat state ownership explicit | Indy confirmed normal animation with the OS Reduce Motion preference respected. Chat uses assistant-ui, native API operations, scoped caches and local interaction state; progress icons reflect actual work. |

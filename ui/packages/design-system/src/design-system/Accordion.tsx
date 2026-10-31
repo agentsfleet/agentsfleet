@@ -41,7 +41,7 @@ export function AccordionTrigger({ className, children, ref, ...props }: Accordi
         ref={ref}
         className={cn(
           "flex flex-1 items-center justify-between py-4 text-sm font-medium",
-          "transition-all hover:underline text-left",
+          "transition-all hover:underline text-left motion-reduce:transition-none",
           "[&[data-state=open]>svg]:rotate-180",
           className,
         )}
@@ -58,7 +58,7 @@ export function AccordionTrigger({ className, children, ref, ...props }: Accordi
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="ml-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200"
+          className="ml-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none"
           aria-hidden="true"
         >
           <path d="m6 9 6 6 6-6" />
@@ -76,7 +76,7 @@ export function AccordionContent({ className, children, ref, ...props }: Accordi
       ref={ref}
       className={cn(
         "overflow-hidden text-sm",
-        "data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down",
+        "data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down motion-reduce:animate-none",
       )}
       {...props}
     >

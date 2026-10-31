@@ -12,7 +12,7 @@ mod revision;
 mod source;
 
 pub(crate) use creation::InitialStart;
-pub use creation::{SaveFleet, SaveSource, Start, StartOutcome, StartState};
+pub use creation::{SaveFleet, SaveOrigin, SaveSource, Start, StartOutcome, StartState};
 pub use failure::{Failure, FailureCause};
 pub use models::{ModelEligibility, ModelPricing, ModelPurpose, ModelsQuery, WorkspaceModel};
 pub use platform::{PlatformLibrary, PlatformPatch};

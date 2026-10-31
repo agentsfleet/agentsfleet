@@ -58,7 +58,7 @@ test("a pinned Library revision is reviewed and saved with no first message and 
       .toEqual([`POST ${DRAFTS}`, `GET ${DRAFTS}/${DRAFT_ID}`, `POST ${FLEETS}`]);
     expect(calls[0]?.body).toEqual({source: LIBRARY_SOURCE, authoring_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
     expect(calls[2]?.body).toEqual({source: {kind: "draft", draft_candidate_id: CANDIDATE_ID},
-      name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: START.none}});
+      name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: START.none}, origin: "cli"});
     expect(result.out).toContain(`"draft_id":"${DRAFT_ID}"`);
   });
 });
@@ -77,7 +77,7 @@ test("a fleet setup revision is reviewed and applied under its observed setup ta
     const applied = calls.at(-1);
     expect(`${applied?.method} ${applied?.path}`).toBe(`POST ${FLEETS}/${FLEET_ID}/revisions`);
     expect(applied?.ifMatch).toBe(FLEET.setup_etag);
-    expect(applied?.body).toEqual({draft_candidate_id: CANDIDATE_ID, review_digest: REVIEW.review_digest});
+    expect(applied?.body).toEqual({draft_candidate_id: CANDIDATE_ID, review_digest: REVIEW.review_digest, origin: "cli"});
   });
 });
 

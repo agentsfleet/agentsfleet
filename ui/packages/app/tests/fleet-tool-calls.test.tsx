@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 
 import { CLIPPED_EDIT_NOTE, OUTPUT_CUT_LABEL, SHOW_ALL_LABEL } from "@/components/domain/FleetToolCallBody";
-import { TOOL_CALLS_LABEL, TOOL_SUCCEEDED_GLYPH } from "@/components/domain/FleetToolCalls";
+import { TOOL_CALLS_LABEL } from "@/components/domain/FleetToolCalls";
 import { EMPTY_OUTPUT, OUTPUT_UNAVAILABLE } from "@/components/domain/tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "@/components/domain/tool-call-shape";
 import type { LiveFrame, SavedToolCall } from "@/lib/api/events";
@@ -30,7 +30,8 @@ const DESTRUCTIVE = "text-destructive";
 
 function renderThread() {
   const view = renderToolThread();
-  for (const button of screen.queryAllByRole("button", {name: /^(Input|Output|Error)$/})) if (!button.hasAttribute("disabled")) fireEvent.click(button);
+  for (const group of screen.queryAllByRole("button", {name: TOOL_CALLS_LABEL})) fireEvent.click(group);
+  for (const button of screen.queryAllByRole("button", {name: /^(Ran|Running) command /})) fireEvent.click(button);
   return view;
 }
 
@@ -57,7 +58,7 @@ function renderCalls(tools: FleetToolCall[], status: FleetEventStatus = PROCESSE
 }
 
 const cells = () => [...document.querySelectorAll<HTMLElement>("li[data-tool]")];
-const headerOf = (cell: Element) => cell.firstElementChild?.textContent ?? "";
+const headerOf = (cell: Element) => cell.querySelector("[data-command-heading]")?.textContent ?? "";
 const bulletOf = (cell: Element) => cell.querySelector("[data-tool-bullet]")!;
 
 // Pin tests throughout: the literals are the words a cell draws.
@@ -105,10 +106,10 @@ describe("FleetThread — tool cells", () => {
 
   it("test_tool_cell_names_verb_and_target", () => {
     renderCalls(HEADERS.map(([name, args]) => running({ name, args })), RECEIVED);
-    expect(cells().map(headerOf)).toEqual(HEADERS.map(([name]) => `${name}Running · 2.0s`));
+    expect(cells().map(headerOf)).toEqual(HEADERS.map(([name]) => `Running command${name}Running · 2.0s`));
     cleanup();
     renderCalls(HEADERS.map(([name, args]) => call({ name, args })));
-    expect(cells().map(headerOf)).toEqual(HEADERS.map(([name]) => `${TOOL_SUCCEEDED_GLYPH}${name}Done · 0.7s`));
+    expect(cells().map(headerOf)).toEqual(HEADERS.map(([name]) => `Ran command${name}Success · 0.7s`));
   });
 
   it("test_unknown_tool_cell_calls_by_name", () => {
@@ -116,9 +117,9 @@ describe("FleetThread — tool cells", () => {
     expect(headerOf(cells()[0]!)).toContain("fly_statusRunning");
     cleanup();
     renderCalls([call({ name: "fly_status", args: { app: "x" } }), call({ name: "fly_apps" })]);
-    expect(headerOf(cells()[0]!)).toContain("fly_statusDone");
+    expect(headerOf(cells()[0]!)).toContain("fly_statusSuccess");
     // No arguments: no parentheses, and no arguments disclosure.
-    expect(headerOf(cells()[1]!)).toMatch(/^✓fly_appsDone · /);
+    expect(headerOf(cells()[1]!)).toMatch(/^Ran commandfly_appsSuccess · /);
     expect(within(cells()[1]!).queryByText("Details")).toBeNull();
     expect(within(cells()[0]!).getByText("Input")).toBeTruthy();
   });
@@ -130,15 +131,15 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.FILE_DELETE, status: undefined }), running({ name: TOOL_NAME.FILE_DELETE }),
     ], RECEIVED);
     const [ok, bad, cut, unsaid, live] = cells();
-    expect(bulletOf(ok!).className).toContain(SUCCESS);
-    expect(bulletOf(bad!).className).toContain(DESTRUCTIVE);
+    expect(bulletOf(ok!).getAttribute("class")).toContain(SUCCESS);
+    expect(bulletOf(bad!).getAttribute("class")).toContain(DESTRUCTIVE);
     // A failure says so in words, never by colour alone.
     expect(headerOf(bad!)).toContain("http_requestFailed");
-    expect(bulletOf(cut!).className).toContain(DESTRUCTIVE);
+    expect(bulletOf(cut!).getAttribute("class")).toContain(DESTRUCTIVE);
     expect(headerOf(cut!)).toContain("Interrupted");
     // An older runner's call settled without saying how: no colour claims success.
-    expect(bulletOf(unsaid!).className).not.toContain(SUCCESS);
-    expect(bulletOf(unsaid!).className).toContain("text-text-dim");
+    expect(bulletOf(unsaid!).getAttribute("class")).not.toContain(SUCCESS);
+    expect(bulletOf(unsaid!).getAttribute("class")).toContain("text-text-dim");
     expect(bulletOf(live!).getAttribute("data-tool-shimmer")).toBe("true");
     expect(bulletOf(ok!).getAttribute("data-tool-shimmer")).toBe("false");
   });
@@ -184,13 +185,13 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.SHELL, args: { command: "ls" }, exitCode: 0, outputHead: "a.md", outputLineCount: 1 }),
     ]);
     const [ran, shell] = cells();
-    expect(headerOf(ran!)).toMatch(/^•exec_commandFailed\(exit 2\) · /);
+    expect(headerOf(ran!)).toMatch(/^Ran commandexec_commandFailed · /);
     // The exit code says how it failed; "(failed)" would repeat it.
     expect(headerOf(ran!)).not.toContain("(failed)");
-    expect(within(ran!).getByText("(exit 2)", { exact: false }).className).toContain(DESTRUCTIVE);
+    expect(within(ran!).getByText("(exit 2)", { exact: false }).closest("[data-command-outcome]")?.className).toContain(DESTRUCTIVE);
     expect(ran!.textContent).toContain("echo two");
     expect(ran!.textContent).toContain("└boom");
-    expect(headerOf(shell!)).toMatch(/^✓shellDone · /);
+    expect(headerOf(shell!)).toMatch(/^Ran commandshellSuccess · /);
     expect(headerOf(shell!)).not.toContain("exit");
   });
 
@@ -200,7 +201,7 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.FILE_EDIT_HASHED, args: { path: "big.md", old_text: "x".repeat(300), new_text: "y" }, callId: CALL_ID }),
     ]);
     const [edit, clipped] = cells();
-    expect(headerOf(edit!)).toMatch(/^✓file_editDone · /);
+    expect(headerOf(edit!)).toMatch(/^Ran commandfile_editSuccess · /);
     const rows = [...edit!.querySelectorAll("[data-diff]")];
     expect(rows.map((row) => [row.getAttribute("data-diff"), row.textContent])).toEqual([
       ["context", " a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
@@ -210,19 +211,20 @@ describe("FleetThread — tool cells", () => {
     // The diff is input; the returned output has its own empty state.
     expect(edit!.textContent).toContain(EMPTY_OUTPUT);
     // Arguments the runner may have cut short draw no diff and no counts.
-    expect(headerOf(clipped!)).toMatch(/^✓file_edit_hashedDone · /);
+    expect(headerOf(clipped!)).toMatch(/^Ran commandfile_edit_hashedSuccess · /);
     expect(clipped!.querySelector("[data-diff]")).toBeNull();
     expect(within(clipped!).getByText(CLIPPED_EDIT_NOTE, { exact: false })).toBeTruthy();
     expect(within(clipped!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
   });
 
-  it("should open a call in full from show all, and close it again", () => {
+  it("should open a call in full from show all, and close it again", async () => {
+    vi.useRealTimers();
     // The read itself is the dialog's to test; here it never answers.
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     try {
       const view = renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 })]);
       fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
-      const dialog = screen.getByRole("dialog", { name: TOOL_NAME.HTTP_REQUEST });
+      const dialog = await screen.findByRole("dialog", { name: TOOL_NAME.HTTP_REQUEST });
       expect(dialog).toBeTruthy();
       fireEvent.keyDown(dialog, { key: "Escape" });
       expect(screen.queryByRole("dialog")).toBeNull();
@@ -236,14 +238,15 @@ describe("FleetThread — tool cells", () => {
     }
   });
 
-  it("should not reopen show all by itself when its turn runs and settles again", () => {
+  it("should not reopen show all by itself when its turn runs and settles again", async () => {
+    vi.useRealTimers();
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     try {
       const tool = call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 });
       const turn = (status: FleetEventStatus) => ev({ id: "evt_tools", role: "user", actor: "operator", text: "Go", status, tools: [tool] });
       const view = renderCalls([tool]);
       fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
-      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(await screen.findByRole("dialog")).toBeTruthy();
       mockStream([turn(RECEIVED)]);
       view.rerender(threadElement());
       expect(screen.queryByRole("dialog")).toBeNull();

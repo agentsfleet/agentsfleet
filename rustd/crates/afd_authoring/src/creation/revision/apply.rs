@@ -62,7 +62,7 @@ impl Creations {
         {
             return Ok(id);
         }
-        let captured = self
+        let mut captured = self
             .capture(
                 &mut tx,
                 access,
@@ -72,6 +72,7 @@ impl Creations {
                 },
             )
             .await?;
+        captured.origin = request.origin;
         let row = read::lock(&mut tx, access.workspace, fleet).await?;
         if let Some(id) = replay::find(
             &mut tx,

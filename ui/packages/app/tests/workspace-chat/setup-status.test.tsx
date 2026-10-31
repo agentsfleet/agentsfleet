@@ -9,6 +9,19 @@ import { NANOS_PER_USD } from "@/lib/types";
 
 afterEach(cleanup);
 
+it.each(["grant", "grants"])("links the %s service inline to approvals without a second action", kind => {
+  const href = `/w/${WORKSPACE}/approvals`;
+  const check = {kind, subject: "github", state: "pending", next_action: {kind: "approvals", href, label: "Open workspace approvals"}};
+  const checks = [check];
+  const view = render(<SetupChecks checks={checks} label="Readiness" />);
+  expect(screen.getByRole("link", {name: /^github\s*:\s*pending$/}).getAttribute("href")).toBe(href);
+  expect(screen.queryByText("github needed")).toBeNull();
+  expect(screen.queryByText("Open workspace approvals")).toBeNull();
+  view.rerender(<SetupChecks checks={[{...check, next_action: {kind: "approvals", href: "//outside.test"}}]} label="Readiness" />);
+  expect(screen.queryByRole("link")).toBeNull();
+  expect(screen.getByText("github")).toBeTruthy();
+});
+
 it("shows all readiness outcomes and refuses external or backslash recovery destinations", () => {
   const checks = ["ready", "blocked", "missing", "pending"].map((state, index) => ({kind: "access", subject: `Check ${index}`, state,
     next_action: {kind: "workspace_connections", href: ["/settings", "//outside.test", "https://outside.test", "/\\outside.test"][index]}}));
@@ -61,7 +74,7 @@ it("omits saved readiness disclosure when the fleet has no recorded checks", () 
   render(<SetupProgress fleet={{...FLEET, setup: {state: "ready", checks: []}}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={vi.fn()} busy={false} />);
   expect(screen.queryByRole("button", {name: "What needs attention"})).toBeNull();
   expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
 });
 
 it("calls an active fleet ready only when every schedule is registered, and retries the rest", () => {
@@ -71,10 +84,10 @@ it("calls an active fleet ready only when every schedule is registered, and retr
   const unconfirmed = {schedule_id: "sched-wait", fleet_id: FLEET.id, sync: "syncing", last_error: null};
   const active = {...FLEET, status: "active", setup: {state: "ready", checks: []}};
   const view = render(<SetupProgress fleet={{...active, schedules: [synced]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Retry registration"})).toBeNull();
   view.rerender(<SetupProgress fleet={{...active, schedules: [synced, failed, unconfirmed]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
-  expect(screen.getByRole("heading", {name: "Save done v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(screen.getByText("Schedule sched-bad is saved but not registered, so it will not fire (scheduler refused).")).toBeTruthy();
   expect(screen.getByText(/Schedule sched-wait is saved but its registration was not confirmed/)).toBeTruthy();
   const buttons = screen.getAllByRole("button", {name: "Retry registration"});

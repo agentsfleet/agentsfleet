@@ -23,7 +23,7 @@ export async function resumeSavedSetup(base: string, id: string, signal: AbortSi
 export async function applySavedSetup(base: string, draft: Draft, review: Review, target: Fleet | undefined,
   operation: DraftOperation, signal: AbortSignal, saved: (fleet: Fleet) => Promise<void>): Promise<void> {
   if (!draft.linked_fleet_id || !target || !draft.candidate) throw new SetupUnavailable("The current fleet setup could not be validated. Try saving again.", 409);
-  const body = {draft_candidate_id: draft.candidate.id, review_digest: review.review_digest};
+  const body = {draft_candidate_id: draft.candidate.id, review_digest: review.review_digest, origin: "dashboard"};
   const headers = {[SETUP_HEADERS.match]: target.setup_etag};
   await operation.run({apply: body, headers}, async key => {
     const applied = await setupRequest({path: `${base}/fleets/${target.id}/revisions`, method: REQUEST_METHOD.post,

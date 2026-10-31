@@ -32,9 +32,9 @@ function RuntimeStop() {
 it.each(["queued", "running"] as const)("chat_recovery_shows_stop_and_queued_state for %s without a durable assistant row", async (state) => {
   fixture.messages = [{...MESSAGE, state}];
   await client.resume(DRAFT.id); render(<Live />);
-  const label = state === "queued" ? "Queued" : "Working";
+  const label = state === "queued" ? "Queued" : "Refining setup";
   expect(screen.getByRole("status", {name: label})).toBeTruthy();
-  expect(screen.queryByRole("status", {name: state === "queued" ? "Working" : "Queued"})).toBeNull();
+  expect(screen.queryByRole("status", {name: state === "queued" ? "Refining setup" : "Queued"})).toBeNull();
   expect(screen.getByRole("button", {name: "Stop authoring"})).toHaveProperty("disabled", false);
 });
 
@@ -62,7 +62,7 @@ it("lets Stop unblock unknown usage with queued text while retaining the origina
     expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
     expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
     expect(screen.queryByRole("status", {name: "Queued"})).toBeNull();
-    expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
+    expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
     expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
   });
 });
@@ -72,7 +72,7 @@ it("offers Stop for a failed unknown turn even when nothing is running", async (
     failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}];
   await client.resume(DRAFT.id); render(<Live />);
   expect(screen.getByRole("button", {name: "Stop authoring"})).toHaveProperty("disabled", false);
-  expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
+  expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
 });
 
 it("keeps unknown usage blocked after a failed Stop and permits another Stop", async () => {
@@ -119,7 +119,7 @@ it("persists cancellation requested through the assistant runtime", async () => 
   await client.resume(DRAFT.id); render(<Live><RuntimeStop /></Live>);
   fireEvent.click(screen.getByRole("button", {name: "Cancel from assistant runtime"}));
   await waitFor(() => expect(client.getSnapshot().draft?.cancelled_through).toBe("1"));
-  expect(screen.queryByRole("status", {name: "Working"})).toBeNull();
+  expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
 });
 

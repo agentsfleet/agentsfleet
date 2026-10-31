@@ -92,7 +92,7 @@ describe("triggerBodyFor / replyBodyFor", () => {
   // Value: protects=durable receipts display only permitted activity fields, never private payload text;
   // fails_when=receipts fall through to trigger headlines or expose arbitrary messages; seam=none; no_claim=server filtering.
   it.each([
-    {payload: {kind: ACTIVITY_KIND.setupSaved, revision: "3", message: "private setup input"}, text: "Save done v3"},
+    {payload: {kind: ACTIVITY_KIND.setupSaved, revision: "3", message: "private setup input"}, text: "Setup saved · v3"},
     {payload: {kind: "future_receipt", message: "private setup input"}, text: "Activity recorded"},
   ])("renders a safe receipt caption: $text", ({payload, text}) => {
     const receipt = row({actor: "config_reload", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,

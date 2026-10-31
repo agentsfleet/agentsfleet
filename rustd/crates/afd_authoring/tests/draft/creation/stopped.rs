@@ -49,6 +49,7 @@ async fn stopped(c: &Case) -> (Attempt, SaveFleet) {
         .await
         .expect("review selected head");
     let request = SaveFleet {
+        origin: None,
         name: "stopped-setup".into(),
         start: Start::None,
         source: SaveSource::Draft {

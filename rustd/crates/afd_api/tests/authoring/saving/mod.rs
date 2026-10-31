@@ -7,6 +7,7 @@ mod initial_run;
 mod lifecycle;
 mod preconditions;
 mod proposed_schedule;
+mod provenance;
 mod publication;
 mod purge;
 mod revisions;

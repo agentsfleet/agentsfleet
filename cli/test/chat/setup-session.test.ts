@@ -17,7 +17,7 @@ test("partial Save continues one exact reviewed operation and does not publish a
     expect(ready.status).toBe(FLEET.status);
     expect(calls[0]).toEqual(calls[1]);
     expect(calls[0]?.body).toEqual({source: {kind: "draft", draft_candidate_id: CANDIDATE_ID},
-      name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: START.none}});
+      name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: START.none}, origin: "cli"});
     expect(calls.every((call) => call.path.endsWith("/fleets"))).toBe(true);
   });
 });
@@ -72,7 +72,7 @@ test("Apply carries the inspected setup tag, candidate and digest through an unc
     expect(calls[0]).toEqual(calls[1]);
     expect(calls[0]?.tag).toBe(FLEET.setup_etag);
     expect(calls[0]?.path).toEndWith(`/${FLEET_ID}/revisions`);
-    expect(calls[0]?.body).toEqual({draft_candidate_id: CANDIDATE_ID, review_digest: REVIEW.review_digest});
+    expect(calls[0]?.body).toEqual({draft_candidate_id: CANDIDATE_ID, review_digest: REVIEW.review_digest, origin: "cli"});
   });
 });
 

@@ -1,35 +1,41 @@
 "use client";
 
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useToolCallElapsed } from "@assistant-ui/react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, CopyButton, List, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
+import { CircleAlertIcon, CircleHelpIcon, SquareTerminalIcon, XIcon } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, CopyButton, DashboardPanel, List, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatSeconds } from "@/lib/utils";
 import { ToolCallBody, ToolCallInputPreview } from "./FleetToolCallBody";
 import { useFleetScope } from "./FleetScope";
-import { FleetToolOutputDialog } from "./FleetToolOutputDialog";
 import { readToolResult, type ToolResult } from "./fleetReplyMessage";
 import { CELL_STATE, cellState, toolCopy, type CellState } from "./tool-call-copy";
-import { ARGS_NOT_RECORDED, type ToolCopy } from "./tool-call-shape";
+import { ARGS_NOT_RECORDED } from "./tool-call-shape";
 
-export const TOOL_CALLS_LABEL = "Tool calls";
-export const TOOL_BULLET = "•";
+export const TOOL_CALLS_LABEL = "Ran commands";
 export const TOOL_SUCCEEDED_GLYPH = "✓";
 const FIGURE_SEPARATOR = " · ";
-const INPUT = "input";
-const OUTPUT = "output";
+const COMMANDS = "commands";
+const COMMAND = "command";
 const TRIGGER_CLASS = "justify-start gap-xs py-xs text-label text-muted-foreground hover:no-underline";
-const CELL_COPY: Record<CellState, {label: string; tone: string}> = {
-  [CELL_STATE.RUNNING]: {label: "Running", tone: "text-text-dim"},
-  [CELL_STATE.SUCCEEDED]: {label: "Done", tone: "text-success"},
-  [CELL_STATE.FAILED]: {label: "Failed", tone: "text-destructive"},
-  [CELL_STATE.INTERRUPTED]: {label: "Interrupted", tone: "text-destructive"},
-  [CELL_STATE.SETTLED]: {label: "Outcome unavailable", tone: "text-text-dim"},
+const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode}> = {
+  [CELL_STATE.RUNNING]: {label: "Running", tone: "text-text-dim", icon: <SignalSpinner aria-hidden="true" />},
+  [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success", icon: <span aria-hidden="true">{TOOL_SUCCEEDED_GLYPH}</span>},
+  [CELL_STATE.FAILED]: {label: "Failed", tone: "text-destructive", icon: <XIcon className="size-3.5" aria-hidden="true" />},
+  [CELL_STATE.INTERRUPTED]: {label: "Interrupted", tone: "text-destructive", icon: <CircleAlertIcon className="size-3.5" aria-hidden="true" />},
+  [CELL_STATE.SETTLED]: {label: "Outcome unavailable", tone: "text-text-dim", icon: <CircleHelpIcon className="size-3.5" aria-hidden="true" />},
 };
+const FleetToolOutputDialog = lazy(() => import("./FleetToolOutputDialog").then(module => ({default: module.FleetToolOutputDialog})));
+const FULL_OUTPUT_LOADING = <output className="inline-flex items-center gap-xs text-label text-muted-foreground"><SignalSpinner className="text-pulse" aria-hidden="true" />Loading full command output…</output>;
 
-/** Each recorded call is a separate entry; only that call updates as it finishes. */
-export function ToolCallList({children}: {children: ReactNode}) {
-  return <List variant="plain" aria-label={TOOL_CALLS_LABEL} className="mb-md flex flex-col gap-lg space-y-0">{children}</List>;
+/** Adjacent calls share one compact disclosure; each keeps its own identity. */
+export function ToolCallList({children, running}: {children: ReactNode; running: boolean}) {
+  return <Accordion type="single" collapsible className="mb-md">
+    <AccordionItem value={COMMANDS} className="border-0">
+      <AccordionTrigger className={TRIGGER_CLASS} title={running ? "Running commands" : TOOL_CALLS_LABEL}><span aria-hidden="true">{running ? <SignalSpinner className="text-pulse" /> : <SquareTerminalIcon className="size-3.5 shrink-0" />}</span>{TOOL_CALLS_LABEL}</AccordionTrigger>
+      <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0">{children}</List></AccordionContent>
+    </AccordionItem>
+  </Accordion>;
 }
 
 export type ToolCallRowProps = {
@@ -44,7 +50,6 @@ export type ToolCallRowProps = {
 
 export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, result, running, settled, eventId}: ToolCallRowProps) {
   const named = Object.keys(args).length > 0 ? args : undefined;
-  const copy = useMemo(() => toolCopy(name, named), [name, named]);
   const outcome = readToolResult(result);
   const state = cellState(outcome !== undefined, outcome?.status, running);
   const [shown, setShown] = useState(false);
@@ -54,48 +59,54 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
   if (shown && !canShowAll) setShown(false);
   return <ListItem data-tool={name} data-done={outcome !== undefined || undefined} data-state={state}
     className="flex min-w-0 flex-col gap-xs text-body-sm text-text-subtle">
-    <ToolCallHeader name={name} outcome={outcome} state={state} />
-    <ToolCallDetails argsText={named === undefined ? undefined : argsText} copy={copy} outcome={outcome} state={state}
-      onShowAll={canShowAll ? () => setShown(true) : undefined} />
-    {shown && canShowAll ? <FleetToolOutputDialog scope={scope} eventId={eventId} callId={callId} name={name}
-      verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /> : null}
+    <Accordion type="single" collapsible>
+      <AccordionItem value={COMMAND} className="border-0">
+        <AccordionTrigger className={TRIGGER_CLASS}>
+          <ToolCallHeader name={name} state={state} />
+        </AccordionTrigger>
+        <AccordionContent className="pb-sm">
+          <ToolCallDetails name={name} args={named} argsText={named === undefined ? undefined : argsText} outcome={outcome} state={state}
+            onShowAll={canShowAll ? () => setShown(true) : undefined} />
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+    {shown && canShowAll ? <Suspense fallback={FULL_OUTPUT_LOADING}><FleetToolOutputDialog scope={scope} eventId={eventId} callId={callId} name={name}
+      verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /></Suspense> : null}
   </ListItem>;
 });
 
-function ToolCallHeader({name, outcome, state}: {name: string; outcome: ToolResult | undefined; state: CellState}) {
+function ToolCallHeader({name, state}: {name: string; state: CellState}) {
   const status = CELL_COPY[state];
-  return <span className="flex min-w-0 flex-wrap items-baseline gap-xs">
-    <span aria-hidden="true" data-tool-bullet="" data-tool-shimmer={state === CELL_STATE.RUNNING} className={status.tone}>
-      {state === CELL_STATE.RUNNING ? <SignalSpinner className="text-pulse" /> : state === CELL_STATE.SUCCEEDED ? TOOL_SUCCEEDED_GLYPH : TOOL_BULLET}
-    </span>
-    <span className="min-w-0 break-words font-mono text-label text-foreground">{name}</span>
-    <span className={cn("text-label", status.tone)}>{status.label}</span>
-    {outcome?.exitCode !== undefined && outcome.exitCode !== 0 ? <span className="text-destructive">(exit {outcome.exitCode})</span> : null}
+  return <span data-command-heading="" className="flex min-w-0 flex-1 items-center gap-xs text-left">
+    <SquareTerminalIcon aria-hidden="true" data-tool-bullet="" data-tool-shimmer={state === CELL_STATE.RUNNING} className={cn("size-3.5 shrink-0", status.tone)} />
+    <span className="shrink-0">{state === CELL_STATE.RUNNING ? "Running command" : "Ran command"}</span>
+    <span className="min-w-0 truncate font-mono">{name}</span>
+    <span className={cn("shrink-0 text-label", status.tone)}>{status.label}</span>
     <CallClock running={state === CELL_STATE.RUNNING} />
   </span>;
 }
 
-function ToolCallDetails({argsText, copy, outcome, state, onShowAll}: {
-  argsText: string | undefined; copy: ToolCopy; outcome: ToolResult | undefined; state: CellState; onShowAll: (() => void) | undefined;
+function ToolCallDetails({name, args, argsText, outcome, state, onShowAll}: {
+  name: string; args: ToolArgs | undefined; argsText: string | undefined; outcome: ToolResult | undefined; state: CellState; onShowAll: (() => void) | undefined;
 }) {
-  return <Accordion type="multiple">
-    <AccordionItem value={INPUT} className="border-0">
-      <AccordionTrigger className={TRIGGER_CLASS}>Input</AccordionTrigger>
-      <AccordionContent className="font-mono text-label leading-mono">
+  const copy = useMemo(() => toolCopy(name, args), [name, args]);
+  const status = CELL_COPY[state];
+  return <DashboardPanel padding="none" className="overflow-hidden rounded-lg bg-card">
+      <div className="flex items-center justify-between gap-sm border-b border-border px-lg py-sm text-label text-muted-foreground"><span>Command</span>{argsText === undefined ? null : <CopyButton value={argsText} label="Copy input" />}</div>
+      <div className="space-y-sm px-lg py-md font-mono text-label leading-mono">
+        <h4 className="font-sans text-muted-foreground">Input</h4>
         {argsText === undefined ? ARGS_NOT_RECORDED : <>
-          <CopyButton value={argsText} label="Copy input" />
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words">{argsText}</pre>
           <ToolCallInputPreview copy={copy} onShowAll={onShowAll} />
         </>}
-      </AccordionContent>
-    </AccordionItem>
-    <AccordionItem value={OUTPUT} className="border-0">
-      <AccordionTrigger disabled={state === CELL_STATE.RUNNING} className={TRIGGER_CLASS}>
-        {state === CELL_STATE.FAILED ? "Error" : "Output"}
-      </AccordionTrigger>
-      <AccordionContent className="font-mono text-label leading-mono"><ToolCallBody outcome={outcome} onShowAll={onShowAll} /></AccordionContent>
-    </AccordionItem>
-  </Accordion>;
+        {state === CELL_STATE.RUNNING ? null : <><h4 className="font-sans text-muted-foreground">{state === CELL_STATE.FAILED ? "Error" : "Output"}</h4><ToolCallBody outcome={outcome} onShowAll={onShowAll} /></>}
+      </div>
+      <div className={cn("flex items-center justify-end gap-xs border-t border-border px-lg py-sm text-label", status.tone)} data-command-outcome="">
+        {status.icon}
+        <span>{status.label}</span>
+        {outcome?.exitCode !== undefined && outcome.exitCode !== 0 ? <span>(exit {outcome.exitCode})</span> : null}
+      </div>
+    </DashboardPanel>;
 }
 
 /** The part clock ticks independently; ongoing seconds stay silent in the live log. */

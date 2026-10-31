@@ -125,9 +125,8 @@ export const SANDBOX_TIER_DESCRIPTIONS: Record<SandboxTier, string> = {
   dev_none: "No sandbox — for development only.",
 };
 
-// Egress posture assigned per runner — mirrors `protocol.NetworkPolicy` verbatim
-// (UFS: the tag names are the wire shape). `allow_list_egress` marks the runner
-// degraded until its enforcement ships; the dialog says so when offering it.
+// Network policy mirrors `protocol.NetworkPolicy`; restricted access requires
+// the host's reported egress enforcement before the runner can receive work.
 export const NETWORK_POLICIES = ["allow_all", "deny_all_egress", "allow_list_egress"] as const;
 
 export type NetworkPolicy = (typeof NETWORK_POLICIES)[number];
@@ -136,18 +135,16 @@ export type NetworkPolicy = (typeof NETWORK_POLICIES)[number];
 // shape, these are the strings the select renders. Keyed so a new mode can't
 // be added without a label.
 export const NETWORK_POLICY_LABELS: Record<NetworkPolicy, string> = {
-  allow_all: "Allow all egress",
-  deny_all_egress: "No egress",
-  allow_list_egress: "Allowlist egress",
+  allow_all: "Public internet access",
+  deny_all_egress: "No internet access",
+  allow_list_egress: "Restricted access",
 };
 
-// One-line descriptions for the egress select. `allow_list_egress` says
-// exactly what assigning it does today: the host cannot enforce it yet, so the
-// runner reads degraded and refuses work until that enforcement ships.
+// A runner must satisfy the assigned policy before it can receive work.
 export const NETWORK_POLICY_DESCRIPTIONS: Record<NetworkPolicy, string> = {
-  allow_all: "All outbound traffic allowed — the interim open posture.",
-  deny_all_egress: "No outbound network at all.",
-  allow_list_egress: "Outbound only to an approved list — enforcement unshipped; a runner assigned this is degraded.",
+  allow_all: "Outbound connections are allowed. Each fleet keeps its own access rules.",
+  deny_all_egress: "Outbound network connections are blocked.",
+  allow_list_egress: "Only approved destinations are allowed. The runner must report egress enforcement or it receives no work.",
 };
 
 // Enrollment defaults for the policy fields. Network defaults to the explicit
