@@ -174,6 +174,13 @@ Playwright job `124614658321` and branch-check job `124614659398` succeeded.
 The i18n write job `124614659598` was skipped as designed.
 Those checks did not run the regression step present only on fixture PR #3.
 
+Indy's later Slack capture shows Playwright #5 succeeded and an i18n failure card.
+A fresh GitHub API read reports Playwright run `41227520547` as successful.
+Manage i18n pull requests run `41227520482`, attempt 1, was skipped at the same repair head.
+
+Its workflow admits only a branch named `i18n`; the repair branch does not match.
+The Slack card and current run result differ. No rerun or workflow change was made.
+
 The fleet explicitly reported that it had not run Vitest; no before/after
 regression pass at the draft head is attributed to this run.
 The v3 final response is stored natively, but its Slack visibility has not been
@@ -319,6 +326,61 @@ No source assertion or coverage floor was removed.
 `make lint-all` and `make check-version` passed after the wire origin enum adopted the existing `Clone, Copy` pattern.
 `make dry-app` passed 4,569 app tests and 40 desktop/mobile Chromium checks.
 The full TypeScript coverage gate must also pass on the final source revision.
+
+### Long-output library experiment
+
+Checkpoint `96d5f6612` preserves the React and assistant-ui implementation before this experiment.
+Appsmith's pinned `BaseVirtualList.tsx` uses react-window for its table rows.
+This follow-up uses react-window `2.5.2`, whose peer dependencies include React 19,
+only inside the existing deferred full-output dialog.
+
+The library owns row windowing, wrapped-height measurement and resize handling.
+The application supplies literal numbered rows and a local search query.
+Assistant-ui continues to own the conversation runtime and message parts.
+
+The Chromium probe used the production profiling build, application CSS and fonts,
+and one 2,000-line / 57,953-byte fixture.
+Each version ran five times with fourfold CPU throttling.
+Each run measured response-to-two-frame opening time and 120 scripted scroll frames.
+
+The values below are component measurements, not live API latency or a state-library comparison.
+
+| Measurement | Baseline `96d5f6612` | Library experiment |
+| --- | --- | --- |
+| Median output opening (ms) | 427.8 | 122.4 |
+| Median initial React commit (ms) | 36.4 | 10.5 |
+| Scroll-frame interval p95 (ms) | 17.3 | 18.9 |
+| Maximum observed mounted rows | 2,000 | 20 |
+
+Opening improved about 71%; the probe did not show faster scrolling.
+Retain the experiment for its faster opening and bounded rendered rows.
+
+The preceding overscan variant measured 125.3 ms opening and 18.3 ms scroll p95.
+An intermediate default-overscan run measured 105.1 ms opening and 18.7 ms scroll p95.
+These individual probes show run-to-run variation; they do not establish a scrolling improvement.
+
+Every run reached line 2,000 and copied the complete original string.
+Additional browser checks covered search, keyboard Home/End, wrapped rows after a
+390-pixel resize and absence of horizontal overflow or browser errors.
+
+Component tests cover case-insensitive search beyond the former 2,000-line cap,
+empty results and clearing the query, while preserving truncated-output notices.
+The focused coverage command passed 16 tests and measured all three viewer files at 100%.
+
+Reports `output-profile-baseline.json`, `output-profile-virtualized.json` and
+`output-profile-virtualized-final.json` are under `/tmp/agentsfleet-m224-review`.
+The same directory holds `virtualized-output-desktop.png` and `virtualized-output-mobile.png`.
+
+`bun run build` and `bun run size` passed with every initial-entry value unchanged
+from the preceding checkpoint. No bundle limit changed.
+
+The deferred full-output chunk grew from 2,014 to 8,789 gzip bytes.
+It still appears in none of the 27 initial-entry checks.
+Total gzip bytes across all route and deferred chunks grew from 1,167,685 to 1,174,462, adding 6,777 bytes.
+
+Bundle reports are `app-bundle-virtualized-final-size.log`,
+`app-bundle-virtualized-final-chunks.json` and `virtual-output-chunk-check.json`
+in the same private evidence directory.
 
 ## Build reuse amendment: Oct 31, 2026
 
