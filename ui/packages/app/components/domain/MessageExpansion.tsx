@@ -12,6 +12,7 @@ const MESSAGE_PREVIEW_CHARACTERS = 600;
 export function MessageExpansion({length, running = false, children}: {length: number; running?: boolean; children: (display: (text: string) => string) => ReactNode}) {
   const id = useId();
   const [expanded, setExpanded] = useState(running);
+  if (running && !expanded) setExpanded(true);
   const canFold = !running && length > LONG_MESSAGE_CHARACTERS;
   const collapsed = canFold && !expanded;
   const display = useCallback((text: string) => collapsed ? `${text.slice(0, MESSAGE_PREVIEW_CHARACTERS).trimEnd()}…` : text, [collapsed]);

@@ -46,8 +46,8 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
     <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role}>
       {saving ? null : text ? user ? <FleetMarkdown expandable>{text}</FleetMarkdown> : <MessagePrimitive.Parts components={PART_COMPONENTS} /> : null}
       {saving ? null : running && context ? <ContextProgressStatus value={context} /> :
-        queued && !text ? <output aria-label="Queued" className="inline-flex items-center gap-sm text-label text-muted-foreground"><ClockIcon className="size-3.5" aria-hidden="true" />Queued…</output>
-        : running && !text ? <output aria-label="Refining setup" className="inline-flex items-center gap-sm text-label text-muted-foreground"><SparklesIcon className="size-3.5" aria-hidden="true" /><SignalSpinner className="text-pulse" aria-hidden="true" />Refining setup…</output>
+        queued && !text ? <output aria-label="Queued" aria-live="off" className="inline-flex items-center gap-sm text-label text-muted-foreground"><ClockIcon className="size-3.5" aria-hidden="true" />Queued…</output>
+        : running && !text ? <output aria-label="Refining setup" aria-live="off" className="inline-flex items-center gap-sm text-label text-muted-foreground"><SparklesIcon className="size-3.5" aria-hidden="true" /><SignalSpinner className="text-pulse" aria-hidden="true" />Refining setup…</output>
         : null}
       {!user && message.metadata.custom.failure ? <DraftFailure message={message} /> : null}
     </ChatMessageRow>

@@ -53,6 +53,7 @@ it("keeps open details and row identity stable while another call streams and se
   const second = call({callId: "second", name: TOOL_NAME.HTTP_REQUEST, done: false, status: undefined, ms: null});
   show([first, second], "received");
   const view = renderThread();
+  expect(screen.getByRole("button", {name: "Ran commands"}).getAttribute("title")).toBe("Running commands");
   openGroup();
   const [finished, streaming] = rows();
   expect(streaming!.getAttribute("data-state")).toBe("running");
@@ -66,6 +67,7 @@ it("keeps open details and row identity stable while another call streams and se
   expect(command(finished!).getAttribute("aria-expanded")).toBe("true");
   expect(command(streaming!).textContent).toContain("http_requestSuccess");
   expect(document.querySelectorAll('[data-tool-shimmer="true"]')).toHaveLength(0);
+  expect(screen.getByRole("button", {name: "Ran commands"}).getAttribute("title")).toBe("Ran commands");
 });
 
 it("keeps repeated failures separate and reveals only the command the reader opens", async () => {
@@ -81,6 +83,15 @@ it("keeps repeated failures separate and reveals only the command the reader ope
   expect(second!.querySelector('[data-command-outcome]')?.textContent).toBe("Failed(exit 9)");
   expect(first!.textContent).not.toContain("first refusal");
   expect(command(first!).getAttribute("aria-expanded")).toBe("false");
+});
+
+it("does not show commands running while the model continues after their results", () => {
+  show([call()], "received");
+  renderThread();
+  expect(screen.getByRole("button", {name: "Ran commands"}).getAttribute("title")).toBe("Ran commands");
+  openGroup();
+  expect(rows()[0]!.getAttribute("data-state")).toBe("succeeded");
+  expect(document.querySelector('[data-tool-shimmer="true"]')).toBeNull();
 });
 
 it.each([

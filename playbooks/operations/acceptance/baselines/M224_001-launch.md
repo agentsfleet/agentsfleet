@@ -187,6 +187,43 @@ remain P0 obligations. The incident case still needs relevant Elastic/Grafana
 evidence, native Library setup and its real trigger. Production qualification,
 release tags, production runners and production demonstrations remain unperformed.
 
+### Implementation verification baseline
+
+Native GitHub job logs retain the isolated checkout used by the merged change:
+`HEAD is now at 3623b66 Merge 221fb6359e9f7fb693bbfe2ca0a648e6c214224f into 765ed4a6828c0a5b4e4fdb50f13ed53456329f48`.
+Its source tree matches the merged baseline revision above; these are existing
+CI measurements, not a new local baseline run.
+
+Rust unit run `41221228766` reports 3,342 daemon-library, 139 daemon and
+1,484 runner tests passed: 4,965 total. Its 1,457 ignored tests belong to the
+live-datastore lane rather than a new exclusion.
+Coverage run `41221228752` reports 948 runner-crate, two runner/daemon,
+5,055 substrate, three exclusive and 242 daemon tests passed: 6,250 combined
+unit/integration cases. Kernel job `124596018233` also passed.
+Merge job `124599998116` graded 75,842/76,101 lines, 99.6597%, above 99.5%.
+That kernel result does not satisfy §4.7's separate `make acceptance-codex`.
+
+TypeScript run `41221228786` reports app 4,521 passed, website 133 passed and
+design-system 522 passed, all at 100% coverage. CLI reported 1,966 passed,
+17 environment-dependent skips and 100% function/line coverage.
+The CLI skip count is executor-dependent and is retained rather than compared
+as a code-change delta.
+
+The current implementation's `make test-coverage-all` passed: app 4,567,
+website 133, CLI 1,967 (16 existing environment-dependent skips), and
+design-system 522 tests passed. All four packages reached 100% of their
+measured lines/functions; the Vitest packages also reached 100% branches and
+statements. A subsequent active-command icon change requires fresh verification.
+
+A Chromium component preview used the real application CSS, shipped fonts,
+assistant-ui runtime and production chat components, with fixture command data.
+Keyboard activation opened the group and individual commands; two long messages
+expanded independently. Browser errors were empty, and the 390-pixel viewport
+had exactly 390 pixels of body width. Reduced-motion command disclosures had
+no animation. This preview establishes component rendering, not live dashboard
+or native API acceptance. Companion documentation is in
+[docs PR #236](https://github.com/agentsfleet/docs/pull/236).
+
 ## Build reuse amendment: Oct 31, 2026
 
 Indy requested these improvements in the same Pull Request #793 and confirmed

@@ -37,3 +37,14 @@ it("keeps a live reply open when it settles, then allows folding", () => {
   fireEvent.click(screen.getByRole("button", {name: "Show less"}));
   expect(screen.queryByText(/The final evidence/)).toBeNull();
 });
+
+it("keeps a previously folded reply open after streaming resumes", () => {
+  const view = render(<MessageExpansion length={TEXT.length}>{display => <p>{display(TEXT)}</p>}</MessageExpansion>);
+  expect(screen.queryByText(/The final evidence/)).toBeNull();
+  view.rerender(<MessageExpansion length={TEXT.length} running>{display => <p>{display(TEXT)}</p>}</MessageExpansion>);
+  expect(screen.getByText(TEXT)).toBeTruthy();
+  expect(screen.queryByRole("button")).toBeNull();
+  view.rerender(<MessageExpansion length={TEXT.length}>{display => <p>{display(TEXT)}</p>}</MessageExpansion>);
+  expect(screen.getByText(TEXT)).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Show less"}).getAttribute("aria-expanded")).toBe("true");
+});
