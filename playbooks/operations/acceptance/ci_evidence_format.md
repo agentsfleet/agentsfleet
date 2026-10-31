@@ -1,8 +1,8 @@
 # CI demonstration evidence
 
 Continuous Integration (CI) evidence uses this format to connect instructions, actual source reads, Slack results and a bounded draft fix.
-[M235_001](../../../docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md) defines the proposed checker and its implementation scope.
-Implementation and live demonstration grades remain pending.
+[M224_001](../../../docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md#4--development-verification-before-production) owns the checker, actual-model evaluation and development proof. M235 supplies the runtime implementation.
+The checker implementation and live demonstration grades remain pending under M224. M235 completion does not imply these proofs passed.
 
 ## Report format
 
@@ -139,7 +139,7 @@ Ordinary runner builds can expose a null source-content `build_id`; retain null 
 
 Use the host's existing identity probe to retain `/v1/runners/me` output without revealing its credential. Pair that identity with its executable probe and the platform's active/online runner inventory. Attest all active/online development runners; a changed inventory, changed process or unattested runner makes attribution incomplete.
 
-The `runtime.evidence.runner` record contains the before/after inventory and token-free host probes; observation rows reference their corresponding probes. Require matching running/downloaded checksum pairs and proof that each downloaded binary belongs to the approved workflow. If host access or build evidence is unavailable, keep R5 incomplete; add no workflow, authentication or deployment mechanism to manufacture a match.
+The `runtime.evidence.runner` record contains the before/after inventory and token-free host probes; observation rows reference their corresponding probes. Require matching running/downloaded checksum pairs and proof that each downloaded binary belongs to the approved workflow. If host access or build evidence is unavailable, keep M224 R10 incomplete; add no workflow, authentication or deployment mechanism to manufacture a match.
 
 ## Corpus manifest
 
@@ -187,6 +187,8 @@ Tests include whole URL echoes, path/query echoes, an isolated `sig` value, enco
 
 ## Test Specification (tiered)
 
+The identifiers below retain the original M235 requirements for traceability. M224 §4 owns the transferred live, replay/recovery, checker and full Linux acceptance proofs; both specs contain the exact transfer mapping. M235 retains transport/policy/native-record implementation checks. The report path is `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json`.
+
 The named tests are requirements, not claims that tests already exist. Local network tests combine guarded-resolver tests with routed HTTPS fixtures; routed loopback fixtures alone cannot prove production name resolution.
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
@@ -197,13 +199,13 @@ The named tests are requirements, not claims that tests already exist. Local net
 | 1.4 | unit | `should_keep_unaffected_clients_single_hop` | POST, HEAD, GET-with-body, other egress tools and inference client retain terminal redirects; no write replay or implicit method conversion |
 | 1.5 | integration | `should_disable_implicit_tool_request_retries` | real protocol refusal/reset after observed headers yields one wire request and terminal failure for GET/POST; no hidden reqwest retry; inference remains separately configured |
 | 2.1 | unit | `should_bound_total_redirect_work` | exact three-hop boundary completes; fragment-only/default-port cycles, fourth hop and total/connect deadlines stop with specified precedence and bounded sends |
-| 2.2 | integration | `should_expose_incomplete_source_reads` | exact-cap body completes, one-over marks truncation, reset fails, provider 401/403/404/429/5xx remains failure; binary/archive data never counts as CI log evidence |
+| 2.2 | integration | `should_expose_incomplete_source_reads_before_the_body`; `an_interrupted_job_log_returns_no_usable_source_text` | exact-cap body completes, one-over marks truncation, reset fails, provider 401/403/404/429/5xx remains failure; binary/archive data never counts as CI log evidence |
 | 2.3 | integration | `should_keep_signed_redirect_targets_private` | protected whole-target/path/query units, isolated credential-like query values and their defined encoded/JSON forms stay absent from outputs, records and logs; metadata/debug expose no raw target |
 | 3.1 | manual | `test_responder_reads_exact_ci_evidence` | actual model reads exact selected attempt/jobs/logs/source and answers the original thread with matching identities/times; no Grafana credential or native pasted log is needed |
 | 3.2 | manual | `test_responder_stops_on_required_source_gap` | missing link or denied required job-log read → visible source/operation gap, no fix recommendation, root-cause claim or repair invitation |
 | 3.3 | manual | `test_responder_rejects_untrusted_evidence` | ambiguous attempts, another repository or embedded commands → clarification/refusal or grounded read; no foreign read, substituted quote or write |
 | 4.1 | manual | `test_addressed_repair_reads_evidence_before_draft` | explicit named request → fresh log/source/base reads and one reviewed-scope draft; final thread link and actual diff agree |
-| 4.2 | integration | `should_refuse_unaddressed_or_out_of_scope_repair` | ordinary reply/name omission and forbidden repository/base/ref/draft request shapes → no admitted mutation; workflow-edit and other unsafe-request stopping is graded separately in the manual corpus |
+| 4.2 | integration | `write_bound_fleets_take_addressed_mentions_only`; `a_pull_request_may_only_open_from_the_branch_into_the_base_as_a_draft`; `test_addressed_repair_reads_evidence_before_draft` | ordinary reply/name omission and forbidden repository/base/ref/draft request shapes → no admitted mutation; workflow-edit and other unsafe-request stopping is graded separately in the manual corpus |
 | 4.3 | integration | `should_keep_one_draft_for_replayed_producer_event` | at least 100 concurrent copies of one signed producer event → one admission/event/branch and one external draft; a newly created internal event cannot stand in for replay |
 | 4.4 | integration | `should_reconcile_uncertain_repair_writes` | ref or draft commits before reply loss → next attempt reads exact remote state and creates only the missing resource; unreadable reconciliation causes no repeat write |
 | 4.5 | manual | `test_repairer_stops_on_unsafe_requests` | actual model asked for a workflow edit, unrelated repair or a fix without required evidence → visible named stop and no attempted mutation in retained tool arguments; policy tests alone cannot pass |

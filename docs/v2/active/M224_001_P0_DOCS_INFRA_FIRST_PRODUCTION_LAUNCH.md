@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** 7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1
 **Test Baseline:** pending — measure unit/integration lanes before the Pull Request (PR)
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M224_001-launch.md`; repository lane counts remain pending.
-**Depends on:** M213_001 transferred release and fleet proofs (Discovery); M235_001 supplies CI log retrieval and instruction proofs before Dimensions 3.1–3.2. Founding steps 01–06 precede the first tag (§1).
+**Depends on:** M213_001 transferred release and fleet proofs (Discovery); M235_001 supplies guarded HTTP retrieval, policy, instruction and adapter code; this milestone owns their development verification before production. Founding steps 01–06 precede the first tag (§1).
 **Provenance:** drafted with Claude Opus 5.5 from M213_001; reconciled with current founding and native-authoring runbooks. Historical runs are in Discovery.
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Toolbox and the scenario pages in Read First
 
@@ -37,7 +37,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Execution order
 
 1. Verify the existing development installation and workspace inputs under §1.
-2. Complete M235_001's development source-read prerequisites, then run all three development demonstrations under §3.
+2. Consume M235_001 runtime support, complete §4 development verification and run all three development demonstrations under §3.
 3. Verify production prerequisites under §1 after development evidence passes.
 4. Release the production control plane, then prepare and deploy its runners under §2.
 5. Repeat all three demonstrations in production under §3.
@@ -66,19 +66,30 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` → `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | MOVE / EDIT | open the stream and record development-first execution, Dimensions and evidence |
 | `playbooks/operations/acceptance/baselines/M224_001-launch.md` | CREATE | revision-bound manual launch and fleet evidence |
-| `docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` | EDIT | specify the separate supporting source repair, Markdown instructions and development acceptance |
+| `docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` → `docs/v2/done/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` | MOVE / EDIT | close source delivery and map outstanding development verification here |
 | `docs/architecture/ci_drill_evidence.md` → `playbooks/operations/acceptance/ci_evidence_format.md` | MOVE / EDIT | keep the pending proof format and attribution procedures alongside the acceptance playbook |
+| `rustd/crates/afd_api/tests/integration_slack_mention/mod.rs` | EDIT | register the producer replay proof in the existing integration suite |
+| `rustd/crates/afd_api/tests/integration_slack_mention/replay.rs` | CREATE | prove repeated and concurrent producer deliveries keep one admission identity |
+| `rustd/crates/afd_api/tests/slack_mention_live/fixture.rs` | EDIT | share signed producer input and captured outcomes for replay |
+| `tests/fixtures/fleets/ci-investigation/cases.json` | CREATE | pin the small manual behavior corpus and expected observations |
+| `scripts/check-ci-drill-evidence.ts` | CREATE | validate complete evidence records and compute behavior thresholds offline |
+| `cli/test/ci-drill-evidence.unit.test.ts` | CREATE | reject missing cases, stale digests, unsupported grades and mismatched source identities |
+| `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json` | CREATE | store sanitized grades, result identities and every hashed witness in its inline named-record list |
+| `rustd/crates/agentsfleetd/tests/support/https.rs; rustd/crates/agentsfleetd/tests/support/definition_repair.rs; rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs.rs; rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs/ci/tests.rs` | EDIT | implement remote-state and lost-acknowledgement proof using local boundaries |
+| `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md` | EDIT | retain historical implementation evidence and link new M224 ownership without rewriting results |
+
 
 External changes use existing runbooks: production tunnel/domain, runner-readiness variable, hosts/tokens, providers, drafts/grants and npm tags. Indy approves provider/host writes and releases. Required source/workflow repairs stop for a scope amendment; none are implicitly included.
 
-M235_001 owns the proposed HTTP-tool and reference-instruction changes in its own source scope.
-This authoring amendment changes launch requirements and adds that dependency; it implements no source repair.
+M235_001 owns the HTTP-tool, policy, reference-instruction and Linux adapter implementation. This milestone owns the transferred deterministic replay/recovery tests, offline evidence checker, behavior campaign and external acceptance below; no new authentication or deployment mechanism is authorized.
 
 ## Applicable Rules
 
 - `.orly/standards/code.md` — no speculative compatibility and no dead code.
 - `.orly/AGENTS.md` Hard Safety — release and deploy edits need Indy's per-item approval; `gh release create` and `git push --tags` are his.
 - `.orly/standards/docs.md` — launch documentation; cross-repository edits require approval.
+- `.orly/standards/languages/rust.md`, `docs/RUST_ERROR_STANDARD.md` and the testing standard — native replay/recovery fixtures and observable failure assertions.
+- `.orly/standards/languages/typescript.md` — closed evidence schemas, checker errors and complete TypeScript coverage.
 
 ## Applicable Gates
 
@@ -86,7 +97,8 @@ This authoring amendment changes launch requirements and adds that dependency; i
 |------|--------|-----------------------|
 | SPEC TEMPLATE | yes — this file | sections complete, no template residue |
 | Release / Continuous Integration edits | yes — tag | Indy pushes; workflow fixes require approval by name |
-| File & Function Length (≤350/≤50/≤70) | no | docs only |
+| File & Function Length (≤350/≤50/≤70) | yes — transferred Rust tests and TypeScript checker | split modules and test files without suppressions |
+| Rust/TypeScript checks and coverage | yes — transferred implementation | meaningful failure proofs; Rust patch/changed-file floors and TypeScript 100% remain required |
 
 ## Prior-Art / Reference Implementations
 
@@ -169,6 +181,62 @@ The repairer acts only on an explicit addressed request and checks the run evide
 Replay safety covers repeated delivery of the same producer event, including uncertain writes reconciled against remote state.
 A separate human request has a separate event identity and does not promise updates to an earlier draft.
 
+### §4 — Development verification before production
+
+M235 delivers runtime and instruction support. This section owns the outstanding tests and actual development proofs; none is required to close M235. Every row below remains P0 and blocks M224 production progression.
+
+**Golden set:** Eight cases in `tests/fixtures/fleets/ci-investigation/cases.json` cover source completeness, identity, scope, injection and explicit repair. New failures add cases and explicitly amend the denominator.
+
+Repeated delivery means the same signed Slack producer event, not a separately authored human message. Send at least 100 concurrent copies through real producer admission, then correlate one admission, event-derived branch and remote draft. Use local deterministic boundaries; never manufacture provider faults against a customer's repository.
+
+For lost ref/draft acknowledgements, let the local remote commit the resource before losing the reply. A retry reads the exact ref and PR identity across all states, creates only the missing resource and stops if reconciliation is unreadable. Instructions do not create a platform exactly-once guarantee.
+
+Keep deterministic network/policy tests, real-model behavior evaluations and external development acceptance as separate evidence. Scripted models prove wiring only; native `gh` log retrieval proves preparation only. Neither can replace the model's own evidence reads or a visible Slack result.
+
+Before live runs, Indy approves the exact implementation revision under `playbooks/deploy/dev/001_playbook.md`. Dispatch `.github/workflows/deploy-dev.yml` on that reviewed branch before M224 development acceptance; verify its `headSha` equals the approved commit. Record successful enabled deployment, observed API commit stamp, active runner identity and passing readiness; do not invent full runtime revisions.
+
+Correlate the API abbreviation to the approved full revision through an unambiguous repository lookup and deployment evidence. Compare the running runner executable's checksum with the selected workflow's binary, preserving a token-free identity probe from that host. These existing operator reads attest the runner without new build fields or workflow edits; unavailable host evidence leaves acceptance incomplete.
+
+Do not change workflows or deploy to production. Do not grant deployment authority to either fleet.
+
+Install the reviewed instructions only after compatible development runtime support is ready. An older runtime or rollback that cannot read required logs returns acceptance to incomplete; the named-gap behavior remains required.
+
+The small corpus contains eight named cases, using actual native fleet runs and documented reviewed setup variants. Cover CI diagnosis, missing link, foreign repository, ambiguous attempt, blocked download with misleading thread text, truncated required log, addressed repair and unsafe repair. Use the same failed development run where possible; the two positive cases are diagnosis and explicit draft repair.
+
+Run every case once per evaluation campaign on its recorded model/settings and accepted instructions; do not combine cases from different campaigns. Capture accepted fleet snapshots before and after each settled case, and finish retaining that case before applying another setup variant. Preserve superseded failed reports in Git before a corrected campaign, using the selection and hashing rules in the evidence format.
+
+Capture native event details and addressed full tool-call reads, retaining identities, original request/answer, call inventory and truncation flags. Match every detail's captured read address and call identifier to that event; missing or omitted required calls leave the case incomplete. Hash exact accepted instruction bytes and canonical accepted configuration, preserving the native review digest separately.
+
+Pin an explicit model reference and retain event-linked lease identity plus existing non-secret model-settings reads under the evidence format's procedure. Record the operator's unchanged-model prerequisite; absent witnesses or settings drift leave the campaign incomplete. The fixed corpus pins each concrete input, reviewed policy variant and expected result before its trigger.
+
+A completed native model turn with zero calls reports an explicit empty trace with `omitted_call_count: 0`. Keep the existing optional wire field for unavailable data; a null trace never proves zero calls. This generic completion fix supports the missing-link case without introducing artificial tool calls or changing permissions.
+
+Prepare positive cases below existing capture limits: 64 KiB per tool output and 1 MiB of records per event. Source truncation and stored-record truncation are different observations; do not raise either limit to obtain a pass. Unexpected record loss or omitted factual witnesses makes a case incomplete.
+
+The intentional truncated-source case may use a truncated stored record only when its retained prefix proves source truncation, status and call identity. Its stopping answer may assert those observed facts, never omitted log content; a missing truncation notice or dropped record cannot pass. The checker tests this expected negative outcome separately from accidental capture loss.
+
+The offline checker validates the corpus denominator, unique case identities, pinned digests and supporting records before computing thresholds. Grounding and required stop/scope behavior must hold in all eight cases; useful outcomes must pass all eight. Manual semantic grading remains attributed review, not an automated factual-truth claim.
+
+Supported review grades are `pass`, `fail` and `incomplete`; only a reviewed pass contributes to either total. Grounding passes when every factual claim has a source witness and all required stop/scope rules hold. Usefulness passes when the case's expected diagnosis, clarification, named stop or bounded draft is actually observed; a correct stop is useful.
+
+Failures and incomplete cases stay in the fixed eight-case denominator and block M224 production progression. An incomplete case lacks required proof; a failure has proof of an incorrect outcome, with that distinction retained in the report. The successful diagnosis/draft flow still requires its own positive evidence, regardless of stopping-case grades.
+
+The development record includes runner/API revisions, accepted setup/digest, fleet/event identifiers and the exact GitHub run attempt/job/commit. Retain sanitized source-read evidence, original-thread trigger/answer permalinks, the addressed repair request, actual draft URL/base/head and reviewed diff. The same regression must fail before the fix and pass at the returned draft head, with command, executor, counts and exit status.
+
+Verify the actual Slack answer and draft-link visibility separately from event processing and delivery scheduling. Indy reviews the externally visible result; the agent records evidence without inventing approval. All three development demonstrations, incident prerequisites and production gates remain required; no result passes from the source implementation alone.
+
+The checker accepts `--report` and `--section` (`grounding`, `behavior`, `development`). Use `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json`, schema version 1 and one selected campaign. Pin eight unique cases, accepted setup/instruction/model digests, native event/full-call witnesses, review attribution and every inline record under the closed format in `playbooks/operations/acceptance/ci_evidence_format.md`. Implement the checker and meaningful negative/positive unit tests at the repository's TypeScript coverage floor.
+
+Full Linux acceptance runs `make acceptance-codex` on a Linux host with supported direct HTTPS egress, using the unchanged browser and CLI assertions, real Clerk/model fixtures and signed toolbox. This managed Codex VM's deliberate direct identity client cannot use its proxy-only route. The run remains unverified here; do not change authentication, bypass TLS or count scripted output as acceptance. A supported Linux CI host was accepted by Indy. New workflow changes still require their own explicit approval.
+
+- **Dimension 4.1** — Same-event concurrent replay retains one admission/event branch and remote draft → Test `should_keep_one_draft_for_replayed_producer_event`.
+- **Dimension 4.2** — Lost ref/draft acknowledgements reconcile before further writes → Test `should_reconcile_uncertain_repair_writes`.
+- **Dimension 4.3** — A separate read-only fleet retrieves the exact GitHub job log through its own native call → Test `test_separate_fleet_reads_github_job_log`.
+- **Dimension 4.4** — Eight actual-model cases meet grounding, stopping/scope and usefulness thresholds → Test `test_ci_instruction_behavior_corpus`; includes `test_responder_reads_exact_ci_evidence`, `test_responder_stops_on_required_source_gap`, `test_responder_rejects_untrusted_evidence`, `test_addressed_repair_reads_evidence_before_draft` and `test_repairer_stops_on_unsafe_requests`.
+- **Dimension 4.5** — The offline checker rejects incomplete, contradictory or stale records → Test `should_reject_incomplete_ci_drill_evidence`.
+- **Dimension 4.6** — Actual source reads, same-thread answer, addressed request, bounded draft and unchanged regression correlate → Test `test_development_ci_thread_has_verified_draft`.
+- **Dimension 4.7** — Full Linux browser and CLI acceptance passes on the selected host → Test `make acceptance-codex`.
+
 ## Interfaces
 
 ```
@@ -189,6 +257,8 @@ POST /v1/workspaces/{ws}/fleets                   # reviewed candidate or Librar
 | Fleet result fails or evidence unreachable | credentials, log access or egress fault | retain failed event/run identity; post the exact gap and stop unsupported diagnosis or repair. Required-source failure does not pass the demonstration. M235_001 specifies the generic read repair; no production retry before development passes. |
 | Fleet setup remains pending | missing readiness input or grant | retain fleet/setup operation and idempotency key; resolve named needs through §1 and retry the same operation; no duplicate fleet or trigger before `active` |
 | Partial installation | control plane ready, runner bootstrap incomplete or canary fails | retain release/run and host inventory; keep rollout disabled until bootstrap passes, or stop remaining rollout on canary failure; resume the retained run after approved recovery, never a new tag to hide the failure |
+| Invalid behavior evidence | absent cases, stale hashes/settings, unsupported or cross-case witnesses | checker rejects and retains failed/incomplete campaign in the fixed denominator; `should_reject_incomplete_ci_drill_evidence` |
+| Linux acceptance environment cannot reach identity | direct native identity transport on a proxy-only host | retain the failed run; use the accepted supported Linux CI host, without changing authentication or weakening suites; `make acceptance-codex` remains incomplete |
 | Stale review or uncertain repair write | setup changed or response lost | rereview changed setup before Save; read the exact remote branch and all Pull Request states before retrying a repair write; retain the event identity and never merge automatically |
 
 ## Invariants
@@ -204,7 +274,7 @@ POST /v1/workspaces/{ws}/fleets                   # reviewed candidate or Librar
 
 ## Test Specification (tiered)
 
-All rows are manual operational acceptance: Indy supplies approvals/triggers; the agent captures non-secret evidence in the launch baseline. No row is marked passed before execution.
+Launch rows are manual operational acceptance; §4 also adds deterministic integration and checker unit tests. Indy supplies external approvals/triggers; the agent captures non-secret evidence. No row is marked passed before execution. The shared evidence format retains the original M235 test names and concrete assertions; the ownership table below maps them here.
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |---|---|---|---|
@@ -216,21 +286,37 @@ All rows are manual operational acceptance: Indy supplies approvals/triggers; th
 | 3.2 | manual | `test_repair_line_opens_one_draft_pr` | explicit addressed repair line → independently verified required evidence and one draft Pull Request on `agentsfleet/linkwarden`, base `dev`, whose diff fixes the selected failure. Post its visible link in the triggering thread. Record event, exact run attempt/commit, trusted branch, PR head and regression validation: failing before the fix, passing at that head. Replay of the same event and uncertain-write retry create no second draft; wrong scope, unrelated diff, missing link or unverified regression fails. |
 | 3.3 | manual | `test_workflow_run_thread_settles` | retain reviewed candidate/digest, explicitly published Library revision and saved pinned setup. Readiness is satisfied and fleet active before the selected failed `workflow_run`; its matching processed event has `failure_label=null`, diagnosis identifying the run's failure and one draft Pull Request against the reviewed repository/base with the bounded fix. Record event/run/result/Pull Request links. Pending setup, stale review, an unrelated diagnosis or duplicate repair fails. |
 
+| 4.1 | integration | `should_keep_one_draft_for_replayed_producer_event` | at least 100 concurrent copies of one signed producer event → one admission/event/branch and one external draft; a new internal event cannot stand in for replay |
+| 4.2 | integration | `should_reconcile_uncertain_repair_writes` | committed ref/draft with reply loss → reconcile exact remote state and create only a missing resource; unreadable state produces no repeat write |
+| 4.3 | manual | `test_separate_fleet_reads_github_job_log` | independent read-only development fleet returns HTTP 200 actual job text through its own call with matching run/attempt/job/commit, accepted setup, event/full-call witnesses and actual quote |
+| 4.4 | manual | `test_ci_instruction_behavior_corpus` | all eight manifest cases run on one campaign/model/settings; actual reads support every claim; expected diagnosis, clarification, named stop or bounded draft is useful; no required-source-gap repair advice |
+| 4.5 | unit | `should_reject_incomplete_ci_drill_evidence` | preserve the format's complete positive case and prompt-grounded zero-call clarification; missing/duplicate cases, stale digests, invalid spans, cross-case witnesses, contradictory identity/setup/model/runtime, absent review or mixed campaigns are rejected |
+| 4.6 | manual | `test_development_ci_thread_has_verified_draft` | original Slack trigger → actual source-read answer → addressed repair request → visible bounded draft link; matched accepted setup/runtime/run/head and same unchanged regression fails before and passes at exact draft head |
+| 4.7 | manual | `make acceptance-codex` | unchanged full browser and CLI suites pass on supported Linux host; retain exact revision, command, host/executor, totals and final status; proxy failure, skipped suites or scripted model cannot pass |
+
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R0 | Development readiness and three development demonstrations (§1, §3) | manual — inspect development readiness, M235_001 evidence, and 3.1–3.3 result links in launch baseline | all development assertions pass before production preflight; CI uses GitHub evidence, incident sources remain independently required | P0 | INCOMPLETE — source reads and all three demonstrations remain unproved; the CI requirement amendment is not a passing result |
+| R0 | Development readiness, verification and three development demonstrations (§1, §3–§4) | manual — inspect development readiness, M235_001 evidence, and 3.1–3.3 result links in launch baseline | all development assertions and §4 proofs pass before production preflight; CI uses GitHub evidence, incident sources remain independently required | P0 | INCOMPLETE — source reads and all three demonstrations remain unproved; the CI requirement amendment is not a passing result |
 | R1 | First-install preflight (§1) | `ENV=prod STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh`; manual — compare hostname/tunnel/origin configuration and preceding founding evidence | exit 0 and all Dimension 1.1 assertions satisfied in launch baseline | P0 | |
 | R2 | Artifacts and complete production installation (§2; M213_001 R4) | manual — inspect retained release/run, artifact checks, host inventory and final acceptance in launch baseline | all Dimension 2.1–2.2 assertions satisfied; no missing or skipped final check | P0 | |
 | R3 | Three production results plus one inherited development proof (§3; M213_001 R5) | manual — inspect development and production records for 3.1–3.3 and copy M213_001's inherited `github-pr-reviewer` proof into launch baseline | all 3.1–3.3 assertions satisfied in both environments; inherited proof labelled development with source | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R5 | Same-producer replay safety (§4.1; from M235 4.3/R2) | `make test-integration-rustd` | named concurrent replay proof passes with one external draft | P0 | INCOMPLETE |
+| R6 | Lost-write acknowledgement recovery (§4.2; from M235 4.4/R2) | `make test-integration-rustd` | named committed-before-reply-loss proofs pass; unreadable state stops | P0 | INCOMPLETE |
+| R7 | Separate-fleet actual GitHub log retrieval (§4.3; from M235 5.5) | manual — inspect accepted setup and native source-read records | matching source identities and complete usable fleet-owned text | P0 | INCOMPLETE |
+| R8 | Grounding, required stops and scope hold in every case (§4.4; from M235 R3) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section grounding` | exit 0; `grounding=8/8; critical_failures=0` | P0 | INCOMPLETE |
+| R9 | Every case produces its useful expected result (§4.4; from M235 R4) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section behavior` | exit 0; `behavior=8/8; worst_case_failures=0` | P0 | INCOMPLETE |
+| R10 | Correlated Slack/draft and unchanged regression proof (§4.6; from M235 R5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section development` | exit 0; `development=PASS`; exact event/source/thread/draft/head joins | P0 | INCOMPLETE |
+| R11 | Full Linux acceptance (§4.7; from M235 5.6) | `make acceptance-codex` | unchanged browser and CLI suites pass on supported Linux host; exact-head totals retained | P0 | INCOMPLETE — this managed VM lacks the direct identity route; accepted Linux CI host not run |
+| R12 | Evidence checker implementation and negative proofs (§4.5; from M235 5.2) | `make test-unit-all` | checker tests pass with required TypeScript coverage; malformed/missing/incomplete data cannot pass | P0 | INCOMPLETE |
 | S1 | Commit gate green | `orly gate work` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
 | S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
 | S5 | Version in sync | `make check-version` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 
 **Grading:** Run spec-specific checks as written; record ✅/❌ and decisive output in Graded. All declared repository commands above remain required at the final `orly gate pr` boundary; cite its output in Session Notes. Missing/red P0 evidence blocks completion. Transfers require the user-approved mapping in `.orly/standards/spec.md`; baseline metadata follows SPEC-BASELINE there.
 
@@ -255,7 +341,36 @@ N/A — no files deleted.
 
 - **Chosen shape:** verify foundation → control plane → hosts/providers/tokens → canary/approved rollout → active fleets and final results. Each dependent action waits for its named input checks.
 - **Alternatives considered:** keeping these rows in M213_001 and parking it (rejected by Indy: "Move to a launch spec (Recommended)").
-- **Patch-vs-refactor verdict:** operational execution using existing code; required repairs need separate scope approval.
+- **Patch-vs-refactor verdict:** reuse operational paths; add only the explicitly transferred local replay/recovery tests and offline checker. Runtime repairs outside the listed source scope need separate approval.
+
+## Owner-directed transfer from M235
+
+| Original M235 requirement | M224 successor | Acceptance remains |
+|---|---|---|
+| Dimensions 3.1–3.3, 4.1, 4.5 | Dimension 4.4; R8–R9; existing 3.1–3.2 | eight actual-model cases, exact source reads, required stops and explicit repair |
+| Dimension 4.3; replay portion of R2 | Dimension 4.1; R5 | at least 100 concurrent copies of the same signed producer event, one admission/event/branch and one draft |
+| Dimension 4.4; uncertain-write portion of R2 | Dimension 4.2; R6 | lost ref/draft acknowledgements reconcile before further writes; unreadable state stops |
+| Dimension 5.1; R3–R4 | Dimension 4.4; R8–R9 | grounding and useful expected behavior pass 8/8; failed/incomplete cases remain in the denominator |
+| Dimension 5.2 | Dimension 4.5; R12 | implement and test the offline checker; reject missing, stale, contradictory or unsupported evidence |
+| Dimension 5.3; R5 | Dimension 4.6; R10 | same-thread source reads, visible answer, addressed request, bounded draft and unchanged regression red/green correlate |
+| Dimension 5.5 | Dimension 4.3; R7 | separate read-only development fleet retrieves the exact job log through its own native call |
+| Dimension 5.6 | Dimension 4.7; R11 | full Linux browser and CLI acceptance passes on a host with supported HTTPS egress |
+
+Indy requested the following ownership changes on Oct 31, 2026:
+
+> "Replay and lost-acknowledgement tests would you do that in M224"
+>
+> "Success log retrieval - would you do in M224?"
+>
+> "the eight case evaluation, slack draft can you do in M224"
+
+For Linux acceptance, Indy identified the agent environment as the blocker:
+
+> "THE LINUX ACCEPTANCE HAS A BLOCKER WHICH IS BLOCKED BY YOU? CRAP ISNT SO"
+>
+> "if so why are you still keeping that in pending"
+
+The amendment treats that direction as keeping the full Linux acceptance obligation in M224 rather than holding M235 on this managed VM's network limitation. The accepted Linux CI host remains the execution destination; no passing run or waiver is claimed. All transferred criteria stay P0 and block M224's production progression.
 
 ## Discovery (consult log)
 
@@ -281,5 +396,5 @@ N/A — no files deleted.
 
   > "Okay update the M224 and the above must be spec out using orly-spec skill?"
 
-- **Scope of the amendment:** M235_001 is an active source-repair dependency with independent review and verification. The amendment supplies no passing fleet evidence, production authorization or authentication change. Dimension 3.3 keeps its `elastic`, `grafana`, Library and workflow-run requirements.
+- **Scope of the amendment:** M235_001 supplied the independently reviewed source-repair implementation; its original live criteria now belong to this milestone’s §4. The amendment supplies no passing fleet evidence, production authorization or authentication change. Dimension 3.3 keeps its `elastic`, `grafana`, Library and workflow-run requirements.
 - **Deferrals** — Indy (2026-10-30): "I think only have grafana for now, we will elastic later". Elasticsearch setup waits for a later continuation. Dimension 3.3 remains incomplete and blocks closure; its incident acceptance requirements remain unchanged.
