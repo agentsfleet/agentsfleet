@@ -28,10 +28,10 @@ const CELL_COPY: Record<CellState, {label: string; tone: string}> = {
 };
 
 /** Adjacent calls share one compact disclosure; each keeps its own identity. */
-export function ToolCallList({children}: {children: ReactNode}) {
+export function ToolCallList({children, running}: {children: ReactNode; running: boolean}) {
   return <Accordion type="single" collapsible className="mb-md">
     <AccordionItem value={COMMANDS} className="border-0">
-      <AccordionTrigger className={TRIGGER_CLASS}><span aria-hidden="true"><SquareTerminalIcon className="size-3.5 shrink-0" /></span>{TOOL_CALLS_LABEL}</AccordionTrigger>
+      <AccordionTrigger className={TRIGGER_CLASS} title={running ? "Running commands" : TOOL_CALLS_LABEL}><span aria-hidden="true">{running ? <SignalSpinner className="text-pulse" /> : <SquareTerminalIcon className="size-3.5 shrink-0" />}</span>{TOOL_CALLS_LABEL}</AccordionTrigger>
       <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0">{children}</List></AccordionContent>
     </AccordionItem>
   </Accordion>;

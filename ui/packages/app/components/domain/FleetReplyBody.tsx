@@ -136,7 +136,7 @@ export function renderReplyPart(
         </FleetThought>
       );
     case GROUP.TOOL:
-      return <ToolCallList>{children}</ToolCallList>;
+      return <ToolCallList running={part.status.type === STATUS_RUNNING}>{children}</ToolCallList>;
     case "reasoning":
       return <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{part.text}</p>;
     case "tool-call":
