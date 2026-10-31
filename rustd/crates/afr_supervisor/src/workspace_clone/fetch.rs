@@ -6,6 +6,8 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
+use gix::protocol::handshake::Ref;
+use gix::refs::transaction::{PreviousValue, RefEdit};
 use gix::remote::Direction;
 use gix::remote::fetch::Status;
 
@@ -76,8 +78,37 @@ pub(super) fn fetch(
             .with_refspecs([ORIGIN_REFSPEC], Direction::Fetch)?
             .with_fetch_tags(gix::remote::fetch::Tags::All))
     });
-    prepare.fetch_only(gix::progress::Discard, stop)?;
+    let (repository, outcome) = prepare.fetch_only(gix::progress::Discard, stop)?;
+    preserve_detached_head(&repository, &outcome)?;
     Ok(Fetched::Cloned)
+}
+
+/// A detached advertised HEAD is not a declared default branch. Preserve that
+/// fact rather than accepting the clone library's branch guess.
+fn preserve_detached_head(
+    repository: &gix::Repository,
+    outcome: &gix::remote::fetch::Outcome,
+) -> GitResult<()> {
+    let detached = outcome
+        .ref_map
+        .remote_refs
+        .iter()
+        .find_map(|reference| match reference {
+            Ref::Direct {
+                full_ref_name,
+                object,
+            } if full_ref_name == "HEAD" => Some(*object),
+            _ => None,
+        });
+    if let Some(object) = detached {
+        repository.edit_reference(RefEdit::update(
+            "HEAD".try_into()?,
+            object,
+            PreviousValue::Any,
+            "preserve the advertised detached HEAD",
+        ))?;
+    }
+    Ok(())
 }
 
 /// Fetches what `repository`'s origin has that it lacks.

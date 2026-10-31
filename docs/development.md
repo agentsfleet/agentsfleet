@@ -113,6 +113,33 @@ The tests select model references and make real provider calls through the backe
 Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
 Startup logs live under `<WORKTREE_STATE>/acceptance/`.
 
+### Linux cloud acceptance
+
+Use `make acceptance-codex` on Linux with privileged Docker, Bun, Rust, Python, OpenSSL and `certutil` from `libnss3-tools`.
+It calls the same `acceptance-e2e` and `acceptance-cli` targets as the macOS command; `SUITE` selects the same narrower runs.
+
+Set `ACCEPTANCE_LOCAL_TOOLBOX_DIR` to an existing signed toolbox set whose manifest admits the current runner version.
+The adapter checks the signature against the runner’s compiled release key; it never loads a release signing key.
+Development Clerk credentials, the model key and the development connector remain the common bootstrap inputs.
+
+```bash
+ACCEPTANCE_LOCAL_TOOLBOX_DIR=/absolute/path/to/signed-toolbox make acceptance-codex
+```
+
+The runner starts in an owned privileged Docker container, using the shipping binary, sandbox and toolbox verification.
+Its private cgroup namespace contains the delegated `agentsfleet/runner` subgroup.
+
+The kernel must support EROFS, loop devices, Landlock, seccomp and the CPU, I/O, memory and process controllers.
+Missing mechanisms fail the run; the adapter does not select a test driver.
+
+Caddy listens only on this VM’s loopback addresses. Chromium temporarily trusts the local certificate through the user’s NSS database; exit removes only that certificate.
+
+Bun receives an extra CA bundle. Certificate verification stays enabled.
+When `CODEX_PROXY_CERT` is available, Docker builds and QStash also trust that public session CA.
+
+Exit stops and removes only the runner container this invocation created, preserving its private startup log.
+The shared datastores, local daemon, Caddy and saved registration remain available for the next run.
+
 ### Local dashboard against api-dev
 
 Set `NEXT_PUBLIC_API_URL` to `https://api-dev.agentsfleet.net` in the dashboard environment, then build and start the production dashboard locally.

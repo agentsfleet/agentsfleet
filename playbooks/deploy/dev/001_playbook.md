@@ -60,6 +60,7 @@ A newer commit needs a new exact-revision approval.
 
 Require `check-credentials` and every enabled deployment/verification job to pass, including the runner deployment.
 Confirm the API commit stamp maps unambiguously to that revision.
+
 Record active runner identity and compare its installed executable checksum with the workflow's runner binary.
 An unavailable runner identity/checksum witness leaves runtime correlation incomplete.
 

@@ -106,6 +106,8 @@ for startup, status, ownership and teardown.
 make lint-all
 make test-unit-all
 make test-integration-rustd   # needs Docker: live Postgres + Dragonfly
+make acceptance-local        # macOS + OrbStack: browser and CLI acceptance
+make acceptance-codex        # Linux + privileged Docker: the same acceptance suites
 ```
 
 ---

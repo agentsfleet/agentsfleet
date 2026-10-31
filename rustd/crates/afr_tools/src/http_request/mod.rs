@@ -120,6 +120,7 @@ fn render(inbound: &Inbound) -> String {
 }
 
 #[cfg(test)]
+#[path = "redirect/tests.rs"]
 mod redirect_tests;
 #[cfg(test)]
 mod tests;
