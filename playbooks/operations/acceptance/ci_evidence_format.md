@@ -187,7 +187,7 @@ Tests include whole URL echoes, path/query echoes, an isolated `sig` value, enco
 
 ## Test Specification (tiered)
 
-The identifiers below retain the original M235 requirements for traceability. M224 §4 owns the transferred live, replay/recovery, checker and full Linux acceptance proofs; both specs contain the exact transfer mapping. M235 retains transport/policy/native-record implementation checks. The report path is `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json`.
+The identifiers below retain the original M235 requirements for traceability. [M224 §4](../../../docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md#4--development-verification-before-production) owns the transferred live, replay/recovery, checker and full Linux acceptance proofs; both specs contain the exact transfer mapping. M235 retains transport/policy/native-record implementation checks. M224 specifies the future report location; no completed report exists yet.
 
 The named tests are requirements, not claims that tests already exist. Local network tests combine guarded-resolver tests with routed HTTPS fixtures; routed loopback fixtures alone cannot prove production name resolution.
 
