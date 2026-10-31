@@ -243,7 +243,7 @@ design-system 522 tests passed. All four packages reached 100% of their
 measured lines/functions; the Vitest packages also reached 100% branches and
 statements. A subsequent active-command icon change requires fresh verification.
 
-A Chromium component preview used the real application CSS, shipped fonts,
+A Chromium component preview used the application CSS and fallback fonts,
 assistant-ui runtime and production chat components, with fixture command data.
 Keyboard activation opened the group and individual commands; two long messages
 expanded independently.
@@ -251,6 +251,9 @@ expanded independently.
 Browser errors were empty, and the 390-pixel viewport
 had exactly 390 pixels of body width. Reduced-motion command disclosures had
 no animation.
+
+The original preview's font URLs were unresolved; waiting for `document.fonts.ready` did not prove successful loading.
+The corrected comparison below embeds the shipped font files and asserts successful font loads.
 
 This preview establishes component rendering, not live dashboard
 or native API acceptance. Companion documentation is in
@@ -302,6 +305,8 @@ Both probes recorded zero mutations in unchanged tool-call Document Object Model
 These are single unthrottled component probes, not a Redux/Saga comparison or a live response-latency result.
 The expanded group's frame-interval p95 was 25.1 ms before and 24.0 ms after.
 
+Those earlier header probes used fallback fonts; the 4.6 ms value is a historical checkpoint, not a final scrolling measurement.
+
 Desktop measurements show a 582.39-pixel user bubble within the 728-pixel assistant column.
 Mobile measurements show 328.16 pixels within 358 pixels, with matching right edges.
 The 390-pixel mobile page has no horizontal overflow; reduced-motion disclosures have no animation.
@@ -338,26 +343,32 @@ The library owns row windowing, wrapped-height measurement and resize handling.
 The application supplies literal numbered rows and a local search query.
 Assistant-ui continues to own the conversation runtime and message parts.
 
-The Chromium probe used the production profiling build, application CSS and fonts,
-and one 2,000-line / 57,953-byte fixture.
-Each version ran five times with fourfold CPU throttling.
-Each run measured response-to-two-frame opening time and 120 scripted scroll frames.
+The corrected Chromium probe used the production profiling build, application CSS and shipped fonts.
+Both font families were explicitly loaded and checked before releasing the fixture response.
+Each version ran five times with fourfold CPU throttling and one 2,000-line / 57,953-byte fixture.
+
+Both output panes were 384 pixels high; the baseline received that height through fixture-only CSS.
+Opening time spans response release through two animation frames.
+Native Chromium mouse gestures scrolled 40,000 pixels at 20,000 pixels per second, without per-frame geometry reads.
 
 The values below are component measurements, not live API latency or a state-library comparison.
 
 | Measurement | Baseline `96d5f6612` | Library experiment |
 | --- | --- | --- |
-| Median output opening (ms) | 427.8 | 122.4 |
-| Median initial React commit (ms) | 36.4 | 10.5 |
-| Scroll-frame interval p95 (ms) | 17.3 | 18.9 |
-| Maximum observed mounted rows | 2,000 | 20 |
+| Median output opening (ms) | 576.5 | 70.9 |
+| Median initial React commit (ms) | 39.0 | 11.0 |
+| Native scroll-frame interval p95 (ms) | 16.8 | 16.7 |
+| Maximum observed mounted rows | 2,000 | 22 |
 
-Opening improved about 71%; the probe did not show faster scrolling.
-Retain the experiment for its faster opening and bounded rendered rows.
+Opening improved about 88%; native scroll timing was essentially unchanged.
+Retain the library viewer for its faster opening and bounded rendered rows.
 
-The preceding overscan variant measured 125.3 ms opening and 18.3 ms scroll p95.
-An intermediate default-overscan run measured 105.1 ms opening and 18.7 ms scroll p95.
-These individual probes show run-to-run variation; they do not establish a scrolling improvement.
+The original 427.8/122.4 ms comparison used fallback fonts and mismatched pane heights; it is superseded by this comparison.
+The earlier scripted scroll driver also read geometry every frame, adding layout work to the windowed case.
+Its 17.3/18.9 ms frame comparison does not establish a user scrolling regression.
+
+A trial grouping eight lines per library row opened faster but failed the checked-in desktop keyboard-End assertion.
+That trial was reverted; the shipped viewer retains individual measured lines and the library's default overscan.
 
 Every run reached line 2,000 and copied the complete original string.
 Additional browser checks covered search, keyboard Home/End, wrapped rows after a
@@ -366,9 +377,10 @@ Additional browser checks covered search, keyboard Home/End, wrapped rows after 
 Component tests cover case-insensitive search beyond the former 2,000-line cap,
 empty results and clearing the query, while preserving truncated-output notices.
 The focused coverage command passed 16 tests and measured all three viewer files at 100%.
+The checked-in browser regression covers keyboard reachability and wrapped rows on desktop and mobile, with actual font assets.
 
-Reports `output-profile-baseline.json`, `output-profile-virtualized.json` and
-`output-profile-virtualized-final.json` are under `/tmp/agentsfleet-m224-review`.
+Reports `output-profile-baseline-fonts-native-normalized.json` and
+`output-profile-virtualized-fonts-native-normalized.json` are under `/tmp/agentsfleet-m224-review`.
 The same directory holds `virtualized-output-desktop.png` and `virtualized-output-mobile.png`.
 
 `bun run build` and `bun run size` passed with every initial-entry value unchanged
@@ -381,6 +393,27 @@ Total gzip bytes across all route and deferred chunks grew from 1,167,685 to 1,1
 Bundle reports are `app-bundle-virtualized-final-size.log`,
 `app-bundle-virtualized-final-chunks.json` and `virtual-output-chunk-check.json`
 in the same private evidence directory.
+
+### Pull Request review follow-up
+
+[Implementation PR #794](https://github.com/agentsfleet/agentsfleet/pull/794) opened at `b1bc6f3d8` after `orly gate pr` passed.
+All 43 successful check runs on that revision completed without a failure; environment-specific smoke checks were skipped.
+Rust merge job `124662689286` graded 75,867/76,126 lines, 99.6598%, and patch coverage 27/27, 100%.
+
+Its explicit per-file check reports all 12 measured changed files at or above 99%.
+That CI result supersedes the local aggregate failure from the kernel-free profile.
+The final review-fix revision requires its own green checks before merge.
+
+Greptile requested visible outcomes in collapsed commands and a checked-in browser regression for long output.
+The follow-up exposes the existing status label and adds the regression to the normal desktop/mobile lane.
+It also updates the streamed-reply acceptance test's retired control names without changing its frame budget.
+
+The final review follow-up's `make dry-app` passed 4,572 unit tests and 42 desktop/mobile browser cases.
+Its package build and all 27 bundle checks passed; shared and fleet-route sizes remain unchanged at the reported precision.
+The live streamed-reply acceptance file was type-checked, but the full Linux acceptance obligation remains open.
+
+An initial local retry inherited the machine's disabled-analytics flag and failed 29 analytics tests.
+The successful retry cleared that flag, matching the earlier successful lane; no assertion or product behavior changed.
 
 ## Build reuse amendment: Oct 31, 2026
 

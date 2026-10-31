@@ -81,7 +81,7 @@ function ToolCallHeader({name, state}: {name: string; state: CellState}) {
     <SquareTerminalIcon aria-hidden="true" data-tool-bullet="" data-tool-shimmer={state === CELL_STATE.RUNNING} className={cn("size-3.5 shrink-0", status.tone)} />
     <span className="shrink-0">{state === CELL_STATE.RUNNING ? "Running command" : "Ran command"}</span>
     <span className="min-w-0 truncate font-mono">{name}</span>
-    <span className="sr-only">{status.label}</span>
+    <span className={cn("shrink-0 text-label", status.tone)}>{status.label}</span>
     <CallClock running={state === CELL_STATE.RUNNING} />
   </span>;
 }

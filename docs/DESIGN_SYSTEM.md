@@ -338,7 +338,7 @@ Measure production bundles and representative updates before adopting a new stat
 Assistant replies use the full reading column. User messages and steering requests use narrower, right-aligned bubbles.
 Long messages offer Show more and Show less; replies already being read stay open when streaming finishes.
 
-Group tool calls under Ran commands, with individual expandable commands and recorded outcomes.
+Group tool calls under Ran commands, with individual expandable commands and visible outcome labels.
 Load full output when requested. Pair loading and running labels with the shared animated signal indicator.
 
 Use react-window for output above 200 retained lines so long output mounts only the visible rows.

@@ -20,11 +20,11 @@ const LAST_ANSWER_LINE = `Step ${ANSWER_CHUNKS} settled`;
 const TOOL_NAME = "file_read";
 const TOOL_PATH = "src/probe.ts";
 const TOOL_CALL_ID = "f0:0";
-const TOOL_CALLS_LABEL = "Tool calls";
+const TOOL_CALLS_LABEL = "Ran commands";
 const INPUT_LABEL = "Input";
 const OUTPUT_LABEL = "Output";
 const RUNNING_LABEL = "Running";
-const DONE_LABEL = "Done";
+const DONE_LABEL = "Success";
 const TOOL_WALL_MS = 700;
 const REQUEST_TOOL = "http_request";
 const REQUEST_URL = "https://status.example.test/health";
@@ -65,9 +65,11 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
     await expect(live).toContainText(LIVE_REASONING.slice(0, -1));
 
     await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_STARTED, { call_id: TOOL_CALL_ID, args_redacted: { path: TOOL_PATH } })]);
+    await chat.getByRole("button", {name: TOOL_CALLS_LABEL, exact: true}).click();
     const call = chat.getByRole("list", {name: TOOL_CALLS_LABEL}).locator(`[data-tool="${TOOL_NAME}"]`);
     await expect(call).toContainText(RUNNING_LABEL);
-    await call.getByRole("button", {name: INPUT_LABEL, exact: true}).click();
+    await call.getByRole("button", {name: /^(Ran|Running) command /}).click();
+    await expect(call.getByRole("heading", {name: INPUT_LABEL, exact: true})).toBeVisible();
     await expect(call).toContainText(TOOL_PATH);
     await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_COMPLETED, { call_id: TOOL_CALL_ID, ms: TOOL_WALL_MS, status: "succeeded" })]);
     await expect(call).toContainText(DONE_LABEL);
@@ -93,12 +95,14 @@ test("test_live_tool_cell_settles_green", async ({ page }) => {
       opening(Date.now()),
       callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_STARTED, { call_id: REQUEST_CALL_ID, args_redacted: { method: "GET", url: REQUEST_URL } }),
     ]);
+    await chat.getByRole("button", {name: TOOL_CALLS_LABEL, exact: true}).click();
     const cell = chat.getByRole("list", { name: TOOL_CALLS_LABEL }).locator(`[data-tool="${REQUEST_TOOL}"]`);
     const bullet = cell.locator("[data-tool-shimmer]");
     await expect(cell).toContainText(RUNNING_LABEL);
-    await cell.getByRole("button", {name: INPUT_LABEL, exact: true}).click();
+    await cell.getByRole("button", {name: /^(Ran|Running) command /}).click();
+    await expect(cell.getByRole("heading", {name: INPUT_LABEL, exact: true})).toBeVisible();
     await expect(cell).toContainText(REQUEST_URL);
-    await expect(cell.getByRole("button", {name: OUTPUT_LABEL, exact: true})).toBeDisabled();
+    await expect(cell.getByRole("heading", {name: OUTPUT_LABEL, exact: true})).toHaveCount(0);
     await expect(bullet).toHaveAttribute("data-tool-shimmer", "true");
     await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe(SHIMMER);
 
@@ -109,7 +113,7 @@ test("test_live_tool_cell_settles_green", async ({ page }) => {
     await expect(bullet).toHaveAttribute("data-tool-shimmer", "false");
     await expect(bullet).toHaveClass(/\btext-success\b/);
     await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
-    await cell.getByRole("button", {name: OUTPUT_LABEL, exact: true}).click();
+    await expect(cell.getByRole("heading", {name: OUTPUT_LABEL, exact: true})).toBeVisible();
     await expect(cell).toContainText("200 OK");
     await expect(cell).toContainText("0.7s");
   });
