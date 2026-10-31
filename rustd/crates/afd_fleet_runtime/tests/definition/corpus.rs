@@ -133,15 +133,19 @@ fn responder_definition_holds_no_write_reach() {
     assert!(network.read_only());
     assert_eq!(network.read_post_paths(), []);
     let hosts: Vec<&str> = network.allow().iter().map(AsRef::as_ref).collect();
-    assert_eq!(hosts.len(), 2);
-    assert!(hosts.contains(&"api.github.com") && hosts.contains(&"grafana.example.net"));
+    assert_eq!(
+        hosts,
+        [
+            "api.github.com",
+            "productionresultssa6.blob.core.windows.net"
+        ]
+    );
     let credentials: Vec<&str> = config
         .credentials()
         .iter()
         .map(CredentialName::as_str)
         .collect();
-    assert_eq!(credentials.len(), 2);
-    assert!(credentials.contains(&"github") && credentials.contains(&"grafana"));
+    assert_eq!(credentials, ["github"]);
 }
 
 #[test]
@@ -216,6 +220,11 @@ fn repairer_definition_is_write_bound_to_one_base() {
             .iter()
             .map(AsRef::as_ref)
             .collect::<Vec<&str>>(),
-        ["api.github.com"]
+        [
+            "api.github.com",
+            "productionresultssa6.blob.core.windows.net"
+        ]
     );
+    assert!(network.read_only());
+    assert_eq!(network.read_post_paths(), []);
 }

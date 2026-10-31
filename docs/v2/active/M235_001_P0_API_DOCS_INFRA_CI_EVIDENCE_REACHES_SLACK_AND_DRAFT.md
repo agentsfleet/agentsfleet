@@ -94,7 +94,9 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/afr_agent/src/ledger/mod.rs` | EDIT | carry known trace data through the existing completion boundary |
 | `rustd/crates/afr_agent/src/ledger/tests.rs` | EDIT | preserve trace and record accounting through completion |
 | `rustd/crates/afr_agent/src/loop/finish.rs` | EDIT | report a known empty trace without adding a wire field |
+| `rustd/crates/afr_agent/src/engine/mod.rs` | EDIT | describe known empty traces separately from unavailable data |
 | `rustd/crates/afr_agent/src/loop/tests.rs` | EDIT | prove the zero-tool model reply keeps explicit trace provenance |
+| `rustd/crates/afr_agent/src/loop/turn_tests.rs` | EDIT | preserve streamed-answer checks with known empty trace provenance |
 | `rustd/crates/afr_tools/src/egress/mod.rs` | EDIT | reuse masking/refusal handling without changing other tools' behavior |
 | `rustd/crates/afr_tools/src/egress/tests.rs` | EDIT | protect single-hop behavior of unaffected callers |
 | `rustd/crates/afr_tools/src/http_request/mod.rs` | EDIT | select bodyless GET following and render safe outcomes |
@@ -108,9 +110,11 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/agentsfleetd/tests/support/definition_responder.rs` | EDIT | script GitHub job text without a Grafana prerequisite |
 | `rustd/crates/agentsfleetd/tests/support/definition_repair.rs` | EDIT | model remote ref/draft state and uncertain-write reconciliation |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions.rs` | EDIT | prove actual hosted tool reads and private transcript/trace handling |
+| `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions/ci/tests.rs` | CREATE | isolate required CI evidence and zero-tool provenance cases |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_definitions/redirect/tests.rs` | CREATE | compose downloaded text, error privacy and native full-call reads within source-size bounds |
 | `rustd/crates/agentsfleetd/tests/integration_tool_trace.rs` | EDIT | prove empty known traces remain distinct from unavailable records at the API |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs.rs` | EDIT | assert all-state reconciliation and no second external draft |
+| `rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs/ci/tests.rs` | CREATE | keep CI evidence and storage-write refusal cases within source-size limits |
 | `rustd/crates/afd_api/tests/integration_slack_mention/mod.rs` | EDIT | register the producer replay proof in the existing integration suite |
 | `rustd/crates/afd_api/tests/integration_slack_mention/replay.rs` | CREATE | prove repeated and concurrent producer deliveries keep one admission identity |
 | `rustd/crates/afd_api/tests/slack_mention_live/fixture.rs` | EDIT | share signed producer input and captured outcomes for replay |
@@ -450,6 +454,8 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 - **Open blockers:** Required source/instruction changes, evaluation cases, test lanes and external development proofs are unimplemented. M224's incident demonstration retains its independent source blockers.
 - **Implementation opening:** Indy requested testing and fixing the redirect gap, with verification in a separate fleet. Work starts with guarded downloads and the isolated read-only probe; later Sections remain incomplete. Latest fetched main remains `7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1`, version `0.71.0`.
 - **Recovery checkpoint:** Indy requested, "can you commit and push so we know that if the workspace disconnects i can resume." Publish the incomplete feature branch as a recovery checkpoint. Keep this spec active; do not treat the checkpoint as verified or ready to merge. The cloud execution connection failed without a retained provider cause; source files survived recovery.
+- **Verification cadence:** Indy requested, "donot repeatedly run unit, compile, integration, it just wastes time." Retain prior results, finish source review before the final gate, and rerun only for changed code or a specific failure. Scripted CI scenarios prove native wiring, not model instruction adherence.
+- **Managed-cloud diagnosis:** Local account bootstrap failed before browser/CLI suites: `afd_identity/src/direct.rs` disables environment proxies, while this executor routes HTTPS through its sidecar. [OpenAI networking guidance](https://learn.chatgpt.com/docs/environments/cloud-environments) requires the configured proxy; [Clerk verification guidance](https://clerk.com/docs/guides/sessions/manual-jwt-verification) confirms the public signing-key URL. Indy accepted a Linux CI host; preserve current authentication behavior.
 - **Metrics review:** A safe redirect start and paired terminal outcome are specified; no new metric family or label set is proposed.
 - **Skill-chain outcomes:** Authored and reviewed through `orly-spec`; the cloud handoff retains local documents. Implementation verification, live acceptance and publication remain pending.
 - **Owner scope additions:** Indy requested public HTTP egress API settings with UI later, a Linux `acceptance-codex` target reusing local acceptance, and latest stable Rust crates in this PR. He explicitly requested branch publication, PRs, full checks and `orly-ship` monitoring; the cloud default against pushing is superseded. No production action is authorized.

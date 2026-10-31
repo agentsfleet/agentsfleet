@@ -13,136 +13,37 @@
               indexes the JSON it just read"
 )]
 
-use afr_tools::ToolErrorCode;
 use agentsfleetd::supervisor::Supervisor;
 
 use crate::definition_code::{
     ANSWER, FAILED, FIX, FLEET, PASSED, REPOSITORY, SUBJECT, fixer_turns, greeter_origin,
 };
 use crate::definition_install::install_definition;
-use crate::definition_responder::{
-    DIAGNOSIS, FAILED_STEP, GRAFANA, GRAFANA_TOKEN, LOG_SIGNATURE, LOG_STORE, LOKI_LINE,
-    MEMORY_KEY, RUN, RUN_URL, github_get, grafana, responder_turns, responder_upstream,
-};
-use crate::definition_run::{assert_token_stayed_on_the_wire, run_event, run_event_from};
+use crate::definition_responder::{RUN, RUN_URL, github_get, responder_upstream};
+use crate::definition_run::{run_event, run_event_from};
 use crate::e2e_seed_keys::seed_tenant_key;
-use crate::fake_model::{FakeModel, say};
+use crate::fake_model::{Asked, FakeModel, say};
 use crate::https::Upstream;
 use crate::integration_tenant_registry::{mint_tenant_token, provider_listener};
 use crate::integration_tool_trace::{stored_trace, tenant_get};
 
-/// The memory row a run's push writes.
-const REMEMBERED: &str =
-    "SELECT content FROM memory.entries WHERE fleet_id = $1::uuid AND key = $2";
+#[path = "integration_rust_runner_definitions/ci/tests.rs"]
+mod ci;
 
 #[path = "integration_rust_runner_definitions/redirect/tests.rs"]
 mod redirect;
 
-/// Dimension 6.1. The responder is offered exactly its policy's tools, reads
-/// GitHub with a minted token and Grafana with its sealed one, reads the 302's
-/// origin and not its signed target, names an unreadable source, stores a
-/// memory, and settles with its diagnosis and a trace of every call.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_ci_responder_triages_a_failed_run() {
-    let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "ci-responder", &[grafana()], None).await;
-    let upstream = Upstream::serve(responder_upstream()).await;
-    let (model, transcript) = FakeModel::new(responder_turns());
-
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
-
-    assert_eq!(
-        (settled.status.as_str(), settled.answer.as_str()),
-        ("processed", DIAGNOSIS)
-    );
-    let asked = transcript.asked();
-    let mut offered = asked[0].tools.clone();
-    offered.sort_unstable();
-    assert_eq!(offered, ["http_request", "memory_recall", "memory_store"]);
-    let results = &asked.last().expect("the model was asked").results;
-    let read = |needle: &str| results.iter().any(|result| result.contains(needle));
-    assert!(
-        read(RUN_URL) && read(FAILED_STEP) && read(LOKI_LINE),
-        "{results:#?}"
-    );
-    assert!(
-        read("Status: 302") && read(&format!("Location: {LOG_STORE}")),
-        "{results:#?}"
-    );
-    assert!(
-        !read(LOG_SIGNATURE),
-        "a redirect's signed target never reaches the model"
-    );
-    let unreadable = format!("[{}]", ToolErrorCode::UpstreamUnreachable.as_str());
-    assert!(
-        results.iter().any(|result| result.starts_with(&unreadable)
-            && result.contains("the response could not be read")),
-        "a body cut mid-read reaches the model as a named gap: {results:#?}"
-    );
-
-    let seen = upstream.seen();
-    let grafana_auth = format!("Bearer {GRAFANA_TOKEN}");
-    let to_grafana: Vec<_> = seen
-        .iter()
-        .filter(|request| request.host == GRAFANA)
-        .collect();
-    assert_eq!(
-        to_grafana.len(),
-        3,
-        "the sealed host was substituted for every Grafana call"
-    );
-    for request in to_grafana {
-        let sent = request
-            .headers
-            .get("authorization")
-            .and_then(|value| value.to_str().ok());
-        assert_eq!(sent, Some(grafana_auth.as_str()));
-    }
-    assert_token_stayed_on_the_wire(&seen, &asked);
-    assert_eq!(remembered(&run).await.as_deref(), Some(DIAGNOSIS));
-    let trace = stored_trace(&run)
-        .await
-        .expect("the report carried a trace");
-    assert_eq!(trace["calls"].as_array().map(Vec::len), Some(9), "{trace}");
-
-    supervisor.shutdown().await;
-    run.cleanup().await;
-}
-
-/// What the fleet's durable memory holds under [`MEMORY_KEY`].
-async fn remembered(run: &crate::e2e::Scenario) -> Option<String> {
-    let mut connection = run
-        .booted
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query_scalar(REMEMBERED)
-        .bind(&run.fleet)
-        .bind(MEMORY_KEY)
-        .fetch_optional(&mut *connection)
-        .await
-        .expect("the memory table reads")
-}
-
-/// Dimension 6.5. A settled run's trace and one call's full record are read
+/// A settled run's trace and one call's full record are read
 /// back through the tenant routes an operator's thread uses.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_definition_run_trace_is_readable() {
     let mut supervisor = Supervisor::new();
     let provider = provider_listener().await;
-    let run = install_definition(
-        &mut supervisor,
-        "ci-responder",
-        &[grafana()],
-        Some(&provider),
-    )
-    .await;
+    let run = install_definition(&mut supervisor, "ci-responder", &[], Some(&provider)).await;
     let token = mint_tenant_token();
     seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
-    let upstream = Upstream::serve(responder_upstream()).await;
+    let upstream = Upstream::serve(responder_upstream(200)).await;
     let (model, _transcript) = FakeModel::new(vec![
         vec![github_get("run", RUN)],
         vec![say("Run 101 failed.")],
@@ -151,33 +52,39 @@ async fn test_definition_run_trace_is_readable() {
     let settled = run_event(&run, &run.event_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
-    )]
-    let http = reqwest::Client::new();
+    assert_readable_trace(&run, &token).await;
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+async fn assert_readable_trace(run: &crate::e2e::Scenario, token: &str) {
+    let http = afd_identity::direct(std::time::Duration::from_secs(10))
+        .build()
+        .expect("tenant client");
     let event = format!(
         "/v1/workspaces/{}/fleets/{}/events/{}",
         run.workspace, run.fleet, run.event_id
     );
-    let detail = tenant_get(&http, &run, &token, &event).await;
+    let detail = tenant_get(&http, run, token, &event).await;
     let calls = detail["tool_calls"]["calls"]
         .as_array()
-        .cloned()
-        .unwrap_or_default();
+        .expect("the event contains its known calls");
     assert_eq!(calls.len(), 1, "{detail}");
     assert_eq!(
         (calls[0]["name"].as_str(), calls[0]["status"].as_str()),
         (Some("http_request"), Some("succeeded"))
     );
     let call_id = calls[0]["call_id"].as_str().expect("a call id");
-    let record = tenant_get(
-        &http,
-        &run,
-        &token,
-        &format!("{event}/tool-calls/{call_id}"),
-    )
-    .await;
+    assert_readable_record(&http, run, token, &format!("{event}/tool-calls/{call_id}")).await;
+}
+
+async fn assert_readable_record(
+    http: &reqwest::Client,
+    run: &crate::e2e::Scenario,
+    token: &str,
+    path: &str,
+) {
+    let record = tenant_get(http, run, token, path).await;
     assert!(
         record["output"]
             .as_str()
@@ -190,12 +97,9 @@ async fn test_definition_run_trace_is_readable() {
             .is_some_and(|url| url.ends_with(RUN)),
         "{record}"
     );
-
-    supervisor.shutdown().await;
-    run.cleanup().await;
 }
 
-/// Dimension 7.1. The code-running fleet's repository, bound for reading, is
+/// The code-running fleet's repository, bound for reading, is
 /// checked out at its default branch before the turn; the fleet runs the
 /// suite, fixes the script with a patch, runs the suite again and commits,
 /// and the trace holds what the thread shows: each call's status and exit
@@ -217,6 +121,13 @@ async fn test_code_running_definition_roundtrip() {
         ("processed", ANSWER)
     );
     let asked = transcript.asked();
+    assert_code_results(&asked);
+    assert_code_trace(&run).await;
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+fn assert_code_results(asked: &[Asked]) {
     let mut offered = asked[0].tools.clone();
     offered.sort_unstable();
     assert_eq!(offered, ["apply_patch", "git", "shell"]);
@@ -239,10 +150,10 @@ async fn test_code_running_definition_roundtrip() {
         "a command that succeeds answers its output alone"
     );
     assert!(results[3].contains(SUBJECT), "{results:#?}");
+}
 
-    let trace = stored_trace(&run)
-        .await
-        .expect("the report carried a trace");
+async fn assert_code_trace(run: &crate::e2e::Scenario) {
+    let trace = stored_trace(run).await.expect("the report carried a trace");
     let calls = trace["calls"]
         .as_array()
         .expect("the trace lists its calls");
@@ -271,7 +182,4 @@ async fn test_code_running_definition_roundtrip() {
         Some(FIX),
         "{trace}"
     );
-
-    supervisor.shutdown().await;
-    run.cleanup().await;
 }

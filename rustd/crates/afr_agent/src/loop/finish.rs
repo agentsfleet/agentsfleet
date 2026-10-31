@@ -58,7 +58,7 @@ impl Harness<'_, '_> {
                 output_tokens: usage.output,
             },
             memory,
-            trace,
+            trace: Some(trace),
             records,
         }
     }
