@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useToolCallElapsed } from "@assistant-ui/react";
 import { CircleAlertIcon, CircleHelpIcon, SquareTerminalIcon, XIcon } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, CopyButton, DashboardPanel, List, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
@@ -8,7 +8,6 @@ import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatSeconds } from "@/lib/utils";
 import { ToolCallBody, ToolCallInputPreview } from "./FleetToolCallBody";
 import { useFleetScope } from "./FleetScope";
-import { FleetToolOutputDialog } from "./FleetToolOutputDialog";
 import { readToolResult, type ToolResult } from "./fleetReplyMessage";
 import { CELL_STATE, cellState, toolCopy, type CellState } from "./tool-call-copy";
 import { ARGS_NOT_RECORDED } from "./tool-call-shape";
@@ -19,13 +18,15 @@ const FIGURE_SEPARATOR = " · ";
 const COMMANDS = "commands";
 const COMMAND = "command";
 const TRIGGER_CLASS = "justify-start gap-xs py-xs text-label text-muted-foreground hover:no-underline";
-const CELL_COPY: Record<CellState, {label: string; tone: string}> = {
-  [CELL_STATE.RUNNING]: {label: "Running", tone: "text-text-dim"},
-  [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success"},
-  [CELL_STATE.FAILED]: {label: "Failed", tone: "text-destructive"},
-  [CELL_STATE.INTERRUPTED]: {label: "Interrupted", tone: "text-destructive"},
-  [CELL_STATE.SETTLED]: {label: "Outcome unavailable", tone: "text-text-dim"},
+const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode}> = {
+  [CELL_STATE.RUNNING]: {label: "Running", tone: "text-text-dim", icon: <SignalSpinner aria-hidden="true" />},
+  [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success", icon: <span aria-hidden="true">{TOOL_SUCCEEDED_GLYPH}</span>},
+  [CELL_STATE.FAILED]: {label: "Failed", tone: "text-destructive", icon: <XIcon className="size-3.5" aria-hidden="true" />},
+  [CELL_STATE.INTERRUPTED]: {label: "Interrupted", tone: "text-destructive", icon: <CircleAlertIcon className="size-3.5" aria-hidden="true" />},
+  [CELL_STATE.SETTLED]: {label: "Outcome unavailable", tone: "text-text-dim", icon: <CircleHelpIcon className="size-3.5" aria-hidden="true" />},
 };
+const FleetToolOutputDialog = lazy(() => import("./FleetToolOutputDialog").then(module => ({default: module.FleetToolOutputDialog})));
+const FULL_OUTPUT_LOADING = <output className="inline-flex items-center gap-xs text-label text-muted-foreground"><SignalSpinner className="text-pulse" aria-hidden="true" />Loading full command output…</output>;
 
 /** Adjacent calls share one compact disclosure; each keeps its own identity. */
 export function ToolCallList({children, running}: {children: ReactNode; running: boolean}) {
@@ -69,8 +70,8 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
         </AccordionContent>
       </AccordionItem>
     </Accordion>
-    {shown && canShowAll ? <FleetToolOutputDialog scope={scope} eventId={eventId} callId={callId} name={name}
-      verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /> : null}
+    {shown && canShowAll ? <Suspense fallback={FULL_OUTPUT_LOADING}><FleetToolOutputDialog scope={scope} eventId={eventId} callId={callId} name={name}
+      verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /></Suspense> : null}
   </ListItem>;
 });
 
@@ -101,8 +102,7 @@ function ToolCallDetails({name, args, argsText, outcome, state, onShowAll}: {
         {state === CELL_STATE.RUNNING ? null : <><h4 className="font-sans text-muted-foreground">{state === CELL_STATE.FAILED ? "Error" : "Output"}</h4><ToolCallBody outcome={outcome} onShowAll={onShowAll} /></>}
       </div>
       <div className={cn("flex items-center justify-end gap-xs border-t border-border px-lg py-sm text-label", status.tone)} data-command-outcome="">
-        {state === CELL_STATE.RUNNING ? <SignalSpinner aria-hidden="true" /> : state === CELL_STATE.SUCCEEDED ? <span aria-hidden="true">{TOOL_SUCCEEDED_GLYPH}</span>
-          : state === CELL_STATE.FAILED ? <XIcon className="size-3.5" aria-hidden="true" /> : state === CELL_STATE.INTERRUPTED ? <CircleAlertIcon className="size-3.5" aria-hidden="true" /> : <CircleHelpIcon className="size-3.5" aria-hidden="true" />}
+        {status.icon}
         <span>{status.label}</span>
         {outcome?.exitCode !== undefined && outcome.exitCode !== 0 ? <span>(exit {outcome.exitCode})</span> : null}
       </div>

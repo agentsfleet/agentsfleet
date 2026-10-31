@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  SignalSpinner,
   TerminalPanel,
   cn,
 } from "@agentsfleet/design-system";
@@ -84,7 +85,7 @@ function useToolCallRead({ workspaceId, fleetId }: FleetScope, eventId: string, 
 }
 
 function ReadBody({ read, name, outcome }: { read: ToolCallRead | null; name: string; outcome: ToolResult | undefined }) {
-  if (read === null) return <output className={NOTE_CLASS}>{LOADING_LABEL}</output>;
+  if (read === null) return <output className={cn(NOTE_CLASS, "inline-flex items-center gap-xs")}><SignalSpinner className="text-pulse" aria-hidden="true" />{LOADING_LABEL}</output>;
   if (read.kind === TOOL_CALL_READ.FULL) return <FullCall call={read.call} name={name} />;
   return (
     <>

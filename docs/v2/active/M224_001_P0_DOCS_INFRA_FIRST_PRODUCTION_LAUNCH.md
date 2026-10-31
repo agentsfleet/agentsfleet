@@ -64,6 +64,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
+| `docs/DESIGN_SYSTEM.md; ui/packages/app/components/domain/FleetToolOutputDialog.tsx` | EDIT | document chat state ownership and default animated progress; show real full-output loading with the shared indicator while honoring the OS preference |
+| `ui/packages/app/components/domain/chat/ChatMessageRow.tsx` | EDIT | retain the full assistant reading column and narrower right-aligned user bubbles on desktop and mobile |
 | `ui/packages/app/components/domain/chat/DraftChatHeading.tsx; ui/packages/app/components/domain/chat/FleetSetupActions.tsx; ui/packages/app/tests/workspace-chat/fixture.tsx; ui/packages/design-system/src/design-system/Accordion.tsx` | EDIT | move confirmed navigation into the composer flap, close publishing into real progress, and respect reduced motion |
 | `package.json; patches/@assistant-ui%2Freact@0.15.31.patch` → `patches/@assistant-ui%2Freact@0.15.32.patch`; `ui/packages/app/tests/assistant-ui-reserve.test.ts` | EDIT / MOVE | retain the existing resize and scroll fixes while updating the chat dependency |
 | `rustd/crates/afd_authoring/src/creation/system.rs; ui/packages/app/components/domain/fleetMessageRenderers.tsx` | EDIT | keep system saves unlabelled and make long runtime requests expandable |
@@ -112,6 +114,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 External changes use existing runbooks: production tunnel/domain, runner-readiness variable, hosts/tokens, providers, drafts/grants and npm tags. Indy approves provider/host writes and releases. Required source/workflow repairs stop for a scope amendment; none are implicitly included.
 
 Indy approved the setup-chat amendment: grouped command disclosures with actual outcomes, compact save/publish progress and confirmed versions, public/restricted network wording, and Open fleet/New fleet actions. Icons accompany text. Reading and refining labels follow actual request and authoring states. The proposed `.env` editor remains outside this approved amendment. Before review, every changed Rust source file must reach 99% coverage and every changed TypeScript source file 100%; patch-only coverage does not satisfy this requirement.
+
+Indy also requested Appsmith reference-code review, measured bundle optimization, narrower user bubbles and clearing old confirmation actions when authoring resumes. The implementation retains assistant-ui's runtime and existing per-call caches. A bundle-budget increase is authorized only after optimization options are exhausted; the measured follow-up fits the existing limits.
 
 M235_001 owns the HTTP-tool, policy, reference-instruction and Linux adapter implementation. This milestone owns the transferred deterministic replay/recovery tests, offline evidence checker, behavior campaign and external acceptance below. The approved build amendment below adds candidate promotion to the existing deployment workflows; authentication and production approval boundaries remain unchanged.
 
@@ -405,6 +409,10 @@ For Linux acceptance, Indy identified the agent environment as the blocker:
 The amendment treats that direction as keeping the full Linux acceptance obligation in M224 rather than holding M235 on this managed VM's network limitation. The accepted Linux CI host remains the execution destination; no passing run or waiver is claimed. All transferred criteria stay P0 and block M224's production progression.
 
 ## Discovery (consult log)
+
+Indy (2026-11-01): "Okay we do this in a separate milestone (Tanstack). Continue to make the chat performant.  and readable and so on."
+
+TanStack Query adoption belongs to a separate milestone. This follow-up retains assistant-ui and the existing native API state adapter.
 
 - **Approved chat follow-up, Oct 31, 2026:** Indy approved grouped command disclosures with actual outcomes, composer save/publish progress, public/restricted internet wording and Open fleet/New fleet actions. He also requested Show more/Show less, icons, truthful reading/refining activity, reduced-motion support and a fluid chat. The `.env` editor remains outside the approved implementation. Whole changed source files require at least 99% Rust coverage and 100% TypeScript coverage. Indy authorized merging this follow-up only after all required checks are green and all Greptile threads are fixed, answered and resolved. M224 remains in progress; the original launch obligations are unchanged.
 - **Fleet proof follow-up, Oct 31, 2026:** Responder v2 retrieved the actual job log and delivered its diagnosis, but continued after a denied code search. Repairer v2 stopped at a log refusal caused by missing Bearer authentication in its request. Native revision 3 corrected instruction guidance; its human-triggered repair created Linkwarden draft #4 at `9d114c7e36fcb6274236a1ce07357fe31fd24e81`. It still continued after failed source probes and did not execute the regression. The launch baseline records identities, receipts, truncation flags, successful deployment jobs and remaining acceptance gaps. No production progression follows from these partial results.
