@@ -137,7 +137,8 @@ fn responder_definition_holds_no_write_reach() {
         hosts,
         [
             "api.github.com",
-            "productionresultssa6.blob.core.windows.net"
+            "productionresultssa6.blob.core.windows.net",
+            "productionresultssa3.blob.core.windows.net"
         ]
     );
     let credentials: Vec<&str> = config
@@ -222,7 +223,8 @@ fn repairer_definition_is_write_bound_to_one_base() {
             .collect::<Vec<&str>>(),
         [
             "api.github.com",
-            "productionresultssa6.blob.core.windows.net"
+            "productionresultssa6.blob.core.windows.net",
+            "productionresultssa3.blob.core.windows.net"
         ]
     );
     assert!(network.read_only());
