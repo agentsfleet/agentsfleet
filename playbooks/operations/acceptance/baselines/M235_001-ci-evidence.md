@@ -289,3 +289,29 @@ Read-only adversarial and standards follow-up reviews report no remaining findin
 Deciding logs: `/workspace/m235-evidence/review-fixes-clippy.log`, `review-fixes-afr_egress.log`, `review-fixes-afd_api-final.log`, `review-fixes-afr_tools-final.log`, `review-fixes-afr_supervisor-final.log` and `review-fixes-symlink-final.log`.
 
 Indy approved the prepared Linkwarden PR #3 dependency-output change and one development rerun. It keeps the original install exit status and full installation-failure output, and preserves the title-decoding regression. The update is limited to `.github/workflows/playwright-tests.yml`; no production workflow or runtime behavior is changed.
+
+## M235 code delivery and M224 verification ownership
+
+At implementation revision `f3dcef4c02af0053e3b7a84845e47f03cd652e42`, PR #792 reports 38 successful checks, three successful deployment statuses, nine expected skips and no pending or failed check. Coverage run `41199296312`, merge job `124534795446`, reports:
+
+- Project: 75,843/76,101 lines, **99.6610%**, above 99.5%.
+- Patch: 610/610 changed lines, **100%**, above 99%.
+- Every one of the 26 measured changed Rust files is at least 99%.
+
+Rust unit job logs `124531718162`, `124531718164` and `124531718181` report 1,484 runner, 139 daemon and 3,342 library passes: **4,965** total. All TypeScript unit/coverage checks pass; the TypeScript implementation is unchanged from the retained full local 100% coverage result. Greptile thread `PRRT_kwDOReIoss6yQLEB` has the fix response and is resolved; the new review reports no further inline findings.
+
+The baseline integration comparison is recovered from retained isolated runs, without another compilation or test run. Match each unique ignored external-test target/name from unit run `41005012902` against passing cases in coverage run `41005012774`. Exclude the `afd_bench` measuring-instrument test exactly as `make test-integration-rustd` does. Every one of the resulting **1,445** cases passes: 1,442 ordinary and three exclusive. The same inventory check on the implementation's unit and coverage jobs matches **1,451** passing integration cases: 1,448 ordinary and three exclusive, agreeing with the retained full local make result. Deciding inventory: `/workspace/m235-evidence/baseline-integration-verified.json`.
+
+Indy requested that replay/lost-acknowledgement tests, separate-fleet retrieval, the eight-case campaign and Slack/draft proof be performed in M224. His subsequent objection to holding M235 on this managed VM's Linux restriction is recorded with its interpretation in both specs. The full Linux acceptance run is retained as M224 P0 R11; it remains unverified. Both specs map the original Dimensions and rubric rows to M224 P0 successors. No transferred result is graded passed, no authentication behavior changed, and no production work occurred.
+
+M235 closes source delivery with these transfers; M224 remains active and requires the proofs before production. The closing changes affect documentation only. The final local `orly gate pr` command is not claimed green: its earlier lint failure and subsequent corrections are retained above, and Indy's instruction against repeated broad runs is honored by reusing passed make results, focused checks and exact-code-revision CI.
+
+Two read-only transfer reviews found four documentation defects: stale M235 closure wording, M224's old docs-only gate declaration, an obsolete rubric reference and a broken scope table. All four are corrected and confirmation reports no remaining finding. `orly doctor`, `orly gate work`, and `make check-documentation-rules check-architecture-doc` exit zero. Recheck links after moving the closed spec; no unit/integration rerun is required for that move.
+
+The approved Linkwarden update is commit `95a173dfb71746d8e5ed01b420815668e34806f3`. Its push produced exactly one Playwright run, `41199403249`, attempt 1, job `124532028003`; no additional manual run was dispatched. Installation succeeds and the intended “Check link title decoding” step fails. The decoded log is **42,883 bytes**, below the 65,536-byte stored-output cap. Connector retrieval establishes preparation only; the separate fleet's own post-fix retrieval is still M224 R7.
+
+Fresh native fleet reads confirm the separate `github-log-verification` fleet permits both `api.github.com` and `productionresultssa6.blob.core.windows.net` with read-only networking. The installed `ci-dev-responder` still permits GitHub/Grafana, and `ci-dev-repairer` permits GitHub only. M224 must review and Apply their updated definitions before proof triggers; repository fixture edits do not update installed fleets.
+
+The public crate index confirms `reqwest` 0.13.5 is the latest non-yanked stable release at this check. Compatible `reqwest-middleware` 0.5.2 and `reqwest-retry` 0.9.1 exist, but are not dependencies of this implementation. The client is shared across leases with reqwest pooling defaults; no load-test or tuned pool-cap claim is made. Provider retries use existing `backon`; generic HTTP tools retain the tested no-retry policy. Redirect/deadline logs are implemented; live Grafana ingestion and a dedicated dashboard panel are unverified.
+
+The final standards closure review found two documentation issues. The full declared command `gitleaks detect --redact --no-banner` now exits zero after scanning 7,524 commits and about 210.43 MB, with “no leaks found”; the earlier staged scan was insufficient evidence for that exact command. M224's scope criterion moves from R4 to supporting P0 row S7, keeping all transfer identifiers and reducing its outcome rows to the permitted twelve. No gate or coverage floor is weakened. Deciding log: `/workspace/m235-evidence/closure-gitleaks-full.log`.

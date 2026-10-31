@@ -6,7 +6,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 - Priority sets urgency. Depends on sets sequencing.
 -->
 
-# M235_001: CI evidence reaches Slack and a bounded draft
+# M235_001: Guarded HTTP downloads and reviewed egress
 
 **Prototype:** v2.0.0
 
@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Date:** Oct 30, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P0, fleet-owned job-log reads block M224's development demonstrations
 
@@ -28,9 +28,9 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Baseline revision:** 7b18cd4166b87b9289c9d94cd31000f96d500e15
 
-**Test Baseline:** isolated hosted source-identical baseline records 4,914 Rust unit passes and 99.6519% line coverage; see baseline evidence for the comparison and earlier local process-reaping failure. The integration baseline and final repository verdict remain incomplete.
+**Test Baseline:** source-identical hosted baseline records unit=4,914; integration=1,445 (1,442 ordinary + 3 exclusive); line coverage=99.6519%. Retained native unit/coverage logs establish the matching integration case inventory without rerunning tests. Implementation `f3dcef4c02af0053e3b7a84845e47f03cd652e42` passes unit=4,965, integration=1,451 and all PR checks.
 
-**Baseline evidence:** `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md`; distinguish baseline failures, changed-package tests and live fleet proof
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md`; distinguish initial environment failures, retained repository/CI results and M224-owned live proof
 
 **Depends on:** none; use existing native definitions, guarded tools, Slack mentions and development access
 
@@ -42,18 +42,18 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** The Continuous Integration (CI) responder reads logs and answers Slack; the explicitly addressed repairer opens a verified draft.
+**Goal (testable):** The HTTP tool returns upstream text through admitted, bounded redirects, preserves private target data, and accepts reviewed public-HTTPS settings. Continuous Integration (CI) fleet behavior and development launch acceptance are owned by M224.
 
 **Problem:** GitHub job logs redirect to storage that the fleet cannot read. The reference responder also requires Grafana evidence for CI failures that have no running workload. M224 records the real failed job, successful native log retrieval and fleet source gap.
 
 **Solution summary:** Extend generic, guarded HTTP GET reads and tune native Markdown instructions. The model selects endpoints and interprets evidence; reviewed policy controls access. Use GitHub Actions evidence for CI and require a named stopping answer when required evidence is unavailable.
 
-**Design flow:** Slack mention → existing admission and reviewed fleet revision → model-selected HTTP reads → evidenced Slack answer. A separate addressed repair request → fresh evidence/base reads → existing bounded draft writes → same-thread PR link and regression validation. M224 consumes these development results under its own launch rubric; M235 does not depend on M224 completion.
+**Design flow:** Reviewed fleet policy → model-selected HTTP GET → repeated admission for each redirect → bounded, sanitized upstream text and native tool records. M224 consumes this runtime for its source, Slack and draft demonstrations. M235 delivers code and instructions; it does not depend on M224 completion.
 
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** fix: read CI evidence through guarded HTTP redirects
-- **Intent (one sentence):** A customer receives an evidenced failure diagnosis and can explicitly request a bounded draft fix from the same Slack thread.
+- **Intent (one sentence):** A fleet can retrieve permitted HTTPS download text without losing admission, privacy or call-budget checks; M224 verifies the customer-facing diagnosis and draft flow.
 - **Authoring handshake:** Keep customer tailoring in `instructions_md`; add the generic transport capability needed by those instructions. ASSUMPTIONS I'M MAKING: source and instruction implementation follow this spec's review; authoring changes no runtime setup or authentication.
 - **Implementer handshake:** Record the restatement in Session Notes at PLAN before source edits; reconcile any difference from this Intent.
 
@@ -116,16 +116,9 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/agentsfleetd/tests/integration_tool_trace.rs` | EDIT | prove empty known traces remain distinct from unavailable records at the API |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs.rs` | EDIT | assert all-state reconciliation and no second external draft |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs/ci/tests.rs` | CREATE | keep CI evidence and storage-write refusal cases within source-size limits |
-| `rustd/crates/afd_api/tests/integration_slack_mention/mod.rs` | EDIT | register the producer replay proof in the existing integration suite |
-| `rustd/crates/afd_api/tests/integration_slack_mention/replay.rs` | CREATE | prove repeated and concurrent producer deliveries keep one admission identity |
-| `rustd/crates/afd_api/tests/slack_mention_live/fixture.rs` | EDIT | share signed producer input and captured outcomes for replay |
-| `tests/fixtures/fleets/ci-investigation/cases.json` | CREATE | pin the small manual behavior corpus and expected observations |
-| `scripts/check-ci-drill-evidence.ts` | CREATE | validate complete evidence records and compute behavior thresholds offline |
-| `cli/test/ci-drill-evidence.unit.test.ts` | CREATE | reject missing cases, stale digests, unsupported grades and mismatched source identities |
 | `playbooks/operations/slack_incident_drill/001_playbook.md` | EDIT | describe exact setup, source failures, manual evaluations and development proof |
 | `playbooks/deploy/dev/001_playbook.md` | EDIT | document the approved exact-ref prerequisite for pre-merge development proof |
 | `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md` | CREATE | record measured baseline, review, evaluation and real-path evidence |
-| `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.json` | CREATE | store sanitized grades, result identities and every hashed witness in its inline named-record list |
 | `docs/architecture/ci_drill_evidence.md` → `playbooks/operations/acceptance/ci_evidence_format.md` | MOVE / EDIT | keep proposed native witnesses, hashes, evaluation selection and runtime correlation with acceptance procedures |
 | `docs/architecture/runner_fleet.md` | EDIT | define guarded tool redirects beside existing network authority |
 | `docs/architecture/observability.md` | EDIT | document the safe redirect outcome event |
@@ -190,11 +183,11 @@ Compare normalized URL origins, including effective port, when deciding whether 
 
 The private target lives only for one tool call and has no raw Debug, display or serialized projection. Admission remains the request authority; release the lease guard before each upstream transport wait while preserving guarded credential minting. This change retains existing identity, login, token scopes and grant behavior.
 
-- **Dimension 1.1** — An admitted GET chain returns actual upstream text through the hosted tool → Test `should_read_text_through_admitted_redirects`
-- **Dimension 1.2** — Forbidden or malformed targets never receive a request → Test `should_refuse_redirect_before_transmission`
-- **Dimension 1.3** — Origin changes permanently remove caller headers, including a return to the original origin → Test `should_strip_headers_across_redirect_origins`
-- **Dimension 1.4** — Other clients and methods keep their single-hop behavior → Test `should_keep_unaffected_clients_single_hop`
-- **Dimension 1.5** — Protocol failures never silently repeat a tool request → Test `should_disable_implicit_tool_request_retries`
+- **Dimension 1.1 — DONE** — An admitted GET chain returns actual upstream text through the hosted tool → Test `should_read_text_through_admitted_redirects`
+- **Dimension 1.2 — DONE** — Forbidden or malformed targets never receive a request → Test `should_refuse_redirect_before_transmission`
+- **Dimension 1.3 — DONE** — Origin changes permanently remove caller headers, including a return to the original origin → Test `should_strip_headers_across_redirect_origins`
+- **Dimension 1.4 — DONE** — Other clients and methods keep their single-hop behavior → Test `should_keep_unaffected_clients_single_hop`
+- **Dimension 1.5 — DONE** — Protocol failures never silently repeat a tool request → Test `should_disable_implicit_tool_request_retries`
 
 **HTTP settings:** `network.http_egress` accepts `restricted` (default) or `public`; `package_manager_domains` defaults to false.
 
@@ -204,7 +197,7 @@ The two new settings govern HTTPS tools and do not enlarge sandbox access.
 Public mode still refuses private/reserved or mixed DNS answers and retains credential, repository/path and method restrictions.
 Redirects repeat those checks. UI controls are later work.
 
-- **Dimension 1.6** — Reviewed HTTP scope reaches the lease without weakening other access restrictions → Test `should_preserve_boundaries_with_public_http_egress`
+- **Dimension 1.6 — DONE** — Reviewed HTTP scope reaches the lease without weakening other access restrictions → Test `should_preserve_boundaries_with_public_http_egress`
 
 ### §2: Bound the call and protect download targets
 
@@ -228,9 +221,9 @@ Loop identity is the pinned URL library's serialized absolute URL after removing
 
 Use existing tool error classes for policy refusal, invalid input and upstream failure. Loop, hop-limit and deadline failures carry fixed safe reasons; no raw provider error or target path becomes an error detail. Emit a redirect start and one bounded completion/failure under the parent tool-call trace; existing refusal telemetry remains unchanged.
 
-- **Dimension 2.1** — Loops and exhausted hop/time budgets stop before additional work → Test `should_bound_total_redirect_work`
-- **Dimension 2.2** — Oversized, interrupted and non-text source results cannot masquerade as a complete log read → Test `should_expose_incomplete_source_reads`
-- **Dimension 2.3** — Protected redirect units stay private under the defined matching rules → Test `should_keep_signed_redirect_targets_private`
+- **Dimension 2.1 — DONE** — Loops and exhausted hop/time budgets stop before additional work → Test `should_bound_total_redirect_work`
+- **Dimension 2.2 — DONE** — Oversized/interrupted sources expose truncation/read failures, and content-type/decoding notices remain visible → Tests `should_expose_incomplete_source_reads_before_the_body`, `an_interrupted_job_log_returns_no_usable_source_text`; actual-model stopping on unusable evidence is M224-owned
+- **Dimension 2.3 — DONE** — Protected redirect units stay private under the defined matching rules → Test `should_keep_signed_redirect_targets_private`
 
 ### §3: Investigate through customer-tailored Markdown
 
@@ -250,9 +243,10 @@ A complete answer cites the exact run, attempt, commit, failed job/step, returne
 
 Edit, review and explicitly Save or Apply the amended definition before triggering it. Record the accepted revision, digest and readiness; fixture edits and Library publication do not update an existing installed fleet. A newly observed download host requires exact-host review, never runtime enrollment or a wildcard.
 
-- **Dimension 3.1** — The CI answer grounds the selected attempt without requiring Grafana → Test `test_responder_reads_exact_ci_evidence`
-- **Dimension 3.2** — Missing required evidence produces a stopping answer without repair advice → Test `test_responder_stops_on_required_source_gap`
-- **Dimension 3.3** — Conflicting attempts, foreign repositories and injected evidence cannot substitute for verified sources → Test `test_responder_rejects_untrusted_evidence`
+- **Dimension 3.1 — MOVED to M224 Dimension 4.4, R8–R9:** `test_responder_reads_exact_ci_evidence`.
+- **Dimension 3.2 — MOVED to M224 Dimension 4.4, R8–R9:** `test_responder_stops_on_required_source_gap`.
+- **Dimension 3.3 — MOVED to M224 Dimension 4.4, R8–R9:** `test_responder_rejects_untrusted_evidence`.
+- **Dimension 3.4 — DONE** — CI-only reference definitions preserve read/write reach and scripted hosted source-read wiring → Tests `responder_definition_holds_no_write_reach`, `log_reader_definition_is_an_isolated_read_only_probe`, `repairer_definition_is_write_bound_to_one_base`, `test_responder_reads_exact_ci_evidence` (scripted only).
 
 ### §4: Repair only after an addressed request
 
@@ -264,57 +258,29 @@ Reuse the daemon-issued event branch, reviewed repository/base, draft flag and e
 
 The repairer also sets `network.read_only: true` and leaves `read_post_paths` empty when adding exact download hosts. Existing GitHub origin rules admit only the bounded POST writes; unruled storage hosts admit reads alone. Prove both the permitted GitHub repair and refused storage-host mutation without adding policy fields or changing grants.
 
-After an uncertain write reply, reconcile remote state before retrying; unreadable reconciliation state stops further writes. The Slack producer key and admission unique index own replay identity; the admitted event identifier owns the repair branch. Repeat the same producer delivery, including concurrent delivery, to prove those authorities agree.
+The instructions require reconciliation after an uncertain write reply, stopping further writes when remote state is unreadable. The Slack producer key and admission unique index own replay identity; the admitted event identifier owns the repair branch. M224 Dimensions 4.1–4.2 implement and run the repeated/concurrent delivery and lost-acknowledgement proofs.
 
 The one-draft promise covers retry of that producer event, not separately authored human messages. Instructions govern reconciliation and diff relevance; request policy enforces the allowed repository, base, branch and draft shape. Do not describe model behavior as a code-enforced exactly-once guarantee.
 
-- **Dimension 4.1** — An addressed request rereads evidence and returns one bounded draft → Test `test_addressed_repair_reads_evidence_before_draft`
-- **Dimension 4.2** — Unaddressed events and forbidden repository/base/ref/draft shapes cannot reach a repair write → Test `should_refuse_unaddressed_or_out_of_scope_repair`
-- **Dimension 4.3** — Concurrent replay retains one admission/event branch and one remote draft → Test `should_keep_one_draft_for_replayed_producer_event`
-- **Dimension 4.4** — Lost ref/draft acknowledgements reconcile before further writes → Test `should_reconcile_uncertain_repair_writes`
-- **Dimension 4.5** — Missing evidence and semantically unsafe repairs produce an observed stopping answer → Test `test_repairer_stops_on_unsafe_requests`
+- **Dimension 4.1 — MOVED to M224 Dimensions 4.4/4.6, R8–R10:** `test_addressed_repair_reads_evidence_before_draft`.
+- **Dimension 4.2 — DONE** — Unaddressed events and forbidden repository/base/ref/draft shapes cannot reach a repair write → Tests `write_bound_fleets_take_addressed_mentions_only`, `a_pull_request_may_only_open_from_the_branch_into_the_base_as_a_draft`, `test_addressed_repair_reads_evidence_before_draft` (scripted policy/wiring proof)
+- **Dimension 4.3 — MOVED to M224 Dimension 4.1, R5:** `should_keep_one_draft_for_replayed_producer_event`.
+- **Dimension 4.4 — MOVED to M224 Dimension 4.2, R6:** `should_reconcile_uncertain_repair_writes`.
+- **Dimension 4.5 — MOVED to M224 Dimension 4.4, R8–R9:** `test_repairer_stops_on_unsafe_requests`.
 
-### §5: Check behavior and prove the development flow
+### §5: Native records and Linux adapter delivery
 
-Keep deterministic network/policy tests, real-model behavior evaluations and external development acceptance as separate evidence. Scripted models prove wiring only; native `gh` log retrieval proves preparation only. Neither can replace the model's own evidence reads or a visible Slack result.
+A completed native model turn with zero calls reports an explicit empty trace with `omitted_call_count: 0`. Unavailable trace data remains null. Prove this through the model loop, completion payload, hosted runner and native event/full-record reads without adding dummy calls.
 
-Before live runs, Indy approves the exact implementation revision under `playbooks/deploy/dev/001_playbook.md`. Dispatch `.github/workflows/deploy-dev.yml` on that reviewed branch before source-PR acceptance; verify its `headSha` equals the approved commit. Record successful enabled deployment, observed API commit stamp, active runner identity and passing readiness; do not invent full runtime revisions.
+Deliver `make acceptance-codex` with the shared local bootstrap, HTTPS/dashboard orchestration and an owned privileged Docker runner on Linux. Retain signed toolbox verification, certificate ownership, startup/cleanup behavior and unchanged browser/CLI suite recipes. Adapter shell tests and build checks belong here; the full external acceptance run belongs to M224.
 
-Correlate the API abbreviation to the approved full revision through an unambiguous repository lookup and deployment evidence. Compare the running runner executable's checksum with the selected workflow's binary, preserving a token-free identity probe from that host. These existing operator reads attest the runner without new build fields or workflow edits; unavailable host evidence leaves acceptance incomplete.
-
-Do not change workflows or deploy to production. Do not grant deployment authority to either fleet.
-
-Install the reviewed instructions only after compatible development runtime support is ready. An older runtime or rollback that cannot read required logs returns acceptance to incomplete; the named-gap behavior remains required.
-
-The small corpus contains eight named cases, using actual native fleet runs and documented reviewed setup variants. Cover CI diagnosis, missing link, foreign repository, ambiguous attempt, blocked download with misleading thread text, truncated required log, addressed repair and unsafe repair. Use the same failed development run where possible; the two positive cases are diagnosis and explicit draft repair.
-
-Run every case once per evaluation campaign on its recorded model/settings and accepted instructions; do not combine cases from different campaigns. Capture accepted fleet snapshots before and after each settled case, and finish retaining that case before applying another setup variant. Preserve superseded failed reports in Git before a corrected campaign, using the selection and hashing rules in the evidence format.
-
-Capture native event details and addressed full tool-call reads, retaining identities, original request/answer, call inventory and truncation flags. Match every detail's captured read address and call identifier to that event; missing or omitted required calls leave the case incomplete. Hash exact accepted instruction bytes and canonical accepted configuration, preserving the native review digest separately.
-
-Pin an explicit model reference and retain event-linked lease identity plus existing non-secret model-settings reads under the evidence format's procedure. Record the operator's unchanged-model prerequisite; absent witnesses or settings drift leave the campaign incomplete. The fixed corpus pins each concrete input, reviewed policy variant and expected result before its trigger.
-
-A completed native model turn with zero calls reports an explicit empty trace with `omitted_call_count: 0`. Keep the existing optional wire field for unavailable data; a null trace never proves zero calls. This generic completion fix supports the missing-link case without introducing artificial tool calls or changing permissions.
-
-Prepare positive cases below existing capture limits: 64 KiB per tool output and 1 MiB of records per event. Source truncation and stored-record truncation are different observations; do not raise either limit to obtain a pass. Unexpected record loss or omitted factual witnesses makes a case incomplete.
-
-The intentional truncated-source case may use a truncated stored record only when its retained prefix proves source truncation, status and call identity. Its stopping answer may assert those observed facts, never omitted log content; a missing truncation notice or dropped record cannot pass. The checker tests this expected negative outcome separately from accidental capture loss.
-
-The offline checker validates the corpus denominator, unique case identities, pinned digests and supporting records before computing thresholds. Grounding and required stop/scope behavior must hold in all eight cases; useful outcomes must pass all eight. Manual semantic grading remains attributed review, not an automated factual-truth claim.
-
-Supported review grades are `pass`, `fail` and `incomplete`; only a reviewed pass contributes to either total. Grounding passes when every factual claim has a source witness and all required stop/scope rules hold. Usefulness passes when the case's expected diagnosis, clarification, named stop or bounded draft is actually observed; a correct stop is useful.
-
-Failures and incomplete cases stay in the fixed eight-case denominator and block shipping. An incomplete case lacks required proof; a failure has proof of an incorrect outcome, with that distinction retained in the report. The successful diagnosis/draft flow still requires its own positive evidence, regardless of stopping-case grades.
-
-The development record includes runner/API revisions, accepted setup/digest, fleet/event identifiers and the exact GitHub run attempt/job/commit. Retain sanitized source-read evidence, original-thread trigger/answer permalinks, the addressed repair request, actual draft URL/base/head and reviewed diff. The same regression must fail before the fix and pass at the returned draft head, with command, executor, counts and exit status.
-
-Verify the actual Slack answer and draft-link visibility separately from event processing and delivery scheduling. Indy reviews the externally visible result; the agent records evidence without inventing approval. M224 keeps all three development demonstrations, incident prerequisites and production gates; no result passes from this document alone.
-
-- **Dimension 5.1** — Complete attributed behavior records meet the fixed thresholds → Test `test_ci_instruction_behavior_corpus`
-- **Dimension 5.2** — Missing, contradictory or stale records fail the evidence checker → Test `should_reject_incomplete_ci_drill_evidence`
-- **Dimension 5.3** — Real source reads, same-thread answer, bounded draft and regression result correlate → Test `test_development_ci_thread_has_verified_draft`
-- **Dimension 5.4** — Zero-tool completion has an explicit empty trace, while unavailable data stays unknown → Test `should_report_known_zero_tool_calls`
-- **Dimension 5.5** — A separate read-only fleet retrieves the exact GitHub job log through its own tool call → Test `test_separate_fleet_reads_github_job_log`
+- **Dimension 5.1 — MOVED to M224 Dimension 4.4, R8–R9:** `test_ci_instruction_behavior_corpus`.
+- **Dimension 5.2 — MOVED to M224 Dimension 4.5, R12:** `should_reject_incomplete_ci_drill_evidence`.
+- **Dimension 5.3 — MOVED to M224 Dimension 4.6, R10:** `test_development_ci_thread_has_verified_draft`.
+- **Dimension 5.4 — DONE** — Zero-tool completion has an explicit empty trace, while unavailable data stays unknown → Test `should_report_known_zero_tool_calls`.
+- **Dimension 5.5 — MOVED to M224 Dimension 4.3, R7:** `test_separate_fleet_reads_github_job_log`.
+- **Dimension 5.6 — MOVED to M224 Dimension 4.7, R11:** `make acceptance-codex`.
+- **Dimension 5.7 — DONE** — Linux adapter preserves signed inputs, certificate ownership and cleanup → Test `make test-unit-rustd-daemon-libs` (the adapter shell cases), plus the recorded Docker image build.
 
 ## Interfaces
 
@@ -323,25 +289,14 @@ Verify the actual Slack answer and draft-link visibility separately from event p
 - Tool-network protocol retries are disabled for every method; each admitted transport attempt sends once. Inference retry behavior is unchanged.
 - The internal transport remains single-hop. Its opaque redirect metadata is separate from the origin-only model projection; update every internal constructor/caller together.
 - Keep existing `ToolErrorCode` classes. Render safe origin, hop count, upstream status, returned content type, truncation/decoding notices and a fixed stopping reason.
-- The evidence checker takes `--report` and `--section` (`grounding`, `behavior` or `development`); it reads the pinned corpus and exits nonzero on invalid or incomplete input.
-- Reports use `schema_version: 1`, one selected `evaluation_id` and retained prior-report commit references; all eight active cases share that campaign's subject.
-- Require eight unique case/event records, hashed prompt/tool/answer references, factual-claim witnesses, review identity/date and explicit findings, including an empty findings list.
-- Development records add environment/runtime identities, run/attempt/job/commit, Slack permalinks, draft scope/head and before/after regression evidence.
-- No new platform endpoint, trigger type, authentication flow or settings screen is introduced. The HTTP policy fields are the explicit exception described in §1.
-
-The shared report format is pinned in `playbooks/operations/acceptance/ci_evidence_format.md`; changes amend that format and this spec together.
-Require accepted-definition snapshots, exact instruction/policy hashes, native event/tool witnesses, a fixed evaluation selection and attributed runtime proof.
-Keep every witness inline in the named JSON report; mismatched, unavailable or unsupported evidence cannot pass.
-
-**Linux acceptance:** `make acceptance-codex` shares local bootstrap, HTTPS, dashboard and suite orchestration with `acceptance-local`. It uses a privileged owned Docker runner on Linux, verified signed toolbox input and the same real Clerk/model fixtures. No scripted model, authentication change, TLS bypass or changed suite assertion can count as acceptance.
-
-- **Dimension 5.6** — Linux Docker acceptance runs the existing browser and CLI assertions → Test `make acceptance-codex`
+- No new authentication flow, trigger type or settings screen is introduced. HTTP policy fields are the explicit API exception.
+- The evidence checker, report, corpus and live runtime/Slack/draft attribution are M224 interfaces, specified in `playbooks/operations/acceptance/ci_evidence_format.md`.
 
 ### §6: Refresh stable Rust dependencies
 
-Audit every workspace registry dependency against its latest stable release, update declarations and lockfile, and adapt incompatible APIs in their existing callers. Keep the toolchain pin and prerelease exclusions. Verify lint, unit, integration, Rust patch/changed-file coverage and acceptance against the updated graph.
+Audit every workspace registry dependency against its latest stable release, update declarations and lockfile, and adapt incompatible APIs in their existing callers. Keep the toolchain pin and prerelease exclusions. Verify lint, unit, integration and Rust patch/changed-file coverage against the updated graph. Full external Linux acceptance is M224 R11.
 
-- **Dimension 6.1** — Workspace crates use the latest stable releases with unchanged behavioral gates → Test `make lint-all test-unit-all test-integration-rustd check-version`
+- **Dimension 6.1 — DONE** — Workspace crates use the latest stable releases with unchanged behavioral gates → Test `make lint-all test-unit-all test-integration-rustd check-version`
 
 ## Failure Modes
 
@@ -383,32 +338,50 @@ Keep existing tool/refusal counters and their label sets; this spec adds no metr
 
 ## Test Specification (tiered)
 
-The [tiered test matrix](../../../playbooks/operations/acceptance/ci_evidence_format.md#test-specification-tiered) records each Dimension’s concrete inputs and expected outcomes. New HTTP egress settings require default, public-address, credential, repository, method and sandbox-isolation tests. The Linux adapter runs the existing browser and CLI suites without altered assertions. Dependency updates rerun all repository gates.
+The [tiered test matrix](../../../playbooks/operations/acceptance/ci_evidence_format.md#test-specification-tiered) records the original Dimension identifiers; the transfer table below names their current owner. M235 retains transport, policy, instructions/fixture wiring, known-zero records and adapter checks. Default/public-address, credential, repository, method and sandbox-isolation assertions remain required. Existing repository gate results are retained; rerun only for new code or a specific failure, per the owner’s verification-cadence instruction.
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Unit admission, unaffected no-follow behavior and total-budget boundaries (§1–§2) | `make test-unit-all` | exit 0; named unit-tier boundary tests run | P0 | |
-| R2 | Hosted reads, headers, privacy, protocol failures, producer replay and uncertain-write recovery (§1–§4) | `make test-integration-rustd` | exit 0; named integration-tier composing-path tests run | P0 | |
-| R3 | Grounding, required stops and scope hold in every case (§3–§5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M235_001-ci-evidence.json --section grounding` | exit 0; `grounding=8/8; critical_failures=0` | P0 | |
-| R4 | Every declared behavior case produces its expected useful result (§5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M235_001-ci-evidence.json --section behavior` | exit 0; `behavior=8/8; worst_case_failures=0` | P0 | |
-| R5 | Actual development result and regression proof correlate (§5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M235_001-ci-evidence.json --section development` | exit 0; `development=PASS`; attributed manual review and source/Slack/PR/test references present | P0 | |
-| S1 | Commit checks | `orly gate work` | exit 0 | P0 | |
-| S2 | Repository lint | `make lint-all` | exit 0 | P0 | |
-| S3 | Repository unit | `make test-unit-all` | exit 0 | P0 | |
-| S4 | Repository integration | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Repository version | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| R1 | Unit admission, unaffected no-follow behavior and total-budget boundaries (§1–§2) | `make test-unit-all` | exit 0; named unit-tier boundary tests run | P0 | ✅ — retained make unit command and exact-code-revision CI: 4,965 Rust unit passes; boundary/policy tests pass |
+| R2 | Hosted reads, headers, privacy, protocol failures, bounded repair policy and known-zero records (§1–§5) | `make test-integration-rustd` | exit 0; named integration-tier composing-path tests run | P0 | ✅ — retained make integration: 1,448 ordinary + 3 exclusive; every integration case also passes in exact-code-revision CI |
+| R3 | Grounding, required stops and scope hold in every case (§3–§5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section grounding` | exit 0; `grounding=8/8; critical_failures=0` | P0 | MOVED to M224_001 R8 |
+| R4 | Every declared behavior case produces its expected useful result (§5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section behavior` | exit 0; `behavior=8/8; worst_case_failures=0` | P0 | MOVED to M224_001 R9 |
+| R5 | Actual development result and regression proof correlate (§5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section development` | exit 0; `development=PASS`; attributed manual review and source/Slack/PR/test references present | P0 | MOVED to M224_001 R10 |
+| R6 | Full Linux browser and CLI acceptance | `make acceptance-codex` | unchanged suites pass on a supported Linux host | P0 | MOVED to M224_001 R11 |
+| R7 | Same signed producer event is safe under concurrent replay | `make test-integration-rustd` | one admission/event/branch and draft | P0 | MOVED to M224_001 R5 |
+| R8 | Lost write acknowledgements reconcile before retry | `make test-integration-rustd` | exact remote state checked; no duplicate write | P0 | MOVED to M224_001 R6 |
+| R9 | Offline evidence checker rejects invalid or incomplete proof | `make test-unit-all` | meaningful checker tests pass at required TypeScript coverage | P0 | MOVED to M224_001 R12 |
+| S1 | Commit checks | `orly gate work` | exit 0 | P0 | ✅ — `orly gate work` exit 0; declared repository checks valid |
+| S2 | Repository lint | `make lint-all` | exit 0 | P0 | ✅ — retained `make lint-all` exit 0; subsequent changed-code Clippy and all CI lint checks pass |
+| S3 | Repository unit | `make test-unit-all` | exit 0 | P0 | ✅ — retained `make test-unit-all` unit/coverage gates pass; exact-code-revision CI passes every unit shard |
+| S4 | Repository integration | `make test-integration-rustd` | exit 0 | P0 | ✅ — retained `make test-integration-rustd` exit 0; exact-code-revision coverage shards pass every integration case |
+| S5 | Repository version | `make check-version` | exit 0 | P0 | ✅ — `make check-version` exit 0; all declared versions match 0.71.0 |
+| S6 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | ✅ — exit 0; 7,524 commits scanned, no leaks found; staged scan also passes |
 
-Run all commands verbatim at implementation verification; repository rows point to final `orly gate pr` evidence in Session Notes. Authoring, fixture edits and static document checks leave all implementation grades empty. The separate published tool page and changelog must match the implemented behavior before the source PR is reviewable.
+Verify retained M235 rows; `MOVED` rows are executed and graded by M224, never required again for M235 closure. Record repository command evidence in Session Notes and retain prior successful runs, following the owner's instruction to repeat only for new code or a specific failure. Static document checks do not prove runtime behavior. The separate tool page and changelog must match the implementation before the source PR is reviewable.
 
-### Behavior evaluations
+### Owner-directed transfers to M224
+
+| Original M235 requirement | M224 successor | Acceptance remains |
+|---|---|---|
+| Dimensions 3.1–3.3, 4.1, 4.5 | Dimension 4.4; R8–R9; existing 3.1–3.2 | eight actual-model cases, exact source reads, required stops and explicit repair |
+| Dimension 4.3; replay portion of R2 | Dimension 4.1; R5 | at least 100 concurrent copies of the same signed producer event, one admission/event/branch and one draft |
+| Dimension 4.4; uncertain-write portion of R2 | Dimension 4.2; R6 | lost ref/draft acknowledgements reconcile before further writes; unreadable state stops |
+| Dimension 5.1; R3–R4 | Dimension 4.4; R8–R9 | grounding and useful expected behavior pass 8/8; failed/incomplete cases remain in the denominator |
+| Dimension 5.2 | Dimension 4.5; R12 | implement and test the offline checker; reject missing, stale, contradictory or unsupported evidence |
+| Dimension 5.3; R5 | Dimension 4.6; R10 | same-thread source reads, visible answer, addressed request, bounded draft and unchanged regression red/green correlate |
+| Dimension 5.5 | Dimension 4.3; R7 | separate read-only development fleet retrieves the exact job log through its own native call |
+| Dimension 5.6 | Dimension 4.7; R11 | full Linux browser and CLI acceptance passes on a host with supported HTTPS egress |
+
+`MOVED` is not a passing result. M224 owns implementation and acceptance of each successor; M235 retains no dependency on their completion. The report path becomes `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json`.
+
+### Behavior evaluations (M224-owned)
 
 - **Grounding rule:** Every factual identifier, timestamp, source quote and claimed repository effect has a matching observed source or remote response in that case.
-- **Golden set:** Eight cases in `tests/fixtures/fleets/ci-investigation/cases.json`, covering source completeness, identity, scope, injection and explicit repair. New failures add cases and explicitly amend the denominator.
-- **Ship threshold:** Grounding, required stopping and scope hold in 8/8 cases; usefulness passes 8/8; blocked-download repair advice occurs zero times. R3–R4 compute these results from complete attributed records.
-- **Fallback:** Required-source gaps produce a stopping answer; failed grounding or missing evidence blocks shipping. Preserve the failed campaign in Git before changed instructions/inputs start a new complete campaign; retain its commit reference.
+- **M224 production threshold:** Grounding, required stopping and scope hold in 8/8 cases; usefulness passes 8/8; blocked-download repair advice occurs zero times. M224 R8–R9 compute these results from complete attributed records.
+- **Fallback:** Required-source gaps produce a stopping answer; failed grounding or missing evidence blocks M224 production progression. Preserve the failed campaign in Git before changed instructions/inputs start a new complete campaign; retain its commit reference.
 
 ## Dead Code Sweep
 
@@ -430,7 +403,7 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 2. **Preserved user behavior:** Existing mentions, reviewed access, original-thread replies and human merge/deploy authority keep their meaning.
 3. **Optimal-way check:** Reuse the current generic HTTP tool and native instructions; add the admitted download hop that those instructions cannot perform.
 4. **Rebuild-vs-iterate:** Extend the existing guard and fixtures; a source-specific service adds coupling without resolving a separate customer need.
-5. **What we build:** Bounded private GET following, CI-only Markdown recipes, composing-path tests, a small evidence checker and actual development proof.
+5. **What we build:** Bounded private GET following, HTTP policy settings, CI-only Markdown recipes, native records, composing-path tests and Linux adapter code; M224 owns the checker and live proof.
 6. **What we do NOT build:** No new picker, diagnostic workflow, Slack conversation model, repair coordinator or publication flow is needed here.
 7. **Fit with existing features:** Native review/Save/Apply pins instructions and reach; existing ingress, admission, branch authority and outbound delivery own their current responsibilities.
 8. **Surface order:** Reuse native command-line authoring and Slack first; the same definition can use existing browser authoring without a new screen.
@@ -455,17 +428,34 @@ N/A: no files or public symbols are deleted. Remove obsolete mandatory-Grafana w
 - **Review finding follow-up:** Indy requested, "Fix the review finding". Settings attribution now pins exact native-field joins, capture order and the operator's final confirmation. Corpus validation pins prompt equality, consistent role/variant mappings and case-local tagged witnesses, including zero-tool clarification.
 - **Document check finding:** Architecture checks rejected the pending format's location and parsed JSON-member names as SQL table references. The proposed acceptance format now lives alongside its playbook. No gate, implementation grade or spec status changed.
 - **Review limits:** Critic review used five rounds and one additional confirmation; no owner waiver is claimed. Readiness fixes remain root-reviewed after the allowed re-audit.
-- **Open blockers:** Required source/instruction changes, evaluation cases, test lanes and external development proofs are unimplemented. M224's incident demonstration retains its independent source blockers.
+- **Opening blockers (historical):** Source/instruction changes, evaluation cases, test lanes and external development proofs were unimplemented. The owner-directed transfer below supersedes their original ownership; M224 retains incident-source blockers.
 - **Implementation opening:** Indy requested testing and fixing the redirect gap, with verification in a separate fleet. Work starts with guarded downloads and the isolated read-only probe; later Sections remain incomplete. Latest fetched main remains `7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1`, version `0.71.0`.
 - **Recovery checkpoint:** Indy requested, "can you commit and push so we know that if the workspace disconnects i can resume." Publish the incomplete feature branch as a recovery checkpoint. Keep this spec active; do not treat the checkpoint as verified or ready to merge. The cloud execution connection failed without a retained provider cause; source files survived recovery.
 - **Verification cadence:** Indy requested, "donot repeatedly run unit, compile, integration, it just wastes time." Retain prior results, finish source review before the final gate, and rerun only for changed code or a specific failure. Scripted CI scenarios prove native wiring, not model instruction adherence.
 - **Managed-cloud diagnosis:** Local account bootstrap failed before browser/CLI suites: `afd_identity/src/direct.rs` disables environment proxies, while this executor routes HTTPS through its sidecar. [OpenAI networking guidance](https://learn.chatgpt.com/docs/environments/cloud-environments) requires the configured proxy; [Clerk verification guidance](https://clerk.com/docs/guides/sessions/manual-jwt-verification) confirms the public signing-key URL. Indy accepted a Linux CI host; preserve current authentication behavior.
 - **Metrics review:** A safe redirect start and paired terminal outcome are specified; no new metric family or label set is proposed.
-- **Skill-chain outcomes:** Authored and reviewed through `orly-spec`; the cloud handoff retains local documents. Implementation verification, live acceptance and publication remain pending.
+- **Skill-chain outcomes:** `orly-spec` authored and reviewed the specification and transfer; `orly-build` delivered the runtime, instructions, records, adapter and dependency update. `orly-ship` review corrections are pushed in draft PR #792 with all implementation checks green at `f3dcef4c0`. Closing documentation changes no executable code. Full local `orly gate pr` is not claimed green on that final revision: prior make results and focused corrections are retained under the owner’s no-repeat instruction, and exact-code-revision CI verifies the complete test/coverage set. M224 owns the listed remaining proofs; publication/merge remains with the owner.
 - **Owner scope additions:** Indy requested public HTTP egress API settings with UI later, a Linux `acceptance-codex` target reusing local acceptance, and latest stable Rust crates in this PR. He explicitly requested branch publication, PRs, full checks and `orly-ship` monitoring; the cloud default against pushing is superseded. No production action is authorized.
-- **Deferrals and transfers:** None; M224 keeps its existing rubric outcomes and recorded Elasticsearch deferral. This spec introduces supporting requirements without moving launch rows.
+- **Deferrals and transfers:** The owner-directed table moves only outstanding development verification to M224. No acceptance result is passed or waived; M224 retains its existing incident requirements and recorded Elasticsearch deferral.
 
-Owner: Indy, Oct 30, 2026.
+Indy requested the following ownership changes on Oct 31, 2026:
+
+> "Replay and lost-acknowledgement tests would you do that in M224"
+>
+> "Success log retrieval - would you do in M224?"
+>
+> "the eight case evaluation, slack draft can you do in M224"
+
+For Linux acceptance, Indy identified the agent environment as the blocker:
+
+> "THE LINUX ACCEPTANCE HAS A BLOCKER WHICH IS BLOCKED BY YOU? CRAP ISNT SO"
+>
+> "if so why are you still keeping that in pending"
+
+The amendment treats that direction as keeping the full Linux acceptance obligation in M224 rather than holding M235 on this managed VM's network limitation. The accepted Linux CI host remains the execution destination; no passing run or waiver is claimed. All transferred criteria stay P0 and block M224's production progression.
+
+
+Owner: Indy, Oct 30, 2026. Scope transfer: Oct 31, 2026.
 
 > "I dont want to build a tight integration but rather use the LLM md instructions to tune and tailor what we need."
 
