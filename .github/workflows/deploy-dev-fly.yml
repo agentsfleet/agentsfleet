@@ -1,10 +1,15 @@
 name: deploy-dev / fly
 
 # Called by deploy-dev.yml after build. Stages vault secrets onto the Fly app,
-# resolves the immutable dev-latest digest, and deploys agentsfleetd-dev.
+# deploys agentsfleetd-dev using the selected candidate's immutable digest.
 
 on:
   workflow_call:
+    inputs:
+      image:
+        description: Verified candidate image by digest.
+        type: string
+        required: true
     outputs:
       result:
         description: deploy-fly job result (success | failure | cancelled | skipped)
@@ -164,36 +169,14 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
-      - name: Resolve dev-latest digest
-        id: digest
-        # Deploy the IMMUTABLE digest, never the mutable :dev-latest tag. Fly
-        # caches the tag -> image-id mapping on its side and can redeploy a stale
-        # (old) image even after push-ghcr publishes a new one — the exact failure
-        # that crash-looped agentsfleetd-dev on an old binary. The caller's build
-        # stage has already pushed, so dev-latest in GHCR points at this run's image.
-        run: |
-          # Bounded retry: GHCR's package-versions API can lag a few seconds
-          # behind push-ghcr moving the tag, so a single lookup may transiently
-          # return empty for an image that pushed fine. Retry before failing.
-          DIGEST=""
-          for attempt in 1 2 3 4 5 6; do
-            DIGEST=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/agentsfleetd/versions" \
-              --jq '[.[] | select(.metadata.container.tags[]? == "dev-latest")][0].name')
-            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then break; fi
-            echo "dev-latest not yet indexed by GHCR (attempt $attempt/6); retrying in 5s..."
-            sleep 5
-          done
-          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
-            echo "FAIL: could not resolve dev-latest digest from GHCR after retries"; exit 1
-          fi
-          echo "dev-latest -> $DIGEST"
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Validate the selected immutable image
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_IMAGE: ${{ inputs.image }}
+        run: '[[ "$CANDIDATE_IMAGE" =~ ^ghcr\.io/agentsfleet/agentsfleetd@sha256:[0-9a-f]{64}$ ]]'
 
       - name: Deploy agentsfleetd-dev
         run: |
-          IMAGE="ghcr.io/agentsfleet/agentsfleetd@${{ steps.digest.outputs.digest }}"
+          IMAGE="$CANDIDATE_IMAGE"
           echo "Deploying immutable image: $IMAGE"
           if ! python3 scripts/deploy_fly.py --app "${{ vars.FLY_APP_DEV }}" --image "$IMAGE" --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120; then
             APP="${{ vars.FLY_APP_DEV }}"
@@ -206,6 +189,7 @@ jobs:
             exit 1
           fi
         env:
+          CANDIDATE_IMAGE: ${{ inputs.image }}
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       # always(): the point of this notification is the deploy that failed.

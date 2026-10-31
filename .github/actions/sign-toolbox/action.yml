@@ -1,0 +1,76 @@
+name: Sign an existing toolbox
+description: Sign an already verified toolbox with the key embedded in its runner; never build an image.
+inputs:
+  op-token:
+    description: 1Password service-account token; trusted workflows only.
+    required: true
+  vault:
+    description: Vault holding the release key.
+    required: true
+  key-item:
+    description: Release key item.
+    default: toolbox-release-key
+  output-dir:
+    description: Directory containing the verified unsigned toolbox.
+    default: dist/candidate/toolbox
+runs:
+  using: composite
+  steps:
+    - name: Identify the verified toolbox
+      id: identity
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        images=("$OUTPUT_DIR"/toolbox-*.erofs)
+        [ "${#images[@]}" = 1 ]
+        source deploy/baremetal/toolbox.sh
+        echo "digest=$(toolbox_digest_of "${images[0]}")" >> "$GITHUB_OUTPUT"
+    - name: Load the toolbox release key from 1Password
+      uses: 1password/load-secrets-action@v5
+      with:
+        export-env: true
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.op-token }}
+        COSIGN_PRIVATE_KEY: op://${{ inputs.vault }}/${{ inputs.key-item }}/private-key
+        COSIGN_PASSWORD: op://${{ inputs.vault }}/${{ inputs.key-item }}/password
+
+    # The signature is over the manifest's exact bytes, offline (no transparency
+    # log), which is what the runner checks. The public half is compared against
+    # the key compiled into the runner before anything is signed.
+    #
+    # cosign 3 signs a Sigstore bundle by default and ignores
+    # `--output-signature`; the two `=false` flags keep the bare signature file
+    # the runner verifies. The key's first line in manifest/mod.rs carries the
+    # `pub const … = "` prefix, which `sub` strips before the comparison.
+    - name: Sign the release manifest with the key the runner is built with
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        DIGEST: ${{ steps.identity.outputs.digest }}
+        RUNNER_KEY_SOURCE: rustd/crates/afr_sandbox/src/toolbox/manifest/mod.rs
+      run: |
+        set -euo pipefail
+        out="$PWD/$OUTPUT_DIR"
+        if [ -z "${COSIGN_PRIVATE_KEY:-}" ]; then
+          echo "✗ the toolbox release key is empty — 1Password load failed or the vault lacks the key item" >&2
+          exit 1
+        fi
+        cosign public-key --key env://COSIGN_PRIVATE_KEY --outfile "$out/release.pub"
+        awk '/-----BEGIN PUBLIC KEY-----/{p=1; sub(/^.*-----BEGIN/, "-----BEGIN")} p{print} /-----END PUBLIC KEY-----/{exit}' \
+          "$RUNNER_KEY_SOURCE" > "$RUNNER_TEMP/built-in.pub"
+        if ! diff -q <(tr -d '[:space:]' < "$out/release.pub") <(tr -d '[:space:]' < "$RUNNER_TEMP/built-in.pub") >/dev/null; then
+          echo "✗ the signing key's public half is not TOOLBOX_RELEASE_PUBLIC_KEY in $RUNNER_KEY_SOURCE; the runner would refuse this toolbox" >&2
+          exit 1
+        fi
+        cosign sign-blob --yes --tlog-upload=false \
+          --new-bundle-format=false --use-signing-config=false \
+          --key env://COSIGN_PRIVATE_KEY \
+          --output-signature "$out/toolbox-$DIGEST.json.sig" \
+          "$out/toolbox-$DIGEST.json"
+        cosign verify-blob --insecure-ignore-tlog \
+          --key "$out/release.pub" \
+          --signature "$out/toolbox-$DIGEST.json.sig" \
+          "$out/toolbox-$DIGEST.json"
+        echo "✓ toolbox-$DIGEST.json signed; signature verifies against the runner's key"

@@ -40,334 +40,102 @@ jobs:
           fi
           echo "✓ tag v$TAG matches VERSION $VERSION"
 
-  # ── 1a. x86_64 binary: build inside Alpine container ──────────────────
-  # JS actions work inside Alpine on x86_64 runners.
-  # Alpine's openssl-libs-static provides musl-native .a — fully static output.
-  # The daemon this release actually serves.
-  #
-  # One job, both architectures, each on its own native runner — no QEMU, and
-  # no cross toolchain either. `rust:alpine` is a musl-NATIVE image, so the
-  # musl target is simply the host target and there is nothing to configure;
-  # building on a glibc runner would mean installing and wiring a cross linker
-  # to reach the same place.
-  #
-  # `aws-lc-sys` compiles a C library (a BoringSSL fork), which the workspace
-  # recorded as the one dependency whose static musl link was unproven. It is
-  # proven here on every release, and the static-ELF assertion below is what
-  # says so — the apk list is exactly its build dependencies.
-  compile-daemon:
-    needs: verify-tag
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v7
-
-      # The dist profile is fat LTO across 30 crates, which is minutes of link
-      # time bought deliberately for a daemon whose cost is CPU per request.
-      # Paying it once per release is the trade; paying it on a cold registry
-      # every time is not, so the registry and the target directory are keyed
-      # on the lockfile and the toolchain pin.
-      - uses: actions/cache@v6
-        with:
-          path: |
-            .cargo-cache/registry
-            .cargo-cache/git
-            rustd/target
-          key: cargo-dist-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: cargo-dist-${{ matrix.arch }}-
-
-      # `docker run` rather than a job `container:`, and deliberately so: JS
-      # actions cannot run inside an Alpine container on an ARM64 runner.
-      # Driving the build through docker keeps checkout, cache and upload on
-      # the host where they work, on both architectures, with one code path.
-      - name: Build the daemon in Alpine (musl-native)
-        run: |
-          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
-          # DERIVED, never spelled twice. `make/build.mk` computes BUILDER_IMAGE
-          # from this same file with this same sed, so a versions.env bump moves
-          # CI and the local build together. A literal tag here would let them
-          # drift into "a second compiler nobody chose".
-          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
-          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
-          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
-          echo "→ building in $BUILDER"
-          docker run --rm \
-            -v "$PWD:/w" \
-            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
-            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
-            -e GIT_COMMIT="${GITHUB_SHA::7}" \
-            -w /w/rustd \
-            "$BUILDER" \
-            sh -c '
-              set -e
-              cargo build --profile dist -p agentsfleetd --bin agentsfleetd
-            '
-          # The container writes as root; the cache action and later steps read
-          # as the runner user.
-          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
-
-      - name: Verify static ELF — zero NEEDED, no INTERP
-        run: |
-          bin=rustd/target/dist/agentsfleetd
-          test -f "$bin"
-          if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
-            echo "FAIL: $bin has dynamic NEEDED entries"
-            readelf -d "$bin" | grep NEEDED
-            exit 1
-          fi
-          if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
-            echo "FAIL: $bin has INTERP (dynamic linker) section"
-            exit 1
-          fi
-          echo "✓ $bin: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp rustd/target/dist/agentsfleetd dist/agentsfleetd-rs-linux-${{ matrix.arch }}
-          chmod +x dist/agentsfleetd-rs-linux-${{ matrix.arch }}
-          tar czf dist/agentsfleetd-rs-linux-${{ matrix.arch }}.tar.gz \
-            -C dist agentsfleetd-rs-linux-${{ matrix.arch }}
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleetd-rs-linux-${{ matrix.arch }}
-          path: dist/agentsfleetd-rs-linux-${{ matrix.arch }}.tar.gz
-
-      # Unpackaged, for the image build and the runtime check downstream.
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleetd-rs-linux-${{ matrix.arch }}-raw
-          path: dist/agentsfleetd-rs-linux-${{ matrix.arch }}
-          retention-days: 1
-
-  # The runner is the second binary of the same workspace, built the same way:
-  # the daemon's Alpine builder, `docker run` rather than a container job, and
-  # the same static-ELF assertion. One versions.env bump moves both.
-  compile-runner-amd64:
+  # Native release outputs were compiled and exercised by test.yml, then
+  # signed and verified in development. Tags never invoke Cargo or image builds.
+  prepare-artifacts:
     needs: verify-tag
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run-id: ${{ steps.candidate.outputs.run-id }}
+      artifact: ${{ steps.candidate.outputs.artifact }}
+      image: ${{ steps.verify.outputs.image }}
     steps:
       - uses: actions/checkout@v7
-
-      # Its own key: the daemon's job saves the same paths, and two jobs racing
-      # one key would each restore the other's target directory.
-      - uses: actions/cache@v6
+      - name: Select successful development evidence for the tagged source tree
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make candidate-select-development
+      - uses: actions/download-artifact@v8
         with:
-          path: |
-            .cargo-cache/registry
-            .cargo-cache/git
-            rustd/target
-          key: cargo-dist-runner-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: cargo-dist-runner-amd64-
-
-      - name: Build the runner in Alpine (musl-native)
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.candidate.outputs.run-id }}
+          name: ${{ steps.candidate.outputs.artifact }}
+          path: dist/candidate
+      - name: Verify original build, development rollout and all payload checksums
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN_ID: ${{ steps.candidate.outputs.run-id }}
+        run: make candidate-verify-development
+      - uses: ./.github/actions/toolbox-tools
+      - name: Verify the existing toolbox signature against the embedded key
+        run: make candidate-verify-signature
+      - uses: ./.github/actions/scan-toolbox
+        with:
+          report: dist/production.scan.json
+      - name: Retain fresh vulnerability evidence on failure too
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: toolbox-production-audit
+          path: dist/production.scan.json
+          retention-days: 90
+      - name: Stage unchanged release files and their evidence
         run: |
-          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
-          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
-          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
-          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
-          echo "→ building in $BUILDER"
-          docker run --rm \
-            -v "$PWD:/w" \
-            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
-            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
-            -e GIT_COMMIT="${GITHUB_SHA::7}" \
-            -w /w/rustd \
-            "$BUILDER" \
-            sh -c '
-              set -e
-              cargo build --profile dist -p agentsfleet_runner --bin agentsfleet-runner
-            '
-          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
-
-      - name: Verify static ELF — zero NEEDED, no INTERP
-        run: |
-          bin=rustd/target/dist/agentsfleet-runner
-          test -f "$bin"
-          if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
-            echo "FAIL: $bin has dynamic NEEDED entries"
-            readelf -d "$bin" | grep NEEDED
-            exit 1
-          fi
-          if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
-            echo "FAIL: $bin has INTERP (dynamic linker) section"
-            exit 1
-          fi
-          echo "✓ $bin: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp rustd/target/dist/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
-          chmod +x dist/agentsfleet-runner-linux-amd64
-          tar czf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist agentsfleet-runner-linux-amd64
-
+          mkdir -p dist/release
+          cp dist/candidate/archives/*.tar.gz dist/release/
+          cp dist/candidate/toolbox/* dist/release/
+          cp dist/candidate/candidate.json dist/candidate/development.json dist/candidate/images.json dist/release/
+          cp dist/production.scan.json dist/release/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: dist/release
+          if-no-files-found: error
+          retention-days: 90
+      # Keep the existing names consumed by both production runner jobs.
       - uses: actions/upload-artifact@v7
         with:
           name: agentsfleet-runner-linux-amd64
-          path: dist/agentsfleet-runner-linux-amd64.tar.gz
-
-      # Unpackaged, for the toolbox job's offline bundle.
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleet-runner-linux-amd64-raw
-          path: dist/agentsfleet-runner-linux-amd64
-          retention-days: 1
-
-  # ── 1d. The toolbox: built, scanned, signed, bundled ─────────────────────
-  # A Debian-family builder, because `scripts/toolbox/build.sh` runs mmdebstrap
-  # as root, which the Alpine job cannot. The composite action is the one place
-  # the pipeline lives; deploy-dev-build.yml runs the same one from the branch.
-  build-toolbox-amd64:
-    needs: compile-runner-amd64
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: agentsfleet-runner-linux-amd64-raw
-          path: dist
-
-      - uses: ./.github/actions/build-toolbox
-        with:
-          runner-binary: dist/agentsfleet-runner-linux-amd64
-          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          vault: ${{ vars.VAULT_PROD }}
-
+          path: dist/candidate/archives/agentsfleet-runner-linux-amd64.tar.gz
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
           name: agentsfleet-runner-toolbox-amd64
-          path: dist/toolbox
+          path: dist/candidate/toolbox
+          if-no-files-found: error
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleet-runner-bundle-linux-amd64
-          path: dist/agentsfleet-runner-bundle-linux-amd64.tar.gz
-
-  # ── 1b. Runtime compat: verify release x86_64 binary runs on all target envs ──
-  # Mirrors verify-runtime-compat from cross-compile.yml.
-  # Release binaries must pass before Docker image is pushed to GHCR.
-  # Prove the binary runs in the image that will actually serve it.
-  #
-  # This job used to `ldd` the binary in debian:bookworm-slim, alpine:3.21 and
-  # debian:trixie-slim. That made sense while the question was "does it find a
-  # compatible libc" — a question a dynamically linked binary can answer
-  # differently on each. A static binary has no libc to find, the build job
-  # already asserts zero NEEDED and no INTERP, and none of those three images
-  # is what production runs. So the check moved to the one environment that is:
-  # the distroless base from the Dockerfile, with no shell in it, which is
-  # exactly the property that would make a wrong binary fail here rather than
-  # at deploy.
-  verify-runtime-compat:
-    runs-on: ubuntu-latest
-    needs: compile-daemon
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: agentsfleetd-rs-linux-amd64-raw
-          path: dist
-
-      - name: Run the daemon's preflight on the production base image
-        run: |
-          chmod +x dist/agentsfleetd-rs-linux-amd64
-          printf 'FROM gcr.io/distroless/static-debian12:nonroot\nCOPY agentsfleetd-rs-linux-amd64 /usr/local/bin/agentsfleetd\n' \
-            > dist/Dockerfile.check
-          docker build -q -t agentsfleetd-runtime-check dist
-          # No subcommand: the daemon checks its environment and reports. It
-          # exits non-zero without configuration, so the assertion is that it
-          # RAN — a binary that cannot load says so differently, and says it on
-          # stderr before any of this output exists.
-          out="$(docker run --rm agentsfleetd-runtime-check /usr/local/bin/agentsfleetd 2>&1 || true)"
-          printf '%s\n' "$out"
-          if printf '%s' "$out" | grep -qiE 'no such file|exec format|not found|cannot execute'; then
-            echo "FAIL: the binary did not load on the production base image"
-            exit 1
-          fi
-          echo "✓ distroless/static-debian12: the daemon loads and reports"
-
-  # The macOS daemon is a download, not a deployment: production is linux, and
-  # nothing in this workflow consumes this artifact except the GitHub release.
-  # It is built natively — no cross target, no musl — and it gates nothing.
-  compile-daemon-macos:
-    needs: verify-tag
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rustd/target
-          key: cargo-dist-darwin-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: cargo-dist-darwin-
-
-      - name: Build
-        working-directory: rustd
-        # The same seven characters make/build.mk exports, so /healthz names
-        # the commit the image tag names.
-        env:
-          GIT_COMMIT: ${{ github.sha }}
-        run: |
-          export GIT_COMMIT="${GIT_COMMIT:0:7}"
-          cargo build --profile dist -p agentsfleetd --bin agentsfleetd
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp rustd/target/dist/agentsfleetd dist/agentsfleetd-darwin-arm64
-          chmod +x dist/agentsfleetd-darwin-arm64
-          tar czf dist/agentsfleetd-darwin-arm64.tar.gz -C dist agentsfleetd-darwin-arm64
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleetd-darwin-arm64
-          path: dist/agentsfleetd-darwin-arm64.tar.gz
-
-  # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   push-ghcr:
     runs-on: ubuntu-latest
-    # The image carries the daemon alone, but the push waits on the toolbox too:
-    # everything downstream of this push deploys Fly and then metal, and the
-    # metal jobs download the toolbox artifact. A toolbox that failed to build,
-    # scan or sign must stop the release here, before Fly ships a daemon whose
-    # runners cannot follow it. The macOS binary still never gates the image.
-    needs: [verify-tag, compile-daemon, verify-runtime-compat, build-toolbox-amd64]
+    needs: prepare-artifacts
     permissions:
+      actions: read
+      contents: read
       packages: write
+    outputs:
+      image: ${{ steps.promote.outputs.image }}
     steps:
       - uses: actions/checkout@v7
-
-      # Unpackaged, both architectures, in one download — the image build copies
-      # the binary straight in, so there is nothing to untar.
-      - name: Download the daemon for both architectures
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          pattern: agentsfleetd-rs-linux-*-raw
-          path: dist
-          merge-multiple: true
-
-      - name: Make the binaries executable
-        run: chmod +x dist/agentsfleetd-rs-linux-amd64 dist/agentsfleetd-rs-linux-arm64
-
-      - uses: docker/setup-qemu-action@v4
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.prepare-artifacts.outputs.run-id }}
+          name: ${{ needs.prepare-artifacts.outputs.artifact }}
+          path: dist/candidate
       - uses: docker/setup-buildx-action@v4
-
-      - name: Build and push production image
-        run: make push
+      - name: Authenticate to the existing registry
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Promote the development-verified image without rebuilding
+        id: promote
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make candidate-promote-runtime
 
   # ── 3. CLI: publish @agentsfleet/cli to npm ─────────────────────────
   # Tag lifecycle:
@@ -378,7 +146,7 @@ jobs:
   #     resolve `latest`, not `next`
   npm:
     runs-on: ubuntu-latest
-    needs: verify-tag
+    needs: [verify-tag, prepare-artifacts]
     permissions:
       contents: read
       id-token: write
@@ -425,7 +193,7 @@ jobs:
           NPM_TOKEN: op://${{ vars.VAULT_PROD }}/npm-publish-token/credential
 
       - name: Sync package.json version from git tag
-        run: npm version "${GITHUB_REF#refs/tags/v}" --no-git-tag-version
+        run: npm version "${GITHUB_REF#refs/tags/v}" --no-git-tag-version --allow-same-version
 
       - run: bun install --frozen-lockfile
       - run: bun run build
@@ -454,19 +222,16 @@ jobs:
   # ── 4. GitHub Release: changelog + attach binaries ─────────────────────
   create-release:
     runs-on: ubuntu-latest
-    needs: [compile-daemon, compile-runner-amd64, build-toolbox-amd64, compile-daemon-macos]
+    needs: [prepare-artifacts, push-ghcr]
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
 
-      # Every artifact into one directory: the tarballs, and the toolbox's
-      # image, manifest, signature, SBOM, scan report and public key, which
-      # the release publishes apart from the binary beside the offline bundle.
       - uses: actions/download-artifact@v8
         with:
+          name: release-files
           path: dist
-          merge-multiple: true
 
       # The changelog is published at docs.agentsfleet.net, not carried in the
       # repo: one source of truth, and no version-heading promotion step to
@@ -482,17 +247,18 @@ jobs:
             dist/*.tar.gz
             dist/toolbox-*
             dist/release.pub
+            dist/candidate.json
+            dist/development.json
+            dist/images.json
+            dist/production.scan.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── 5. Verify: DEV gate before PROD rollout ──────────────────────────────
   # Publishing the GitHub release is not a precondition for deploying.
   #
-  # This used to wait on `create-release`, which waits on the macOS and runner
-  # builds — so a slow native macOS compile sat between a pushed image and a
-  # production rollout, gating a deploy on an artifact the deploy never reads.
-  # Production needs the image, and the image is `push-ghcr`. The release still
-  # publishes on its own path from the same tag.
+  # The retained development receipt qualifies this exact tree; live readiness
+  # still gates production rollout after the immutable image is promoted.
   verify-dev-gate:
     runs-on: ubuntu-latest
     needs: push-ghcr
@@ -507,7 +273,7 @@ jobs:
   # ── 6. Deploy: prod API ───────────────────────────────────────────────
   deploy-fly-prod:
     runs-on: ubuntu-latest
-    needs: verify-dev-gate
+    needs: [verify-dev-gate, push-ghcr]
     permissions:
       contents: read
       packages: read
@@ -644,40 +410,15 @@ jobs:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_APP_PROD: ${{ vars.FLY_APP_PROD }}
 
-      - name: Resolve latest digest
-        id: digest
-        # Deploy the IMMUTABLE digest, never the mutable :latest tag — Fly caches
-        # the tag -> image-id mapping and can otherwise redeploy a stale image
-        # even after push-ghcr publishes a new one. push-ghcr (a needs: ancestor)
-        # has already pushed, so :latest in GHCR points at this release's image.
-        run: |
-          # Bounded retry: GHCR's package-versions API can lag a few seconds
-          # behind push-ghcr moving the tag, so a single lookup may transiently
-          # return empty for an image that pushed fine. Retry before failing.
-          DIGEST=""
-          for attempt in 1 2 3 4 5 6; do
-            DIGEST=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/agentsfleetd/versions" \
-              --jq '[.[] | select(.metadata.container.tags[]? == "latest")][0].name')
-            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then break; fi
-            echo "latest not yet indexed by GHCR (attempt $attempt/6); retrying in 5s..."
-            sleep 5
-          done
-          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
-            echo "FAIL: could not resolve latest digest from GHCR after retries"; exit 1
-          fi
-          echo "latest -> $DIGEST"
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Deploy PROD API to Fly.io
         run: |
           flyctl deploy \
             --app "$FLY_APP_PROD" \
-            --image "ghcr.io/agentsfleet/agentsfleetd@${{ steps.digest.outputs.digest }}" \
+            --image "$CANDIDATE_IMAGE" \
             --config deploy/fly/agentsfleetd-prod/fly.toml \
             --wait-timeout 120
         env:
+          CANDIDATE_IMAGE: ${{ needs.push-ghcr.outputs.image }}
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_APP_PROD: ${{ vars.FLY_APP_PROD }}
 
