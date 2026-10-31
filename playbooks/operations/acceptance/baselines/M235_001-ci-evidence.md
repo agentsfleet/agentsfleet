@@ -260,3 +260,32 @@ Companion documentation is in draft PR `https://github.com/agentsfleet/docs/pull
 The full source baseline at `7b18cd4166b87b9289c9d94cd31000f96d500e15` remains incomplete. A brief environment-unavailable report interrupted observation; tools subsequently reconnected and the pending command returned. The cause is unconfirmed. No final baseline, Rust coverage, Linux acceptance or live positive fleet result is claimed.
 
 Indy reports a passing macOS `acceptance-local` run. Its revision and test totals have been requested and are not yet recorded here.
+
+## Published draft and retained verification
+
+Source draft PR: https://github.com/agentsfleet/agentsfleet/pull/792.
+Indy subsequently identified the passing macOS `acceptance-local` revision as main `7148b1d4ff9a5ad7da3c4ba3c562ec539abef7a1`; browser and CLI totals were not supplied. This is owner-reported evidence for main, not a run of this branch.
+
+To avoid repeating the interrupted local baseline, retained isolated GitHub unit run `41005012902` at `be09c5a7a7052d0a1fa67026fdd126f94099232d` supplies 1,441 runner, 139 daemon and 3,334 library passes: 4,914 total. `git diff --quiet be09c5a7 origin/main` exits zero, and `git diff --stat origin/main 7b18cd4` lists only four Markdown files. The tested source therefore matches the comparison revision. Baseline coverage run `41005012774` reports 75,282/75,545 lines, 99.6519%. Its coverage test totals are not an ordinary integration-baseline count.
+
+At `7906c4ed7`, the retained `orly gate pr` execution passed integration with 1,448 ordinary and three exclusive tests; Rust units passed 1,471 runner, 139 daemon and 3,342 library tests, 4,952 total. All TypeScript package coverage gates passed. The overall gate failed one Clippy assertion-construction finding. Commit `b6174f899` changes only that empty-string construction; subsequent `make lint-all` exits zero with “All lint checks passed”. The full gate was not repeated for that style correction, following Indy's verification-cadence instruction.
+
+Deciding logs: `/workspace/m235-evidence/pr-gate-interrupted-log.log`, `lint-final-only.log`, `baseline-ci-unit-counts.json` and `baseline-ci-measurements.json`.
+
+The first PR coverage run `41193702224` at `b6174f899` passes all four test shards and project line coverage, 75,760/76,039 lines (99.6331%). Its merge job `124518793512`, named `test-integration-rustd`, fails patch coverage at 512/526 lines (97.3384%) and five changed-file floors. This is a failed coverage verdict, not a claim that the integration assertions failed.
+
+Greptile review thread `PRRT_kwDOReIoss6yQLEB` identifies a P1 redaction defect: a shorter protected spelling can consume the prefix of a longer value and expose its suffix. New public-chain regressions reproduce the defect before correction. The correction matches and masks the complete union of overlapping protected ranges while bounding automaton construction and response size. The earlier red run reports eight passes and four assertion failures; the first corrected egress package run passes 100 tests. Later edge cases and coverage corrections are tracked separately.
+
+The source remains a draft with active M235 scope. No successful separate-fleet log read, real-model campaign, Slack repair demonstration, Linux acceptance verdict or production action is asserted.
+
+## Greptile correction checks
+
+The final overlap implementation passes all 22 selected redirect tests, including shared prefixes, crossing/self-overlapping values, complete markers at the response cap, JSON control escapes, safe Debug and bounded construction failure. `cargo clippy -p afr_egress -p afr_supervisor -p afd_api --all-targets --all-features --offline --no-deps -- -D warnings` exits zero before the final test-only assertion corrections.
+
+Focused checks pass five OpenAPI stability tests and 19 composing HTTP-tool tests. The checkout selection initially catches an invalid removal of mirror-parent creation: clone preparation reads configuration before repository initialization. The parent setup is restored; 24 checkout tests pass, while the new malformed-symlink case correctly refuses but fails its expected error-wording assertion. After asserting the observed native message, “file name contained an unexpected NUL byte”, that single case passes. No broad unit or integration suite was repeated for these review corrections.
+
+Read-only adversarial and standards follow-up reviews report no remaining findings. The standards review's missing repository assertion is fixed. Unreachable OpenAPI fallback and query/hex iterator guards are removed without suppressions; checkout reuses its initialized repository with committer configuration. The changed-file coverage verdict remains pending the pushed revision's CI.
+
+Deciding logs: `/workspace/m235-evidence/review-fixes-clippy.log`, `review-fixes-afr_egress.log`, `review-fixes-afd_api-final.log`, `review-fixes-afr_tools-final.log`, `review-fixes-afr_supervisor-final.log` and `review-fixes-symlink-final.log`.
+
+Indy approved the prepared Linkwarden PR #3 dependency-output change and one development rerun. It keeps the original install exit status and full installation-failure output, and preserves the title-decoding regression. The update is limited to `.github/workflows/playwright-tests.yml`; no production workflow or runtime behavior is changed.

@@ -167,6 +167,14 @@ async fn test_supervisor_clones_at_base_with_cache() {
     let second = fixture.workspace("lease_2");
 
     let cloned = fixture.check_out(&first, BASE).await.unwrap();
+    git(
+        &fixture.mirror(),
+        &[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ],
+    );
     let cached = fixture.check_out(&second, BASE).await.unwrap();
 
     assert_eq!(cloned, Fetched::Cloned);
@@ -177,6 +185,13 @@ async fn test_supervisor_clones_at_base_with_cache() {
     );
     for workspace in [first, second] {
         assert_eq!(git(&workspace.join(NAME), &["rev-parse", "HEAD"]), head);
+        assert_eq!(
+            git(
+                &workspace.join(NAME),
+                &["for-each-ref", "--format=%(refname)", "refs/remotes"]
+            ),
+            "refs/remotes/origin/main"
+        );
     }
 }
 

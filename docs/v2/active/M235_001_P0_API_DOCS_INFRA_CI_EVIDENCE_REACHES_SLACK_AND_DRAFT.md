@@ -28,7 +28,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Baseline revision:** 7b18cd4166b87b9289c9d94cd31000f96d500e15
 
-**Test Baseline:** unchanged comparison revision fails two executor process-reaping tests; see baseline evidence. Full repository verification remains incomplete before the Pull Request (PR).
+**Test Baseline:** isolated hosted source-identical baseline records 4,914 Rust unit passes and 99.6519% line coverage; see baseline evidence for the comparison and earlier local process-reaping failure. The integration baseline and final repository verdict remain incomplete.
 
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md`; distinguish baseline failures, changed-package tests and live fleet proof
 
@@ -82,7 +82,8 @@ Paths below are implementation scope; authoring changes only this spec, the M224
 | `rustd/crates/afr_egress/src/egress/mod.rs` | EDIT | admit each next request and scrub private redirect material |
 | `rustd/crates/afr_egress/src/redirect/mod.rs` | CREATE | own one bounded GET redirect chain and safe terminal outcomes |
 | `rustd/crates/afr_egress/src/redirect/target.rs` | CREATE | validate the bounded opaque target and its safe projection |
-| `rustd/crates/afr_egress/src/redirect/privacy.rs` | CREATE | scrub known target echoes and redirect-derived failures |
+| `rustd/crates/afr_egress/src/redirect/privacy/mod.rs` | CREATE | scrub known target echoes and redirect-derived failures |
+| `rustd/crates/afr_egress/src/redirect/privacy/matcher.rs` | CREATE | bound overlapping-pattern matching and mask complete covered ranges |
 | `rustd/crates/afr_egress/src/redirect/tests.rs` | CREATE | test target admission, headers, loops, budgets and private state |
 | `rustd/crates/afr_egress/src/redirect/privacy/tests.rs` | CREATE | isolate signed-target output tests within source-size bounds |
 | `rustd/crates/afr_egress/src/lib.rs` | EDIT | connect the redirect mechanism to its first caller |
@@ -140,6 +141,7 @@ The matching documentation branch belongs to the separate `/workspace/docs` chec
 | `rustd/crates/afd_gate/src/policy/shape.rs; rustd/crates/afd_fleet/src/lease/answer/tests.rs` | EDIT | carry the reviewed settings into the lease |
 | `rustd/crates/afr_egress/src/admission/mod.rs; rustd/crates/afr_egress/src/admission/http_egress/tests.rs; rustd/crates/afr_egress/src/fixture.rs` | EDIT / CREATE | admit public HTTPS or preset domains without relaxing other restrictions |
 | `rustd/crates/afr_supervisor/src/egress/mod.rs; rustd/crates/afr_supervisor/src/egress/tests.rs; rustd/crates/afr_supervisor/src/holds/built_under.rs; rustd/crates/afr_supervisor/src/holds/built_under_tests.rs; rustd/crates/afr_supervisor/src/workspace_clone/fetch.rs; rustd/crates/afr_supervisor/src/workspace_clone/checkout.rs` | EDIT | reuse registry names and preserve sandbox network boundaries |
+| `rustd/crates/afr_supervisor/src/workspace_clone/tests.rs; rustd/crates/afr_supervisor/src/workspace_clone/failure_tests.rs` | EDIT | prove native clone behavior, stale origin HEAD omission and typed failures after the dependency update |
 | `public/openapi.json` | GENERATE | publish the native API settings |
 | `rustd/crates/afd_api/src/openapi/stability/mod.rs; rustd/crates/afd_api/src/openapi/stability/tests.rs` | EDIT | publish explicit beta classes for the new HTTP settings |
 | `rustd/crates/afd_authoring/src/model/provider/schema.rs; rustd/crates/afd_authoring/src/model/provider/tests/proposals.rs; rustd/crates/afd_wire/tests/policy_shapes.rs` | EDIT | expose reviewed HTTP settings to authoring and prove wire defaults |
@@ -209,6 +211,8 @@ Redirects repeat those checks. UI controls are later work.
 **Implementation defaults:** at most three followed redirects, one 30-second call deadline, a 10-second connect ceiling within remaining time, and the existing 1 MiB body ceiling. The deadline covers admission, minting, connects and reads; it never resets between hops. Validate raw Location and resolved target against an 8-KiB bound through `garde` before parsing or admitting the respective value.
 
 Explicitly disable the pooled tool client's `reqwest` retries in `Network::build`; leave the shared builder and inference client's retry policy unchanged. This includes protocol retries for other tool methods, so a failed transport attempt ends instead of replaying a possible write. A followed GET therefore makes at most four physical request attempts; retain one pooled tool client and count wire requests in protocol-failure tests.
+
+Mask the union of overlapping protected spellings, including crossing and self-overlapping occurrences. The matcher bounds its nondeterministic automaton, deterministic automaton and determinization working memory to 10 MiB each; construction failure stops through `Privacy`. Scan the complete input before applying the output budget.
 
 Discard intermediate response bodies without reading them; close those responses before continuing. The final decoded response body shares the existing cap; no archive extraction, implicit range reads or transport retry is added. A body exactly at the cap remains complete only when the upstream stream ends there.
 

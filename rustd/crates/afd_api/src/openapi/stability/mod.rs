@@ -60,51 +60,60 @@ pub(super) fn declare_beta<'a>(
     let mut missing = Vec::new();
     for &(schema, properties) in fields {
         for &property in properties {
-            match property_of(document, schema, property).and_then(parts_of) {
-                Some((extensions, description)) => {
-                    extensions
-                        .get_or_insert_with(Extensions::default)
-                        .insert(STABILITY.to_owned(), BETA.into());
-                    *description = Some(match description.take() {
-                        Some(text) => format!("{text} {BETA_NOTE}"),
-                        None => BETA_NOTE.to_owned(),
-                    });
-                }
-                None => missing.push((schema, property)),
+            if !property_of(document, schema, property).is_some_and(publish_beta) {
+                missing.push((schema, property));
             }
         }
     }
     missing
 }
 
-/// One inline property of one named object schema.
+/// One property of one named object schema.
 fn property_of<'d>(
     document: &'d mut OpenApi,
     schema: &str,
     property: &str,
-) -> Option<&'d mut Schema> {
+) -> Option<&'d mut RefOr<Schema>> {
     let components = document.components.as_mut()?;
     let RefOr::T(Schema::Object(object)) = components.schemas.get_mut(schema)? else {
         return None;
     };
-    let field = object.properties.get_mut(property)?;
-    // A single-reference union preserves validation while carrying field metadata.
-    if let RefOr::Ref(reference) = field {
-        let mut reference = reference.clone();
-        let description =
-            (!reference.description.is_empty()).then(|| std::mem::take(&mut reference.description));
-        *field = Schema::OneOf(
-            OneOf::builder()
-                .item(reference)
-                .description(description)
-                .build(),
-        )
-        .into();
-    }
+    object.properties.get_mut(property)
+}
+
+/// A reference needs an inline wrapper to publish field metadata beside its target.
+fn publish_beta(field: &mut RefOr<Schema>) -> bool {
     match field {
-        RefOr::T(found) => Some(found),
-        RefOr::Ref(_) => None,
+        RefOr::T(schema) => annotate_beta(schema),
+        RefOr::Ref(reference) => {
+            let mut reference = reference.clone();
+            let description = (!reference.description.is_empty())
+                .then(|| std::mem::take(&mut reference.description));
+            let mut wrapper = Schema::OneOf(
+                OneOf::builder()
+                    .item(reference)
+                    .description(description)
+                    .build(),
+            );
+            let published = annotate_beta(&mut wrapper);
+            *field = wrapper.into();
+            published
+        }
     }
+}
+
+fn annotate_beta(schema: &mut Schema) -> bool {
+    let Some((extensions, description)) = parts_of(schema) else {
+        return false;
+    };
+    extensions
+        .get_or_insert_with(Extensions::default)
+        .insert(STABILITY.to_owned(), BETA.into());
+    *description = Some(match description.take() {
+        Some(text) => format!("{text} {BETA_NOTE}"),
+        None => BETA_NOTE.to_owned(),
+    });
+    true
 }
 
 /// Where a field's schema keeps its extensions and its description.

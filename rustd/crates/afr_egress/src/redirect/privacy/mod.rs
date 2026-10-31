@@ -1,10 +1,12 @@
 //! Only finite, known download-target spellings are masked.
 
-use regex::Regex;
 use reqwest::Url;
 
 use super::{Stop, Target};
 use crate::{Inbound, RESPONSE_MAX_BYTES, Result};
+
+mod matcher;
+use matcher::Matcher;
 
 const MASK: &str = "«secret:redirect»";
 const CREDENTIAL_KEYS: [&str; 11] = [
@@ -45,15 +47,16 @@ impl Privacy {
     }
 
     fn query_values(&mut self, url: &Url) {
-        for written in url
-            .query()
-            .unwrap_or_default()
-            .split('&')
-            .filter(|pair| !pair.is_empty())
+        for (written, (name, value)) in
+            url.query()
+                .unwrap_or_default()
+                .split('&')
+                .filter_map(|written| {
+                    url::form_urlencoded::parse(written.as_bytes())
+                        .next()
+                        .map(|pair| (written, pair))
+                })
         {
-            let Some((name, value)) = url::form_urlencoded::parse(written.as_bytes()).next() else {
-                continue;
-            };
             let credential = name
                 .split(|c: char| !c.is_ascii_alphanumeric())
                 .any(|token| {
@@ -73,17 +76,18 @@ impl Privacy {
         if self.units.is_empty() {
             return Ok(());
         }
-        let mut patterns = Vec::new();
+        let mut values = Vec::new();
         for unit in self.units.iter().filter(|unit| !unit.is_empty()) {
-            patterns.extend(spellings(unit)?.iter().map(|value| encoded_pattern(value)));
+            values.extend(spellings(unit)?);
         }
-        let patterns = patterns.join("|");
-        let matcher = Regex::new(&patterns).map_err(|_invalid| Stop::Privacy)?;
-        let (body, truncated) = mask_bounded(&matcher, &response.body);
+        values.sort_unstable();
+        values.dedup();
+        let matcher = Matcher::new(&values)?;
+        let (body, truncated) = mask_bounded(&matcher, &response.body)?;
         response.body = body;
         response.truncated |= truncated;
         if let Some(content_type) = &mut response.content_type {
-            let (masked, truncated) = mask_bounded(&matcher, content_type);
+            let (masked, truncated) = mask_bounded(&matcher, content_type)?;
             if truncated {
                 return Err(Stop::Privacy);
             }
@@ -94,22 +98,20 @@ impl Privacy {
 }
 
 /// Keep redactions whole and never build an expanded response beyond its budget.
-fn mask_bounded(matcher: &Regex, text: &str) -> (String, bool) {
+fn mask_bounded(matcher: &Matcher, text: &str) -> Result<(String, bool), Stop> {
     let mut result = String::with_capacity(text.len().min(RESPONSE_MAX_BYTES));
-    let mut parts = matcher.split(text);
-    if !append_bounded(&mut result, parts.next().unwrap_or_default()) {
-        return (result, true);
-    }
-    for part in parts {
-        if RESPONSE_MAX_BYTES - result.len() < MASK.len() {
-            return (result, true);
+    let mut cursor = 0;
+    for covered in matcher.covered(text)? {
+        let plain = text.get(cursor..covered.start).ok_or(Stop::Privacy)?;
+        if !append_bounded(&mut result, plain) || RESPONSE_MAX_BYTES - result.len() < MASK.len() {
+            return Ok((result, true));
         }
         result.push_str(MASK);
-        if !append_bounded(&mut result, part) {
-            return (result, true);
-        }
+        cursor = covered.end;
     }
-    (result, false)
+    let tail = text.get(cursor..).ok_or(Stop::Privacy)?;
+    let complete = append_bounded(&mut result, tail);
+    Ok((result, !complete))
 }
 
 fn append_bounded(result: &mut String, text: &str) -> bool {
@@ -163,16 +165,14 @@ fn hex_digits(
 ) -> String {
     let mut digits = String::new();
     for _digit in 0..count {
-        if !chars.peek().is_some_and(char::is_ascii_hexdigit) {
+        let Some(hex) = chars.next_if(char::is_ascii_hexdigit) else {
             break;
-        }
-        if let Some(hex) = chars.next() {
-            digits.push(hex);
-            if hex.is_ascii_alphabetic() {
-                result.extend(['[', hex.to_ascii_lowercase(), hex.to_ascii_uppercase(), ']']);
-            } else {
-                result.push(hex);
-            }
+        };
+        digits.push(hex);
+        if hex.is_ascii_alphabetic() {
+            result.extend(['[', hex.to_ascii_lowercase(), hex.to_ascii_uppercase(), ']']);
+        } else {
+            result.push(hex);
         }
     }
     digits

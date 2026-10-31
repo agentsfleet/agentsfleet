@@ -62,19 +62,15 @@ pub(super) fn check_out(
         destination,
         gix::create::Kind::WithWorktree,
         gix::create::Options::default(),
-        gix::open::Options::isolated(),
+        gix::open::Options::isolated().config_overrides([
+            format!("{COMMITTER_NAME}={GIT_IDENTITY_NAME}"),
+            format!("{COMMITTER_EMAIL}={GIT_IDENTITY_EMAIL}"),
+        ]),
     )?
     .to_thread_local();
     copy_tree(&mirror.join(OBJECTS), &repository.git_dir().join(OBJECTS))?;
     let source = gix::open_opts(mirror, gix::open::Options::isolated())?;
     let base = branch_of(&source, base)?;
-    let repository = gix::open_opts(
-        destination,
-        gix::open::Options::isolated().config_overrides([
-            format!("{COMMITTER_NAME}={GIT_IDENTITY_NAME}"),
-            format!("{COMMITTER_EMAIL}={GIT_IDENTITY_EMAIL}"),
-        ]),
-    )?;
     record_branches(&source, &repository, &base)?;
     configure_origin(&repository, url, &base)?;
     write_worktree(&repository, &base, stop)?;
