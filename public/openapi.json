@@ -21018,14 +21018,17 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "package_manager_domains": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Whether HTTP tools may reach standard package registry domains."
+            "description": "Whether HTTP tools may reach standard package registry domains. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "read_only": {
             "type": [
@@ -24581,12 +24584,18 @@
             "description": "Exact hostnames HTTP tools may reach."
           },
           "http_egress": {
-            "$ref": "#/components/schemas/HttpEgress",
-            "description": "HTTP destination scope; omitted means restricted to named hosts."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HttpEgress"
+              }
+            ],
+            "description": "HTTP destination scope; omitted means restricted to named hosts. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "package_manager_domains": {
             "type": "boolean",
-            "description": "Admit the standard package registry hosts through HTTP tools."
+            "description": "Admit the standard package registry hosts through HTTP tools. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "read_only": {
             "type": "boolean",

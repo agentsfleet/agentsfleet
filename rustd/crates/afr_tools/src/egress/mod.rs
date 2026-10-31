@@ -14,11 +14,13 @@ use afr_egress::redirect::{Chain, Stop};
 use afr_egress::{Draft, Error, Inbound, Refusal, Transport};
 
 use crate::catalog::Entry;
+use crate::error::Result;
 use crate::lease::Lease;
 use crate::runtime::{ToolErrorCode, ToolOutput};
 
 /// The event a refused call logs under, fixed because dashboards match on it.
 const EVENT_TOOL_REFUSED: &str = "tool_refused";
+const READ_DEADLINE_EXCEEDED: &str = "HTTP read deadline exceeded";
 
 /// The statuses a tool reports as succeeded.
 const SUCCESS: std::ops::Range<u16> = 200..300;
@@ -74,12 +76,21 @@ pub(crate) async fn send_get(
 ) -> Result<Inbound, ToolOutput> {
     tokio::time::timeout(REQUEST_TIMEOUT, get_chain(entry, transport, lease, draft))
         .await
-        .unwrap_or_else(|_expired| {
-            Err(ToolOutput::failed(
-                ToolErrorCode::UpstreamUnreachable,
-                "HTTP read deadline exceeded",
-            ))
-        })
+        .unwrap_or_else(|_expired| Err(read_expired(entry, lease.lease_id)))
+}
+
+fn read_expired(entry: &Entry, lease_id: &str) -> ToolOutput {
+    let tool = entry.name();
+    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let reason = READ_DEADLINE_EXCEEDED;
+    tracing::warn!(
+        event = "http_read_deadline_exceeded",
+        lease_id,
+        tool,
+        error_code,
+        reason
+    );
+    ToolOutput::failed(ToolErrorCode::UpstreamUnreachable, READ_DEADLINE_EXCEEDED)
 }
 
 async fn get_chain(

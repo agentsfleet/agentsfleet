@@ -11,6 +11,8 @@ use gix::refs::transaction::{PreviousValue, RefEdit};
 use gix::remote::Direction;
 use gix::remote::fetch::Status;
 
+use crate::error::Result;
+
 /// What the git library fails with, boxed: its calls fail with many types,
 /// and the supervisor only reports which step failed and why.
 pub(crate) type GitError = Box<dyn std::error::Error + Send + Sync>;
@@ -88,7 +90,7 @@ pub(super) fn fetch(
 fn preserve_detached_head(
     repository: &gix::Repository,
     outcome: &gix::remote::fetch::Outcome,
-) -> GitResult<()> {
+) -> Result<(), GitError> {
     let detached = outcome
         .ref_map
         .remote_refs

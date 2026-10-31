@@ -122,20 +122,34 @@ Set `ACCEPTANCE_LOCAL_TOOLBOX_DIR` to an existing signed toolbox set whose manif
 The adapter checks the signature against the runner’s compiled release key; it never loads a release signing key.
 Development Clerk credentials, the model key and the development connector remain the common bootstrap inputs.
 
+Use the absolute directory containing that verified set for `<SIGNED_TOOLBOX_DIR>`.
+
 ```bash
-ACCEPTANCE_LOCAL_TOOLBOX_DIR=/absolute/path/to/signed-toolbox make acceptance-codex
+ACCEPTANCE_LOCAL_TOOLBOX_DIR="<SIGNED_TOOLBOX_DIR>" make acceptance-codex &&
+  printf 'Local acceptance passed.\n'
+```
+
+Expected output after both suites pass:
+
+```text
+<varies>
+Local acceptance passed.
 ```
 
 The runner starts in an owned privileged Docker container, using the shipping binary, sandbox and toolbox verification.
 Its private cgroup namespace contains the delegated `agentsfleet/runner` subgroup.
 
-The kernel must support EROFS, loop devices, Landlock, seccomp and the CPU, I/O, memory and process controllers.
+The kernel must support the Enhanced Read-Only File System (EROFS), loop devices, Landlock, seccomp and the CPU, input/output, memory and process controllers.
 Missing mechanisms fail the run; the adapter does not select a test driver.
 
-Caddy listens only on this VM’s loopback addresses. Chromium temporarily trusts the local certificate through the user’s NSS database; exit removes only that certificate.
+Caddy listens only on loopback addresses in this virtual machine.
+Chromium temporarily trusts the local certificate through the user’s Network Security Services (NSS) database; exit removes only that certificate.
 
-Bun receives an extra CA bundle. Certificate verification stays enabled.
-When `CODEX_PROXY_CERT` is available, Docker builds and QStash also trust that public session CA.
+Bun receives an extra certificate authority (CA) bundle. Certificate verification stays enabled.
+When `CODEX_PROXY_CERT` is available, Docker builds and QStash also trust that public session certificate.
+
+Identity and model services must accept direct HTTPS connections from the host and runner.
+Their clients ignore environment proxies; an environment that requires an HTTP proxy needs different networking before these suites can pass.
 
 Exit stops and removes only the runner container this invocation created, preserving its private startup log.
 The shared datastores, local daemon, Caddy and saved registration remain available for the next run.

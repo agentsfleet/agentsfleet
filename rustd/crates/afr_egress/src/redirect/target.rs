@@ -6,6 +6,7 @@ use reqwest::Url;
 use reqwest::header::{HeaderMap, LOCATION};
 
 use super::Stop;
+use crate::Result;
 
 /// The largest raw or resolved redirect URL admitted for one hop.
 const TARGET_MAX_BYTES: usize = 8192;

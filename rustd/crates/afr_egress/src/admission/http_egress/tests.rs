@@ -13,11 +13,21 @@ const UNLISTED: &str = "https://downloads.example.net/log.txt";
 fn should_admit_public_hosts_only_when_selected() -> crate::Result<()> {
     let mut policy = policy(true);
     policy.network_policy.allow.clear();
-    assert!(
-        Admission::new(&policy)
-            .admit(draft("GET", UNLISTED, &[], None))
-            .is_err()
+    let refused = Admission::new(&policy)
+        .admit(draft("GET", UNLISTED, &[], None))
+        .err();
+    assert_eq!(
+        refused.as_ref().and_then(crate::Error::refusal),
+        Some(Refusal::HostNotAllowed)
     );
+    assert_eq!(
+        refused.as_ref().map(crate::Error::code),
+        Some(afd_core::error_code::INVALID_REQUEST)
+    );
+    assert!(matches!(
+        refused.as_ref().map(crate::Error::kind),
+        Some(crate::error::ErrorKind::HostNotAllowed { host }) if host == "downloads.example.net"
+    ));
     policy.network_policy.http_egress = HttpEgress::Public;
     Admission::new(&policy).admit(draft("GET", UNLISTED, &[], None))?;
     Ok(())
@@ -77,6 +87,22 @@ fn should_preserve_boundaries_with_public_http_egress() {
             draft("GET", "https://[::1]/", &[], None),
             Refusal::AddressNotAllowed,
         ),
+    ];
+    for (draft, expected) in cases {
+        let refused = admission.admit(draft).err();
+        assert_eq!(
+            refused.as_ref().and_then(crate::Error::refusal),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn should_restrict_credentials_and_repository_with_public_http_egress() {
+    let mut policy = policy(true);
+    policy.network_policy.http_egress = HttpEgress::Public;
+    let admission = Admission::new(&policy);
+    let cases = [
         (
             draft(
                 "GET",

@@ -45,8 +45,19 @@ fn should_refuse_repeated_normalized_targets_before_the_hop_limit() {
 #[test]
 fn should_refuse_invalid_or_ambiguous_locations() {
     let base = Url::parse(FIRST).expect("fixture URL");
-    Target::new(&base, &"x".repeat(8193)).expect_err("oversized Location");
-    Target::new(&base, "https://[").expect_err("malformed URL");
+    for raw in ["".to_owned(), "../".repeat(2731), "https://[".to_owned()] {
+        assert_eq!(
+            Target::new(&base, &raw).expect_err("invalid Location"),
+            Stop::InvalidTarget
+        );
+    }
+    let prefix = "https://storage.example/";
+    let long_base =
+        Url::parse(&format!("{prefix}{}", "x".repeat(8190 - prefix.len()))).expect("long base");
+    assert_eq!(
+        Target::new(&long_base, "?q=overflow").expect_err("resolved URL exceeds the bound"),
+        Stop::InvalidTarget
+    );
     let mut headers = HeaderMap::new();
     assert!(Target::from_headers(&base, &headers).is_none());
     headers.append(LOCATION, HeaderValue::from_static("/one"));
@@ -57,6 +68,31 @@ fn should_refuse_invalid_or_ambiguous_locations() {
         chain.next(&mut inbound(302, "")),
         Err(Stop::InvalidTarget)
     ));
+}
+
+#[test]
+fn should_emit_one_terminal_outcome_at_its_severity() {
+    let capture = afd_core::test_util::trace::Capture::install();
+    let first = Url::parse(FIRST).expect("URL");
+    for status in [200, 403] {
+        let mut chain = Chain::new(&first, Vec::new());
+        chain
+            .next(&mut redirected(302, &first, "/download"))
+            .expect("hop");
+        chain.next(&mut inbound(status, "source")).expect("body");
+        chain.finish();
+    }
+    let completed = capture.only("http_redirect_completed");
+    assert_eq!(completed.level, tracing::Level::INFO);
+    assert_eq!(completed.field("status"), Some("200"));
+    let failed = capture.only("http_redirect_failed");
+    assert_eq!(failed.level, tracing::Level::WARN);
+    assert_eq!(failed.field("status"), Some("403"));
+    assert_eq!(failed.field("hop_count"), Some("1"));
+    assert_eq!(
+        failed.field("error_code"),
+        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
 }
 
 #[test]

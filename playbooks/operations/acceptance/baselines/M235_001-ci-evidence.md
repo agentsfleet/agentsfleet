@@ -220,3 +220,21 @@ The full `orly gate verify` rerun now passes. Its `make lint-all` and `make chec
 The lint corrections preserve each assertion and add no suppressions. Full unit, integration, coverage and Linux acceptance remain pending.
 
 Deciding log: `/workspace/m235-evidence/verify-complete.log`.
+
+## Standards corrections and local acceptance blocker
+
+The standards review identified 19 findings. Corrections add warning-level failed redirect outcomes and an explicit read-deadline warning, strengthen refusal assertions, exercise masking through the public chain, and declare beta stability for the new HTTP settings. Revalidation remains pending.
+
+The focused command `cargo test -p afr_egress -p afr_tools -p afd_wire -p afd_api --all-features --no-fail-fast` completed with 924 passed, zero failed and 281 ignored. This package run does not replace the repository make lanes. Deciding log: `/workspace/m235-evidence/standards-regressions-final.log`.
+
+The subsequent OpenAPI classification tests passed all five cases. Native regeneration publishes `x-stability: beta` on both new fields in both definition and lease schemas, preserving the restricted/public enum. Direct derive extensions were tested and discarded because they did not survive a reference-valued field; the existing central classifier now preserves the reference through a one-item union. Deciding log: `/workspace/m235-evidence/stability-classification-final.log`.
+
+`make acceptance-codex` built the native daemon, runner, command-line client, dashboard and Docker runner image, then failed during local account bootstrap. Neither browser nor command-line acceptance assertions started.
+
+At `2026-10-31T06:22:19Z`, the local API at `http://127.0.0.1:32374` returned HTTP 503 for `GET /v1/tenants/me/workspaces`. Its daemon logged `jwks_fetch_failed`, followed by `jwks_refresh_failed` with reason `Expired`: the Clerk signing-key set was unavailable. This request was local, not against `https://api-dev.agentsfleet.net`.
+
+`rustd/crates/afd_identity/src/direct.rs` deliberately ignores environment proxies for identity requests. The managed cloud network requires its session proxy and provides no general direct Internet route. A normal request to the same signing-key URL through the inherited proxy returned HTTP 200. No authentication or proxy behavior was changed.
+
+Local acceptance therefore requires a runtime with supported direct HTTPS access to the existing identity and model endpoints. A configured API key cannot repair a signing-key network failure. The local failure supplies no evidence of a development API outage.
+
+Deciding records: `/workspace/m235-evidence/acceptance-codex-current.log` and `/home/agent/.local/state/agentsfleet/dev-1000-673e2eb5/worktrees/wt_ffa68dde/daemon.log`, events `jwks_fetch_failed` and `jwks_refresh_failed`. The earlier `make acceptance-local` attempt refused this Linux host because it requires macOS and OrbStack; it has no passing verdict here.
