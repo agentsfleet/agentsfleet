@@ -31,6 +31,18 @@ it("reports Publishing until the native publication receipt is confirmed", async
   expect(client.getSnapshot()).toMatchObject({busy: false, pending: false, setupAction: null, notice: "Setup published.", draft: {publication: {revision_id: PUBLICATION.revision_id}}});
 });
 
+it("replaces the saved confirmation as soon as the next authoring request starts", async () => {
+  const client = await fixture.ready(true);
+  await client.save();
+  const gate = Promise.withResolvers<Response>();
+  fixture.override = ({path, method}) => method === "GET" && path.endsWith(`/fleets/${FLEET.id}`) ? gate.promise : undefined;
+  const sending = client.send("Refine the saved setup");
+  expect(client.getSnapshot()).toMatchObject({busy: true, setupAction: "sending", optimistic: null, savedSetupRevision: "1"});
+  gate.resolve(response({...FLEET, definition: DRAFT.candidate!.definition}));
+  await sending;
+  expect(client.getSnapshot()).toMatchObject({busy: false, setupAction: null, savedSetupRevision: null});
+});
+
 it("keeps the original pending action and operation key after a lost publication response", async () => {
   const client = await fixture.ready(true);
   fixture.override = ({path, method}) => method === "POST" && path.endsWith("/fleet-libraries") ? response({user_message: "Unavailable"}, 503) : undefined;

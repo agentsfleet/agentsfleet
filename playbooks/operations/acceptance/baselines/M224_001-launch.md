@@ -249,6 +249,61 @@ This preview establishes component rendering, not live dashboard
 or native API acceptance. Companion documentation is in
 [docs PR #236](https://github.com/agentsfleet/docs/pull/236).
 
+### Chat performance and layout follow-up
+
+The Appsmith `release` reference was cloned at
+`8ebc6c14b1853be074563564a33c581c88326b9b` under `/workspace/appsmith`.
+Its [store](https://github.com/appsmithorg/appsmith/blob/8ebc6c14b1853be074563564a33c581c88326b9b/app/client/src/store.ts#L30)
+installs Redux batching and saga middleware separately.
+
+Its [selectors](https://github.com/appsmithorg/appsmith/blob/8ebc6c14b1853be074563564a33c581c88326b9b/app/client/src/selectors/dataTreeSelectors.ts#L57)
+cache derived state, while its
+[evaluation saga](https://github.com/appsmithorg/appsmith/blob/8ebc6c14b1853be074563564a33c581c88326b9b/app/client/src/sagas/EvaluationsSaga.ts#L409)
+sends tree evaluation to a worker.
+These source observations do not establish that migrating this chat to Redux/Saga would improve performance.
+
+The chat retains assistant-ui's external-store runtime, grouped message parts and elapsed-call hook.
+Its existing converter caches each unchanged tool call's result and timing by object identity.
+The follow-up uses React's `lazy` and `Suspense` for full output and one table for outcome labels, colors and icons.
+
+Production app commands `bun run build` and `bun run size` passed before and after this follow-up.
+The comparison starts at checkpoint `cede65b`; both builds use the same dependency versions.
+The tool reports decimal kB, with gzip compression:
+
+| Entry | Before (kB) | After (kB) | Existing limit (kB) |
+| --- | --- | --- | --- |
+| Dashboard shared | 267.88 | 267.88 | 276.48 |
+| Fleet list incremental | 56.38 | 56.77 | 102.40 |
+| Fleet detail incremental | 94.19 | 94.56 | 102.40 |
+| New fleet incremental | 97.02 | 97.41 | 102.40 |
+
+No size limit changed. The full-output module is a separate 2,014-byte gzip chunk.
+It appears in none of the 27 initial-entry checks.
+
+Across every route and deferred chunk, gzip bytes increased from 1,165,375 to 1,167,685, a 2,310-byte increase.
+
+A Chromium probe used React's production profiling build, the real assistant-ui runtime and the native message converter.
+Each state received 60 text updates with 200 tool calls, including 199 unchanged calls.
+The 95th percentile measures React commit time, in milliseconds:
+
+| Command group | Before p95 / maximum (ms) | After p95 / maximum (ms) | Mounted call rows |
+| --- | --- | --- | --- |
+| Collapsed | 0.6 / 1.8 | 0.7 / 2.0 | 0 |
+| Expanded | 5.2 / 14.6 | 4.6 / 16.3 | 200 |
+
+Both probes recorded zero mutations in unchanged tool-call Document Object Model (DOM) nodes and no browser errors.
+These are single unthrottled component probes, not a Redux/Saga comparison or a live response-latency result.
+The expanded group's frame-interval p95 was 25.1 ms before and 24.0 ms after.
+
+Desktop measurements show a 582.39-pixel user bubble within the 728-pixel assistant column.
+Mobile measurements show 328.16 pixels within 358 pixels, with matching right edges.
+The 390-pixel mobile page has no horizontal overflow; reduced-motion disclosures have no animation.
+
+Private reports are `chat-profile-baseline.json`, `chat-profile-optimized.json`,
+`app-bundle-before-size.log`, `app-bundle-final-size.log` and `full-output-chunk-check.json`
+under `/tmp/agentsfleet-m224-review`.
+The current captures are `chat-optimized-desktop.png` and `chat-optimized-mobile.png` in that directory.
+
 The final local Rust coverage run completed 6,253 cases with zero test failures.
 Its changed-line grade was 100%, 27/27 lines, and all 12 measured changed source files reached at least 99%.
 The lowest whole-file result was 218/220 lines, 99.0909%.

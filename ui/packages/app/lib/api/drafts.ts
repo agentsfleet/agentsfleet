@@ -122,7 +122,7 @@ export class DraftClient {
       this.#startWatching();
       await this.#read(this.#draft().id);
       this.#startWatching();
-    });
+    }, false, "sending");
   }
   refreshSetup(source?: Source): Promise<DrawerEdit> {
     return this.#act(async () => {

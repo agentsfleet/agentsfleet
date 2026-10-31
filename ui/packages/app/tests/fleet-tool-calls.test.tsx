@@ -217,13 +217,14 @@ describe("FleetThread — tool cells", () => {
     expect(within(clipped!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
   });
 
-  it("should open a call in full from show all, and close it again", () => {
+  it("should open a call in full from show all, and close it again", async () => {
+    vi.useRealTimers();
     // The read itself is the dialog's to test; here it never answers.
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     try {
       const view = renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 })]);
       fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
-      const dialog = screen.getByRole("dialog", { name: TOOL_NAME.HTTP_REQUEST });
+      const dialog = await screen.findByRole("dialog", { name: TOOL_NAME.HTTP_REQUEST });
       expect(dialog).toBeTruthy();
       fireEvent.keyDown(dialog, { key: "Escape" });
       expect(screen.queryByRole("dialog")).toBeNull();
@@ -237,14 +238,15 @@ describe("FleetThread — tool cells", () => {
     }
   });
 
-  it("should not reopen show all by itself when its turn runs and settles again", () => {
+  it("should not reopen show all by itself when its turn runs and settles again", async () => {
+    vi.useRealTimers();
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     try {
       const tool = call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 });
       const turn = (status: FleetEventStatus) => ev({ id: "evt_tools", role: "user", actor: "operator", text: "Go", status, tools: [tool] });
       const view = renderCalls([tool]);
       fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
-      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(await screen.findByRole("dialog")).toBeTruthy();
       mockStream([turn(RECEIVED)]);
       view.rerender(threadElement());
       expect(screen.queryByRole("dialog")).toBeNull();

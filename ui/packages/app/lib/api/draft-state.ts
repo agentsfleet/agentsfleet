@@ -28,7 +28,7 @@ export type DraftView = {
   readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string} | null;
   readonly savedSetupRevision: string | null;
   readonly saveOperation?: string | null;
-  readonly setupAction?: "reading" | "saving" | "publishing" | null;
+  readonly setupAction?: "reading" | "sending" | "saving" | "publishing" | null;
   readonly fleet: Fleet | null;
   /** The schedules the last Apply returned; any not `synced` may never fire. */
   readonly schedules: readonly Schedule[];

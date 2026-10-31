@@ -20,11 +20,11 @@ it.each([
   expect(container.textContent).toBe("");
 });
 
-it.each(["reading", "saving", "publishing"] as const)("shows %s only while that operation is recorded", setupAction => {
+it.each(["reading", "sending", "saving", "publishing"] as const)("shows %s only while that operation is recorded", setupAction => {
   const view = {...SAVED, setupAction, busy: true};
   render(<SetupStatusFlap view={view} workspace={WORKSPACE} />);
   const status = screen.getByRole("status", {name: "Setup status"});
-  expect(status.textContent).toBe({reading: "Reading setup", saving: "Saving", publishing: "Publishing"}[setupAction]);
+  expect(status.textContent).toBe({reading: "Reading setup", sending: "Sending request", saving: "Saving", publishing: "Publishing"}[setupAction]);
   expect(status.getAttribute("data-setup-status")).toBe("working");
   expect(status.querySelectorAll('svg[aria-hidden="true"]').length).toBeGreaterThan(0);
   expect(screen.queryByRole("link")).toBeNull();
@@ -100,6 +100,15 @@ it("offers a New fleet pinned to the confirmed publication", () => {
   const link = within(screen.getByRole("status")).getByRole("link", {name: "New fleet"});
   expect(link.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?library=${PUBLICATION.library_id}&revision=${PUBLICATION.revision_id}`);
   expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
+});
+
+it("replaces the publication confirmation and its action when authoring resumes", () => {
+  const view = {...EMPTY_DRAFT_VIEW, draft: PUBLISHED};
+  const page = render(<SetupStatusFlap view={view} workspace={WORKSPACE} />);
+  expect(screen.getByRole("link", {name: "New fleet"})).toBeTruthy();
+  page.rerender(<SetupStatusFlap view={{...view, busy: true, setupAction: "sending"}} workspace={WORKSPACE} />);
+  expect(screen.getByRole("status").textContent).toBe("Sending request");
+  expect(screen.queryByRole("link")).toBeNull();
 });
 
 it("does not call a changed candidate published", () => {

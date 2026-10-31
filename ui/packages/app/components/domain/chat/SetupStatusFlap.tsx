@@ -12,7 +12,7 @@ import { setupActivity } from "@/lib/api/draft-activity";
 import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
 
 type Status = {label: string; icon: LucideIcon; busy?: boolean; confirmed?: boolean};
-const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, saving: {label: "Saving", icon: SaveIcon}, publishing: {label: "Publishing", icon: UploadIcon}};
+const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadIcon}, saving: {label: "Saving", icon: SaveIcon}, publishing: {label: "Publishing", icon: UploadIcon}};
 
 /** Only accepted fleet revisions and publication receipts receive a success tick. */
 export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void}) {
@@ -39,8 +39,8 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet}: {
 
 function setupStatus(view: DraftView, dirty: boolean): Status | null {
   if (view.error) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? CircleHelpIcon : CircleAlertIcon};
-  if (view.setupAction) return {...ACTIONS[view.setupAction], busy: true};
   if (view.saveOperation) return {...ACTIONS.saving, busy: true};
+  if (view.setupAction) return {...ACTIONS[view.setupAction], busy: true};
   if (view.optimistic) return {label: "Sending request", icon: UploadIcon, busy: true};
   if (chatRecovery(view).pending) {
     const refining = view.messages.some(message => message.state === MESSAGE_STATE.running);
