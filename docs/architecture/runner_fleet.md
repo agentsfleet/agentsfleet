@@ -623,7 +623,15 @@ Three network policies, assigned per runner (`rustd/crates/afd_wire/src/runner/m
 
 Every base chain accepts by policy and drops only on its own link, so one sandbox's table never touches another sandbox's or the host's forwarded traffic. The deleted runner's design differed here: each worker's table had a forward chain with `policy drop`, which dropped every other worker's and the host's forwarded packets.
 
-**The merged allowlist.** At lease bind the supervisor merges, deduplicated in first-seen order: the runner's assigned `registry_allowlist`, or, when it is empty, the default registry set (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`, `static.crates.io`, `crates.io`, `index.crates.io`, `proxy.golang.org`, `sum.golang.org`), and the fleet's `network.allow`. A fleet that sets `read_only` keeps its hosts out of the kernel set: nf_tables cannot enforce a method, so those hosts are reached only through `http_request`, whose origin rules can. Each entry is read as a URL's host, under `https://` when it names no scheme, so a scheme, port or path is dropped and `[::1]:80` names `::1`; `http_request` admits by the same reading (`afr_egress::allowlist_host`), so it reaches exactly the hosts the kernel set is built from. The supervisor resolves each name to IPv4 with the host resolver.
+**The merged sandbox allowlist.** At lease bind, the supervisor starts with the runner's assigned `registry_allowlist` or, when empty, the default registry set. It then appends the fleet's `network.allow`, deduplicating in first-seen order.
+
+The default registries are `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`, `static.crates.io`, `crates.io`, `index.crates.io`, `proxy.golang.org` and `sum.golang.org`.
+
+A fleet with `read_only` keeps its hosts out of the kernel set. Kernel rules cannot enforce HTTP methods; those destinations remain available through guarded HTTP tools.
+
+Each entry is read as a URL's host, using `https://` when no scheme is present. A scheme, port or path is dropped; `[::1]:80` names `::1`.
+
+HTTP tools parse additional domains with the same helper, `afr_egress::allowlist_host`. The supervisor resolves sandbox names to IPv4 with the host resolver.
 
 **The inference host is not in the set.** The agent loop calls the model provider from the supervisor, outside every sandbox, at the base URL saved for the selected model ([Runner execution](./runner_execution.md) §Crates). A sandbox has no reason to reach it.
 
@@ -640,6 +648,42 @@ A scope that fails to build is torn down with its sandbox, and the lease is refu
 > **The allowlist vs the deferred name layer.** The above is a resolve-at-bind address pin: own namespace, host-side nf_tables allowlist, no proxy and no resolver in the data path. When the fleet opens to untrusted or customer-operated runners with **rotating-CDN host sets** that a pin at bind cannot track, the name layer is added the **modern** way: an **eBPF/FQDN-aware datapath** that learns allowed addresses by snooping DNS *answers* and programming the same kernel set live — the Cilium `toFQDNs` pattern, or a minimal DNS-answer watcher updating our existing set. **No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle**: that squid-era approach is explicitly *not* the direction. It evolves the datapath: pin at bind → pin from observed DNS, same set. Introducing a controlled resolver to snoop is itself the change from the resolver-less posture, gated to that tier. Standing residual at every tier: an allow-listed write-capable host (for example `github.com`) is still an exfiltration channel by design, closed only by short-lived, scoped tokens, a credential-model change, not this layer.
 >
 > **Second residual: shared front ends.** The kernel set matches destination addresses alone, and the default registry hosts sit on front ends shared with other sites. A sandbox can reach any of those sites by naming it in Server Name Indication (SNI). A hard boundary needs `registry_allowlist` pointed at a mirror on addresses the operator owns.
+
+### HTTP destination settings
+
+The reviewed Definition and lease carry `network.http_egress`, `package_manager_domains` and `allow`. Restricted mode, the default, permits the additional exact domains plus the standard package registries when their preset is enabled.
+
+Public mode permits public HTTPS destinations through HTTP tools. Both modes retain private/reserved address refusal, credential binding, repository/path restrictions and read-only rules.
+
+Every connection checks all returned addresses, including mixed public/private answers. Redirects repeat admission before connecting.
+
+`http_egress` and `package_manager_domains` do not enlarge sandbox network access or change the runner's assigned policy.
+Existing `allow` entries can extend sandbox destinations when `read_only` is `false`, within that policy.
+Dedicated UI controls remain future work.
+
+### Guarded tool downloads
+
+`http_request` follows 301, 302, 303, 307 and 308 only for a bodyless GET.
+
+The shared HTTP builder still disables automatic redirects. The tool composes continuations through the same lease's admission before each send (`afr_tools/src/egress/mod.rs`, `afr_egress/src/redirect/mod.rs`).
+
+HTTPS, reviewed destination scope, address and origin request rules remain authoritative at every hop.
+
+The guarded resolver checks every returned address at connection time.
+
+A call follows at most three redirects within one 30-second deadline, including admission and credential minting. Each connect retains a 10-second ceiling within that deadline.
+
+The pooled tool client disables implicit retries; inference retains its own policy. Intermediate response bodies are dropped unread. The final body retains the 1-MiB cap and reports truncation or lossy decoding before its text.
+
+One bounded Location is resolved relative to the current URL. Both raw and resolved values pass an 8-KiB `garde` bound before their respective parsing or admission. Loop identity is the pinned URL library's serialized absolute URL with its fragment removed; a repeated identity stops before admission or send.
+
+Missing, duplicate, malformed or oversized targets stop safely.
+
+At the first origin change, including effective port, the chain permanently drops all modeled headers. Later hops cannot restore them or mint another credential. The lease guard covers admission and minting, then releases before every transport wait.
+
+Private targets have no raw Debug or serialized projection. The model sees only a safe origin on a redirect refusal. Final response text and content type mask the finite known target spellings, including credential-like query values (`afr_egress/src/redirect/privacy/mod.rs`).
+
+Unknown secrets and arbitrary repeated encodings are outside that detection claim. Redirect outcome records carry bounded status, counts and reasons; see [observability](./observability.md).
 
 ## Scaling
 

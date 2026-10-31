@@ -12,13 +12,13 @@ use gix::bstr::ByteSlice as _;
 use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
 use gix::refs::{FullName, Target};
 
-use super::fetch::{GitResult, ORIGIN};
+use super::fetch::{GitResult, ORIGIN, ORIGIN_REFSPEC};
 
 /// Where a repository keeps its objects, under its git directory.
 const OBJECTS: &str = "objects";
 /// Where `origin`'s branches are recorded, in the mirror and the working copy
-/// alike. A gix bare clone fetches every branch here and writes `refs/heads/`
-/// once, at clone time, so the mirror's own branches go stale.
+/// alike. The mirror fetch explicitly maps every branch here, so each checkout
+/// uses the fetched remote tip rather than the clone's initial local branch.
 const ORIGIN_BRANCHES: &str = "refs/remotes/origin/";
 /// Left out of the working copy: the clone writes it as a plain id and no
 /// later fetch moves it, so it would name a stale commit.
@@ -42,8 +42,6 @@ const FETCH: &str = "fetch";
 const MERGE: &str = "merge";
 /// The configuration file in a git directory.
 const CONFIG: &str = "config";
-/// Where `origin`'s branches are fetched to.
-const ORIGIN_REFSPEC: &str = "+refs/heads/*:refs/remotes/origin/*";
 /// The configuration keys the reference logs' committer is read from.
 const COMMITTER_NAME: &str = "committer.name";
 const COMMITTER_EMAIL: &str = "committer.email";
@@ -64,19 +62,15 @@ pub(super) fn check_out(
         destination,
         gix::create::Kind::WithWorktree,
         gix::create::Options::default(),
-        gix::open::Options::isolated(),
+        gix::open::Options::isolated().config_overrides([
+            format!("{COMMITTER_NAME}={GIT_IDENTITY_NAME}"),
+            format!("{COMMITTER_EMAIL}={GIT_IDENTITY_EMAIL}"),
+        ]),
     )?
     .to_thread_local();
     copy_tree(&mirror.join(OBJECTS), &repository.git_dir().join(OBJECTS))?;
     let source = gix::open_opts(mirror, gix::open::Options::isolated())?;
     let base = branch_of(&source, base)?;
-    let repository = gix::open_opts(
-        destination,
-        gix::open::Options::isolated().config_overrides([
-            format!("{COMMITTER_NAME}={GIT_IDENTITY_NAME}"),
-            format!("{COMMITTER_EMAIL}={GIT_IDENTITY_EMAIL}"),
-        ]),
-    )?;
     record_branches(&source, &repository, &base)?;
     configure_origin(&repository, url, &base)?;
     write_worktree(&repository, &base, stop)?;

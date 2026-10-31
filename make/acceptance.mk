@@ -3,12 +3,15 @@
 # =============================================================================
 
 .PHONY: acceptance-build acceptance-e2e acceptance-execution acceptance-cli
-.PHONY: acceptance-local
+.PHONY: acceptance-local acceptance-codex
 
 ACCEPTANCE_SCOPE ?= full
 
 acceptance-local:  ## Build and start local services, then run acceptance (SUITE=e2e|cli|execution; default: both).
 	@bash deploy/local/acceptance.sh "$(SUITE)"
+
+acceptance-codex:  ## Build local services and run unchanged acceptance suites on Linux with a Docker runner.
+	@bash deploy/local/acceptance.sh "$(SUITE)" codex
 
 # Local twins of the pipeline acceptance jobs — same command, env-driven target
 # (local / vercel.app / api-dev / api), so a developer runs exactly what CI runs.

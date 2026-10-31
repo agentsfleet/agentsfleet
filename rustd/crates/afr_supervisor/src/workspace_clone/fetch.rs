@@ -6,8 +6,12 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
+use gix::protocol::handshake::Ref;
+use gix::refs::transaction::PreviousValue;
 use gix::remote::Direction;
 use gix::remote::fetch::Status;
+
+use crate::error::Result;
 
 /// What the git library fails with, boxed: its calls fail with many types,
 /// and the supervisor only reports which step failed and why.
@@ -17,6 +21,8 @@ pub(crate) type GitResult<T> = std::result::Result<T, GitError>;
 
 /// The remote every mirror fetches from, and every working copy names.
 pub(super) const ORIGIN: &str = "origin";
+/// Keep mirror branches under the same remote-tracking namespace as working copies.
+pub(super) const ORIGIN_REFSPEC: &str = "+refs/heads/*:refs/remotes/origin/*";
 /// The configuration key an extra request header is set under.
 const EXTRA_HEADER: &str = "http.extraHeader";
 
@@ -59,18 +65,53 @@ pub(super) fn fetch(
             Err(_unreadable) => fs::remove_dir_all(mirror)?,
         }
     }
-    if let Some(parent) = mirror.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    // Clone preparation reads configuration before initializing the repository.
+    mirror.parent().map(fs::create_dir_all).transpose()?;
     let mut prepare = gix::clone::PrepareFetch::new(
         url,
         mirror,
         gix::create::Kind::Bare,
         gix::create::Options::default(),
         options(),
-    )?;
-    prepare.fetch_only(gix::progress::Discard, stop)?;
+    )?
+    .configure_remote(|remote| {
+        Ok(remote
+            .with_refspecs([ORIGIN_REFSPEC], Direction::Fetch)?
+            .with_fetch_tags(gix::remote::fetch::Tags::All))
+    });
+    let (repository, outcome) = prepare.fetch_only(gix::progress::Discard, stop)?;
+    preserve_detached_head(&repository, &outcome)?;
     Ok(Fetched::Cloned)
+}
+
+/// A detached advertised HEAD is not a declared default branch. Preserve that
+/// fact rather than accepting the clone library's branch guess.
+fn preserve_detached_head(
+    repository: &gix::Repository,
+    outcome: &gix::remote::fetch::Outcome,
+) -> Result<(), gix::Error> {
+    let detached = outcome
+        .ref_map
+        .remote_refs
+        .iter()
+        .find_map(|reference| match reference {
+            Ref::Direct {
+                full_ref_name,
+                object,
+            } if full_ref_name == "HEAD" => Some(*object),
+            _ => None,
+        });
+    detached
+        .map(|object| {
+            repository.reference(
+                "HEAD",
+                object,
+                PreviousValue::Any,
+                "preserve the advertised detached HEAD",
+            )
+        })
+        .transpose()
+        .map(|_| ())
 }
 
 /// Fetches what `repository`'s origin has that it lacks.

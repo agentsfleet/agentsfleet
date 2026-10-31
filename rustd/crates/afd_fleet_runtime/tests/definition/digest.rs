@@ -9,6 +9,33 @@ use super::{parse, set, value};
 const STAGE_CHUNK_THRESHOLD: &str = "/config/x-agentsfleet/context/stage_chunk_threshold";
 
 #[test]
+fn should_bind_http_egress_settings_to_the_reviewed_definition_digest() {
+    let input = value();
+    let original = canonical_digest(&parse(&input)).expect("digest");
+    for (field, selected) in [
+        ("http_egress", json!("public")),
+        ("package_manager_domains", json!(true)),
+    ] {
+        let mut changed = input.clone();
+        let network = input
+            .pointer("/config/x-agentsfleet/network")
+            .and_then(serde_json::Value::as_object)
+            .expect("fixture network");
+        let mut network = network.clone();
+        network.insert(field.to_owned(), selected);
+        set(
+            &mut changed,
+            "/config/x-agentsfleet/network",
+            json!(network),
+        );
+        assert_ne!(
+            canonical_digest(&parse(&changed)).expect("digest"),
+            original
+        );
+    }
+}
+
+#[test]
 fn test_definition_digest_sorts_objects_and_normalizes_numbers() {
     let definition = parse(&value());
     let mut input = value();

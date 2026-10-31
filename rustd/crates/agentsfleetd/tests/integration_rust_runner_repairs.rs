@@ -102,57 +102,8 @@ fn assert_repaired_on_named_branch(
     );
 }
 
-/// Dimension 6.2. The repairer reconciles, re-reads the head, writes blob,
-/// tree, commit, the named ref and one draft — a ref at the base is refused
-/// before it leaves — and a second run that finds its draft ends with the
-/// link and writes nothing.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_ci_repairer_opens_one_draft_pull_request() {
-    let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
-    let upstream = Upstream::serve(routes(LINKWARDEN, None, file_at_head())).await;
-    let (model, transcript) =
-        FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN), Vec::new()));
-
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
-
-    assert_eq!(settled.status, "processed");
-    assert!(settled.answer.contains(DRAFT_URL), "{}", settled.answer);
-    let (seen, asked) = (upstream.seen(), transcript.asked());
-    assert_eq!(posts(&seen), writes(LINKWARDEN));
-    assert_reconciled_for(LINKWARDEN, &branch_for(&run.event_id), &seen);
-    assert_repaired_on_named_branch(LINKWARDEN, &run.event_id, &seen, &asked);
-    assert_token_stayed_on_the_wire(&seen, &asked);
-
-    // A second event: its own branch, which an earlier run already opened a
-    // draft from. The prompt names that branch, the reconcile looks for it,
-    // and finding the draft ends the run with its link and no write.
-    let second = run.enqueue_event(EventType::Chat).await;
-    let found = branch_for(&second);
-    let again = Upstream::serve(routes(LINKWARDEN, Some(&found), file_at_head())).await;
-    let (model, transcript) =
-        FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN), Vec::new()));
-    let settled = run_event(&run, &second, &again, model).await;
-    assert_eq!(settled.status, "processed");
-    assert!(settled.answer.contains(DRAFT_URL), "{}", settled.answer);
-    let (seen, asked) = (again.seen(), transcript.asked());
-    assert!(
-        asked[0]
-            .instructions
-            .contains(&format!("repair branch: {found}")),
-        "the second run's prompt names its own branch: {}",
-        asked[0].instructions
-    );
-    assert_reconciled_for(LINKWARDEN, &found, &seen);
-    assert!(
-        posts(&seen).is_empty(),
-        "a found draft ends the run before any write"
-    );
-
-    supervisor.shutdown().await;
-    run.cleanup().await;
-}
+#[path = "integration_rust_runner_repairs/ci/tests.rs"]
+mod ci;
 
 /// The incident repairer's two telemetry credentials.
 fn telemetry() -> [Secret; 2] {

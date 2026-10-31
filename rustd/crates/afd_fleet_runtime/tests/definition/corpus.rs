@@ -133,15 +133,62 @@ fn responder_definition_holds_no_write_reach() {
     assert!(network.read_only());
     assert_eq!(network.read_post_paths(), []);
     let hosts: Vec<&str> = network.allow().iter().map(AsRef::as_ref).collect();
-    assert_eq!(hosts.len(), 2);
-    assert!(hosts.contains(&"api.github.com") && hosts.contains(&"grafana.example.net"));
+    assert_eq!(
+        hosts,
+        [
+            "api.github.com",
+            "productionresultssa6.blob.core.windows.net"
+        ]
+    );
     let credentials: Vec<&str> = config
         .credentials()
         .iter()
         .map(CredentialName::as_str)
         .collect();
-    assert_eq!(credentials.len(), 2);
-    assert!(credentials.contains(&"github") && credentials.contains(&"grafana"));
+    assert_eq!(credentials, ["github"]);
+}
+
+#[test]
+fn log_reader_definition_is_an_isolated_read_only_probe() {
+    let parsed = definition(&definition_path("github-log-reader"));
+    let config = parsed.runtime();
+    assert_eq!(
+        config
+            .tools()
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>(),
+        ["http_request"]
+    );
+    assert_eq!(
+        config
+            .credentials()
+            .iter()
+            .map(CredentialName::as_str)
+            .collect::<Vec<_>>(),
+        ["github"]
+    );
+    assert_eq!(
+        config.repository_binding().expect("binding").reach(),
+        &Reach::Read
+    );
+    let network = config.network().expect("policy");
+    assert!(network.read_only());
+    assert_eq!(network.read_post_paths(), []);
+    assert_eq!(
+        network
+            .allow()
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>(),
+        [
+            "api.github.com",
+            "productionresultssa6.blob.core.windows.net"
+        ]
+    );
+    parsed
+        .validate_for_save()
+        .expect("isolated reader is ready to save");
 }
 
 #[test]
@@ -173,6 +220,11 @@ fn repairer_definition_is_write_bound_to_one_base() {
             .iter()
             .map(AsRef::as_ref)
             .collect::<Vec<&str>>(),
-        ["api.github.com"]
+        [
+            "api.github.com",
+            "productionresultssa6.blob.core.windows.net"
+        ]
     );
+    assert!(network.read_only());
+    assert_eq!(network.read_post_paths(), []);
 }

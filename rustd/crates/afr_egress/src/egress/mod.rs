@@ -52,6 +52,7 @@ impl<'run> Egress<'run> {
             url: admitted.url,
             headers,
             body: admitted.body,
+            discard_redirect_body: false,
         })
     }
 

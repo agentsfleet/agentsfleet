@@ -11,6 +11,7 @@ use reqwest::header::HeaderMap;
 use reqwest::{Method, Url};
 
 use crate::error::Result;
+use crate::redirect::Target;
 
 /// A request admitted and ready to leave, its credentials in place.
 ///
@@ -21,9 +22,16 @@ pub struct Outbound {
     pub(crate) url: Url,
     pub(crate) headers: HeaderMap,
     pub(crate) body: Option<String>,
+    pub(crate) discard_redirect_body: bool,
 }
 
 impl Outbound {
+    /// Skip intermediate bodies for an admitted bodyless GET; no request changes.
+    #[must_use]
+    pub fn for_redirect_read(mut self) -> Self {
+        self.discard_redirect_body = self.method == Method::GET && self.body.is_none();
+        self
+    }
     /// The method.
     #[must_use]
     pub const fn method(&self) -> &Method {
@@ -65,7 +73,7 @@ impl fmt::Debug for Outbound {
 }
 
 /// What came back.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Inbound {
     /// The status code.
     pub status: u16,
@@ -78,6 +86,24 @@ pub struct Inbound {
     pub body: String,
     /// Whether the body was cut.
     pub truncated: bool,
+    /// Whether invalid UTF-8 bytes were replaced while decoding the body.
+    pub lossy: bool,
+    /// Private continuation metadata, never rendered to the model.
+    pub redirect: Option<Target>,
+    /// Continuations completed within this HTTP tool call.
+    pub followed_redirects: u8,
+}
+
+impl fmt::Debug for Inbound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Inbound")
+            .field("status", &self.status)
+            .field("body_bytes", &self.body.len())
+            .field("truncated", &self.truncated)
+            .field("lossy", &self.lossy)
+            .field("followed_redirects", &self.followed_redirects)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Where an admitted request is sent.

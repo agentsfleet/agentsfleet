@@ -171,12 +171,12 @@ impl Trace {
         self.calls.push(row);
     }
 
-    /// The finished trace, or none for a run that called no tool.
-    pub(crate) fn finish(self) -> Option<ToolTrace<'static>> {
-        (!self.calls.is_empty() || self.omitted > 0).then_some(ToolTrace {
+    /// The finished trace, including a known empty set when no tool ran.
+    pub(crate) fn finish(self) -> ToolTrace<'static> {
+        ToolTrace {
             calls: self.calls,
             omitted_call_count: self.omitted,
-        })
+        }
     }
 }
 

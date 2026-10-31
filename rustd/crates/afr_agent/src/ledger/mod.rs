@@ -143,8 +143,8 @@ impl<'run> Ledger<'run> {
         }
     }
 
-    /// The run's trace, none for a run that called no tool, and every record.
-    pub(crate) fn finish(&self) -> (Option<ToolTrace<'static>>, Vec<ToolCallRecord<'static>>) {
+    /// The run's known trace, including zero calls, and every record.
+    pub(crate) fn finish(&self) -> (ToolTrace<'static>, Vec<ToolCallRecord<'static>>) {
         let book = std::mem::take(&mut *self.book());
         (book.trace.finish(), book.records)
     }

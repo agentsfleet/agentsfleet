@@ -3,7 +3,7 @@
 //!
 //! `allow_all` shares the host's network and `deny_all_egress` reaches
 //! nothing. `allow_list_egress` reaches the operator's registry baseline, or
-//! [`DEFAULT_REGISTRY`] when the operator named none, plus the hosts the
+//! [`PACKAGE_MANAGER_DOMAINS`] when the operator named none, plus the hosts the
 //! fleet's `network.allow` names. Each host is resolved to its IPv4 addresses
 //! here, with the host's resolver, before the sandbox is built: the sandbox
 //! resolves nothing itself. A host the fleet names may not resolve to an
@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
-use afd_wire::policy::NetworkPolicy as FleetNetwork;
+use afd_wire::policy::{NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy};
 use afr_egress::{Resolve, allowlist_host, unblocked};
 use afr_sandbox::{Allowlist, Network};
@@ -29,28 +29,13 @@ use futures_util::future::try_join_all;
 
 use crate::error::{self, Result};
 
-/// The package registries an `allow_list_egress` sandbox reaches when its
-/// operator named no registry baseline: npm, the Python Package Index,
-/// crates.io and the Go module proxy, each by every host its client fetches
-/// from.
-pub(crate) const DEFAULT_REGISTRY: [&str; 8] = [
-    "registry.npmjs.org",
-    "pypi.org",
-    "files.pythonhosted.org",
-    "static.crates.io",
-    "crates.io",
-    "index.crates.io",
-    "proxy.golang.org",
-    "sum.golang.org",
-];
-
 /// The egress the daemon assigned this runner: its posture, and the registry
 /// hosts an allowlist starts from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Egress {
     policy: NetworkPolicy,
     /// The registry hosts every `allow_list_egress` lease reaches: the
-    /// operator's, or [`DEFAULT_REGISTRY`] when the operator named none.
+    /// operator's, or [`PACKAGE_MANAGER_DOMAINS`] when the operator named none.
     registry: Arc<[Box<str>]>,
 }
 
@@ -64,11 +49,11 @@ impl Egress {
     }
 
     /// The egress `assigned` names, each registry entry cut to its host, or
-    /// [`DEFAULT_REGISTRY`] when it names none.
+    /// [`PACKAGE_MANAGER_DOMAINS`] when it names none.
     pub(crate) fn assigned(assigned: &AssignedPolicy<'_>) -> Self {
         let named = &assigned.registry_allowlist;
         let registry = if named.is_empty() {
-            DEFAULT_REGISTRY.map(Box::from).into()
+            PACKAGE_MANAGER_DOMAINS.map(Box::from).into()
         } else {
             named
                 .iter()
