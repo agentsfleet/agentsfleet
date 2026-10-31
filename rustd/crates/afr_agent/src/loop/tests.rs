@@ -80,6 +80,21 @@ fn starts(frames: &[ActivityFrame<'_>]) -> Vec<String> {
 const URL_ARG: &str = "url";
 
 #[tokio::test]
+async fn should_report_known_zero_tool_calls() {
+    let script = Script::new([vec![say("Please provide the run URL.")]]);
+    let engine = engine(Vec::new(), &script);
+    let lease = lease(&[], unbounded());
+    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+
+    assert_eq!(output.result.content, "Please provide the run URL.");
+    assert_eq!(
+        serde_json::json!(output.trace),
+        serde_json::json!({"calls": [], "omitted_call_count": 0})
+    );
+    assert_eq!(serde_json::json!(output.records), serde_json::json!([]));
+}
+
+#[tokio::test]
 async fn test_loop_runs_tool_calls_until_answer() {
     let script = Script::new([
         vec![

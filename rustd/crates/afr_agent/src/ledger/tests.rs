@@ -20,6 +20,19 @@ const LEASE_ID: &str = "lease-1";
 /// Calls whose records, at the field cap each, pass the event's budget.
 const LARGE_CALLS: usize = 20;
 
+#[test]
+fn a_run_without_calls_keeps_a_known_trace_and_no_records() {
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let scrub = scrub();
+    let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+
+    assert_eq!(
+        serde_json::json!(ledger.finish()),
+        serde_json::json!([{"calls": [], "omitted_call_count": 0}, []])
+    );
+}
+
 /// Runs one call through `ledger`, its handler answering `text`.
 async fn call(ledger: &Ledger<'_>, text: String) {
     let call = Call {
@@ -232,11 +245,7 @@ async fn a_call_opened_inside_another_takes_the_next_number_and_each_ends_once()
         ended,
         [("2".to_owned(), succeeded), ("1".to_owned(), succeeded)]
     );
-    let rows: Vec<&str> = trace
-        .iter()
-        .flat_map(|trace| &trace.calls)
-        .map(|row| row.call_id.as_ref())
-        .collect();
+    let rows: Vec<&str> = trace.calls.iter().map(|row| row.call_id.as_ref()).collect();
     assert_eq!(rows, ["2", "1"], "one row each, in the order they ended");
     assert_eq!(records.len(), 2);
 }

@@ -311,3 +311,25 @@ async fn test_event_list_omits_tool_calls() {
     supervisor.shutdown().await;
     run.cleanup().await;
 }
+
+/// Known zero calls stay distinct from unavailable data through the tenant API.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_reported_empty_trace_is_served_as_known_zero_calls() {
+    let mut supervisor = Supervisor::new();
+    let (run, token) = tenant_reader(&mut supervisor).await;
+    let http = reqwest::Client::new();
+    let detail = format!(
+        "/v1/workspaces/{}/fleets/{}/events/{}",
+        run.workspace, run.fleet, run.event_id
+    );
+    let claimed = lease(&http, &run).await;
+    let before = tenant_get(&http, &run, &token, &detail).await;
+    assert_eq!(field(&before, "tool_calls"), &Value::Null);
+    let known = json!({"calls": [], "omitted_call_count": 0});
+    settle_with(&http, &run, claimed, known.clone()).await;
+    let after = tenant_get(&http, &run, &token, &detail).await;
+    assert_eq!(field(&after, "tool_calls"), &known);
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}

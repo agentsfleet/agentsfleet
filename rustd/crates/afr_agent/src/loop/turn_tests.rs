@@ -123,7 +123,10 @@ async fn test_answer_streams_as_chunks() {
         output.result.content, "hello",
         "reasoning is not the answer"
     );
-    assert!(output.trace.is_none(), "a run with no call has no trace");
+    assert_eq!(
+        serde_json::json!(output.trace),
+        serde_json::json!({"calls": [], "omitted_call_count": 0})
+    );
 }
 
 #[tokio::test]

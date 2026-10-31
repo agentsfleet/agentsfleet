@@ -241,8 +241,8 @@ pub struct RunOutput {
     pub result: ExecutionResult<'static>,
     /// The memory to push, fenced, before the report.
     pub memory: Vec<MemoryDelta<'static>>,
-    /// Every call the run made and how it ended, for the report; none for a
-    /// run that called no tool.
+    /// Known calls and their outcomes, including an empty trace when no tool ran.
+    /// None means trace data was unavailable.
     pub trace: Option<ToolTrace<'static>>,
     /// Each finished call's full record, posted before the report.
     pub records: Vec<ToolCallRecord<'static>>,
