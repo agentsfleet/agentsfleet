@@ -16,7 +16,7 @@ const LAST_LINE = "line2000 payload";
 
 /** This is the real output component and application CSS over loopback HTTP. */
 const test = base.extend<object, { outputProbe: string }>({
-  outputProbe: [async ({}, use) => {
+  outputProbe: [async ({ browserName }, provideProbe) => {
     const built = await promisify(execFile)("bun", ["build", "tests/e2e/fixtures/fleet-output-browser-probe.tsx",
       "--target=browser", "--format=iife", "--minify", "--define", 'process.env.NODE_ENV="production"',
       "--define", 'process.env.NEXT_PUBLIC_API_URL="https://api-test.agentsfleet.net"'],
@@ -35,8 +35,8 @@ const test = base.extend<object, { outputProbe: string }>({
     });
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
-    if (!address || typeof address === "string") throw new Error("Output probe did not bind a TCP port");
-    try { await use(`http://127.0.0.1:${address.port}`); }
+    if (!address || typeof address === "string") throw new Error(`${browserName} output probe did not bind a TCP port`);
+    try { await provideProbe(`http://127.0.0.1:${address.port}`); }
     finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   }, { scope: "worker" }],
 });
