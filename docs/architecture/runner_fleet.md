@@ -657,7 +657,9 @@ Public mode permits public HTTPS destinations through HTTP tools. Both modes ret
 
 Every connection checks all returned addresses, including mixed public/private answers. Redirects repeat admission before connecting.
 
-These settings do not enlarge sandbox network access or change the runner's assigned policy. They are API settings; dedicated UI controls remain future work.
+`http_egress` and `package_manager_domains` do not enlarge sandbox network access or change the runner's assigned policy.
+Existing `allow` entries can extend sandbox destinations when `read_only` is `false`, within that policy.
+Dedicated UI controls remain future work.
 
 ### Guarded tool downloads
 

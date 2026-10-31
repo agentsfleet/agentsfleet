@@ -106,7 +106,10 @@ fn a_referenced_field_keeps_its_target_and_carries_its_class() {
                 .build(),
         ))
         .build();
-    assert!(declare_beta(&mut document, &[("Holder", &["shared"])]).is_empty());
+    assert_eq!(
+        declare_beta(&mut document, &[("Holder", &["shared"])]),
+        [] as [(&str, &str); 0]
+    );
     assert_eq!(
         published_class(&document, "Holder", "shared").as_deref(),
         Some("beta")

@@ -148,6 +148,33 @@ dev_compose up --detach
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn('overlay does not exist', missing.stderr)
 
+    def test_start_failure_removes_the_exact_created_container(self):
+        state = self.root / 'state'
+        state.mkdir()
+        calls = self.root / 'calls'
+        result = self.shell('''
+source "$DEV_ROOT/deploy/local/codex.sh"
+acceptance_runner_container=acceptance-fixture
+acceptance_runner_image=runner-image
+ACCEPTANCE_LOCAL_TOOLBOX_DIR="$TEST_STATE"
+LOCAL_ACCEPTANCE_CA="$TEST_STATE/ca.crt"
+trap 'status=$?; acceptance_adapter_cleanup || true; exit "$status"' EXIT
+docker() {
+  printf '%s %s\\n' "$1" "${2:-}" >>"$TEST_CALLS"
+  case "$1" in
+    container) return 1 ;;
+    create) printf 'created-fixture\\n' ;;
+    run|start) return 17 ;;
+  esac
+}
+start_runner
+''', LOCAL_ACCEPTANCE_STATE=str(state), TEST_STATE=str(state), TEST_CALLS=str(calls))
+        self.assertEqual(result.returncode, 17, result.stderr)
+        self.assertEqual(calls.read_text().splitlines(), [
+            'container inspect', 'create --init', 'start created-fixture',
+            'logs created-fixture', 'stop --time', 'rm created-fixture',
+        ])
+
     def test_teardown_still_runs_when_log_capture_fails(self):
         for unwritable in (False, True):
             state = self.root / str(unwritable)
@@ -158,7 +185,7 @@ dev_compose up --detach
             calls = self.root / f'calls-{unwritable}'
             result = self.shell('''
 source "$DEV_ROOT/deploy/local/codex.sh"
-acceptance_runner_started=1
+acceptance_runner_owned=1
 acceptance_runner_container=owned-fixture
 docker() {
   printf '%s\\n' "$1" >>"$TEST_CALLS"
@@ -166,7 +193,7 @@ docker() {
 }
 status=0
 acceptance_adapter_cleanup || status=$?
-printf '%s %s\\n' "$status" "$acceptance_runner_started"
+printf '%s %s\\n' "$status" "$acceptance_runner_owned"
 ''', LOCAL_ACCEPTANCE_STATE=str(state), TEST_CALLS=str(calls))
             self.assertEqual(result.returncode, 0, result.stderr)
             status, owned = result.stdout.split()
