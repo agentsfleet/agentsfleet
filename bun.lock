@@ -66,6 +66,7 @@
         "happy-dom": "21.0.4",
         "oxlint": "^1.89.0",
         "oxlint-tsgolint": "7.0.2004",
+        "postcss": "8.5.30",
         "size-limit": "14.2.0",
         "svix": "^2.8.0",
         "tailwindcss": "^4.3.3",

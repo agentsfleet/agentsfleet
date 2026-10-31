@@ -33,6 +33,7 @@ it("groups calls behind one disclosure with keyboard-accessible individual comma
   expect(rows()).toHaveLength(3);
   expect(command(shell!).textContent).toContain("Ran commandshellSuccess");
   expect(command(request!).textContent).toContain("Ran commandhttp_requestFailed");
+  expect(within(command(request!)).getByText("Failed").className).not.toContain("sr-only");
   expect(command(custom!).textContent).toContain("Ran commandcustom_checkSuccess");
   expect(screen.queryByText(/0.08/)).toBeNull();
   const first = command(shell!);
