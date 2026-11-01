@@ -382,9 +382,9 @@ Use verified completion deliveries to wake matching waits, including successful 
 The current investigation filter intentionally drops successful runs and repair branches; continuation matching must precede that filter after signature and installation verification.
 The wake is only a signal: independently read the named checks and unchanged regression for the current exact head before reporting success.
 
-Reuse one-shot scheduling for a bounded fallback and deadline; a recurring human-configured cron is unnecessary.
-The current generic schedule path has no Slack reply destination and creates a new admission.
-It therefore needs trusted owner/thread linkage before it can resume a repair safely.
+Use the existing supervised background-worker framework for bounded delayed checks and a deadline; a recurring human-configured cron is unnecessary.
+The current generic schedule tool has no Slack reply destination and creates a new admission.
+Enabling that tool alone cannot preserve repair ownership, delivery or total limits.
 
 Record expected validation before publishing; reconcile acknowledgement loss against the same target.
 Completion and fallback wakes compete through one fenced transition and stable deduplication identity.
@@ -396,3 +396,14 @@ Codex may observe evidence and correct product defects; it must not investigate 
 Prove pending-check resume after worker replacement, repeated failure then green, duplicate/out-of-order delivery, lost completion fallback and fast completion before publication acknowledgement.
 Also prove stale heads/attempts, human pushes, revoked grants and late green after cancellation.
 An unrelated green workflow or skipped regression cannot complete the repair.
+
+The new mode must appear in setup review and its effective definition digest.
+The standing GitHub integration grant is fleet/service permission; it does not independently record approval of this repair mode.
+A continuation rechecks both the reviewed setup identity and current service access.
+
+Native start resolves the source run/attempt to one open, same-repository Pull Request.
+Native publish records an intent, checks the expected sole parent and complete bounded diff, then permits only a non-force update of that branch.
+A native verification transition records success or a blocker; model final text cannot retire the owner.
+
+A local write fence cannot cancel an already-issued GitHub update.
+After a lost reply or worker replacement, reconcile that publication intent before admitting another publication.
