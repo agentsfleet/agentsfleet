@@ -129,7 +129,7 @@ describe("FleetThread — tool cells", () => {
     expect(bulletOf(bad!).getAttribute("class")).toContain(DESTRUCTIVE);
     // A failure says so in words, never by colour alone.
     expect(headerOf(bad!)).toContain("Failed: making request GET https://x/ Failed");
-    expect(bulletOf(cut!).getAttribute("class")).toContain(DESTRUCTIVE);
+    expect(bulletOf(cut!).getAttribute("class")).toContain("text-warning");
     expect(headerOf(cut!)).toContain("Interrupted");
     // An older runner's call settled without saying how: no colour claims success.
     expect(bulletOf(unsaid!).getAttribute("class")).not.toContain(SUCCESS);

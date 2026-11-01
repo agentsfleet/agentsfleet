@@ -1124,19 +1124,41 @@ No checker, suppression or milestone status was changed to pass that check.
 
 The implementation remains local on `feat/m224-chat-lifecycle-evidence`; the main follow-up PR is not yet open. M224 stays IN_PROGRESS. No production tag, deployment or Library publication is authorized.
 
-Indy approved installing Linkwarden fixture #5 with its expected red baseline. The reviewed head was `7ebd5e895d0fef3715d481197f6662388d44d43c`; it merged into `dev` as `154a1b86a0f747a091c36c151ea744fbe87a2ef4`. Native contents verification confirms `.github/workflows/m224-title-regression.yml` at that commit, blob `d50fea2aa3e5306d231cd84c385980a9c1ba2c42`. This explicit fixture exception does not waive green checks for the main 0.72.0 PR.
+Indy approved installing Linkwarden fixture #5 with its expected red baseline.
+The reviewed head was `7ebd5e895d0fef3715d481197f6662388d44d43c`; it merged into `dev` as `154a1b86a0f747a091c36c151ea744fbe87a2ef4`.
 
-Normal fixture run `41275395088`, job `124756442856`, and bounded large-log run `41277592965`, job `124762802063`, both completed setup and reproduced the intended regression: one failed assertion, two passed, three total. The unchanged test hash is `67dc713ac6e45cd078e4bf03e874d0a3cc3c815c20338a537841651f5f1b754d`. These are negative controls, not passing repair acceptance. No fresh human Slack repair trigger has been sent by the agent.
+. Native contents verification confirms `.github/workflows/m224-title-regression.yml` at that commit, blob `d50fea2aa3e5306d231cd84c385980a9c1ba2c42`.
+This explicit fixture exception does not waive green checks for the main 0.72.0 PR.
 
-`make test-integration-rustd` passed 1453 regular and 3 exclusive tests. The replay test submits 100 concurrent copies of one signed producer delivery through real daemon admission, obtains one native event, then proves one event-derived branch and remote draft. Thread reads use a test-only pinned connector boundary. Lost ref/draft reply tests commit remote state before response loss, reconcile exact state, create only missing resources and stop on forbidden/mismatched readback. Scripted models establish wiring only.
+Normal fixture run `41275395088`, job `124756442856`, and bounded large-log run `41277592965`, job `124762802063`, completed setup. Both reproduced one failed assertion and two passes.
+The unchanged test hash is `67dc713ac6e45cd078e4bf03e874d0a3cc3c815c20338a537841651f5f1b754d`.
 
-The managed lane needed the session certificate mounted into the local Qstash container, retaining TLS verification, and loopback IPv6 exclusions from the inherited HTTP proxy. Those execution settings are temporary; no repository workflow/deployment configuration was changed for them.
+These are negative controls, not passing repair acceptance.
+No fresh human Slack repair trigger has been sent by the agent.
 
-Focused chat/activity/billing tests passed 107 checks. The first full app attempt reported 4618 passed and two failures caused by old disclosure-label expectations; those selectors were corrected, and a fresh full result remains due. The new browser activity fixture subsequently exposed two TypeScript fixture errors, now corrected; final lint/browser verification remains due. Prior production build and 14px desktop/mobile font checks predate the newest activity fixture and are not substituted for final checks.
+`make test-integration-rustd` passed 1453 regular and 3 exclusive tests.
+The replay test submits 100 concurrent copies of one signed delivery through real daemon admission. It obtains one native event and proves one event-derived branch and remote draft.
 
-The offline evidence checker passed 129 synthetic positive/adversarial tests across five files with 100% line/function coverage in its imported modules. It requires complete native call inventories, exact full-detail identifiers, source and regression joins, same-thread Slack witnesses, runtime attribution, retained campaign history and durable memory save/recall evidence. Synthetic positives are unit fixtures, never live acceptance records. No eight-case campaign or live memory acceptance is claimed.
+Thread reads use a test-only pinned connector boundary.
+Lost ref/draft reply tests commit remote state before response loss, reconcile exact state, create only missing resources and stop on forbidden/mismatched readback.
 
-Execution transport became unavailable during documentation work, then returned. The worktree and local changes were retained. The fresh final app/browser checks, full repository gates, version/OpenAPI regeneration and reviewed main PR remain outstanding.
+Scripted models establish wiring only.
+
+The managed lane needed the session certificate mounted into the local Qstash container, retaining TLS verification, and loopback IPv6 exclusions from the inherited HTTP proxy. Those run settings are temporary; no repository workflow/deployment configuration was changed for them.
+
+Focused chat/activity/billing tests passed 107 checks.
+The first full app attempt reported 4618 passed and two failures caused by old disclosure-label expectations. Those selectors were corrected; a fresh full result remains due.
+
+The new browser activity fixture subsequently exposed two TypeScript fixture errors, now corrected; final lint/browser verification remains due.
+Prior production build and 14px desktop/mobile font checks predate the newest activity fixture and are not substituted for final checks.
+
+The offline evidence checker passed 129 synthetic positive/adversarial tests across five files with 100% line/function coverage in its imported modules.
+It requires complete native call inventories, exact full-detail identifiers, source/regression joins and same-thread Slack witnesses. It also checks runtime attribution, campaign history and memory save/recall.
+
+Synthetic positives are unit fixtures, never live acceptance records.
+No eight-case campaign or live memory acceptance is claimed.
+
+Command transport became unavailable during documentation work, then returned. The worktree and local changes were retained. The fresh final app/browser checks, full repository gates, version/OpenAPI regeneration and reviewed main PR remain outstanding.
 
 
 ### Current implementation review and punch list
@@ -1171,6 +1193,7 @@ The final report will replace pending claims with exact command results.
 
 Indy authorized one 0.72.0 follow-up PR and green-only merge after resolving Greptile review.
 His fixture #5 expected-red exception applies only to Linkwarden's regression executor.
+
 Exact-revision development approval, compatible runner rollout, human Slack triggers and the unchanged-model witness remain prerequisites for live acceptance.
 No production release, production deployment or Library publication occurred.
 
@@ -1185,6 +1208,7 @@ The browser sends its existing same-origin Clerk `__session` cookie to Next.js.
 
 Installed `@clerk/backend` 3.26.1 implements that call by returning the supplied `sessionToken`.
 Its `createGetToken` calls the token fetcher only for a template or explicit expiry option.
+
 The installed signing-key loader uses cached keys and fetches when missing, expired or explicitly bypassed.
 Session refresh can also use the network; no zero-network claim follows.
 
@@ -1209,11 +1233,13 @@ The apparent double border was the browser's `auto 1px` keyboard-focus outline; 
 
 `FleetToolCalls.tsx` now uses 14px activity indicators, one solid 2px inset focus outline and more vertical spacing.
 Mobile disclosures have a 44px minimum target, action/target lines and truncated secondary targets; full recorded input remains expandable.
+
 Desktop keeps inline action/target wording and the existing metadata scale.
 The native Codex desktop window is unavailable to this managed session; its exact styles were not inspected.
 
 The refreshed local browser command ran `tests/e2e/chat-typography.spec.ts` and `tests/e2e/fleet-output.spec.ts`: 8 passed.
 It verifies measured icon dimensions, focus style, mobile hit targets and line placement, all outcomes, reduced motion and output navigation.
+
 The verifier command ran all CI-evidence tests: 143 passed, with 100% line/function coverage across imported verifier modules.
 These are scoped commands, not substitutes for the repository Make gates.
 
@@ -1227,6 +1253,7 @@ The closed-history verifier still reads the same canonical Git path and does not
 
 The main 0.72.0 PR remains unopened at this checkpoint.
 Its validation report will retain the exact pushed revision and repository command results.
+
 Live rollout, fresh Slack observations, same-fleet memory save/recall, and full Linux acceptance remain incomplete M224 work.
 Same-event corrections are bounded; automatic continuation of an older draft from a later event is not implemented.
 
@@ -1243,11 +1270,13 @@ That result invalidates the earlier claim that the override alone resolved deplo
 
 The fixture now distinguishes Tailwind's declared plugin and processor return values before processing CSS.
 It type-checks on the mixed dependency tree and compiles shipped CSS with embedded fonts.
+
 There is no cast, checker exclusion or forced replacement of Next.js's PostCSS dependency.
 The failed global PostCSS override was removed.
 
 Indy directed use of Bun 1.4.x or higher.
 Normal repository commands use Bun 1.4.4; Bun 1.3.14 was used only to reproduce the reported Vercel environment before that direction.
+
 The generated Bun 1.4 lock format retains every selected package version from `origin/main`.
 Installed Vercel build-utils 14.23.0 selects `/bun1.4` for lock format 2; the application server runtime is unchanged.
 
@@ -1263,10 +1292,11 @@ The app preview is `7AzNmP5oByJB1NDWZeTWCUcDT9CM`; this is build evidence, not a
 
 Comparing the desktop fixture with Indy's screenshot showed that activity rows were still too dense.
 A new browser assertion failed at 26.5625px against a 36px minimum.
+
 Disclosures now have a 36px desktop minimum and 44px mobile minimum, with 14px primary action text and retained 13px secondary targets/times.
 The focused browser rerun passed all four desktop/mobile typography and activity cases in the isolated current-source reproduction.
 
-The native command for the preceding candidate was allowed to finish; its superseded PR orchestration was paused before additional commands.
+The native command for the preceding candidate was allowed to finish; its superseded PR gate was paused before additional commands.
 That run does not count as the final PR gate.
 The final source commit must run every declared command and refresh the full browser/build evidence.
 
@@ -1277,7 +1307,50 @@ Indy observed that the keyboard-focus outline was too close to the activity icon
 The final presentation adjustment adds 8px inner padding and browser assertions for both horizontal edges.
 Its focused desktop/mobile typography and activity run passed four tests.
 
-Indy directed: "well have you done the run bfore? validation? is so cut that crap and push the PR. If CI gates failes then solve it."
+Indy directed: "well have you done the run bfore? validation? is so cut that crap and push the PR.
+If CI gates failes then solve it."
+
 This supersedes waiting for or repeating the local PR gate before opening this PR.
 The current run continues; its source boundary began at `547333496`, before this presentation-only adjustment.
+
 No exact-final-head local-gate pass is claimed; final-head GitHub checks and Greptile must pass before merge.
+
+
+### PR 795 review corrections
+
+The main 0.72.0 PR is https://github.com/agentsfleet/agentsfleet/pull/795.
+At head `107674357a68c1c585126d8e80aa3f473e23df4b`, all three Vercel previews passed.
+
+GitHub app checks exposed two stale activity assertions. Interrupted tools are amber; the expanded list must be queried separately from its live summary.
+The corrected focused app command passes 62 tests across three files, including the activity presenter.
+
+The offline development checker previously confused the compiled candidate revision with the deployment merge revision.
+The deployment intentionally promotes identical tested bytes from the same source tree; the existing retained `3623b66` candidate/merge observation demonstrates that distinction.
+
+The checker joins native archive/run/commit identities, qualified receipts, raw checksum/size, source trees and runner bytes. It then checks the original API build stamp.
+Its scoped suite passes 210 tests, with 100% line/function coverage across imported checker modules.
+
+The new positive fixture uses different build/deployment commits with one tree; negative substitutions cover mismatched trees, provenance, bytes, attempts, gates and health.
+This remains operator-attributed offline consistency checking, not authentication of uploaded evidence.
+
+The local gate begun on `547333496` completed integration, lint and version checks; its unit command failed the same two stale app assertions.
+Its documentation check also found long paragraphs and sentences; those changed paragraphs were corrected without changing evidence or the managed Next.js block.
+It does not establish a final-head repository pass and will not be restarted merely to delay pushing fixes.
+
+Indy clarified that the primary live sequence starts with a failing source Pull Request and two human Slack commands.
+The responder investigates in the existing thread. The repairer must update the original Pull Request, wait for its exact-head validation and resume bounded correction without Codex doing the repair.
+
+The earlier broken-`dev`/new-draft fixture is an alternate use case.
+Original-Pull-Request authority and durable cross-admission continuation remain implementation work in this PR; no passing autonomous live result is claimed.
+
+
+Greptile identified two additional defects: complete job evidence spread across pages was rejected, and memory-forget activity hid its target key.
+The checker now joins numbered pages for the exact run attempt, checking totals, page size, unique job IDs and required failed-job logs.
+
+New two-page positive and negative cases cover missing/foreign/duplicate pages and unread failed jobs.
+Memory-forget activity now states the recorded key while running and after confirmed success.
+The fixture pins that wording independently of the presenter.
+
+`make lint-app lint-cli` passed after removing the stale inherited UI environment-file path from that local invocation.
+The final checker additions also pass CLI lint/type checking; changed-document prose scanning is clean.
+The managed Next.js instruction block is byte-for-byte unchanged.

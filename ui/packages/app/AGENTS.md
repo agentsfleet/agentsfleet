@@ -1,3 +1,5 @@
+# Dashboard instructions
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
@@ -25,7 +27,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Derive activity labels from recorded actions and outcomes. Show action and target while running; use completion verbs only for confirmed success. Keep failed, interrupted and unconfirmed outcomes explicit, including environment and access checks.
 
 - Pair activity icons with text: blue for running, green for confirmed success, red for failure, amber for interruption, and neutral for unknown outcomes.
-- Keep activity icons, running indicators and primary action text at 14px. Disclosures keep 8px inner padding and have a 36px desktop minimum and 44px mobile minimum, with separate action/target lines on mobile; preserve a single visible keyboard-focus outline.
+- Keep activity icons, running indicators and primary action text at 14px. Disclosures keep 8px inner padding, a 36px desktop minimum and a 44px mobile minimum. Separate action/target lines on mobile; preserve one visible keyboard-focus outline.
 
 ## Billing history
 

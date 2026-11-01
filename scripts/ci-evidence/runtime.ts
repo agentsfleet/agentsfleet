@@ -4,11 +4,11 @@ import { z } from "zod";
 import { commit, digest, identifier, instant, integer, ref } from "./schema.ts";
 import { Records, canonical, requireProof } from "./records.ts";
 import { identitySchema } from "./native.ts";
+import { checkPromotion, workflowEvidenceSchema } from "./promotion.ts";
 
 const approvalSchema = z.strictObject({operator: z.string().min(1), at: instant, source_revision: commit,
   workflow_run_url: z.url(), deploy_runners: z.literal(true)});
-const runSchema = z.strictObject({read_url: z.url(), response: z.object({head_sha: commit,
-  conclusion: z.string(), created_at: instant, run_started_at: instant, updated_at: instant}).passthrough()});
+const runSchema = workflowEvidenceSchema;
 const deploymentSchema = z.strictObject({workflow_run_url: z.url(), version: z.string().min(1), run: runSchema,
   api_job_ids: z.array(integer.positive()).min(1), runner_job_ids: z.array(integer.positive()).min(1),
   jobs: z.strictObject({read_url: z.url(), response: z.object({jobs: z.array(z.object({id: integer.positive(),
@@ -47,9 +47,10 @@ export function checkRuntime(graded: Graded, development: Development): void {
   requireProof(deployment.api_job_ids.every(id => deployment.jobs.response.jobs.some(job => job.id === id && job.name === "fly / deploy-fly"))
     && deployment.runner_job_ids.every(id => deployment.jobs.response.jobs.some(job => job.id === id && job.name === "metal / deploy-metal")), "development.runtime.deployment", "deployment job IDs do not name the API and runner jobs");
   const health = records.json(runtime.evidence.health, healthSchema, "development.runtime.health");
+  const build = checkPromotion(runtime, records, deployment.run);
   requireProof(health.read_url === "https://api-dev.agentsfleet.net/healthz" && health.response.commit === runtime.api_commit_stamp
-    && /^[a-f0-9]{7,64}$/.test(runtime.api_commit_stamp) && report.source_revision.startsWith(runtime.api_commit_stamp)
-    && health.response.version === deployment.version, "development.runtime.health", "observed API build differs");
+    && runtime.api_commit_stamp === build.buildStamp && health.response.version === deployment.version && build.version === deployment.version,
+    "development.runtime.health", "observed API build differs");
   const ready = records.json(runtime.evidence.readiness, readySchema, "development.runtime.readiness");
   requireProof(ready.read_url === "https://api-dev.agentsfleet.net/readyz", "development.runtime.readiness", "readiness address differs");
   const first = Math.min(...graded.native.map(native => Date.parse(native.event.created_at)));
@@ -62,7 +63,7 @@ export function checkRuntime(graded: Graded, development: Development): void {
     && Date.parse(deployment.run.response.run_started_at) <= deployed
     && Date.parse(health.observed_at) >= deployed && Date.parse(ready.observed_at) >= deployed,
     "development.runtime", "approval or health observations do not bracket the deployment");
-  checkRunners(runtime, records, first, last);
+  checkRunners(runtime, records, first, last, build.runnerDigest);
   const observed = new Set(runtime.runner_observations.map(row => row.runner_id));
   for (const subject of report.cases) {
     const identity = records.json(subject.model_identity, identitySchema, "development.runtime.leases");
@@ -70,7 +71,7 @@ export function checkRuntime(graded: Graded, development: Development): void {
   }
 }
 
-function checkRunners(runtime: Development["runtime"], records: Records, first: number, last: number): void {
+function checkRunners(runtime: Development["runtime"], records: Records, first: number, last: number, runnerDigest: string): void {
   const retained = records.json(runtime.evidence.runner, runnersSchema, "development.runtime.runner");
   const active = (inventory: z.infer<typeof inventorySchema>) => {
     requireProof(new URL(inventory.read_url).origin === "https://api-dev.agentsfleet.net"
@@ -83,7 +84,8 @@ function checkRunners(runtime: Development["runtime"], records: Records, first: 
   const after = active(retained.after);
   const observed = runtime.runner_observations.map(row => row.runner_id).sort();
   requireProof(before.length > 0 && canonical(before) === canonical(after) && canonical(before) === canonical(observed)
-    && new Set(observed).size === observed.length, "development.runtime.runner", "active inventory changed or is not fully attested");
+    && new Set(observed).size === observed.length && runtime.runner_observations.every(row => row.artifact_sha256 === runnerDigest),
+    "development.runtime.runner", "active inventory changed or is not fully attested");
   requireProof(Date.parse(retained.before.observed_at) <= first && Date.parse(retained.after.observed_at) >= last, "development.runtime.runner", "inventory does not bracket the campaign");
   requireProof(retained.probes.length === observed.length && new Set(retained.probes.map(probe => canonical(probe))).size === observed.length, "development.runtime.runner", "host probe inventory is incomplete");
   for (const row of runtime.runner_observations) {

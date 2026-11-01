@@ -31,7 +31,7 @@ export function checkInvestigationReads(source: Development["source"], base: {co
     && job.steps.some(step => step.name === source.failed_step && step.conclusion === "failure"), field, "fleet-owned failed job differs");
   const jobsUrl = new URL(source.jobs_url);
   requireProof(jobsUrl.origin === "https://api.github.com" && jobsUrl.pathname === `/repos/${source.repository}/actions/runs/${source.run_id}/attempts/${source.attempt}/jobs`, field, "selected-attempt job-list address differs");
-  const jobs = read(source.jobs_url, jobsSchema);
+  const jobs = readJobPages(source, sourceTools, event, records, field);
   requireProof(jobs.total_count === jobs.jobs.length && new Set(jobs.jobs.map(job => job.id)).size === jobs.total_count
     && jobs.jobs.some(item => item.id === source.job_id && item.run_id === job.run_id
       && item.run_attempt === job.run_attempt && item.conclusion === job.conclusion), field, "selected-attempt job list is incomplete or contradictory");
@@ -51,6 +51,54 @@ export function checkInvestigationReads(source: Development["source"], base: {co
       requireProof(content.path === file.path && content.sha === blob && content.content.length > 0, field, "fleet-owned tested source or trusted base differs");
     }
   }
+}
+
+/** A complete listing can span pages; every retained page belongs to this exact attempt. */
+function readJobPages(source: Development["source"], tools: Case["tool_records"], event: z.infer<typeof eventSchema>, records: Records, field: string) {
+  const initial = new URL(source.jobs_url);
+  const pageSize = Number(initial.searchParams.get("per_page") ?? "30");
+  requireProof(Number.isInteger(pageSize) && pageSize >= 1 && pageSize <= 100
+    && (initial.searchParams.get("page") ?? "1") === "1"
+    && [...initial.searchParams.keys()].every(key => ["page", "per_page"].includes(key))
+    && [...new Set(initial.searchParams.keys())].every(key => initial.searchParams.getAll(key).length === 1), field, "job-list paging differs");
+  const read = (address: string) => {
+    let value: unknown;
+    try {value = JSON.parse(ownedGet(tools, event, records, address, field));} catch {value = null;}
+    return decode(jobsSchema, value, field);
+  };
+  const first = read(source.jobs_url);
+  const pages = new Map<number, string>([[1, source.jobs_url]]);
+  for (const call of tools) {
+    const detail = records.json(call.record, callSchema, field);
+    const args = z.object({url: z.url()}).passthrough().safeParse(detail.response.arguments);
+    if (!args.success) continue;
+    const url = new URL(args.data.url);
+    if (url.origin !== initial.origin || url.pathname !== initial.pathname) continue;
+    const page = Number(url.searchParams.get("page") ?? "1");
+    requireProof(Number.isInteger(page) && page >= 1 && Number(url.searchParams.get("per_page") ?? "30") === pageSize
+      && [...url.searchParams.keys()].every(key => ["page", "per_page"].includes(key))
+      && [...new Set(url.searchParams.keys())].every(key => url.searchParams.getAll(key).length === 1), field, "job-list paging differs");
+    requireProof(!pages.has(page) || pages.get(page) === args.data.url, field, "job-list page identity differs");
+    pages.set(page, args.data.url);
+  }
+  const pageCount = Math.max(1, Math.ceil(first.total_count / pageSize));
+  requireProof(pages.size >= pageCount && pages.size <= pageCount + 1, field, "job-list page inventory is incomplete or contradictory");
+  if (pages.size > pageCount) {
+    const address = pages.get(pageCount + 1);
+    requireProof(address !== undefined, field, "terminal job-list page differs");
+    const terminal = read(address);
+    requireProof(terminal.total_count === first.total_count && terminal.jobs.length === 0, field, "terminal job-list page is not empty or its total differs");
+  }
+  const jobs: z.infer<typeof jobSchema>[] = [];
+  for (let page = 1; page <= pageCount; page++) {
+    const address = pages.get(page);
+    requireProof(address !== undefined, field, "job-list page is missing");
+    const result = page === 1 ? first : read(address);
+    requireProof(result.total_count === first.total_count && result.jobs.length === Math.min(pageSize, first.total_count - jobs.length)
+      && result.jobs.every(job => job.run_id === source.run_id && job.run_attempt === source.attempt), field, "job-list page is incomplete or belongs to another attempt");
+    jobs.push(...result.jobs);
+  }
+  return {total_count: first.total_count, jobs};
 }
 
 function beforeMutations(tools: Case["tool_records"], event: z.infer<typeof eventSchema>, records: Records, field: string): Case["tool_records"] {

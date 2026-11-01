@@ -391,7 +391,7 @@ Repeated channel responses resolve to the same approved action and admission.
 Each later approved action remains distinct while continuing the same repair attempt.
 
 **Current implementation gap:** [Repair branches](../../rustd/crates/afd_gate/src/policy/repair.rs) derive from an admission's event.
-The [write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs) allow ref and draft creation, without an existing-ref update path.
+The [write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs) allow creation and non-force updates only on the current event-owned repair branch.
 The selected design therefore needs a trusted continuation mapping and bounded update authority; restoring files alone cannot supply either.
 
 Required proof includes a new admission resuming the same draft after worker replacement and a laptop push racing publication.
@@ -655,3 +655,6 @@ Keep failure injection deterministic with barriers, controlled transport loss an
 A browser mock, scripted provider or successful service creation cannot substitute for a real cross-worker recovery proof.
 
 The compaction work regression currently fails before optimization; the independent blocked-summary proof passes. Their measured output is recorded in the active spec. Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
+
+The [original-Pull-Request continuation](lease_flow.md#original-pull-request-repair-required-continuation) adds the primary Slack-triggered use case and its required evidence.
+That required behavior remains unimplemented at the current review checkpoint.

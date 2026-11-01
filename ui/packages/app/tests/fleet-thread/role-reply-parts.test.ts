@@ -112,8 +112,8 @@ describe("FleetThread — reply parts", () => {
     // The tick stays the trigger; the tool row belongs to the fleet's reply.
     expect(screen.getByText("PR opened")).toBeTruthy();
     fireEvent.click(within(replyRow()).getByRole("button", { name: /^Tool activity:/ }));
-    expect(within(replyRow()).getByRole("list", { name: TOOL_CALLS })).toBeTruthy();
-    expect(within(replyRow()).getByText("read_file")).toBeTruthy();
+    const calls = within(replyRow()).getByRole("list", { name: TOOL_CALLS });
+    expect(within(calls).getByText("read_file")).toBeTruthy();
   });
 
   it("preserves a partial answer and shows a separate actionable failure", () => {
