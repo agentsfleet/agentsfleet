@@ -1354,3 +1354,22 @@ The fixture pins that wording independently of the presenter.
 `make lint-app lint-cli` passed after removing the stale inherited UI environment-file path from that local invocation.
 The final checker additions also pass CLI lint/type checking; changed-document prose scanning is clean.
 The managed Next.js instruction block is byte-for-byte unchanged.
+
+
+### Manual-first scope clarification
+
+Indy clarified that M224 first proves the manually triggered fleet flow; the active spec retains his exact wording.
+The agent had expanded the primary acceptance condition to arbitrary original-PR authority plus durable automatic CI continuation.
+That stronger merge condition was an overstatement of the first manual proof.
+
+The original M224 demonstration uses human Slack mentions and a fleet-owned repair draft, with bounded corrections during the active request.
+The fleet still performs the investigation and code repair; Codex must not supply its demonstration fix.
+The requested existing-PR and later automatic-continuation behavior remains recorded as proposed follow-on work, without claiming delivery or a dedicated reviewed implementation spec.
+
+The existing concept brief, sandbox evaluation and sandbox review index explicitly leave detailed design and a dedicated implementation spec pending.
+Historical M157 specifications describe the retired daemon; the current production-repair scenario records the missing Rust linkage and verifier.
+Those historical completion labels do not establish current runtime capability.
+
+Beyond the offline checker, M224 closure still requires the real-model development demonstrations and eight-case behavior campaign, native memory save/recall, full Linux acceptance and incident prerequisites.
+Production preflight, the approved selected-version release, complete runner rollout and the three production fleet demonstrations remain separate launch obligations.
+Merging the implementation PR does not close M224 or authorize a production tag.

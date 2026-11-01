@@ -656,5 +656,5 @@ A browser mock, scripted provider or successful service creation cannot substitu
 
 The compaction work regression currently fails before optimization; the independent blocked-summary proof passes. Their measured output is recorded in the active spec. Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
 
-The [original-Pull-Request continuation](lease_flow.md#original-pull-request-repair-required-continuation) adds the primary Slack-triggered use case and its required evidence.
-That required behavior remains unimplemented at the current review checkpoint.
+The [proposed original-Pull-Request continuation](lease_flow.md#original-pull-request-repair-proposed-follow-on) records the requested existing-PR flow and future recovery proofs.
+M224 starts with the manually triggered fleet-owned draft demonstration; the broader runtime behavior remains unimplemented.

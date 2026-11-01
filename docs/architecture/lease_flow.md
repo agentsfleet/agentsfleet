@@ -352,10 +352,11 @@ Each gap names what would close it.
 14. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress/src/handler/webhook/app_route.rs`). A writer for the repair sweeper's evidence closes it.
 
 
-## Original Pull Request repair: required continuation
+## Original Pull Request repair: proposed follow-on
 
-This behavior is required for M224 and remains unimplemented at the PR 795 review checkpoint.
-The existing event-owned draft correction cannot stand in for this acceptance case.
+This section records requested follow-on behavior; it remains unimplemented at the PR 795 review checkpoint.
+M224 first proves manually triggered fleets and a fleet-owned repair draft, including bounded corrections during its active request.
+A dedicated implementation spec for arbitrary existing-Pull-Request authority and durable continuation has not been written.
 
 ```text
 Source PR fails -> existing Slack failure thread
