@@ -8,6 +8,10 @@ import { DRAFT_STATE } from "./draft-types";
 import { presentErrorString } from "@/lib/errors";
 
 export type DraftIdentity = {readonly account: string; readonly workspace: string; readonly subject: string};
+type SetupAction = "reading" | "sending" | "saving" | "publishing" | null;
+export type DraftRequestState =
+  | {readonly kind: "idle" | "inaccessible"}
+  | {readonly kind: "requesting" | "retrying" | "unconfirmed"; readonly action: SetupAction};
 export type DraftView = {
   readonly draft: Draft | null;
   readonly messages: readonly Message[];
@@ -28,7 +32,7 @@ export type DraftView = {
   readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string} | null;
   readonly savedSetupRevision: string | null;
   readonly saveOperation?: string | null;
-  readonly setupAction?: "reading" | "sending" | "saving" | "publishing" | null;
+  readonly setupAction?: SetupAction;
   readonly fleet: Fleet | null;
   /** The schedules the last Apply returned; any not `synced` may never fire. */
   readonly schedules: readonly Schedule[];
@@ -45,6 +49,16 @@ export type DrawerEdit = {readonly definition: Definition; readonly instanceName
 export const EMPTY_DRAFT_VIEW: DraftView = {draft: null, messages: [], models: [], cards: [], moreModels: false, moreChats: false, listStatus: DRAFT_LIST_STATUS.loading,
   model: "", fleet: null, schedules: [], busy: false, pending: false, inaccessible: false, error: null, notice: null,
   truncated: false, preview: null, savedSetupRevision: null, focusRevision: 0};
+
+/** Keep the view interface stable while one request state owns its lifecycle flags. */
+export function draftRequestView(request: DraftRequestState): Pick<DraftView, "busy" | "pending" | "inaccessible" | "setupAction"> {
+  return {
+    busy: request.kind === "requesting" || request.kind === "retrying",
+    pending: request.kind === "unconfirmed" || request.kind === "retrying",
+    inaccessible: request.kind === "inaccessible",
+    setupAction: "action" in request ? request.action : null,
+  };
+}
 
 export function projectDraftView(previous: DraftView, patch: Partial<DraftView>): DraftView {
   const next = {...previous, ...patch};

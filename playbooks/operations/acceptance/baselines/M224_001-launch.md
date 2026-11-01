@@ -1118,3 +1118,258 @@ The change remains documentation only; implementation checks and all three devel
 The architecture check rejected a pending format under current architecture documentation and interpreted report JSON members as SQL table names.
 The format now lives alongside the acceptance playbook, with its pending-spec link preserved.
 No checker, suppression or milestone status was changed to pass that check.
+
+
+## 0.72.0 continuation: Nov 01, 2026
+
+The implementation remains local on `feat/m224-chat-lifecycle-evidence`; the main follow-up PR is not yet open. M224 stays IN_PROGRESS. No production tag, deployment or Library publication is authorized.
+
+Indy approved installing Linkwarden fixture #5 with its expected red baseline.
+The reviewed head was `7ebd5e895d0fef3715d481197f6662388d44d43c`; it merged into `dev` as `154a1b86a0f747a091c36c151ea744fbe87a2ef4`.
+
+. Native contents verification confirms `.github/workflows/m224-title-regression.yml` at that commit, blob `d50fea2aa3e5306d231cd84c385980a9c1ba2c42`.
+This explicit fixture exception does not waive green checks for the main 0.72.0 PR.
+
+Normal fixture run `41275395088`, job `124756442856`, and bounded large-log run `41277592965`, job `124762802063`, completed setup. Both reproduced one failed assertion and two passes.
+The unchanged test hash is `67dc713ac6e45cd078e4bf03e874d0a3cc3c815c20338a537841651f5f1b754d`.
+
+These are negative controls, not passing repair acceptance.
+No fresh human Slack repair trigger has been sent by the agent.
+
+`make test-integration-rustd` passed 1453 regular and 3 exclusive tests.
+The replay test submits 100 concurrent copies of one signed delivery through real daemon admission. It obtains one native event and proves one event-derived branch and remote draft.
+
+Thread reads use a test-only pinned connector boundary.
+Lost ref/draft reply tests commit remote state before response loss, reconcile exact state, create only missing resources and stop on forbidden/mismatched readback.
+
+Scripted models establish wiring only.
+
+The managed lane needed the session certificate mounted into the local Qstash container, retaining TLS verification, and loopback IPv6 exclusions from the inherited HTTP proxy. Those run settings are temporary; no repository workflow/deployment configuration was changed for them.
+
+Focused chat/activity/billing tests passed 107 checks.
+The first full app attempt reported 4618 passed and two failures caused by old disclosure-label expectations. Those selectors were corrected; a fresh full result remains due.
+
+The new browser activity fixture subsequently exposed two TypeScript fixture errors, now corrected; final lint/browser verification remains due.
+Prior production build and 14px desktop/mobile font checks predate the newest activity fixture and are not substituted for final checks.
+
+The offline evidence checker passed 129 synthetic positive/adversarial tests across five files with 100% line/function coverage in its imported modules.
+It requires complete native call inventories, exact full-detail identifiers, source/regression joins and same-thread Slack witnesses. It also checks runtime attribution, campaign history and memory save/recall.
+
+Synthetic positives are unit fixtures, never live acceptance records.
+No eight-case campaign or live memory acceptance is claimed.
+
+Command transport became unavailable during documentation work, then returned. The worktree and local changes were retained. The fresh final app/browser checks, full repository gates, version/OpenAPI regeneration and reviewed main PR remain outstanding.
+
+
+### Current implementation review and punch list
+
+The main `agentsfleet` 0.72.0 PR is still unopened at this checkpoint.
+The following rows record local changes and review findings, not a deployment or live model pass.
+
+| Files | Reason and implementation shape | Current evidence |
+| --- | --- | --- |
+| `ui/packages/app/lib/api/{draft-state,draft-operation,draft-requests,draft-watch,draft-request,drafts}.ts` | Typed lifecycle states derive existing public flags; request identity guards late settlement; watcher cancellation reaches reconciliation and response-body cleanup. | Focused lifecycle tests exist; final repository gates remain pending. |
+| `ui/packages/app/components/domain/chat/WorkspaceChat.tsx` | Each authenticated account/workspace/subject owns its client and cache; navigation disposes the previous client. | Deterministic navigation and stale-stream tests exist. |
+| `ui/packages/app/components/domain/{FleetToolCalls,FleetReplyBody}.tsx; ui/packages/app/components/domain/tool-call-activity.ts` | Compact truthful activity summaries expose keyboard-accessible details, concurrent active counts and distinct terminal outcomes. | Review corrected the disclosure name to include visible wording. |
+| `ui/packages/design-system/src/tokens.css` | Conversation and composer use the shared 14px token and 24.5px line height. Existing metadata remains 13px. | Earlier desktop/mobile checks passed; refreshed screenshots remain pending. |
+| `ui/packages/app/app/(dashboard)/settings/billing/` | Previous/current month controls retain historical usage after fleet deletion. | October usage and wallet totals remain distinct; month-boundary tests cover navigation. |
+| `bun.lock; ui/packages/app/tests/e2e/fixtures/fleet-output-browser-assets.ts` | Bun 1.4 lock format preserves selected versions; the fixture handles Tailwind's declared plugin-or-processor result. | The earlier override passed cold installs but failed on Vercel's retained mixed tree; the final typed dispatch passes that reproduction without a cast or exclusion. |
+| `ui/packages/app/tests/e2e/fleet-output.spec.ts` | Five production-profiling samples record output opening, React render duration, native scrolling and bounded mounted rows. | Review corrected mobile measurements to 390×844; desktop remains 1280×900. Timing results remain report-only. |
+| `tests/fixtures/fleets/ci-{responder,repairer}/definition.json` | Concise Slack mrkdwn, required-source stops, fresh memory evidence and bounded corrections in the same draft. | Current source is reviewed locally; fresh live acceptance remains incomplete. |
+| `rustd/crates/{afd_wire,afd_gate,afr_egress}/src/` | Exact event-owned ref PATCH requires `force:false`; closed fields and exact paths preserve the reviewed repository/base boundary. | Scope tests reject foreign refs, forced updates, duplicate fields, queries and method substitutions. |
+| `rustd/crates/agentsfleetd/tests/support/repair_*.rs` | The local GitHub boundary commits effects before reply loss and keeps one draft through bounded reconciliation. | Five focused native integration tests passed, including eight continuation fault combinations. |
+| `scripts/ci-evidence/; cli/test/ci-evidence/` | Bounded offline checks join native calls, accepted setup, regression, Slack, runtime and durable memory witnesses. | Synthetic tests prove verifier behavior only; no eight-case native campaign report exists yet. |
+| `ui/packages/app/AGENTS.md` | Durable ownership, activity and private-cache rules sit outside the unchanged Next.js-managed block. | Existing installed Next.js and React versions remain the API reference. |
+
+The continuation fixture now separates failed check/run/job identities `42/177/430` from corrected identities `43/178/431`.
+It checks the corrected commit's run, attempt and job before returning success.
+
+A denied validation read or stale run head stops without another request.
+Lost-reply cases assert both the remote loss counter and the native `upstream_unreachable` witness.
+
+`make test-unit-all` is running after these changes.
+Final lint, full integration, browser, optimized build, version and PR gates remain pending.
+The final report will replace pending claims with exact command results.
+
+Indy authorized one 0.72.0 follow-up PR and green-only merge after resolving Greptile review.
+His fixture #5 expected-red exception applies only to Linkwarden's regression executor.
+
+Exact-revision development approval, compatible runner rollout, human Slack triggers and the unchanged-model witness remain prerequisites for live acceptance.
+No production release, production deployment or Library publication occurred.
+
+
+### Authentication findings
+
+Authentication code did not change in this follow-up.
+The browser sends its existing same-origin Clerk `__session` cookie to Next.js.
+
+`clerkMiddleware` verifies that session before protected work.
+`credential()` uses React `cache()` within one server request, then calls `auth().getToken()` without options.
+
+Installed `@clerk/backend` 3.26.1 implements that call by returning the supplied `sessionToken`.
+Its `createGetToken` calls the token fetcher only for a template or explicit expiry option.
+
+The installed signing-key loader uses cached keys and fetches when missing, expired or explicitly bypassed.
+Session refresh can also use the network; no zero-network claim follows.
+
+Next.js forwards the bearer to the native API, which verifies identity and workspace permission.
+The native signing-key cache has a six-hour lifetime, a fifteen-minute stale allowance and a thirty-second refresh minimum.
+
+Capability lookups cache each subject for one minute, with a fifteen-minute stale ceiling and 4096-subject bound.
+Server-sent event connections authenticate when opened; streamed tokens do not each start another authentication call.
+
+Private conversation data and credentials are never shared through a global cache.
+
+The source is `ui/packages/app/lib/auth/credential.ts`, `ui/packages/app/proxy.ts` and `docs/AUTH.md`.
+Native cache rules live in `rustd/crates/afd_identity/src/{jwks/cache,capability}.rs`.
+This source review does not measure authentication latency or vendor request counts in production.
+
+
+### Final local presentation checkpoint
+
+Indy flagged uneven icon sizes, a double-looking focus border and crowded mobile rows, then supplied the Codex desktop spacing reference.
+A local Chromium inspection measured 14px action icons and 16px activity spinners.
+The apparent double border was the browser's `auto 1px` keyboard-focus outline; the button itself had zero-width borders.
+
+`FleetToolCalls.tsx` now uses 14px activity indicators, one solid 2px inset focus outline and more vertical spacing.
+Mobile disclosures have a 44px minimum target, action/target lines and truncated secondary targets; full recorded input remains expandable.
+
+Desktop keeps inline action/target wording and the existing metadata scale.
+The native Codex desktop window is unavailable to this managed session; its exact styles were not inspected.
+
+The refreshed local browser command ran `tests/e2e/chat-typography.spec.ts` and `tests/e2e/fleet-output.spec.ts`: 8 passed.
+It verifies measured icon dimensions, focus style, mobile hit targets and line placement, all outcomes, reduced motion and output navigation.
+
+The verifier command ran all CI-evidence tests: 143 passed, with 100% line/function coverage across imported verifier modules.
+These are scoped commands, not substitutes for the repository Make gates.
+
+`make lint-all` passed before this final presentation adjustment; the exact-head PR gate must rerun it and the full unit/integration/version commands.
+The three final function-length findings were fixed by extracting receipt assertions and HTTP reply construction, and building the shared plane handle in its runtime field.
+Astra re-review reported no remaining findings; design re-review accepted the updated mobile rendering and geometry.
+
+The native campaign JSON remains absent because no fresh eight-case campaign has run.
+Its fixed future output path is declared with POSIX path joining; no placeholder report or passing evidence was created.
+The closed-history verifier still reads the same canonical Git path and does not accept a report-selected history path.
+
+The main 0.72.0 PR remains unopened at this checkpoint.
+Its validation report will retain the exact pushed revision and repository command results.
+
+Live rollout, fresh Slack observations, same-fleet memory save/recall, and full Linux acceptance remain incomplete M224 work.
+Same-event corrections are bounded; automatic continuation of an older draft from a later event is not implemented.
+
+
+### Vercel reproduction and Bun 1.4 correction
+
+The first pushed 0.72.0 checkpoint is `db9989a2c2119c89c79fbd1ce742ef3987c57cca`.
+Website and agents-development Vercel previews passed; the app preview failed at `fleet-output-browser-assets.ts:10` with `TS2769`.
+Indy supplied the failing log because this managed session has no Vercel login.
+
+The isolated retained-tree reproduction also failed after Bun reported no changes.
+Tailwind resolved PostCSS 8.5.23 while the fixture used 8.5.30; a fresh override-only install had hidden this case.
+That result invalidates the earlier claim that the override alone resolved deployment.
+
+The fixture now distinguishes Tailwind's declared plugin and processor return values before processing CSS.
+It type-checks on the mixed dependency tree and compiles shipped CSS with embedded fonts.
+
+There is no cast, checker exclusion or forced replacement of Next.js's PostCSS dependency.
+The failed global PostCSS override was removed.
+
+Indy directed use of Bun 1.4.x or higher.
+Normal repository commands use Bun 1.4.4; Bun 1.3.14 was used only to reproduce the reported Vercel environment before that direction.
+
+The generated Bun 1.4 lock format retains every selected package version from `origin/main`.
+Installed Vercel build-utils 14.23.0 selects `/bun1.4` for lock format 2; the application server runtime is unchanged.
+
+The previous-head PR gate's native suite passed 1454 shared tests; exclusive tests were still running when this correction was prepared.
+That run does not verify the new candidate revision.
+The final committed/pushed head must run the complete PR gate, browser lane and production build again.
+
+
+### Desktop spacing correction
+
+The Vercel app, website and agents-development previews all passed on `10eae7b2b5e292163dd19e7b3252be9357c24f83`.
+The app preview is `7AzNmP5oByJB1NDWZeTWCUcDT9CM`; this is build evidence, not a native runtime rollout.
+
+Comparing the desktop fixture with Indy's screenshot showed that activity rows were still too dense.
+A new browser assertion failed at 26.5625px against a 36px minimum.
+
+Disclosures now have a 36px desktop minimum and 44px mobile minimum, with 14px primary action text and retained 13px secondary targets/times.
+The focused browser rerun passed all four desktop/mobile typography and activity cases in the isolated current-source reproduction.
+
+The native command for the preceding candidate was allowed to finish; its superseded PR gate was paused before additional commands.
+That run does not count as the final PR gate.
+The final source commit must run every declared command and refresh the full browser/build evidence.
+
+
+### Focus padding and PR opening direction
+
+Indy observed that the keyboard-focus outline was too close to the activity icon and text.
+The final presentation adjustment adds 8px inner padding and browser assertions for both horizontal edges.
+Its focused desktop/mobile typography and activity run passed four tests.
+
+Indy directed: "well have you done the run bfore? validation? is so cut that crap and push the PR.
+If CI gates failes then solve it."
+
+This supersedes waiting for or repeating the local PR gate before opening this PR.
+The current run continues; its source boundary began at `547333496`, before this presentation-only adjustment.
+
+No exact-final-head local-gate pass is claimed; final-head GitHub checks and Greptile must pass before merge.
+
+
+### PR 795 review corrections
+
+The main 0.72.0 PR is https://github.com/agentsfleet/agentsfleet/pull/795.
+At head `107674357a68c1c585126d8e80aa3f473e23df4b`, all three Vercel previews passed.
+
+GitHub app checks exposed two stale activity assertions. Interrupted tools are amber; the expanded list must be queried separately from its live summary.
+The corrected focused app command passes 62 tests across three files, including the activity presenter.
+
+The offline development checker previously confused the compiled candidate revision with the deployment merge revision.
+The deployment intentionally promotes identical tested bytes from the same source tree; the existing retained `3623b66` candidate/merge observation demonstrates that distinction.
+
+The checker joins native archive/run/commit identities, qualified receipts, raw checksum/size, source trees and runner bytes. It then checks the original API build stamp.
+Its scoped suite passes 210 tests, with 100% line/function coverage across imported checker modules.
+
+The new positive fixture uses different build/deployment commits with one tree; negative substitutions cover mismatched trees, provenance, bytes, attempts, gates and health.
+This remains operator-attributed offline consistency checking, not authentication of uploaded evidence.
+
+The local gate begun on `547333496` completed integration, lint and version checks; its unit command failed the same two stale app assertions.
+Its documentation check also found long paragraphs and sentences; those changed paragraphs were corrected without changing evidence or the managed Next.js block.
+It does not establish a final-head repository pass and will not be restarted merely to delay pushing fixes.
+
+Indy clarified that the primary live sequence starts with a failing source Pull Request and two human Slack commands.
+The responder investigates in the existing thread. The repairer must update the original Pull Request, wait for its exact-head validation and resume bounded correction without Codex doing the repair.
+
+The earlier broken-`dev`/new-draft fixture is an alternate use case.
+Original-Pull-Request authority and durable cross-admission continuation remain implementation work in this PR; no passing autonomous live result is claimed.
+
+
+Greptile identified two additional defects: complete job evidence spread across pages was rejected, and memory-forget activity hid its target key.
+The checker now joins numbered pages for the exact run attempt, checking totals, page size, unique job IDs and required failed-job logs.
+
+New two-page positive and negative cases cover missing/foreign/duplicate pages and unread failed jobs.
+Memory-forget activity now states the recorded key while running and after confirmed success.
+The fixture pins that wording independently of the presenter.
+
+`make lint-app lint-cli` passed after removing the stale inherited UI environment-file path from that local invocation.
+The final checker additions also pass CLI lint/type checking; changed-document prose scanning is clean.
+The managed Next.js instruction block is byte-for-byte unchanged.
+
+
+### Manual-first scope clarification
+
+Indy clarified that M224 first proves the manually triggered fleet flow; the active spec retains his exact wording.
+The agent had expanded the primary acceptance condition to arbitrary original-PR authority plus durable automatic CI continuation.
+That stronger merge condition was an overstatement of the first manual proof.
+
+The original M224 demonstration uses human Slack mentions and a fleet-owned repair draft, with bounded corrections during the active request.
+The fleet still performs the investigation and code repair; Codex must not supply its demonstration fix.
+The requested existing-PR and later automatic-continuation behavior remains recorded as proposed follow-on work, without claiming delivery or a dedicated reviewed implementation spec.
+
+The existing concept brief, sandbox evaluation and sandbox review index explicitly leave detailed design and a dedicated implementation spec pending.
+Historical M157 specifications describe the retired daemon; the current production-repair scenario records the missing Rust linkage and verifier.
+Those historical completion labels do not establish current runtime capability.
+
+Beyond the offline checker, M224 closure still requires the real-model development demonstrations and eight-case behavior campaign, native memory save/recall, full Linux acceptance and incident prerequisites.
+Production preflight, the approved selected-version release, complete runner rollout and the three production fleet demonstrations remain separate launch obligations.
+Merging the implementation PR does not close M224 or authorize a production tag.

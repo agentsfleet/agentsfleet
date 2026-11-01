@@ -7,7 +7,9 @@ import tailwind from "@tailwindcss/postcss";
 /** Embed font assets so relative fixture URLs cannot silently use fallback fonts. */
 export async function applicationCss(appRoot: string): Promise<string> {
   const source = path.join(appRoot, "app/globals.css");
-  const result = await postcss([tailwind({ base: appRoot })]).process(await readFile(source, "utf8"), { from: source });
+  const plugin = tailwind({base: appRoot});
+  const processor = "postcssPlugin" in plugin ? postcss(plugin) : plugin;
+  const result = await processor.process(await readFile(source, "utf8"), {from: source});
   let css = result.css;
   for (const [match, relative] of css.matchAll(/url\(['"]?([^)'"\s]+\.woff2?)['"]?\)/g)) {
     if (!relative) throw new Error("Font URL has no path");

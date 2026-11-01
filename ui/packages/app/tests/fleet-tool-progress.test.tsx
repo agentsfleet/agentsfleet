@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { FleetToolCall, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "@/components/domain/tool-call-shape";
+import { TOOL_CALLS_LABEL } from "@/components/domain/FleetToolCalls";
 
 const COMMAND = "nproc; cat /proc/loadavg";
 const OUTPUT = "8\n0.08 0.04 0.00 1/199 6";
@@ -17,24 +18,28 @@ function call(overrides: Partial<FleetToolCall> = {}): FleetToolCall {
 function show(tools: FleetToolCall[], status: FleetEventStatus = "processed") {
   mockStream([ev({id: "progress-event", role: "user", actor: "operator", text: "Check performance", status, tools})]);
 }
-function openGroup(): void { fireEvent.click(screen.getByRole("button", {name: "Ran commands"})); }
-const rows = () => within(screen.getByRole("list", {name: "Ran commands"})).getAllByRole("listitem");
-const command = (row: HTMLElement) => within(row).getByRole("button", {name: /^(Ran|Running) command /});
+function openGroup(): void { fireEvent.click(screen.getByRole("button", {name: /^Tool activity:/})); }
+const rows = () => within(screen.getByRole("list", {name: TOOL_CALLS_LABEL})).getAllByRole("listitem");
+function command(row: HTMLElement): HTMLElement {
+  const button = row.querySelector("[data-command-heading]")?.closest("button");
+  if (!button) throw new Error("tool action has no disclosure");
+  return button;
+}
 
 it("groups calls behind one disclosure with keyboard-accessible individual command details", async () => {
   show([call(), call({name: TOOL_NAME.HTTP_REQUEST, status: FAILED}), call({name: "custom_check"})]);
   renderThread();
-  const group = screen.getByRole("button", {name: "Ran commands"});
+  const group = screen.getByRole("button", {name: /^Tool activity:/});
   expect(group.getAttribute("aria-expanded")).toBe("false");
-  expect(screen.queryByRole("list", {name: "Ran commands"})).toBeNull();
+  expect(screen.queryByRole("list", {name: TOOL_CALLS_LABEL})).toBeNull();
   const user = userEvent.setup();
   group.focus(); await user.keyboard("{Enter}");
   const [shell, request, custom] = rows();
   expect(rows()).toHaveLength(3);
-  expect(command(shell!).textContent).toContain("Ran commandshellSuccess");
-  expect(command(request!).textContent).toContain("Ran commandhttp_requestFailed");
-  expect(within(command(request!)).getByText("Failed").className).not.toContain("sr-only");
-  expect(command(custom!).textContent).toContain("Ran commandcustom_checkSuccess");
+  expect(command(shell!).textContent).toContain("Ran command nproc; cat /proc/loadavg Success");
+  expect(command(request!).textContent).toContain("Failed: making request");
+  expect(within(command(request!)).getByText("Failed: making request").className).not.toContain("sr-only");
+  expect(command(custom!).textContent).toContain("Used custom_check Success");
   expect(screen.queryByText(/0.08/)).toBeNull();
   const first = command(shell!);
   first.focus(); await user.keyboard("{Enter}");
@@ -44,9 +49,9 @@ it("groups calls behind one disclosure with keyboard-accessible individual comma
   expect(shell!.querySelector('[data-command-outcome]')?.textContent).toBe("✓Success");
   expect(command(request!).getAttribute("aria-expanded")).toBe("false");
   await user.click(first);
-  expect(shell!.textContent).not.toContain(COMMAND);
+  expect(shell!.textContent).not.toContain("0.08 0.04 0.00 1/199 6");
   await user.click(group);
-  expect(screen.queryByRole("list", {name: "Ran commands"})).toBeNull();
+  expect(screen.queryByRole("list", {name: TOOL_CALLS_LABEL})).toBeNull();
 });
 
 it("keeps open details and row identity stable while another call streams and settles", async () => {
@@ -54,11 +59,11 @@ it("keeps open details and row identity stable while another call streams and se
   const second = call({callId: "second", name: TOOL_NAME.HTTP_REQUEST, done: false, status: undefined, ms: null});
   show([first, second], "received");
   const view = renderThread();
-  expect(screen.getByRole("button", {name: "Ran commands"}).getAttribute("title")).toBe("Running commands");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Making request (arguments not recorded)");
   openGroup();
   const [finished, streaming] = rows();
   expect(streaming!.getAttribute("data-state")).toBe("running");
-  expect(command(streaming!).textContent).toContain("Running command");
+  expect(command(streaming!).textContent).toContain("Making request");
   expect(document.querySelectorAll('[data-tool-shimmer="true"]')).toHaveLength(1);
   await userEvent.setup().click(command(finished!));
   show([first, {...second, done: true, status: SUCCEEDED, ms: 200}, call({callId: "third"})]);
@@ -66,9 +71,9 @@ it("keeps open details and row identity stable while another call streams and se
   expect(rows()).toHaveLength(3);
   expect(rows()[0]).toBe(finished); expect(rows()[1]).toBe(streaming);
   expect(command(finished!).getAttribute("aria-expanded")).toBe("true");
-  expect(command(streaming!).textContent).toContain("http_requestSuccess");
+  expect(command(streaming!).textContent).toContain("Made request");
   expect(document.querySelectorAll('[data-tool-shimmer="true"]')).toHaveLength(0);
-  expect(screen.getByRole("button", {name: "Ran commands"}).getAttribute("title")).toBe("Ran commands");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran commands (2), Made requests");
 });
 
 it("keeps repeated failures separate and reveals only the command the reader opens", async () => {
@@ -78,7 +83,7 @@ it("keeps repeated failures separate and reveals only the command the reader ope
   renderThread(); openGroup();
   const [first, second] = rows();
   expect(screen.queryByText(/refusal/)).toBeNull();
-  expect(screen.queryByText(new RegExp(url))).toBeNull();
+  expect(command(first!).textContent).toContain(`Failed: making request GET ${url}`);
   await userEvent.setup().click(command(second!));
   expect(second!.textContent).toContain("second refusal");
   expect(second!.querySelector('[data-command-outcome]')?.textContent).toBe("Failed(exit 9)");
@@ -89,7 +94,7 @@ it("keeps repeated failures separate and reveals only the command the reader ope
 it("does not show commands running while the model continues after their results", () => {
   show([call()], "received");
   renderThread();
-  expect(screen.getByRole("button", {name: "Ran commands"}).getAttribute("title")).toBe("Ran commands");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran commands");
   openGroup();
   expect(rows()[0]!.getAttribute("data-state")).toBe("succeeded");
   expect(document.querySelector('[data-tool-shimmer="true"]')).toBeNull();
@@ -107,7 +112,7 @@ it.each([
   expect(rows()[0]!.querySelector('[data-tool-shimmer="true"]')).toBeNull();
 });
 
-it("keeps generic command wording for unknown tools and shows recorded output literally", async () => {
+it("names unknown tools without inspecting arguments and shows recorded output literally", async () => {
   show([call({name: "custom_check", args: {internal_path: "/tmp/check.py"}, outputHead: "1309 tests passed; suite still running"})]);
   renderThread(); openGroup();
   expect(screen.getByText("custom_check")).toBeTruthy();
@@ -121,6 +126,6 @@ it("retains the individual calls inside a mixed command group", () => {
   show([call({name: TOOL_NAME.FILE_READ}), call({name: TOOL_NAME.MEMORY_RECALL}), ...Array.from({length: 6}, () => call())]);
   renderThread(); openGroup();
   expect(rows()).toHaveLength(8);
-  expect(screen.getByText(TOOL_NAME.FILE_READ)).toBeTruthy();
-  expect(screen.getByText(TOOL_NAME.MEMORY_RECALL)).toBeTruthy();
+  expect(command(rows()[0]!).textContent).toContain("Read file");
+  expect(command(rows()[1]!).textContent).toContain("Recalled memory");
 });

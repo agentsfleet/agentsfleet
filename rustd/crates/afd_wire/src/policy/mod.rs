@@ -56,8 +56,10 @@ pub enum HttpMethod {
     Get,
     /// Read a resource's headers only.
     Head,
-    /// Submit a query body against a read-only endpoint.
+    /// Submit a body at a server-defined endpoint.
     Post,
+    /// Update an existing resource only at a server-defined exact path.
+    Patch,
 }
 
 /// Whether a request path must equal the authored bytes or begin with them.

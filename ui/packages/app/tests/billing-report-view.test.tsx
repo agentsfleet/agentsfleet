@@ -53,6 +53,18 @@ beforeEach(() => { push.mockReset(); refresh.mockReset(); current.params = new U
 afterEach(() => cleanup());
 
 describe("Billing report filters and details preserve period totals", () => {
+  it("opens the previous UTC month and returns to the current month without losing fleet selection", () => {
+    current.params = new URLSearchParams("fleet=deleted-fleet&through_at=2026-11-01T01:00:00Z&c=old&activity=old");
+    view(billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-01T01:00:00Z"}));
+    fireEvent.click(screen.getByRole("button", {name: "Previous month"}));
+    expect(pushedParams().get("through_at")).toBe("2026-10-31T23:59:59.999Z");
+    expect(pushedParams().get("fleet")).toBe("deleted-fleet");
+    expect(pushedParams().has("c")).toBe(false);
+    fireEvent.click(screen.getByRole("button", {name: "Current month"}));
+    expect(pushedParams().has("through_at")).toBe(false);
+    expect(pushedParams().get("fleet")).toBe("deleted-fleet");
+    expect(screen.getByText(/Billing history includes deleted fleets/)).toBeTruthy();
+  });
   it("renders full-period totals independently of the single displayed activity", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "5200000000", activity_count: 52, line_count: 150 }) }));
     expect(screen.getByText("$5.20")).toBeTruthy();
@@ -74,13 +86,14 @@ describe("Billing report filters and details preserve period totals", () => {
   });
 
   it.each([["Period", "Today", "period", "today"], ["Fleet", "Setup chat", "fleet", "setup"], ["Model", BILLING_MODEL_NAME, "model", BILLING_MODEL]])(
-    "changing %s discards both continuation trails and the old cutoff", async (label, choice, key, expected) => {
+    "changing %s resets paging while retaining the selected period", async (label, choice, key, expected) => {
       current.params = new URLSearchParams("c=old&cps=25&through_at=old&activity=old&dc=old");
       view();
       await choose(label, choice);
       const params = pushedParams();
       expect(params.get(key)).toBe(expected);
-      for (const stale of ["c", "cps", "through_at", "activity", "dc"]) expect(params.has(stale)).toBe(false);
+      for (const stale of ["c", "cps", "activity", "dc"]) expect(params.has(stale)).toBe(false);
+      expect(params.get("through_at")).toBe(label === "Period" ? null : "old");
     },
   );
 

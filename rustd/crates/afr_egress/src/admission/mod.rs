@@ -263,12 +263,12 @@ impl<'p> Admission<'p> {
         }
     }
 
-    /// Under `read_only`: reads anywhere, and a `POST` only where a rule
-    /// admitted it or under a listed `read_post_paths` prefix.
+    /// Under `read_only`: reads, matched POST/PATCH rules, and listed query POSTs.
     fn read_only_admits(self, method: &Method, url: &Url, matched: bool) -> Result<()> {
         let admitted = !self.network.read_only
             || READS.contains(method)
-            || (*method == Method::POST && (matched || self.read_post(url)));
+            || (matched && (*method == Method::POST || *method == Method::PATCH))
+            || (*method == Method::POST && self.read_post(url));
         admitted
             .then_some(())
             .ok_or_else(|| raise::method_not_allowed(method.as_str()))
@@ -331,6 +331,8 @@ fn reachable(url: &Url, host: &str) -> Result<()> {
     }
 }
 
+#[cfg(test)]
+mod continuation_tests;
 #[cfg(test)]
 mod tests;
 

@@ -15,130 +15,28 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
 use axum::body::Body;
 use futures_util::StreamExt as _;
 use hyper::body::Incoming;
-use hyper::header::{CONTENT_LENGTH, CONTENT_TYPE, HOST, HeaderMap, LOCATION};
-use hyper::{Method, Request, Response, StatusCode};
+use hyper::header::{CONTENT_LENGTH, CONTENT_TYPE, HOST, LOCATION};
+use hyper::{Request, Response};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
 use rcgen::{BasicConstraints, CertificateParams, CertifiedIssuer, IsCa, KeyPair, KeyUsagePurpose};
 use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use tokio_rustls::TlsAcceptor;
 
+#[path = "https_route.rs"]
+mod route;
+pub(crate) use route::{Reply, Route, Seen};
+
 /// The most of one request body the fake reads.
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 /// How long a cut body waits after its first bytes before the connection dies,
 /// so the headers have been flushed and only the body read fails.
 const CUT_AFTER: std::time::Duration = std::time::Duration::from_millis(200);
-/// The media type every scripted body is answered as.
-const JSON: &str = "application/json";
-
-/// One answer to one request.
-#[derive(Debug, Clone)]
-pub(crate) struct Reply {
-    status: StatusCode,
-    location: Option<String>,
-    body: String,
-    /// Stream the body, then fail the stream, so the connection closes
-    /// mid-read after the declared length promised more.
-    cut: bool,
-    content_type: &'static str,
-}
-
-impl Reply {
-    /// `body`, answered with `status` as JSON.
-    pub(crate) fn json(status: u16, body: &serde_json::Value) -> Self {
-        Self {
-            status: StatusCode::from_u16(status).expect("a scripted status is valid"),
-            location: None,
-            body: body.to_string(),
-            cut: false,
-            content_type: JSON,
-        }
-    }
-
-    /// A redirect to `location`, as GitHub answers a job's log.
-    pub(crate) fn redirect(status: u16, location: &str) -> Self {
-        Self {
-            status: StatusCode::from_u16(status).expect("a scripted status is valid"),
-            location: Some(location.to_owned()),
-            body: String::new(),
-            cut: false,
-            content_type: JSON,
-        }
-    }
-
-    /// A 200 whose body stops short of the length it declares: TLS completes,
-    /// the headers arrive, and the read fails partway.
-    pub(crate) fn cut(body: &str) -> Self {
-        Self {
-            status: StatusCode::OK,
-            location: None,
-            body: body.to_owned(),
-            cut: true,
-            content_type: JSON,
-        }
-    }
-
-    /// Downloaded job text or an upstream error, without a JSON wrapper.
-    pub(crate) fn text(status: u16, body: &str) -> Self {
-        Self {
-            status: StatusCode::from_u16(status).expect("a scripted status is valid"),
-            location: None,
-            body: body.to_owned(),
-            cut: false,
-            content_type: "text/plain",
-        }
-    }
-}
-
-/// What one host answers at one method and path.
-#[derive(Debug)]
-pub(crate) struct Route {
-    host: &'static str,
-    method: Method,
-    path: String,
-    replies: Vec<Reply>,
-    next: AtomicUsize,
-}
-
-impl Route {
-    /// `method` `path` at `host`, answered by `replies` in order.
-    pub(crate) fn new(host: &'static str, method: Method, path: &str, replies: Vec<Reply>) -> Self {
-        Self {
-            host,
-            method,
-            path: path.to_owned(),
-            replies,
-            next: AtomicUsize::new(0),
-        }
-    }
-
-    /// The next reply, the last one repeating.
-    fn reply(&self) -> Option<Reply> {
-        let index = self.next.fetch_add(1, Ordering::Relaxed);
-        self.replies
-            .get(index)
-            .or_else(|| self.replies.last())
-            .cloned()
-    }
-}
-
-/// One request the fake saw.
-#[derive(Debug)]
-pub(crate) struct Seen {
-    pub(crate) host: String,
-    pub(crate) method: Method,
-    pub(crate) path: String,
-    /// The query, empty when the request carried none.
-    pub(crate) query: String,
-    pub(crate) headers: HeaderMap,
-    pub(crate) body: String,
-}
 
 /// The fake, listening.
 #[derive(Debug)]
@@ -281,21 +179,28 @@ async fn answer(
     let bytes = axum::body::to_bytes(Body::new(body), BODY_LIMIT)
         .await
         .unwrap_or_default();
-    let reply = routes
-        .iter()
-        .find(|route| route.host == host && route.method == parts.method && route.path == path)
-        .and_then(Route::reply);
-    // A suite that dropped its receiver asserts nothing about what was sent.
-    let _unread = sent.send(Seen {
+    let seen = Seen {
         host,
         method: parts.method,
         path,
         query,
         headers: parts.headers,
         body: String::from_utf8_lossy(&bytes).into_owned(),
-    });
+    };
+    let reply = routes
+        .iter()
+        .find(|route| {
+            route.host == seen.host && route.method == seen.method && route.path == seen.path
+        })
+        .and_then(|route| route.reply(&seen));
+    // A suite that dropped its receiver asserts nothing about what was sent.
+    let _unread = sent.send(seen);
     let reply =
         reply.unwrap_or_else(|| Reply::json(404, &serde_json::json!({"message": "Not Found"})));
+    Ok(response_for(reply))
+}
+
+fn response_for(reply: Reply) -> Response<Body> {
     let mut response = Response::builder()
         .status(reply.status)
         .header(CONTENT_TYPE, reply.content_type);
@@ -312,12 +217,12 @@ async fn answer(
             tokio::time::sleep(CUT_AFTER).await;
             Err(std::io::Error::other("the fake cut this body"))
         });
-        return Ok(response
+        return response
             .header(CONTENT_LENGTH, promised)
             .body(Body::from_stream(head.chain(dies)))
-            .expect("a cut reply builds"));
+            .expect("a cut reply builds");
     }
-    Ok(response
+    response
         .body(Body::from(reply.body))
-        .expect("a scripted reply builds"))
+        .expect("a scripted reply builds")
 }

@@ -15,8 +15,8 @@ it("announces summary progress once beside tools and a partial answer, then remo
   const view = renderThread();
   expect(screen.getAllByText("Context summarizing…")).toHaveLength(1);
   expect(screen.getByText("Original partial answer")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name: "Ran commands"}));
-  expect(screen.getByRole("list", {name: "Ran commands"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: /^Tool activity:/}));
+  expect(screen.getByRole("list", {name: "Tool activity"})).toBeTruthy();
   mockStream([{...running, contextProgress: end}]);
   view.rerender(threadElement());
   expect(screen.getAllByText("Context summarized, resuming…")).toHaveLength(1);
