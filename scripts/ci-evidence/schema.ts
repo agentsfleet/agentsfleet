@@ -42,7 +42,7 @@ const counts = z.strictObject({passed: integer, failed: integer, skipped: intege
 const regression = z.strictObject({commit, command: text, executor: text, exit_status: z.number().int(), counts, output: ref,
   execution: z.strictObject({run: addressed, job: addressed, log_url: z.url()})});
 const attributed = z.strictObject({reviewer: text, at: instant, grade, rationale: text});
-const runtimeKeys = {approval: ref, deployment: ref, health: ref, readiness: ref, runner: ref};
+const runtimeKeys = {approval: ref, deployment: ref, health: ref, readiness: ref, runner: ref, promotion: ref};
 export const developmentSchema = z.strictObject({
   case_links: z.strictObject({responder: caseId, repairer: caseId}),
   runtime: z.strictObject({workflow_run_url: z.url(), source_revision: commit, api_commit_stamp: text,

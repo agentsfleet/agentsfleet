@@ -61,6 +61,7 @@ function describe(name: string, args: ToolArgs | undefined): Description {
       return {running: "Listing", done: "Listed", target: name === TOOL_NAME.MEMORY_LIST ? "memories" : name === TOOL_NAME.CRON_RUNS ? "schedule runs" : "schedules", kind: "list"};
     case TOOL_NAME.MEMORY_RECALL: return {running: "Recalling memory", done: "Recalled memory", target: first(stringArg(args, "query")), kind: "read"};
     case TOOL_NAME.MEMORY_STORE: return {running: "Saving memory", done: "Saved memory", target: first(stringArg(args, "key")), kind: "tool"};
+    case TOOL_NAME.MEMORY_FORGET: return {running: "Forgetting memory", done: "Forgot memory", target: first(stringArg(args, "key")), kind: "tool"};
     case TOOL_NAME.GIT: return git(args);
     default: {
       if (!KNOWN.has(name)) return {running: "Using", done: "Used", target: name, kind: "tool"};

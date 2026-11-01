@@ -451,8 +451,10 @@ Keep private setup status available to screen readers and in the tooltip. Active
 
 Chat titles use the same 14px Instrument Sans as navigation, with ellipsis and the full title on hover or keyboard focus.
 Tool activity uses a 14px icon rail, including running indicators, with text for every outcome.
+
 Keep at least a 44px disclosure target on mobile and put long targets below the action.
 Desktop activity disclosures have a 36px minimum height and 14px action text; secondary targets retain the 13px metadata scale.
+
 Keep 8px inner padding around activity controls; keyboard focus uses one solid inset outline.
 
 Distinguish loading, unavailable history, and a successful empty list. Failed loading must never look like an empty history.

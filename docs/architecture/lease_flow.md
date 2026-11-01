@@ -240,8 +240,10 @@ The runner matches these rules in `rustd/crates/afr_egress/src/origin/mod.rs`.
 
 The PATCH supports bounded corrections within the same event's branch and existing draft.
 GitHub rejects non-fast-forward updates when `force:false`; this is not an expected-old-head comparison.
+
 Fleet instructions require fresh ref/draft reads and the observed branch head as the correction commit's sole parent.
 A later admission cannot select an earlier event's draft through these rules.
+
 Compatible runners must precede leases carrying the new `patch` method; older readers reject it.
 
 The reviews path remains denied by `origin_admits` in `rustd/crates/afr_egress/src/admission/mod.rs`.
@@ -348,3 +350,49 @@ Each gap names what would close it.
 12. **A rotating-CDN host can fail mid-lease under `allow_list_egress`.** The set is pinned at lease bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model — outbound is the only network surface" closes it.
 13. **GitHub never auto-redelivers and gives ten seconds;** a leg that fails before its admission row commits is lost outright ([`connectors.md`](./connectors.md)). Answering 202 before admission, with a durable inbox, closes it.
 14. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress/src/handler/webhook/app_route.rs`). A writer for the repair sweeper's evidence closes it.
+
+
+## Original Pull Request repair: required continuation
+
+This behavior is required for M224 and remains unimplemented at the PR 795 review checkpoint.
+The existing event-owned draft correction cannot stand in for this acceptance case.
+
+```text
+Source PR fails -> existing Slack failure thread
+  -> Indy mentions ci-responder -> fleet investigates -> same thread
+  -> Indy mentions ci-repairer -> fleet updates original PR branch
+  -> exact-head CI pending -> durable wait -> completion or fallback wake
+  -> failing checks -> same-PR correction -> repeat within one budget
+  -> verified green, named blocker, cancellation or deadline -> same thread
+```
+
+The GitHub-to-Slack notification integration supplies the initial thread.
+A mention starts investigation; enabling a fleet or saving its setup supplies no failure by itself.
+Posting a root notification and subscribing to failures are separate configured capabilities.
+
+Use an explicit reviewed existing-Pull-Request write mode, separate from new-draft repair authority.
+Native code verifies the addressed repository, open Pull Request, same-repository head, base, branch and current head before publishing.
+Refuse fork heads, protected/default/base targets and an unrelated advance by another writer.
+
+Store the repair owner, original admission, target identity, expected head, validation runs, thread destination, reviewed setup/grant and remaining limits in trusted application state.
+Model prose and memory cannot grant branch authority.
+A later admission rechecks access and resumes that owner; it must not mint a fresh repair target or reset attempts and elapsed-time limits.
+
+Use verified completion deliveries to wake matching waits, including successful and failed runs on repair branches.
+The current investigation filter intentionally drops successful runs and repair branches; continuation matching must precede that filter after signature and installation verification.
+The wake is only a signal: independently read the named checks and unchanged regression for the current exact head before reporting success.
+
+Reuse one-shot scheduling for a bounded fallback and deadline; a recurring human-configured cron is unnecessary.
+The current generic schedule path has no Slack reply destination and creates a new admission.
+It therefore needs trusted owner/thread linkage before it can resume a repair safely.
+
+Record expected validation before publishing; reconcile acknowledgement loss against the same target.
+Completion and fallback wakes compete through one fenced transition and stable deduplication identity.
+Cancellation, revoked access, exhausted limits and terminal outcomes prevent late deliveries from restarting work.
+
+Acceptance must use a real model through native Slack admission, GitHub reads/writes and thread delivery.
+Codex may observe evidence and correct product defects; it must not investigate or author the demonstration's repair for the fleet.
+
+Prove pending-check resume after worker replacement, repeated failure then green, duplicate/out-of-order delivery, lost completion fallback and fast completion before publication acknowledgement.
+Also prove stale heads/attempts, human pushes, revoked grants and late green after cancellation.
+An unrelated green workflow or skipped regression cannot complete the repair.

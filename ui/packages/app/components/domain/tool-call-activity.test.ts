@@ -22,6 +22,7 @@ describe("recorded tool activity", () => {
     [TOOL_NAME.EXEC_COMMAND, {cmd: "bun run test\necho later"}, "Running command", "Ran command", "bun run test"],
     [TOOL_NAME.SHELL, {command: "ls"}, "Running command", "Ran command", "ls"],
     [TOOL_NAME.MEMORY_STORE, {key: "finding"}, "Saving memory", "Saved memory", "finding"],
+    [TOOL_NAME.MEMORY_FORGET, {key: "finding"}, "Forgetting memory", "Forgot memory", "finding"],
     [TOOL_NAME.MEMORY_RECALL, {query: "finding"}, "Recalling memory", "Recalled memory", "finding"],
     [TOOL_NAME.MEMORY_LIST, {}, "Listing", "Listed", "memories"],
     [TOOL_NAME.CRON_LIST, {}, "Listing", "Listed", "schedules"],

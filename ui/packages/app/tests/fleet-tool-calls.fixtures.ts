@@ -9,5 +9,5 @@ export const HEADERS: ReadonlyArray<readonly [FleetToolCall["name"], FleetToolCa
   [TOOL_NAME.HTTP_REQUEST, {method: "POST", url: "https://api.example/run"}, "Making request POST https://api.example/run", "Made request POST https://api.example/run"],
   [TOOL_NAME.HTTP_REQUEST, {url: "https://api.example/run"}, "Making request GET https://api.example/run", "Made request GET https://api.example/run"],
   [TOOL_NAME.MEMORY_STORE, {key: "deploy"}, "Saving memory deploy", "Saved memory deploy"],
-  [TOOL_NAME.MEMORY_FORGET, {key: "deploy"}, "Forgetting memory_forget", "Forgot memory_forget"],
+  [TOOL_NAME.MEMORY_FORGET, {key: "deploy"}, "Forgetting memory deploy", "Forgot memory deploy"],
 ];

@@ -3,6 +3,7 @@ import type { EvidenceFixture } from "./fixture.ts";
 import { eventUrl } from "@ci-evidence/native";
 import { AFTER, BASE, BEFORE, DRAFT_URL, HEAD, LOG, LOG_URL, REPOSITORY, RUNNER, SOURCE, WORKSPACE } from "./facts.ts";
 import { addSourceCalls, CODE_BLOB, CODE_PATH, JOBS_URL, regressionFixture, sourceCalls } from "./source-fixture.ts";
+import { BUILD, deploymentRun, promotionFixture } from "./promotion-fixture.ts";
 
 export function developmentFixture(fixture: EvidenceFixture): Development {
   const responder = fixture.subject(0);
@@ -52,17 +53,18 @@ function runtimeFixture(fixture: EvidenceFixture): Development["runtime"] {
     artifact: {workflow_run_url, artifact_id: 456, archive_name: "synthetic-runner-archive", entry_name: "agentsfleet-runner", sha256: binarySha}});
   const inventory = {read_url: "https://api-dev.agentsfleet.net/v1/fleets/runners?limit=100", response: {
     items: [{id: RUNNER, status: "active", liveness: "online", degraded: false}], next_cursor: null}};
-  return {workflow_run_url, source_revision: SOURCE, api_commit_stamp: SOURCE.slice(0, 7),
+  return {workflow_run_url, source_revision: SOURCE, api_commit_stamp: BUILD.slice(0, 7),
     runner_observations: [{runner_id: RUNNER, build_id: null, running_sha256: binarySha, artifact_sha256: binarySha, probe}],
     evidence: {
       approval: fixture.add({operator: "Synthetic operator", at: BEFORE, source_revision: SOURCE, workflow_run_url, deploy_runners: true}),
       deployment: fixture.add({workflow_run_url, version: "0.72.0", api_job_ids: [1], runner_job_ids: [2], run: {
-        read_url: "https://api.github.com/repos/agentsfleet/agentsfleet/actions/runs/123", response: {head_sha: SOURCE, conclusion: "success", created_at: BEFORE, run_started_at: BEFORE, updated_at: BEFORE}},
+        read_url: "https://api.github.com/repos/agentsfleet/agentsfleet/actions/runs/123", response: deploymentRun()},
         jobs: {read_url: "https://api.github.com/repos/agentsfleet/agentsfleet/actions/runs/123/jobs", response: {jobs: [{id: 1, name: "fly / deploy-fly", conclusion: "success"}, {id: 2, name: "metal / deploy-metal", conclusion: "success"}]}}}),
       health: fixture.add({observed_at: BEFORE, read_url: "https://api-dev.agentsfleet.net/healthz", response: {
-        status: "ok", service: "agentsfleetd", version: "0.72.0", commit: SOURCE.slice(0, 7), build_id: null}}),
+        status: "ok", service: "agentsfleetd", version: "0.72.0", commit: BUILD.slice(0, 7), build_id: null}}),
       readiness: fixture.add({observed_at: BEFORE, read_url: "https://api-dev.agentsfleet.net/readyz", response: {ready: true, database: true, queue: true}}),
       runner: fixture.add({before: {...inventory, observed_at: BEFORE}, after: {...inventory, observed_at: AFTER}, probes: [probe]}),
+      promotion: promotionFixture(fixture, binarySha),
     }, checks: {approval: "pass", deployment: "pass", health: "pass", readiness: "pass", runner: "pass"}};
 }
 
