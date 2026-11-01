@@ -36,6 +36,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
 | How does the Rust runner run a lease, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §"Process model", §"Workspace between leases" |
 | How should we evaluate SPACE and test a recoverable coding session? | [Coding sandbox evaluation](sandbox_evaluation.md) |
+| How should one goal-driven repair survive later CI, externally opened PRs and worker replacement? | [Proposed durable repair scenario](scenarios/durable-repair.md) |
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §"Egress model — outbound is the only network surface" |
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §"Sandbox tiers" |
 | How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |

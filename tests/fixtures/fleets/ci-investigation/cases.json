@@ -27,7 +27,7 @@
       "case_id": "missing_link",
       "variant_id": "normal",
       "role": "responder",
-      "input": "Why did the build fail?",
+      "input": "Why did a different build fail? This is a new incident, unrelated to the earlier Linkwarden run in this conversation. I have not supplied its repository, run URL or attempt.",
       "policy_sha256": "1cac11e349df3b6f658fe992787842b1095db12f40837e96e12cbfd31e3ce922",
       "expected_outcome": "clarification",
       "required_operations": [],

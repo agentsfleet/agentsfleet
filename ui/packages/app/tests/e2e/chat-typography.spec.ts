@@ -62,6 +62,14 @@ test("setup checks use enclosed icons and incoming messages have readable detail
   await disclosure.focus(); await page.keyboard.press("Enter");
   await expect(page.getByText("Diagnose the failed title regression using the current source.")).toBeVisible();
   await expect(page.locator("pre, svg.lucide-braces, svg.lucide-check")).toHaveCount(0);
+  const failure = page.getByRole("status").filter({hasText: "The response was interrupted."});
+  await expect(failure).toBeVisible();
+  await expect(failure).toHaveCSS("font-size", "14px");
+  const details = failure.locator("..").getByRole("button", {name: "View details"});
+  await expect(page.getByText("The connection to the model provider was lost mid-turn.")).not.toBeVisible();
+  await details.focus(); await page.keyboard.press("Enter");
+  await expect(page.getByText("The connection to the model provider was lost mid-turn.")).toBeVisible();
+  await page.keyboard.press("Enter");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const screenshot = info.outputPath("setup-message-clarity.png");
   await page.screenshot({path: screenshot});

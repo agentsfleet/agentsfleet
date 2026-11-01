@@ -654,7 +654,9 @@ Keep failure injection deterministic with barriers, controlled transport loss an
 
 A browser mock, scripted provider or successful service creation cannot substitute for a real cross-worker recovery proof.
 
-The compaction work regression currently fails before optimization; the independent blocked-summary proof passes. Their measured output is recorded in the active spec. Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
+The historical pre-optimization compaction regression failed while the independent blocked-summary proof passed. The [preparation record](context_lifecycle.md#preparation-and-future-sandbox-boundary) now describes indexed preparation and its estimator-work regression. Use the owning spec's measurements rather than the historical failure.
+
+Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
 
 The [proposed original-Pull-Request continuation](lease_flow.md#original-pull-request-repair-proposed-follow-on) records the requested existing-PR flow and future recovery proofs.
 M224 starts with the manually triggered fleet-owned draft demonstration; the broader runtime behavior remains unimplemented.

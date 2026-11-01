@@ -121,13 +121,22 @@ A run may say up to eight interim lines before its answer, through `POST /v1/run
 | Merge | a person in GitHub | their own | the repository's branch protection |
 | Deploy | Linkwarden's pipeline | the pipeline's | the release process; the setup checks that `agentsfleet-repair/*` branches cannot reach deploy secrets |
 
-A Slack-requested run can do exactly what the attached fleet's own policy allows. For the repairer that is one daemon-issued branch in `agentsfleet/linkwarden` and one draft PR against trusted base `dev` (`rules` in `afd_gate/src/policy/egress/write.rs`): no rule admits a merge, a ref update, a deletion or GraphQL, the runner denies any request no rule matches on a ruled host (`origin_admits` in `afr_egress/src/admission/mod.rs`), and the token carries no workflow permission. A write-bound fleet never receives an unaddressed mention. A branch pushed into Linkwarden runs that repository's workflows, so the drill audits their secret paths for `agentsfleet-repair/*` branches. An installed grant covers the write, exactly as [`../connectors.md`](../connectors.md) §"Trust anchors" item 6 says for every other origin.
+A Slack-requested run stays within its attached fleet's policy.
+The repairer targets one daemon-issued branch in `agentsfleet/linkwarden` and one draft against `dev` (`afd_gate/src/policy/egress/write.rs`).
+Its event-owned ref permits bounded corrections through PATCH with `force:false`.
+
+Other ref updates, merge, deletion and GraphQL remain refused.
+The runner rejects unmatched requests on ruled hosts (`origin_admits` in `afr_egress/src/admission/mod.rs`), and its token has no workflow permission.
+Write-bound fleets never receive unaddressed mentions.
+
+A branch push runs repository workflows, so the drill audits secret paths for `agentsfleet-repair/*` branches.
+The installed grant bounds writes as described in [trust anchors](../connectors.md#trust-anchors).
 
 ## 8. Evidence sources
 
 | Source | How a fleet reads it | Known gaps |
 |---|---|---|
-| GitHub run | the fleet reads the linked run, failed jobs, steps and annotations through `http_request` under the repository's read prefix, as its instructions direct (M206_003 §2); it also reads commits and compare there (`rules`, `afd_gate/src/policy/egress/read.rs:21-30`) | A mint reads the installation's permissions first and asks for `contents` read plus whichever of `actions` and `checks` read it holds (`for_binding`, `afd_credential/src/credential/github/request.rs:85-96`). The App registration lists Checks: read-only and each installation accepts it before the drill (`playbooks/operations/github_app_registration/001_playbook.md:38-43`); until one does, the mint succeeds without it and the fleet's annotation read answers 403. Job logs answer with a redirect to storage outside the exact-host allowlist; the runner's client follows no redirect (`guarded`, `afr_egress/src/network/mod.rs:171-181`), so the fleet names a job-log gap. The storage hop is owner-held. |
+| GitHub run | the fleet reads the linked run, failed jobs, steps and annotations through `http_request` under the repository's read prefix, as its instructions direct (M206_003 §2); it also reads commits and compare there (`rules`, `afd_gate/src/policy/egress/read.rs:21-30`) | A mint reads the installation's permissions first and asks for `contents` read plus whichever of `actions` and `checks` read it holds (`for_binding`, `afd_credential/src/credential/github/request.rs:85-96`). The App registration lists Checks: read-only and each installation accepts it before the drill (`playbooks/operations/github_app_registration/001_playbook.md:38-43`); until one does, the mint succeeds without it and the fleet's annotation read answers 403. Job logs can redirect to storage. The tool follows at most three guarded bodyless GET redirects, readmitting each destination and stripping modeled headers on an origin change. The reviewed HTTP destination policy must admit the storage host; a denied or truncated required log still produces a named source gap. See [guarded downloads](../runner_fleet.md#guarded-tool-downloads). |
 | Grafana | workspace secret `grafana = {host, token}`; `Bearer ${secrets.grafana.token}`; Loki and alert reads over GET | No connector, by design ([connector archetypes](../connectors.md#archetypes)). The host must resolve publicly, because the tool rejects private addresses. Read-only is enforced by `network.read_only`, which is otherwise off by default (`afd_fleet_runtime/src/config/policy/mod.rs:202`). |
 | Memory | the fleet's own namespace, hydrated only under a live lease for that fleet that no reclaim has moved past (`Plane::hydrate` in `afd_fleet/src/lease/memory.rs`) | none for this journey |
 
@@ -156,7 +165,7 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 | Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack/mod.rs`) | — | M206_001 |
 | Write reach from Slack | ✅ one ref and one draft PR, proven for a Slack-requested lease with no approval asked (`afd_gate/src/policy/egress/tests/slack.rs`, `afd_fleet/tests/integration_lease_gates/slack.rs`) | — | M206_003 |
 | One run per approval | unverified: the parked delivery passes once approved (`afd_gate/src/gate/pass.rs:164-165`) while approval also admits a continuation (`afd_approval/src/inbox/resolve/mod.rs:149-152`) | exactly one run | its own spec; off this path, since Slack requests do not park |
-| Continuous Integration (CI) evidence reach | 🟡 the read mint asks for `actions` and `checks` read where the installation holds them, and the read rule covers the CI paths (M206_003 §1–§2); logs unreachable | every installation accepts the App's Checks permission; the job-log storage hop is owner-held | M206_003 |
+| Continuous Integration (CI) evidence reach | 🟡 the read mint asks for `actions` and `checks` read where the installation holds them, and the read rule covers the CI paths (M206_003 §1–§2); guarded GET log redirects implemented, with live access dependent on the reviewed destination policy | every installation accepts required App permissions and the reviewed HTTP policy admits required log destinations; retain fleet-owned complete-text evidence | M206_003 |
 | Grafana read-only | ✅ when the fleet declares `network.read_only` | declared by the drill fleet's setup | M206_004 |
 | External setup | not in code | playbook: apps, channels, subscriptions, App permissions, Grafana token | M206_004 |
 
@@ -187,3 +196,8 @@ Both channels subscribe to `agentsfleet/linkwarden`: development selects pull re
 ## 13. Proof status
 
 Nothing here is proven live. The Slack registration playbook's live check, a threaded reply to a mention (`playbooks/operations/slack_app_registration/001_playbook.md:87-99`), has not been recorded against the Rust daemon. M206_004 records the development and production drills; this section changes to one line per proven stage when they land.
+
+## Proposed durable follow-on
+
+The [durable repair scenario](durable-repair.md) extends the addressed manual path with later-CI continuation, existing-PR authority, worker recovery and Jev goal evaluation. These are proposed capabilities, not effects of saving the current setup.
+A scheduled Grafana diagnosis needs an explicitly configured notification destination and repair authority; no implicit cross-fleet handoff or arbitrary channel routing is supplied today.

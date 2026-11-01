@@ -165,7 +165,7 @@ const FAILURE_PRESENTATION: Record<string, EventFailurePresentation> = {
   oom_kill: { label: "Ran out of memory", guidance: null },
   resource_kill: { label: "Hit a resource limit", guidance: null },
   runner_crash: { label: "The runner crashed", guidance: null },
-  transport_loss: { label: "Lost connection to the runner", guidance: null },
+  transport_loss: { label: "The response was interrupted", guidance: null },
   landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
   lease_expired: { label: "The run's lease expired", guidance: null },
   renewal_terminate: { label: "Stopped by lease renewal policy", guidance: null },
