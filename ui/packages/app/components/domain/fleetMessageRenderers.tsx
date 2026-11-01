@@ -213,7 +213,7 @@ function FleetGroupMessage({ senderLabel, members }: { senderLabel: string; memb
   );
 }
 
-function activityDetails(actor: string, payload: string | undefined) {
+function activityDetails(actor: string, payload: string | null | undefined) {
   const message = actor.startsWith("slack:") ? steerMessageFrom(payload) : "";
   const record = parsePayload(payload);
   return {label: message ? "View message" : "View event",
