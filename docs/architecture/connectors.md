@@ -341,7 +341,23 @@ Slack is the contrast and the reason this page cannot generalise: its retry sema
 
 ### Credential use remains separate from event receipt
 
-Receiving a signed event does not hand GitHub credentials to a fleet. When a leased fleet later calls the GitHub API through `${secrets.github.token}`, the runner-token plane asks `agentsfleetd` to mint. The daemon derives the fleet and workspace from the lease, rechecks the approved integration grant, loads the workspace installation handle, signs with the platform private key, exchanges for a short-lived installation token, and returns that token for the tool call. The runner keeps the token for the lease, mints again 30 s before it expires, and masks it out of every response a tool returns (`rustd/crates/afr_egress/src/vault/mod.rs`). The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames. The minted token's scope follows the binding (`afd_credential/src/credential/github/request.rs`): a read binding gets `contents: read` and no `pull_requests` at all; a repair binding adds what a push and a draft Pull Request need, never `workflows`; the `actions` and `checks` reads are requested only where the installation holds them, so a missing one answers 403 to the fleet. The runner's egress client follows no redirect (`afr_egress/src/network/mod.rs`), so a job log that GitHub serves by redirect is not fetched.
+Receiving a signed event does not give GitHub credentials to a fleet.
+When the fleet calls GitHub through `${secrets.github.token}`, its runner-token plane asks the daemon to mint a token.
+
+The daemon derives the fleet and workspace from the lease and rechecks the approved integration grant.
+It loads the workspace installation handle, signs with the platform key and exchanges for a short-lived token.
+
+The runner caches that token for the lease and refreshes it 30 seconds before expiry.
+It masks the token in tool responses (`rustd/crates/afr_egress/src/vault/mod.rs`).
+The App private key and webhook secret never enter the lease, runner environment, sandbox, logs or response frames.
+
+The binding determines token scope (`afd_credential/src/credential/github/request.rs`).
+Read bindings receive contents read without Pull Request permissions; repair bindings add bounded write permissions, never workflows.
+Actions/checks reads require installation permission; a missing permission returns 403 to the fleet.
+
+The shared HTTP client disables automatic redirects, but the tool supports guarded bodyless GET redirects.
+Each destination needs current policy admission; cross-origin modeled headers are stripped.
+See [guarded downloads](runner_fleet.md#guarded-tool-downloads); implementation support alone does not prove a complete fleet-owned log read.
 
 ### Provider impact
 

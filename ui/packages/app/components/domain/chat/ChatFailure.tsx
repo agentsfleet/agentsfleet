@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
+import { CircleAlertIcon } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button } from "@agentsfleet/design-system";
 
 /** Setup and saved-fleet failures use the same quiet, actionable message. */
@@ -20,9 +21,11 @@ export function ChatFailure({title, description, note, details, onRetry, disable
     try { await send(); } catch { setRetryError(true); }
     finally { pending.current = false; setRetrying(false); }
   };
-  return <div className="space-y-sm border-l-2 border-destructive pl-md text-body-sm leading-prose">
-    <p className="font-medium text-destructive">{title}</p>
-    <p>{description}</p>
+  return <div className="space-y-sm rounded-md border border-border px-md py-sm text-body-sm leading-prose">
+    <output className="block space-y-sm">
+      <span className="flex items-center gap-sm font-medium"><CircleAlertIcon className="size-3.5 shrink-0 text-warning" aria-hidden="true" />{title}</span>
+      <span className="block">{description}</span>
+    </output>
     {note ? <p className="text-eyebrow text-muted-foreground">{note}</p> : null}
     <div className="flex flex-wrap items-start gap-md">
       {onRetry ? <Button variant="outline" size="sm" disabled={disabled || retrying} onClick={() => {void retry(onRetry);}}>{retrying ? "Trying again…" : "Try again"}</Button> : null}

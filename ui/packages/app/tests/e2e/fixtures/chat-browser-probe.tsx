@@ -6,6 +6,7 @@ import { DRAFT, MESSAGE, MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures
 import { ActivityFixture } from "./chat-activity-probe";
 import { SetupChecks } from "@/components/domain/chat/SetupChecks";
 import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/FleetMessageRow";
+import { ChatFailure } from "@/components/domain/chat/ChatFailure";
 
 const client = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
 const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, model: MODEL.ref, models: [MODEL], messages: [
@@ -33,5 +34,7 @@ function SetupFixture() {
     <FleetActivityRow sender="Slack" headline="Message received" createdAt={SETUP_CREATED_AT} messageRole="system" detailsLabel="View message">
       <p>Diagnose the failed title regression using the current source.</p>
     </FleetActivityRow>
+    <ChatFailure title="Couldn’t complete this request" description="The response was interrupted."
+      details={<p>The connection to the model provider was lost mid-turn.</p>} />
   </main></SenderLabelProvider>;
 }

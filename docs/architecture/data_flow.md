@@ -544,6 +544,8 @@ Approval resolution still creates a continuation admission.
 
 #### QStash owns the clock
 
+The proposed [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
+
 `agentsfleetd` stores the desired schedule, pushes each requested mutation to
 QStash synchronously, and receives the fires. The runner owns no schedule
 timer ([`runner_execution.md`](./runner_execution.md#tool-catalog)).

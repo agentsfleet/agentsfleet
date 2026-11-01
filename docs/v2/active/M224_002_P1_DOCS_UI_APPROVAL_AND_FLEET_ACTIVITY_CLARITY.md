@@ -49,6 +49,11 @@
 | `ui/packages/app/components/domain/FleetMessageRow.test.tsx`; `ui/packages/app/lib/events/{event-summary,event-summary.body}.test.ts`; `ui/packages/app/tests/fleet-thread/{role-activity,role-links,role-rows,malformed-metadata}.test.ts` | EDIT | verify labels, disclosure behavior and existing event fallbacks |
 | `ui/packages/app/tests/e2e/chat-typography.spec.ts`; `ui/packages/app/tests/e2e/fixtures/chat-browser-probe.tsx`; `ui/packages/app/tests/e2e/acceptance/fleet-reply-parts.spec.ts` | EDIT | verify enclosed icons, desktop/mobile geometry and a Slack event through the real page stream |
 | `tests/fixtures/fleets/{ci-responder,ci-repairer}/definition.json`; `tests/fixtures/fleets/ci-investigation/cases.json` | EDIT / CREATE | save approved public network defaults and the eight-case plan |
+| `ui/packages/app/components/domain/chat/ChatFailure.tsx`; `ui/packages/app/components/domain/tool-call-activity{,.test}.ts`; `ui/packages/app/tests/fleet-tool-progress.test.tsx` | EDIT | use calm inline recovery notices, action-specific tool groups and enclosed command success icons |
+| `rustd/crates/afr_tools/src/http_request/{mod,body_tests}.rs`; `docs/architecture/runner_fleet.md` | EDIT / CREATE | keep explicit truncation notices without sending the known-incomplete megabyte prefix to inference |
+| `rustd/crates/afr_agent/src/trace/{mod,tests}.rs`; `rustd/crates/afd_fleet_runtime/tests/definition/corpus.rs` | EDIT | retain call inventory before previews and assert the approved public read-only fixture policy |
+| `docs/architecture/*.md`; `docs/architecture/scenarios/*.md`; `docs/reviews/development-autonomy/`; `docs/reviews/space-sandbox/{next-specs-handoff,orly-egm-jev-handoff-prompt}.md` | EDIT / CREATE | reconcile current behavior and proposed unified autonomy scope; retain the requested independent reviews |
+| `docs/v2/pending/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md` | CREATE | draft the reviewed unified autonomy scope without claiming implemented behavior |
 | This spec; `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md`; `docs/DESIGN_SYSTEM.md`; the M224 launch ledger | EDIT / CREATE | retain requested behavior, actual evidence and open closure requirements |
 
 ## Applicable Rules
@@ -169,10 +174,18 @@ No product analytics events, operator signals or monitoring rules change.
 | Unit | `keeps the rows it has when the read fails` | failed refresh → existing rows and error remain |
 | Unit | `hides infrastructure subjects while retaining resource names and unknown checks` | blocked GitHub credential and unknown checks → distinct service label and safe recovery link |
 | Unit | `shows the received Slack message instead of raw event JSON` | message plus channel metadata → only message text in the disclosure |
-| Browser | `setup checks use enclosed icons and incoming messages have readable details` | desktop/mobile fixture → 14px circle checks, readable disclosure and no horizontal overflow |
+| Browser | `setup checks use enclosed icons and incoming messages have readable details` | desktop/mobile fixture → 14px circle checks, readable message disclosure and keyboard-expandable soft failure, with no horizontal overflow |
 | Application | `test_slack_received_uses_readable_label_without_empty_details` | native event frame through the real signed-in page → Slack label and no empty inspector |
 | Manual | `public Definition comparison` | source JSON and accepted revision 2 → identical public read-only network and unchanged repository boundaries |
 | Manual | `draft regression and trace comparison` | passing head and 17 omitted calls → regression pass retained, complete-trace acceptance incomplete |
+| Unit | `should_reclaim_old_previews_before_omitting_later_calls` | fifty calls with oversized optional previews → complete inventory and arguments, zero omissions, valid byte bound |
+| Unit | `should_count_a_call_when_essential_rows_alone_exhaust_the_budget` | essential rows exceed byte capacity → honest omitted count and a valid bounded trace |
+| Unit | `responder_definition_holds_no_write_reach` | native responder fixture → public read-only HTTP, empty allowlist and no write reach |
+| Unit | `repairer_definition_is_write_bound_to_one_base` | native repairer fixture → public HTTP with reviewed repository/base restrictions intact |
+| Unit | `summarizes only the group's own actions and preserves mixed outcomes` | reads, failed write and unknown tool → actual action labels, retained failure, no adjacent-text contamination |
+| Manual | `native hello after diagnosis` | greeting after a diagnosed incident → short social reply, present empty call inventory and no incident recap |
+| Manual | `native varied social replies` | casual/friendly/thanks wording → brief replies and present empty call inventories; no literal keyword routing |
+| Unit | `should_omit_a_truncated_body_without_hiding_its_incomplete_status` | one-MiB truncated response → explicit status/type/truncation, bounded omission notice and no body prefix |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -192,8 +205,8 @@ No product analytics events, operator signals or monitoring rules change.
 
 ### Behaviour evals
 
-This workstream adds no model-behavior pass.
-M224_001 still requires its eight actual-model cases, complete trace and memory witnesses, full Linux acceptance, incident prerequisites and production gates.
+No full model-campaign pass is claimed; observed social follow-ups remain separately attributed in the launch ledger.
+M224_001 retains the eight actual-model cases, complete trace and memory witnesses; its owner-approved deferrals are canonical there. This workstream does not reinstate development rollout identity checks, full Linux acceptance, the incident demonstration or production launch as M224 blockers.
 
 ## Dead Code Sweep
 
@@ -234,3 +247,30 @@ He also requested that the specifications be written and pushed in the PR.
 
 The approved behavior is concrete; no new product scope or model authority is inferred.
 The command-line Effect code review remains a recorded follow-up, not a demonstrated performance repair.
+
+## Approved completion amendment: Nov 01, 2026
+
+Indy replied "Approve this finish plan" to the recorded plan: keep draft #6 regression and Slack delivery passed; fix trace retention and required-source stopping, complete the eight-case evaluation, prove native memory recall, then remove the bespoke CI-evidence machinery and obsolete callers/rubric commands in favor of a concise evidence ledger.
+Runtime policy and repair tests remain required; missing or failing live evidence remains incomplete.
+
+The owner also supplied a concrete conversational regression: `hello` triggered GitHub reads and a repeated diagnosis.
+Both CI definitions now distinguish social replies from investigation, require short greetings without tool calls or incident recaps, and strengthen the required-read stop and completed-validation-log ordering.
+Live setup updates must use native Improve/Review/Apply and preserve config, grants, repository/base, model and public read-only HTTP policy.
+
+- **Dimension 5.1:** earlier previews cannot omit later call records when essential rows fit → Test `should_reclaim_old_previews_before_omitting_later_calls`.
+- **Dimension 5.2:** essential rows over the existing byte/call caps remain honestly counted as omitted → Test `should_count_a_call_when_essential_rows_alone_exhaust_the_budget`.
+- **Dimension 5.3:** responder retains public HTTP with empty allowlist and read-only restrictions → Test `responder_definition_holds_no_write_reach`.
+- **Dimension 5.4:** repairer retains public HTTP and the exact repository/base write scope → Test `repairer_definition_is_write_bound_to_one_base`.
+- **Dimension 5.5:** greeting after diagnosis returns a brief social reply and explicit zero-call trace → Manual `native hello after diagnosis`, retained in the launch ledger; a repeated incident summary fails clarity even with no calls.
+
+The owner moved chat polish before the remaining M224 publication work and required social handling beyond a literal `hello`.
+Collapsed tool groups now retain recorded action verbs, including job-log/status and branch-head reads, rather than replacing them with generic `Used tools` categories.
+`ChatFailure` uses a polite inline status with an enclosed warning icon and expandable diagnostics; connection interruption does not imply the runner crashed.
+
+- **Dimension 5.6:** settled groups preserve actual actions and mixed failures without reading full output → Test `summarizes only the group's own actions and preserves mixed outcomes`.
+- **Dimension 5.7:** soft failure remains readable, 14px and keyboard-expandable on desktop/mobile → Test `setup checks use enclosed icons and incoming messages have readable details`.
+- **Dimension 5.8:** casual/friendly/thanks wording does not invoke investigation tools → Manual `native varied social replies`, retained in the launch ledger.
+
+- **Dimension 5.9:** known-truncated HTTP content stays explicitly incomplete without an oversized model payload → Test `should_omit_a_truncated_body_without_hiding_its_incomplete_status`.
+The one-MiB capture cap, HTTP status, policy checks and complete-body behavior remain unchanged.
+The large-log provider failure remains a failed observation until the updated runtime is deployed and the real-model case is rerun.

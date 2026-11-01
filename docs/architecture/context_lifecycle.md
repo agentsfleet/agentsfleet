@@ -191,6 +191,8 @@ Also test private scope isolation and deletion, stale authority/generation, canc
 
 ## Preparation and future sandbox boundary
 
+The proposed [durable repair scenario](scenarios/durable-repair.md) adds task-bound recovery and Jev goal evaluation. Compaction remains the model-input mechanism; a summary cannot select a PR, authorize a write or prove that a remote action completed.
+
 **Owner request, Oct 24, 2026: 10:21 PM:**
 
 ```text

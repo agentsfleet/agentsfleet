@@ -648,3 +648,9 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-10-15 | Shared table hierarchy and Runner navigation | Live visual approval covers sentence-case table headings, readable rows, shared pagination, dialogs, Runner cards and controls, and workspace Activity placement. Table colors, spacing, and elevations remain shared tokens. |
 | 2026-10-18 | Fluid, visually rich app surfaces within the approved identity | Indy authorized modernizing this guidance, deliberate gradients and motion, and an app-wide browser review. Branding, font families, and the PR #752 / M227 palette stay unchanged. Shared components own visual behavior; app widgets own product composition. |
 | 2026-11-01 | Animate ongoing work and keep chat state ownership explicit | Indy confirmed normal animation with the OS Reduce Motion preference respected. Chat uses assistant-ui, native API operations, scoped caches and local interaction state; progress icons reflect actual work. |
+
+### Recoverable chat failures and tool summaries
+
+A recoverable chat failure is a compact, politely announced inline status with a 14px enclosed warning icon and expandable diagnostics.
+Keep the submitted request and partial response; reconnecting a browser stream does not authorize replaying an uncertain tool write.
+Use recorded action verbs in collapsed tool groups, retain failures explicitly and keep complete command evidence behind the disclosure.

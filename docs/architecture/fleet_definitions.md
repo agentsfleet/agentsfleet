@@ -11,6 +11,8 @@ Read this when changing reusable setup, fleet setup revisions, or Definition val
 
 ## Setup authority
 
+The proposed [goal-driven repair scenario](scenarios/durable-repair.md) stores user-edited goals and completion questions in reviewed `instructions_md`. Jev runtime evaluation and instruction-revision adoption for active tasks remain design work; current prose does not grant new capabilities.
+
 One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
 
 ### Drafts, Library and fleets

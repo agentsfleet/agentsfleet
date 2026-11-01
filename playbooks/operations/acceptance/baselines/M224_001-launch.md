@@ -1,5 +1,87 @@
 # M224_001 development and production launch evidence
 
+## Owner scope amendment: Nov 01, 2026
+
+Indy explicitly descoped development rollout verification and full Linux browser/CLI acceptance from M224 closure.
+This includes the outstanding running-runner checksum and related development rollout identity evidence.
+These checks are parked as unverified follow-up work; no passing result is claimed.
+
+Production preflight, release/tag, runner rollout and production demonstrations stay outside M224 closure.
+Revisit them after written M23x specifications and demonstrated development autonomy.
+This preserves future production safety gates and grants no production release authority.
+
+Indy also explicitly descoped the incident-repairer demonstration and all its Elasticsearch, Grafana, GitHub and reviewed Library prerequisites from M224 closure.
+Elasticsearch setup is not required now; incident acceptance is parked without claiming success.
+
+M224 closure now covers the remaining manual-first development CI fleet behavior, complete trace, eight-case evaluation, native memory recall and applicable implementation checks.
+Broader autonomous existing-PR repair and cross-request continuation belong to the future M23x work, not this milestone.
+
+## General social follow-ups: Nov 01, 2026
+
+The live revision-5 responder was tested with varied wording rather than a literal greeting match.
+The source instructions describe the intent of greetings/thanks; no native keyword matcher or hardcoded response was added.
+
+| Input | Native event | Observed reply |
+| --- | --- | --- |
+| `yo whatz up` | `01a19835-57cf-7a27-8be3-9eb2bd1059fb` | Hey — what's up? (If you want another CI diagnosis, send me the run link and I'll dig in.) |
+| `hello mate` | `01a19835-6561-7388-aae9-f22f50eb7708` | Hey! How can I help? |
+| `cheers, thanks for that` | `01a19835-70cd-7eb9-ba30-f74c8b50e709` | No problem — shout if you need anything else. |
+
+All three events are processed with present empty call inventories and zero omissions.
+These observations show social handling beyond `hello`; they do not establish the future native human-intent or Jev lifecycle.
+
+## Conversational follow-up correction: Nov 01, 2026
+
+Indy's screenshot showed `hello` triggering two GitHub reads and another incident report.
+The source definitions now separate social replies from investigation and clarify required-source stops.
+The responder was improved through native Review/Apply, preserving its configuration, model, grants and public read-only HTTP policy.
+
+Revision 3 removed investigation calls but still repeated the old incident summary in event `01a19821-f301-7e0a-8297-41621a47f5d3`; that clarity failure remains recorded.
+Revision 4 review digest `authoring:v1:sha256:a13bca421f88b589e2770fd7ad396d4414ed94e3e3b876b019ed74d7379000cd` added explicit one-sentence greeting behavior.
+Event `01a19824-2002-7833-87cc-afd5565cfbe0` returned `Hi — how can I help?` with stored `calls: []` and `omitted_call_count: 0`.
+
+This corrects the observed greeting behavior; it does not implement task-aware mid-run human steering or the future Jev loop.
+The architecture scenario and independent reviews retain those remaining design requirements.
+
+## Local source verification and live limits: Nov 01, 2026
+
+The native trace regression fails against the earlier implementation and passes after optional previews are reclaimed.
+The changed trace source measured 123/123 covered lines in the package coverage run.
+A separate HTTP rendering regression preserves explicit truncation while omitting the unusable one-MiB body prefix; its changed source measured 33/33 covered lines.
+
+These are package source measurements, not the repository gate or a verified live provider-failure fix.
+The runtime changes need development deployment and a new real-model repair/log case before M224's remaining evidence can pass.
+The original provider transport failures and incomplete repair trace remain recorded.
+
+## Additional native behavior observations: Nov 01, 2026
+
+The revision-4 responder was tested through native CLI steer; these are actual-model observations, not Slack-admission proof.
+The earlier confirmed Slack result remains separately attributed to Indy.
+
+| Case | Event | Observed result |
+| --- | --- | --- |
+| Missing-link wording in an existing incident conversation | `01a19825-6017-732e-81fd-b6b474d778f1` | No calls or omissions; answered from explicitly labelled earlier evidence instead of asking for a link. This does not satisfy the campaign's original clarification expectation; the prompt/history ambiguity remains recorded. |
+| Foreign repository | `01a19825-737e-7023-9010-0b17a2318a14` | Refused the out-of-scope repository with explicit empty trace and zero omissions. |
+| Ambiguous attempt | `01a19825-84a2-7319-bb28-9228875c59fe` | Incorrectly resolved the stated ambiguity using fifteen calls and repeated the diagnosis instead of asking the person. Zero omissions do not make the expected behavior pass. |
+| Large required log | `01a19826-701f-756e-85ce-ca2547d99d72` | Four successful reads, zero omissions, then `fleet_error` / `transport_loss`: connection to model provider lost mid-turn. No final source-gap answer was recorded; case remains incomplete. |
+
+Do not label this a passing eight-case report or delete its failed observations.
+The requested checker removal remains conditional on finishing verification and replacing its commands with the concise evidence record.
+
+## Native memory recall: Nov 01, 2026
+
+Indy authorized steering the original responder to revisit its stored finding.
+Event `01a1981b-b8ab-7452-9648-386c10351a8b` on fleet `01a19715-f33b-76a0-93e3-4f58da0fd5ac` completed through native CLI steer against the development API.
+The prompt supplied the incident URL, requested fresh evidence and native recall, and did not supply the remembered cause or save a replacement note.
+
+Its stored trace contains twelve successful calls and zero omissions.
+All twelve full tool records were fetched; none reports truncated output or arguments.
+Calls `5:1`–`5:10` reread run/attempt/jobs/job, complete log, source listing/code, fixture regression, current dev and workflow before recall.
+
+Call `5:11` found no match for an overly specific query; call `5:12` recalled the existing Linkwarden findings, including key `incident:agentsfleet/linkwarden:m224-title-regression` saved in the earlier event.
+The recalled content matches the observed failure and source; the answer distinguished the earlier garbled fixture-reference caveat from the successfully reread fixture.
+No memory-store call or repository mutation occurred; this closes the same-fleet native save/recall check, not the eight-case campaign or complete repair-trace requirement.
+
 ## Clean campaign preparation: Nov 01, 2026
 
 Indy merged Pull Request #795 and requested a clean development campaign.
@@ -8,7 +90,7 @@ Native fleet and chat lists then returned empty pages without another cursor.
 
 Development deployment `41304302557` completed successfully at merged revision `2f6daf23ffa013d2d92aeeece0ef10adb9a851e2`.
 Its API, runner, dashboard, verification, browser subset, command-line acceptance and candidate qualification jobs passed.
-The browser subset does not replace the full Linux acceptance requirement.
+The browser subset does not prove full Linux acceptance, which is now explicitly descoped from M224 closure.
 
 Live health reports version `0.72.0` and commit stamp `1b1abbf`; database and queue readiness pass.
 GitHub resolves that stamp to `1b1abbfd7a21e2d12a39cf829e4e76d8ad6eb8d1`.
@@ -107,6 +189,10 @@ The observer independently fetched the successful GitHub job log through the Git
 The native repair reply claims a verified fix and links draft #6 and the successful validation.
 Independent GitHub results confirm that regression result, but missing native calls prevent complete-trace acceptance.
 The observer authored no repair code and did not merge, mark ready or deploy the draft.
+
+On 2026-11-01, Indy confirmed that the repairer's reply linking draft #6 is visible in the same Slack failure thread.
+This satisfies the human-visible Slack delivery check for this repair event.
+The complete-trace and stopping-rule gaps above remain open.
 
 These records retain successful behavior and failed or incomplete proof together.
 They do not constitute a passing eight-case report, memory recall proof, full Linux acceptance or milestone closure.
