@@ -100,7 +100,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/opened · owner\/repo#7/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("button", { name: "View event" }));
     expect(screen.getByText(/"repo":\s*"owner\/repo"/)).toBeTruthy();
   });
 
@@ -116,7 +116,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/workflow_run · main · success/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("button", { name: "View event" }));
     expect(screen.getByText(/"action":\s*"completed"/)).toBeTruthy();
   });
 

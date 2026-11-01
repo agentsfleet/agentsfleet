@@ -428,7 +428,7 @@ Indy requires all requested changes in one follow-up PR with version `0.72.0`. C
 
 Indy authorized closing Linkwarden PRs #3 and #4 and deleting existing development fleets and setup chats for fresh tests. This supersedes the checkpoint's restriction on closing draft #4. New tests use fresh native fleet and event identities; historical results stay labelled with their original identities.
 
-The scope also includes concise Slack output, adversarial repair verification, bounded continuation and memory Save acceptance.
+The scope also includes concise Slack output, adversarial repair verification, bounded continuation and memory Save acceptance. [M224_002](M224_002_P1_DOCS_UI_APPROVAL_AND_FLEET_ACTIVITY_CLARITY.md) specifies the owner-requested approval, icon, event-label and public-JSON follow-up.
 Indy explicitly requested GPT-6 Astra review of the CI fleet instructions and cases.
 Required-source failures still stop the run; a useful repair needs observed validation, with limits and missing proof stated.
 

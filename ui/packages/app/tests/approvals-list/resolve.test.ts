@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 
 describe("ApprovalsList — resolve actions", () => {
-  it("an inbox row leaves before the resolve settles and returns on failure", async () => {
+  it("keeps an inbox row visible while saving and preserves it on failure", async () => {
     let settle: (result: { ok: false; error: string; status: number }) => void = () => {};
     approveApprovalActionMock.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -20,8 +20,10 @@ describe("ApprovalsList — resolve actions", () => {
       }),
     );
     approveRow();
-    // Gone at the click, while the action is still in flight.
-    await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
+    // Keep the row stable and replace its actions while the request is pending.
+    await screen.findByText("Saving decision…");
+    expect(screen.queryByRole("button", {name: /^approve:/i})).toBeNull();
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
     expect(approveApprovalActionMock).toHaveBeenCalledWith(
       WORKSPACE_ID,
       "01999999-0000-7000-8000-000000000001",
@@ -29,7 +31,7 @@ describe("ApprovalsList — resolve actions", () => {
 
     settle({ ok: false, error: "gate service unavailable", status: 503 });
 
-    // The refusal puts the row back beside the error.
+    // The refusal leaves the row beside the error.
     await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
     expect(screen.getByRole("alert").textContent).toMatch(/gate service unavailable/);
   });
@@ -80,9 +82,9 @@ describe("ApprovalsList — resolve actions", () => {
       }),
     );
     approveRow();
-    await waitFor(() => expect(screen.queryByText(AGENT_A_DISPLAY_NAME)).toBeNull());
+    await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
 
-    // Gone from view, but "No approvals yet" is the server's claim to make:
+    // The row stays visible until the server confirms the decision:
     // the filter input stays and the status region is not announced yet.
     expect(screen.queryByText("No approvals yet")).toBeNull();
     // Nothing about the inbox is claimed while the resolve is in flight — not
@@ -133,7 +135,7 @@ describe("ApprovalsList — resolve actions", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("optimistically removes a row when denyApprovalAction returns kind=resolved", async () => {
+  it("uses the server read-back after a confirmed denial", async () => {
     denyApprovalActionMock.mockResolvedValueOnce({
       ok: true,
       data: {
@@ -292,8 +294,7 @@ describe("ApprovalsList — the read-back after a decision", () => {
   it("keeps the decision when the read that would show its new state fails", async () => {
     // The resolve LANDED — the gate is answered on the server. Only the re-read
     // that would bring the row back under its new status failed, so the table
-    // must not treat that as the decision failing: the optimistic removal
-    // stands, and the alert names the read, not the approval.
+    // must distinguish the failed read from the confirmed decision.
     approveApprovalActionMock.mockResolvedValue({
       ok: true,
       data: { kind: "resolved", data: { gate_id: "g1", outcome: "approved" } },
@@ -316,11 +317,11 @@ describe("ApprovalsList — the read-back after a decision", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/upstream is down/i));
     // The row returns to the last state the SERVER confirmed, which is pending,
     // and the alert says why it could not be updated. That is deliberate: the
-    // optimistic hide is reverted when the transition ends, and painting the row
+    // row stays visible throughout the request, and painting the row
     // as approved on a read that never answered would be the client inventing a
     // state. The operator sees a stale row and a reason, not a confident lie.
     //
-    // Waited for, not sampled: the optimistic hide is reverted only when the
+    // Waited for, not sampled: the saving indicator ends only when the
     // transition ends, which is after the alert lands.
     await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
   });

@@ -2,7 +2,7 @@
 
 import type { Definition, Review } from "@/lib/api/draft-types";
 import Link from "next/link";
-import { CheckIcon, CircleIcon, CircleAlertIcon } from "lucide-react";
+import { CircleCheckIcon, CircleIcon, CircleAlertIcon } from "lucide-react";
 import { Button, List, ListItem } from "@agentsfleet/design-system";
 import { safeActionHref } from "./chat-defaults";
 import { SetupAccess } from "./SetupAccess";
@@ -14,6 +14,10 @@ const CHECK_LABELS: Readonly<Record<string, string>> = {
   policy: "Access rules", stream: "Run delivery", activation: "Activation",
 };
 const CREDENTIAL_KINDS = new Set(["credentials", "credential", "connections", "connection"]);
+const ACCESS_LABELS: Readonly<Record<string, string>> = {
+  credential: "credential", credentials: "credential", connection: "connection", connections: "connection", grant: "approval", grants: "approval",
+};
+const SERVICE_LABELS: Readonly<Record<string, string>> = {github: "GitHub", slack: "Slack"};
 const GRANT_KINDS = new Set(["grants", "grant"]);
 const DEPENDENT_KINDS = new Set(["stream", "activation"]);
 
@@ -24,8 +28,9 @@ export function SetupChecks({checks, label, workspace, definition, onRefresh}: {
       const ready = check.state === READY;
       const credential = CREDENTIAL_KINDS.has(check.kind);
       const grant = GRANT_KINDS.has(check.kind);
-      const text = credential ? `${check.subject} access` : Object.hasOwn(CHECK_LABELS, check.kind) ? CHECK_LABELS[check.kind] : check.subject || check.kind;
-      const Icon = ready ? CheckIcon : check.state === BLOCKED ? CircleAlertIcon : CircleIcon;
+      const service = SERVICE_LABELS[check.subject] ?? check.subject;
+      const text = credential || grant ? `${service} ${ACCESS_LABELS[check.kind]}` : Object.hasOwn(CHECK_LABELS, check.kind) ? CHECK_LABELS[check.kind] : check.subject || check.kind;
+      const Icon = ready ? CircleCheckIcon : check.state === BLOCKED ? CircleAlertIcon : CircleIcon;
       const href = credential ? null : safeActionHref(check.next_action?.href);
       const status = <span className={`inline-flex items-center gap-xs text-label ${ready ? "text-muted-foreground" : "text-warning"}`} title={check.state}>
           <Icon className={`size-3.5 shrink-0 ${ready ? "text-success" : ""}`} aria-hidden="true" />

@@ -17,7 +17,7 @@ import {
   PageTitle,
   Time,
 } from "@agentsfleet/design-system";
-import { CheckIcon, MailOpenIcon } from "lucide-react";
+import { CircleCheckIcon, MailOpenIcon } from "lucide-react";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { presentErrorString } from "@/lib/errors";
 import { DASHBOARD_ROOT_PATH, DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
@@ -122,7 +122,7 @@ function columns(pending: boolean, accept: (inviteId: string) => void): DataTabl
           onClick={() => accept(invite.id)}
           label={`${ACCEPT_LABEL} invite into ${accountLabel(invite.account.owner_name)}`}
         >
-          <CheckIcon size={14} />
+          <CircleCheckIcon size={14} />
         </IconAction>
       ),
     },

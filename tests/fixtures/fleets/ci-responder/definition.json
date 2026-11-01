@@ -21,11 +21,8 @@
       "network": {
         "read_only": true,
         "read_post_paths": [],
-        "allow": [
-          "api.github.com",
-          "productionresultssa6.blob.core.windows.net",
-          "productionresultssa3.blob.core.windows.net"
-        ]
+        "allow": [],
+        "http_egress": "public"
       },
       "budget": {
         "daily_nanos": "2000000000",

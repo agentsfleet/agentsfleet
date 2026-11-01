@@ -131,6 +131,7 @@ function sourceOf(token: string): string {
   const trimmed = token.trim();
   if (trimmed.length === 0 || OPAQUE_ID.test(trimmed)) return SENDER.UNKNOWN;
   if (trimmed === "github" || trimmed === "github-app") return SENDER.GITHUB_APP;
+  if (trimmed === "slack") return "Slack";
   return trimmed;
 }
 
