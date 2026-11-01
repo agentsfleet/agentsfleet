@@ -22,7 +22,7 @@ export function ChatFailure({title, description, note, details, onRetry, disable
     finally { pending.current = false; setRetrying(false); }
   };
   return <div className="space-y-sm rounded-md border border-border px-md py-sm text-body-sm leading-prose">
-    <output className="block space-y-sm">
+    <output aria-label={title} className="block space-y-sm">
       <span className="flex items-center gap-sm font-medium"><CircleAlertIcon className="size-3.5 shrink-0 text-warning" aria-hidden="true" />{title}</span>
       <span className="block">{description}</span>
     </output>

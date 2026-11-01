@@ -172,7 +172,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     renderThread();
     expect(screen.queryByText("Details")).toBeNull();
     expect(screen.getByText(RUNNER_REFUSAL_SENTENCE, {exact: false})).toBeTruthy();
-    expect(screen.getByText("Couldn’t complete this request").className).toContain("text-destructive");
+    expect(screen.getByRole("status", {name: "Couldn’t complete this request"}).textContent).toContain("Couldn’t complete this request");
     expect(screen.getByRole("button", {name: "View details"})).toBeTruthy();
     expect(screen.queryByTestId("failure-guidance")).toBeNull();
   });
