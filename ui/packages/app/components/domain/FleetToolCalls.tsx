@@ -2,7 +2,7 @@
 
 import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useToolCallElapsed } from "@assistant-ui/react";
-import { CheckIcon, CircleAlertIcon, CircleHelpIcon, FileTextIcon, GitPullRequestIcon, GlobeIcon, ListIcon, PencilIcon, SquareTerminalIcon, WrenchIcon, XIcon } from "lucide-react";
+import { CircleCheckIcon, CircleAlertIcon, CircleHelpIcon, FileTextIcon, GitPullRequestIcon, GlobeIcon, ListIcon, PencilIcon, SquareTerminalIcon, WrenchIcon, XIcon } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, CopyButton, DashboardPanel, List, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatSeconds } from "@/lib/utils";
@@ -15,14 +15,13 @@ import type { ToolActivity } from "./tool-call-activity";
 import { toolActivity } from "./tool-call-activity";
 
 export const TOOL_CALLS_LABEL = "Tool activity";
-export const TOOL_SUCCEEDED_GLYPH = "✓";
 const FIGURE_SEPARATOR = " · ";
 const COMMANDS = "commands";
 const COMMAND = "command";
 const TRIGGER_CLASS = "min-h-11 justify-start gap-sm rounded-sm px-md py-md text-body-sm text-muted-foreground hover:no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-info sm:min-h-9";
 const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode}> = {
   [CELL_STATE.RUNNING]: {label: "Running", tone: "text-info", icon: <SignalSpinner className="size-3.5 text-current" aria-hidden="true" />},
-  [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success", icon: <span className="inline-flex size-3.5 shrink-0 items-center justify-center leading-none" aria-hidden="true">{TOOL_SUCCEEDED_GLYPH}</span>},
+  [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success", icon: <CircleCheckIcon className="size-3.5" aria-hidden="true" />},
   [CELL_STATE.FAILED]: {label: "Failed", tone: "text-destructive", icon: <XIcon className="size-3.5" aria-hidden="true" />},
   [CELL_STATE.INTERRUPTED]: {label: "Interrupted", tone: "text-warning", icon: <CircleAlertIcon className="size-3.5" aria-hidden="true" />},
   [CELL_STATE.SETTLED]: {label: "Outcome unavailable", tone: "text-text-dim", icon: <CircleHelpIcon className="size-3.5" aria-hidden="true" />},
@@ -30,7 +29,7 @@ const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode
 const FleetToolOutputDialog = lazy(() => import("./FleetToolOutputDialog").then(module => ({default: module.FleetToolOutputDialog})));
 const FULL_OUTPUT_LOADING = <output className="inline-flex items-center gap-xs text-label text-muted-foreground"><SignalSpinner className="text-pulse" aria-hidden="true" />Loading full command output…</output>;
 const ACTIVITY_ICONS = {read: FileTextIcon, write: PencilIcon, list: ListIcon, command: SquareTerminalIcon,
-  request: GlobeIcon, "pull-request": GitPullRequestIcon, check: CheckIcon, tool: WrenchIcon};
+  request: GlobeIcon, "pull-request": GitPullRequestIcon, check: CircleCheckIcon, tool: WrenchIcon};
 
 /** Adjacent calls share one compact disclosure; each keeps its own identity. */
 export function ToolCallList({children, activity}: {children: ReactNode; activity: ToolActivity}) {

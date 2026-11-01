@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useOptimistic,
   useRef,
   useState,
   useTransition,
@@ -103,13 +102,7 @@ export default function ApprovalsList({
   // The gate a denial is being confirmed for. Held here rather than in the row
   // so the dialog survives the row leaving the table optimistically.
   const [denyTarget, setDenyTarget] = useState<ApprovalGate | null>(null);
-  // A resolved row leaves the inbox at the click, not at the answer. The base
-  // list is updated on success; a failed resolve ends the transition and the
-  // row comes back from that base on its own.
-  const [visibleItems, hideGate] = useOptimistic(
-    items,
-    (current: ApprovalGate[], gateId: string) => current.filter((g) => g.gate_id !== gateId),
-  );
+  const [pendingDecisions, setPendingDecisions] = useState<ReadonlySet<string>>(new Set());
 
   // Read when a person asks, and after a resolve. Never on a timer: a settled
   // row cannot change again, so a poll would spend a request every few seconds
@@ -185,40 +178,42 @@ export default function ApprovalsList({
   }
 
   function resolve(gateId: string, decision: ApprovalDecision) {
+    setPendingDecisions(current => new Set([...current, gateId]));
     setError(null);
     const isApprove = decision === APPROVAL_DECISION.APPROVE;
     const action = isApprove ? approveApprovalAction : denyApprovalAction;
     startResolve(async () => {
-      hideGate(gateId);
-      const result = await action(workspaceId, gateId).catch(rejectedCall);
-      if (!result.ok) {
-        setError(
-          presentErrorString({
-            errorCode: result.errorCode,
-            message: result.error,
-            action: isApprove ? "approve this request" : "deny this request",
-          }),
-        );
-        return;
-      }
-      const outcome: ResolveOutcome = result.data;
-      if (outcome.kind === "already_resolved") {
-        // A message, not a cell, so it carries the shortened subject rather
-        // than waiting on a directory lookup nobody can hover anyway.
-        setError(
-          `Already ${outcome.data.outcome} by ${fallbackPersonLabel(outcome.data.resolved_by)}`,
-        );
-      }
-      // The row does not leave the table, it changes state — so the answer is
-      // read back and the row reappears under its new status, carrying who
-      // decided it and when.
-      // The read-back claims a number too: a "Load older" started while the
-      // decision was in flight must not append onto the list this replaces.
-      const mine = ++reading.current;
-      const fresh = await read(mine);
-      if (fresh !== null && mine === reading.current) {
-        setItems(fresh.items);
-        setCursor(fresh.next_cursor);
+      try {
+        const result = await action(workspaceId, gateId).catch(rejectedCall);
+        if (!result.ok) {
+          setError(
+            presentErrorString({
+              errorCode: result.errorCode,
+              message: result.error,
+              action: isApprove ? "approve this request" : "deny this request",
+            }),
+          );
+          return;
+        }
+        const outcome: ResolveOutcome = result.data;
+        if (outcome.kind === "already_resolved") {
+          // A message, not a cell, so it carries the shortened subject rather
+          // than waiting on a directory lookup nobody can hover anyway.
+          setError(
+            `Already ${outcome.data.outcome} by ${fallbackPersonLabel(outcome.data.resolved_by)}`,
+          );
+        }
+        // Keep the row in place until read-back confirms its status and owner.
+        // The read-back claims a number too: a "Load older" started while the
+        // decision was in flight must not append onto the list this replaces.
+        const mine = ++reading.current;
+        const fresh = await read(mine);
+        if (fresh !== null && mine === reading.current) {
+          setItems(fresh.items);
+          setCursor(fresh.next_cursor);
+        }
+      } finally {
+        setPendingDecisions(current => new Set([...current].filter(id => id !== gateId)));
       }
     });
   }
@@ -230,9 +225,6 @@ export default function ApprovalsList({
   // server's from the first paint, and there is no window in which "No
   // approvals yet" is a statement nobody has checked.
   //
-  // It reads `items` rather than the optimistic list so a row that has only
-  // just left keeps the table silent rather than announcing a state the server
-  // has not confirmed.
   function emptyRegion(): ReactNode {
     if (items.length > 0 || error !== null) return <></>;
     return (
@@ -267,8 +259,8 @@ export default function ApprovalsList({
 
       <ApprovalsTable
         workspaceId={workspaceId}
-        gates={visibleItems}
-        actions={{ onApprove: approve, onDeny: setDenyTarget }}
+        gates={items}
+        actions={{ onApprove: approve, onDeny: setDenyTarget, pending: pendingDecisions }}
         empty={emptyRegion()}
       />
 

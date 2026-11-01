@@ -54,6 +54,18 @@ const RING_REACH_PX = 4;
 // One settled turn is its opening frame and its completion.
 const FRAMES_PER_TURN = 2;
 
+test("test_slack_received_uses_readable_label_without_empty_details", async ({page}) => {
+  await withReplyPage(page, FLEET_NAME, async ({chat, stream}) => {
+    await stream.send([{afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, {
+      event_id: EVENT_ID, actor: "slack:fixture-member", created_at: Date.now(), event_type: "chat",
+    })}]);
+    await expect(chat.getByText("Slack", {exact: true})).toBeVisible();
+    await expect(chat.getByText("Message received", {exact: true})).toBeVisible();
+    await expect(chat.getByRole("button", {name: "View event"})).toHaveCount(0);
+    await expect(chat.locator("svg.lucide-braces")).toHaveCount(0);
+  });
+});
+
 type ProbeResult = { longTasks: number; frames: number; p95FrameMs: number };
 
 test("test_stream_reply_parts_live_then_folded", async ({ page }) => {

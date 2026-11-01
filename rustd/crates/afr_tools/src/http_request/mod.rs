@@ -19,6 +19,7 @@ use crate::runtime::{ToolContext, ToolOutput};
 
 /// The method a request that names none is sent with.
 const DEFAULT_METHOD: &str = "GET";
+const INCOMPLETE_BODY: &str = "[Incomplete response body omitted; the source was truncated]";
 
 /// `http_request`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -55,7 +56,8 @@ impl HttpRequest {
 impl Handler for HttpRequest {
     const ENTRY: &'static Entry = &HTTP_REQUEST;
     const DESCRIPTION: &'static str = "Send one HTTPS request to a host this fleet's \
-        network policy allows, and read back its status and up to 1 MiB of its body. \
+        network policy allows, and read back its status and up to 1 MiB of a complete body. \
+        Truncated bodies are omitted with an explicit incomplete-source notice. \
         Write a credential as ${secrets.NAME.FIELD} in the Authorization header; it is \
         put in place when the request is sent. A GET without a body follows up to \
         three redirects, admitting every target under the same policy. All supplied \
@@ -86,7 +88,8 @@ impl Handler for HttpRequest {
 }
 
 /// What the model reads back: the status, where a redirect points, and the
-/// body, with a line saying where it was cut.
+/// body. A truncated body is unusable as a complete source; do not spend the
+/// model's context on its potentially megabyte-sized prefix.
 fn render(inbound: &Inbound) -> String {
     let location = inbound
         .location
@@ -113,12 +116,19 @@ fn render(inbound: &Inbound) -> String {
     } else {
         String::new()
     };
+    let body = if inbound.truncated && !inbound.body.is_empty() {
+        INCOMPLETE_BODY
+    } else {
+        &inbound.body
+    };
     format!(
-        "Status: {}\n{location}{content_type}{hops}{cut}{lossy}\nResponse Body:\n{}",
-        inbound.status, inbound.body
+        "Status: {}\n{location}{content_type}{hops}{cut}{lossy}\nResponse Body:\n{body}",
+        inbound.status
     )
 }
 
+#[cfg(test)]
+mod body_tests;
 #[cfg(test)]
 #[path = "redirect/tests.rs"]
 mod redirect_tests;

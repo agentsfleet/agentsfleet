@@ -333,6 +333,8 @@ The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr
 
 ## Workspace between leases
 
+The proposed [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
+
 The workspace is the fleet's, not the lease's. Holding a sandbox between messages is built. Workspace snapshots are the target: nothing saves or restores one yet, and the bullets that describe them are marked *Target, not built*.
 
 - **Bytes in R2, the record in Postgres.** *Target, not built.* Snapshots live in an R2 bucket under their own prefix, named by content hash; a Postgres row points at the latest. Any S3-compatible store would work through one `object_store` client with a different endpoint.

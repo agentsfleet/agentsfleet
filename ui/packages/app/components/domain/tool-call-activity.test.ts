@@ -38,6 +38,8 @@ describe("recorded tool activity", () => {
     [TOOL_NAME.HTTP_REQUEST, {url: `${GITHUB}/contents`}, "Listing files", "Listed files", "agentsfleet/linkwarden"],
     [TOOL_NAME.HTTP_REQUEST, {url: `${GITHUB}/contents/apps/web/a.ts`}, "Reading file", "Read file", "apps/web/a.ts"],
     [TOOL_NAME.HTTP_REQUEST, {url: `${GITHUB}/actions/jobs/77/logs`}, "Reading job log", "Read job log", "agentsfleet/linkwarden"],
+    [TOOL_NAME.HTTP_REQUEST, {url: `${GITHUB}/actions/runs/77/attempts/1`}, "Reading CI status", "Read CI status", "agentsfleet/linkwarden"],
+    [TOOL_NAME.HTTP_REQUEST, {url: `${GITHUB}/git/ref/heads/dev`}, "Checking branch head", "Checked branch head", "agentsfleet/linkwarden"],
     [TOOL_NAME.HTTP_REQUEST, {url: GITHUB}, "Checking repository access", "Checked repository access", "agentsfleet/linkwarden"],
     [TOOL_NAME.HTTP_REQUEST, {url: "https://api.github.com/user"}, "Making request", "Made request", "GET https://api.github.com/user"],
     [TOOL_NAME.HTTP_REQUEST, {url: `${GITHUB}/issues`}, "Making request", "Made request", `GET ${GITHUB}/issues`],
@@ -74,12 +76,12 @@ describe("recorded tool activity", () => {
 
   it("summarizes only the group's own actions and preserves mixed outcomes", () => {
     const content = [part("file_read", SUCCESS), {type: "text", text: "reply"}, part("file_write", CELL_STATE.FAILED), part("unknown", SUCCESS)] satisfies MessageState["content"];
-    expect(toolGroupActivity(content, [0], false).label).toBe("Read sources");
-    expect(toolGroupActivity(content, [0, 2, 3], false)).toMatchObject({state: CELL_STATE.FAILED, label: "Read sources, Failed, Used tools"});
-    expect(toolGroupActivity([part("file_read", SUCCESS), part("file_read", SUCCESS)], [0, 1], false).label).toBe("Read sources (2)");
+    expect(toolGroupActivity(content, [0], false).label).toBe("Read file");
+    expect(toolGroupActivity(content, [0, 2, 3], false)).toMatchObject({state: CELL_STATE.FAILED, label: "Read file, Failed: writing, Used unknown"});
+    expect(toolGroupActivity([part("file_read", SUCCESS), part("file_read", SUCCESS)], [0, 1], false).label).toBe("Read file (2)");
     expect(toolGroupActivity([part("file_read", CELL_STATE.INTERRUPTED), part("file_read", SUCCESS)], [0, 1], false).state).toBe(CELL_STATE.INTERRUPTED);
-    expect(toolGroupActivity([part("unknown")], [0], false).label).toBe("Interrupted");
-    expect(toolGroupActivity([{...part("unknown"), result: {}}], [0], false).label).toBe("Outcome unavailable");
+    expect(toolGroupActivity([part("unknown")], [0], false).label).toBe("Interrupted: using unknown");
+    expect(toolGroupActivity([{...part("unknown"), result: {}}], [0], false).label).toBe("Outcome unavailable: using unknown");
     expect(toolGroupActivity(content, [1, 99], false)).toMatchObject({label: "Tool activity", state: CELL_STATE.SETTLED});
   });
 

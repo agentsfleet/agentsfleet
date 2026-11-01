@@ -3,8 +3,8 @@
 //!
 //! The daemon re-checks every bound and drops a trace that breaks one, so the
 //! runner builds one that cannot: past `TRACE_MAX_CALLS` a call is counted as
-//! omitted, and past `TRACE_MAX_BYTES` a call keeps its row without edges, or
-//! is counted as omitted when even that row does not fit.
+//! omitted, and past `TRACE_MAX_BYTES` optional output edges are reclaimed
+//! before a call is counted as omitted when its essential row does not fit.
 //!
 //! Everything here takes [`Clean`] text, so the scrub has already masked every
 //! secret and NUL before a bound is applied.
@@ -162,6 +162,17 @@ impl Trace {
             row.output_head = None;
             row.output_tail = None;
             cost = encoded_len(&row) + joint;
+        }
+        // Keep the call inventory before previews. Earlier output edges must
+        // not make a later call disappear; full outputs have their own records.
+        for previous in &mut self.calls {
+            if cost <= self.room {
+                break;
+            }
+            let before = encoded_len(previous);
+            previous.output_head = None;
+            previous.output_tail = None;
+            self.room += before - encoded_len(previous);
         }
         if cost > self.room {
             self.omitted += 1;

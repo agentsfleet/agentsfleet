@@ -40,6 +40,12 @@ Check the installed Orly version against the source checkout before assuming tho
 Determine whether the existing spec grader already evaluates rubric quality before adding another grading path.
 Record its actual criteria, score meaning, minimum score and missing-evidence behavior.
 
+## Current source checkpoint
+
+At Orly 0.27 (`700df9c125530a4d2b0d356ee6f0511c536ca35b`), the earlier `judge` command and `src/judgments` implementation are no longer present.
+The command-help and transport references above describe the earlier inspection, not a reusable current adapter.
+Recheck the selected source before proposing Jev integration; M15_002 only owns the 0.28 cleanup.
+
 ## Desired workflow
 
 1. Capture the problem with Indy in plain language, using existing conversation, repository scenarios and prior decisions before asking for facts again.

@@ -1,5 +1,216 @@
 # M224_001 development and production launch evidence
 
+## Owner scope amendment: Nov 01, 2026
+
+Indy explicitly descoped development rollout verification and full Linux browser/CLI acceptance from M224 closure.
+This includes the outstanding running-runner checksum and related development rollout identity evidence.
+These checks are parked as unverified follow-up work; no passing result is claimed.
+
+Production preflight, release/tag, runner rollout and production demonstrations stay outside M224 closure.
+Revisit them after written M23x specifications and demonstrated development autonomy.
+This preserves future production safety gates and grants no production release authority.
+
+Indy also explicitly descoped the incident-repairer demonstration and all its Elasticsearch, Grafana, GitHub and reviewed Library prerequisites from M224 closure.
+Elasticsearch setup is not required now; incident acceptance is parked without claiming success.
+
+M224 closure now covers the remaining manual-first development CI fleet behavior, complete trace, eight-case evaluation, native memory recall and applicable implementation checks.
+Broader autonomous existing-PR repair and cross-request continuation belong to the future M23x work, not this milestone.
+
+## General social follow-ups: Nov 01, 2026
+
+The live revision-5 responder was tested with varied wording rather than a literal greeting match.
+The source instructions describe the intent of greetings/thanks; no native keyword matcher or hardcoded response was added.
+
+| Input | Native event | Observed reply |
+| --- | --- | --- |
+| `yo whatz up` | `01a19835-57cf-7a27-8be3-9eb2bd1059fb` | Hey — what's up? (If you want another CI diagnosis, send me the run link and I'll dig in.) |
+| `hello mate` | `01a19835-6561-7388-aae9-f22f50eb7708` | Hey! How can I help? |
+| `cheers, thanks for that` | `01a19835-70cd-7eb9-ba30-f74c8b50e709` | No problem — shout if you need anything else. |
+
+All three events are processed with present empty call inventories and zero omissions.
+These observations show social handling beyond `hello`; they do not establish the future native human-intent or Jev lifecycle.
+
+## Conversational follow-up correction: Nov 01, 2026
+
+Indy's screenshot showed `hello` triggering two GitHub reads and another incident report.
+The source definitions now separate social replies from investigation and clarify required-source stops.
+The responder was improved through native Review/Apply, preserving its configuration, model, grants and public read-only HTTP policy.
+
+Revision 3 removed investigation calls but still repeated the old incident summary in event `01a19821-f301-7e0a-8297-41621a47f5d3`; that clarity failure remains recorded.
+Revision 4 review digest `authoring:v1:sha256:a13bca421f88b589e2770fd7ad396d4414ed94e3e3b876b019ed74d7379000cd` added explicit one-sentence greeting behavior.
+Event `01a19824-2002-7833-87cc-afd5565cfbe0` returned `Hi — how can I help?` with stored `calls: []` and `omitted_call_count: 0`.
+
+This corrects the observed greeting behavior; it does not implement task-aware mid-run human steering or the future Jev loop.
+The architecture scenario and independent reviews retain those remaining design requirements.
+
+## Local source verification and live limits: Nov 01, 2026
+
+The native trace regression fails against the earlier implementation and passes after optional previews are reclaimed.
+The changed trace source measured 123/123 covered lines in the package coverage run.
+A separate HTTP rendering regression preserves explicit truncation while omitting the unusable one-MiB body prefix; its changed source measured 33/33 covered lines.
+
+These are package source measurements, not the repository gate or a verified live provider-failure fix.
+The runtime changes need development deployment and a new real-model repair/log case before M224's remaining evidence can pass.
+The original provider transport failures and incomplete repair trace remain recorded.
+
+## Additional native behavior observations: Nov 01, 2026
+
+The revision-4 responder was tested through native CLI steer; these are actual-model observations, not Slack-admission proof.
+The earlier confirmed Slack result remains separately attributed to Indy.
+
+| Case | Event | Observed result |
+| --- | --- | --- |
+| Missing-link wording in an existing incident conversation | `01a19825-6017-732e-81fd-b6b474d778f1` | No calls or omissions; answered from explicitly labelled earlier evidence instead of asking for a link. This does not satisfy the campaign's original clarification expectation; the prompt/history ambiguity remains recorded. |
+| Foreign repository | `01a19825-737e-7023-9010-0b17a2318a14` | Refused the out-of-scope repository with explicit empty trace and zero omissions. |
+| Ambiguous attempt | `01a19825-84a2-7319-bb28-9228875c59fe` | Incorrectly resolved the stated ambiguity using fifteen calls and repeated the diagnosis instead of asking the person. Zero omissions do not make the expected behavior pass. |
+| Large required log | `01a19826-701f-756e-85ce-ca2547d99d72` | Four successful reads, zero omissions, then `fleet_error` / `transport_loss`: connection to model provider lost mid-turn. No final source-gap answer was recorded; case remains incomplete. |
+
+Do not label this a passing eight-case report or delete its failed observations.
+The requested checker removal remains conditional on finishing verification and replacing its commands with the concise evidence record.
+
+## Native memory recall: Nov 01, 2026
+
+Indy authorized steering the original responder to revisit its stored finding.
+Event `01a1981b-b8ab-7452-9648-386c10351a8b` on fleet `01a19715-f33b-76a0-93e3-4f58da0fd5ac` completed through native CLI steer against the development API.
+The prompt supplied the incident URL, requested fresh evidence and native recall, and did not supply the remembered cause or save a replacement note.
+
+Its stored trace contains twelve successful calls and zero omissions.
+All twelve full tool records were fetched; none reports truncated output or arguments.
+Calls `5:1`–`5:10` reread run/attempt/jobs/job, complete log, source listing/code, fixture regression, current dev and workflow before recall.
+
+Call `5:11` found no match for an overly specific query; call `5:12` recalled the existing Linkwarden findings, including key `incident:agentsfleet/linkwarden:m224-title-regression` saved in the earlier event.
+The recalled content matches the observed failure and source; the answer distinguished the earlier garbled fixture-reference caveat from the successfully reread fixture.
+No memory-store call or repository mutation occurred; this closes the same-fleet native save/recall check, not the eight-case campaign or complete repair-trace requirement.
+
+## Clean campaign preparation: Nov 01, 2026
+
+Indy merged Pull Request #795 and requested a clean development campaign.
+The cleanup removed both preceding test fleets and their two private setup chats.
+Native fleet and chat lists then returned empty pages without another cursor.
+
+Development deployment `41304302557` completed successfully at merged revision `2f6daf23ffa013d2d92aeeece0ef10adb9a851e2`.
+Its API, runner, dashboard, verification, browser subset, command-line acceptance and candidate qualification jobs passed.
+The browser subset does not prove full Linux acceptance, which is now explicitly descoped from M224 closure.
+
+Live health reports version `0.72.0` and commit stamp `1b1abbf`; database and queue readiness pass.
+GitHub resolves that stamp to `1b1abbfd7a21e2d12a39cf829e4e76d8ad6eb8d1`.
+Both commits identify source tree `0c7152be96a972924f8c1b47ac2dcd95937799c8`.
+
+Runner `01a154d8-ae2c-7ee2-89a1-9c19f0f60ba2`, host `zombie-runner-ant`, reports active, online and non-degraded.
+Its sandbox controls pass; `build_id` remains null.
+The storage host refused binary bundle `13083250366`, and this environment lacks Tailscale host access for the running-process checksum.
+
+The matching runner checksum therefore remains unverified.
+Qualified bundle `13083297097` and its receipt extraction also remain outstanding.
+Neither a healthy inventory nor matching source trees supplies those missing witnesses.
+
+Native doctor now passes connectivity, workspace selection and credential binding for workspace `01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e`.
+Slack and GitHub are connected, the GitHub credential exists, and the wallet is not exhausted.
+The explicit `platform-default` reference currently resolves to Fireworks MiniMax M3.1 Flash, catalogue identity `01a167b6-ce11-7318-9f40-1ee9e32b3b31`.
+
+Both fresh Definitions retain the merged instruction bytes and subscribe to channel `C0ARL465ZJP`.
+Their read-only download hosts match current redirects: `productionresultssa19.blob.core.windows.net` for normal evidence and `productionresultssa7.blob.core.windows.net` for the large-log case.
+Repository scope remains `agentsfleet/linkwarden`; the repairer's base remains `dev`.
+
+| Role | Private draft | Saved fleet | Review digest suffix after `authoring:v1:sha256:` | Pending GitHub grant |
+| --- | --- | --- | --- | --- |
+| Responder | `01a19715-5ddd-77b1-9ceb-7e83fd74d955` | `01a19715-f33b-76a0-93e3-4f58da0fd5ac` | `1cb9c321a4a86115b9f69ff48511ecd8ced4a1f4b68f311de0c8bf7ff13e0c37` | `01a19715-f33b-724b-8de9-dd11da0aa8e6` |
+| Repairer | `01a19715-ad0d-705e-8558-4c8714906ff3` | `01a19715-fa93-7991-be6a-32439c9e2af5` | `67816edb1680febc3db977a4a06c83b1763905ba15ce34a2591b1b0e220dcf87` | `01a19715-fa93-78bb-be02-612f7b743ebc` |
+
+Indy approved both native grants, and resuming the existing fleets completed their original saves.
+Both fleets now report `active`, setup revision 1, with every setup check ready.
+Their private setup chats report `closed`; accepted Definition snapshots and pre-trigger model settings were retained.
+
+No campaign trigger has been sent.
+
+The eight-case command plan is `tests/fixtures/fleets/ci-investigation/cases.json` on branch `feat/m224-ci-campaign`.
+Its schema validates eight unique case identities and policy hashes derived from the reviewed Definitions.
+The blocked-download variant removes both storage hosts while retaining the same responder instructions.
+
+This plan is not a completed evidence report.
+Before each trigger, bind its exact model-visible input, including earlier Slack thread content, and verify its accepted policy snapshot.
+The same-thread repair input depends on the preceding diagnosis; do not substitute the raw command for the composed native message.
+
+Keep model settings unchanged throughout the campaign and obtain the operator's attributed agreement before its first event.
+Capture before/after settings, accepted setups, native event details and every addressed full tool call.
+Only settled live evidence may populate the report or change an acceptance grade.
+
+Private preparation reads remain under `/workspace/m224-campaign` in this session.
+No production release, Library publication, source repair or passing campaign is claimed.
+
+Preparation checks passed: eight-case schema validation, eight unique identities, `git diff --check` and `make check-documentation-rules`.
+The documentation target passed nine rule tests, eleven parity tests and both documentation checks.
+
+### Public access and live development results
+
+This checkpoint supersedes the preparation-only state above.
+Indy explicitly requested public HTTP access for both fleets and required that reusable JSON retain that choice.
+Native Review/Apply made both existing fleets active at setup revision 2.
+
+Both accepted networks now declare `http_egress: public`, `read_only: true`, `allow: []` and `read_post_paths: []`.
+Repository access, base, model and instruction bytes are unchanged.
+Both repository fixtures and reusable campaign JSON match these accepted network fields.
+
+Responder revision 2 has review digest `authoring:v1:sha256:16ae59e03d38f14fced29c0129efda1ab824b53b2da9efb355e0613e878748ef`.
+Repairer revision 2 has review digest `authoring:v1:sha256:a5a7681686d1729d09391ad63a48047526f1308b67d9ba3c6640c351073b9ba5`.
+The planned blocked-download variant explicitly retains restricted reach to GitHub alone.
+
+Indy's real Slack thread is `1793514947.218449` in channel `C0ARL465ZJP`.
+Its announcement selects run `41281464925`, attempt 1, job `124774076429`, at `dev` head `154a1b86a0f747a091c36c151ea744fbe87a2ef4`.
+This differs from the earlier prepared run link; the observer retains that difference rather than relabelling the prompt.
+
+| Native event | Observation | Acceptance limitation |
+| --- | --- | --- |
+| `01a1971b-fc46-7dad-8d4a-ea01125e5567` | initial responder: seven captured calls, zero omissions; log redirect to storage host 16 refused | repeated the refused log call; no successful diagnosis |
+| `01a1971f-dbb4-7a82-a859-6e809dfb042d` | public responder: full log read, source diagnosis and native memory store; sixteen calls, zero omissions | continued after two failed source reads and one truncated tree; stopping and stored-finding proof fail |
+| `01a19721-d7ec-724b-b492-4af85c5e3675` | later public responder: thirteen successful calls, zero omissions; full log and source reads; native finding visible afterward | recall returned no match; prior thread text was capped; eight-case campaign remains incomplete |
+| `01a19724-9e4d-7fc7-a20f-67c42cec1009` | addressed repairer: one draft #6, unchanged regression passes at returned head | inventory retains 33 calls and reports 17 omitted; validation-log call `1:31` failed before later continuation |
+
+Every retained addressed tool detail was read separately; required arguments were not truncated.
+The earlier responder's tree call `2:13` reports source truncation, so its later answer and memory write cannot erase that failure.
+The repairer's `1:14` is the expected exact repair-ref absence; its `1:31` is a required validation-log failure, not that exception.
+
+The later responder stored key `incident:agentsfleet/linkwarden:m224-title-regression` through native call `3:13`.
+The native memory list returns its content, writer fleet `01a19715-f33b-76a0-93e3-4f58da0fd5ac` and update time `2026-11-01T12:43:10.627Z`.
+Call `3:12` returned no recalled match; no successful save-and-later-recall grade is claimed.
+
+The repairer opened `https://github.com/agentsfleet/linkwarden/pull/6` as `agentsfleet-dev[bot]`, draft against `dev`.
+Its head is `0fcbb15bfe09e26b942414a13e0f7ba13286a584`.
+Only `apps/web/lib/client/unescapeString.ts` and its unchanged three-assertion test differ from the trusted base.
+
+The test blob is `ff0b47366c02cbf165321919c5cb5b2980836c74`, unchanged from the original fixture.
+GitHub job `124852830468`, run `41308186183`, records checkout of that exact repair head.
+Its test checksum is `67dc713ac6e45cd078e4bf03e874d0a3cc3c815c20338a537841651f5f1b754d`.
+
+The same job runs `yarn test run apps/web/lib/client/unescapeString.test.ts` and reports `3 passed (3)`.
+The original run's full fleet-read log reports `1 failed | 2 passed (3)` for the same assertions.
+The observer independently fetched the successful GitHub job log through the GitHub connector and verified checkout, checksum and totals.
+
+The native repair reply claims a verified fix and links draft #6 and the successful validation.
+Independent GitHub results confirm that regression result, but missing native calls prevent complete-trace acceptance.
+The observer authored no repair code and did not merge, mark ready or deploy the draft.
+
+On 2026-11-01, Indy confirmed that the repairer's reply linking draft #6 is visible in the same Slack failure thread.
+This satisfies the human-visible Slack delivery check for this repair event.
+The complete-trace and stopping-rule gaps above remain open.
+
+These records retain successful behavior and failed or incomplete proof together.
+They do not constitute a passing eight-case report, memory recall proof, full Linux acceptance or milestone closure.
+
+### Owner-requested presentation follow-up
+
+M224_002 specifies stable approval rows, enclosed check icons, distinct readiness labels and readable Slack message disclosures.
+Its repository baseline jobs report application 4,628 tests and design system 522 tests at the matching source tree.
+
+Final changed application coverage passed 4,631 tests across 462 files, including the grouped-message and empty-placeholder regressions.
+Its statement, branch, function and line coverage are all 100% across 487 source files.
+
+The design-system lane passed 522 tests and all coverage measures at 100%.
+Application and design-system lint passed; the desktop/mobile chat browser fixture passed six tests, including the final reduced-motion capture.
+
+Code review found and verified the grouped-Slack disclosure repair; the separate standards review findings were addressed in M224_002.
+These checks prove local presentation behavior, not a new deployed application or live model acceptance.
+
 ## Overnight development review: Oct 31, 2026
 
 This checkpoint supersedes the earlier blocked rollout and deleted fleet inventories.
