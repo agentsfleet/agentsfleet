@@ -38,6 +38,7 @@ Repository scope remains `agentsfleet/linkwarden`; the repairer's base remains `
 Indy approved both native grants, and resuming the existing fleets completed their original saves.
 Both fleets now report `active`, setup revision 1, with every setup check ready.
 Their private setup chats report `closed`; accepted Definition snapshots and pre-trigger model settings were retained.
+
 No campaign trigger has been sent.
 
 The eight-case command plan is `tests/fixtures/fleets/ci-investigation/cases.json` on branch `feat/m224-ci-campaign`.
@@ -114,11 +115,13 @@ They do not constitute a passing eight-case report, memory recall proof, full Li
 
 M224_002 specifies stable approval rows, enclosed check icons, distinct readiness labels and readable Slack message disclosures.
 Its repository baseline jobs report application 4,628 tests and design system 522 tests at the matching source tree.
+
 Final changed application coverage passed 4,631 tests across 462 files, including the grouped-message and empty-placeholder regressions.
 Its statement, branch, function and line coverage are all 100% across 487 source files.
 
 The design-system lane passed 522 tests and all coverage measures at 100%.
 Application and design-system lint passed; the desktop/mobile chat browser fixture passed six tests, including the final reduced-motion capture.
+
 Code review found and verified the grouped-Slack disclosure repair; the separate standards review findings were addressed in M224_002.
 These checks prove local presentation behavior, not a new deployed application or live model acceptance.
 
