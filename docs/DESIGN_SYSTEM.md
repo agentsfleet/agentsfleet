@@ -238,33 +238,55 @@ The helpers return the shared invalid-date fallback for malformed inputs; ranges
 Extend these shared helpers when a reusable format is missing. Do not add a page-local formatter.
 
 Label creation timestamps Created across tables and detail views. Other timestamps name their event: Updated, Last used, Occurred, Expires, or Joined / invited. Use the shared app timestamp labels; avoid a generic Time or Date heading.
+
 Record lists place the timestamp after the record identity and before Actions.
+
 Secrets and API Keys fold creation metadata beneath Name on narrow screens, keeping Actions visible.
+
 The separate Created column returns at the small-screen breakpoint.
+
 Event and runner activity feeds keep their primary timestamp before metrics and status columns; the Runs repeat count closes the event row.
+
 Narrow activity tables retain Status and Inspect. Secondary actor and metric columns may hide before the outcome does.
-A feed row never explains a failure. Status flags it and the row's own Inspect dialog carries the reason, its recorded cause and the fix hint; a column repeating a shortened copy of that would be empty on every healthy row.
+
+A feed row flags a failure through Status. Its Inspect dialog carries the reason, recorded cause and fix hint. A separate failure column would be empty on healthy rows.
+
 Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
+
 Use IconAction for icon-only row controls so their square size, tooltip, and accessible name stay consistent.
+
 Use Lucide `CircleCheckIcon` for confirmed actions and successful checks, including approval, invitation, setup, refresh and copy feedback.
+
 Keep existing sizes and semantic colors. Checkbox and menu ticks continue to indicate selection.
 
 Keep approval rows visible while a decision saves; replace their controls with `Saving decision…` until the native response and read-back settle.
+
 Show failures beside the retained row and use the recorded decision metadata after a successful read-back.
 
 Label incoming Slack chat events `Slack · Message received`; their `View message` disclosure shows the recorded message text.
+
 Use `View event` and a document icon for other event data. Do not show a braces icon as the explanation for an incoming message.
-Every row action names its variant: ghost for the neutral ones, destructive for Delete and Deny. IconAction's own default is outline, which draws a box per icon and belongs to standalone buttons, never to a cluster in a table row.
+
+Every row action names its variant: ghost for neutral actions, destructive for Delete and Deny. IconAction defaults to outline. Use that boxed style for standalone buttons, rather than table-row clusters.
+
 Header controls such as Refresh use a square TooltipButton with `size="sm"`, preserving a minimum 32px target.
+
 Keep loading and completion cues inside that fixed square.
+
 Do not add creation dates to catalog tables whose records have no useful creation-date field.
 
 Column labels and cells share horizontal padding and alignment.
+
 Left-align dates beneath their heading, including secondary usage details in the same cell.
+
 Right-align numeric columns and row actions. Every sort icon follows its label, numeric columns included.
+
 Use shared DataTable sorting, pagination, and scroll behavior.
+
 Default page sizes are 25, 50, and 100. Previous and Next replace the current page; paginated tables never append rows.
+
 Keep the header and pagination footer visible around the scrolling body. Loading disables sorting and paging until the current request settles.
+
 Use Search for text matching. Label structured filters by their fields and state exact-match behavior beside the controls.
 
 Runner detail bounds its table height on desktop and scrolls the page on mobile.
