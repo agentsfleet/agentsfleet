@@ -59,6 +59,12 @@ mod fake_model;
 mod https;
 #[path = "support/e2e_reads.rs"]
 mod reads;
+#[path = "support/repair_continue.rs"]
+mod repair_continue;
+#[path = "support/repair_remote.rs"]
+mod repair_remote;
+#[path = "support/repair_walk.rs"]
+mod repair_walk;
 #[path = "support/e2e_schedules.rs"]
 mod schedules;
 #[path = "support/e2e_speaking.rs"]

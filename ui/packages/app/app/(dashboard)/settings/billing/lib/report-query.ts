@@ -34,12 +34,22 @@ export function reportOptions(query: BillingSearch): BillingReportOptions {
   };
 }
 
-/** Filters start a fresh report; old continuations and expanded details cannot bleed across. */
+/** Filtering retains the selected reporting cutoff; changing period returns to now. */
 export function changedFilter(params: URLSearchParams, key: string, value: string): URLSearchParams {
   const next = new URLSearchParams(params);
-  for (const name of [CURSOR_TRAIL_PARAM, CURSOR_PAGE_SIZE_PARAM, BILLING_QUERY.through, BILLING_QUERY.activity, BILLING_QUERY.detailCursor]) next.delete(name);
+  for (const name of [CURSOR_TRAIL_PARAM, CURSOR_PAGE_SIZE_PARAM, BILLING_QUERY.activity, BILLING_QUERY.detailCursor]) next.delete(name);
+  if (key === BILLING_QUERY.period) next.delete(BILLING_QUERY.through);
   if (value === BILLING_ALL) next.delete(key);
   else next.set(key, value);
+  return next;
+}
+
+/** The API anchors a UTC calendar month to its inclusive reporting cutoff. */
+export function previousBillingMonth(params: URLSearchParams, from: string): URLSearchParams {
+  const first = new Date(from);
+  const cutoff = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 1) - 1).toISOString();
+  const next = changedFilter(params, BILLING_QUERY.period, BILLING_PERIOD_MONTH);
+  next.set(BILLING_QUERY.through, cutoff);
   return next;
 }
 

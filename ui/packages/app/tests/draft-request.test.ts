@@ -56,6 +56,15 @@ describe("bounded private setup transport", () => {
     await expect(setupRequest({path: "/live/test"}, Shape, controller.signal)).rejects.toMatchObject({status: 502});
     expect(fetch).not.toHaveBeenCalled();
   });
+  it("releases a body when its owner aborts before fetch returns", async () => {
+    const owner = new AbortController();
+    const cancel = vi.fn();
+    const stream = new ReadableStream({cancel});
+    vi.stubGlobal("fetch", vi.fn(async () => {owner.abort(); return new Response(stream);}));
+    await expect(setupRequest({path: "/live/test"}, Shape, owner.signal)).rejects.toMatchObject({status: 502});
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
+  });
   it("accepts an empty successful delete only when its parser permits null", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(null, 204)));
     await expect(setupRequest({path: "/live/test", method: "DELETE"}, z.null(), signal())).resolves.toBeNull();

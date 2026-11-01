@@ -12,6 +12,7 @@ import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
 import { FleetReplyFigures, OmittedCalls, Waiting } from "./FleetReplyFigures";
 import { FleetThought } from "./FleetThought";
 import { ToolCallList, ToolCallRow } from "./FleetToolCalls";
+import { toolGroupActivity } from "./tool-call-activity";
 import { messageOutcome } from "./fleetFailureCopy";
 import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readSubmittedAtMs, readText } from "./fleetMessageReaders";
 import { STATUS_AGENT_ERROR } from "./fleetMessageStatus";
@@ -136,7 +137,7 @@ export function renderReplyPart(
         </FleetThought>
       );
     case GROUP.TOOL:
-      return <ToolCallList running={part.status.type === STATUS_RUNNING}>{children}</ToolCallList>;
+      return <ToolCallList activity={toolGroupActivity(reply.content, part.indices, reply.running)}>{children}</ToolCallList>;
     case "reasoning":
       return <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{part.text}</p>;
     case "tool-call":

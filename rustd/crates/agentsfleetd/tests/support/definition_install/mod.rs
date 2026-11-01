@@ -21,6 +21,7 @@
 
 mod fleet;
 mod seed;
+pub(crate) mod slack;
 
 use std::sync::Arc;
 
@@ -28,7 +29,7 @@ use afd_core::id::Uuid7;
 use afd_credential::credential::{Ask, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::Connector;
 use afd_wire::event::EventType;
-use agentsfleetd::serve::{Booted, boot_with_exchanger};
+use agentsfleetd::serve::{Booted, boot_with_connector_boundary, boot_with_exchanger};
 use agentsfleetd::supervisor::Supervisor;
 use jiff::Timestamp;
 use serde_json::Value;
@@ -91,9 +92,21 @@ pub(crate) async fn install_definition(
     secrets: &[Secret],
     provider_base: Option<&str>,
 ) -> Scenario {
+    install_with(supervisor, fleet_name, secrets, provider_base, &[], None).await
+}
+
+/// Installs the accepted setup with a producer channel and daemon-local vendor boundary.
+pub(super) async fn install_with(
+    supervisor: &mut Supervisor,
+    fleet_name: &str,
+    secrets: &[Secret],
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+    channel: Option<&str>,
+) -> Scenario {
     install_subscriber();
     let exclusive = SCENARIOS.lock().await;
-    let booted = boot_minting(supervisor, provider_base).await;
+    let booted = boot_minting(supervisor, provider_base, extra).await;
     let now = afd_core::clock::now();
     let (_unused, workspace, tenant) = unique_ids();
     seed_workspace(&booted, &workspace, &tenant, now).await;
@@ -103,7 +116,7 @@ pub(crate) async fn install_definition(
     seed_provider_key(&booted, &workspace, now).await;
     let workspace_id = Uuid7::parse(&workspace).expect("a minted workspace id");
     seal_credentials(&booted, &workspace, &workspace_id, secrets, now).await;
-    let fleet = install(&booted, &workspace_id, &tenant, fleet_name, now).await;
+    let fleet = install(&booted, &workspace_id, &tenant, fleet_name, now, channel).await;
     let enrolled = enrol(&booted, &fleet, now).await;
     let event_id = enqueue(&booted, &fleet.to_string(), &workspace, EventType::Chat).await;
     Scenario {
@@ -123,16 +136,29 @@ pub(crate) async fn install_definition(
 
 /// Boots the daemon on the lane's database with [`MintedToken`] standing in
 /// for GitHub's token endpoint.
-async fn boot_minting(supervisor: &mut Supervisor, provider_base: Option<&str>) -> Booted {
+async fn boot_minting(
+    supervisor: &mut Supervisor,
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+) -> Booted {
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
-    boot_with_exchanger(
-        &daemon_environment(&database_url, provider_base, &[]),
-        EPHEMERAL,
-        supervisor,
-        Arc::new(MintedToken),
-    )
-    .await
-    .expect("the lane's Postgres and Dragonfly are up")
+    let env = daemon_environment(&database_url, provider_base, extra);
+    let endpoint = extra
+        .iter()
+        .find(|(key, _)| *key == agentsfleetd::preflight::SLACK_API_URL_KNOB);
+    let boot = if let Some((_, endpoint)) = endpoint {
+        boot_with_connector_boundary(
+            &env,
+            EPHEMERAL,
+            supervisor,
+            Arc::new(MintedToken),
+            (*endpoint).to_owned(),
+        )
+        .await
+    } else {
+        boot_with_exchanger(&env, EPHEMERAL, supervisor, Arc::new(MintedToken)).await
+    };
+    boot.expect("the lane's Postgres and Dragonfly are up")
 }
 
 /// Seals the GitHub handle for a fresh installation, lands that

@@ -121,6 +121,14 @@ pub struct Connectors {
 }
 
 impl Connectors {
+    /// Pins every vendor call to a lane's existing exchange boundary.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn pointed_at(mut self, endpoint: String) -> Self {
+        self.exchange = self.exchange.pointed_at(endpoint);
+        self
+    }
+
     /// Binds the flow to its stores, its vendor client and its entropy.
     #[must_use]
     pub const fn new(

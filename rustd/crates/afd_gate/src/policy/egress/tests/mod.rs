@@ -227,6 +227,10 @@ fn a_rule_that_names_a_field_lists_every_field_a_run_may_send() {
                 "/repos/acme/payments/pulls",
                 vec!["title", "body", "maintainer_can_modify"]
             ),
+            (
+                "/repos/acme/payments/git/refs/heads/agentsfleet-repair/run-123",
+                vec!["sha"]
+            ),
         ]
     );
 }
@@ -249,9 +253,9 @@ fn a_write_binding_keeps_its_read_rules_too() {
     let write = binding(&["acme/payments"], "write", Some("main"));
     let rules = rules(&write, Some(BRANCH));
 
-    // Two reads plus five writes: a fleet that can push must still be able
-    // to look at what it is pushing to.
-    assert_eq!(rules.len(), 7);
+    // Two reads, five creations and one bounded update: a fleet can still
+    // look at what it is pushing to.
+    assert_eq!(rules.len(), 8);
     assert_eq!(
         rules
             .iter()

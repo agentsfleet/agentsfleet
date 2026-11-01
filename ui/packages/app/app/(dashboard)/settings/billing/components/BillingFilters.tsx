@@ -3,10 +3,10 @@
 import type { BillingReport } from "@/lib/api/billing_report";
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner } from "@agentsfleet/design-system";
+import { Button, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner } from "@agentsfleet/design-system";
 import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "@/lib/api/billing-report-values";
 import { ALL_FLEETS_LABEL, ALL_MODELS_LABEL, SETUP_LABEL } from "../lib/report-format";
-import { BILLING_ALL, BILLING_QUERY, BILLING_SETUP, changedFilter } from "../lib/report-query";
+import { BILLING_ALL, BILLING_QUERY, BILLING_SETUP, changedFilter, previousBillingMonth } from "../lib/report-query";
 
 type Props = { report: BillingReport; modelNames: Record<string, string> };
 type Choice = { value: string; label: string };
@@ -22,6 +22,10 @@ export function BillingFilters({ report, modelNames }: Props) {
     const next = changedFilter(new URLSearchParams(params.toString()), key, value);
     startTransition(() => router.push(`${pathname}?${next}`, { scroll: false }));
   };
+  const previousMonth = () => {
+    const next = previousBillingMonth(new URLSearchParams(params.toString()), report.from_at);
+    startTransition(() => router.push(`${pathname}?${next}`, { scroll: false }));
+  };
   return <div className="relative flex flex-wrap items-end gap-lg" aria-busy={pending}>
     <Filter label="Period" value={report.period} disabled={pending}
       choices={[{ value: BILLING_PERIOD_MONTH, label: "Month to date" }, { value: BILLING_PERIOD_TODAY, label: "Today" }]}
@@ -32,6 +36,11 @@ export function BillingFilters({ report, modelNames }: Props) {
     <Filter label="Model" value={params.get(BILLING_QUERY.model) ?? BILLING_ALL} disabled={pending}
       choices={[{ value: BILLING_ALL, label: ALL_MODELS_LABEL }, ...report.filters.models.map(model => ({ value: model, label: modelNames[model] ?? model }))]}
       onChange={value => change(BILLING_QUERY.model, value)} />
+    <fieldset className="flex flex-wrap gap-sm">
+      <legend className="sr-only">Billing month navigation</legend>
+      <Button size="sm" variant="outline" disabled={pending} onClick={previousMonth}>Previous month</Button>
+      <Button size="sm" variant="ghost" disabled={pending} onClick={() => change(BILLING_QUERY.period, BILLING_PERIOD_MONTH)}>Current month</Button>
+    </fieldset>
     {pending ? <span className="absolute right-0 top-0"><Spinner size="sm" label="Updating report…" /></span> : null}
   </div>;
 }

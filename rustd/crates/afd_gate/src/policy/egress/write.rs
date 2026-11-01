@@ -31,7 +31,7 @@
 
 use afd_fleet_runtime::config::RepositoryBinding;
 use afd_wire::policy::repository::{
-    self, COMMITS_PATH, FIELD_BASE, FIELD_BODY, FIELD_DRAFT, FIELD_HEAD,
+    self, COMMITS_PATH, FIELD_BASE, FIELD_BODY, FIELD_DRAFT, FIELD_FORCE, FIELD_HEAD,
     FIELD_MAINTAINER_CAN_MODIFY, FIELD_MESSAGE, FIELD_PARENTS, FIELD_REF, FIELD_SHA, FIELD_TITLE,
     FIELD_TREE, PULLS_PATH, REFS_HEADS, REFS_PATH,
 };
@@ -106,6 +106,7 @@ pub(super) fn rules<'a>(
         ],
         Some(&PULL_FIELDS),
     ));
+    rules.push(ref_update(repository, branch));
     Ok(rules)
 }
 
@@ -137,5 +138,20 @@ fn locked<'a>(name: &'static str, value: String) -> HttpJsonFieldRule<'a> {
         name: name.into(),
         string_value: Some(value.into()),
         boolean_value: None,
+    }
+}
+
+/// A continuation can only fast-forward the current event-owned branch.
+fn ref_update<'a>(repository: &str, branch: &str) -> HttpRequestRule<'a> {
+    HttpRequestRule {
+        method: HttpMethod::Patch,
+        path: repository::path(repository, &format!("{REFS_PATH}/heads/{branch}")).into(),
+        path_match: HttpPathMatch::Exact,
+        json_fields: vec![HttpJsonFieldRule {
+            name: FIELD_FORCE.into(),
+            string_value: None,
+            boolean_value: Some(false),
+        }],
+        permitted_fields: Some(vec![FIELD_SHA.into()]),
     }
 }

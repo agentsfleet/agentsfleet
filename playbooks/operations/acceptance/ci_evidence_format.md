@@ -57,7 +57,7 @@ Resolve `tool_output.call_id` only through the same case's `tool_records`; anoth
 
 Each span contains exactly two nonnegative safe integers, with start smaller than end and end within the selected text's UTF-8 byte length. A quote needs an identical byte sequence in at least one cited witness span. A zero-tool clarification uses a prompt witness and the native empty trace; its answer never supplies its own factual support.
 
-For development grading, require a non-null object containing `case_links`, `runtime`, `source`, `slack`, `pull_request`, `regression` and `review`. Runtime records the deployment run URL, commit and runner identity; source records repository, run, attempt, job and failing commit. Slack records channel/thread and all four trigger/answer/repair-request/draft-link permalinks.
+For development grading, require a non-null object containing `case_links`, `runtime`, `source`, `slack`, `pull_request`, `regression`, `memory` and `review`. Runtime records the deployment run URL, commit and runner identity; source records repository, run, attempt, job and failing commit. Slack records channel/thread and all four trigger/answer/repair-request/draft-link permalinks.
 
 The PR object records URL, repository, base, draft flag, head commit and hashed diff evidence. Regression records `before` and `after`, each with commit, command, executor, exit status, counts and hashed output reference. The attributed review records reviewer/date, `pass`, and rationale; missing, failed or incomplete proof cannot pass development grading.
 
@@ -70,10 +70,10 @@ The PR object records URL, repository, base, draft flag, head commit and hashed 
 | `runtime.runner_observations[]` | `runner_id: string`, `build_id: string or null`, `running_sha256: Digest`, `artifact_sha256: Digest`, `probe: Ref`; `Digest` is a SHA-256 value |
 | `runtime.evidence` | `approval: Ref`, `deployment: Ref`, `health: Ref`, `readiness: Ref`, `runner: Ref`, holding the attributed approval and captured prerequisite responses |
 | `runtime.checks` | `approval`, `deployment`, `health`, `readiness`, `runner`, each graded `pass`, `fail` or `incomplete` |
-| `source` | `repository: string`, `run_id: positive integer`, `attempt: positive integer`, `job_id: positive integer`, `head_sha: Commit`, `failed_step: string`, `evidence: Ref[]` with at least one record |
-| `slack` | `channel_id: string`, `thread_ts: string`, `trigger_permalink: string`, `answer_permalink: string`, `repair_request_permalink: string`, `draft_link_permalink: string` |
+| `source` | `repository: string`, `run_id: positive integer`, `attempt: positive integer`, `job_id: positive integer`, `head_sha: Commit`, `failed_step: string`, `evidence: Ref[]` with at least one record, `jobs_url: URL`, `files: {path, source_blob: Commit, base_blob: Commit}[]` |
+| `slack` | `channel_id: string`, `thread_ts: string`, `trigger_permalink: string`, `answer_permalink: string`, `repair_request_permalink: string`, `draft_link_permalink: string`, `evidence: Ref[]` |
 | `pull_request` | `url: string`, `repository: string`, `base: string`, `draft: true`, `head_sha: Commit`, `diff: Ref` |
-| `regression` | `before` and `after`, each containing `commit: Commit`, `command: string`, `executor: string`, `exit_status: integer`, `counts: {passed, failed, skipped}`, `output: Ref`; each count is a nonnegative integer |
+| `regression` | `fixture: {repository, path, source_revision: Commit, content: Ref}`, plus `before` and `after`, each containing `commit: Commit`, `command: string`, `executor: string`, `exit_status: integer`, `counts: {passed, failed, skipped}`, `output: Ref`, `execution: {run: Addressed, job: Addressed, log_url: URL}`; each count is a nonnegative integer |
 | `review` | `reviewer: string`, `at: ISO 8601 string`, `grade: pass/fail/incomplete`, `rationale: string` |
 
 Development checks require correlated approved build/runtime evidence, matching run/job identities and original-thread addresses across records. The PR must match the reviewed repository/base; its head must equal the tested after-commit, with a failing before-status and zero after-status. Never accept a generic green workflow as regression proof or a pending delivery as a visible Slack answer.
@@ -217,3 +217,24 @@ The named tests are requirements, not claims that tests already exist. Local net
 
 Indy supplies external approvals and triggers; the agent captures sanitized records and runs the offline checker. Manual case inputs, source refusal variants, review procedure and grading reasons belong in the revised drill and fixed corpus. Deterministic same-event replay and response-loss tests use local boundaries; never manufacture faults against a customer's live provider.
 
+
+
+## Native proof joins added by the 0.72.0 continuation
+
+`Addressed` contains exactly `read_url` and `record: Ref`. Full tool-detail records retain the native numeric fenced `call_id`, complete `arguments`, `output`, `output_line_count`, `truncated_arguments` and `truncated`, inside `{read_url, response}`. Bind the native identifier to both the inventory and addressed URL. All cases require a non-null trace and zero omissions, including prompt-only cases. Only the intentional truncated-required-log case permits truncated stored output, and its retained HTTP envelope must prove the selected log address, status, media type and machine truncation notice.
+
+Parse HTTP status, media type and truncation/replaced-byte notices only before `Response Body:`. Log text cannot impersonate those headers. Reject work after terminal policy/authentication refusals and failed required reads independently of manual grades. The addressed repair's exact event-derived ref 404 permits only immediate successful empty reconciliation across all pull-request states. Uncertain write acknowledgements remain distinct from failed reads.
+
+Both linked fleets must own successful GETs of the run, selected attempt, complete selected-attempt job listing, failed-job details/logs, current trusted base ref and the listed relevant files at the tested and base revisions. Operator preparation records do not replace model-owned reads. The retained job listing must account for its native total; a partial page is incomplete proof.
+
+Each regression execution binds native run/job addresses, repository, job name and tested head to the recorded command and output. Its raw GitHub job log must record the tested commit, unchanged fixture SHA-256/path and the command; the Vitest result summary must match declared pass/fail/skip counts. The before/after totals agree and no assertion is skipped. An unrelated green job or arbitrary nonempty output cannot pass. Review still determines whether the diff weakens assertions or whether the diagnosis follows from the sources.
+
+Each Slack evidence record contains exactly `permalink`, `channel_id`, `thread_ts`, `event_id`, `kind` (`trigger`, `answer`, `repair_request`, `draft_link`) and `text`. All four must join the original native events and thread. Decode Slack's visible URL/HTML escaping without accepting a substituted labelled URL.
+
+`development.memory` contains exactly `store_event: Addressed`, `recall_event: Addressed`, `entry: Addressed`, `store_call: Addressed`, `recall_call: Addressed`, `recall_tools: ToolRecord[]`, and attributed `review`. The save witnesses are the linked diagnosis's identical native event/full-call records. The later settled recall belongs to that same workspace/fleet, has a complete omission-free trace, and refers to the identical full recall record. Its required run/job/log/source/base GETs precede recall; an unrelated successful request cannot substitute.
+
+The entry record contains `observed_at`, `read_url`, and native `response.items`. Match key/content/category/visibility/writer to the successful store; its update falls between the save event's creation and later recall, and observation follows save settlement. Recall must return that persisted finding. Missing actual persistence, failed reads or review keeps memory acceptance incomplete.
+
+Deployment evidence retains native run creation/start/completion times and job names. Approval precedes dispatch; successful `fly / deploy-fly` and `metal / deploy-metal` jobs precede observed health/readiness and the campaign. Preserve null build identifiers and attest running executable checksums as described above.
+
+This offline checker proves retained-record consistency. It cannot authenticate fabricated but internally consistent records or replace the actual-model campaign and attributed external review.

@@ -71,7 +71,7 @@ pub(super) async fn open_runtime(
     let live = open_live(config.redis(), config.sse_max_streams()).await;
     let hub = live.hub().cloned();
     let observed = live.clone();
-    let plane = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
+    let plane = ServingPlane::new(crate::plane::PlaneParts {
         authoring_transport: clients.authoring,
         database: database.clone(),
         queue: queue.clone(),
@@ -93,12 +93,14 @@ pub(super) async fn open_runtime(
         vendor_client: clients.plane,
         schedule: schedule_config(config, clients.schedule),
         login: login_config(config),
-    }));
+    });
+    #[cfg(feature = "test-util")]
+    let plane = plane.with_connector_endpoint(config.connector_endpoint());
     Ok(Runtime {
         database,
         queue,
         live: observed,
-        plane,
+        plane: Arc::new(plane),
         hub,
         kek,
         outbound_client: clients.outbound,

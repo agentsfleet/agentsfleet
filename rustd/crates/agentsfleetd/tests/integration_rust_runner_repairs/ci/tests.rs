@@ -19,6 +19,13 @@ use crate::https::{Seen, Upstream};
 use afd_gate::policy::repair::branch_for;
 use afd_wire::event::EventType;
 
+#[path = "continuation.rs"]
+mod continuation;
+#[path = "recovery.rs"]
+mod recovery;
+#[path = "replay.rs"]
+mod replay;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_addressed_repair_reads_evidence_before_draft() {

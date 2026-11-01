@@ -1,9 +1,10 @@
 "use client";
 
+import type { KeyboardEvent } from "react";
 import type { RowComponentProps } from "react-window";
 import type { NumberedRow } from "./FleetOutputLine";
-import { useCallback, useMemo, useState } from "react";
-import { List, useDynamicRowHeight } from "react-window";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { List, useDynamicRowHeight, useListRef } from "react-window";
 import { Input } from "@agentsfleet/design-system";
 import { FleetOutputLine } from "./FleetOutputLine";
 
@@ -29,9 +30,21 @@ export function FleetVirtualOutput({ rows }: { rows: readonly NumberedRow[] }) {
 /** Row measurement updates stay inside the list while the search control remains stable. */
 function OutputList({ rows }: { rows: readonly NumberedRow[] }) {
   const [width, setWidth] = useState(0);
+  const list = useListRef(null);
+  // Wrapped row measurements change the final offset after End; retain the row until new user input.
+  const edge = useRef<"start" | "end" | null>(null);
+  const release = () => {edge.current = null;};
+  const alignEdge = useCallback(() => {
+    if (edge.current !== null) list.current?.scrollToRow({index: edge.current === "start" ? 0 : rows.length - 1, align: edge.current, behavior: "instant"});
+  }, [list, rows.length]);
+  const navigate = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Home" && event.key !== "End") {release(); return;}
+    event.preventDefault(); edge.current = event.key === "Home" ? "start" : "end"; alignEdge();
+  };
   const height = useDynamicRowHeight({ defaultRowHeight: ESTIMATED_LINE_HEIGHT, key: width });
   const resized = useCallback((size: { width: number }) => setWidth(size.width), []);
-  return <List aria-label="Command output lines" tabIndex={0}
+  return <List aria-label="Command output lines" tabIndex={0} listRef={list}
+    onKeyDown={navigate} onRowsRendered={alignEdge} onWheel={release} onPointerDown={release} onTouchStart={release}
     className="h-96 max-h-[50dvh] w-full font-mono text-mono leading-mono text-foreground"
     defaultHeight={DEFAULT_VIEWPORT_HEIGHT} rowCount={rows.length} rowHeight={height} onResize={resized}
     rowComponent={OutputRow} rowProps={{ rows }} />;

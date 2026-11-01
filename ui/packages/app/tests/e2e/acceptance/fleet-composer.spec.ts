@@ -4,7 +4,7 @@ import { withReplyPage } from "./fixtures/reply-page";
 import { CHAT_COPY, editSetupLink, setupAction } from "./fixtures/private-chat";
 
 const PART = { model: '[data-composer-part="model"]', hint: '[data-composer-part="hint"]' } as const;
-const SIZES = { input: "15px", model: "12px", hint: "12px" } as const;
+const SIZES = { input: "14px", model: "12px", hint: "12px" } as const;
 const CASES = [
   { name: "desktop dark", width: 1440, theme: "dark", reducedMotion: "no-preference" },
   { name: "desktop light", width: 1440, theme: "light", reducedMotion: "reduce" },
