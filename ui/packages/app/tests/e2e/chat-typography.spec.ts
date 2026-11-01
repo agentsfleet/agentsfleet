@@ -93,6 +93,8 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
   await expect(action).toHaveCSS("outline-width", "2px");
   await expect(action).toHaveCSS("outline-offset", "-2px");
   await expect(action).toHaveCSS("border-top-width", "0px");
+  await expect(action).toHaveCSS("padding-left", "8px");
+  await expect(action).toHaveCSS("padding-right", "8px");
   for (const button of await tools.locator("[data-command-heading]").all()) {
     expect((await button.locator("..").boundingBox())?.height).toBeGreaterThanOrEqual(mobile ? 44 : 36);
   }

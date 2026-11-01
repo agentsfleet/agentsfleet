@@ -1269,3 +1269,15 @@ The focused browser rerun passed all four desktop/mobile typography and activity
 The native command for the preceding candidate was allowed to finish; its superseded PR orchestration was paused before additional commands.
 That run does not count as the final PR gate.
 The final source commit must run every declared command and refresh the full browser/build evidence.
+
+
+### Focus padding and PR opening direction
+
+Indy observed that the keyboard-focus outline was too close to the activity icon and text.
+The final presentation adjustment adds 8px inner padding and browser assertions for both horizontal edges.
+Its focused desktop/mobile typography and activity run passed four tests.
+
+Indy directed: "well have you done the run bfore? validation? is so cut that crap and push the PR. If CI gates failes then solve it."
+This supersedes waiting for or repeating the local PR gate before opening this PR.
+The current run continues; its source boundary began at `547333496`, before this presentation-only adjustment.
+No exact-final-head local-gate pass is claimed; final-head GitHub checks and Greptile must pass before merge.

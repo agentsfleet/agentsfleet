@@ -19,7 +19,7 @@ export const TOOL_SUCCEEDED_GLYPH = "✓";
 const FIGURE_SEPARATOR = " · ";
 const COMMANDS = "commands";
 const COMMAND = "command";
-const TRIGGER_CLASS = "min-h-11 justify-start gap-sm rounded-sm py-sm text-body-sm text-muted-foreground hover:no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-info sm:min-h-9";
+const TRIGGER_CLASS = "min-h-11 justify-start gap-sm rounded-sm px-md py-md text-body-sm text-muted-foreground hover:no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-info sm:min-h-9";
 const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode}> = {
   [CELL_STATE.RUNNING]: {label: "Running", tone: "text-info", icon: <SignalSpinner className="size-3.5 text-current" aria-hidden="true" />},
   [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success", icon: <span className="inline-flex size-3.5 shrink-0 items-center justify-center leading-none" aria-hidden="true">{TOOL_SUCCEEDED_GLYPH}</span>},
