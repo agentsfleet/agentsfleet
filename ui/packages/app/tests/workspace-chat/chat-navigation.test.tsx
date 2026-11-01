@@ -38,6 +38,28 @@ it("drops the previous conversation immediately when a different chat is selecte
   await screen.findByRole("heading", {name: "Morning brief"});
 });
 
+it("shows the owning cached conversation while its refresh is still in flight", async () => {
+  const mounted = render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  await screen.findByText("Your setup is ready.");
+  fixture.draft = {...DRAFT, id: REVISION_ID, title: "Morning brief"};
+  fixture.messages = [{...MESSAGE, text: "Prepare a morning brief"}];
+  mounted.rerender(<WorkspaceChat {...CHAT_PROPS} draft={REVISION_ID} />);
+  await screen.findByRole("heading", {name: "Morning brief"});
+  const refreshing = Promise.withResolvers<Response>();
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  fixture.draft = DRAFT;
+  fixture.messages = [{...MESSAGE, role: "assistant", text: "Refreshed setup"}];
+  fixture.fetch.mockImplementation(async (input, init) => requestPath(input).endsWith(`/drafts/${DRAFT.id}`)
+    ? refreshing.promise.then(result => result.clone()) : base(input, init));
+  mounted.rerender(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  expect(screen.getByText("Your setup is ready.")).toBeTruthy();
+  expect(screen.queryByRole("heading", {name: "Morning brief"})).toBeNull();
+  await act(async () => refreshing.resolve(response(DRAFT)));
+  await screen.findByText("Refreshed setup");
+  expect(screen.queryByText("Your setup is ready.")).toBeNull();
+});
+
 it("renames a chat with a conditional patch and retains the editor on a refusal", async () => {
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   await chooseSetupAction("Rename chat");

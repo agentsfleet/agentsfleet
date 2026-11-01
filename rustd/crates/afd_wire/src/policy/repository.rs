@@ -24,6 +24,8 @@ pub const FIELD_BODY: &str = "body";
 pub const FIELD_MAINTAINER_CAN_MODIFY: &str = "maintainer_can_modify";
 /// The `git/refs` field naming the commit the ref points at.
 pub const FIELD_SHA: &str = "sha";
+/// The ref-update field that must remain false for repair continuation.
+pub const FIELD_FORCE: &str = "force";
 /// The `git/commits` field carrying the commit message.
 pub const FIELD_MESSAGE: &str = "message";
 /// The `git/commits` field naming the tree it records.

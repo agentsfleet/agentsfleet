@@ -33,6 +33,6 @@ export function BillingReportView(props: Props) {
       <TabsContent value={VIEW.activity} className="mt-0"><BillingActivities {...props} /></TabsContent>
       <TabsContent value={VIEW.spending} className="mt-0"><BillingSpending report={report} modelNames={modelNames} /></TabsContent>
     </Tabs>
-    <p className="text-label text-muted-foreground">Totals exclude pending or unavailable provider usage, which can arrive later.</p>
+    <p className="text-label text-muted-foreground">Totals exclude pending or unavailable provider usage, which can arrive later. Billing history includes deleted fleets.</p>
   </div>;
 }

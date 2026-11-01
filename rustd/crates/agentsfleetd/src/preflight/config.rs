@@ -55,6 +55,9 @@ pub struct BootConfig {
     /// A test boot's stand-in for the vendors' token endpoints.
     #[cfg(feature = "test-util")]
     pub(super) exchanger: Option<std::sync::Arc<dyn afd_credential::credential::Exchanger>>,
+    /// A test boot's connector vendor boundary; never an environment option.
+    #[cfg(feature = "test-util")]
+    pub(super) connector_endpoint: Option<String>,
 }
 
 /// Where product events go, when this deployment sends any.
@@ -177,6 +180,21 @@ impl BootConfig {
         exchanger: std::sync::Arc<dyn afd_credential::credential::Exchanger>,
     ) -> Self {
         self.exchanger = Some(exchanger);
+        self
+    }
+
+    /// The connector vendor boundary a test boot explicitly pinned.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn connector_endpoint(&self) -> Option<&str> {
+        self.connector_endpoint.as_deref()
+    }
+
+    /// Pins a test boot's connector calls to a local vendor stand-in.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_connector_endpoint(mut self, endpoint: String) -> Self {
+        self.connector_endpoint = Some(endpoint);
         self
     }
 

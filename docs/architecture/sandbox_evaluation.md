@@ -358,6 +358,10 @@ A successful workflow alone cannot certify that the original production symptom 
 
 ### Continue an existing repair draft
 
+Current write leases can correct their own event-derived branch with an exact, non-force PATCH.
+That same-event operation does not implement the later-admission behavior below.
+See [the current write boundary](lease_flow.md#3-github-pr-reviewer-end-to-end).
+
 **Owner-selected behavior:** Later approved fixes for the same incident continue its existing draft pull request, with fresh permission and code checks.
 Keep the incident, coding session, repair attempt, repository, branch and draft relationship in trusted application state.
 Each new admission receives current authority for that recorded attempt; conversation text cannot select a publication target.
@@ -387,7 +391,7 @@ Repeated channel responses resolve to the same approved action and admission.
 Each later approved action remains distinct while continuing the same repair attempt.
 
 **Current implementation gap:** [Repair branches](../../rustd/crates/afd_gate/src/policy/repair.rs) derive from an admission's event.
-The [write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs) allow ref and draft creation, without an existing-ref update path.
+The [write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs) allow creation and non-force updates only on the current event-owned repair branch.
 The selected design therefore needs a trusted continuation mapping and bounded update authority; restoring files alone cannot supply either.
 
 Required proof includes a new admission resuming the same draft after worker replacement and a laptop push racing publication.
@@ -562,7 +566,7 @@ The proposed daemon recovery owner above supplies a boundary, while its detailed
 |---|---|---|
 | Select and resume a task | Chat and Slack must identify incident A after B without guessing from conversation prose. Bind its conversation coverage, file generation and command results together. | [Current lease-scoped context](../../rustd/crates/afr_agent/src/loop/context/mod.rs), [fleet-scoped holds](../../rustd/crates/afr_supervisor/src/holds/mod.rs). |
 | Bound retained work | Set saved file coverage, acceptable crash loss, save/restore deadlines, retention during approval waits and storage limits. Protect each retained session's referenced generation. | [Existing retention target](runner_execution.md#workspace-between-leases) and [proposed session lifecycle](#coding-sessions-and-worktrees-across-leases). |
-| Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), [event-derived branch](../../rustd/crates/afd_gate/src/policy/repair.rs) and [create-only write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs). |
+| Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), [event-derived branch](../../rustd/crates/afd_gate/src/policy/repair.rs) and [event-scoped write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs). |
 | Identify the approver | Owner selected existing workspace access, including invited members, without a separate approver list. Verified Slack identity and adoption across direct requests, queued work and running leases still need design. | [Workspace roles](../AUTH.md#memberships-and-roles), [existing direct Slack request](scenarios/slack-incident-responder.md#7-four-stages-four-authorities), [proposed approval flow](#workspace-approval-in-chat-or-slack). |
 | Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](scenarios/slack-incident-responder.md#6-how-the-answer-comes-back) and [outbound abandonment](../../rustd/crates/afd_outbound/src/abandon.rs). |
 | Bound monitoring delay | Set critical-alert diagnosis delay and repair queue capacity. Track successful sweep freshness separately from accepted-alert queue time, including failed provider reads and evidence gaps. | [Ordered queue without a waiting-time guarantee](datastore_scaling.md#the-admissions-ledger-is-the-queue), [serial diagnosis](#several-incidents-under-the-same-fleets). |
@@ -651,3 +655,6 @@ Keep failure injection deterministic with barriers, controlled transport loss an
 A browser mock, scripted provider or successful service creation cannot substitute for a real cross-worker recovery proof.
 
 The compaction work regression currently fails before optimization; the independent blocked-summary proof passes. Their measured output is recorded in the active spec. Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
+
+The [proposed original-Pull-Request continuation](lease_flow.md#original-pull-request-repair-proposed-follow-on) records the requested existing-PR flow and future recovery proofs.
+M224 starts with the manually triggered fleet-owned draft demonstration; the broader runtime behavior remains unimplemented.

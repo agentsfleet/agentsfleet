@@ -236,6 +236,8 @@ impl Readings {
                 otlp,
                 #[cfg(feature = "test-util")]
                 exchanger: None,
+                #[cfg(feature = "test-util")]
+                connector_endpoint: None,
             }),
             // Anything else: a knob that is missing or unusable, the identity
             // provider included. Every one of them has already pushed its own

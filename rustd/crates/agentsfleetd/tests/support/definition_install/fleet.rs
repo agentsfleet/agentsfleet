@@ -38,8 +38,18 @@ pub(super) async fn install(
     tenant: &str,
     fleet_name: &str,
     now: Timestamp,
+    channel: Option<&str>,
 ) -> Uuid7 {
-    let definition = read_definition(fleet_name);
+    let mut definition = read_definition(fleet_name);
+    if let Some(channel) = channel {
+        let mut value = serde_json::to_value(&definition).expect("the definition is JSON");
+        *value
+            .pointer_mut("/config/x-agentsfleet/triggers")
+            .expect("the fixture declares trigger setup") = serde_json::json!([
+            {"type": "mention", "source": "slack", "channels": [channel]}
+        ]);
+        definition = Definition::parse(&value.to_string()).expect("the producer setup parses");
+    }
     let fleet = Uuid7::parse(&unique_ids().0).expect("a minted fleet id");
     let mut connection = booted
         .database

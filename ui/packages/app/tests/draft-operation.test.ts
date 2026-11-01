@@ -6,6 +6,31 @@ import { SetupUnavailable } from "@/lib/api/draft-request";
 afterEach(() => vi.restoreAllMocks());
 
 describe("uncertain private setup operations", () => {
+  it("does not let a cleared request settle or block its replacement", async () => {
+    const operation = new DraftOperation();
+    const first = Promise.withResolvers<void>();
+    const second = Promise.withResolvers<void>();
+    const original = operation.run({message: "old"}, () => first.promise);
+    void original.catch(() => undefined);
+    operation.clear();
+    const execute = vi.fn(() => second.promise);
+    const replacement = operation.run({message: "new"}, execute);
+    void replacement.catch(() => undefined);
+    try {
+      expect(execute).toHaveBeenCalledOnce();
+      const settled = expect(original).rejects.toMatchObject({status: 503});
+      first.reject(new SetupUnavailable("Old response lost", 503));
+      await settled;
+      expect(operation.pending).toBe(true);
+      await expect(operation.retry()).rejects.toMatchObject({status: 409, message: "This request is still in progress."});
+      second.resolve();
+      await replacement;
+      expect(operation.pending).toBe(false);
+    } finally {
+      first.resolve(); second.resolve();
+      await Promise.allSettled([original, replacement]);
+    }
+  });
   it("does not restore an operation cleared while its acknowledgement was pending", async () => {
     const operation = new DraftOperation();
     const pending = Promise.withResolvers<void>();

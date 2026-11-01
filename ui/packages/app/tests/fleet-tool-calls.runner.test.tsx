@@ -21,8 +21,11 @@ function call(name: string, args: FleetToolCall["args"]): FleetToolCall {
 function renderCalls(tools: FleetToolCall[]) {
   mockStream([ev({ id: "evt_runner", role: "user", actor: "operator", text: "Go", status: "processed", tools })]);
   renderThread();
-  fireEvent.click(screen.getByRole("button", {name: TOOL_CALLS_LABEL}));
-  for (const button of screen.queryAllByRole("button", {name: /^(Ran|Running) command /})) fireEvent.click(button);
+  fireEvent.click(screen.getByRole("button", {name: /^Tool activity:/}));
+  for (const heading of document.querySelectorAll("[data-command-heading]")) {
+    const button = heading.closest("button");
+    if (button) fireEvent.click(button);
+  }
 }
 
 const cell = (name: string) => document.querySelector<HTMLElement>(`li[data-tool="${name}"]`)!;
@@ -50,14 +53,14 @@ describe("FleetThread — runner tool cells", () => {
 
     renderCalls([call(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: /workspace/a.ts\n-old\n+new\n+more" })]);
     const patch = cell(TOOL_NAME.APPLY_PATCH);
-    expect(patch.firstElementChild?.textContent).toContain(TOOL_NAME.APPLY_PATCH);
+    expect(patch.firstElementChild?.textContent).toContain("Edited files");
     expect([...patch.querySelectorAll("[data-diff]")].map((row) => row.getAttribute("data-diff"))).toEqual(["removed", "added", "added"]);
     cleanup();
 
     // A hashed edit that names its line by tag carries no old text to diff.
     renderCalls([call(TOOL_NAME.FILE_EDIT_HASHED, { path: "/workspace/a.md", target: "L10:abc", new_text: "b" })]);
     const edit = cell(TOOL_NAME.FILE_EDIT_HASHED);
-    expect(edit.firstElementChild?.textContent).toContain(TOOL_NAME.FILE_EDIT_HASHED);
+    expect(edit.firstElementChild?.textContent).toContain("Edited a.md");
     expect(edit.querySelector("[data-diff]")).toBeNull();
     cleanup();
 

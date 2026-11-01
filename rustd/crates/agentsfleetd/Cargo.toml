@@ -146,6 +146,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+afd_webhook = { workspace = true, features = ["test-util"] }
 # Checkpoint refusal tests inspect the shared error and repository diagnostics.
 afd_context.workspace = true
 # The `tracing` capture the suites read their log lines back through

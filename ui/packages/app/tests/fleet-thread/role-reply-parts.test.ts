@@ -8,7 +8,7 @@ import { OUTCOME } from "@/lib/events/event-summary";
 // and parts drive every state below.
 
 const COMPOSER_NAME = "Message your fleet…";
-const TOOL_CALLS = "Ran commands";
+const TOOL_CALLS = "Tool activity";
 const COPY_REPLY = "Copy reply";
 const TOOL_STARTED_AT_MS = 1_000;
 const TOOL_WALL_MS = 700;
@@ -56,7 +56,7 @@ describe("FleetThread — reply parts", () => {
     const reply = replyRow();
     const chip = within(reply).getByRole("button", { name: /^Thought/ });
     expect(messageRoot(reply).getAttribute("data-skip-layout")).toBe("true");
-    fireEvent.click(within(reply).getByRole("button", { name: TOOL_CALLS }));
+    fireEvent.click(within(reply).getByRole("button", { name: /^Tool activity:/ }));
     const tools = within(reply).getByRole("list", { name: TOOL_CALLS });
     const answer = within(reply).getByText("Opened the PR.");
     expect(within(tools).getByText("search_repo")).toBeTruthy();
@@ -111,9 +111,9 @@ describe("FleetThread — reply parts", () => {
     renderThread();
     // The tick stays the trigger; the tool row belongs to the fleet's reply.
     expect(screen.getByText("PR opened")).toBeTruthy();
-    fireEvent.click(within(replyRow()).getByRole("button", { name: TOOL_CALLS }));
-    expect(within(replyRow()).getByRole("list", { name: TOOL_CALLS })).toBeTruthy();
-    expect(within(replyRow()).getByText("read_file")).toBeTruthy();
+    fireEvent.click(within(replyRow()).getByRole("button", { name: /^Tool activity:/ }));
+    const calls = within(replyRow()).getByRole("list", { name: TOOL_CALLS });
+    expect(within(calls).getByText("read_file")).toBeTruthy();
   });
 
   it("preserves a partial answer and shows a separate actionable failure", () => {

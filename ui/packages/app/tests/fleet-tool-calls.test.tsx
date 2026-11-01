@@ -10,6 +10,7 @@ import type { LiveFrame, SavedToolCall } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "@/lib/streaming/fleet-stream-frames";
 import { rowToEvent, type FleetEvent, type FleetEventStatus, type FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import { HEADERS } from "./fleet-tool-calls.fixtures";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { row } from "@/tests/helpers/fleet-stream-fixtures";
 
@@ -30,8 +31,11 @@ const DESTRUCTIVE = "text-destructive";
 
 function renderThread() {
   const view = renderToolThread();
-  for (const group of screen.queryAllByRole("button", {name: TOOL_CALLS_LABEL})) fireEvent.click(group);
-  for (const button of screen.queryAllByRole("button", {name: /^(Ran|Running) command /})) fireEvent.click(button);
+  for (const group of screen.queryAllByRole("button", {name: /^Tool activity:/})) fireEvent.click(group);
+  for (const heading of document.querySelectorAll("[data-command-heading]")) {
+    const button = heading.closest("button");
+    if (button) fireEvent.click(button);
+  }
   return view;
 }
 
@@ -61,16 +65,6 @@ const cells = () => [...document.querySelectorAll<HTMLElement>("li[data-tool]")]
 const headerOf = (cell: Element) => cell.querySelector("[data-command-heading]")?.textContent ?? "";
 const bulletOf = (cell: Element) => cell.querySelector("[data-tool-bullet]")!;
 
-// Pin tests throughout: the literals are the words a cell draws.
-const HEADERS: ReadonlyArray<readonly [FleetToolCall["name"], FleetToolCall["args"], string, string]> = [
-  [TOOL_NAME.FILE_WRITE, { path: "/workspace/notes.md", content: "a\nb\n" }, "Writing notes.md (+2)", "Wrote notes.md (+2)"],
-  [TOOL_NAME.FILE_APPEND, { path: "log.txt", content: "x" }, "Appending log.txt (+1)", "Appended log.txt (+1)"],
-  [TOOL_NAME.FILE_DELETE, { path: "/workspace/old.md" }, "Deleting old.md", "Deleted old.md"],
-  [TOOL_NAME.HTTP_REQUEST, { method: "POST", url: "https://api.example/run" }, "Requesting POST https://api.example/run", "Requested POST https://api.example/run"],
-  [TOOL_NAME.HTTP_REQUEST, { url: "https://api.example/run" }, "Requesting GET https://api.example/run", "Requested GET https://api.example/run"],
-  [TOOL_NAME.MEMORY_STORE, { key: "deploy" }, "Remembering deploy", "Remembered deploy"],
-  [TOOL_NAME.MEMORY_FORGET, { key: "deploy" }, "Forgetting deploy", "Forgot deploy"],
-];
 
 describe("FleetThread — tool cells", () => {
   it("test_tool_row_reads_part_timing", () => {
@@ -101,25 +95,25 @@ describe("FleetThread — tool cells", () => {
     mockStream([{ ...working, status: PROCESSED, reply: "Found it." }]);
     view.rerender(threadElement());
     const stranded = cells()[1]!;
-    expect(headerOf(stranded)).toContain("search_repoInterrupted");
+    expect(headerOf(stranded)).toContain("Interrupted: using search_repo Interrupted");
   });
 
   it("test_tool_cell_names_verb_and_target", () => {
     renderCalls(HEADERS.map(([name, args]) => running({ name, args })), RECEIVED);
-    expect(cells().map(headerOf)).toEqual(HEADERS.map(([name]) => `Running command${name}Running · 2.0s`));
+    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , running]) => `${running} Running · 2.0s`));
     cleanup();
     renderCalls(HEADERS.map(([name, args]) => call({ name, args })));
-    expect(cells().map(headerOf)).toEqual(HEADERS.map(([name]) => `Ran command${name}Success · 0.7s`));
+    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , , done]) => `${done} Success · 0.7s`));
   });
 
   it("test_unknown_tool_cell_calls_by_name", () => {
     renderCalls([running({ name: "fly_status", args: { app: "x" } })], RECEIVED);
-    expect(headerOf(cells()[0]!)).toContain("fly_statusRunning");
+    expect(headerOf(cells()[0]!)).toContain("Using fly_status Running");
     cleanup();
     renderCalls([call({ name: "fly_status", args: { app: "x" } }), call({ name: "fly_apps" })]);
-    expect(headerOf(cells()[0]!)).toContain("fly_statusSuccess");
+    expect(headerOf(cells()[0]!)).toContain("Used fly_status Success");
     // No arguments: no parentheses, and no arguments disclosure.
-    expect(headerOf(cells()[1]!)).toMatch(/^Ran commandfly_appsSuccess · /);
+    expect(headerOf(cells()[1]!)).toMatch(/^Used fly_apps Success · /);
     expect(within(cells()[1]!).queryByText("Details")).toBeNull();
     expect(within(cells()[0]!).getByText("Input")).toBeTruthy();
   });
@@ -134,8 +128,8 @@ describe("FleetThread — tool cells", () => {
     expect(bulletOf(ok!).getAttribute("class")).toContain(SUCCESS);
     expect(bulletOf(bad!).getAttribute("class")).toContain(DESTRUCTIVE);
     // A failure says so in words, never by colour alone.
-    expect(headerOf(bad!)).toContain("http_requestFailed");
-    expect(bulletOf(cut!).getAttribute("class")).toContain(DESTRUCTIVE);
+    expect(headerOf(bad!)).toContain("Failed: making request GET https://x/ Failed");
+    expect(bulletOf(cut!).getAttribute("class")).toContain("text-warning");
     expect(headerOf(cut!)).toContain("Interrupted");
     // An older runner's call settled without saying how: no colour claims success.
     expect(bulletOf(unsaid!).getAttribute("class")).not.toContain(SUCCESS);
@@ -185,13 +179,13 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.SHELL, args: { command: "ls" }, exitCode: 0, outputHead: "a.md", outputLineCount: 1 }),
     ]);
     const [ran, shell] = cells();
-    expect(headerOf(ran!)).toMatch(/^Ran commandexec_commandFailed · /);
+    expect(headerOf(ran!)).toMatch(/^Failed: running command echo one Failed · /);
     // The exit code says how it failed; "(failed)" would repeat it.
     expect(headerOf(ran!)).not.toContain("(failed)");
     expect(within(ran!).getByText("(exit 2)", { exact: false }).closest("[data-command-outcome]")?.className).toContain(DESTRUCTIVE);
     expect(ran!.textContent).toContain("echo two");
     expect(ran!.textContent).toContain("└boom");
-    expect(headerOf(shell!)).toMatch(/^Ran commandshellSuccess · /);
+    expect(headerOf(shell!)).toMatch(/^Ran command ls Success · /);
     expect(headerOf(shell!)).not.toContain("exit");
   });
 
@@ -201,7 +195,7 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.FILE_EDIT_HASHED, args: { path: "big.md", old_text: "x".repeat(300), new_text: "y" }, callId: CALL_ID }),
     ]);
     const [edit, clipped] = cells();
-    expect(headerOf(edit!)).toMatch(/^Ran commandfile_editSuccess · /);
+    expect(headerOf(edit!)).toMatch(/^Edited deploy.yaml Success · /);
     const rows = [...edit!.querySelectorAll("[data-diff]")];
     expect(rows.map((row) => [row.getAttribute("data-diff"), row.textContent])).toEqual([
       ["context", " a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
@@ -211,7 +205,7 @@ describe("FleetThread — tool cells", () => {
     // The diff is input; the returned output has its own empty state.
     expect(edit!.textContent).toContain(EMPTY_OUTPUT);
     // Arguments the runner may have cut short draw no diff and no counts.
-    expect(headerOf(clipped!)).toMatch(/^Ran commandfile_edit_hashedSuccess · /);
+    expect(headerOf(clipped!)).toMatch(/^Edited big.md Success · /);
     expect(clipped!.querySelector("[data-diff]")).toBeNull();
     expect(within(clipped!).getByText(CLIPPED_EDIT_NOTE, { exact: false })).toBeTruthy();
     expect(within(clipped!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
@@ -290,7 +284,7 @@ describe("FleetThread — tool cells", () => {
     // Pin test: the reloaded turn reads exactly as it did live.
     expect(toolRegion()).toEqual(liveCells);
     expect(liveCells).toHaveLength(3);
-    expect(liveCells[1]).toContain("http_requestFailed");
+    expect(liveCells[1]).toContain("Failed: making request POST https://x/ Failed");
   });
 
   it("test_cells_claim_only_what_they_hold", () => {

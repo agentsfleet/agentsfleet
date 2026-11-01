@@ -20,7 +20,7 @@ const LAST_ANSWER_LINE = `Step ${ANSWER_CHUNKS} settled`;
 const TOOL_NAME = "file_read";
 const TOOL_PATH = "src/probe.ts";
 const TOOL_CALL_ID = "f0:0";
-const TOOL_CALLS_LABEL = "Ran commands";
+const TOOL_CALLS_LABEL = "Tool activity";
 const INPUT_LABEL = "Input";
 const OUTPUT_LABEL = "Output";
 const RUNNING_LABEL = "Running";
@@ -68,7 +68,7 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
     await chat.getByRole("button", {name: TOOL_CALLS_LABEL, exact: true}).click();
     const call = chat.getByRole("list", {name: TOOL_CALLS_LABEL}).locator(`[data-tool="${TOOL_NAME}"]`);
     await expect(call).toContainText(RUNNING_LABEL);
-    await call.getByRole("button", {name: /^(Ran|Running) command /}).click();
+    await call.locator("button").first().click();
     await expect(call.getByRole("heading", {name: INPUT_LABEL, exact: true})).toBeVisible();
     await expect(call).toContainText(TOOL_PATH);
     await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_COMPLETED, { call_id: TOOL_CALL_ID, ms: TOOL_WALL_MS, status: "succeeded" })]);
@@ -99,7 +99,7 @@ test("test_live_tool_cell_settles_green", async ({ page }) => {
     const cell = chat.getByRole("list", { name: TOOL_CALLS_LABEL }).locator(`[data-tool="${REQUEST_TOOL}"]`);
     const bullet = cell.locator("[data-tool-shimmer]");
     await expect(cell).toContainText(RUNNING_LABEL);
-    await cell.getByRole("button", {name: /^(Ran|Running) command /}).click();
+    await cell.locator("button").first().click();
     await expect(cell.getByRole("heading", {name: INPUT_LABEL, exact: true})).toBeVisible();
     await expect(cell).toContainText(REQUEST_URL);
     await expect(cell.getByRole("heading", {name: OUTPUT_LABEL, exact: true})).toHaveCount(0);
