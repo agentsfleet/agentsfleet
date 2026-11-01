@@ -26,9 +26,9 @@ pub(crate) const FILE: &str = "src/lib/fetch.ts";
 pub(crate) const DIAGNOSIS_ONLY: &str = "Diagnosis only: a read failed, so nothing was pushed.";
 /// The head commit's tree, and what the three writes answer.
 const BASE_TREE: &str = "7ee0000000000000000000000000000000000001";
-const NEW_BLOB: &str = "b10b000000000000000000000000000000000002";
-const NEW_TREE: &str = "7ee0000000000000000000000000000000000003";
-const NEW_COMMIT: &str = "c0de000000000000000000000000000000000004";
+pub(crate) const NEW_BLOB: &str = "b10b000000000000000000000000000000000002";
+pub(crate) const NEW_TREE: &str = "7ee0000000000000000000000000000000000003";
+pub(crate) const NEW_COMMIT: &str = "c0de000000000000000000000000000000000004";
 
 /// The repository a repairer is bound to, and its trusted base.
 #[derive(Debug, Clone, Copy)]
@@ -43,7 +43,7 @@ impl Repo {
         format!("/repos/{}/{rest}", self.name)
     }
 
-    fn url(self, rest: &str) -> String {
+    pub(crate) fn url(self, rest: &str) -> String {
         format!("https://{GITHUB}{}", self.path(rest))
     }
 }
@@ -65,7 +65,7 @@ pub(crate) fn script(
     move |asked| {
         let branch = repair_branch(asked).unwrap_or_default();
         match asked.turn {
-            0 => vec![reconcile(repo, branch)],
+            0 => vec![reconcile(repo, branch, "reconcile")],
             1 if asked
                 .results
                 .iter()
@@ -101,17 +101,17 @@ pub(crate) fn script(
 }
 
 /// The first turn: look for a Pull Request already open from `branch`.
-fn reconcile(repo: Repo, branch: &str) -> Chunk {
+pub(crate) fn reconcile(repo: Repo, branch: &str, id: &str) -> Chunk {
     let owner = repo.name.split('/').next().unwrap_or_default();
     http(
-        "reconcile",
+        id,
         json!({"headers": github_auth(), "url": repo.url(
         &format!("pulls?state=all&head={owner}:{branch}&base={}", repo.base))}),
     )
 }
 
 /// One authenticated POST under the repository, its body serialised.
-fn post(repo: Repo, id: &str, rest: &str, body: &Value) -> Chunk {
+pub(crate) fn post(repo: Repo, id: &str, rest: &str, body: &Value) -> Chunk {
     http(
         id,
         json!({"url": repo.url(rest), "method": "POST",
@@ -120,7 +120,7 @@ fn post(repo: Repo, id: &str, rest: &str, body: &Value) -> Chunk {
 }
 
 /// Turns three on: the Git Data writes, the draft, and the closing answer.
-fn write(repo: Repo, branch: &str, turn: usize) -> Vec<Chunk> {
+pub(crate) fn write(repo: Repo, branch: &str, turn: usize) -> Vec<Chunk> {
     match turn {
         3 => vec![post(
             repo,

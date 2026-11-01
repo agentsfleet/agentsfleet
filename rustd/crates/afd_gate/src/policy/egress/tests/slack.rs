@@ -1,5 +1,5 @@
 //! What a write lease for a Slack-requested event can reach: one branch, one
-//! draft pull request, and nothing that merges or moves a ref.
+//! draft pull request, and only non-force updates to that same event-owned ref.
 //!
 //! Split from the binding cases beside it. No approval stands between a
 //! channel member's request and a write-bound fleet's lease, so these rules
@@ -74,14 +74,13 @@ fn slack_write_lease_admits_one_branch_and_one_draft() {
 }
 
 /// Dimension 3.2 — nothing in a Slack-requested write lease reaches a merge, a
-/// ready-for-review, a ref update or a deletion.
+/// ready-for-review, a foreign ref update or a deletion.
 ///
-/// The lease wire has no PUT, PATCH or DELETE method at all (`HttpMethod`), so
-/// no rule can name one. What a rule could still get wrong is a path: every
+/// The one PATCH is exact and event-owned. What a rule could still get wrong is a path: every
 /// POST is exact, on exactly the five write endpoints, and none reaches
 /// `/graphql`, a merge, or one existing pull request.
 #[test]
-fn slack_write_lease_has_no_merge_or_ref_update_path() {
+fn slack_write_lease_has_no_merge_or_foreign_ref_update_path() {
     let branch = crate::policy::repair::branch_for(SLACK_EVENT);
     let rules = rules(
         &binding(&["acme/widgets"], "write", Some("main")),
@@ -116,4 +115,36 @@ fn slack_write_lease_has_no_merge_or_ref_update_path() {
             .is_some_and(|(_repository, rest)| rest.starts_with(|c: char| c.is_ascii_digit()));
         assert!(!names_one_pull, "{path}");
     }
+}
+
+#[test]
+fn continuation_locks_one_event_owned_ref_and_requires_non_force() {
+    let branch = crate::policy::repair::branch_for(SLACK_EVENT);
+    let rules = rules(
+        &binding(&["acme/widgets"], "write", Some("dev")),
+        Some(&branch),
+    );
+    let patches: Vec<_> = rules
+        .iter()
+        .filter(|rule| rule.method == HttpMethod::Patch)
+        .collect();
+    let [only] = patches.as_slice() else {
+        panic!("one event-owned update rule")
+    };
+    assert_eq!(
+        only.path,
+        format!("/repos/acme/widgets/git/refs/heads/{branch}")
+    );
+    assert_eq!(only.path_match, HttpPathMatch::Exact);
+    assert_eq!(only.json_fields.len(), 1);
+    assert_eq!(only.json_fields[0].name, "force");
+    assert_eq!(only.json_fields[0].boolean_value, Some(false));
+    assert_eq!(only.json_fields[0].string_value, None);
+    assert_eq!(only.permitted_fields, Some(vec!["sha".into()]));
+    let reads = super::rules(&binding(&["acme/widgets"], "read", None), None);
+    assert!(
+        reads
+            .iter()
+            .all(|rule| matches!(rule.method, HttpMethod::Get | HttpMethod::Head))
+    );
 }

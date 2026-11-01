@@ -176,6 +176,7 @@ const fn method_of(method: HttpMethod) -> Method {
         HttpMethod::Get => Method::GET,
         HttpMethod::Head => Method::HEAD,
         HttpMethod::Post => Method::POST,
+        HttpMethod::Patch => Method::PATCH,
     }
 }
 

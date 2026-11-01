@@ -24,6 +24,7 @@ import { DraftChatHeading } from "./DraftChatHeading";
 import { UnfinishedSetups } from "./UnfinishedSetups";
 
 type Props = {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode; canPublishPlatform?: boolean; canManagePlatformModels?: boolean};
+type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "ready"; readonly client: DraftClient; readonly reload: () => Promise<void>};
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
 const LOADING_SETUP_CHAT = "Loading setup chat";
@@ -48,9 +49,7 @@ function ChatSession(props: Props & {identity: DraftIdentity}) {
 }
 
 function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatformModels, fleetPage, menuItems, cache}: Props & {identity: DraftIdentity; cache: DraftCache}) {
-  const [client, setClient] = useState<DraftClient | null>(null);
-  const [opening, setOpening] = useState(true);
-  const [reload, setReload] = useState<(() => Promise<void>) | null>(null);
+  const [session, setSession] = useState<OwnedSession>({kind: "starting"});
   const [selection] = useState(() => ({identity, draft, source, canPublishPlatform}));
   useEffect(() => {
     const {identity: {account, workspace, subject}, draft, source, canPublishPlatform} = selection;
@@ -60,12 +59,11 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
       return result.data;
     } : undefined);
     const unsubscribe = current.subscribe(() => {if (current.getSnapshot().inaccessible) cache.clear();});
-    setClient(current);
     if (source) current.fresh(source);
     let disposed = false;
     const open = async (): Promise<void> => {
       const cached = draft ? cache.read(draft) : undefined;
-      setOpening(!cached && !current.getSnapshot().preview);
+      setSession({kind: cached || current.getSnapshot().preview ? "ready" : "loading", client: current, reload: open});
       const lists = current.initialize();
       void lists.catch(ignore);
       try {
@@ -73,14 +71,14 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
         else if (source?.kind === SOURCE_KIND.fleet) await current.refreshFleetSetup();
         else if (source) await current.refreshSetup();
         else await lists;
-      } finally {if (!disposed) setOpening(false);}
+      } finally {if (!disposed) setSession({kind: "ready", client: current, reload: open});}
     };
-    setReload(() => open);
     void open().catch(ignore);
     return () => {disposed = true; unsubscribe(); cache.remember(current.getSnapshot()); current.dispose();};
   }, [selection, cache]);
   const initialSourceRevision = selection.source?.kind === SOURCE_KIND.fleet ? selection.source.setup_revision : undefined;
-  return client && reload ? <ChatSurface initialSourceRevision={initialSourceRevision} source={source} fleetPage={fleetPage} menuItems={menuItems} canManagePlatformModels={canManagePlatformModels} client={client} workspace={identity.workspace} subject={identity.subject} opening={opening} selected={Boolean(selection.draft || selection.source)} reload={reload} /> : <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />;
+  return session.kind === "starting" ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />
+    : <ChatSurface initialSourceRevision={initialSourceRevision} source={source} fleetPage={fleetPage} menuItems={menuItems} canManagePlatformModels={canManagePlatformModels} client={session.client} workspace={identity.workspace} subject={identity.subject} opening={session.kind === "loading"} selected={Boolean(selection.draft || selection.source)} reload={session.reload} />;
 }
 
 function ChatSurface({client, source, initialSourceRevision, workspace, subject, opening, selected, reload, canManagePlatformModels, fleetPage, menuItems}: {source?: Source; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {

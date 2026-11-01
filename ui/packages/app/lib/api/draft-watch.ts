@@ -4,7 +4,7 @@ import { followDraft, type DraftProgressCallbacks } from "./draft-events";
 const FOLLOW_LIMIT_MS = 330_000;
 type Following = {
   readonly id: string; readonly path: string; readonly owner: AbortSignal; readonly view: AbortSignal;
-  readonly reconcile: () => Promise<boolean>; readonly needsPolling: () => boolean;
+  readonly reconcile: (signal: AbortSignal) => Promise<boolean>; readonly needsPolling: () => boolean;
   readonly progress: DraftProgressCallbacks;
   readonly finished: () => void; readonly failed: (cause: unknown) => void;
 };
@@ -15,7 +15,7 @@ export class DraftWatch {
   follow(options: Following): void {
     this.start(options.id, options.view, async view => {
       const owner = AbortSignal.any([options.owner, view, AbortSignal.timeout(FOLLOW_LIMIT_MS)]);
-      await followDraft(options.path, options.id, owner, options.reconcile, options.needsPolling, options.progress);
+      await followDraft(options.path, options.id, owner, () => options.reconcile(owner), options.needsPolling, options.progress);
       if (!view.aborted && !options.owner.aborted) options.finished();
     }, options.failed);
   }

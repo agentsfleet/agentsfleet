@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BILLING_ALL, BILLING_QUERY, BILLING_SETUP, activityKey, changedFilter, detailTrail, first,
-  nextDetailPage, reportOptions, selectedActivity,
+  nextDetailPage, previousBillingMonth, reportOptions, selectedActivity,
 } from "@/app/(dashboard)/settings/billing/lib/report-query";
 
 describe("billing report navigation", () => {
@@ -26,15 +26,28 @@ describe("billing report navigation", () => {
       .toMatchObject({ limit: 50, starting_after: undefined, period: "year", fleet_id: "bad-id" });
   });
 
-  it("changing a filter resets both pagers, cutoff and disclosure while retaining page size", () => {
+  it("changing a filter resets both pagers and disclosure while retaining the selected cutoff", () => {
     const original = new URLSearchParams("period=month&fleet=fleet&model=old&c=cursor&cps=50&ps=50&through_at=cutoff&activity=work&dc=detail");
     const next = changedFilter(original, BILLING_QUERY.model, "new/model");
     expect(next.get(BILLING_QUERY.model)).toBe("new/model");
     expect(next.get("ps")).toBe("50");
-    for (const key of ["c", "cps", "through_at", "activity", "dc"]) expect(next.has(key)).toBe(false);
+    for (const key of ["c", "cps", "activity", "dc"]) expect(next.has(key)).toBe(false);
+    expect(next.get("through_at")).toBe("cutoff");
+    expect(changedFilter(original, BILLING_QUERY.period, "today").has("through_at")).toBe(false);
     expect(original.get("c")).toBe("cursor");
     expect(changedFilter(original, BILLING_QUERY.fleet, BILLING_ALL).has(BILLING_QUERY.fleet)).toBe(false);
   });
+
+  it.each([["2026-11-01T00:00:00Z", "2026-10-31T23:59:59.999Z"],
+    ["2026-01-01T00:00:00Z", "2025-12-31T23:59:59.999Z"], ["2024-03-01T00:00:00Z", "2024-02-29T23:59:59.999Z"]])(
+    "previous calendar month from %s preserves billing filters", (from, cutoff) => {
+      const params = new URLSearchParams("period=today&fleet=deleted-fleet&model=recorded-model&c=old&activity=old&dc=old");
+      const next = previousBillingMonth(params, from);
+      expect(next.get("period")).toBe("month"); expect(next.get("through_at")).toBe(cutoff);
+      expect(next.get("fleet")).toBe("deleted-fleet"); expect(next.get("model")).toBe("recorded-model");
+      for (const key of ["c", "activity", "dc"]) expect(next.has(key)).toBe(false);
+      expect(params.get("period")).toBe("today");
+    });
 
   it("opening and closing details retain the report cutoff and main page", () => {
     const params = new URLSearchParams("c=page&cps=25&dc=old");

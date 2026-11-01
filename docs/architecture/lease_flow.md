@@ -194,6 +194,7 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
    │                        origin api.github.com rules: GET/HEAD /repos/agentsfleet/linkwarden/*
    │                           POST /git/blobs|trees|commits, POST /git/refs{ref locked},
    │                           POST /pulls{head,base locked, draft:true}
+   │                           PATCH own event ref{force:false, sha only}
    │                      ├──── 200 lease{instructions, event=digest} ────────────────────►
    │                      │                                  admit: all three tools Supervisor
    │                      │                                  ⇒ needs_sandbox = false ⇒ NO SANDBOX
@@ -222,7 +223,37 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 **Step 2, the diff read.** `http_request` drafts `GET https://api.github.com/repos/agentsfleet/linkwarden/pulls/{n}` with `Authorization: Bearer ${secrets.github.token}` (`afr_tools/src/http_request/mod.rs`). `Admission::admit` (`afr_egress/src/admission/mod.rs`): method listed, HTTPS and no placeholder in the URL, placeholder only in `Authorization`, host in `network_policy.allow`, credential bound to this host because the `api.github.com` origin names `github` in `credential_names` (`afd_gate/src/policy/egress/mod.rs`), and a read rule matches: `GET` with prefix `/repos/agentsfleet/linkwarden/` (`afd_gate/src/policy/egress/read.rs`; `admission.rs`). The vault then mints: `LeaseMint` → `POST /v1/runners/me/credentials/mint` → `Plane::mint` resolves the lease scope, checks the approved grant, opens the workspace's `github` handle and exchanges an installation token narrowed to the binding (`afd_fleet/src/lease/mint/mod.rs`; `docs/architecture/connectors.md`). The token is kept per lease until expiry and masked out of responses (`afr_egress/src/egress/mod.rs`; `afr_tools/src/egress/mod.rs`).
 
-**Step 4, the review post.** `POST .../pulls/{n}/reviews`: the origin `api.github.com` has rules, and none matches. The write set is exactly `POST /repos/{repo}/git/blobs` and `/git/trees` (open), `/git/commits` carrying only `message`, `tree` and `parents`, `/git/refs` with `ref` locked to the repair branch and only `sha` beside it, and `/pulls` (exact path) with `head`, `base` and `draft: true` locked and only `title`, `body` and `maintainer_can_modify` beside them; a rule that names fields refuses any other key and any query string (`afd_gate/src/policy/egress/write.rs`, where the paths are `HttpPathMatch::Exact`). `/pulls/{n}/reviews` is neither the exact `/pulls` nor a prefix rule, so `origin_admits` answers `request_policy_not_allowed` (`afr_egress/src/admission/mod.rs`) → `ToolErrorCode::RequestPolicyNotAllowed` (`afr_tools/src/egress/mod.rs`) → the model reads `[request_policy_not_allowed] ...` and the run continues (`afr_tools/src/runtime/mod.rs`). The sentence after the code says the run's rules for that host are fixed before it starts and names the three retries not to make (another path, another API, another credential), because a model that read only "not admitted" tried sixteen variants of one refused post on dev (`afr_egress/src/error/mod.rs`, `RequestPolicyNotAllowed`); the same closing clause is on `secret_not_found`. The loop itself still counts nothing: a cap on refusals per run is open scope. The integration test asserts zero POSTs reach the fake GitHub and the last tool result starts with that code (`agentsfleetd/tests/integration_rust_runner_reviews.rs`). The scenario page records the same (`docs/architecture/scenarios/github-pr-reviewer.md`).
+**Step 4, the review post.** `POST .../pulls/{n}/reviews` matches none of the rules for `api.github.com`.
+The write binding permits the exact paths below, prefixed by `/repos/{repo}`.
+
+| Method | Path | Body boundary |
+| --- | --- | --- |
+| POST | `/git/blobs`, `/git/trees` | Unreferenced objects; open bodies |
+| POST | `/git/commits` | Only `message`, `tree` and `parents` |
+| POST | `/git/refs` | Exact event-derived `ref`; only `sha` beside it |
+| POST | `/pulls` | Locked `head`, `base`, `draft:true`; only `title`, `body`, `maintainer_can_modify` beside them |
+| PATCH | `/git/refs/heads/{event_branch}` | Required boolean `force:false`; only `sha` beside it |
+
+Closed rules reject other fields, duplicate fields and query strings.
+The compiler lives in `rustd/crates/afd_gate/src/policy/egress/write.rs`.
+The runner matches these rules in `rustd/crates/afr_egress/src/origin/mod.rs`.
+
+The PATCH supports bounded corrections within the same event's branch and existing draft.
+GitHub rejects non-fast-forward updates when `force:false`; this is not an expected-old-head comparison.
+Fleet instructions require fresh ref/draft reads and the observed branch head as the correction commit's sole parent.
+A later admission cannot select an earlier event's draft through these rules.
+Compatible runners must precede leases carrying the new `patch` method; older readers reject it.
+
+The reviews path remains denied by `origin_admits` in `rustd/crates/afr_egress/src/admission/mod.rs`.
+The tool returns `ToolErrorCode::RequestPolicyNotAllowed`, with `[request_policy_not_allowed]` visible to the model.
+The lease loop can continue after a refusal; the CI fleet instructions require stopping.
+
+The error advises against trying another path, API or credential because one development run tried sixteen alternatives after a denied post.
+The same guidance accompanies `secret_not_found`; see `rustd/crates/afr_egress/src/error/mod.rs`.
+The platform has no refusal-count ceiling; that remains open scope.
+
+`rustd/crates/agentsfleetd/tests/integration_rust_runner_reviews.rs` verifies zero review POSTs reach GitHub and preserves the final denial code.
+The [reviewer scenario](scenarios/github-pr-reviewer.md) records the same boundary.
 
 **What the operator sees.** The live tail: `event_received`, `tool_call_started` / `tool_call_completed` (the second with `status: failed` and the output head carrying the code), streamed text chunks, `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). Durably: `fleet.events` row `processed` with `response_text` = the model's final answer and `tool_calls` = the trace (`afd_fleet/src/lease/finalize.rs`), and `fleet.tool_calls` for "show all" (`afd_api_runner/src/handler/runner/tool_call.rs`). On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
 

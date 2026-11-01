@@ -202,7 +202,7 @@ describe("FleetThread — reasoning disclosure", () => {
         tools: [{ name: "memory_recall", startedAtMs: 1, ms: null, done: false }] })]);
       renderThread();
       // The grouped command disclosure is visible before its individual calls.
-      expect(screen.getByRole("button", {name: "Ran commands"})).toBeTruthy();
+      expect(screen.getByRole("button", {name: /^Tool activity:/})).toBeTruthy();
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       expect(measure).toHaveBeenCalledWith(FIRST_VISIBLE_MEASURE, expect.objectContaining({ start: 1 }));

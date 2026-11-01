@@ -54,12 +54,16 @@ async function boundedJson(response: Response, signal: AbortSignal): Promise<unk
     signal.throwIfAborted();
     for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
       size += chunk.value.byteLength;
-      if (size > RESPONSE_LIMIT_BYTES) { await reader.cancel(); throw new SetupUnavailable("The setup response exceeds the supported limit"); }
+      if (size > RESPONSE_LIMIT_BYTES) throw new SetupUnavailable("The setup response exceeds the supported limit");
       text += decoder.decode(chunk.value, {stream: true});
     }
     signal.throwIfAborted();
     return JSON.parse(text + decoder.decode());
-  } finally { signal.removeEventListener("abort", cancel); reader.releaseLock(); }
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    try { await reader.cancel(); } catch { /* Cancellation must still release an errored body. */ }
+    finally { reader.releaseLock(); }
+  }
 }
 
 export type DeleteDraft = (id: string, signal: AbortSignal) => Promise<void>;

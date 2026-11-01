@@ -15,7 +15,8 @@
   },
   "overrides": {
     "playwright-core": "1.64.1",
-    "@assistant-ui/store": "0.3.22"
+    "@assistant-ui/store": "0.3.22",
+    "postcss": "8.5.30"
   },
   "version": "0.28.2",
   "dependencies": {

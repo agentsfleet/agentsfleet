@@ -72,6 +72,16 @@ pub struct ServingPlane {
 }
 
 impl ServingPlane {
+    /// Keeps a daemon integration lane's connector calls on its local vendor.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_connector_endpoint(mut self, endpoint: Option<&str>) -> Self {
+        if let Some(endpoint) = endpoint {
+            self.outbound.connectors = self.outbound.connectors.pointed_at(endpoint.to_owned());
+        }
+        self
+    }
+
     /// Assembles the plane over already-connected pools.
     ///
     /// Takes them CONNECTED rather than taking configuration, for the reason
