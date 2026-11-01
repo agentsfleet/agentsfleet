@@ -1151,7 +1151,7 @@ The following rows record local changes and review findings, not a deployment or
 | `ui/packages/app/components/domain/{FleetToolCalls,FleetReplyBody}.tsx; ui/packages/app/components/domain/tool-call-activity.ts` | Compact truthful activity summaries expose keyboard-accessible details, concurrent active counts and distinct terminal outcomes. | Review corrected the disclosure name to include visible wording. |
 | `ui/packages/design-system/src/tokens.css` | Conversation and composer use the shared 14px token and 24.5px line height. Existing metadata remains 13px. | Earlier desktop/mobile checks passed; refreshed screenshots remain pending. |
 | `ui/packages/app/app/(dashboard)/settings/billing/` | Previous/current month controls retain historical usage after fleet deletion. | October usage and wallet totals remain distinct; month-boundary tests cover navigation. |
-| `package.json; bun.lock` | One PostCSS 8.5.30 dependency graph removes the reproduced Bun 1.3.14 plugin-type mismatch. | Cold locked-install reproduction passed; no type casts or exclusions were added. |
+| `bun.lock; ui/packages/app/tests/e2e/fixtures/fleet-output-browser-assets.ts` | Bun 1.4 lock format preserves selected versions; the fixture handles Tailwind's declared plugin-or-processor result. | The earlier override passed cold installs but failed on Vercel's retained mixed tree; the final typed dispatch passes that reproduction without a cast or exclusion. |
 | `ui/packages/app/tests/e2e/fleet-output.spec.ts` | Five production-profiling samples record output opening, React render duration, native scrolling and bounded mounted rows. | Review corrected mobile measurements to 390×844; desktop remains 1280×900. Timing results remain report-only. |
 | `tests/fixtures/fleets/ci-{responder,repairer}/definition.json` | Concise Slack mrkdwn, required-source stops, fresh memory evidence and bounded corrections in the same draft. | Current source is reviewed locally; fresh live acceptance remains incomplete. |
 | `rustd/crates/{afd_wire,afd_gate,afr_egress}/src/` | Exact event-owned ref PATCH requires `force:false`; closed fields and exact paths preserve the reviewed repository/base boundary. | Scope tests reject foreign refs, forced updates, duplicate fields, queries and method substitutions. |
@@ -1229,3 +1229,28 @@ The main 0.72.0 PR remains unopened at this checkpoint.
 Its validation report will retain the exact pushed revision and repository command results.
 Live rollout, fresh Slack observations, same-fleet memory save/recall, and full Linux acceptance remain incomplete M224 work.
 Same-event corrections are bounded; automatic continuation of an older draft from a later event is not implemented.
+
+
+### Vercel reproduction and Bun 1.4 correction
+
+The first pushed 0.72.0 checkpoint is `db9989a2c2119c89c79fbd1ce742ef3987c57cca`.
+Website and agents-development Vercel previews passed; the app preview failed at `fleet-output-browser-assets.ts:10` with `TS2769`.
+Indy supplied the failing log because this managed session has no Vercel login.
+
+The isolated retained-tree reproduction also failed after Bun reported no changes.
+Tailwind resolved PostCSS 8.5.23 while the fixture used 8.5.30; a fresh override-only install had hidden this case.
+That result invalidates the earlier claim that the override alone resolved deployment.
+
+The fixture now distinguishes Tailwind's declared plugin and processor return values before processing CSS.
+It type-checks on the mixed dependency tree and compiles shipped CSS with embedded fonts.
+There is no cast, checker exclusion or forced replacement of Next.js's PostCSS dependency.
+The failed global PostCSS override was removed.
+
+Indy directed use of Bun 1.4.x or higher.
+Normal repository commands use Bun 1.4.4; Bun 1.3.14 was used only to reproduce the reported Vercel environment before that direction.
+The generated Bun 1.4 lock format retains every selected package version from `origin/main`.
+Installed Vercel build-utils 14.23.0 selects `/bun1.4` for lock format 2; the application server runtime is unchanged.
+
+The previous-head PR gate's native suite passed 1454 shared tests; exclusive tests were still running when this correction was prepared.
+That run does not verify the new candidate revision.
+The final committed/pushed head must run the complete PR gate, browser lane and production build again.
