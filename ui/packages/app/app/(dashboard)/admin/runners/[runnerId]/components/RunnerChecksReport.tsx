@@ -1,3 +1,4 @@
+import { CircleCheckIcon, CircleXIcon } from "lucide-react";
 import { Badge, List, ListItem, Section, Separator } from "@agentsfleet/design-system";
 import type { RunnerDetail } from "@/lib/api/runners";
 import { BIND_MODE, isSelftestStale, type ExtraBind } from "@/lib/api/runners-types";
@@ -13,8 +14,6 @@ const STALE_NOTE =
 const ALL_OK_LABEL = "all checks passed";
 const FAILED_SUFFIX = "failed";
 const SUCCESS_DETAIL = "no fault detected";
-const CHECK_YES = "✓";
-const CHECK_NO = "✗";
 
 const NO_BINDS = "No additional mounts.";
 const BIND_MODE_SHORT: Record<string, string> = {
@@ -49,7 +48,7 @@ export function RunnerChecksReport({ runner }: { runner: RunnerDetail }) {
             {report.checks.map((check) => (
               <ListItem key={check.name} className="flex items-start gap-md text-body-sm leading-body-sm">
                 <span aria-hidden="true" className={`shrink-0 ${check.ok ? "text-success" : "text-destructive"}`}>
-                  {check.ok ? CHECK_YES : CHECK_NO}
+                  {check.ok ? <CircleCheckIcon size={14} /> : <CircleXIcon size={14} />}
                 </span>
                 <div className="min-w-0">
                   <p className="font-medium"><span className="sr-only">{check.ok ? "Passed: " : "Failed: "}</span>{check.name}</p>
