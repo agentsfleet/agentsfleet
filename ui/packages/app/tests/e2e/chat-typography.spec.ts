@@ -93,15 +93,14 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
   await expect(action).toHaveCSS("outline-width", "2px");
   await expect(action).toHaveCSS("outline-offset", "-2px");
   await expect(action).toHaveCSS("border-top-width", "0px");
-  if (mobile) {
-    for (const button of await tools.locator("[data-command-heading]").all()) {
-      expect((await button.locator("..").boundingBox())?.height).toBeGreaterThanOrEqual(44);
-    }
+  for (const button of await tools.locator("[data-command-heading]").all()) {
+    expect((await button.locator("..").boundingBox())?.height).toBeGreaterThanOrEqual(mobile ? 44 : 36);
   }
   const heading = action.locator("[data-command-heading]");
+  await expect(heading.getByText("Opening pull request", {exact: true})).toHaveCSS("font-size", "14px");
   const verb = await heading.getByText("Opening pull request", {exact: true}).boundingBox();
   const target = await heading.getByText("agentsfleet/linkwarden", {exact: true}).boundingBox();
   expect(verb).not.toBeNull(); expect(target).not.toBeNull();
   if (mobile) expect(target!.y).toBeGreaterThan(verb!.y);
-  else expect(target!.y).toBe(verb!.y);
+  else expect(Math.abs(target!.y + target!.height / 2 - verb!.y - verb!.height / 2)).toBeLessThan(1);
 }

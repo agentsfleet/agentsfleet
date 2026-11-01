@@ -8,6 +8,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Build
+
+- Use the root package-manager pin with Bun 1.4.x or higher. Preserve Bun lock format 2 so Vercel selects its Bun 1.4 installation path.
+- Handle Tailwind's declared plugin-or-processor result in the browser CSS fixture. Keep Next.js dependency pins intact and retain type checking for browser tests.
+
 ## Chat ownership
 
 - Use the installed Next.js docs and APIs before changing chat boundaries.
@@ -20,7 +25,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Derive activity labels from recorded actions and outcomes. Show action and target while running; use completion verbs only for confirmed success. Keep failed, interrupted and unconfirmed outcomes explicit, including environment and access checks.
 
 - Pair activity icons with text: blue for running, green for confirmed success, red for failure, amber for interruption, and neutral for unknown outcomes.
-- Keep activity icons and running indicators at 14px. Mobile disclosures have a 44px minimum target and separate action/target lines; preserve a single visible keyboard-focus outline.
+- Keep activity icons, running indicators and primary action text at 14px. Disclosures have a 36px desktop minimum and 44px mobile minimum, with separate action/target lines on mobile; preserve a single visible keyboard-focus outline.
 
 ## Billing history
 
