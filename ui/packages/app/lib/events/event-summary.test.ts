@@ -73,7 +73,7 @@ describe("senderLabelFor", () => {
   });
 
   it("names the source behind a prefixed webhook actor", () => {
-    expect(senderLabelFor(`${ACTOR.WEBHOOK_PREFIX}slack`)).toBe("slack");
+    expect(senderLabelFor(`${ACTOR.WEBHOOK_PREFIX}slack`)).toBe("Slack");
   });
 
   it("translates the runtime's own actors", () => {
@@ -99,7 +99,7 @@ describe("senderLabelFor", () => {
   });
 
   it("names the source of a connector actor and drops its member id", () => {
-    expect(senderLabelFor("slack:U08ABCXYZ")).toBe("slack");
+    expect(senderLabelFor("slack:U08ABCXYZ")).toBe("Slack");
   });
 });
 

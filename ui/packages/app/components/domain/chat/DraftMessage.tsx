@@ -3,7 +3,7 @@
 import { createContext, memo, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
 import { SignalSpinner } from "@agentsfleet/design-system";
-import { CheckIcon, ClockIcon, SparklesIcon } from "lucide-react";
+import { CircleCheckIcon, ClockIcon, SparklesIcon } from "lucide-react";
 import type { DraftClient } from "@/lib/api/drafts";
 import { MessageSchema, MESSAGE_ROLE } from "@/lib/api/draft-types";
 import { draftFailureCopy } from "@/lib/api/draft-failure-copy";
@@ -40,7 +40,7 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
   const saving = message.metadata.custom.saving === true;
   const context = useMemo(() => readContextProgress(message.metadata.custom.contextProgress), [message.metadata.custom.contextProgress]);
   if (message.metadata.custom.activity === true) return <MessagePrimitive.Root>
-    <p className="my-md inline-flex items-center gap-xs py-xs text-body font-medium text-foreground"><CheckIcon className="size-3.5 text-success" aria-hidden="true" />{text}</p>
+    <p className="my-md inline-flex items-center gap-xs py-xs text-body font-medium text-foreground"><CircleCheckIcon className="size-3.5 text-success" aria-hidden="true" />{text}</p>
   </MessagePrimitive.Root>;
   return <MessagePrimitive.Root>
     <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role}>

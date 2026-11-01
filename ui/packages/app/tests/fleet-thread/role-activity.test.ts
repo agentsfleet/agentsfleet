@@ -5,6 +5,38 @@ import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 import { FleetThread } from "@/components/domain/FleetThread";
 
 describe("FleetThread — role rendering: activity groups and traces", () => {
+  it("shows the received Slack message instead of raw event JSON", async () => {
+    mockStream([ev({role: "system", actor: "slack:member", text: "Message received", reply: "", status: "received",
+      custom: {requestJson: JSON.stringify({message: "Diagnose the title regression", channel_id: "private-channel"})}})]);
+    const {container} = renderThread();
+    expect(screen.getByText("Slack")).toBeTruthy();
+    expect(screen.queryByText("Diagnose the title regression")).toBeNull();
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: "View message"}));});
+    expect(screen.getByText("Diagnose the title regression")).toBeTruthy();
+    expect(screen.queryByText("private-channel")).toBeNull();
+    expect(container.querySelector("pre")).toBeNull();
+  });
+
+  it("keeps grouped Slack messages readable without exposing their envelopes", async () => {
+    mockStream(["one", "two"].map(id => ev({id, role: "system", actor: "slack:member", text: "Message received", reply: "", status: "processed",
+      custom: {requestJson: JSON.stringify({message: `Inspect ${id}`, channel_id: "private-channel"})}})));
+    const {container} = renderThread();
+    await act(async () => {fireEvent.click(screen.getByRole("button", {expanded: false}));});
+    const disclosures = screen.getAllByRole("button", {name: "View message"});
+    expect(disclosures).toHaveLength(2);
+    for (const disclosure of disclosures) await act(async () => {fireEvent.click(disclosure);});
+    expect(screen.getByText("Inspect one")).toBeTruthy();
+    expect(screen.getByText("Inspect two")).toBeTruthy();
+    expect(screen.queryByText("private-channel")).toBeNull();
+    expect(container.querySelector("pre")).toBeNull();
+  });
+
+  it("omits the disclosure for a live empty request placeholder", () => {
+    mockStream([ev({role: "system", actor: "slack:member", text: "Message received", reply: "", status: "received", custom: {requestJson: "{}"}})]);
+    renderThread();
+    expect(screen.getByText("Message received")).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "View event"})).toBeNull();
+  });
   it("collapses a run of identical deliveries into one row that opens on demand", async () => {
     const burst = Array.from({ length: 15 }, (_, i) =>
       ev({
@@ -64,7 +96,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     await act(async () => {
       fireEvent.click(within(screen.getByRole("log", { name: "Chat" })).getByRole("button", { expanded: false }));
     });
-    expect(screen.getAllByText("Details")).toHaveLength(2);
+    expect(screen.getAllByText("View event")).toHaveLength(2);
   });
 
   it("keeps reply-bearing activity as separate conversation turns", async () => {
@@ -93,7 +125,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(
       2,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("button", { name: "View event" }));
     expect(screen.getByText(/"repo":\s*"o\/r"/)).toBeTruthy();
   });
 
@@ -215,7 +247,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
       /text-muted-foreground/,
     );
     // Disclosure remains reachable beside the source evidence.
-    expect(screen.getByText("Details")).toBeTruthy();
+    expect(screen.getByText("View event")).toBeTruthy();
   });
 
   it("keeps conversation rows distinct without sender chrome", () => {

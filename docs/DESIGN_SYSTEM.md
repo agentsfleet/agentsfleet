@@ -246,6 +246,14 @@ Narrow activity tables retain Status and Inspect. Secondary actor and metric col
 A feed row never explains a failure. Status flags it and the row's own Inspect dialog carries the reason, its recorded cause and the fix hint; a column repeating a shortened copy of that would be empty on every healthy row.
 Row actions run Edit first, then view or publish, then fetch or switch, then Delete, in every table that carries them.
 Use IconAction for icon-only row controls so their square size, tooltip, and accessible name stay consistent.
+Use Lucide `CircleCheckIcon` for confirmed actions and successful checks, including approval, invitation, setup, refresh and copy feedback.
+Keep existing sizes and semantic colors. Checkbox and menu ticks continue to indicate selection.
+
+Keep approval rows visible while a decision saves; replace their controls with `Saving decision…` until the native response and read-back settle.
+Show failures beside the retained row and use the recorded decision metadata after a successful read-back.
+
+Label incoming Slack chat events `Slack · Message received`; their `View message` disclosure shows the recorded message text.
+Use `View event` and a document icon for other event data. Do not show a braces icon as the explanation for an incoming message.
 Every row action names its variant: ghost for the neutral ones, destructive for Delete and Deny. IconAction's own default is outline, which draws a box per icon and belongs to standalone buttons, never to a cluster in a table row.
 Header controls such as Refresh use a square TooltipButton with `size="sm"`, preserving a minimum 32px target.
 Keep loading and completion cues inside that fixed square.

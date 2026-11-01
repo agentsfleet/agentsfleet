@@ -48,6 +48,26 @@ test("conversation and composer use the shared 14px typography", async ({page, c
   await info.attach("chat-14px-fixture", {path: screenshot, contentType: "image/png"});
 });
 
+test("setup checks use enclosed icons and incoming messages have readable details", async ({page, chatProbe}, info) => {
+  await page.emulateMedia({reducedMotion: "reduce"});
+  await page.goto(`${chatProbe}?setup=1`);
+  const checks = page.getByRole("list", {name: "Setup checks"});
+  await expect(checks.getByText("GitHub credential", {exact: true})).toBeVisible();
+  await expect(checks.getByText("GitHub connection", {exact: true})).toBeVisible();
+  await expect(checks.getByText("GitHub approval", {exact: true})).toBeVisible();
+  await expect(checks.locator("svg.lucide-circle-check")).toHaveCount(6);
+  await expect(checks.locator("svg").first()).toHaveCSS("width", "14px");
+  await expect(page.getByText("Message received", {exact: true})).toBeVisible();
+  const disclosure = page.getByRole("button", {name: "View message"});
+  await disclosure.focus(); await page.keyboard.press("Enter");
+  await expect(page.getByText("Diagnose the failed title regression using the current source.")).toBeVisible();
+  await expect(page.locator("pre, svg.lucide-braces, svg.lucide-check")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const screenshot = info.outputPath("setup-message-clarity.png");
+  await page.screenshot({path: screenshot});
+  await info.attach("setup-message-clarity", {path: screenshot, contentType: "image/png"});
+});
+
 test("recorded actions stay visible and distinguish every terminal outcome", async ({page, chatProbe}, info) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${chatProbe}?activity=1`);

@@ -2,7 +2,7 @@
 
 import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useToolCallElapsed } from "@assistant-ui/react";
-import { CheckIcon, CircleAlertIcon, CircleHelpIcon, FileTextIcon, GitPullRequestIcon, GlobeIcon, ListIcon, PencilIcon, SquareTerminalIcon, WrenchIcon, XIcon } from "lucide-react";
+import { CircleCheckIcon, CircleAlertIcon, CircleHelpIcon, FileTextIcon, GitPullRequestIcon, GlobeIcon, ListIcon, PencilIcon, SquareTerminalIcon, WrenchIcon, XIcon } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, CopyButton, DashboardPanel, List, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatSeconds } from "@/lib/utils";
@@ -30,7 +30,7 @@ const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode
 const FleetToolOutputDialog = lazy(() => import("./FleetToolOutputDialog").then(module => ({default: module.FleetToolOutputDialog})));
 const FULL_OUTPUT_LOADING = <output className="inline-flex items-center gap-xs text-label text-muted-foreground"><SignalSpinner className="text-pulse" aria-hidden="true" />Loading full command output…</output>;
 const ACTIVITY_ICONS = {read: FileTextIcon, write: PencilIcon, list: ListIcon, command: SquareTerminalIcon,
-  request: GlobeIcon, "pull-request": GitPullRequestIcon, check: CheckIcon, tool: WrenchIcon};
+  request: GlobeIcon, "pull-request": GitPullRequestIcon, check: CircleCheckIcon, tool: WrenchIcon};
 
 /** Adjacent calls share one compact disclosure; each keeps its own identity. */
 export function ToolCallList({children, activity}: {children: ReactNode; activity: ToolActivity}) {

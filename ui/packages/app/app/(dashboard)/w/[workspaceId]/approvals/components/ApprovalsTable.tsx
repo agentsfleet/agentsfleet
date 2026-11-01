@@ -9,7 +9,7 @@ import {
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { CheckIcon, XIcon } from "lucide-react";
+import { CircleCheckIcon, XIcon } from "lucide-react";
 
 import type { ApprovalGate } from "@/lib/api/approvals";
 import { APPROVAL_STATUS, type ApprovalStatusTag } from "@/lib/api/approvals-types";
@@ -63,6 +63,7 @@ function requestName(gate: ApprovalGate): string {
 }
 
 type RowActions = {
+  pending: ReadonlySet<string>;
   onApprove: (gateId: string) => void;
   /** Takes the whole gate: the confirm names the request it is about to end. */
   onDeny: (gate: ApprovalGate) => void;
@@ -144,6 +145,7 @@ function DecidedCell({ gate }: { gate: ApprovalGate }) {
  */
 function ApprovalActions({ gate, actions }: { gate: ApprovalGate; actions: RowActions }) {
   if (!isPending(gate)) return null;
+  if (actions.pending.has(gate.gate_id)) return <output className="text-label text-muted-foreground">Saving decision…</output>;
   const name = requestName(gate);
   return (
     <div className="flex justify-end gap-1">
@@ -154,7 +156,7 @@ function ApprovalActions({ gate, actions }: { gate: ApprovalGate; actions: RowAc
         label={`${APPROVE_LABEL}: ${name}`}
         title={APPROVE_LABEL}
       >
-        <CheckIcon size={ICON_SIZE} />
+        <CircleCheckIcon size={ICON_SIZE} />
       </IconAction>
       <IconAction
         type="button"
