@@ -19,7 +19,7 @@ export const TOOL_SUCCEEDED_GLYPH = "✓";
 const FIGURE_SEPARATOR = " · ";
 const COMMANDS = "commands";
 const COMMAND = "command";
-const TRIGGER_CLASS = "min-h-11 justify-start gap-sm rounded-sm py-sm text-label text-muted-foreground hover:no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-info sm:min-h-0";
+const TRIGGER_CLASS = "min-h-11 justify-start gap-sm rounded-sm py-sm text-body-sm text-muted-foreground hover:no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-info sm:min-h-9";
 const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode}> = {
   [CELL_STATE.RUNNING]: {label: "Running", tone: "text-info", icon: <SignalSpinner className="size-3.5 text-current" aria-hidden="true" />},
   [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success", icon: <span className="inline-flex size-3.5 shrink-0 items-center justify-center leading-none" aria-hidden="true">{TOOL_SUCCEEDED_GLYPH}</span>},
@@ -42,7 +42,7 @@ export function ToolCallList({children, activity}: {children: ReactNode; activit
       <AccordionTrigger className={TRIGGER_CLASS} aria-label={`${TOOL_CALLS_LABEL}: ${label}`} title={label}>
         <span aria-hidden="true" className={cn("inline-flex size-3.5 shrink-0 items-center justify-center", CELL_COPY[activity.state].tone)}>{running ? <SignalSpinner className="size-3.5 text-current" /> : <Icon className="size-3.5 shrink-0" />}</span>
         <span className="min-w-0 flex-1 text-left sm:truncate" role={running ? "status" : undefined}>
-          <span className="block sm:inline">{activity.label}</span>{activity.target ? <> <span className="block truncate text-text-dim sm:inline sm:text-inherit">{activity.target}</span></> : null}
+          <span className="block sm:inline">{activity.label}</span>{activity.target ? <> <span className="block truncate text-label text-text-dim sm:inline sm:text-inherit">{activity.target}</span></> : null}
         </span>
       </AccordionTrigger>
       <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0">{children}</List></AccordionContent>
@@ -93,9 +93,9 @@ function ToolCallHeader({name, args, state}: {name: string; args: ToolArgs | und
   const Icon = ACTIVITY_ICONS[activity.kind];
   return <span data-command-heading="" className="flex min-w-0 flex-1 items-center gap-sm text-left">
     <Icon aria-hidden="true" data-tool-bullet="" data-tool-shimmer={state === CELL_STATE.RUNNING} className={cn("size-3.5 shrink-0 [--tool-active-color:var(--info)]", status.tone)} />
-    <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-xs">
+    <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-sm">
       <span className="block sm:shrink-0">{activity.label}</span>
-      <span className="block truncate font-mono text-text-dim sm:text-inherit" title={activity.target}>{activity.target ? ` ${activity.target}` : ""}</span>
+      <span className="block truncate font-mono text-label text-text-dim sm:text-inherit" title={activity.target}>{activity.target ? ` ${activity.target}` : ""}</span>
     </span>
     <span className="sr-only">{` ${status.label}`}</span>
     <CallClock running={state === CELL_STATE.RUNNING} />

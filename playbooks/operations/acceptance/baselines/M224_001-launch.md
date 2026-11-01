@@ -1254,3 +1254,18 @@ Installed Vercel build-utils 14.23.0 selects `/bun1.4` for lock format 2; the ap
 The previous-head PR gate's native suite passed 1454 shared tests; exclusive tests were still running when this correction was prepared.
 That run does not verify the new candidate revision.
 The final committed/pushed head must run the complete PR gate, browser lane and production build again.
+
+
+### Desktop spacing correction
+
+The Vercel app, website and agents-development previews all passed on `10eae7b2b5e292163dd19e7b3252be9357c24f83`.
+The app preview is `7AzNmP5oByJB1NDWZeTWCUcDT9CM`; this is build evidence, not a native runtime rollout.
+
+Comparing the desktop fixture with Indy's screenshot showed that activity rows were still too dense.
+A new browser assertion failed at 26.5625px against a 36px minimum.
+Disclosures now have a 36px desktop minimum and 44px mobile minimum, with 14px primary action text and retained 13px secondary targets/times.
+The focused browser rerun passed all four desktop/mobile typography and activity cases in the isolated current-source reproduction.
+
+The native command for the preceding candidate was allowed to finish; its superseded PR orchestration was paused before additional commands.
+That run does not count as the final PR gate.
+The final source commit must run every declared command and refresh the full browser/build evidence.
