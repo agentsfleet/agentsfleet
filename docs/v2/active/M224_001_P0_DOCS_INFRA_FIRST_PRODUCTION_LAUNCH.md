@@ -18,8 +18,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P0 — first production installation; release and hostname proofs are still required
 **Categories:** DOCS, INFRA
 **Batch:** B1 — one launch; Indy pushes the tag
-**Branch:** feat/m224-dev-verification
-**Baseline revision:** 3f2ba3faccf8556c9717fdefd9dee9ab72556660
+**Branch:** feat/m224-chat-lifecycle-evidence
+**Baseline revision:** d5058e00879bd661953efc76d0c9ab8316eba0bf
 **Test Baseline:** matching-tree isolated CI checkout `3623b6682e7d9db9031bb9fcf743d324004a8655`: Rust unit 4,965 passed; combined coverage lanes 6,250 passed plus kernel; merged line coverage 99.6597%. App 4,521, website 133 and design-system 522 passed at 100% coverage; CLI 1,966 passed, 17 environment-dependent skips, coverage 100%.
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M224_001-launch.md`; runs `41221228786`, `41221228766` and `41221228752` checked out the same tree as the baseline revision.
 **Depends on:** M213_001 transferred release and fleet proofs (Discovery); M235_001 supplies guarded HTTP retrieval, policy, instruction and adapter code; this milestone owns their development verification before production. Founding steps 01–06 precede the first tag (§1).
@@ -64,6 +64,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
+| `ui/packages/app/AGENTS.md` | EDIT | retain chat ownership rules outside the managed Next.js block |
+| `ui/packages/app/lib/api/draft-state.ts; ui/packages/app/lib/api/drafts.ts; ui/packages/app/lib/api/draft-operation.ts; ui/packages/app/lib/api/draft-watch.ts` | EDIT | model request alternatives with typed states, derive existing view flags and cancel watcher-owned reconciliation reads |
+| `ui/packages/app/tests/draft-request-lifecycle.test.ts; ui/packages/app/tests/draft-operation.test.ts; ui/packages/app/tests/draft-watch.test.ts; ui/packages/app/tests/draft-stream-rendering.test.tsx` | CREATE / EDIT | prove late-result isolation, retry identity, stopped-read cleanup and settled-message render counts with deterministic responses |
+| `package.json; bun.lock` | EDIT | bind Tailwind and the browser fixture to PostCSS 8.5.30, preventing the reproduced mixed-version type error |
 | `docs/DESIGN_SYSTEM.md; ui/packages/app/components/domain/FleetToolOutputDialog.tsx` | EDIT | document chat state ownership and default animated progress; show real full-output loading with the shared indicator while honoring the OS preference |
 | `ui/packages/app/components/domain/FleetOutputLine.tsx; ui/packages/app/components/domain/FleetVirtualOutput.tsx; ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx` | CREATE / EDIT | use react-window for long output, retain literal numbered lines and search every retained line without mounting them all |
 | `ui/packages/app/tests/e2e/fleet-output.spec.ts; ui/packages/app/tests/e2e/fixtures/fleet-output-browser-probe.tsx; ui/packages/app/tests/e2e/fixtures/fleet-output-browser-assets.ts` | CREATE | keep keyboard reachability and wrapped-row resize regression checks in the normal desktop/mobile browser lane; compile shipped CSS and fonts in the fixture asset helper |
@@ -412,6 +416,18 @@ For Linux acceptance, Indy identified the agent environment as the blocker:
 The amendment treats that direction as keeping the full Linux acceptance obligation in M224 rather than holding M235 on this managed VM's network limitation. The accepted Linux CI host remains the execution destination; no passing run or waiver is claimed. All transferred criteria stay P0 and block M224's production progression.
 
 ## Discovery (consult log)
+
+Indy requested a focused chat refactor after merged PR #794 and reported two failed Vercel dashboard deployments.
+The follow-up keeps the shipped layout and public interfaces, with typed request states and explicit cancellation owners.
+Indy's signoff covers the reviewed file list, reasons, implementation shape and checks before landing the refactor.
+
+The checkpoint authorizes one additional M224 implementation PR beyond merged #793 and #794.
+It forbids new commits on those merged branches and changes to Linkwarden draft #4.
+Workflow changes and Library publication retain their separate approval requirements.
+
+`orly doctor` passed at this opening.
+Fresh locked installs pass app type checking under Bun 1.4.4 and 1.3.14.
+Resolving Tailwind through PostCSS 8.5.23 reproduces the reported `TS2769` against the fixture's 8.5.30 types.
 
 Indy (2026-11-01): "Okay we do this in a separate milestone (Tanstack). Continue to make the chat performant.  and readable and so on."
 
