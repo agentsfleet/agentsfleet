@@ -149,15 +149,15 @@ The run receives an `ExecutorSlot` in place of `Option<&dyn Executor>`. The buil
 
 End rules, in order of precedence:
 
-1. A run that ended processed and uncut waits for the build outcome. `Ready` is held by `keep`'s existing conditions; `Partial` and `Failed` are killed and destroyed.
-2. A cut, refused or failed run cancels the build, awaits its outcome and kills whatever it built. The report carries the run's own ending.
+1. A run that ended processed and uncut waits for the build outcome. An answer that arrives mid-checkout therefore still leaves a complete sandbox, held by `keep`'s existing conditions.
+2. A cut, refused or failed run cancels the build and awaits its outcome. A `Partial` or `Failed` outcome is killed and destroyed, never held. The report carries the run's own ending.
 3. A build that fails after the run already ended changes nothing in the report.
 
 - **Dimension 2.1** — The first model request leaves before the sandbox answers → Test `test_first_model_call_starts_before_the_sandbox_is_ready`
 - **Dimension 2.2** — A sandbox tool called mid-build waits, then runs in that sandbox → Test `test_sandbox_tool_waits_for_the_build`
 - **Dimension 2.3** — A build failure mid-run ends the lease `startup_posture` with spent usage kept → Test `test_build_failure_cuts_the_live_run`
 - **Dimension 2.4** — A size or policy refusal still happens before any model request → Test `test_static_refusals_precede_the_model_call`
-- **Dimension 2.5** — A partial checkout is destroyed, never held → Test `test_partial_checkout_is_never_held`
+- **Dimension 2.5** — A run cut mid-checkout destroys the partial sandbox and holds nothing → Test `test_partial_checkout_is_never_held`
 - **Dimension 2.6** — A cut during a thaw finishes the thaw, then destroys → Test `test_cut_during_thaw_settles_the_hold`
 - **Dimension 2.7** — A supervisor-only lease starts no build → Test `test_supervisor_only_lease_starts_no_build`
 - **Dimension 2.8** — Through the daemon, a chat's first stream frame precedes sandbox ready → Test `test_chat_streams_before_sandbox_ready`
@@ -168,7 +168,7 @@ End rules, in order of precedence:
 
 At lease end the order becomes: `keep` freezes a held sandbox or kills any other one. `settle` then posts or spools the report. Only after `settle` returns does `Sandbox::destroy` remove egress rules, the cgroup, the mount, the image and the directory. `run_lease` returns after the release, so a worker never holds two leases' disks.
 
-`Sandbox::kill` runs `cgroup.kill`, ends bwrap and waits for `cgroup.events` to read `populated 0`. The wait is bounded by the cgroup drain bound. On timeout the report still posts, and a `sandbox_kill_unsettled` warning names the lease. Every path that drops a sandbox before the report kills it first, including a failed build and the hold park fallback.
+`Sandbox::kill` runs `cgroup.kill`, ends bwrap and waits for `cgroup.events` to read `populated 0`, bounded by the cgroup drain bound. It always returns a `Killed` record: `Settled`, or `Unsettled` with its reason when a write failed or the bound passed. An `Unsettled` record still lets the report post, and a `sandbox_kill_unsettled` warning names the lease. Every path that drops a sandbox before the report kills it first, including a failed build and the hold park fallback.
 
 - **Dimension 3.1** — The order is kill, report, then release → Test `test_report_posts_between_kill_and_release`
 - **Dimension 3.2** — No sandbox process runs once the report is posted → Test `test_no_sandbox_process_outlives_the_report`
@@ -193,7 +193,7 @@ afr_executor::ExecutorSlot          (new, internal)
 afr_agent::AgentRun.executor        Option<&dyn Executor>  ─►  &ExecutorSlot
 
 afr_sandbox::Sandbox                (internal trait)
-  + async fn kill(&self) -> Result<Killed>    processes end; disk, cgroup and egress stay
+  + async fn kill(&self) -> Killed            Settled | Unsettled(reason); disk, cgroup and egress stay
     async fn destroy(self: Box<Self>) -> Result<()>   unchanged signature; kills first if not killed
 
 Wire, schema, OpenAPI and CLI: no change.
@@ -207,7 +207,7 @@ Wire, schema, OpenAPI and CLI: no change.
 | Static refusal | failure | Size out of bounds or a binding with no checkout | Refused before any model request, as today | `test_static_refusals_precede_the_model_call` |
 | Memory refused | failure | Memory load refused before the build | No build starts; lease refused as today | `test_memory_refusal_starts_no_build` |
 | Late build failure | failure | Build fails after the run ended | Report keeps the run's ending; whatever was built is destroyed | `test_late_build_failure_keeps_the_run_ending` |
-| Partial checkout | failure | Run ended while a repository was still copying | Sandbox destroyed, never held | `test_partial_checkout_is_never_held` |
+| Partial checkout | failure | Run cut or refused while a repository was still copying | Build stops at the next step; sandbox destroyed, never held | `test_partial_checkout_is_never_held` |
 | Cut during thaw | failure | Renewal refused while a hold thaws | Thaw finishes, sandbox destroyed, hold release logged | `test_cut_during_thaw_settles_the_hold` |
 | Waiter at cut | failure | A tool call waits on the slot when the run is cut | The call ends `interrupted` with the run | `test_build_failure_cuts_the_live_run` |
 | Process outlives report | security | Kill skipped on some drop path | Every pre-report drop kills first; report waits on `populated 0` | `test_no_sandbox_process_outlives_the_report` |
@@ -217,7 +217,7 @@ Wire, schema, OpenAPI and CLI: no change.
 ## Invariants
 
 1. Nothing runs unsandboxed in a sandbox's place — the router holds no executor until the slot yields one, enforced by the slot's type.
-2. No report posts before its sandbox is killed or frozen — `settle` takes the `Killed` proof or the hold's lapse time, so the compiler rejects a call without one.
+2. No report posts before its sandbox's kill was issued and awaited — `settle` takes the `Killed` record or the hold's lapse time, so the compiler rejects a call without one. An `Unsettled` record posts and warns.
 3. A worker holds one lease's disk at a time — the release future is `#[must_use]` and `run_lease` awaits it before returning.
 4. The build is never dropped mid-step — it runs to a typed outcome, and the lease awaits that outcome on every ending.
 
@@ -242,7 +242,7 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | 2.2 | unit | `test_sandbox_tool_waits_for_the_build` | `shell` first, engine stalled → call runs on that engine's executor |
 | 2.3 | unit | `test_build_failure_cuts_the_live_run` | Engine fails after first request → `startup_posture`, usage lines kept, waiter `interrupted` |
 | 2.4 | unit | `test_static_refusals_precede_the_model_call` | Disk size past bound → zero provider requests |
-| 2.5 | unit | `test_partial_checkout_is_never_held` | Answer arrives mid-checkout → sandbox destroyed, no hold |
+| 2.5 | unit | `test_partial_checkout_is_never_held` | Renewal refused mid-checkout → `Partial`, sandbox destroyed, no hold; a processed answer mid-checkout → `Ready`, held |
 | 2.6 | unit | `test_cut_during_thaw_settles_the_hold` | Renewal refused during thaw → thaw completes, destroy once |
 | 2.7 | unit | `test_supervisor_only_lease_starts_no_build` | Policy `http_request` only → engine `prepare` never called |
 | 2.8 | integration | `test_chat_streams_before_sandbox_ready` | Daemon plus runner, stalled engine → first frame before sandbox ready |
@@ -250,7 +250,7 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | 2.10 | unit | `test_late_build_failure_keeps_the_run_ending` | Answer processed, then build fails → report `processed` path kept, sandbox destroyed |
 | 3.1 | unit | `test_report_posts_between_kill_and_release` | Recording sandbox and plane → kill, report, destroy |
 | 3.2 | kernel | `test_no_sandbox_process_outlives_the_report` | `sleep 600` running, lease ends → cgroup empty when report posts |
-| 3.3 | unit | `test_unsettled_kill_still_reports` | Kill never settles → report posted, warning logged |
+| 3.3 | unit | `test_unsettled_kill_still_reports` | Tree never empties → `Unsettled`, report posted, `sandbox_kill_unsettled` logged |
 | 3.4 | unit | `test_late_release_failure_leaves_work_for_the_sweep` | Release fails → report already posted, directory kept |
 | 3.5 | unit | `test_worker_polls_after_release` | Release stalled → no lease poll until it returns |
 | 4.1 | manual | `manual_walkthrough_matches_code` | Reviewer follows each Part's file references at the merge commit |
@@ -317,6 +317,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 - **Workspace snapshots and the toolbox** — A Cloudflare R2 snapshot carries the workspace disk's contents: local commits, uncommitted edits and untracked files. It never carries the toolbox, which every host of a release holds as one read-only image by digest. The toolbox mount adds no copy on the host and holds no tenant data, so fleets sharing it is safe.
 - **Restore under each engine** — Under bubblewrap the host mounts the lease disk, so M236's restore writes there through `Sandbox::workspace`. Under Firecracker `Sandbox::workspace` returns none, so restore and checkout must run in the guest or write into the image before attach. M236 §5 picks one mechanism that serves both engines.
 - **Model reviews** — EGM review, Claude Opus 5.5, Nov 02: zoom-out 8, comprehension 8, readiness 10, design 10 findings. Accepted: split into two Workstreams; static checks before the model call; build after memory loading; typed outcome with no drop-cancel; one failure mechanism; slot in `afr_executor`; bounded kill; baseline first; metric names on existing conventions. Owner question kept: §2's failure rule.
+- **Greptile on PR #797** — two P2 findings, both fixed: test 2.5 contradicted end rule 1, and a timed-out kill had no report path. `Killed` is now a record, `Settled` or `Unsettled`.
 - **Open blockers** — none beyond the owner question.
 - **Metrics review** — `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.

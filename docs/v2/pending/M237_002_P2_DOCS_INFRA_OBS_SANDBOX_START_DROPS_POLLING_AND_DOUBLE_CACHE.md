@@ -91,6 +91,7 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 | `rustd/crates/afr_sandbox/src/host/mod.rs`, `src/lib.rs` | EDIT | `mount` leaves `HostTools` and the crate's exports |
 | `rustd/crates/afr_sandbox/src/probe/mod.rs` | EDIT | Reports whether the toolbox device took direct I/O |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/` | EDIT | New trials; `filesystems.rs` stops using `MOUNT_PATH` |
+| `scripts/toolbox/measure_first_use.sh`, `scripts/toolbox/test_measure_first_use.sh` | EDIT | An attach mode: buffered `-o loop`, or a direct-I/O loop device |
 | `rustd/crates/afr_sandbox/tests/confine.rs`, `rustd/crates/afr_executor/tests/` | EDIT | Callers of the socket-path API |
 | `docs/architecture/runner_execution.md` | EDIT | Toolbox, Parts A, D and E after the change |
 | `docs/v2/pending/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md` | CREATE | This spec; moves to `active/` then `done/` |
@@ -125,12 +126,15 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 
 Admission hashes the image through its descriptor, then calls `posix_fadvise(DONTNEED)` on it, so the hash leaves no cache behind. The attach sets `LO_FLAGS_DIRECT_IO` with `LO_FLAGS_READ_ONLY` and `LO_FLAGS_AUTOCLEAR`, and a 4096-byte block size, in the one `LOOP_CONFIGURE` call. Admission reads `LOOP_GET_STATUS64` back and logs whether direct I/O took.
 
-A host whose file system refuses direct I/O keeps a buffered device and logs `caching: buffered`, as the workspace disk does. Adoption accepts a loop device with or without the direct-I/O flag, since it checks only the read-only bit. First-use latency is measured before and after with `scripts/toolbox/measure_first_use.sh`, under the §Toolbox rule of no more than a 10% p99 regression.
+A host whose file system refuses direct I/O keeps a buffered device and logs `caching: buffered`, as the workspace disk does. Adoption accepts a loop device with or without the direct-I/O flag, since it checks only the read-only bit.
+
+`scripts/toolbox/measure_first_use.sh` mounts with buffered `-o loop` today. It gains `TOOLBOX_LOOP_DIRECT_IO=on`, which attaches with `losetup --direct-io=on --read-only` before mounting. One image is measured both ways on the dev host, buffered as the baseline, under the §Toolbox rule of no more than a 10% p99 regression.
 
 - **Dimension 1.1** — The toolbox's loop device reports direct I/O and reading every file leaves the image under 1% cached → Test `test_toolbox_loop_reads_past_the_host_cache`
 - **Dimension 1.2** — A refused direct I/O request leaves a buffered device and logs it → Test `test_toolbox_buffered_fallback_is_logged`
 - **Dimension 1.3** — A toolbox mount from the previous runner, buffered or direct, is adopted → Test `test_direct_io_toolbox_is_adopted`
 - **Dimension 1.4** — No first-use step regresses past 10% at p99 → Test `manual_first_use_holds_after_direct_io`
+- **Dimension 1.5** — The harness attaches with direct I/O when asked and refuses a device that did not take it → Test `test_sampler_attaches_with_direct_io_when_asked`
 
 ### §2 — The executor speaks over an inherited socket pair
 
@@ -203,7 +207,8 @@ Wire, schema, OpenAPI and CLI: no change.
 | 1.1 | kernel | `test_toolbox_loop_reads_past_the_host_cache` | Drop caches, read every file → status shows direct I/O, image resident pages under 1% |
 | 1.2 | unit | `test_toolbox_buffered_fallback_is_logged` | Status without the flag → `caching: buffered` logged, admission succeeds |
 | 1.3 | unit | `test_direct_io_toolbox_is_adopted` | Backing flags read-only plus direct → adopted |
-| 1.4 | manual | `manual_first_use_holds_after_direct_io` | `measure_first_use.sh` before and after on the dev host → no step past 1.10 p99 ratio |
+| 1.4 | manual | `manual_first_use_holds_after_direct_io` | Buffered run, then a `TOOLBOX_LOOP_DIRECT_IO=on` run against it on the dev host → no step past 1.10 p99 ratio |
+| 1.5 | unit | `test_sampler_attaches_with_direct_io_when_asked` | Mode on, `losetup` reports `DIO 0` → sampler exits non-zero with no report |
 | 2.1 | kernel | `test_executor_answers_over_the_inherited_pair` | New sandbox → no `executor.sock` on host or inside |
 | 2.2 | kernel | `test_tenant_process_holds_no_executor_socket` | `ls -l /proc/self/fd` in `shell` → no socket entries |
 | 2.3 | kernel | `test_concurrent_spawn_inherits_no_other_socket` | Two sandboxes start at once → each entry holds one executor socket |
@@ -221,7 +226,7 @@ Wire, schema, OpenAPI and CLI: no change.
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Toolbox cached once, socket pair and in-process disk proven on the lane (§1 to §3) | `make test-runner-kernel` | exit 0 | P0 | |
 | R2 | The same trials pass on the Debian 13 dev host | `make test-runner-kernel` on `zombie-dev-worker-ant`, output in Session Notes | exit 0 | P0 | |
-| R3 | First use holds within the format rule (§1) | `bash scripts/toolbox/measure_first_use.sh` on the dev host, report committed | `0` steps marked `REGRESSION` | P1 | |
+| R3 | Direct-I/O first use within 10% p99 of buffered (§1); `IMAGE` is the admitted toolbox; baseline from the same command without the variable | `sudo TOOLBOX_LOOP_DIRECT_IO=on bash scripts/toolbox/measure_first_use.sh "$IMAGE" first-use-direct.json 120 first-use-buffered.json` | `0` steps marked `REGRESSION` | P1 | |
 | R4 | Start figures recorded (§4) | `test -s playbooks/operations/acceptance/baselines/M237_002-start.md` | exit 0 | P2 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -281,6 +286,7 @@ N/A: no files deleted.
 - **Kernel source** — Upstream `v6.12` `fs/erofs/fileio.c` reads direct whenever the backing file allows. Stable `v6.12.111` and `v6.12.113` read direct only with the `directio` option. The draft first claimed the upstream behaviour for Debian; review corrected it.
 - **Shape change** — The draft's file-backed mount and template disks were replaced after review: the loop flag gives the same cache result on every kernel the lanes use.
 - **Model reviews** — EGM review, Claude Opus 5.5, Nov 02: zoom-out 8, comprehension 8, readiness 10, design 10 findings across the draft that held both Workstreams. Accepted for this Workstream: loop direct I/O over file-backed; cache drop after hashing; descriptor rules for the socket pair; listener kept for vsock; autoclear on the read-write attach; templates out of scope.
+- **Greptile on PR #797** — one P2 finding, fixed: the first-use harness mounted only with buffered `-o loop`. It gains a direct-I/O mode, and R3 compares the two on one image.
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
