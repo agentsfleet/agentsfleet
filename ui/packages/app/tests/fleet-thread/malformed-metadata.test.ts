@@ -240,7 +240,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     ]);
     renderThread();
     expect(screen.getByText(/Slack ping · no body/)).toBeTruthy();
-    expect(screen.getByText("slack")).toBeTruthy();
+    expect(screen.getByText("Slack")).toBeTruthy();
     expect(screen.queryByText(/"action":/)).toBeNull();
     expect(screen.queryByText(/payload/i)).toBeNull();
   });

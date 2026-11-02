@@ -6,7 +6,7 @@ targets in `make/release-candidate.mk`; GitHub Actions owns scheduling, caches,
 artifact transport and credentials.
 
 The approved scope is recorded in
-[M224_001](../v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md).
+[M224_001](../v2/done/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md).
 
 ```mermaid
 flowchart LR

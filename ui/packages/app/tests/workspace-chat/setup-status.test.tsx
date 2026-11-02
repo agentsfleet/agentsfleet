@@ -14,12 +14,12 @@ it.each(["grant", "grants"])("links the %s service inline to approvals without a
   const check = {kind, subject: "github", state: "pending", next_action: {kind: "approvals", href, label: "Open workspace approvals"}};
   const checks = [check];
   const view = render(<SetupChecks checks={checks} label="Readiness" />);
-  expect(screen.getByRole("link", {name: /^github\s*:\s*pending$/}).getAttribute("href")).toBe(href);
+  expect(screen.getByRole("link", {name: /^GitHub approval\s*:\s*pending$/}).getAttribute("href")).toBe(href);
   expect(screen.queryByText("github needed")).toBeNull();
   expect(screen.queryByText("Open workspace approvals")).toBeNull();
   view.rerender(<SetupChecks checks={[{...check, next_action: {kind: "approvals", href: "//outside.test"}}]} label="Readiness" />);
   expect(screen.queryByRole("link")).toBeNull();
-  expect(screen.getByText("github")).toBeTruthy();
+  expect(screen.getByText("GitHub approval")).toBeTruthy();
 });
 
 it("shows all readiness outcomes and refuses external or backslash recovery destinations", () => {
@@ -48,7 +48,7 @@ it("hides infrastructure subjects while retaining resource names and unknown che
   ]} />);
   expect(screen.getByText("Model")).toBeTruthy();
   expect(screen.queryByText(modelSubject)).toBeNull();
-  expect(screen.getByText("github access needed")).toBeTruthy();
+  expect(screen.getByText("GitHub credential needed")).toBeTruthy();
   expect(screen.getByText(`${unknownSubject} needed`)).toBeTruthy();
   expect(screen.getByText(`${unknownKind} needed`)).toBeTruthy();
   expect(screen.getByRole("link", {name: "Resolve"}).getAttribute("href")).toBe("/settings");

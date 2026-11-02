@@ -76,6 +76,7 @@ describe("eventHeadlineFrom", () => {
   });
 
   it("names what arrived when the payload shape is unrecognised or unreadable", () => {
+    expect(eventHeadlineFrom('{"message":"Diagnose this run"}', "chat")).toBe("Message received");
     expect(eventHeadlineFrom('{"unknown":"shape"}', "webhook")).toBe("webhook received");
     expect(eventHeadlineFrom("not json", "cron")).toBe("cron received");
     expect(eventHeadlineFrom(null, "")).toBe(HEADLINE.EVENT_FALLBACK);

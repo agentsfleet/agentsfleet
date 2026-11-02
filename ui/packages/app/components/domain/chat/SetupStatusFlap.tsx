@@ -3,7 +3,7 @@
 import type { DraftView } from "@/lib/api/draft-state";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { ArrowRightIcon, BookOpenIcon, CheckIcon, CircleAlertIcon, CircleHelpIcon, ClockIcon, PencilIcon, SaveIcon, SparklesIcon, UploadIcon } from "lucide-react";
+import { ArrowRightIcon, BookOpenIcon, CircleCheckIcon, CircleAlertIcon, CircleHelpIcon, ClockIcon, PencilIcon, SaveIcon, SparklesIcon, UploadIcon } from "lucide-react";
 import { Button, SignalSpinner } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -50,9 +50,9 @@ function setupStatus(view: DraftView, dirty: boolean): Status | null {
   const revision = view.fleet?.setup_revision;
   if (revision && (!view.draft || savedDraft(view))) {
     const receipt = view.activities?.map(setupActivity).find(activity => activity?.kind === ACTIVITY_KIND.setupSaved && activity.revision === revision);
-    return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CheckIcon, confirmed: true};
+    return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CircleCheckIcon, confirmed: true};
   }
-  if (view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CheckIcon, confirmed: true};
+  if (view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CircleCheckIcon, confirmed: true};
   if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilIcon};
   return null;
 }

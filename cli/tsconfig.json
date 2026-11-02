@@ -34,8 +34,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
 
-    "types": ["node", "bun-types"],
-    "paths": {"@ci-evidence/*": ["../scripts/ci-evidence/*.ts"]}
+    "types": ["node", "bun-types"]
   },
   "include": [
     "src/**/*.ts",

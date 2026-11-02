@@ -70,9 +70,11 @@ export interface ApiRequestOptions {
   body?: string;
   timeoutMs?: number;
   fetchImpl?: FetchImpl | undefined;
+  signal?: AbortSignal | undefined;
 }
 
 export async function apiRequest(url: string, options: ApiRequestOptions = {}): Promise<unknown> {
+  options.signal?.throwIfAborted();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const fetchImpl: FetchImpl | undefined = options.fetchImpl ?? (globalThis.fetch as FetchImpl | undefined);
   if (typeof fetchImpl !== "function") {
@@ -86,12 +88,13 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
     const init: RequestInit = {
       method: options.method ?? "GET",
       headers: options.headers ?? {},
-      signal: ctrl.signal,
+      signal: options.signal ? AbortSignal.any([options.signal, ctrl.signal]) : ctrl.signal,
     };
     if (options.body !== undefined) init.body = options.body;
     const res = await fetchImpl(url, init);
 
     const text = await res.text();
+    options.signal?.throwIfAborted();
     let json: unknown = null;
     if (text.length > 0) {
       try {
@@ -121,6 +124,7 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
 
     return json ?? {};
   } catch (err) {
+    if (options.signal?.aborted) throw options.signal.reason;
     if (isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
       throw new ApiError(`request timed out after ${timeoutMs}ms`, {
         status: 408,

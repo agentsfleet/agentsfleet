@@ -43,7 +43,7 @@ const TAG_FIELD = "_tag";
 const STEER_OUTCOME = "Steer outcome" as const;
 const MESSAGE_PLACEHOLDER = "<message>" as const;
 const SUGGESTION_REPORT_COMMAND = "report this with the command you ran" as const;
-const SUGGESTION_RERUN_COMMAND = "rerun the command to continue" as const;
+const SUGGESTION_INSPECT_EVENTS = "inspect fleet events before sending again; an accepted message may still run" as const;
 const DETAIL_STEER_INTERRUPTED = "steer interrupted" as const;
 
 type RenderableSteerOutcome = PolledSteerOutcome;
@@ -53,7 +53,7 @@ const failSteerInterrupted = (): Effect.Effect<never, CliError> =>
   Effect.fail(
     new InterruptedError({
       detail: DETAIL_STEER_INTERRUPTED,
-      suggestion: SUGGESTION_RERUN_COMMAND,
+      suggestion: SUGGESTION_INSPECT_EVENTS,
     }),
   );
 
@@ -125,7 +125,10 @@ const steerTurnWithTail = (
       method: "POST",
       body: { message },
       token,
-    });
+      signal,
+    }).pipe(
+      Effect.catch((error) => signal?.aborted ? failSteerInterrupted() : Effect.fail(error)),
+    );
     if (!post.event_id) {
       return yield* failMissingEventId();
     }
@@ -136,7 +139,7 @@ const steerTurnWithTail = (
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
-    yield* renderOutcome(outcome, post.event_id, fleetId, wsId, token);
+    yield* renderOutcome(outcome, post.event_id, fleetId, wsId, token, signal);
   });
 
 // A tail that never became ready may have missed the event's opening frames;
@@ -171,6 +174,7 @@ const renderOutcome = (
   fleetId: string,
   wsId: string,
   token: Redacted.Redacted<string>,
+  signal?: AbortSignal,
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
@@ -199,11 +203,12 @@ const renderOutcome = (
     // One failure line, not two. This used to print through `output.error` AND
     // then fail, reporting the same stall twice under two glyph lines with the
     // same follow-up command.
-    const parked = yield* parkedGateHint(wsId, fleetId, token);
+    const parked = yield* parkedGateHint(wsId, fleetId, token, signal);
+    if (signal?.aborted) return yield* failSteerInterrupted();
     return yield* Effect.fail(
       new ConfigError({
         detail: `event ${eventId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s`,
-        suggestion: parked ?? `retry, or inspect: agentsfleet events ${fleetId}`,
+        suggestion: parked ?? `inspect: agentsfleet events ${fleetId}; sending again may create another event`,
       }),
     );
   });
@@ -277,7 +282,7 @@ export const steerEffectFromArgs = (
         return yield* Effect.fail(
           new InterruptedError({
             detail: DETAIL_STEER_INTERRUPTED,
-            suggestion: SUGGESTION_RERUN_COMMAND,
+            suggestion: SUGGESTION_INSPECT_EVENTS,
           }),
         );
       }

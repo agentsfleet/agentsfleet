@@ -223,7 +223,7 @@ fn test_trace_bounds_come_from_afd_wire() {
     let sized = sized.finish();
     assert_eq!(sized.validate(), Ok(()));
     assert!(serde_json::to_vec(&sized).unwrap().len() <= TRACE_MAX_BYTES);
-    assert!(sized.calls.first().unwrap().output_head.is_some());
+    assert!(sized.calls.first().unwrap().output_head.is_none());
     assert!(
         sized.calls.last().unwrap().output_head.is_none(),
         "later rows lost their edges"
@@ -233,6 +233,7 @@ fn test_trace_bounds_come_from_afd_wire() {
         70,
         "every call is listed or counted"
     );
+    assert_eq!(sized.omitted_call_count, 0);
 }
 
 #[test]
@@ -240,5 +241,52 @@ fn should_finish_with_a_known_empty_trace_when_no_tool_ran() {
     assert_eq!(
         json!(Trace::default().finish()),
         json!({"calls": [], "omitted_call_count": 0})
+    );
+}
+
+#[test]
+fn should_reclaim_old_previews_before_omitting_later_calls() {
+    let edge = format!("{}\n", "x".repeat(199)).repeat(10);
+    let mut trace = Trace::default();
+    for number in 1..=50 {
+        let arguments = serde_json::from_value(json!({
+            "url": format!("https://example.test/jobs/{number}/logs"),
+            "headers": {"Authorization": "Bearer [REDACTED]"},
+        }))
+        .unwrap();
+        trace.push(number, "http_request", arguments, ended(&edge));
+    }
+    let trace = trace.finish();
+
+    assert_eq!(trace.validate(), Ok(()));
+    assert_eq!(trace.omitted_call_count, 0);
+    assert_eq!(trace.calls.len(), 50);
+    assert!(trace.calls.first().unwrap().output_head.is_none());
+    for (index, call) in trace.calls.iter().enumerate() {
+        let number = index + 1;
+        assert_eq!(call.call_id, number.to_string());
+        assert_eq!(call.status, ToolCallStatus::Succeeded);
+        assert_eq!(
+            call.arguments["url"],
+            format!("https://example.test/jobs/{number}/logs")
+        );
+    }
+}
+
+#[test]
+fn should_count_a_call_when_essential_rows_alone_exhaust_the_budget() {
+    let mut trace = Trace::default();
+    let arguments: Map<String, serde_json::Value> =
+        serde_json::from_value(json!({"query": "x".repeat(ARGS_LEAF_MAX_BYTES)})).unwrap();
+    for number in 1..=TRACE_MAX_CALLS as u64 {
+        trace.push(number, "http_request", arguments.clone(), ended(""));
+    }
+    let trace = trace.finish();
+
+    assert_eq!(trace.validate(), Ok(()));
+    assert!(trace.omitted_call_count > 0);
+    assert_eq!(
+        trace.calls.len() as u64 + trace.omitted_call_count,
+        TRACE_MAX_CALLS as u64
     );
 }

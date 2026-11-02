@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { BracesIcon } from "lucide-react";
+import { FileTextIcon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -91,6 +91,7 @@ export type FleetActivityRowProps = {
   failed?: boolean;
   /** Rendered inline after the headline — an action `Badge`, a link. */
   annotation?: ReactNode;
+  detailsLabel?: string;
   /** Disclosure and any expansion, rendered under the tick line. */
   children?: ReactNode;
   messageRole: string;
@@ -103,6 +104,7 @@ export function FleetActivityRow({
   outcome,
   failed,
   annotation,
+  detailsLabel = "View event",
   children,
   messageRole,
 }: FleetActivityRowProps) {
@@ -111,7 +113,7 @@ export function FleetActivityRow({
       data-role={messageRole}
       data-compact="true"
       data-failed={failed || undefined}
-      className={cn("w-full border-b border-border", ROW_ENTER)}
+      className={cn("w-full", ROW_ENTER)}
     >
       <div className="flex min-w-0 items-start gap-md px-lg py-md">
         <div className="min-w-0 flex-1 font-sans leading-body-sm">
@@ -142,9 +144,9 @@ export function FleetActivityRow({
               <AccordionItem value={DETAILS_VALUE} className="border-0">
                 <AccordionTrigger className="min-h-11 w-fit flex-none gap-xs py-0 font-sans text-label leading-none text-muted-foreground hover:no-underline sm:min-h-6 [&>svg]:ml-0 [&>svg]:size-3">
                   <span className="flex size-4 shrink-0 items-center justify-center">
-                    <BracesIcon size={12} aria-hidden="true" />
+                    <FileTextIcon size={14} aria-hidden="true" />
                   </span>
-                  {DETAILS_LABEL}
+                  {detailsLabel}
                 </AccordionTrigger>
                 <AccordionContent>{children}</AccordionContent>
               </AccordionItem>
@@ -158,7 +160,6 @@ export function FleetActivityRow({
 }
 
 const TICK_SEPARATOR = "·";
-const DETAILS_LABEL = "Details";
 const DETAILS_VALUE = "details";
 
 export type FleetGroupRowProps = {
@@ -194,7 +195,7 @@ export function FleetGroupRow({
 }: FleetGroupRowProps) {
   return (
     <div
-      className={cn("w-full border-b border-border", ROW_ENTER)}
+      className={cn("w-full", ROW_ENTER)}
       data-role="system"
       data-group="true"
       data-failed={failed || undefined}

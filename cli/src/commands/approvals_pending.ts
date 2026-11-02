@@ -38,10 +38,11 @@ const ONE_GATE = 1;
 const pendingGates = (
   wsId: string,
   token: Redacted.Redacted<string>,
+  signal?: AbortSignal,
 ): Effect.Effect<ReadonlyArray<ApprovalGate> | null, never, HttpClient> =>
   Effect.gen(function* () {
     const exit = yield* Effect.exit(
-      fetchGates(wsId, token, { status: GATE_STATUS.pending }),
+      fetchGates(wsId, token, { status: GATE_STATUS.pending }, signal),
     );
     return Exit.isSuccess(exit) ? exit.value : null;
   });
@@ -75,9 +76,10 @@ export const parkedGateHint = (
   wsId: string,
   fleetId: string,
   token: Redacted.Redacted<string>,
+  signal?: AbortSignal,
 ): Effect.Effect<string | null, never, HttpClient> =>
   Effect.gen(function* () {
-    const all = yield* pendingGates(wsId, token);
+    const all = yield* pendingGates(wsId, token, signal);
     // Unreadable inbox: the caller keeps the failure it already has and its
     // ordinary suggestion. Silence is honest here; "nothing is waiting" is not.
     if (all === null) return null;

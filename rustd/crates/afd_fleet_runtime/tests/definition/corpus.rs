@@ -9,7 +9,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_fleet_runtime::config::Reach;
+use afd_fleet_runtime::config::{HttpEgress, Reach};
 use afd_fleet_runtime::{CredentialName, Definition};
 
 use crate::support::{FIRST_PARTY, MODEL_VALUE, definition, definition_path, fixture, raw_fixture};
@@ -132,15 +132,8 @@ fn responder_definition_holds_no_write_reach() {
     let network = config.network().expect("a network policy");
     assert!(network.read_only());
     assert_eq!(network.read_post_paths(), []);
-    let hosts: Vec<&str> = network.allow().iter().map(AsRef::as_ref).collect();
-    assert_eq!(
-        hosts,
-        [
-            "api.github.com",
-            "productionresultssa6.blob.core.windows.net",
-            "productionresultssa3.blob.core.windows.net"
-        ]
-    );
+    assert_eq!(network.http_egress(), HttpEgress::Public);
+    assert_eq!(network.allow(), []);
     let credentials: Vec<&str> = config
         .credentials()
         .iter()
@@ -215,18 +208,8 @@ fn repairer_definition_is_write_bound_to_one_base() {
         ["agentsfleet/linkwarden"]
     );
     let network = config.network().expect("a network policy");
-    assert_eq!(
-        network
-            .allow()
-            .iter()
-            .map(AsRef::as_ref)
-            .collect::<Vec<&str>>(),
-        [
-            "api.github.com",
-            "productionresultssa6.blob.core.windows.net",
-            "productionresultssa3.blob.core.windows.net"
-        ]
-    );
+    assert_eq!(network.http_egress(), HttpEgress::Public);
+    assert_eq!(network.allow(), []);
     assert!(network.read_only());
     assert_eq!(network.read_post_paths(), []);
 }

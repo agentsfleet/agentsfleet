@@ -127,3 +127,8 @@ lands, the spec records it and this section says so in one line.
 
 - **Provider posture, billing math, the credit gate.** These had their own scenarios; the canonical facts now live in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md). The lease/execute/bill loop is unchanged from what that doc describes.
 - **Compounding memory** across PRs. A separate, parked design.
+
+## Proposed repair and review separation
+
+The [durable repair scenario](durable-repair.md) allows a future repair fleet to update an explicitly authorized externally opened PR. That does not grant review-posting authority or allow a second fleet to push independently.
+A future reviewer must bind findings to an exact head and use its own reviewed publication authority; current review-posting limitations above remain in force.

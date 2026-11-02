@@ -61,10 +61,12 @@ export class AuthError extends TaggedCliError<typeof CLI_ERROR_TAG.auth> {
 
 export class NetworkError extends TaggedCliError<typeof CLI_ERROR_TAG.network> {
   readonly url: string;
+  readonly transient: boolean;
 
-  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly url: string }) {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly url: string; readonly transient?: boolean }) {
     super(CLI_ERROR_TAG.network, fields);
     this.url = fields.url;
+    this.transient = fields.transient ?? false;
   }
 }
 
@@ -72,6 +74,7 @@ export class ServerError extends TaggedCliError<typeof CLI_ERROR_TAG.server> {
   readonly code: string;
   readonly status: number;
   readonly requestId: string | null;
+  readonly transient: boolean;
 
   constructor(fields: {
     readonly detail: string;
@@ -79,11 +82,13 @@ export class ServerError extends TaggedCliError<typeof CLI_ERROR_TAG.server> {
     readonly code: string;
     readonly status: number;
     readonly requestId: string | null;
+    readonly transient?: boolean;
   }) {
     super(CLI_ERROR_TAG.server, fields);
     this.code = fields.code;
     this.status = fields.status;
     this.requestId = fields.requestId;
+    this.transient = fields.transient ?? false;
   }
 }
 

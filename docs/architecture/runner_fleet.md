@@ -673,7 +673,9 @@ The guarded resolver checks every returned address at connection time.
 
 A call follows at most three redirects within one 30-second deadline, including admission and credential minting. Each connect retains a 10-second ceiling within that deadline.
 
-The pooled tool client disables implicit retries; inference retains its own policy. Intermediate response bodies are dropped unread. The final body retains the 1-MiB cap and reports truncation or lossy decoding before its text.
+The pooled tool client disables implicit retries; inference retains its own policy. Intermediate response bodies are dropped unread. The final body retains the 1-MiB capture cap.
+
+The model receives truncation/lossy-decoding notices before any body text. A known-truncated body is omitted from the model response rather than spending context on an unusable prefix. Complete bodies keep their existing text.
 
 One bounded Location is resolved relative to the current URL. Both raw and resolved values pass an 8-KiB `garde` bound before their respective parsing or admission. Loop identity is the pinned URL library's serialized absolute URL with its fragment removed; a repeated identity stops before admission or send.
 

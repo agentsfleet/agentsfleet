@@ -73,6 +73,7 @@ export function eventHeadlineFrom(
 
 function neutralHeadline(eventType: string): string {
   const kind = eventType.trim();
+  if (kind === "chat") return "Message received";
   if (kind.length === 0) return HEADLINE.EVENT_FALLBACK;
   return `${kind} ${HEADLINE.RECEIVED_SUFFIX}`;
 }
