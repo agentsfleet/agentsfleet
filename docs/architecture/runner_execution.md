@@ -383,6 +383,20 @@ admit_incoming                                                toolbox/incoming/m
   ─► Arc<Toolbox> kept by the config; every sandbox clones the Arc
 ```
 
+**Where the bytes sit on the host.** Paths below are under the storage home, `/var/lib/agentsfleet-runner` by default.
+
+```
+toolbox/images/toolbox-<digest>.erofs   one file per release; current and previous kept
+toolbox/mounts/<digest>/                a mount point; the kernel reads the image on demand
+sandboxes/<lease_id>/workspace.img      one ext4 image per lease, mode 0600
+sandboxes/<lease_id>/workspace/         that image's mount; bound as /workspace and /tmp
+git/<workspace_id>/<owner>/<repo>.git   one mirror per workspace and repository
+```
+
+Nothing from the toolbox is unpacked to disk; mounting it adds a directory and no copy. Every sandbox on the host binds the one mount as `/`, whatever its fleet or tenant. The image holds Debian packages and vendored tools only, so tenants share code pages and never data.
+
+A lease's own files live only on its workspace disk, which no other lease can see. Fleets of one workspace share a mirror; fleets of different workspaces never do.
+
 ### Part B: a lease arrives, and the sandbox decision
 
 ```
@@ -525,6 +539,10 @@ Engine:
 - A.1 attaches the toolbox with direct I/O and drops the hash read's cache, so the host caches the image once.
 - Part D passes the executor a socket pair, so nothing polls and no socket directory is bound.
 - Part D attaches and mounts the workspace disk in-process; `mke2fs` stays.
+
+Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest. A restore writes into the new lease's disk through the host's mount, inside the background build and before checkout.
+
+An engine whose disk the host cannot mount, such as Firecracker, reports no host workspace. Its restore and checkout must run inside the guest, or write into the disk image before it attaches.
 
 ## Workspace between leases
 
