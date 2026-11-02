@@ -46,7 +46,7 @@ tracing.workspace = true
 # The log capture a test reads a process's end back through.
 afd_core = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
-tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "rt-multi-thread", "sync", "time", "macros"] }
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "rt-multi-thread", "sync", "time", "macros", "test-util"] }
 
 [[test]]
 name = "executor_suite"

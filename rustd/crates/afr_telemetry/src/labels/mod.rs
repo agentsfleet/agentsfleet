@@ -139,6 +139,27 @@ afd_observability::closed_set! {
 }
 
 afd_observability::closed_set! {
+    /// How a sandbox tool call's wait for its lease's build ended.
+    SandboxWait {
+        /// The build finished, and the call ran in its sandbox.
+        Ready => "ready",
+        /// The build failed or the lease ended, and the call answered
+        /// `sandbox_unavailable`.
+        Unavailable => "unavailable",
+    }
+}
+
+afd_observability::closed_set! {
+    /// How the release of a sandbox's disk after its report ended.
+    SandboxRelease {
+        /// Egress, cgroup, mount, image and directory are gone.
+        Released => "released",
+        /// A step refused; the boot sweep removes what is left.
+        Failed => FAILED,
+    }
+}
+
+afd_observability::closed_set! {
     /// What became of a sandbox held for its fleet between two leases: held,
     /// reused, or released for the reason given.
     SandboxHold {

@@ -15,6 +15,9 @@ use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST};
 use afr_tools::sandbox::CREDENTIAL_GITHUB;
 
+use afr_executor::Unavailable;
+
+use super::super::build::EVENT_BUILD_FAILED;
 use super::{
     DETAIL_CHECKOUT, EVENT_CHECKOUT_COMPLETED, EVENT_CHECKOUT_FAILED, EVENT_CHECKOUT_STARTED,
 };
@@ -75,16 +78,36 @@ fn mints(calls: &[Call]) -> usize {
     calls.iter().filter(|call| call.verb == Verb::Mint).count()
 }
 
-fn assert_refused(rig: &Rig, calls: &[Call]) {
+/// A lease whose checkout could never happen is refused before its first
+/// model request, and no sandbox is ever built for it.
+fn assert_refused_before_the_sandbox(rig: &Rig, calls: &[Call]) {
     let report = reported(calls);
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(report[FAILURE_DETAIL], DETAIL_CHECKOUT);
-    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no tool ever ran");
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "the model never ran");
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        0,
+        "no sandbox was built"
+    );
+    assert_eq!(rig.destroyed.load(Ordering::SeqCst), 0);
+}
+
+/// A checkout that failed inside the build leaves the run going: the model
+/// answers, its sandbox-side calls read `checkout`, the half-built sandbox is
+/// destroyed, and the failure is logged once.
+fn assert_ran_without_the_sandbox(rig: &Rig, calls: &[Call], capture: &Capture) {
+    assert_eq!(reported(calls)[OUTCOME], PROCESSED);
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 1, "the run went on");
+    assert_eq!(*rig.lent.lock().unwrap(), [Some(Unavailable::Checkout)]);
     assert_eq!(
         rig.destroyed.load(Ordering::SeqCst),
         1,
-        "the sandbox is still destroyed"
+        "the half-built sandbox is destroyed"
     );
+    let failed = capture.only(EVENT_BUILD_FAILED);
+    assert_eq!(failed.field("class"), Some(Unavailable::Checkout.as_str()));
+    assert_eq!(failed.field("lease_id"), Some(LEASE_ID));
 }
 
 fn is_empty(dir: &Path) -> bool {
@@ -170,14 +193,15 @@ async fn a_lease_with_no_tool_in_the_sandbox_checks_nothing_out() {
 }
 
 #[tokio::test]
-async fn a_sandbox_the_host_cannot_reach_refuses_a_bound_lease() {
+async fn a_sandbox_the_host_cannot_reach_leaves_the_run_without_it() {
+    let capture = Capture::install();
     let mut rig = rig(None, |_| None);
     served(&rig);
 
     rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
 
     let calls = rig.calls();
-    assert_refused(&rig, &calls);
+    assert_ran_without_the_sandbox(&rig, &calls, &capture);
     assert_eq!(
         mints(&calls),
         0,
@@ -194,13 +218,14 @@ async fn a_workspace_id_that_is_not_an_identifier_never_names_a_mirror() {
     rig.run(&bound(&[GIT.name()], "../escape")).await.unwrap();
 
     let calls = rig.calls();
-    assert_refused(&rig, &calls);
+    assert_refused_before_the_sandbox(&rig, &calls);
     assert_eq!(mints(&calls), 0);
     assert!(is_empty(&rig.home.mirrors()));
 }
 
 #[tokio::test]
-async fn a_refused_mint_fails_the_start() {
+async fn a_refused_mint_leaves_the_run_without_the_sandbox() {
+    let capture = Capture::install();
     let workspace = tempfile::tempdir().unwrap();
     let mut rig = rig(Some(workspace.path().to_owned()), |_| {
         Some(Answer::Fail(crate::error::refused(Verb::Mint, 403, None)))
@@ -210,12 +235,12 @@ async fn a_refused_mint_fails_the_start() {
     rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
 
     let calls = rig.calls();
-    assert_refused(&rig, &calls);
+    assert_ran_without_the_sandbox(&rig, &calls, &capture);
     assert!(is_empty(workspace.path()));
 }
 
 #[tokio::test]
-async fn a_repository_that_will_not_check_out_fails_the_start() {
+async fn a_repository_that_will_not_check_out_leaves_the_run_without_it() {
     let capture = Capture::install();
     let workspace = tempfile::tempdir().unwrap();
     let mut rig = rig(Some(workspace.path().to_owned()), |_| None);
@@ -223,7 +248,7 @@ async fn a_repository_that_will_not_check_out_fails_the_start() {
     rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
 
     let calls = rig.calls();
-    assert_refused(&rig, &calls);
+    assert_ran_without_the_sandbox(&rig, &calls, &capture);
     let failed = capture.only(EVENT_CHECKOUT_FAILED);
     assert_eq!(failed.field("repository"), Some(REPOSITORY));
     assert_eq!(
@@ -239,7 +264,7 @@ async fn a_repository_that_will_not_check_out_fails_the_start() {
 }
 
 #[tokio::test]
-async fn a_binding_that_does_not_parse_refuses_before_any_mint() {
+async fn a_binding_that_does_not_parse_refuses_before_any_sandbox() {
     let workspace = tempfile::tempdir().unwrap();
     let mut rig = rig(Some(workspace.path().to_owned()), |_| None);
     let mut lease = bound(&[GIT.name()], WORKSPACE_ID);
@@ -253,7 +278,7 @@ async fn a_binding_that_does_not_parse_refuses_before_any_mint() {
     rig.run(&lease).await.unwrap();
 
     let calls = rig.calls();
-    assert_refused(&rig, &calls);
+    assert_refused_before_the_sandbox(&rig, &calls);
     assert_eq!(mints(&calls), 0);
     assert!(is_empty(workspace.path()));
 }

@@ -268,7 +268,9 @@ async fn test_a_child_writes_no_checkpoint_of_its_own() {
         .run(AgentRun {
             lease: &lease,
             memory: afr_memory::Seed::default(),
-            executor: None,
+            executor: &afr_executor::ExecutorSlot::unavailable(
+                afr_executor::Unavailable::NoSandbox,
+            ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &checkpoint,

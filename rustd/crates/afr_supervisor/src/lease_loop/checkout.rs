@@ -1,16 +1,22 @@
 //! The fleet's bound repositories, checked out into the lease's workspace from
-//! the host side before the turn runs, so the token that fetched them never
-//! enters the sandbox (`crate::workspace_clone`).
+//! the host side, so the token that fetched them never enters the sandbox
+//! (`crate::workspace_clone`).
+//!
+//! What can be checked without a sandbox is checked before the model starts,
+//! and refuses the lease as it would every time: the plan. The checkout itself
+//! runs in the lease's build, beside the turn.
 
 use afd_core::error_code::{Coded, Logged};
 use afd_core::id::Uuid7;
-use afd_wire::report::FailureClass;
+use afr_executor::Unavailable;
 use afr_sandbox::Sandbox;
-use afr_tools::sandbox::{CREDENTIAL_GITHUB, checkouts};
+use afr_tools::sandbox::{CREDENTIAL_GITHUB, Checkout, checkouts};
+use tokio_util::sync::CancellationToken;
 
-use super::{LeaseRun, failed};
+use super::LeaseRun;
+use super::build::Ended;
 use crate::credentials;
-use crate::error::{self, Result};
+use crate::error;
 use crate::report::Ending;
 use crate::workspace_clone::Request;
 
@@ -24,51 +30,78 @@ const EVENT_CHECKOUT_STARTED: &str = "repository_checkout_started";
 const EVENT_CHECKOUT_COMPLETED: &str = "repository_checkout_completed";
 const EVENT_CHECKOUT_FAILED: &str = "repository_checkout_failed";
 
+/// What a lease checks out: its repositories, under its workspace's id.
+#[derive(Debug)]
+pub(super) struct Plan<'p> {
+    wanted: Vec<Checkout<'p>>,
+    scope: Uuid7,
+}
+
 impl LeaseRun<'_> {
-    /// Checks out every repository the lease's policy binds into `sandbox`'s
-    /// workspace when an offered tool runs in the sandbox, and nothing otherwise.
-    /// Anything that stops a checkout ends the lease at startup, before any
-    /// tool runs. The ending is boxed: it is large, and only a failure
+    /// The lease's checkout, read off its policy before any model request:
+    /// none when no sandbox tool works in a repository. A binding no checkout
+    /// can serve, or a workspace id that is not one, ends the lease at
+    /// startup. The ending is boxed: it is large, and only a refusal
     /// allocates one.
-    pub(super) async fn check_out(&self, sandbox: &dyn Sandbox) -> Result<(), Box<Ending>> {
+    pub(super) fn plan(&self) -> Result<Option<Plan<'_>>, Box<Ending>> {
         let wanted = checkouts(&self.lease.policy).map_err(|refusal| self.unready(&refusal))?;
         if wanted.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
-        let workspace = sandbox
-            .workspace()
-            .ok_or_else(|| self.unready(&error::config(DETAIL_NO_HOST_WORKSPACE)))?;
         // The workspace id becomes a directory of the mirror's path, so it is
         // read as an identifier before it is joined onto anything.
         let scope = Uuid7::parse(&self.lease.event.workspace_id)
             .map_err(|refusal| self.unready(&refusal))?;
+        Ok(Some(Plan { wanted, scope }))
+    }
+
+    /// Checks `plan`'s repositories out into `sandbox`'s workspace, stopping
+    /// between repositories once `stop` is cancelled.
+    ///
+    /// # Errors
+    /// [`Ended`]: the stop, or what failed: an engine that offers no host
+    /// workspace, a token the daemon would not mint, or a repository that
+    /// would not check out.
+    pub(super) async fn check_out(
+        &self,
+        sandbox: &dyn Sandbox,
+        plan: &Plan<'_>,
+        stop: &CancellationToken,
+    ) -> Result<(), Ended> {
+        let workspace = sandbox
+            .workspace()
+            .ok_or_else(|| unfinished(&error::config(DETAIL_NO_HOST_WORKSPACE)))?;
         let token = credentials::mint(&self.lessee.plane, &self.ids.lease, CREDENTIAL_GITHUB, None)
             .await
-            .map_err(|refusal| self.unready(&refusal))?;
-        for checkout in wanted {
-            self.check_out_one(Request {
-                scope: scope.as_str(),
-                checkout,
+            .map_err(|failure| unfinished(&failure))?;
+        for checkout in &plan.wanted {
+            if stop.is_cancelled() {
+                return Err(Ended::Stopped);
+            }
+            let request = Request {
+                scope: plan.scope.as_str(),
+                checkout: *checkout,
                 token: token.expose(),
                 workspace,
-            })
-            .await?;
+            };
+            self.check_out_one(request, stop)
+                .await
+                .map_err(|failure| unfinished(&failure))?;
         }
         Ok(())
     }
 
     /// Checks out one repository, logging it from start to end.
-    async fn check_out_one(&self, request: Request<'_>) -> Result<(), Box<Ending>> {
+    async fn check_out_one(
+        &self,
+        request: Request<'_>,
+        stop: &CancellationToken,
+    ) -> crate::error::Result<()> {
         let lease_id = self.ids.lease.as_str();
         let repository = request.checkout.repository;
         let event = EVENT_CHECKOUT_STARTED;
         tracing::info!(lease_id, repository, event);
-        match self
-            .lessee
-            .mirrors
-            .check_out(request, &self.interrupt)
-            .await
-        {
+        match self.lessee.mirrors.check_out(request, stop).await {
             Ok(fetched) => {
                 let fetched = fetched.as_str();
                 let event = EVENT_CHECKOUT_COMPLETED;
@@ -77,13 +110,9 @@ impl LeaseRun<'_> {
             }
             Err(failure) => {
                 let Logged { error_code, reason } = failure.logged();
-                let detail = DETAIL_CHECKOUT;
                 let event = EVENT_CHECKOUT_FAILED;
-                tracing::warn!(error_code, lease_id, repository, reason, event, detail);
-                Err(Box::new(failed(
-                    FailureClass::StartupPosture,
-                    DETAIL_CHECKOUT,
-                )))
+                tracing::warn!(error_code, lease_id, repository, reason, event);
+                Err(failure)
             }
         }
     }
@@ -93,6 +122,11 @@ impl LeaseRun<'_> {
     fn unready(&self, failure: &impl Coded) -> Box<Ending> {
         Box::new(self.refuse(failure, EVENT_CHECKOUT_REFUSED, DETAIL_CHECKOUT))
     }
+}
+
+/// A checkout the build could not finish, as its sandbox-side calls read it.
+fn unfinished(failure: &impl Coded) -> Ended {
+    Ended::Failed(Unavailable::Checkout, failure.logged())
 }
 
 #[cfg(test)]

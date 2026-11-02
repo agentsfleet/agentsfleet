@@ -23,8 +23,8 @@ use std::time::Duration;
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
-    TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxRelease, SandboxStart,
+    SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 
 /// What every runner measurement is recorded through.
@@ -38,6 +38,10 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
     fn retry(&self, provider: Provider, reason: RetryReason);
     /// A sandbox start ended, after `elapsed`.
     fn sandbox_start(&self, outcome: SandboxStart, elapsed: Duration);
+    /// A sandbox tool call's wait for its lease's build ended, after `elapsed`.
+    fn sandbox_wait(&self, outcome: SandboxWait, elapsed: Duration);
+    /// A sandbox's disk release after its report ended, after `elapsed`.
+    fn sandbox_release(&self, outcome: SandboxRelease, elapsed: Duration);
     /// `frames` live-tail frames never left the runner.
     fn frames_dropped(&self, reason: FrameDrop, frames: u64);
     /// A memory push did not land.
@@ -92,6 +96,16 @@ pub fn retry(provider: Provider, reason: RetryReason) {
 /// Records a sandbox start.
 pub fn sandbox_start(outcome: SandboxStart, elapsed: Duration) {
     with(|recorder| recorder.sandbox_start(outcome, elapsed));
+}
+
+/// Records a sandbox tool call's wait for its lease's build.
+pub fn sandbox_wait(outcome: SandboxWait, elapsed: Duration) {
+    with(|recorder| recorder.sandbox_wait(outcome, elapsed));
+}
+
+/// Records a sandbox's disk release after its report.
+pub fn sandbox_release(outcome: SandboxRelease, elapsed: Duration) {
+    with(|recorder| recorder.sandbox_release(outcome, elapsed));
 }
 
 /// Records live-tail frames lost on the runner.

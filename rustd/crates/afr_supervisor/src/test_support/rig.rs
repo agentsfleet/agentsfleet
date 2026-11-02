@@ -1,13 +1,14 @@
 //! A lessee over the fakes, for every suite that runs a lease.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex};
 
 use afd_wire::lease::LeasePayload;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_agent::AgentEngine;
 use afr_egress::Resolve;
+use afr_executor::Unavailable;
 use afr_sandbox::Limits;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -43,6 +44,9 @@ pub(crate) struct Rig {
     pub(crate) peak: Arc<AtomicUsize>,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
+    /// What each fake run's sandbox source lent it; empty for an engine
+    /// that is not the fake agent.
+    pub(crate) lent: Arc<Mutex<Vec<Option<Unavailable>>>>,
 }
 
 impl Rig {
@@ -102,13 +106,16 @@ impl Rig {
     ) -> Self {
         let runs = Arc::clone(&agent.runs);
         let peak = Arc::clone(&agent.peak);
-        Self::assemble(
+        let lent = Arc::clone(&agent.lent);
+        let mut rig = Self::assemble(
             answer,
             engine,
             (Box::new(agent), runs, peak),
             holds,
             resolver,
-        )
+        );
+        rig.lent = lent;
+        rig
     }
 
     fn assemble(
@@ -157,6 +164,7 @@ impl Rig {
             peak,
             prepared,
             destroyed,
+            lent: Arc::default(),
         }
     }
 

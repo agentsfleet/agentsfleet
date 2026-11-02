@@ -1,7 +1,8 @@
 //! One lease, end to end.
 //!
 //! ```text
-//!   admit ─► turn ─► hydrate ─► [take hold or prepare sandbox ─► checkout] ─► run
+//!   admit ─► turn ─► hydrate ─► [size, egress, checkout plan] ─► run
+//!                                  └─► [take hold or prepare ─► checkout] ─┘ beside it
 //!   ─► [hold frozen, or destroy] ─► memory push (fenced) ─► report spooled ─► report posted
 //!   ─► activity drained
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
@@ -9,8 +10,8 @@
 //!
 //! The engine admits the lease first: a policy naming a tool it cannot host is
 //! refused before anything is prepared. A lease whose tools all run in the
-//! supervisor starts no sandbox; any other runs in one, and one that cannot be
-//! built ends the lease with a failed report. A sandbox that was built is held
+//! supervisor starts no sandbox; any other builds one beside its turn, and a
+//! build that fails leaves the turn going without it. A sandbox that was built is held
 //! for the fleet's next lease when the run ended processed (`crate::holds`) and
 //! destroyed exactly once otherwise — the type consumes it — and an engine that
 //! panics is caught so the teardown still runs. The report settles before the live tail
@@ -27,6 +28,7 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
 use afr_agent::Meter;
+use afr_executor::{ExecutorSlot, Unavailable};
 use afr_memory::Seed;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -41,6 +43,7 @@ use crate::renew::Renewal;
 use crate::report::Ending;
 use crate::turns::FleetTurns;
 
+mod build;
 mod checkout;
 mod drive;
 mod hold;
@@ -298,7 +301,8 @@ impl LeaseRun<'_> {
         if needs.sandbox {
             self.sandboxed(seed, sink).await
         } else {
-            self.drive(seed, None, sink).await.into()
+            let none = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+            self.drive(seed, &none, sink).await.into()
         }
     }
 }

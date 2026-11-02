@@ -32,6 +32,7 @@ mod edges;
 mod events;
 mod protocol;
 mod server;
+mod slot;
 
 pub use self::api::{
     DirEntry, Ending, EntryKind, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId,
@@ -43,3 +44,4 @@ pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
 pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES};
 pub use self::server::{Listener, Tenant, WORKSPACE_ROOT, bind, serve};
+pub use self::slot::{ExecutorSlot, ExecutorSource, Outcome, Unavailable};
