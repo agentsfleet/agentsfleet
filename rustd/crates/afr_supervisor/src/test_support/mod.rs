@@ -35,7 +35,7 @@ mod sandbox;
 pub(crate) use self::daemon::{Calls, bounded, drain, plane};
 pub(crate) use self::fixtures::lease;
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
-pub(crate) use self::resolver::assigned;
+pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, NO_REFILL};
 pub(crate) use afr_egress::testing::FakeResolver;

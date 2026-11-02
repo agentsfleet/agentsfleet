@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicUsize;
 use afd_wire::lease::LeasePayload;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_agent::AgentEngine;
+use afr_egress::Resolve;
 use afr_sandbox::Limits;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -69,7 +70,7 @@ impl Rig {
         answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
         engine: FakeEngine,
         agent: FakeAgent,
-        resolver: FakeResolver,
+        resolver: impl Resolve + 'static,
     ) -> Self {
         Self::build(answer, engine, agent, Holds::start(clock()), resolver)
     }
@@ -97,7 +98,7 @@ impl Rig {
         engine: FakeEngine,
         agent: FakeAgent,
         holds: Holds,
-        resolver: FakeResolver,
+        resolver: impl Resolve + 'static,
     ) -> Self {
         let runs = Arc::clone(&agent.runs);
         let peak = Arc::clone(&agent.peak);
@@ -115,7 +116,7 @@ impl Rig {
         engine: FakeEngine,
         (agent, runs, peak): (Box<dyn AgentEngine>, Arc<AtomicUsize>, Arc<AtomicUsize>),
         holds: Holds,
-        resolver: FakeResolver,
+        resolver: impl Resolve + 'static,
     ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let home = StorageHome::open(root.path()).unwrap();

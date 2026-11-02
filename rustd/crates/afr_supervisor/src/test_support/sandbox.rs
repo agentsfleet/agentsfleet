@@ -49,6 +49,8 @@ pub(crate) struct FakeEngine {
     pub(crate) fail_teardown: bool,
     /// How long each teardown takes before it is counted.
     pub(crate) teardown_takes: Duration,
+    /// How long each prepare takes before it answers, refused or not.
+    pub(crate) prepare_takes: Duration,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
     /// Where each sandbox's executor reports the files written into it.
@@ -78,6 +80,9 @@ impl Engine for FakeEngine {
         }
         if let Some(reached) = &self.reached {
             let _ = reached.send(bound(request.network));
+        }
+        if !self.prepare_takes.is_zero() {
+            tokio::time::sleep(self.prepare_takes).await;
         }
         if self.refuse {
             return Err(std::io::Error::other("no landlock").into());

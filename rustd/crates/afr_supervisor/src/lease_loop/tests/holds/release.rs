@@ -12,6 +12,7 @@ use std::borrow::Cow;
 use afd_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxHold;
 
+use super::super::EVENT_COMPLETED;
 use super::revive_tests::holds_counted;
 use super::tests::{
     NEXT_LEASE_ID, healthy, holding, holds_nothing, released, releases, resumed, settled,
@@ -26,6 +27,9 @@ use crate::test_support::{
 const DESTROYED_UNFROZEN: (usize, usize, usize, usize) = (1, 0, 0, 1);
 /// A host the first lease's sandbox was not built to reach.
 const CHANGED_HOST: &str = "api.github.com";
+/// The lease line's sandbox parts a held sandbox does and does not reach.
+const PREPARE_MS: &str = "prepare_ms";
+const CHECKOUT_MS: &str = "checkout_ms";
 
 /// The daemon does not name this runner's hold the fleet's latest sandbox:
 /// another runner ran the fleet since, or the event is a redelivery whose
@@ -81,6 +85,35 @@ async fn test_a_lease_resuming_takes_the_hold() {
     rig.run(&resumed(NEXT_LEASE_ID, FLEET_ID)).await.unwrap();
 
     assert_eq!(counted.read(), (1, 2, 1, 0), "one sandbox, thawed and held");
+}
+
+/// A lease that takes the fleet's hold thaws it and checks nothing out: its
+/// line carries the thaw as the prepare part and no checkout part, while the
+/// lease that built the sandbox carries both.
+#[tokio::test(start_paused = true)]
+async fn test_a_resumed_lease_logs_no_checkout() {
+    let capture = Capture::install();
+    let (rig, _counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
+    rig.run(&resumed(NEXT_LEASE_ID, FLEET_ID)).await.unwrap();
+
+    let completed = |lease_id: &str| {
+        capture
+            .events()
+            .into_iter()
+            .find(|event| {
+                event.field("event") == Some(EVENT_COMPLETED)
+                    && event.field("lease_id") == Some(lease_id)
+            })
+            .unwrap()
+    };
+    let built = completed(LEASE_ID);
+    assert!(built.field(PREPARE_MS).is_some(), "{:?}", built.fields);
+    assert!(built.field(CHECKOUT_MS).is_some(), "{:?}", built.fields);
+    let thawed = completed(NEXT_LEASE_ID);
+    assert!(thawed.field(PREPARE_MS).is_some(), "{:?}", thawed.fields);
+    assert_eq!(thawed.field(CHECKOUT_MS), None, "{:?}", thawed.fields);
 }
 
 /// The fleet's next lease is told to resume, but its policy reaches a host
