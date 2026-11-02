@@ -21,12 +21,13 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
 use super::{
     ACTIVITY_FRAMES_DROPPED, Families, MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED,
-    PROVIDER_RETRIES, PROVIDER_TURN_DURATION, SANDBOX_HOLDS, SANDBOX_START_DURATION,
-    SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
+    PROVIDER_RETRIES, PROVIDER_TURN_DURATION, SANDBOX_HOLDS, SANDBOX_RELEASE_DURATION,
+    SANDBOX_START_DURATION, SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION,
+    TOOL_OUT_OF_MEMORY, registry,
 };
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
-    TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxRelease, SandboxStart,
+    SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -116,7 +117,7 @@ fn test_every_runner_census_family_has_a_producer() {
 }
 
 /// Each family, and how many series its closed sets can produce.
-fn label_products() -> [(&'static str, usize); 10] {
+fn label_products() -> [(&'static str, usize); 12] {
     [
         (
             PROVIDER_TURN_DURATION.wire_name(),
@@ -127,6 +128,11 @@ fn label_products() -> [(&'static str, usize); 10] {
             Provider::count() * RetryReason::ALL.len(),
         ),
         (SANDBOX_START_DURATION.wire_name(), SandboxStart::ALL.len()),
+        (SANDBOX_WAIT_DURATION.wire_name(), SandboxWait::ALL.len()),
+        (
+            SANDBOX_RELEASE_DURATION.wire_name(),
+            SandboxRelease::ALL.len(),
+        ),
         (ACTIVITY_FRAMES_DROPPED.wire_name(), FrameDrop::ALL.len()),
         (MEMORY_PUSH_FAILURES.wire_name(), PushFailure::ALL.len()),
         (
@@ -181,6 +187,8 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
     families.turn(Provider::of("anthropic"), TurnOutcome::Completed, elapsed);
     families.retry(Provider::of("anthropic"), RetryReason::RateLimited);
     families.sandbox_start(SandboxStart::Ready, elapsed);
+    families.sandbox_wait(SandboxWait::Ready, elapsed);
+    families.sandbox_release(SandboxRelease::Released, elapsed);
     families.frames_dropped(FrameDrop::Backpressure, 3);
     families.push_failed(PushFailure::Upstream);
     families.tool_call(Tool::of("file_read"), ToolOutcome::Succeeded, elapsed);

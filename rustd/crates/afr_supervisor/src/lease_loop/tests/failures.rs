@@ -1,26 +1,6 @@
 use super::*;
 
 #[tokio::test(start_paused = true)]
-async fn a_sandbox_that_cannot_be_built_refuses_the_lease() {
-    let engine = FakeEngine {
-        refuse: true,
-        ..FakeEngine::default()
-    };
-    let mut rig = rig(healthy, engine, Behaviour::Answer);
-
-    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-
-    let calls = rig.calls();
-    assert_eq!(reported(&calls)[FAILURE_REASON], STARTUP_POSTURE);
-    assert_eq!(
-        rig.runs.load(Ordering::SeqCst),
-        0,
-        "nothing runs without a sandbox"
-    );
-    assert_eq!(position(&calls, Verb::Capture), None);
-}
-
-#[tokio::test(start_paused = true)]
 async fn an_engine_that_fails_or_panics_reports_a_crash_and_is_torn_down() {
     for behaviour in [Behaviour::Break, Behaviour::Panic] {
         let engine = FakeEngine {

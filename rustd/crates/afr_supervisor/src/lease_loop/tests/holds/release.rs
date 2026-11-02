@@ -9,6 +9,11 @@
 
 use std::borrow::Cow;
 
+use afd_wire::credentials::MintCredentialResponse;
+use afd_wire::lease::LeasePayload;
+use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
+use afr_tools::catalog::GIT;
+
 use afd_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxHold;
 
@@ -17,9 +22,11 @@ use super::revive_tests::holds_counted;
 use super::tests::{
     NEXT_LEASE_ID, healthy, holding, holds_nothing, released, releases, resumed, settled,
 };
+use crate::client::{Call, Verb};
 use crate::holds::Release;
 use crate::test_support::{
-    Behaviour, FLEET_ID, FakeEngine, Freezer, LEASE_ID, OUTCOME, PROCESSED, Rig, lease, reported,
+    Answer, Behaviour, FIXTURE_BRANCH, FLEET_ID, FakeEngine, Freezer, GRANTED_UNTIL, LEASE_ID,
+    OUTCOME, PROCESSED, Rig, json, lease, reported, repository,
 };
 
 /// What the engine counts for a sandbox destroyed rather than held, as
@@ -30,6 +37,30 @@ const CHANGED_HOST: &str = "api.github.com";
 /// The lease line's sandbox parts a held sandbox does and does not reach.
 const PREPARE_MS: &str = "prepare_ms";
 const CHECKOUT_MS: &str = "checkout_ms";
+const REPOSITORY: &str = "acme/widget";
+const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
+
+/// `payload`, offering `git` and bound to [`REPOSITORY`] in one workspace.
+fn bound(mut payload: LeasePayload<'static>) -> LeasePayload<'static> {
+    payload.event.workspace_id = WORKSPACE_ID.into();
+    payload.policy.tools = vec![GIT.name().into()];
+    payload.policy.repository_binding = Some(RepositoryBinding {
+        repositories: vec![REPOSITORY.into()],
+        access: RepositoryAccess::Write,
+        base_branch: FIXTURE_BRANCH.into(),
+    });
+    payload
+}
+
+/// The daemon's mint, answered with a token valid until the fixture's grant.
+fn minted(call: &Call) -> Option<Answer> {
+    (call.verb == Verb::Mint).then(|| {
+        json(&MintCredentialResponse {
+            token: "ghs_heldTokenNeverInTheWorkspace".into(),
+            expires_at: GRANTED_UNTIL,
+        })
+    })
+}
 
 /// The daemon does not name this runner's hold the fleet's latest sandbox:
 /// another runner ran the fleet since, or the event is a redelivery whose
@@ -89,14 +120,23 @@ async fn test_a_lease_resuming_takes_the_hold() {
 
 /// A lease that takes the fleet's hold thaws it and checks nothing out: its
 /// line carries the thaw as the prepare part and no checkout part, while the
-/// lease that built the sandbox carries both.
+/// lease that built the sandbox carries both. Both are bound to a repository,
+/// so the held one skips a checkout it would otherwise make.
 #[tokio::test(start_paused = true)]
 async fn test_a_resumed_lease_logs_no_checkout() {
     let capture = Capture::install();
-    let (rig, _counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    let workspace = tempfile::tempdir().unwrap();
+    let engine = FakeEngine {
+        workspace: Some(workspace.path().to_owned()),
+        ..FakeEngine::default()
+    };
+    let (rig, _counted) = holding(minted, engine, Behaviour::Answer);
+    repository(&rig.origins().join(format!("{REPOSITORY}.git")));
 
-    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-    rig.run(&resumed(NEXT_LEASE_ID, FLEET_ID)).await.unwrap();
+    rig.run(&bound(lease(LEASE_ID, FLEET_ID))).await.unwrap();
+    rig.run(&bound(resumed(NEXT_LEASE_ID, FLEET_ID)))
+        .await
+        .unwrap();
 
     let completed = |lease_id: &str| {
         capture

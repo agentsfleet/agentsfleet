@@ -174,7 +174,7 @@ async fn test_a_refused_egress_logs_only_its_part() {
 }
 
 /// A checkout refused after its token took [`MINT_TAKES`] logs that time as
-/// its part, beside the prepare that came before it, and the model never ran.
+/// its part, beside the prepare that came before it, and the turn ran on.
 #[tokio::test(start_paused = true)]
 async fn test_a_refused_checkout_still_logs_its_part() {
     let capture = Capture::install();
@@ -193,7 +193,7 @@ async fn test_a_refused_checkout_still_logs_its_part() {
 
     rig.run(&bound()).await.unwrap();
 
-    let line = capture.only(EVENT_FAILED);
+    let line = capture.only(EVENT_COMPLETED);
     assert_eq!(millis(&line, EGRESS_MS), Some(0), "{:?}", line.fields);
     assert_eq!(
         millis(&line, PREPARE_MS),
@@ -207,5 +207,5 @@ async fn test_a_refused_checkout_still_logs_its_part() {
         "{:?}",
         line.fields
     );
-    assert_eq!(line.field(MODEL_MS), None, "{:?}", line.fields);
+    assert!(line.field(MODEL_MS).is_some(), "{:?}", line.fields);
 }

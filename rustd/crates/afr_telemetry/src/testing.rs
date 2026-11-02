@@ -16,8 +16,8 @@ use std::time::Duration;
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
-    TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxRelease, SandboxStart,
+    SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -30,6 +30,10 @@ pub enum Recorded {
     Retry(Provider, RetryReason),
     /// [`Recorder::sandbox_start`].
     SandboxStart(SandboxStart, Duration),
+    /// [`Recorder::sandbox_wait`].
+    SandboxWait(SandboxWait, Duration),
+    /// [`Recorder::sandbox_release`].
+    SandboxRelease(SandboxRelease, Duration),
     /// [`Recorder::frames_dropped`].
     FramesDropped(FrameDrop, u64),
     /// [`Recorder::push_failed`].
@@ -75,6 +79,14 @@ impl Recorder for Tally {
 
     fn sandbox_start(&self, outcome: SandboxStart, elapsed: Duration) {
         self.send(Recorded::SandboxStart(outcome, elapsed));
+    }
+
+    fn sandbox_wait(&self, outcome: SandboxWait, elapsed: Duration) {
+        self.send(Recorded::SandboxWait(outcome, elapsed));
+    }
+
+    fn sandbox_release(&self, outcome: SandboxRelease, elapsed: Duration) {
+        self.send(Recorded::SandboxRelease(outcome, elapsed));
     }
 
     fn frames_dropped(&self, reason: FrameDrop, frames: u64) {

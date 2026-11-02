@@ -19,10 +19,12 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::tests::{NEXT_LEASE_ID, healthy, holding, released, releases, resumed, settled};
 use super::{DETAIL_SILENT, EVENT_REUSED, EVENT_THAW_FAILED};
+use crate::client::{Call, Verb};
 use crate::holds::{Holds, Release};
 use crate::test_support::{
-    Behaviour, EXECUTOR_GONE, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, NO_FREEZER,
-    OUTCOME, PROCESSED, Rig, clock, daemon, lease, reported,
+    Answer, Behaviour, EXECUTOR_GONE, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer,
+    LEASE_ID, NO_FREEZER, OUTCOME, PROCESSED, RENEWAL_TERMINATE, Rig, clock, daemon, lease,
+    reported,
 };
 
 /// Long past the wait for a thawed executor's answer, on the paused clock: a
@@ -193,4 +195,34 @@ async fn test_a_reused_sandbox_is_marked_on_the_lease_span_and_logged() {
         Some("0"),
         "the rig's clock stands still"
     );
+}
+
+/// Refuses every renewal of the fleet's next lease, and of no other.
+fn next_lease_cut(call: &Call) -> Option<Answer> {
+    (call.verb == Verb::Renew && call.path.contains(NEXT_LEASE_ID))
+        .then(|| Answer::Fail(crate::error::refused(Verb::Renew, 409, None)))
+}
+
+/// A renewal refused while the fleet's next lease thaws its hold: the thaw
+/// finishes before the build reads its stop, and the thawed sandbox is then
+/// destroyed once and held by nobody.
+#[tokio::test(start_paused = true)]
+async fn test_cut_during_thaw_settles_the_hold() {
+    let engine = FakeEngine {
+        thaw_takes: afd_core::timing::RENEWAL_TICK.saturating_mul(2),
+        ..FakeEngine::default()
+    };
+    let (mut rig, counted) = holding(next_lease_cut, engine, Behaviour::Answer);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
+    rig.run(&resumed(NEXT_LEASE_ID, FLEET_ID)).await.unwrap();
+
+    assert_eq!(
+        counted.read(),
+        (1, 1, 1, 1),
+        "built and held once, thawed to the end, then destroyed once"
+    );
+    let report = reported(&rig.calls());
+    assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE, "{report}");
+    assert!(report.get("held_until").is_none(), "{report}");
 }

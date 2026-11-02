@@ -148,7 +148,9 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
         .run(AgentRun {
             lease: &lease,
             memory: afr_memory::Seed::default(),
-            executor: None,
+            executor: &afr_executor::ExecutorSlot::unavailable(
+                afr_executor::Unavailable::NoSandbox,
+            ),
             mint: &afr_egress::testing::CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,

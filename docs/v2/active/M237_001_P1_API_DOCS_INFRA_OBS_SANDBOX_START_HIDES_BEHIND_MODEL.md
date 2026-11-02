@@ -88,6 +88,8 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 |------|--------|-----|
 | `rustd/crates/afr_supervisor/src/lease_loop/{mod,workspace,hold,checkout,drive,settle,segments}.rs` | EDIT | Build beside the run, typed build outcome, kill before report, release after it, timers |
 | `rustd/crates/afr_supervisor/src/lease_loop/build.rs` | CREATE | The build future and its outcome, kept out of `mod.rs`, which is near the length cap |
+| `rustd/crates/afr_telemetry/src/{labels,families,record,testing}*`, `docs/metrics.runner.census.tsv` | EDIT | The `sandbox_wait` and `sandbox_release` families, declared in the census both directions read |
+| `rustd/crates/agentsfleetd/{Cargo.toml,src/lib.rs}`, `rustd/crates/afr_executor/Cargo.toml` | EDIT | A stalled engine in the daemon suite needs `async-trait`; the slot's tests need paused time |
 | `rustd/crates/afr_supervisor/src/lease_loop/tests/` | EDIT | Ordering, failure, cancellation and timing proofs |
 | `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox,resolver,rig}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill; a stalled resolver times the egress bind |
 | `rustd/crates/afr_supervisor/src/holds/mod.rs` and tests | EDIT | A park fallback kills before it destroys |
@@ -143,9 +145,9 @@ Under §2's owner decision the egress bind stays ahead of the model call. Its sh
 
 Checks whose failure would repeat on every lease stay before the model call: `sized`, the `checkouts(policy)` refusal, the workspace identifier parse and the egress bind. Their refusals stay `startup_posture`, as today. After memory loading succeeds, `work` runs two futures in one task: the build and `drive`. The build revives or prepares the sandbox and checks repositories out. It never runs on `tokio::spawn`, since it borrows the lease.
 
-The build ends in a typed outcome: `Ready` with a checked-out sandbox, `Partial` with a sandbox whose checkout did not finish, or `Failed`. A `CancellationToken` stops it only between steps, never by dropping the future. A hold taken by `revive` always finishes its thaw first. `Parts` owns the lease directory and the disk paths before any host program starts, so a stopped build releases what it made.
+The build ends by filling the slot: with the executor, or with `Unavailable` naming why. The classes are `prepare`, `checkout`, and `stopped` for a build the run's end stopped. Only a ready sandbox moves into the lease's cell; a stopped or failed build destroys what it made first. A `CancellationToken` stops it only between steps, never by dropping the future, so a hold taken by `revive` always finishes its thaw.
 
-The run receives an `ExecutorSlot` in place of `Option<&dyn Executor>`. The build sets it once, with a shared executor or with nothing. The router awaits the slot on a call whose runtime is `Sandbox`. Run end and child loops read it without waiting.
+The run receives `&dyn ExecutorSource` in place of `Option<&dyn Executor>`, and the lease's `ExecutorSlot` is its one implementation. The slot borrows the executor from the cell, so the run's lifetimes stay free of the slot's. The router awaits it on a call whose runtime is `Sandbox`, and child loops route through the same slot. Run end reads it without waiting.
 
 **Owner decision (Indy, Nov 02):** a `Failed` build while the run is live leaves the run going. The slot resolves to nothing and carries the failure's class: prepare or checkout. Every sandbox tool call, already waiting or later, answers `sandbox_unavailable` with a message naming that class and no host detail. Whatever the build made is killed and destroyed at once, and nothing is held. The run ends however its model ends it, billed as usual.
 
@@ -157,16 +159,16 @@ End rules, in order of precedence:
 
 A processed ending proves that the answer was given, not that the workspace was ready. After a `Failed` build, live or late, no files are left for a later lease to continue. A build that a cut stopped is not a failure and logs no `sandbox_build_failed`.
 
-- **Dimension 2.1** — The first model request leaves before the sandbox answers → Test `test_first_model_call_starts_before_the_sandbox_is_ready`
-- **Dimension 2.2** — A sandbox tool called mid-build waits, then runs in that sandbox → Test `test_sandbox_tool_waits_for_the_build`
-- **Dimension 2.3** — A build failure mid-run leaves the run going, and each sandbox call answers `sandbox_unavailable` naming the class → Test `test_build_failure_leaves_the_run_going`
-- **Dimension 2.4** — A size, policy or egress refusal still happens before any model request → Test `test_static_refusals_precede_the_model_call`
-- **Dimension 2.5** — A run cut mid-checkout destroys the partial sandbox and holds nothing → Test `test_partial_checkout_is_never_held`
-- **Dimension 2.6** — A cut during a thaw finishes the thaw, then destroys → Test `test_cut_during_thaw_settles_the_hold`
-- **Dimension 2.7** — A supervisor-only lease starts no build → Test `test_supervisor_only_lease_starts_no_build`
+- **Dimension 2.1** — The first model request leaves before the sandbox answers → Test `test_first_model_call_starts_before_the_sandbox_is_ready` — DONE
+- **Dimension 2.2** — A sandbox tool called mid-build waits, then runs in that sandbox → Test `test_sandbox_tool_waits_for_the_build` — DONE
+- **Dimension 2.3** — A build failure mid-run leaves the run going, and each sandbox call answers `sandbox_unavailable` naming the class → Test `test_build_failure_leaves_the_run_going` — DONE
+- **Dimension 2.4** — A size, policy or egress refusal still happens before any model request → Test `test_static_refusals_precede_the_model_call` — DONE
+- **Dimension 2.5** — A run cut mid-checkout destroys the partial sandbox and holds nothing → Test `test_partial_checkout_is_never_held` — DONE
+- **Dimension 2.6** — A cut during a thaw finishes the thaw, then destroys → Test `test_cut_during_thaw_settles_the_hold` — DONE
+- **Dimension 2.7** — A supervisor-only lease starts no build → Test `test_supervisor_only_lease_starts_no_build` — DONE
 - **Dimension 2.8** — Through the daemon, a chat's first stream frame precedes sandbox ready → Test `test_chat_streams_before_sandbox_ready`
-- **Dimension 2.9** — A memory load refusal starts no build → Test `test_memory_refusal_starts_no_build`
-- **Dimension 2.10** — A build failing after the run ended leaves the run's ending in the report → Test `test_late_build_failure_keeps_the_run_ending`
+- **Dimension 2.9** — A memory load refusal starts no build → Test `test_memory_refusal_starts_no_build` — DONE
+- **Dimension 2.10** — A build failing after the run ended leaves the run's ending in the report → Test `test_late_build_failure_keeps_the_run_ending` — DONE
 
 ### §3 — The report posts before the disk is released
 
@@ -191,13 +193,18 @@ Only `Settled` proves the sandbox's process tree is empty. `Unsettled` still let
 ## Interfaces
 
 ```
-afr_executor::ExecutorSlot          (new, internal)
-  set once by the lease's build:    Ready(Arc<dyn Executor>) | Failed(class)
-  async get()   -> Result<Arc<dyn Executor>, Unavailable>   awaited by the router for Runtime::Sandbox;
+afr_executor::ExecutorSource        (new trait, internal)
+  async get()   -> Result<&dyn Executor, Unavailable>   awaited by the router for Runtime::Sandbox;
                    Unavailable names the class and maps to ToolErrorCode::SandboxUnavailable
-  try_get()     -> Option<Arc<dyn Executor>>   run end, session close, child loops
+  peek()        -> Option<&dyn Executor>   run end and session close
+  is_filled()   -> bool                    the router records a wait only when it waited
 
-afr_agent::AgentRun.executor        Option<&dyn Executor>  ─►  &ExecutorSlot
+afr_executor::ExecutorSlot<'a>       (new, internal; the one ExecutorSource)
+  fill(Ok(&'a dyn Executor) | Err(Unavailable)) -> bool   once, by the lease's build
+  held()        -> Option<Duration>        first waiting call to the fill: sandbox_wait_ms
+  Unavailable:  NoSandbox | Prepare | Checkout | Stopped
+
+afr_agent::AgentRun.executor        Option<&dyn Executor>  ─►  &dyn ExecutorSource
 
 afr_sandbox::Sandbox                (internal trait)
   + async fn kill(&self) -> Killed            Settled | Unsettled(reason); disk, cgroup and egress stay;
@@ -216,7 +223,8 @@ Wire, schema, OpenAPI and CLI: no change.
 | Memory refused | failure | Memory load refused before the build | No build starts; lease refused as today | `test_memory_refusal_starts_no_build` |
 | Late build failure | failure | Build fails after the run ended | Report keeps the run's ending; whatever was built is destroyed; nothing held; `sandbox_build_failed` logged | `test_late_build_failure_keeps_the_run_ending` |
 | Partial checkout | failure | Run cut or refused while a repository was still copying | Build stops at the next step; sandbox destroyed, never held | `test_partial_checkout_is_never_held` |
-| Cut during thaw | failure | Renewal refused while a hold thaws | Thaw finishes, sandbox destroyed, hold release logged | `test_cut_during_thaw_settles_the_hold` |
+| Cut during thaw | failure | Renewal refused while a hold thaws | Thaw finishes, sandbox destroyed once, nothing held | `test_cut_during_thaw_settles_the_hold` |
+| Turn fails mid-build | failure | The engine fails while the build runs | Build stopped at its next step; sandbox destroyed once, never held; report carries the failure | `test_a_failed_turn_stops_its_build_and_holds_nothing` |
 | Waiter at failure | failure | A tool call waits on the slot when the build fails | The call answers `sandbox_unavailable` naming the class | `test_build_failure_leaves_the_run_going` |
 | Process outlives report | security | Kill skipped on some drop path | Every pre-report drop kills first; report waits, bounded, on `populated 0`; only `Settled` claims an empty tree | `test_no_sandbox_process_outlives_the_report` |
 | Kill never settles | capacity | A process stuck in uninterruptible sleep | Bounded wait, report posts, warning names the lease; the record claims no empty tree, so no save reads the disk | `test_unsettled_kill_still_reports` |
@@ -343,6 +351,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
   - an egress resolution cache, network-namespace churn and the checkout copy, each waiting on §1's figures.
 
   A reflink checkout cannot help: ext4 has no reflink, and the copy crosses file systems. Asked Nov 02 which become specs; Indy has not answered yet.
+- **Built shape (§2)** — The spec's `Arc<dyn Executor>` became a borrow behind the `ExecutorSource` trait. A slot holding the borrow is invariant in its lifetime, so `AgentRun` could not name it; the trait object hides it, and `Sandbox::executor` keeps its signature. The typed outcome is the slot's fill, because nothing reads a separate enum. `sandbox_build_failed` replaces `sandbox_refused`, which no dashboard or alert names, because a failed build no longer refuses the lease.
 - **Dev host kernel** — The dev host stays on `6.12.111` until M237 ships, so before and after figures share one kernel. Indy chose this on Nov 02; the quote is below.
 - **PLAN (Nov 02, 2026: 10:38 PM)** — Intent restated: the first model request stops waiting on sandbox setup, and the report stops waiting on disk cleanup. A failed build leaves the run going. ASSUMPTIONS I'M MAKING:
   1. §1 lands as its own commit before any §2 code: three timers, then the baseline file.

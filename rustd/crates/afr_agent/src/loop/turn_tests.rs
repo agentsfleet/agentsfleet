@@ -265,7 +265,9 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
         .run(AgentRun {
             lease: &leased,
             memory: afr_memory::Seed::default(),
-            executor: None,
+            executor: &afr_executor::ExecutorSlot::unavailable(
+                afr_executor::Unavailable::NoSandbox,
+            ),
             mint: &mint,
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,

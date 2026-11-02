@@ -51,6 +51,10 @@ pub(crate) struct FakeEngine {
     pub(crate) teardown_takes: Duration,
     /// How long each prepare takes before it answers, refused or not.
     pub(crate) prepare_takes: Duration,
+    /// How long each thaw takes before it answers.
+    pub(crate) thaw_takes: Duration,
+    /// When each prepare answered with a sandbox.
+    pub(crate) ready: Arc<std::sync::Mutex<Vec<tokio::time::Instant>>>,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
     /// Where each sandbox's executor reports the files written into it.
@@ -98,6 +102,7 @@ impl Engine for FakeEngine {
             !(self.panic_once && prepared == 0),
             "the fake engine panics on its first prepare"
         );
+        self.ready.lock().unwrap().push(tokio::time::Instant::now());
         let workspace = self.workspace.clone().map(|root| {
             let metadata = std::fs::metadata(&root).unwrap();
             (root, (metadata.uid(), metadata.gid()))
@@ -105,6 +110,7 @@ impl Engine for FakeEngine {
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
             teardown_takes: self.teardown_takes,
+            thaw_takes: self.thaw_takes,
             workspace,
             destroyed: Arc::clone(&self.destroyed),
             frozen: Arc::clone(&self.frozen),
@@ -124,6 +130,7 @@ impl Engine for FakeEngine {
 struct FakeSandbox {
     fail_teardown: bool,
     teardown_takes: Duration,
+    thaw_takes: Duration,
     workspace: Option<(PathBuf, (u32, u32))>,
     destroyed: Arc<AtomicUsize>,
     frozen: Arc<AtomicUsize>,
@@ -159,6 +166,9 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn thaw(&self) -> afr_sandbox::Result<()> {
+        if !self.thaw_takes.is_zero() {
+            tokio::time::sleep(self.thaw_takes).await;
+        }
         if self.freezer == Freezer::RefusesThaw {
             return Err(std::io::Error::other(NO_FREEZER).into());
         }
