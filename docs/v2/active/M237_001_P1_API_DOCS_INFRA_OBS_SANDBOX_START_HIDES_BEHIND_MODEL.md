@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Date:** Nov 02, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, every lease that offers a sandbox tool waits for sandbox setup and checkout before the model starts
 
@@ -30,9 +30,9 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Batch:** B1, lands before M236_001 builds; M237_002 is independent of it
 
-**Branch:** pending, set at CHORE(open)
+**Branch:** `feat/m237-sandbox-lease-path`
 
-**Baseline revision:** pending, set to the full comparison commit at CHORE(open)
+**Baseline revision:** 2f8c878c09e9c4048da1724385ec58746d348ed4
 
 **Test Baseline:** pending, measured before the Pull Request
 
@@ -101,7 +101,7 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/afr_telemetry/src/{families,record}/` | EDIT | `sandbox_wait` and `sandbox_release` duration families |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner.rs` | EDIT | End-to-end proof through the daemon |
 | `docs/architecture/runner_execution.md` | EDIT | Walkthrough and lease order after the change |
-| `docs/v2/pending/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md` | CREATE | This spec; moves to `active/` then `done/` |
+| `docs/v2/active/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md` | EDIT | This spec, opened at CHORE(open); moves to `done/` at close |
 
 ## Applicable Rules
 
