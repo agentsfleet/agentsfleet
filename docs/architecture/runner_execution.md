@@ -532,7 +532,7 @@ Lease order:
 
 - Size, policy and egress checks stay before the model call. After memory loading, Part C's prepare and checkout run beside the model call in the same task.
 - The first sandbox tool call waits for the build. If the build fails, the run continues, and each sandbox tool call answers `sandbox_unavailable` naming the failure.
-- Part G kills or freezes before the report and releases the disk after it.
+- Part G kills or freezes before the report and releases the disk after it. Only a kill that settles proves no sandbox process remains.
 
 Engine:
 
@@ -540,7 +540,9 @@ Engine:
 - Part D passes the executor a socket pair, so nothing polls and no socket directory is bound.
 - Part D attaches and mounts the workspace disk in-process; `mke2fs` stays.
 
-Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest. A restore writes into the new lease's disk through the host's mount, inside the background build and before checkout.
+Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest.
+
+A restore writes into the new lease's disk through the host's mount, inside the background build. It takes checkout's place for each repository it restores, so checkout never overwrites restored work. A save reads the disk only after a kill that settled.
 
 An engine whose disk the host cannot mount, such as Firecracker, reports no host workspace. Its restore and checkout must run inside the guest, or write into the disk image before it attaches.
 

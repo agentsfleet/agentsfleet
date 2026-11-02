@@ -124,7 +124,9 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 
 ### §1 — The toolbox is read past the host cache
 
-Admission hashes the image through its descriptor, then calls `posix_fadvise(DONTNEED)` on it, so the hash leaves no cache behind. The attach sets `LO_FLAGS_DIRECT_IO` with `LO_FLAGS_READ_ONLY` and `LO_FLAGS_AUTOCLEAR`, and a 4096-byte block size, in the one `LOOP_CONFIGURE` call. Admission reads `LOOP_GET_STATUS64` back and logs whether direct I/O took.
+Admission hashes the image through its descriptor, then calls `posix_fadvise(DONTNEED)` on it to ask the kernel to drop the hash's cache. That call is advice, not a promise, so Dimension 1.1 measures the pages that stay resident.
+
+The attach sets `LO_FLAGS_DIRECT_IO` with `LO_FLAGS_READ_ONLY` and `LO_FLAGS_AUTOCLEAR`, and a 4096-byte block size, in the one `LOOP_CONFIGURE` call. Admission reads `LOOP_GET_STATUS64` back and logs whether direct I/O took.
 
 A host whose file system refuses direct I/O keeps a buffered device and logs `caching: buffered`, as the workspace disk does. Adoption accepts a loop device with or without the direct-I/O flag, since it checks only the read-only bit.
 
@@ -287,6 +289,7 @@ N/A: no files deleted.
 - **Shape change** — The draft's file-backed mount and template disks were replaced after review: the loop flag gives the same cache result on every kernel the lanes use.
 - **Model reviews** — EGM review, Claude Opus 5.5, Nov 02: zoom-out 8, comprehension 8, readiness 10, design 10 findings across the draft that held both Workstreams. Accepted for this Workstream: loop direct I/O over file-backed; cache drop after hashing; descriptor rules for the socket pair; listener kept for vsock; autoclear on the read-write attach; templates out of scope.
 - **Greptile on PR #797** — one P2 finding, fixed: the first-use harness mounted only with buffered `-o loop`. It gains a direct-I/O mode, and R3 compares the two on one image.
+- **Codex review (Nov 02, baseline `2f8c878c0`)** — one P2 finding, fixed: §1 claimed the cache drop leaves no cache behind. `posix_fadvise` is advice, so §1 now leans on the flag readback, the resident-page test and the logged buffered fallback.
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
