@@ -530,8 +530,8 @@ The Nov 02, 2026 decision changes six steps above. Each is target, not built, un
 
 Lease order:
 
-- Size and policy checks stay before the model call. After memory loading, Part C's egress, prepare and checkout run beside the model call in the same task.
-- The first sandbox tool call waits for the build. A build failure while the run is live ends the lease `startup_posture`.
+- Size, policy and egress checks stay before the model call. After memory loading, Part C's prepare and checkout run beside the model call in the same task.
+- The first sandbox tool call waits for the build. If the build fails, the run continues, and each sandbox tool call answers `sandbox_unavailable` naming the failure.
 - Part G kills or freezes before the report and releases the disk after it.
 
 Engine:
@@ -664,4 +664,5 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 
 | Oct 17, 2026 | Saved model inference settings replace the embedded provider routing JSON. Workspace-owner registrations and the active platform default supply credentialed choices; model output limits come from their saved catalogue row. Both inference hosts filter private SDK content. | Indy: "Also replace the JSON routing table with persistent provider configuration"; "have the persisted model details as the source of truth." |
 | Oct 19, 2026 | The runner reports cache writes apart from input, by the lifetime the provider names, and the daemon bills each class at its own rate instead of at the input rate (M229 Dimension 8.6) | Indy (2026-10-18): cache-write tokens are reported and billed by lifetime, "Bill them now" |
+| Nov 02, 2026 | Target, not built: a sandbox build that fails while the run is live leaves the run going; sandbox tools answer `sandbox_unavailable` naming the failure, and egress checks stay before the model call | Indy chose "B: model carries on", asking whether setup and the model are independent |
 | Nov 02, 2026 | Target, not built: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O, the executor speaks over an inherited socket pair, and the workspace disk mounts in-process (§"Decided, not built") | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
