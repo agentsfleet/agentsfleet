@@ -132,9 +132,11 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 
 ### §1 — Today's waits are measured
 
-Before PLAN, the implementing agent records today's lease waits as Baseline evidence. The checkout gains its own timer, so `sandbox` splits into `prepare` and `checkout` on the `lease_completed` line. The evidence holds the dev host's recent `sandbox_ms` and `report_ms`, and the kernel lane's budgets trial on a disk-backed state directory.
+Before PLAN, the implementing agent records today's lease waits as Baseline evidence. Egress and checkout gain their own timers, so `sandbox` splits into `egress`, `prepare` and `checkout` on the `lease_completed` line. The evidence holds the dev host's recent `sandbox_ms` and `report_ms`, and the kernel lane's budgets trial on a disk-backed state directory.
 
-- **Dimension 1.1** — `lease_completed` carries `prepare_ms` and `checkout_ms` apart → Test `test_lease_completed_splits_prepare_and_checkout`
+Under §2's owner decision the egress bind stays ahead of the model call. Its share of `sandbox` is therefore the setup wait this spec leaves in place.
+
+- **Dimension 1.1** — `lease_completed` carries `egress_ms`, `prepare_ms` and `checkout_ms` apart → Test `test_lease_completed_splits_prepare_and_checkout`
 - **Dimension 1.2** — The baseline file exists before PLAN with both hosts' figures → Test `manual_baseline_recorded_before_plan`
 
 ### §2 — The sandbox builds beside the first model call
@@ -151,7 +153,9 @@ End rules, in order of precedence:
 
 1. A run that ended processed and uncut waits for the build outcome. An answer that arrives mid-checkout therefore still leaves a complete sandbox, held by `keep`'s existing conditions.
 2. A cut, refused or failed run cancels the build and awaits its outcome. A `Partial` or `Failed` outcome is killed and destroyed, never held. The report carries the run's own ending.
-3. A build that fails after the run already ended changes nothing in the report.
+3. A build that fails after the run already ended keeps the run's ending in the report. Nothing is held, and `sandbox_build_failed` is logged.
+
+A processed ending proves that the answer was given, not that the workspace was ready. After a `Failed` build, live or late, no files are left for a later lease to continue. A build that a cut stopped is not a failure and logs no `sandbox_build_failed`.
 
 - **Dimension 2.1** — The first model request leaves before the sandbox answers → Test `test_first_model_call_starts_before_the_sandbox_is_ready`
 - **Dimension 2.2** — A sandbox tool called mid-build waits, then runs in that sandbox → Test `test_sandbox_tool_waits_for_the_build`
@@ -168,11 +172,13 @@ End rules, in order of precedence:
 
 At lease end the order becomes: `keep` freezes a held sandbox or kills any other one. `settle` then posts or spools the report. Only after `settle` returns does `Sandbox::destroy` remove egress rules, the cgroup, the mount, the image and the directory. `run_lease` returns after the release, so a worker never holds two leases' disks.
 
-`Sandbox::kill` runs `cgroup.kill`, ends bwrap and waits for `cgroup.events` to read `populated 0`, bounded by the cgroup drain bound. It always returns a `Killed` record: `Settled`, or `Unsettled` with its reason when a write failed or the bound passed. An `Unsettled` record still lets the report post, and a `sandbox_kill_unsettled` warning names the lease. Every path that drops a sandbox before the report kills it first, including a failed build and the hold park fallback.
+`Sandbox::kill` runs `cgroup.kill`, ends bwrap and waits for `cgroup.events` to read `populated 0`, bounded by the cgroup drain bound. It always returns a `Killed` record: `Settled`, or `Unsettled` with its reason when a write failed or the bound passed. Every path that drops a sandbox before the report kills it first, including a failed build and the hold park fallback.
+
+Only `Settled` proves the sandbox's process tree is empty. `Unsettled` still lets the report post the run's ending, and a `sandbox_kill_unsettled` warning names the lease. It proves no writer has stopped, so nothing may save the workspace on its strength.
 
 - **Dimension 3.1** — The order is kill, report, then release → Test `test_report_posts_between_kill_and_release`
-- **Dimension 3.2** — No sandbox process runs once the report is posted → Test `test_no_sandbox_process_outlives_the_report`
-- **Dimension 3.3** — A kill that never settles still posts the report and warns → Test `test_unsettled_kill_still_reports`
+- **Dimension 3.2** — After a `Settled` kill, no sandbox process runs once the report is posted → Test `test_no_sandbox_process_outlives_the_report`
+- **Dimension 3.3** — A kill that never settles still posts the report, warns, and claims no empty tree → Test `test_unsettled_kill_still_reports`
 - **Dimension 3.4** — A release that fails after the report leaves its directory for the boot sweep → Test `test_late_release_failure_leaves_work_for_the_sweep`
 - **Dimension 3.5** — The worker polls again only after the release → Test `test_worker_polls_after_release`
 
@@ -194,7 +200,8 @@ afr_executor::ExecutorSlot          (new, internal)
 afr_agent::AgentRun.executor        Option<&dyn Executor>  ─►  &ExecutorSlot
 
 afr_sandbox::Sandbox                (internal trait)
-  + async fn kill(&self) -> Killed            Settled | Unsettled(reason); disk, cgroup and egress stay
+  + async fn kill(&self) -> Killed            Settled | Unsettled(reason); disk, cgroup and egress stay;
+                                              only Settled proves an empty process tree
     async fn destroy(self: Box<Self>) -> Result<()>   unchanged signature; kills first if not killed
 
 Wire, schema, OpenAPI and CLI: no change.
@@ -207,18 +214,18 @@ Wire, schema, OpenAPI and CLI: no change.
 | Build fails mid-run | failure | Disk, cgroup, bubblewrap or checkout fails after the model started | Run continues; sandbox calls answer `sandbox_unavailable` with the class; sandbox killed and destroyed at once; `sandbox_build_failed` logged | `test_build_failure_leaves_the_run_going` |
 | Static refusal | failure | Size out of bounds, a binding with no checkout, or an egress host that will not resolve or is private | Refused before any model request, as today | `test_static_refusals_precede_the_model_call` |
 | Memory refused | failure | Memory load refused before the build | No build starts; lease refused as today | `test_memory_refusal_starts_no_build` |
-| Late build failure | failure | Build fails after the run ended | Report keeps the run's ending; whatever was built is destroyed | `test_late_build_failure_keeps_the_run_ending` |
+| Late build failure | failure | Build fails after the run ended | Report keeps the run's ending; whatever was built is destroyed; nothing held; `sandbox_build_failed` logged | `test_late_build_failure_keeps_the_run_ending` |
 | Partial checkout | failure | Run cut or refused while a repository was still copying | Build stops at the next step; sandbox destroyed, never held | `test_partial_checkout_is_never_held` |
 | Cut during thaw | failure | Renewal refused while a hold thaws | Thaw finishes, sandbox destroyed, hold release logged | `test_cut_during_thaw_settles_the_hold` |
 | Waiter at failure | failure | A tool call waits on the slot when the build fails | The call answers `sandbox_unavailable` naming the class | `test_build_failure_leaves_the_run_going` |
-| Process outlives report | security | Kill skipped on some drop path | Every pre-report drop kills first; report waits on `populated 0` | `test_no_sandbox_process_outlives_the_report` |
-| Kill never settles | capacity | A process stuck in uninterruptible sleep | Bounded wait, report posts, warning names the lease | `test_unsettled_kill_still_reports` |
+| Process outlives report | security | Kill skipped on some drop path | Every pre-report drop kills first; report waits, bounded, on `populated 0`; only `Settled` claims an empty tree | `test_no_sandbox_process_outlives_the_report` |
+| Kill never settles | capacity | A process stuck in uninterruptible sleep | Bounded wait, report posts, warning names the lease; the record claims no empty tree, so no save reads the disk | `test_unsettled_kill_still_reports` |
 | Release fails late | failure | Unmount refused after the report | Logged with its duration; directory left for the boot sweep | `test_late_release_failure_leaves_work_for_the_sweep` |
 
 ## Invariants
 
 1. Nothing runs unsandboxed in a sandbox's place — the router holds no executor until the slot yields one, enforced by the slot's type.
-2. No report posts before its sandbox's kill was issued and awaited — `settle` takes the `Killed` record or the hold's lapse time, so the compiler rejects a call without one. An `Unsettled` record posts and warns.
+2. No report posts before its sandbox's kill was issued and awaited — `settle` takes the `Killed` record or the hold's lapse time, so the compiler rejects a call without one. An `Unsettled` record posts and warns, and proves no empty tree.
 3. A worker holds one lease's disk at a time — the release future is `#[must_use]` and `run_lease` awaits it before returning.
 4. The build is never dropped mid-step — it runs to a typed outcome, and the lease awaits that outcome on every ending.
 
@@ -226,11 +233,11 @@ Wire, schema, OpenAPI and CLI: no change.
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|----------|------------|--------------------|---------------|------------|
-| `lease_completed` fields `prepare_ms`, `checkout_ms`, `sandbox_wait_ms` | operator | A lease concludes | lease id, milliseconds | no tool arguments | `test_lease_completed_splits_prepare_and_checkout` |
+| `lease_completed` fields `egress_ms`, `prepare_ms`, `checkout_ms`, `sandbox_wait_ms` | operator | A lease concludes | lease id, milliseconds | no tool arguments | `test_lease_completed_splits_prepare_and_checkout` |
 | `agentsfleet_runner_sandbox_wait_duration_seconds` | operator | A sandbox tool call waited on the slot | outcome label only, no lease id | none needed | `test_sandbox_tool_waits_for_the_build` |
 | `agentsfleet_runner_sandbox_release_duration_seconds` | operator | Release ends after the report | outcome label only | none needed | `test_late_release_failure_leaves_work_for_the_sweep` |
 | `sandbox_kill_unsettled` | operator | Kill wait hits its bound | lease id, error code | none needed | `test_unsettled_kill_still_reports` |
-| `sandbox_build_failed` | operator | The build fails while the run is live | lease id, class, error code | no host, address or path | `test_build_failure_leaves_the_run_going` |
+| `sandbox_build_failed` | operator | The build fails, while the run is live or after it ended; never for a build a cut stopped | lease id, class, error code | no host, address or path | `test_build_failure_leaves_the_run_going`, `test_late_build_failure_keeps_the_run_ending` |
 
 The `segments.rs` comment that segments tile the lease changes: `prepare` and `checkout` now overlap `model`.
 
@@ -238,7 +245,7 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_lease_completed_splits_prepare_and_checkout` | Fake engine 30 ms, checkout 50 ms → fields near 30 and 50 |
+| 1.1 | unit | `test_lease_completed_splits_prepare_and_checkout` | Fake resolver 10 ms, engine 30 ms, checkout 50 ms → fields near 10, 30 and 50 |
 | 1.2 | manual | `manual_baseline_recorded_before_plan` | Baseline evidence file names both hosts, kernel versions and p50/p95 |
 | 2.1 | unit | `test_first_model_call_starts_before_the_sandbox_is_ready` | Engine stalled 500 ms → provider request time before ready time |
 | 2.2 | unit | `test_sandbox_tool_waits_for_the_build` | `shell` first, engine stalled → call runs on that engine's executor |
@@ -249,10 +256,10 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | 2.7 | unit | `test_supervisor_only_lease_starts_no_build` | Policy `http_request` only → engine `prepare` never called |
 | 2.8 | integration | `test_chat_streams_before_sandbox_ready` | Daemon plus runner, stalled engine → first frame before sandbox ready |
 | 2.9 | unit | `test_memory_refusal_starts_no_build` | Memory load refused → engine `prepare` never called, `startup_posture` |
-| 2.10 | unit | `test_late_build_failure_keeps_the_run_ending` | Answer processed, then build fails → report `processed` path kept, sandbox destroyed |
+| 2.10 | unit | `test_late_build_failure_keeps_the_run_ending` | Answer processed, then build fails → report `processed` path kept, sandbox destroyed, no hold, `sandbox_build_failed` logged; a cut-stopped build logs none |
 | 3.1 | unit | `test_report_posts_between_kill_and_release` | Recording sandbox and plane → kill, report, destroy |
-| 3.2 | kernel | `test_no_sandbox_process_outlives_the_report` | `sleep 600` running, lease ends → cgroup empty when report posts |
-| 3.3 | unit | `test_unsettled_kill_still_reports` | Tree never empties → `Unsettled`, report posted, `sandbox_kill_unsettled` logged |
+| 3.2 | kernel | `test_no_sandbox_process_outlives_the_report` | `sleep 600` running, lease ends → kill `Settled`, cgroup empty when report posts |
+| 3.3 | unit | `test_unsettled_kill_still_reports` | Tree never empties → `Unsettled` with its reason, report posted, `sandbox_kill_unsettled` logged, nothing asserts the tree empty |
 | 3.4 | unit | `test_late_release_failure_leaves_work_for_the_sweep` | Release fails → report already posted, directory kept |
 | 3.5 | unit | `test_worker_polls_after_release` | Release stalled → no lease poll until it returns |
 | 4.1 | manual | `manual_walkthrough_matches_code` | Reviewer follows each Part's file references at the merge commit |
@@ -263,7 +270,7 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Model starts before the sandbox; failures keep today's refusals (§2) | `make test-unit-rustd-runner` | exit 0 | P0 | |
 | R2 | Through the daemon, the stream precedes sandbox ready (§2) | `make test-integration-rustd` | exit 0 | P0 | |
-| R3 | No sandbox process outlives its report (§3) | `make test-runner-kernel` | exit 0 | P0 | |
+| R3 | After a settled kill, no sandbox process outlives its report (§3) | `make test-runner-kernel` | exit 0 | P0 | |
 | R4 | Baseline and after figures recorded (§1, §4) | `test -s playbooks/operations/acceptance/baselines/M237_001-lease-waits.md` | exit 0 | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -315,14 +322,40 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 - **Consults** — Nov 02, 2026, revision `77147e0d2`. Indy asked when bubblewrap runs and how to make the toolbox path faster. Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec".
 - **Dev host (Nov 02, `zombie-dev-worker-ant`)** — Debian 13.7, bare metal, kernel `6.12.111+deb13-amd64` running and `6.12.113-1` installed. Seven days of runner logs hold three `sandbox_prepare_completed` events.
 - **Owner decision** — Asked on Nov 02 with timelines for both choices, Indy chose B: a build failing mid-run leaves the run going. The agent then moved the egress bind back before the model call, so configuration errors still refuse the lease.
-- **M236_001 interaction** — M236_001 edits `afr_supervisor/src/{holds,lease_loop}/`. This spec merges first. M236 §5's restore then runs inside the build, after prepare and before checkout. A save after the kill and before the report fits §3, since the disk stays mounted until after the report. Under §2's owner decision, a failed restore leaves the run going without its workspace; M236 §5 decides whether a repair task waits instead.
+- **M236_001 interaction, restore** — M236_001 edits `afr_supervisor/src/{holds,lease_loop}/`, and this spec merges first. M236 §5's restore then runs inside the build after prepare, in checkout's place for each repository it restores. Checkout never runs over restored work: `check_out` creates its destination and fails on one that exists (`workspace_clone/checkout.rs:60`).
+- **M236_001 interaction, build steps** — The build therefore keeps prepare and each repository's checkout as separate steps, and sets the slot only after the last one lands. Under §2's owner decision, a failed restore leaves the run going without its workspace. M236 §5 decides whether a repair task waits instead.
+- **M236_001 interaction, save** — A save fits §3 only after a `Settled` kill and before destroy, since the disk stays mounted until after the report. An `Unsettled` kill proves no writer stopped, so M236 saves nothing from it. This spec itself saves and uploads no workspace.
 - **Workspace snapshots and the toolbox** — A Cloudflare R2 snapshot carries the workspace disk's contents: local commits, uncommitted edits and untracked files. It never carries the toolbox, which every host of a release holds as one read-only image by digest. The toolbox mount adds no copy on the host and holds no tenant data, so fleets sharing it is safe.
 - **Restore under each engine** — Under bubblewrap the host mounts the lease disk, so M236's restore writes there through `Sandbox::workspace`. Under Firecracker `Sandbox::workspace` returns none, so restore and checkout must run in the guest or write into the image before attach. M236 §5 picks one mechanism that serves both engines.
 - **Model reviews** — EGM review, Claude Opus 5.5, Nov 02: zoom-out 8, comprehension 8, readiness 10, design 10 findings. Accepted: split into two Workstreams; static checks before the model call; build after memory loading; typed outcome with no drop-cancel; one failure mechanism; slot in `afr_executor`; bounded kill; baseline first; metric names on existing conventions. Owner question kept: §2's failure rule.
 - **Greptile on PR #797** — two P2 findings, both fixed: test 2.5 contradicted end rule 1, and a timed-out kill had no report path. `Killed` is now a record, `Settled` or `Unsettled`.
+- **Codex review** — Codex reviewed baseline `2f8c878c0` on Nov 02, before decision B landed. Its five findings are wording, each folded in above:
+  - Only a `Settled` kill proves an empty process tree (§3, R3).
+  - A processed ending proves the answer, not the workspace (§2, end rule 3).
+  - Restore takes checkout's place, so checkout never overwrites restored work (Discovery, `runner_execution.md`).
+  - The build and the lease end keep places for M236's restore and save (Discovery).
+  - M237_002 §1's cache drop is advice, so its test measures resident pages.
+- **Codex against decision B** — Codex read the text in which egress ran inside the build. Under B the egress bind stays ahead of the model call, so §1 now times it as `egress_ms`. No other finding depends on the failure rule.
+- **Codex's separate findings** — Six proposals stay outside M237, each a spec of its own if wanted:
+  - a boot-time trial sandbox, since the probe checks only that bwrap is executable (`afr_sandbox/src/probe/mod.rs:165`);
+  - the deploy window in which the new toolbox is staged before the restart (`deploy/baremetal/deploy.sh:300-304`);
+  - Landlock socket scopes for `allow_all` leases, which share the host network namespace (`egress/mod.rs:149`);
+  - an egress resolution cache, network-namespace churn and the checkout copy, each waiting on §1's figures.
+
+  A reflink checkout cannot help: ext4 has no reflink, and the copy crosses file systems. Asked Nov 02 which become specs; Indy has not answered yet.
+- **Dev host kernel** — The dev host stays on `6.12.111` until M237 ships, so before and after figures share one kernel. Indy chose this on Nov 02; the quote is below.
+- **PLAN (Nov 02, 2026: 10:38 PM)** — Intent restated: the first model request stops waiting on sandbox setup, and the report stops waiting on disk cleanup. A failed build leaves the run going. ASSUMPTIONS I'M MAKING:
+  1. §1 lands as its own commit before any §2 code: three timers, then the baseline file.
+  2. `sandbox_ms` stays on `lease_completed` as the whole setup, beside the three new fields.
+  3. Seven days on the dev host hold three prepares, too few for a p95. The kernel lane's budgets trial carries the distribution.
+  4. The kernel lane's OrbStack machine is recreated from `docs/development.md` before §3's kernel test.
+  5. M233_001 also edits `segments.rs`; whichever lands second rebases.
+  6. The Mac unit lane's `base64` failure needs Indy's override at the Pull Request: "Pass for now".
 - **Open blockers** — none.
-- **Metrics review** — `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families added.
+- **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
 - **Deferrals and transfers** — none.
 
 > Owner (Indy, Nov 02, 2026 09:52 PM): "B: model carries on" — note: "i assume they (setup -> sandbox) and model are not connected? they can be independent?" — context: M237_001 §2, a build that fails while the run is live.
+
+> Owner (Indy, Nov 02, 2026 10:38 PM): "Reboot after M237 ships" — context: when `zombie-dev-worker-ant` moves from kernel `6.12.111` to the installed `6.12.113`.
