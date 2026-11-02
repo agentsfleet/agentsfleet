@@ -19,7 +19,7 @@ use super::segments::{Segment, Stopwatch};
 use super::{LeaseRun, failed};
 use crate::activity::ActivitySink;
 use crate::egress::Bound;
-use crate::holds::Release;
+use crate::holds::{HoldKey, Release};
 use crate::report::Ending;
 
 const DETAIL_SANDBOX: &str = "this host could not build a sandbox for the run";
@@ -56,7 +56,10 @@ impl LeaseRun<'_> {
                     .into();
             }
         };
-        let bound = match self.bind().await {
+        let resolving = self.timeline.start(Segment::Egress);
+        let bound = self.bind().await;
+        resolving.stop();
+        let bound = match bound {
             Ok(bound) => bound,
             Err(refused) => {
                 self.release_hold();
@@ -64,20 +67,17 @@ impl LeaseRun<'_> {
             }
         };
         let key = self.hold_key(limits, &bound);
-        let held = self.revive(&key, &bound).await;
-        let revived = held.is_some();
-        mark_reused(revived);
-        let sandbox = match held {
-            Some(sandbox) => sandbox,
-            None => match self.prepare(limits, &bound).await {
-                Ok(sandbox) => sandbox,
-                Err(refused) => return (*refused).into(),
-            },
+        let (sandbox, revived) = match self.acquire(&key, limits, &bound).await {
+            Ok(acquired) => acquired,
+            Err(refused) => return (*refused).into(),
         };
         let checked_out = if revived {
             Ok(())
         } else {
-            self.check_out(sandbox.as_ref()).await
+            let checking_out = self.timeline.start(Segment::Checkout);
+            let checked_out = self.check_out(sandbox.as_ref()).await;
+            checking_out.stop();
+            checked_out
         };
         let ending = match checked_out {
             Ok(()) => self.in_sandbox(memory, sandbox.as_ref(), sink, setup).await,
@@ -128,6 +128,27 @@ impl LeaseRun<'_> {
         };
         tracing::warn!(error_code, lease_id, reason, hosts, event, detail);
         failed(FailureClass::StartupPosture, detail)
+    }
+
+    /// The fleet's held sandbox filed under `key`, or a fresh one, and whether
+    /// it was held. Timed as the prepare part either way: the watch records
+    /// when it drops, so a refused build is timed too.
+    async fn acquire(
+        &self,
+        key: &HoldKey,
+        limits: Limits,
+        bound: &Bound,
+    ) -> Result<(Box<dyn Sandbox>, bool), Box<Ending>> {
+        let _preparing = self.timeline.start(Segment::Prepare);
+        let held = self.revive(key, bound).await;
+        mark_reused(held.is_some());
+        match held {
+            Some(sandbox) => Ok((sandbox, true)),
+            None => self
+                .prepare(limits, bound)
+                .await
+                .map(|sandbox| (sandbox, false)),
+        }
     }
 
     /// Builds a fresh sandbox enforcing `limits` and reaching what `bound`
@@ -196,3 +217,7 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/egress.rs"]
 mod egress_tests;
+
+#[cfg(test)]
+#[path = "tests/setup_parts.rs"]
+mod parts_tests;

@@ -89,7 +89,7 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/afr_supervisor/src/lease_loop/{mod,workspace,hold,checkout,drive,settle,segments}.rs` | EDIT | Build beside the run, typed build outcome, kill before report, release after it, timers |
 | `rustd/crates/afr_supervisor/src/lease_loop/build.rs` | CREATE | The build future and its outcome, kept out of `mod.rs`, which is near the length cap |
 | `rustd/crates/afr_supervisor/src/lease_loop/tests/` | EDIT | Ordering, failure, cancellation and timing proofs |
-| `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill |
+| `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox,resolver,rig}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill; a stalled resolver times the egress bind |
 | `rustd/crates/afr_supervisor/src/holds/mod.rs` and tests | EDIT | A park fallback kills before it destroys |
 | `rustd/crates/afr_executor/src/api/mod.rs` and a new `slot` module with tests | EDIT, CREATE | `ExecutorSlot`: set once by the build, awaited by the router |
 | `rustd/crates/afr_agent/src/{engine,loop,router}/` and tests | EDIT | A run takes the slot; the router awaits it; run end reads it without waiting |
@@ -136,7 +136,7 @@ Before PLAN, the implementing agent records today's lease waits as Baseline evid
 
 Under §2's owner decision the egress bind stays ahead of the model call. Its share of `sandbox` is therefore the setup wait this spec leaves in place.
 
-- **Dimension 1.1** — `lease_completed` carries `egress_ms`, `prepare_ms` and `checkout_ms` apart → Test `test_lease_completed_splits_prepare_and_checkout`
+- **Dimension 1.1** — `lease_completed` carries `egress_ms`, `prepare_ms` and `checkout_ms` apart → Test `test_lease_completed_splits_prepare_and_checkout` — DONE
 - **Dimension 1.2** — The baseline file exists before PLAN with both hosts' figures → Test `manual_baseline_recorded_before_plan`
 
 ### §2 — The sandbox builds beside the first model call

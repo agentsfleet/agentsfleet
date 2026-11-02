@@ -21,6 +21,9 @@ const MODEL_MS: &str = "model_ms";
 const TOOLS_MS: &str = "tools_ms";
 const REPORT_MS: &str = "report_ms";
 const FIRST_TOKEN_MS: &str = "first_token_ms";
+/// The three parts inside the sandbox segment, which the wall does not sum.
+const PARTS: [&str; 3] = ["egress_ms", "prepare_ms", "checkout_ms"];
+const CHECKOUT_MS: &str = "checkout_ms";
 /// Six terminal fields, including five sequential time segments.
 const FIELDS: [&str; 6] = [
     MEMORY_MS,
@@ -90,6 +93,17 @@ async fn test_lease_completed_logs_its_segments() {
         millis(&line, FIRST_TOKEN_MS).unwrap() <= model,
         "the first token is inside the model's time"
     );
+    let parts: Vec<Option<u64>> = PARTS.iter().map(|part| millis(&line, part)).collect();
+    assert!(
+        parts.iter().all(Option::is_some),
+        "a fresh sandbox logs every part: {:?}",
+        line.fields
+    );
+    assert!(
+        parts.iter().flatten().sum::<u64>() <= millis(&line, SANDBOX_MS).unwrap(),
+        "the parts sit inside the sandbox segment: {:?}",
+        line.fields
+    );
 }
 
 /// Each segment times its own step: a late hydrate is memory time, the agent's run is model time with no tool time,
@@ -158,14 +172,14 @@ async fn test_a_refused_sandbox_still_logs_its_segment() {
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
 
     let line = capture.only(EVENT_FAILED);
-    for present in [MEMORY_MS, SANDBOX_MS, REPORT_MS, CLASS] {
+    for present in [MEMORY_MS, SANDBOX_MS, PARTS[0], PARTS[1], REPORT_MS, CLASS] {
         assert!(
             line.field(present).is_some(),
             "{present}: {:?}",
             line.fields
         );
     }
-    for absent in [MODEL_MS, TOOLS_MS, FIRST_TOKEN_MS] {
+    for absent in [CHECKOUT_MS, MODEL_MS, TOOLS_MS, FIRST_TOKEN_MS] {
         assert_eq!(line.field(absent), None, "{absent}: {:?}", line.fields);
     }
 }
@@ -194,7 +208,8 @@ async fn test_unstarted_segment_is_absent() {
     );
     assert!(millis(&line, REPORT_MS).is_some(), "the report settled");
     assert!(line.field(CLASS).is_some(), "a failure names its class");
-    for absent in [SANDBOX_MS, MODEL_MS, TOOLS_MS, FIRST_TOKEN_MS] {
+    let unstarted = [SANDBOX_MS, MODEL_MS, TOOLS_MS, FIRST_TOKEN_MS];
+    for absent in unstarted.into_iter().chain(PARTS) {
         assert_eq!(
             line.field(absent),
             None,
