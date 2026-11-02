@@ -13,12 +13,19 @@ The [sandbox evaluation](../../architecture/sandbox_evaluation.md) owns save/res
 
 ## Review status
 
-Two fresh-context Sol Max rounds completed; their findings and completed reads are in [round 1](../development-autonomy/sol-round-1.md) and [round 2](../development-autonomy/sol-round-2.md).
-[Astra's completeness review](../development-autonomy/astra-completeness.md) completed after those revisions; the scope is ready for detailed spec drafting.
+Two Sol Max reviews and Astra's completeness review completed.
+Their corrections are recorded in the owning scenario and pending M236 draft.
+M236 still needs its named technical design decisions before implementation.
 
-These are design/source reviews, not runtime proof or the full EGM pipeline. The pending M236 draft still has explicit technical blockers before implementation.
+## Work order
 
-The [owner-prioritized work order](../development-autonomy/README.md) records sequencing without duplicating scenario mechanisms.
+1. Native memory recall and varied social replies: verified in the launch ledger.
+2. Chat and approval polish: implemented in PR #796; the targeted signed-in page and preflight passed ten checks.
+3. M224: eight native behavior proofs are complete and the custom evidence checker is removed; final repository results belong to PR #796.
+4. Orly 0.28: M15_002 is drafted in Orly PR #75; implementation follows review.
+5. M236: finish the unified goal/Jev/durable-repair design before implementation.
+6. CLI: cancellation, bounded polling/permanent errors and incomplete approval pagination are fixed in PR #796.
+7. Demonstrate Grafana/GitHub monitoring and repair with the existing scheduler in development.
 
 ## Approved M224 finish plan
 
@@ -29,13 +36,13 @@ Finish trace/stopping behavior, actual-model cases and native recall.
 After verification, replace the bespoke checker and obsolete commands with concise evidence.
 Retain runtime policy tests, resolve current gate failures and publish the verified changes in a PR.
 
-Current evidence and failed observations belong only in the [launch ledger](../../../playbooks/operations/acceptance/baselines/M224_001-launch.md).
+Current evidence belongs only in the [concise native ledger](../../../playbooks/operations/acceptance/baselines/M224_001-ci-evidence.md); the linked launch record retains earlier observations.
 The [M224 spec](../../v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md) owns milestone closure; [M224_002](../../v2/active/M224_002_P1_DOCS_UI_APPROVAL_AND_FLEET_ACTIVITY_CLARITY.md) owns the requested chat/approval changes and completion amendment.
 
 ## Restart prompt
 
 - Read AGENTS.md, the linked M224 specs/ledger and the canonical durable-repair scenario; recheck remote branch and PR state.
-- Finish the approved M224 work without claiming incomplete live cases passed or authoring the fleet's demonstration fix in Codex.
+- Recheck PR #796 final verification and CI; M224 native proof and checker cleanup are complete. Codex must not supply the fleet's demonstration fix.
 - Draft one goal-driven autonomy implementation spec from the reviewed scenario, tracing current source and resolving the explicit design choices before runtime implementation.
 - Use Grafana and GitHub in development with the existing scheduler; Elasticsearch and a new sandbox backend are not prerequisites.
 - Preserve reviewed setup/grant boundaries, cumulative limits and human merge/deploy authority.

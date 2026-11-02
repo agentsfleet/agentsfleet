@@ -76,6 +76,7 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
                 suggestion: "retry",
                 code: "UZ-INTERNAL-001",
                 status: 503,
+                transient: true,
                 requestId: null,
               }),
             ),

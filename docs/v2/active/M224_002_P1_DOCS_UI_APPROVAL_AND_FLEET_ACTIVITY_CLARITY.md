@@ -35,7 +35,7 @@
 1. `AGENTS.md`, `.orly/LOCAL.md` and `ui/packages/app/AGENTS.md` — repository and chat ownership rules.
 2. `docs/DESIGN_SYSTEM.md` — shared row controls, accessible labels and activity colors.
 3. `ui/packages/app/node_modules/next/dist/docs/01-app/03-api-reference/01-directives/use-client.md` — existing browser boundaries remain in place.
-4. `playbooks/operations/acceptance/ci_evidence_format.md` — complete trace, model and regression proof requirements.
+4. `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.md` — concise native behavior, trace, model and regression ledger.
 
 ## Files Changed (blast radius)
 
@@ -53,8 +53,10 @@
 | `ui/packages/app/components/domain/chat/ChatFailure.tsx`; `ui/packages/app/components/domain/tool-call-activity{,.test}.ts`; `ui/packages/app/tests/fleet-tool-progress.test.tsx` | EDIT | use calm inline recovery notices, action-specific tool groups and enclosed command success icons |
 | `rustd/crates/afr_tools/src/http_request/{mod,body_tests}.rs`; `docs/architecture/runner_fleet.md` | EDIT / CREATE | keep explicit truncation notices without sending the known-incomplete megabyte prefix to inference |
 | `rustd/crates/afr_agent/src/trace/{mod,tests}.rs`; `rustd/crates/afd_fleet_runtime/tests/definition/corpus.rs` | EDIT | retain call inventory before previews and assert the approved public read-only fixture policy |
-| `docs/architecture/*.md`; `docs/architecture/scenarios/*.md`; `docs/reviews/development-autonomy/`; `docs/reviews/space-sandbox/{next-specs-handoff,orly-egm-jev-handoff-prompt}.md` | EDIT / CREATE | reconcile current behavior and proposed unified autonomy scope; retain the requested independent reviews |
+| `docs/architecture/*.md`; `docs/architecture/scenarios/*.md`; `docs/reviews/space-sandbox/{next-specs-handoff,orly-egm-jev-handoff-prompt}.md` | EDIT / CREATE | reconcile current behavior and proposed unified autonomy scope without separate review records |
 | `docs/v2/pending/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md` | CREATE | draft the reviewed unified autonomy scope without claiming implemented behavior |
+| `cli/src/lib/{http,http-retry}.ts`; `cli/src/services/http-client.ts`; `cli/src/errors/index.ts`; `cli/src/commands/{fleet_steer,fleet_steer_events,approvals,approvals_pending}.ts`; their focused CLI tests | EDIT / CREATE | stop cancelled requests and retries, bound event polling and report incomplete approval walks |
+| `docs/reviews/development-autonomy/` | DELETE | remove separate review records at the owner's request; canonical decisions remain in the scenario and pending specification |
 | This spec; `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md`; `docs/DESIGN_SYSTEM.md`; the M224 launch ledger | EDIT / CREATE | retain requested behavior, actual evidence and open closure requirements |
 
 ## Applicable Rules
@@ -178,7 +180,7 @@ No product analytics events, operator signals or monitoring rules change.
 | Browser | `setup checks use enclosed icons and incoming messages have readable details` | desktop/mobile fixture → 14px circle checks, readable message disclosure and keyboard-expandable soft failure, with no horizontal overflow |
 | Application | `test_slack_received_uses_readable_label_without_empty_details` | native event frame through the real signed-in page → Slack label and no empty inspector |
 | Manual | `public Definition comparison` | source JSON and accepted revision 2 → identical public read-only network and unchanged repository boundaries |
-| Manual | `draft regression and trace comparison` | passing head and 17 omitted calls → regression pass retained, complete-trace acceptance incomplete |
+| Manual | `draft regression and trace comparison` | original summary omits 17 rows; all 50 full records are recovered without truncation and include the passing regression/check read |
 | Unit | `should_reclaim_old_previews_before_omitting_later_calls` | fifty calls with oversized optional previews → complete inventory and arguments, zero omissions, valid byte bound |
 | Unit | `should_count_a_call_when_essential_rows_alone_exhaust_the_budget` | essential rows exceed byte capacity → honest omitted count and a valid bounded trace |
 | Unit | `responder_definition_holds_no_write_reach` | native responder fixture → public read-only HTTP, empty allowlist and no write reach |
@@ -187,6 +189,13 @@ No product analytics events, operator signals or monitoring rules change.
 | Manual | `native hello after diagnosis` | greeting after a diagnosed incident → short social reply, present empty call inventory and no incident recap |
 | Manual | `native varied social replies` | casual/friendly/thanks wording → brief replies and present empty call inventories; no literal keyword routing |
 | Unit | `should_omit_a_truncated_body_without_hiding_its_incomplete_status` | one-MiB truncated response → explicit status/type/truncation, bounded omission notice and no body prefix |
+| Integration | `cancelling an accepted HTTP write stops waiting without replaying it` | real local server accepts POST, then caller aborts → one write and cancellation reported |
+| Unit | `Effect interruption aborts the HTTP request owned by that fiber` | interrupt the request fiber → its fetch signal aborts |
+| Unit | `event polling surfaces HTTP %s without another read` | 401, 403 or 404 → original error returned after one read |
+| Unit | `event polling interrupts a stalled read at the overall deadline` | stalled read and virtual clock → timeout result and interrupted request |
+| Unit | `event polling waits for an admitted event to reach the read store` | accepted event initially absent → bounded reads of the same identity until visible, with no resend |
+| Unit | `event polling surfaces disappearance after observing the admitted event` | known event later disappears → exact native error after two reads |
+| Unit | `approval page cap reports whether more gates remain: %s` | last allowed page with/without continuation → incomplete-list error or complete results |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -194,9 +203,9 @@ No product analytics events, operator signals or monitoring rules change.
 | --- | --- | --- | --- | --- | --- |
 | R1 | Stable approval rows and truthful errors | `bun --cwd ui/packages/app run test -- tests/approvals-list` | exit 0 | P1 | PASS — included in application coverage lane |
 | R2 | Enclosed icons and readable disclosures on desktop/mobile | `BASE_URL=http://127.0.0.1:1 bun --cwd ui/packages/app run test:e2e tests/e2e/chat-typography.spec.ts` | six tests pass | P1 | PASS |
-| R3 | Slack message through the real application page | `bun --cwd ui/packages/app run test:e2e:acceptance --project=journeys tests/e2e/acceptance/fleet-reply-parts.spec.ts --grep test_slack_received_uses_readable_label_without_empty_details` | one test passes | P1 | INCOMPLETE — supported acceptance host required |
+| R3 | Slack message through the real application page | `bun --cwd ui/packages/app run test:e2e:acceptance --project=journeys tests/e2e/acceptance/fleet-reply-parts.spec.ts --grep test_slack_received_uses_readable_label_without_empty_details` | one target test and preflight pass | P1 | PASS — local production page with native development backend: 10 passed, including nine preflight checks |
 | R4 | Public reference JSON matches native setups | Manual `public Definition comparison`: inspect both accepted revision-2 Definitions and compare their network and repository fields with the two fixture files | public read reach matches; repository access/base unchanged | P1 | PASS |
-| R5 | Passing regression cannot hide missing trace evidence | Manual `draft regression and trace comparison`: inspect draft #6 head, regression run and native repair event in the launch ledger | three assertions pass; omitted calls remain 17; complete-trace grade incomplete | P0 | PASS — limitation recorded |
+| R5 | Passing regression and complete native records agree | Manual `draft regression and trace comparison`: inspect draft #6 head, regression run and all 50 native records in the launch ledger | three assertions pass; complete records recovered; compact summary limitation stays explicit | P0 | PASS — full native record recovery recorded |
 | S1 | Repository work gate | `orly gate work` | exit 0 | P0 | pending |
 | S2 | Declared unit lane | `make test-unit-all` | exit 0 | P0 | pending |
 | S3 | Declared lint lane | `make lint-all` | exit 0 | P0 | pending |
@@ -206,8 +215,8 @@ No product analytics events, operator signals or monitoring rules change.
 
 ### Behaviour evals
 
-No full model-campaign pass is claimed; observed social follow-ups remain separately attributed in the launch ledger.
-M224_001 retains the eight actual-model cases, complete trace and memory witnesses; its owner-approved deferrals are canonical there. This workstream does not reinstate development rollout identity checks, full Linux acceptance, the incident demonstration or production launch as M224 blockers.
+The concise evidence ledger attributes each native behavior proof to its saved setup and retains earlier failed observations. Social follow-ups remain separately recorded; no unchanged statistical campaign is claimed.
+M224_001 records the eight native behavior proofs, complete trace and memory witnesses; its owner-approved deferrals are canonical there. This workstream does not reinstate development rollout identity checks, full Linux acceptance, the incident demonstration or production launch as M224 blockers.
 
 ## Dead Code Sweep
 
@@ -219,7 +228,7 @@ Retain the generic JSON inspector for non-message events and tool inputs.
 
 A general Effect-code refactor or performance claim requires its own concrete findings and measurements.
 Original-PR authority and durable cross-request repair continuation remain proposed work.
-This PR neither grants production-release authority nor closes M224_001.
+M224_001 owns the separate development-evidence closure; this workstream grants no production-release authority.
 
 ## Product Clarity (authoring record)
 
@@ -247,7 +256,7 @@ He directed public fleet access and asked that every reusable JSON definition re
 He also requested that the specifications be written and pushed in the PR.
 
 The approved behavior is concrete; no new product scope or model authority is inferred.
-The command-line Effect code review remains a recorded follow-up, not a demonstrated performance repair.
+The owner-authorized CLI fixes preserve cancellation, distinguish transient errors and report incomplete approval walks; no performance claim is made.
 
 ## Approved completion amendment: Nov 01, 2026
 
@@ -274,4 +283,22 @@ Collapsed tool groups now retain recorded action verbs, including job-log/status
 
 - **Dimension 5.9:** known-truncated HTTP content stays explicitly incomplete without an oversized model payload → Test `should_omit_a_truncated_body_without_hiding_its_incomplete_status`.
 The one-MiB capture cap, HTTP status, policy checks and complete-body behavior remain unchanged.
-The large-log provider failure remains a failed observation until the updated runtime is deployed and the real-model case is rerun.
+The deployed-runtime rerun names the truncated log and stops after six reads, with no source or memory call afterward. The earlier provider failure stays recorded.
+
+## Owner-requested CLI correction
+
+Indy requested: "fix the CLI fixes" and "remove the docs/reviews/development-autonomy folder".
+The CLI work covers the three reported defects, with no new command or flag.
+Cancellation stops local requests and backoff; an accepted remote message may still run.
+Permanent event-read errors return directly, and the polling deadline also bounds an active read.
+An approval walk with a remaining cursor at its page cap fails instead of reporting a complete list.
+
+- **Dimension 6.1:** cancelling an accepted HTTP write stops local waiting without replay → Test `cancelling an accepted HTTP write stops waiting without replaying it`.
+- **Dimension 6.2:** interrupting the owning Effect fiber aborts its fetch → Test `Effect interruption aborts the HTTP request owned by that fiber`.
+- **Dimension 6.3:** permanent event-read failures surface immediately → Test `event polling surfaces HTTP %s without another read`.
+- **Dimension 6.4:** the polling deadline interrupts an active stalled read → Test `event polling interrupts a stalled read at the overall deadline`.
+- **Dimension 6.5:** an admitted event may wait for its first native read-store record → Test `event polling waits for an admitted event to reach the read store`.
+- **Dimension 6.6:** a later disappearance of an observed event surfaces immediately → Test `event polling surfaces disappearance after observing the admitted event`.
+- **Dimension 6.7:** a remaining approval cursor at the page cap reports an incomplete walk → Test `approval page cap reports whether more gates remain: %s`.
+
+All in-scope Dimensions are DONE. The real-page Slack test passed with its preflight checks; final repository verification is recorded in PR #796 Session notes 2.

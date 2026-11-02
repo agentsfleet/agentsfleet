@@ -83,6 +83,7 @@ export const fetchGates = (
   wsId: string,
   token: Redacted.Redacted<string>,
   filters: { readonly fleetId?: string | undefined; readonly status?: string | undefined },
+  signal?: AbortSignal,
 ): Effect.Effect<ReadonlyArray<ApprovalGate>, CliError, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
@@ -92,10 +93,17 @@ export const fetchGates = (
       const res: ApprovalListResponse = yield* http.request<ApprovalListResponse>({
         path: `${wsApprovalsPath(wsId)}?${approvalsQuery({ ...filters, cursor })}`,
         token,
+        ...(signal ? {signal} : {}),
       });
       gates.push(...(res.items ?? []));
-      if (!res.next_cursor) break;
-      cursor = res.next_cursor;
+      cursor = res.next_cursor ?? undefined;
+      if (!cursor) break;
+    }
+    if (cursor) {
+      return yield* Effect.fail(new ValidationError({
+        detail: `approval list is incomplete after ${GATE_MAX_PAGES} pages`,
+        suggestion: "filter by fleet with --fleet <fleet_id> and retry",
+      }));
     }
     return gates;
   });
