@@ -14,7 +14,7 @@ use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 use jiff::Timestamp;
 
-use super::{BuiltUnder, HoldKey, Holds, Release};
+use super::{BuiltUnder, HoldKey, Holds, Parked, Release};
 use crate::test_support::FakeEngine;
 
 const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
@@ -57,10 +57,20 @@ pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Sandbox> {
     engine.prepare(request).await.unwrap()
 }
 
+/// Parks a fresh sandbox for `fleet`, and ends one the keeper refuses as the
+/// lease would after its report.
 pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<Timestamp> {
-    holds
+    match holds
         .park(key(fleet), id(LEASE), sandbox(engine).await)
         .await
+    {
+        Parked::Held(until) => Some(until),
+        Parked::Refused(sandbox) => {
+            sandbox.destroy().await.unwrap();
+            None
+        }
+        Parked::Gone => None,
+    }
 }
 
 /// Every release logged, as (fleet, reason), in the order they happened.

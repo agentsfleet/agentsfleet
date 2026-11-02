@@ -92,7 +92,9 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/agentsfleetd/{Cargo.toml,src/lib.rs}`, `rustd/crates/afr_executor/Cargo.toml` | EDIT | A stalled engine in the daemon suite needs `async-trait`; the slot's tests need paused time |
 | `rustd/crates/afr_supervisor/src/lease_loop/tests/` | EDIT | Ordering, failure, cancellation and timing proofs |
 | `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox,resolver,rig}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill; a stalled resolver times the egress bind |
-| `rustd/crates/afr_supervisor/src/holds/mod.rs` and tests | EDIT | A park fallback kills before it destroys |
+| `rustd/crates/afr_supervisor/src/holds/{mod,keeper}.rs` and tests, `heartbeat/tests.rs`, `drainer/tests.rs` | EDIT | A park the keeper refuses comes back to the lease, which kills it now and releases it after the report |
+| `rustd/crates/afr_sandbox/src/{cgroup,engine}/` | EDIT | `cgroup.kill`, then a bounded wait on `populated 0`; the `Killed` record |
+| `rustd/crates/afr_sandbox/examples/kernel_lane/kill.rs` | CREATE | The kernel trial: `setsid sleep 600` is gone after a settled kill, and the disk waits for the release |
 | `rustd/crates/afr_executor/src/api/mod.rs` and a new `slot` module with tests | EDIT, CREATE | `ExecutorSlot`: set once by the build, awaited by the router |
 | `rustd/crates/afr_agent/src/{engine,loop,router}/` and tests | EDIT | A run takes the slot; the router awaits it; run end reads it without waiting |
 | `rustd/crates/afr_providers/tests/support/mod.rs`, `rustd/crates/afr_tools/src/testing.rs` | EDIT | Test builders of `AgentRun` pass a slot |
@@ -178,11 +180,11 @@ At lease end the order becomes: `keep` freezes a held sandbox or kills any other
 
 Only `Settled` proves the sandbox's process tree is empty. `Unsettled` still lets the report post the run's ending, and a `sandbox_kill_unsettled` warning names the lease. It proves no writer has stopped, so nothing may save the workspace on its strength.
 
-- **Dimension 3.1** — The order is kill, report, then release → Test `test_report_posts_between_kill_and_release`
+- **Dimension 3.1** — The order is kill, report, then release → Test `test_report_posts_between_kill_and_release` — DONE
 - **Dimension 3.2** — After a `Settled` kill, no sandbox process runs once the report is posted → Test `test_no_sandbox_process_outlives_the_report`
-- **Dimension 3.3** — A kill that never settles still posts the report, warns, and claims no empty tree → Test `test_unsettled_kill_still_reports`
-- **Dimension 3.4** — A release that fails after the report leaves its directory for the boot sweep → Test `test_late_release_failure_leaves_work_for_the_sweep`
-- **Dimension 3.5** — The worker polls again only after the release → Test `test_worker_polls_after_release`
+- **Dimension 3.3** — A kill that never settles still posts the report, warns, and claims no empty tree → Test `test_unsettled_kill_still_reports` — DONE
+- **Dimension 3.4** — A release that fails after the report leaves its directory for the boot sweep → Test `test_late_release_failure_leaves_work_for_the_sweep` — DONE
+- **Dimension 3.5** — The worker polls again only after the release → Test `test_worker_polls_after_release` — DONE
 
 ### §4 — The architecture page tells the new order
 
@@ -207,9 +209,12 @@ afr_executor::ExecutorSlot<'a>       (new, internal; the one ExecutorSource)
 afr_agent::AgentRun.executor        Option<&dyn Executor>  ─►  &dyn ExecutorSource
 
 afr_sandbox::Sandbox                (internal trait)
-  + async fn kill(&self) -> Killed            Settled | Unsettled(reason); disk, cgroup and egress stay;
-                                              only Settled proves an empty process tree
+  + async fn kill(&self) -> Killed            Settled | Unsettled(afr_sandbox::Error); disk, cgroup and
+                                              egress stay; only Settled proves an empty process tree
     async fn destroy(self: Box<Self>) -> Result<()>   unchanged signature; kills first if not killed
+
+afr_supervisor::holds::Holds::park  -> Parked   Held(lapse) | Refused(sandbox) | Gone; a refused
+                                              sandbox comes back for the lease to kill and release
 
 Wire, schema, OpenAPI and CLI: no change.
 ```
@@ -352,6 +357,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 
   A reflink checkout cannot help: ext4 has no reflink, and the copy crosses file systems. Asked Nov 02 which become specs; Indy has not answered yet.
 - **Built shape (§2)** — The spec's `Arc<dyn Executor>` became a borrow behind the `ExecutorSource` trait. A slot holding the borrow is invariant in its lifetime, so `AgentRun` could not name it; the trait object hides it, and `Sandbox::executor` keeps its signature. The typed outcome is the slot's fill, because nothing reads a separate enum. `sandbox_build_failed` replaces `sandbox_refused`, which no dashboard or alert names, because a failed build no longer refuses the lease.
+- **Built shape (§3)** — `keep` answers a `Fate`: held until a time, killed and waiting for release, or gone. `settle` takes the `Fate`, so no report settles before its kill. The release runs beside the live tail's drain, so neither stalls the other, and the lease returns only after both. The park fallback no longer destroys inside the hold keeper: `park` hands a refused sandbox back as `Parked::Refused`, with its release already counted. The unsandboxed engine answers `Unsettled`, since no cgroup proves its processes gone.
 - **Dev host kernel** — The dev host stays on `6.12.111` until M237 ships, so before and after figures share one kernel. Indy chose this on Nov 02; the quote is below.
 - **PLAN (Nov 02, 2026: 10:38 PM)** — Intent restated: the first model request stops waiting on sandbox setup, and the report stops waiting on disk cleanup. A failed build leaves the run going. ASSUMPTIONS I'M MAKING:
   1. §1 lands as its own commit before any §2 code: three timers, then the baseline file.

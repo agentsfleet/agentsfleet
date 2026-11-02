@@ -56,6 +56,12 @@ const PIDS_MAX: &str = "pids.max";
 const IO_MAX: &str = "io.max";
 /// Writing `1` kills every process in the cgroup and its descendants.
 const CGROUP_KILL: &str = "cgroup.kill";
+/// Whether the cgroup, or any cgroup below it, still holds a live process.
+const CGROUP_EVENTS: &str = "cgroup.events";
+/// The `cgroup.events` line an emptied tree reads.
+const UNPOPULATED: &str = "populated 0";
+/// What a tree still holding a process past the drain bound is told.
+const STILL_POPULATED: &str = "a process outlived the kill past the drain bound";
 /// What a cgroup's memory limit did, its `oom_kill` count among it.
 pub(crate) const MEMORY_EVENTS: &str = "memory.events";
 /// The leaf bubblewrap and the executor run in.
@@ -213,6 +219,34 @@ impl LeaseCgroup {
     /// The kernel refuses the write, as one older than 5.14 does.
     pub fn kill(&self) -> Result<()> {
         self.write(CGROUP_KILL, KILL)
+    }
+
+    /// Kills every process in the cgroup, then waits for `cgroup.events` to
+    /// read `populated 0`, bounded as a removal is. Polls on the async
+    /// runtime, since each read is one small kernel file.
+    ///
+    /// # Errors
+    /// The kill is refused, the events cannot be read, or a process is still
+    /// alive once the bound passes.
+    pub async fn kill_and_drain(&self) -> Result<()> {
+        self.kill()?;
+        for _poll in 0..DRAIN_TRIES {
+            if !self.populated()? {
+                return Ok(());
+            }
+            tokio::time::sleep(DRAIN_POLL).await;
+        }
+        Err(cgroup(CGROUP_EVENTS)(std::io::Error::new(
+            std::io::ErrorKind::ResourceBusy,
+            STILL_POPULATED,
+        )))
+    }
+
+    /// Whether the tree still holds a live process.
+    fn populated(&self) -> Result<bool> {
+        let events =
+            fs::read_to_string(self.dir.join(CGROUP_EVENTS)).map_err(cgroup(CGROUP_EVENTS))?;
+        Ok(!events.lines().any(|line| line == UNPOPULATED))
     }
 
     /// Kills what remains, then removes the cgroup, leaves first, once its last

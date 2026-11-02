@@ -113,7 +113,7 @@ enum Request {
         key: HoldKey,
         lease: Uuid7,
         sandbox: Box<dyn Sandbox>,
-        reply: oneshot::Sender<Option<Timestamp>>,
+        reply: oneshot::Sender<Parked>,
     },
     Release {
         fleet: Uuid7,
@@ -148,6 +148,19 @@ enum Request {
 pub(crate) struct Holds {
     requests: mpsc::UnboundedSender<Request>,
     saturated: Arc<Notify>,
+}
+
+/// What a park answers: the hold's lapse, or the sandbox back.
+#[derive(Debug)]
+#[must_use]
+pub(crate) enum Parked {
+    /// Held for the fleet's next lease until then.
+    Held(Timestamp),
+    /// Not held: the keeper is closed or has no room. The release is
+    /// already counted; the sandbox, still frozen, is the lease's to end.
+    Refused(Box<dyn Sandbox>),
+    /// The keeper stopped with the request, and the sandbox went with it.
+    Gone,
 }
 
 impl Holds {
@@ -197,13 +210,15 @@ impl Holds {
     }
 
     /// Holds `sandbox`, already frozen, for `key`'s fleet, and answers when
-    /// the hold lapses; `None` when it is not held, and was destroyed.
+    /// the hold lapses. A sandbox the keeper will not hold comes back, its
+    /// release logged and counted, for the lease to kill now and release
+    /// after its report.
     pub(crate) async fn park(
         &self,
         key: HoldKey,
         lease: Uuid7,
         sandbox: Box<dyn Sandbox>,
-    ) -> Option<Timestamp> {
+    ) -> Parked {
         let (reply, answer) = oneshot::channel();
         let parked = Request::Park {
             key,
@@ -211,14 +226,15 @@ impl Holds {
             sandbox,
             reply,
         };
-        // A request the stopped task never took comes back whole: its sandbox
-        // is destroyed here, and its reply, dropped with it, answers `None`.
+        // A request the stopped task never took comes back whole, and so
+        // does its sandbox.
         if let Err(closed) = self.requests.send(parked)
             && let Request::Park { key, sandbox, .. } = closed.0
         {
-            keeper::destroy_now(&key.fleet, sandbox, Release::Shutdown).await;
+            keeper::released(&key.fleet, Release::Shutdown);
+            return Parked::Refused(sandbox);
         }
-        answer.await.ok().flatten()
+        answer.await.unwrap_or(Parked::Gone)
     }
 
     /// Ends `fleet`'s hold, if the runner has one, for `reason`.

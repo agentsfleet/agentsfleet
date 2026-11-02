@@ -59,7 +59,7 @@ pub use self::cgroup::{
 };
 pub use self::engine::{
     DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
-    HostWorkspace, Limits, Sandbox, SandboxRequest,
+    HostWorkspace, Killed, Limits, Sandbox, SandboxRequest,
 };
 pub use self::error::{Error, Result, ToolboxRefusal};
 #[cfg(target_os = "linux")]

@@ -24,11 +24,17 @@ async fn test_a_late_superseded_answer_spares_the_next_leases_hold() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    let parked = sandbox(&engine).await;
-    holds.park(key(FLEET_A), id(LEASE), parked).await.unwrap();
+    let first = holds
+        .park(key(FLEET_A), id(LEASE), sandbox(&engine).await)
+        .await;
+    assert!(matches!(first, crate::holds::Parked::Held(_)), "{first:?}");
     let taken = holds.take(&key(FLEET_A)).await.unwrap();
     let next = id(NEXT_LEASE);
-    holds.park(key(FLEET_A), next, taken.sandbox).await.unwrap();
+    let parked = holds.park(key(FLEET_A), next, taken.sandbox).await;
+    assert!(
+        matches!(parked, crate::holds::Parked::Held(_)),
+        "{parked:?}"
+    );
 
     holds.supersede(id(LEASE));
 

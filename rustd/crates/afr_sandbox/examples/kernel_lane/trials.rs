@@ -27,6 +27,7 @@ use crate::filesystems::{buffered_disk, failed_mount_is_unmounted, probe_direct_
 use crate::forked_kill::forked_oom;
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
+use crate::kill::no_sandbox_process_outlives_the_report;
 use crate::lane::{Lane, missing};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::shared_memory::full_shared_memory_spares_the_tenant;
@@ -114,6 +115,10 @@ const TRIALS: &[(&str, Body)] = &[
     ),
     ("test_warm_start_beats_cold_start", warm_beats_cold),
     ("test_start_budgets_with_four_leases", start_budgets),
+    (
+        "test_no_sandbox_process_outlives_the_report",
+        no_sandbox_process_outlives_the_report,
+    ),
     ("test_full_tmp_answers_enospc", full_tmp_answers_enospc),
     (
         "test_full_shared_memory_spares_the_tenant",

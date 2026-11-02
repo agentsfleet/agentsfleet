@@ -19,7 +19,7 @@ use futures_util::FutureExt as _;
 
 use super::EVENT_DESTROY_FAILED;
 use crate::holds::tests::{
-    FLEET_A, FLEET_B, fleets, holds, id, key, park, released, releases, sandbox,
+    FLEET_A, FLEET_B, LEASE, fleets, holds, id, key, park, released, releases, sandbox,
 };
 use crate::holds::{Holds, Release};
 use crate::test_support::FakeEngine;
@@ -218,4 +218,24 @@ async fn test_a_take_across_a_clock_jump_back_reads_as_no_time_held() {
     holds.shutdown().await;
 
     assert_eq!(taken.held, Duration::ZERO);
+}
+
+/// A lease that parked into a keeper with no room and stopped waiting before
+/// the answer came leaves nobody to end the sandbox: the keeper tears it down
+/// once, its release counted as capped.
+#[tokio::test]
+async fn test_a_refused_park_nobody_waits_for_is_torn_down() {
+    let capture = Capture::install();
+    let engine = FakeEngine::default();
+    let (holds, _clock) = holds(0);
+    let parked = sandbox(&engine).await;
+
+    let abandoned = holds.park(key(FLEET_A), id(LEASE), parked).now_or_never();
+    let left = fleets(&holds).await;
+    holds.shutdown().await;
+
+    assert!(abandoned.is_none(), "asked, and gone before the answer");
+    assert!(left.is_empty(), "{left:?}");
+    assert_eq!(releases(&capture), [released(FLEET_A, Release::Capped)]);
+    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }
