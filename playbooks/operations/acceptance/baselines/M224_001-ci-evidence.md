@@ -65,8 +65,11 @@ Earlier observations stay in Git history and the [historical launch record](M224
 ## Implementation verification and retired machinery
 
 - The real signed-in production page passed its targeted Slack-label test plus nine preflight checks: `10 passed (2.2m)`.
-- Desktop/mobile chat fixtures previously passed six tests, preserving 14px text, alignment, enclosed icons and keyboard access.
+- Refactored desktop/mobile chat fixtures passed six tests (5.1s), preserving 14px text, alignment, enclosed icons and keyboard access.
 - CLI fixes cover cancellation, bounded polling, permanent errors, the admitted-event read-store gap and incomplete approval pagination.
+- Ten streamed text updates caused twenty unchanged tool-group recalculations on the parent and zero after refactoring; changed outcomes still refreshed.
+- App unit tests: 4,634 passed. CLI: 1,985 passed, sixteen skipped, function/line coverage 100%; app and CLI lint passed.
+- Indy stopped repeated local suites and delegated final pushed-revision coverage and repository checks to CI. No final local aggregate pass is claimed.
 - Repository commands and final counts are recorded in [PR #796](https://github.com/agentsfleet/agentsfleet/pull/796). [Docs #237](https://github.com/agentsfleet/docs/pull/237) carries the public recovery guidance.
 
 The retired evidence script had no fleet, runner, API, workflow or production caller. Only its CLI entry point and synthetic test fixtures imported it.

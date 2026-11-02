@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M224
 **Workstream:** 001
 **Date:** Oct 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Current closure scope (Indy, 2026-11-01):** Manual-first development CI fleet evidence only. Production preflight, release/tag, runner rollout and production demonstrations are deferred until the M23x specifications are written and the fully autonomous agent is realized and demonstrated in development. Production requirements below are retained future gates, not M224 closure blockers; this grants no release authority.
 **Priority:** P0 — grounded diagnosis, bounded repair and complete development evidence
 **Categories:** DOCS, INFRA
@@ -104,7 +104,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_authoring/tests/draft/creation/identity.rs; rustd/crates/afd_authoring/tests/draft/creation/fixture.rs; rustd/crates/afd_authoring/tests/draft/creation/improvement.rs; rustd/crates/afd_authoring/tests/draft/creation/stopped.rs` | EDIT | prove first-receipt provenance survives replay metadata changes; keep existing fixtures explicit |
 | `tests/fixtures/fleets/ci-responder/definition.json; tests/fixtures/fleets/ci-repairer/definition.json` | EDIT | admit the observed GitHub log host and stop after the first required-source refusal |
 | `rustd/crates/afd_fleet_runtime/tests/definition/corpus.rs` | EDIT | retain exact read-only and repository-bound policy assertions with the newly admitted log-storage host |
-| `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` → `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | MOVE / EDIT | open the stream and record development-first execution, Dimensions and evidence |
+| `docs/v2/pending/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` → `docs/v2/done/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md` | MOVE / EDIT | close scoped development evidence; retain owner deferrals and final CI verification |
 | `playbooks/operations/acceptance/baselines/M224_001-launch.md` | CREATE | revision-bound manual launch and fleet evidence |
 | `scripts/toolbox/manifest.txt` | EDIT | refresh the approved Debian snapshot to include the patched Brotli package blocking development deployment |
 | `.github/workflows/test.yml; .github/workflows/build-candidate.yml` | EDIT / CREATE | require optimized, unsigned release candidates and the shipping toolbox vulnerability gate before merge |
@@ -356,15 +356,15 @@ Launch rows are manual operational acceptance; §4 also adds deterministic integ
 | R11 | Full Linux acceptance (§4.7; from M235 5.6) | `make acceptance-codex` | unchanged browser and CLI suites pass on supported Linux host; exact-head totals retained | Deferred | DESCOPED — Indy, 2026-11-01: full Linux acceptance is parked outside M224 closure; no passing run claimed |
 | R12 | Retired evidence checker (§4.5) | inspect removal and remaining runtime tests | no runtime caller removed; concise native ledger retained | Removed | RETIRED — owner-approved finish plan; synthetic checker results no longer score live behavior |
 | R13 | Durable memory save and evidence-first recall (§4.8) | Manual `native_save_and_recall`: inspect store, native memory GET and later same-fleet recall after fresh reads | matching content/writer and recall; complete call records; no memory after source gaps | P0 | PASS — earlier recall event 01a1981b-b8ab-7452-9648-386c10351a8b and final corrected finding are recorded in the concise ledger |
-| S1 | Commit gate green | `orly gate work` | exit 0 | P0  final results: PR #796 Session notes 2 |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0  final results: PR #796 Session notes 2 |
-| S3 | Lint green | `make lint-all` | exit 0 | P0  final results: PR #796 Session notes 2 |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0  final results: PR #796 Session notes 2 |
-| S5 | Version in sync | `make check-version` | exit 0 | P0  final results: PR #796 Session notes 2 |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0  final results: PR #796 Session notes 2 |
-| S7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0  final results: PR #796 Session notes 2 |
+| S1 | Commit gate green | `orly gate work` | exit 0 | P0 | Owner-directed final verification in CI; no repeated local suite |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | CI pending; scoped app 4,634 and CLI 1,985 passed locally |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | CI pending; app and CLI lint passed locally |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | CI pending; prior complete lane passed on d4b72269d909237eb6abac798405d0f1ef501b48 |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | CI pending; previous local version check matched 0.72.0 |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | Required scan recorded in PR #796 Session notes 2 |
+| S7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | Files Changed scope reviewed; final paths in PR #796 |
 
-**Grading:** Run spec-specific checks as written; record ✅/❌ and decisive output in Graded. All declared repository commands above remain required at the final `orly gate pr` boundary; cite its output in Session Notes. Missing/red P0 evidence blocks completion. Transfers require the user-approved mapping in `.orly/standards/spec.md`; baseline metadata follows SPEC-BASELINE there.
+**Closure:** Scoped native evidence is complete. Indy directed: "Well if you ran it before stop the re run, let CI run it." Repeated local suites stopped; the final pushed revision remains subject to CI before merge. No passing final local gate is claimed.
 
 ## Dead Code Sweep
 
@@ -485,7 +485,7 @@ Five corrected, throttled component runs measured faster opening and bounded mou
 - **Development-first opening:** Indy: "But should we do like check in dev and then go to production readiness and production release, and production runners, and demonstrate again for production and close?" Then: "Can you start on that what do you need for development readiness? 1  - 2" Development inspection and preparation start here; production work remains dependent on passing development results and its named approvals.
 - **Opening evidence:** `orly doctor` passes. Development run [41006375734](https://github.com/agentsfleet/agentsfleet/actions/runs/41006375734) passes on the comparison revision. Native `curl` reports version `0.71.0`, commit `7148b1d` and readiness true. Workspace commands report `AUTH_REQUIRED`. Linkwarden exposes no Actions runs or registered workflows to the current GitHub identity. See the launch baseline for commands and remaining inputs.
 - **Fresh-session continuation:** The environment API key authenticates `nkishore@megam.io`; doctor passes for workspace `01a154ce-2ad5-7ce5-9493-f3a9d95a0b0e`. The Slack fleets are active with all setup checks ready after human GitHub grant approvals and resumed Save operations. The incident candidate remains unsaved. Channel `C0ARL465ZJP` has resident-delivery evidence and reviewed specialist mention bindings. Missing telemetry credentials, grants, failed development runs and fleet-owned log access block the demonstrations. The launch baseline records immutable candidate identifiers and review digests. No production action occurred.
-- **Skill-chain outcomes** — `orly-build` opened the stream; development acceptance and repository verification remain pending.
+- **Skill-chain outcomes** — `orly-build` opened the stream; scoped native evidence is complete, with final pushed-revision checks delegated to CI.
 - **Development draft:** Indy requested checking Linkwarden pull requests and creating one if needed. Draft #3 targets `dev` with a reproducible, test-only title-decoding failure. Indy approved the single test-step workflow amendment, now pushed at `d029957192e53ce4a3a83a928c1ed78a23e75683`. After fork enablement, development run `41027232532` failed at the intended regression step. Its exact job-log endpoint returns HTTP 302, and recent Grafana log queries remain empty; fleet-owned source proofs are still blocked. This preparation is not a fleet-produced repair or demonstration pass.
 - **CI source amendment:** Indy clarified that CI failures can lack Grafana and requested Markdown-driven investigation. M235_001 specifies generic admitted job-log downloads, exact attempt/timestamp/source reads, stopping behavior and bounded-repair proof. Dimensions 1.2 and 3.1–3.2 now require their own GitHub evidence without a Grafana dependency.
 

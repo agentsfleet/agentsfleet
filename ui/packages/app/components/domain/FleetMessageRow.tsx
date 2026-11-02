@@ -113,7 +113,7 @@ export function FleetActivityRow({
       data-role={messageRole}
       data-compact="true"
       data-failed={failed || undefined}
-      className={cn("w-full border-b border-border", ROW_ENTER)}
+      className={cn("w-full", ROW_ENTER)}
     >
       <div className="flex min-w-0 items-start gap-md px-lg py-md">
         <div className="min-w-0 flex-1 font-sans leading-body-sm">
@@ -195,7 +195,7 @@ export function FleetGroupRow({
 }: FleetGroupRowProps) {
   return (
     <div
-      className={cn("w-full border-b border-border", ROW_ENTER)}
+      className={cn("w-full", ROW_ENTER)}
       data-role="system"
       data-group="true"
       data-failed={failed || undefined}
