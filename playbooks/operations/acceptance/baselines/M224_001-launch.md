@@ -1347,7 +1347,7 @@ These document checks leave every implementation grade empty; repository unit/in
 
 Indy requested fixing the review finding after the authoring commit.
 The two final readiness findings concern model/settings attribution and the corpus/claim-witness interface.
-Their follow-up pins native-field joins, capture times, operator confirmation, exact prompt matching and case-local witness validation in `playbooks/operations/acceptance/ci_evidence_format.md`.
+Their follow-up pinned native-field joins, capture times, operator confirmation, exact prompt matching and case-local witness validation in the [historical format](https://github.com/agentsfleet/agentsfleet/commit/97acc8f7c4e3f488833ca2ff0594565dc0ca1014#diff-179fffe76c00eb5648ded62097f01937bf15bdd382c695954de1328e007b6ade).
 
 M235's checker test requirements now reject mismatched model confirmation, inconsistent variants, cross-case witnesses and invalid UTF-8 spans.
 The change remains documentation only; implementation checks and all three development demonstrations remain pending.

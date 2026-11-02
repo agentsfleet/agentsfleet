@@ -21,7 +21,7 @@ M236 still needs its named technical design decisions before implementation.
 
 1. Native memory recall and varied social replies: verified in the launch ledger.
 2. Chat and approval polish: implemented in PR #796; the targeted signed-in page and preflight passed ten checks.
-3. M224: eight native behavior proofs are complete and the custom evidence checker is removed; final repository results belong to PR #796.
+3. M224: both scoped specs are DONE; eight native behavior proofs are complete and the custom checker is removed. Indy delegated final revision checks to CI in PR #796.
 4. Orly 0.28: M15_002 is drafted in Orly PR #75; implementation follows review.
 5. M236: finish the unified goal/Jev/durable-repair design before implementation.
 6. CLI: cancellation, bounded polling/permanent errors and incomplete approval pagination are fixed in PR #796.
@@ -37,7 +37,7 @@ After verification, replace the bespoke checker and obsolete commands with conci
 Retain runtime policy tests, resolve current gate failures and publish the verified changes in a PR.
 
 Current evidence belongs only in the [concise native ledger](../../../playbooks/operations/acceptance/baselines/M224_001-ci-evidence.md); the linked launch record retains earlier observations.
-The [M224 spec](../../v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md) owns milestone closure; [M224_002](../../v2/active/M224_002_P1_DOCS_UI_APPROVAL_AND_FLEET_ACTIVITY_CLARITY.md) owns the requested chat/approval changes and completion amendment.
+The [M224 spec](../../v2/done/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md) owns milestone closure; [M224_002](../../v2/done/M224_002_P1_DOCS_UI_APPROVAL_AND_FLEET_ACTIVITY_CLARITY.md) owns the requested chat/approval changes and completion amendment.
 
 ## Restart prompt
 

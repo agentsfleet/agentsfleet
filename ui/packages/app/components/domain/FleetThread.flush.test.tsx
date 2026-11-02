@@ -76,7 +76,7 @@ vi.mock("@/components/domain/useFleetEventStream", async (importOriginal) => {
 
 import { FleetThread } from "./FleetThread";
 import { CONNECTION_STATUS, convertEvent } from "./useFleetEventStream";
-import { ANNOUNCEMENT_HOLD_MS, SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "./FleetReplyBody";
+import { ANNOUNCEMENT_HOLD_MS, SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "./FleetReplyAnnouncements";
 
 const FLUSHES = 100;
 const EVENT_ID = "evt_flush";

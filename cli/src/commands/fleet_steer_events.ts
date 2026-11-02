@@ -288,10 +288,9 @@ export const pollEventTerminal = (
       if (signal?.aborted) break;
       const pause = Math.min(FALLBACK_POLL_MS, deadline - Date.now());
       if (pause <= 0) break;
-      yield* Effect.tryPromise({
-        try: (owner) => delay(pause, undefined, { signal: signal ? AbortSignal.any([signal, owner]) : owner }),
-        catch: () => undefined,
-      }).pipe(Effect.ignore);
+      yield* Effect.tryPromise((owner) =>
+        delay(pause, undefined, { signal: signal ? AbortSignal.any([signal, owner]) : owner }),
+      ).pipe(Effect.ignore);
     }
     return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
   });

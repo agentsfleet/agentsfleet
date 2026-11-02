@@ -4,7 +4,7 @@
 **Milestone:** M224
 **Workstream:** 002
 **Date:** Nov 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — remove reported approval flicker and unclear activity labels
 **Categories:** DOCS, UI
 **Batch:** B1 — owner-requested follow-up to merged Pull Request #795
@@ -55,9 +55,12 @@
 | `rustd/crates/afr_agent/src/trace/{mod,tests}.rs`; `rustd/crates/afd_fleet_runtime/tests/definition/corpus.rs` | EDIT | retain call inventory before previews and assert the approved public read-only fixture policy |
 | `docs/architecture/*.md`; `docs/architecture/scenarios/*.md`; `docs/reviews/space-sandbox/{next-specs-handoff,orly-egm-jev-handoff-prompt}.md` | EDIT / CREATE | reconcile current behavior and proposed unified autonomy scope without separate review records |
 | `docs/v2/pending/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md` | CREATE | draft the reviewed unified autonomy scope without claiming implemented behavior |
-| `cli/src/lib/{http,http-retry}.ts`; `cli/src/services/http-client.ts`; `cli/src/errors/index.ts`; `cli/src/commands/{fleet_steer,fleet_steer_events,approvals,approvals_pending}.ts`; their focused CLI tests | EDIT / CREATE | stop cancelled requests and retries, bound event polling and report incomplete approval walks |
+| `cli/src/lib/{http,http-retry}.ts`; `cli/src/services/http-client.ts`; `cli/src/errors/index.ts`; `cli/src/commands/{fleet_steer,fleet_steer_events,approvals,approvals_pending}.ts`; `cli/test/{http-cancellation,fleet-steer-poll-errors,approvals-limit}.unit.test.ts`; `cli/test/fleet-steer-cancellation.integration.test.ts` | EDIT / CREATE | stop cancelled requests and retries, bound event polling and report incomplete approval walks |
 | `docs/reviews/development-autonomy/` | DELETE | remove separate review records at the owner's request; canonical decisions remain in the scenario and pending specification |
-| This spec; `docs/v2/active/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md`; `docs/DESIGN_SYSTEM.md`; the M224 launch ledger | EDIT / CREATE | retain requested behavior, actual evidence and open closure requirements |
+| `ui/packages/app/components/domain/{FleetReplyBody,FleetReplyParts,FleetReplyActions,FleetReplyAnnouncements,FleetToolCalls,FleetToolGroup,FleetToolCallRow,FleetToolCallHeader,FleetToolCallDetails,tool-call-presentation,FleetThreadViewport}.tsx` | EDIT / CREATE | separate chat responsibilities and preserve bounded updates for settled tool groups |
+| `ui/packages/app/components/domain/{FleetReplyBody,FleetThread.flush}.test.tsx`; `ui/packages/app/tests/fleet-tool-rendering.test.tsx` | EDIT / CREATE | retain reply ownership and measure unchanged group work while text streams |
+| `rustd/crates/afd_credential/src/credential/oauth/tests/transport.rs` | EDIT | consume complete fixture requests, own transport disconnects and join fixture workers after CI exposed socket races |
+| This spec → `docs/v2/done/M224_002_P1_DOCS_UI_APPROVAL_AND_FLEET_ACTIVITY_CLARITY.md`; `docs/v2/done/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md`; `docs/DESIGN_SYSTEM.md`; the M224 launch ledger | MOVE / EDIT | close requested behavior and native evidence; retain final CI verification |
 
 ## Applicable Rules
 
@@ -136,6 +139,16 @@ An omitted call, unread required source, failed stopping rule or incomplete camp
 - **Dimension 4.1:** source defaults match accepted public policies → Manual `public Definition comparison`, performed by the agent and recorded in the launch ledger.
 - **Dimension 4.2:** passing regression results cannot hide missing evidence → Manual `draft regression and trace comparison`, reviewed by Indy against the recorded head and omission count.
 
+### §7 — Small chat components and bounded updates
+
+Indy requested: "Just refactor to smaller components that is performant in the chat".
+Separate reply orchestration, part rendering, settled announcements/actions and individual tool rows/details.
+Keep ticking clocks and active replies local; measure unchanged tool-group work across ten streamed text updates before adding memoization.
+Preserve native outcomes, 14px typography, the current viewport/composer and existing expansion ownership.
+
+- **Dimension 7.1:** text chunks do not recompute unchanged tool groups; changed outcomes still update → Test `keeps unchanged tool activity out of streamed text updates and refreshes changed outcomes`.
+- **Dimension 7.2:** expanded tool rows retain identity as another call changes → Test `keeps open details and row identity stable while another call streams and settles`.
+
 ## Interfaces
 
 No API, command or grant interface changes.
@@ -179,7 +192,7 @@ No product analytics events, operator signals or monitoring rules change.
 | Unit | `shows the received Slack message instead of raw event JSON` | message plus channel metadata → only message text in the disclosure |
 | Browser | `setup checks use enclosed icons and incoming messages have readable details` | desktop/mobile fixture → 14px circle checks, readable message disclosure and keyboard-expandable soft failure, with no horizontal overflow |
 | Application | `test_slack_received_uses_readable_label_without_empty_details` | native event frame through the real signed-in page → Slack label and no empty inspector |
-| Manual | `public Definition comparison` | source JSON and accepted revision 2 → identical public read-only network and unchanged repository boundaries |
+| Manual | `public Definition comparison` | source JSON and accepted setup revisions in the ledger → identical public read-only network and unchanged repository boundaries |
 | Manual | `draft regression and trace comparison` | original summary omits 17 rows; all 50 full records are recovered without truncation and include the passing regression/check read |
 | Unit | `should_reclaim_old_previews_before_omitting_later_calls` | fifty calls with oversized optional previews → complete inventory and arguments, zero omissions, valid byte bound |
 | Unit | `should_count_a_call_when_essential_rows_alone_exhaust_the_budget` | essential rows exceed byte capacity → honest omitted count and a valid bounded trace |
@@ -196,22 +209,29 @@ No product analytics events, operator signals or monitoring rules change.
 | Unit | `event polling waits for an admitted event to reach the read store` | accepted event initially absent → bounded reads of the same identity until visible, with no resend |
 | Unit | `event polling surfaces disappearance after observing the admitted event` | known event later disappears → exact native error after two reads |
 | Unit | `approval page cap reports whether more gates remain: %s` | last allowed page with/without continuation → incomplete-list error or complete results |
+| Integration | `steer preserves a native message refusal without another send` | HTTP service receives 403 → native error code preserved and exactly one POST |
+| Integration | `steer cancellation after message acceptance reports interruption without replay` | local server accepts the message before cancellation → interrupted result, inspect-before-resend guidance and one POST |
+| Unit | `keeps unchanged tool activity out of streamed text updates and refreshes changed outcomes` | ten reply updates → zero unchanged group recalculations; changed failure still appears |
+| Unit | `keeps open details and row identity stable while another call streams and settles` | another call changes → existing expanded row remains mounted and open |
+| Unit | `response_statuses_retain_reconnect_and_retry_classification` | fully consumed fixture POST → 401 reconnect, 503 transient failure and malformed 200 permanent failure |
+| Unit | `transport_and_incomplete_body_failures_remain_retryable` | owned disconnect or incomplete response body → transient failure; fixture worker joins |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion | Verify | Expected | Priority | Graded |
 | --- | --- | --- | --- | --- | --- |
-| R1 | Stable approval rows and truthful errors | `bun --cwd ui/packages/app run test -- tests/approvals-list` | exit 0 | P1 | PASS — included in application coverage lane |
-| R2 | Enclosed icons and readable disclosures on desktop/mobile | `BASE_URL=http://127.0.0.1:1 bun --cwd ui/packages/app run test:e2e tests/e2e/chat-typography.spec.ts` | six tests pass | P1 | PASS |
-| R3 | Slack message through the real application page | `bun --cwd ui/packages/app run test:e2e:acceptance --project=journeys tests/e2e/acceptance/fleet-reply-parts.spec.ts --grep test_slack_received_uses_readable_label_without_empty_details` | one target test and preflight pass | P1 | PASS — local production page with native development backend: 10 passed, including nine preflight checks |
-| R4 | Public reference JSON matches native setups | Manual `public Definition comparison`: inspect both accepted revision-2 Definitions and compare their network and repository fields with the two fixture files | public read reach matches; repository access/base unchanged | P1 | PASS |
+| R1 | Stable approval rows and truthful errors | `make test-unit-app` | exit 0 | P1 | PASS — included in application coverage lane |
+| R2 | Enclosed icons and readable disclosures on desktop/mobile | `cd ui/packages/app && BASE_URL=http://127.0.0.1:1 bun run test:e2e tests/e2e/chat-typography.spec.ts` | six tests pass | P1 | PASS — refactored components: six passed (5.1s) |
+| R3 | Slack message through the real application page | `cd ui/packages/app && bun run test:e2e:acceptance --project=journeys tests/e2e/acceptance/fleet-reply-parts.spec.ts --grep test_slack_received_uses_readable_label_without_empty_details` | one target test and preflight pass | P1 | PASS — local production page with native development backend: 10 passed, including nine preflight checks |
+| R4 | Public reference JSON matches native setups | Manual `public Definition comparison`: compare ledger-attributed accepted setups with fixture network and repository fields | public read reach matches; repository access/base unchanged | P1 | PASS |
 | R5 | Passing regression and complete native records agree | Manual `draft regression and trace comparison`: inspect draft #6 head, regression run and all 50 native records in the launch ledger | three assertions pass; complete records recovered; compact summary limitation stays explicit | P0 | PASS — full native record recovery recorded |
-| S1 | Repository work gate | `orly gate work` | exit 0 | P0 | pending |
-| S2 | Declared unit lane | `make test-unit-all` | exit 0 | P0 | pending |
-| S3 | Declared lint lane | `make lint-all` | exit 0 | P0 | pending |
-| S4 | Declared integration lane | `make test-integration-rustd` | exit 0 | P0 | pending |
-| S5 | Version parity | `make check-version` | exit 0 | P0 | pending |
-| S6 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | pending |
+| R6 | Tool-group work stays bounded while replies stream | `make test-unit-app` | ten text updates cause zero unchanged tool-group recalculations; changed outcomes and expanded rows remain correct | P1 | PASS — measured parent 20, candidate 0; no frame-rate claim |
+| S1 | Repository work gate | `orly gate work` | exit 0 | P0 | CI owns final verification at owner direction |
+| S2 | Declared unit lane | `make test-unit-all` | exit 0 | P0 | CI pending; app 4,634 and CLI 1,985 passed locally; no final aggregate claim |
+| S3 | Declared lint lane | `make lint-all` | exit 0 | P0 | CI pending; app and CLI lint passed locally |
+| S4 | Declared integration lane | `make test-integration-rustd` | exit 0 | P0 | CI pending; prior full local lane passed at d4b72269d909237eb6abac798405d0f1ef501b48 |
+| S5 | Version parity | `make check-version` | exit 0 | P0 | CI pending; previous local parity check matched 0.72.0 |
+| S6 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | Required scan recorded in PR #796 Session notes 2 |
 
 ### Behaviour evals
 
@@ -301,4 +321,10 @@ An approval walk with a remaining cursor at its page cap fails instead of report
 - **Dimension 6.6:** a later disappearance of an observed event surfaces immediately → Test `event polling surfaces disappearance after observing the admitted event`.
 - **Dimension 6.7:** a remaining approval cursor at the page cap reports an incomplete walk → Test `approval page cap reports whether more gates remain: %s`.
 
-All in-scope Dimensions are DONE. The real-page Slack test passed with its preflight checks; final repository verification is recorded in PR #796 Session notes 2.
+All in-scope Dimensions are DONE. The real-page Slack test passed with its preflight checks; PR #796 records final CI status.
+
+Indy directed: "Well if you ran it before stop the re run, let CI run it."
+Repeated local runs stopped. Coverage exposed an unreachable comparator fallback; it was removed, and the subsequent local rerun was stopped at this direction.
+Final coverage and repository checks belong to CI; no passing local rerun is claimed.
+
+Indy requested fixing `lint / safety-gates` and `test-unit-cli` in this PR. The stale historical format link now targets Git history; CLI error/cancellation paths use the real service boundary. The current-gate repair also corrects OAuth test-fixture framing and socket ownership; production retry policy and expected classifications remain unchanged.
