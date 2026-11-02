@@ -43,7 +43,7 @@ Production launch and a new Firecracker backend are excluded.
 5. `rustd/crates/afr_agent/src/{prompt/mod.rs,loop/mod.rs,loop/conversation.rs}` — current root prompt/loop boundary.
 6. `rustd/crates/afd_gate/src/policy/{repair.rs,egress/write.rs}` — current event-owned authority, not arbitrary-PR permission.
 7. `rustd/crates/afd_api_ingress/src/handler/webhook/{github/mod.rs,app_route.rs}`; `rustd/crates/afd_cron/src/fire/mod.rs` — filtering, scheduling and reply destination limitations.
-8. `docs/reviews/development-autonomy/README.md` — actual review outcomes, not runtime acceptance.
+8. `docs/reviews/space-sandbox/next-specs-handoff.md` — accepted direction and work order; implementation remains pending.
 
 ## Files Changed (blast radius)
 

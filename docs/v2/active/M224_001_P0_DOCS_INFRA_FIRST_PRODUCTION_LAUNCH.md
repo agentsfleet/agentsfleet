@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Current closure scope (Indy, 2026-11-01):** Manual-first development CI fleet evidence only. Production preflight, release/tag, runner rollout and production demonstrations are deferred until the M23x specifications are written and the fully autonomous agent is realized and demonstrated in development. Production requirements below are retained future gates, not M224 closure blockers; this grants no release authority.
 **Priority:** P0 — grounded diagnosis, bounded repair and complete development evidence
 **Categories:** DOCS, INFRA
-**Batch:** B1 — reduced manual-first evidence; production launch is deferred
+**Batch:** B1 — manual-first development evidence complete; production launch is deferred
 **Branch:** feat/m224-ci-campaign
 **Baseline revision:** d5058e00879bd661953efc76d0c9ab8316eba0bf
 **Test Baseline:** matching-tree isolated CI checkout `3623b6682e7d9db9031bb9fcf743d324004a8655`: Rust unit 4,965 passed; combined coverage lanes 6,250 passed plus kernel; merged line coverage 99.6597%. App 4,521, website 133 and design-system 522 passed at 100% coverage; CLI 1,966 passed, 17 environment-dependent skips, coverage 100%.
@@ -114,12 +114,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/candidate.py; scripts/build-candidate.sh; scripts/release_candidate/; scripts/test_release_candidate.py; make/check-safety-gates.mk; make/release-candidate.mk; Makefile` | CREATE / EDIT | validate source/run identities, payload checksums and retained artifact handoffs with focused failure tests called by Continuous Integration |
 | `docs/architecture/release_candidates.md` | CREATE | document each job change, promotion rules, recovery and remaining environment-specific builds |
 | `docs/v2/active/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` → `docs/v2/done/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md` | MOVE / EDIT | close source delivery and map outstanding development verification here |
-| `docs/architecture/ci_drill_evidence.md` → `playbooks/operations/acceptance/ci_evidence_format.md` | MOVE / EDIT | keep the pending proof format and attribution procedures alongside the acceptance playbook |
+| `playbooks/operations/acceptance/ci_evidence_format.md` | DELETE | retire the obsolete checker format after native verification |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs/ci/replay.rs; rustd/crates/agentsfleetd/tests/support/definition_install/{mod,fleet,slack}.rs; rustd/crates/agentsfleetd/tests/daemon_suite.rs; rustd/crates/agentsfleetd/Cargo.toml; rustd/crates/afd_connector/src/connect.rs; rustd/crates/agentsfleetd/src/{lib.rs,plane/mod.rs,preflight/config.rs,preflight/mod.rs,serve/mod.rs,serve/runtime.rs,serve/test_util.rs}` | CREATE / EDIT | send 100 signed copies through real admission and the repair loop; pin the connector's existing vendor boundary only in test builds so thread reads cannot reach Slack |
 | `tests/fixtures/fleets/ci-investigation/cases.json` | CREATE | pin the small manual behavior corpus and expected observations |
-| `scripts/check-ci-drill-evidence.ts; scripts/ci-evidence/; docs/architecture/lease_flow.md; docs/architecture/sandbox_evaluation.md` | CREATE | validate native joins, qualified candidate/deployment tree and byte identities, and retained campaign history offline; document same-event updates and cross-admission limits |
-| `cli/test/ci-drill-evidence.unit.test.ts; cli/test/ci-evidence/; cli/tsconfig.json` | CREATE / EDIT | reject missing cases, stale digests, unsupported grades and mismatched source identities with synthetic fixtures; resolve the offline checker through a scoped test import alias |
-| `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json` | CREATE | store sanitized grades, result identities and every hashed witness in its inline named-record list |
+| `scripts/check-ci-drill-evidence.ts; scripts/ci-evidence/` | DELETE | retire the one-off offline checker; it has no runtime or workflow caller |
+| `docs/architecture/lease_flow.md; docs/architecture/sandbox_evaluation.md` | EDIT | retain current execution behavior and proposed autonomy boundaries |
+| `cli/test/ci-drill-evidence.unit.test.ts; cli/test/ci-evidence/; cli/tsconfig.json` | DELETE / EDIT | remove the retired checker tests, fixtures and test-only import alias |
+| `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.md` | CREATE | retain eight attributed native behavior proofs, model/setup identities, regression, Slack and memory witnesses |
 | `rustd/crates/agentsfleetd/tests/support/https.rs; rustd/crates/agentsfleetd/tests/support/https_route.rs; rustd/crates/agentsfleetd/tests/support/definition_repair.rs; rustd/crates/agentsfleetd/tests/support/{repair_remote,repair_walk,repair_updates,repair_continue,repair_validation}.rs; rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs.rs; rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs/ci/{tests,recovery}.rs; rustd/crates/afd_wire/src/policy/{mod,repository}.rs; rustd/crates/afd_gate/src/policy/egress/{write.rs,tests/}; rustd/crates/afr_egress/src/{origin/,admission/}; rustd/crates/agentsfleetd/tests/integration_rust_runner_repairs/ci/continuation.rs` | CREATE / EDIT | commit fixture-owned GitHub resources before losing acknowledgements, then verify exact-state reconciliation, no duplicate mutations and same-event fast-forward-only updates of the existing repair draft |
 | `playbooks/operations/acceptance/baselines/M235_001-ci-evidence.md` | EDIT | retain historical implementation evidence and link new M224 ownership without rewriting results |
 External changes use existing runbooks: production tunnel/domain, runner-readiness variable, hosts/tokens, providers, drafts/grants and npm tags. Indy approves provider/host writes and releases. Required source/workflow repairs stop for a scope amendment; none are implicitly included.
@@ -248,47 +249,43 @@ Do not change workflows or deploy to production. Do not grant deployment authori
 
 Install the reviewed instructions only after compatible development runtime support is ready. An older runtime or rollback that cannot read required logs returns acceptance to incomplete; the named-gap behavior remains required.
 
-The small corpus contains eight named cases, using actual native fleet runs and documented reviewed setup variants. Cover CI diagnosis, missing link, foreign repository, ambiguous attempt, blocked download with misleading thread text, truncated required log, addressed repair and unsafe repair. Use the same failed development run where possible; the two positive cases are diagnosis and explicit draft repair.
+The eight named cases remain in `tests/fixtures/fleets/ci-investigation/cases.json`. The concise ledger at `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.md` owns their reviewed results.
 
-Run every case once per evaluation campaign on its recorded model/settings and accepted instructions; do not combine cases from different campaigns. Capture accepted fleet snapshots before and after each settled case, and finish retaining that case before applying another setup variant. Preserve superseded failed reports in Git before a corrected campaign, using the selection and hashing rules in the evidence format.
+Record each proof's accepted setup, model, native event, original request/answer and addressed full calls. Keep prior failed observations and corrected reruns separately attributed; do not present dated proofs as one unchanged statistical campaign.
+The original owner-kept draft #6 proof remains valid after recovering its seventeen omitted summary rows.
 
-Capture native event details and addressed full tool-call reads, retaining identities, original request/answer, call inventory and truncation flags. Match every detail's captured read address and call identifier to that event; missing or omitted required calls leave the case incomplete. Hash exact accepted instruction bytes and canonical accepted configuration, preserving the native review digest separately.
+A zero-call outcome requires a present empty inventory with zero omissions.
+A required-source refusal or truncation ends the request without later source, memory or write calls.
+Complete records must distinguish source truncation from storage truncation; never infer omitted contents.
 
-Pin an explicit model reference and retain event-linked lease identity plus existing non-secret model-settings reads under the evidence format's procedure. Record the operator's unchanged-model prerequisite; absent witnesses or settings drift leave the campaign incomplete. The fixed corpus pins each concrete input, reviewed policy variant and expected result before its trigger.
+Each of the eight cases must establish grounding, required stops/scope and its useful expected outcome.
+A correct clarification, refusal or named source gap is useful; missing proof stays incomplete and incorrect behavior stays failed.
+Native semantic review checks the answer and saved finding against actual source evidence.
+Commit prose cannot establish defect ownership or move the fix to another repository.
 
-A completed native model turn with zero calls reports an explicit empty trace with `omitted_call_count: 0`. Keep the existing optional wire field for unavailable data; a null trace never proves zero calls. This generic completion fix supports the missing-link case without introducing artificial tool calls or changing permissions.
+Retain exact run/attempt/job/head, unchanged failing and passing assertions, fleet-authored draft/base/head and original-thread delivery confirmation.
+Indy confirms the external Slack result; event processing alone cannot establish delivery.
+Native save, persisted content/writer and later same-fleet recall after fresh required reads remain separate memory witnesses.
 
-Prepare positive cases below existing capture limits: 64 KiB per tool output and 1 MiB of records per event. Source truncation and stored-record truncation are different observations; do not raise either limit to obtain a pass. Unexpected record loss or omitted factual witnesses makes a case incomplete.
-
-The intentional truncated-source case may use a truncated stored record only when its retained prefix proves source truncation, status and call identity. Its stopping answer may assert those observed facts, never omitted log content; a missing truncation notice or dropped record cannot pass. The checker tests this expected negative outcome separately from accidental capture loss.
-
-The offline checker validates the corpus denominator, unique case identities, pinned digests and supporting records before computing thresholds. Grounding and required stop/scope behavior must hold in all eight cases; useful outcomes must pass all eight. Manual semantic grading remains attributed review, not an automated factual-truth claim.
-
-Supported review grades are `pass`, `fail` and `incomplete`; only a reviewed pass contributes to either total. Grounding passes when every factual claim has a source witness and all required stop/scope rules hold. Usefulness passes when the case's expected diagnosis, clarification, named stop or bounded draft is actually observed; a correct stop is useful.
-
-Failures and incomplete cases stay in the fixed eight-case denominator and block M224 production progression. An incomplete case lacks required proof; a failure has proof of an incorrect outcome, with that distinction retained in the report. The successful diagnosis/draft flow still requires its own positive evidence, regardless of stopping-case grades.
-
-The development record includes runner/API revisions, accepted setup/digest, fleet/event identifiers and the exact GitHub run attempt/job/commit. Retain sanitized source-read evidence, original-thread trigger/answer permalinks, the addressed repair request, actual draft URL/base/head and reviewed diff. The same regression must fail before the fix and pass at the returned draft head, with command, executor, counts and exit status.
-
-Verify the actual Slack answer and draft-link visibility separately from event processing and delivery scheduling. Indy reviews the externally visible result; the agent records evidence without inventing approval. Both in-scope development demonstrations and production gates remain required; the incident demonstration and its prerequisites are descoped; no result passes from the source implementation alone.
-
-The checker accepts `--report` and `--section` (`grounding`, `behavior`, `development`). Use `playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json`, schema version 1 and one selected campaign. Pin eight unique cases, accepted setup/instruction/model digests, native event/full-call witnesses, review attribution and every inline record under the closed format in `playbooks/operations/acceptance/ci_evidence_format.md`. Implement the checker and meaningful negative/positive unit tests at the repository's TypeScript coverage floor.
+The approved finish plan retires the bespoke checker, synthetic fixtures, import alias and format document after native verification.
+The ledger replaces their rubric commands. Runtime HTTP, authority, trace, replay, repair and uncertain-write tests remain required.
+No new scheduler, incident, production or cross-request autonomy capability follows from these proofs.
 
 Full Linux acceptance runs `make acceptance-codex` on a Linux host with supported direct HTTPS egress, using the unchanged browser and CLI assertions, real Clerk/model fixtures and signed toolbox. This managed Codex VM's deliberate direct identity client cannot use its proxy-only route. The run remains unverified here; do not change authentication, bypass TLS or count scripted output as acceptance. A supported Linux CI host was accepted by Indy. New workflow changes still require their own explicit approval.
 
 - **Dimension 4.1** — Same-event concurrent replay retains one admission/event branch and remote draft → Test `should_keep_one_draft_for_replayed_producer_event`.
 - **Dimension 4.2** — Lost ref/draft acknowledgements reconcile before further writes → Test `should_reconcile_uncertain_repair_writes`.
 - **Dimension 4.3** — A separate read-only fleet retrieves the exact GitHub job log through its own native call → Test `test_separate_fleet_reads_github_job_log`.
-- **Dimension 4.4** — Eight actual-model cases meet grounding, stopping/scope and usefulness thresholds → Test `test_ci_instruction_behavior_corpus`; includes `test_responder_reads_exact_ci_evidence`, `test_responder_stops_on_required_source_gap`, `test_responder_rejects_untrusted_evidence`, `test_addressed_repair_reads_evidence_before_draft` and `test_repairer_stops_on_unsafe_requests`.
-- **Dimension 4.5** — The offline checker rejects incomplete, contradictory or stale records → Test `should_reject_incomplete_ci_drill_evidence`.
-- **Dimension 4.6** — Actual source reads, same-thread answer, addressed request, bounded draft and unchanged regression correlate → Test `test_development_ci_thread_has_verified_draft`.
+- **Dimension 4.4 — DONE:** Eight actual-model behaviors have grounded useful outcomes on their recorded setups → Manual `native_ci_behavior_cases` in the concise ledger.
+- **Dimension 4.5 — RETIRED:** The owner-approved finish plan removes the bespoke checker after verification; the concise ledger replaces its scoring machinery.
+- **Dimension 4.6** — Actual source reads, same-thread answer, addressed request, bounded draft and unchanged regression correlate → Manual `native_slack_regression_proof` in the concise ledger.
 - **Dimension 4.7 (descoped from M224 closure, Indy 2026-11-01)** — Parked follow-up: full Linux browser and CLI acceptance passes on the selected host → Test `make acceptance-codex`.
-- **Dimension 4.8** — A verified finding persists through the native memory API and is recalled by a later same-fleet event after complete fresh source reads → required `development.memory` evidence; no memory after a required-source stop.
+- **Dimension 4.8** — A verified finding persists through the native memory API and is recalled by a later same-fleet event after complete fresh source reads → Manual `native_save_and_recall` in the concise ledger; no memory after a required-source stop.
 
 ## Interfaces
 
 ```
-git tag v0.71.0 && git push origin v0.71.0          # Indy; recheck the selected commit's VERSION first
+git tag v0.72.0 && git push origin v0.72.0          # Indy; recheck the selected commit's VERSION first
 GET /v1/fleets/runners/{runner_id}                  # achievable{landlock,seccomp,cgroup_controllers,bubblewrap,egress_enforcement}, degraded
 GET /v1/workspaces/{ws}/fleets/{fleet}/events/{id}  # correlate trigger, status=processed, failure_label=null
 POST /v1/workspaces/{ws}/fleets                   # reviewed candidate or Library revision + review_digest; retain idempotency key
@@ -305,7 +302,7 @@ POST /v1/workspaces/{ws}/fleets                   # reviewed candidate or Librar
 | Fleet result fails or evidence unreachable | credentials, log access or egress fault | retain failed event/run identity; post the exact gap and stop unsupported diagnosis or repair. Required-source failure does not pass the demonstration. M235_001 specifies the generic read repair; no production retry before development passes. |
 | Fleet setup remains pending | missing readiness input or grant | retain fleet/setup operation and idempotency key; resolve named needs through §1 and retry the same operation; no duplicate fleet or trigger before `active` |
 | Partial installation | control plane ready, runner bootstrap incomplete or canary fails | retain release/run and host inventory; keep rollout disabled until bootstrap passes, or stop remaining rollout on canary failure; resume the retained run after approved recovery, never a new tag to hide the failure |
-| Invalid behavior evidence | absent cases, stale hashes/settings, unsupported or cross-case witnesses | checker rejects and retains failed/incomplete campaign in the fixed denominator; `should_reject_incomplete_ci_drill_evidence` |
+| Invalid behavior evidence | absent cases, stale hashes/settings, unsupported or cross-case witnesses | manual review retains failed/incomplete observations and blocks the affected behavior until a corrected native proof exists |
 | Linux acceptance environment cannot reach identity | direct native identity transport on a proxy-only host | retain the failed run; use the accepted supported Linux CI host, without changing authentication or weakening suites; `make acceptance-codex` remains incomplete |
 | Stale review or uncertain repair write | setup changed or response lost | rereview changed setup before Save; read the exact remote branch and all Pull Request states before retrying a repair write; retain the event identity and never merge automatically |
 
@@ -337,41 +334,43 @@ Launch rows are manual operational acceptance; §4 also adds deterministic integ
 | 4.1 | integration | `should_keep_one_draft_for_replayed_producer_event` | at least 100 concurrent copies of one signed producer event → one admission/event/branch and one external draft; a new internal event cannot stand in for replay |
 | 4.2 | integration | `should_reconcile_uncertain_repair_writes`; `should_correct_failed_validation_in_the_same_draft` | lost replies reconcile before another mutation; failed validation corrects the same draft with non-force updates, fresh head-bound checks and a bounded retry; forbidden or stale reads stop |
 | 4.3 | manual | `test_separate_fleet_reads_github_job_log` | independent read-only development fleet returns HTTP 200 actual job text through its own call with matching run/attempt/job/commit, accepted setup, event/full-call witnesses and actual quote |
-| 4.4 | manual | `test_ci_instruction_behavior_corpus` | all eight manifest cases run on one campaign/model/settings; actual reads support every claim; expected diagnosis, clarification, named stop or bounded draft is useful; no required-source-gap repair advice |
+| 4.4 | manual | `native_ci_behavior_cases` | all eight manifest cases run on one campaign/model/settings; actual reads support every claim; expected diagnosis, clarification, named stop or bounded draft is useful; no required-source-gap repair advice |
 | 4.5 | unit | `should_reject_incomplete_ci_drill_evidence` | preserve the format's complete positive case and prompt-grounded zero-call clarification; missing/duplicate cases, stale digests, invalid spans, cross-case witnesses, contradictory identity/setup/model/runtime, absent review or mixed campaigns are rejected |
-| 4.6 | manual | `test_development_ci_thread_has_verified_draft` | original Slack trigger → actual source-read answer → addressed repair request → visible bounded draft link; matched accepted setup/runtime/run/head and same unchanged regression fails before and passes at exact draft head |
+| 4.6 | manual | `native_slack_regression_proof` | original Slack trigger → actual source-read answer → addressed repair request → visible bounded draft link; matched accepted setup/runtime/run/head and same unchanged regression fails before and passes at exact draft head |
 | 4.7 | manual | `make acceptance-codex` | unchanged full browser and CLI suites pass on supported Linux host; retain exact revision, command, host/executor, totals and final status; proxy failure, skipped suites or scripted model cannot pass |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R0 | In-scope development readiness, verification and two development demonstrations (§1, §3–§4) | manual — inspect development readiness, M235_001 evidence, and 3.1–3.2 result links in launch baseline | all in-scope development assertions and §4 proofs pass for M224 closure; production progression is separately deferred; development rollout verification and §4.7 are descoped; CI uses GitHub evidence, incident sources and §3.3 are descoped | P0 | INCOMPLETE — rollout verified; both CI fleets read the actual job log and the repairer opened draft #4; stopping failures and remaining in-scope §4 proofs stay open |
+| R0 | In-scope development readiness, verification and two development demonstrations (§1, §3–§4) | manual — inspect the concise native ledger and final PR verification | every in-scope proof and required repository command passes | P0 | Native proofs PASS; final repository boundary is reported in PR #796 Session notes 2 |
 | R1 | First-install preflight (§1) | `ENV=prod STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh`; manual — compare hostname/tunnel/origin configuration and preceding founding evidence | exit 0 and all Dimension 1.1 assertions satisfied in launch baseline | Deferred | PARKED — after written M23x specifications and fully autonomous agent demonstrated in development; outside M224 closure |
 | R2 | Artifacts and complete production installation (§2; M213_001 R4) | manual — inspect retained release/run, artifact checks, host inventory and final acceptance in launch baseline | all Dimension 2.1–2.2 assertions satisfied; no missing or skipped final check | Deferred | PARKED — after written M23x specifications and fully autonomous agent demonstrated in development; outside M224 closure |
 | R3 | Two production results plus one inherited development proof (§3; M213_001 R5) | manual — inspect development and production records for 3.1–3.2 and copy M213_001's inherited `github-pr-reviewer` proof into launch baseline | all 3.1–3.2 assertions satisfied in both environments; inherited proof labelled development with source | Deferred | PARKED — after written M23x specifications and fully autonomous agent demonstrated in development; outside M224 closure |
 | R5 | Same-producer replay safety (§4.1; from M235 4.3/R2) | `make test-integration-rustd` | named concurrent replay proof passes with one external draft | P0 | PASS — 100 signed copies through daemon admission, one event-derived ref and draft; local remote and scripted model prove wiring only |
 | R6 | Lost-write acknowledgement recovery (§4.2; from M235 4.4/R2) | `make test-integration-rustd` | named committed-before-reply-loss proofs pass; unreadable state stops | P0 | PASS — lost ref/draft replies with exact, forbidden and mismatched readback |
 | R7 | Separate-fleet actual GitHub log retrieval (§4.3; from M235 5.5) | manual — inspect accepted setup and native source-read records | matching source identities and complete usable fleet-owned text | P0 | PASS — responder v2 call `2:4` and repairer v3 call `2:3` captured complete job-log text for the matching fixture; event identities, truncation flags and hashes are retained in the launch baseline |
-| R8 | Grounding, required stops and scope hold in every case (§4.4; from M235 R3) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section grounding` | exit 0; `grounding=8/8; critical_failures=0` | P0 | INCOMPLETE — offline checker implemented; partial native campaign recorded; foreign/unsafe refusals and clarified missing-link case observed; ambiguity and large-log behavior remain open |
-| R9 | Every case produces its useful expected result (§4.4; from M235 R4) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section behavior` | exit 0; `behavior=8/8; worst_case_failures=0` | P0 | INCOMPLETE |
-| R10 | Correlated Slack/draft and unchanged regression proof (§4.6; from M235 R5) | `bun scripts/check-ci-drill-evidence.ts --report playbooks/operations/acceptance/baselines/M224_001-ci-evidence.json --section development` | exit 0; `development=PASS`; exact event/source/thread/draft/head joins | P0 | INCOMPLETE — fleet-authored draft #6 has unchanged regression 3/3 and Indy confirmed Slack delivery; 17 omitted native calls and stopping-rule failure prevent complete acceptance |
+| R8 | Grounding, required stops and scope hold in every case (§4.4; from M235 R3) | Manual `native_ci_behavior_cases`: inspect all eight ledger rows, source witnesses and full call sequences | eight named behaviors grounded; zero unresolved critical failures | P0 | PASS — eight attributed behavior proofs; prior failed diagnosis and stopping cases retain their corrected reruns |
+| R9 | Every case produces its useful expected result (§4.4; from M235 R4) | Manual `native_ci_behavior_cases`: compare every recorded answer/effect with its fixed expected outcome | eight useful outcomes; zero unresolved worst-case failures | P0 | PASS — diagnosis, clarification, refusals, named source gaps and bounded draft are observed |
+| R10 | Correlated Slack/draft and unchanged regression proof (§4.6; from M235 R5) | manual — inspect the original repair event, its 50 addressed full records, GitHub regression/check run and Indy's Slack confirmation in the launch ledger | exact event/source/thread/draft/head joins and complete recovered call records | P0 | PASS — draft #6 has unchanged regression 3/3, confirmed Slack delivery and all 50 native full records; the 17 omitted summary rows are recovered |
 | R11 | Full Linux acceptance (§4.7; from M235 5.6) | `make acceptance-codex` | unchanged browser and CLI suites pass on supported Linux host; exact-head totals retained | Deferred | DESCOPED — Indy, 2026-11-01: full Linux acceptance is parked outside M224 closure; no passing run claimed |
-| R12 | Evidence checker implementation and negative proofs (§4.5; from M235 5.2) | `make test-unit-all` | checker tests pass with required TypeScript coverage; malformed/missing/incomplete data cannot pass | P0 | INCOMPLETE |
-| R13 | Durable memory save and evidence-first recall (§4.8) | development checker plus attributed native inspection | matching store, persisted key/content/writer and later same-fleet recall after fresh complete source reads; no omitted calls | P0 | PASS — same-fleet event 01a1981b-b8ab-7452-9648-386c10351a8b reread current evidence before native recall; twelve successful calls, zero omissions, no truncated records; launch ledger retains the earlier save and recalled key |
-| S1 | Commit gate green | `orly gate work` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R12 | Retired evidence checker (§4.5) | inspect removal and remaining runtime tests | no runtime caller removed; concise native ledger retained | Removed | RETIRED — owner-approved finish plan; synthetic checker results no longer score live behavior |
+| R13 | Durable memory save and evidence-first recall (§4.8) | Manual `native_save_and_recall`: inspect store, native memory GET and later same-fleet recall after fresh reads | matching content/writer and recall; complete call records; no memory after source gaps | P0 | PASS — earlier recall event 01a1981b-b8ab-7452-9648-386c10351a8b and final corrected finding are recorded in the concise ledger |
+| S1 | Commit gate green | `orly gate work` | exit 0 | P0  final results: PR #796 Session notes 2 |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0  final results: PR #796 Session notes 2 |
+| S3 | Lint green | `make lint-all` | exit 0 | P0  final results: PR #796 Session notes 2 |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0  final results: PR #796 Session notes 2 |
+| S5 | Version in sync | `make check-version` | exit 0 | P0  final results: PR #796 Session notes 2 |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0  final results: PR #796 Session notes 2 |
+| S7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0  final results: PR #796 Session notes 2 |
 
 **Grading:** Run spec-specific checks as written; record ✅/❌ and decisive output in Graded. All declared repository commands above remain required at the final `orly gate pr` boundary; cite its output in Session Notes. Missing/red P0 evidence blocks completion. Transfers require the user-approved mapping in `.orly/standards/spec.md`; baseline metadata follows SPEC-BASELINE there.
 
 ## Dead Code Sweep
 
-N/A — no files deleted.
+The bespoke evidence checker, its synthetic fixtures/tests, test-only alias and format document are removed. Runtime policy and repair tests remain.
+
+In-scope Dimensions 3.1–3.2, 4.1–4.4, 4.6 and 4.8 are DONE. Production, incident, full Linux acceptance and rollout-identity follow-ups keep their recorded owner deferrals.
 
 ## Out of Scope
 

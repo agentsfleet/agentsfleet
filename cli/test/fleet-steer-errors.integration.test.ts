@@ -179,7 +179,7 @@ describe("steer — a parked run names the gate holding it", () => {
       { gate_id: GATE_ID, fleet_id: "01900000-0000-7000-8000-0000007670ff", status: "pending" },
     ]);
     const rendered = JSON.stringify(exit);
-    expect(rendered).toContain("retry, or inspect");
+    expect(rendered).toContain("sending again may create another event");
     expect(rendered).not.toContain("approvals approve");
   }, 10_000);
 
@@ -187,7 +187,7 @@ describe("steer — a parked run names the gate holding it", () => {
     const exit = await runParkedSteer([
       { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "approved" },
     ]);
-    expect(JSON.stringify(exit)).toContain("retry, or inspect");
+    expect(JSON.stringify(exit)).toContain("sending again may create another event");
   }, 10_000);
 });
 

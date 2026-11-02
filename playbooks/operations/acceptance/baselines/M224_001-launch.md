@@ -1,5 +1,9 @@
 # M224_001 development and production launch evidence
 
+Current manual-first evidence is complete in the [concise native ledger](M224_001-ci-evidence.md).
+It records the eight dated behavior proofs, recovered repair records, Slack delivery, native memory and corrected failures.
+Earlier entries below are historical checkpoints; their former checker commands and incomplete grades do not describe the final state.
+
 ## Owner scope amendment: Nov 01, 2026
 
 Indy explicitly descoped development rollout verification and full Linux browser/CLI acceptance from M224 closure.
@@ -15,6 +19,28 @@ Elasticsearch setup is not required now; incident acceptance is parked without c
 
 M224 closure now covers the remaining manual-first development CI fleet behavior, complete trace, eight-case evaluation, native memory recall and applicable implementation checks.
 Broader autonomous existing-PR repair and cross-request continuation belong to the future M23x work, not this milestone.
+
+## Original repair full-record recovery: Nov 02, 2026
+
+Event `01a19724-9e4d-7fc7-a20f-67c42cec1009` retained 33 summary rows and reported 17 omitted rows.
+All 50 addressed native full records are now accounted for, with untruncated arguments and outputs.
+Calls `1:34` through `1:50` were GitHub reads after draft #6 was created at call `1:22`.
+
+| Calls | Action | Observed result |
+| --- | --- | --- |
+| 34, 36, 38, 41, 43, 45, 46, 49 | Regression-job log | Seven 404 replies while the job was running; call 49 returned the complete log with three passing tests |
+| 35 | Draft #6 read-back | HTTP 200 |
+| 37 | Repaired run's attempt-1 jobs | HTTP 200 |
+| 39, 42, 44, 48 | Regression-job status | HTTP 200, still in progress |
+| 40 | Other job's status | HTTP 200, still in progress |
+| 47 | Repaired run's log archive | HTTP 404 |
+| 50 | Repaired commit's checks | HTTP 200; title-regression success at `0fcbb15bfe09e26b942414a13e0f7ba13286a584` |
+
+Call `1:14` was the expected absence of the new event-owned branch before its creation.
+Call `1:31` and later log refusals happened during post-repair validation, after successful reads of the original failed log and source.
+They do not show a repair made without its required input evidence.
+Earlier claims that these observations proved a required-source stopping failure in this repair are corrected here.
+Repeated log polling was inefficient; the compact-summary defect is separate from the completed repair and recovered full records.
 
 ## General social follow-ups: Nov 01, 2026
 
@@ -51,7 +77,7 @@ A separate HTTP rendering regression preserves explicit truncation while omittin
 
 These are package source measurements, not the repository gate or a verified live provider-failure fix.
 The runtime changes need development deployment and a new real-model repair/log case before M224's remaining evidence can pass.
-The original provider transport failures and incomplete repair trace remain recorded.
+The provider transport failures remain recorded; the full-record recovery above resolves the original repair inventory gap.
 
 ## Additional native behavior observations: Nov 01, 2026
 

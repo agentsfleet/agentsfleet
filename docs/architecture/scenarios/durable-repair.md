@@ -239,6 +239,10 @@ After worker replacement, retain confirmed progress and visibly distinguish rest
 Avoid repeated no-change updates, long metadata inventories and raw internal reasoning in the normal conversation surface.
 A status answer based on saved evidence labels its freshness instead of silently spending tools to refresh it.
 
+Keep the composer reachable while earlier activity is expanded.
+Expanding a group or receiving a streamed update must preserve the text the person is reading.
+Follow new output only when the person has chosen the latest position; provide an explicit return-to-latest control.
+
 ## Recoverable failure notices
 
 Show an inline, accessible notice beside the affected request, preserving the submitted message and any partial response.

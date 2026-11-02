@@ -1,4 +1,6 @@
-import { Effect, Redacted } from "effect";
+import { setTimeout as delay } from "node:timers/promises";
+import { Effect, Option, Redacted } from "effect";
+import { CLI_ERROR_TAG, type CliError } from "../errors/index.ts";
 import { EVENT_STATUS } from "../constants/event-status.ts";
 import { authHeaders } from "../lib/http.ts";
 import {
@@ -20,6 +22,7 @@ const MS_FIELD = "ms";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
+const EVENT_NOT_FOUND_CODE = "UZ-AGT-015";
 const TOOL_PREFIX_LABEL = "[tool]" as const;
 export const STATUS_COMPLETE = "complete" as const;
 const FIELD_NAME = "name" as const;
@@ -190,15 +193,6 @@ const boundedReady = (
   });
 };
 
-const linkedAbort = (signal?: AbortSignal): AbortController => {
-  const ctrl = new AbortController();
-  if (signal) {
-    if (signal.aborted) ctrl.abort();
-    else signal.addEventListener("abort", () => ctrl.abort(), { once: true });
-  }
-  return ctrl;
-};
-
 // Opens the live tail BEFORE the message posts, so no frame of the steered
 // event can be published before a subscriber exists (the activity channel has
 // no replay). `awaitOutcome` is a thunk: it reads the outcome only after the
@@ -220,10 +214,11 @@ export const openEventTail = (
       Effect.runSync(output.info(line));
     };
     let outcome: SteerOutcome = { kind: STATUS_SSE_DISCONNECTED };
-    const ctrl = linkedAbort(signal);
+    const ctrl = new AbortController();
+    const streamSignal = signal ? AbortSignal.any([signal, ctrl.signal]) : ctrl.signal;
     const buffer = makePreIdBuffer();
     const { promise: opened, resolve: markOpened } = Promise.withResolvers<void>();
-    const finished = streamGet(url, headers, buffer.cb, { signal: ctrl.signal, onOpen: markOpened })
+    const finished = streamGet(url, headers, buffer.cb, { signal: streamSignal, onOpen: markOpened })
       .then((): SteerOutcome | null => null)
       .catch(
         (err): SteerOutcome => ({
@@ -267,22 +262,36 @@ export const pollEventTerminal = (
   eventId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
-): Effect.Effect<PolledSteerOutcome, never, HttpClient> =>
+): Effect.Effect<PolledSteerOutcome, CliError, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
     // Event IDs are opaque. The owned detail read avoids inferring a clock
     // from an ID or losing this event behind a busy fleet's newest page.
     const path = wsFleetEventPath(wsId, fleetId, eventId);
     const deadline = Date.now() + SSE_FALLBACK_TIMEOUT_MS;
+    let observed = false;
     while (Date.now() < deadline && !signal?.aborted) { // oxlint-disable-line no-unmodified-loop-condition -- clock + external AbortSignal terminate it
-      const res = yield* http.request<unknown>({ path, token }).pipe(
-        Effect.orElseSucceed(() => null),
+      const remaining = deadline - Date.now();
+      const read = yield* http.request<unknown>({ path, token, signal, timeoutMs: remaining, retry: { maxAttempts: 1 } }).pipe(
+        // Admission can return before the exact event reaches the read store.
+        Effect.catch((error) => signal?.aborted || error.transient || (!observed &&
+          error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === EVENT_NOT_FOUND_CODE)
+          ? Effect.succeed(null) : Effect.fail(error)),
+        Effect.timeoutOption(`${remaining} millis`),
       );
+      if (Option.isNone(read)) return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
+      const res = read.value;
       if (isRecord(res) && res.event_id === eventId && isString(res.status) && isTerminal(res.status)) {
         return { kind: STATUS_COMPLETE, status: res.status } as PolledSteerOutcome;
       }
+      if (isRecord(res) && res.event_id === eventId) observed = true;
       if (signal?.aborted) break;
-      yield* Effect.sleep(`${FALLBACK_POLL_MS} millis`);
+      const pause = Math.min(FALLBACK_POLL_MS, deadline - Date.now());
+      if (pause <= 0) break;
+      yield* Effect.tryPromise({
+        try: (owner) => delay(pause, undefined, { signal: signal ? AbortSignal.any([signal, owner]) : owner }),
+        catch: () => undefined,
+      }).pipe(Effect.ignore);
     }
     return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
   });

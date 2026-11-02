@@ -16,7 +16,7 @@ import {
   type FetchImpl,
 } from "../lib/http.ts";
 import {
-  DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, socketCode,
+  DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, isTransientResponse, socketCode,
   type RetryConfig, type AttemptInfo, type RetryInfo,
 } from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
@@ -33,6 +33,7 @@ export interface HttpRequestInput {
   readonly token?: Redacted.Redacted<string> | undefined;
   readonly retry?: RetryConfig | null;
   readonly timeoutMs?: number;
+  readonly signal?: AbortSignal | undefined;
 }
 
 export interface HttpClientShape {
@@ -58,10 +59,12 @@ const reachabilityCode = (cause: TypeError): boolean => {
   return code !== undefined && (DROP_CODES.has(code) || PRE_SEND_CODES.has(code));
 };
 
-const isFetchFailed = (cause: unknown): boolean =>
-  cause instanceof TypeError &&
-  ((isString(cause.message) && cause.message.toLowerCase().includes("fetch failed")) ||
-    reachabilityCode(cause));
+const isFetchFailed = (cause: unknown): boolean => {
+  if (!(cause instanceof TypeError)) return false;
+  return socketCode(cause) === undefined
+    ? cause.message.toLowerCase().includes("fetch failed")
+    : reachabilityCode(cause);
+};
 
 export const ERR_WORKSPACE_NAME_EXISTS = "UZ-WORKSPACE-001" as const;
 const WORKSPACE_NAME_EXISTS_SUGGESTION =
@@ -91,6 +94,7 @@ const toCliError = (
     const status = cause.status ?? 0;
     if (status >= 500 || status === 0) {
       return new ServerError({
+        transient: isTransientResponse(cause),
         detail: renderedDetail(cause),
         suggestion:
           "retry; if the error persists, capture the request_id and contact support",
@@ -100,6 +104,7 @@ const toCliError = (
       });
     }
     return new ServerError({
+      transient: isTransientResponse(cause),
       detail: renderedDetail(cause),
       suggestion: apiErrorSuggestion(cause, status),
       code: cause.code ?? `HTTP_${status}`,
@@ -109,6 +114,7 @@ const toCliError = (
   }
   if (isFetchFailed(cause)) {
     return new NetworkError({
+      transient: true,
       detail: `cannot reach agentsfleet API at ${url}`,
       suggestion:
         "check network connectivity, AGENTSFLEET_API_URL, and any proxy/VPN settings",
@@ -217,9 +223,10 @@ const makeLive = (
     // fiber whose level `--log-level` set.
     const trace: string[] = [];
     return Effect.tryPromise({
-      try: () =>
+      try: (signal) =>
         apiRequestWithRetry(url, {
           method,
+          signal: input.signal ? AbortSignal.any([input.signal, signal]) : signal,
           onAttempt: (info: AttemptInfo) => {
             trace.push(attemptRecord(method, input.path, info));
           },
