@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Date:** Nov 02, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P2, host memory and sandbox start time; after M237_001 the start is hidden from users
 
@@ -30,9 +30,9 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Batch:** B1, independent of M237_001 and of M236_001; touches only `afr_sandbox` and `afr_executor`
 
-**Branch:** pending, set at CHORE(open)
+**Branch:** `feat/m237-sandbox-lease-path`, shared with M237_001: one Pull Request carries the milestone
 
-**Baseline revision:** pending, set to the full comparison commit at CHORE(open)
+**Baseline revision:** 2f8c878c09e9c4048da1724385ec58746d348ed4
 
 **Test Baseline:** pending, measured before the Pull Request
 
@@ -94,7 +94,7 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 | `scripts/toolbox/measure_first_use.sh`, `scripts/toolbox/test_measure_first_use.sh` | EDIT | An attach mode: buffered `-o loop`, or a direct-I/O loop device |
 | `rustd/crates/afr_sandbox/tests/confine.rs`, `rustd/crates/afr_executor/tests/` | EDIT | Callers of the socket-path API |
 | `docs/architecture/runner_execution.md` | EDIT | Toolbox, Parts A, D and E after the change |
-| `docs/v2/pending/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md` | CREATE | This spec; moves to `active/` then `done/` |
+| `docs/v2/active/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md` | EDIT | This spec, opened at CHORE(open); moves to `done/` at close |
 
 ## Applicable Rules
 
@@ -289,8 +289,12 @@ N/A: no files deleted.
 - **Shape change** — The draft's file-backed mount and template disks were replaced after review: the loop flag gives the same cache result on every kernel the lanes use.
 - **Model reviews** — EGM review, Claude Opus 5.5, Nov 02: zoom-out 8, comprehension 8, readiness 10, design 10 findings across the draft that held both Workstreams. Accepted for this Workstream: loop direct I/O over file-backed; cache drop after hashing; descriptor rules for the socket pair; listener kept for vsock; autoclear on the read-write attach; templates out of scope.
 - **Greptile on PR #797** — one P2 finding, fixed: the first-use harness mounted only with buffered `-o loop`. It gains a direct-I/O mode, and R3 compares the two on one image.
+- **One Pull Request (Indy, Nov 02)** — Both Workstreams ship in one Pull Request, which is the milestone's one ready Pull Request. Measurement runs locally through the make targets: the OrbStack kernel lane (Debian 13.7 on OrbStack's `7.2.12` kernel) stands in for the dev host in R2 and R3. The dev host stays on `6.12.111` until M237 ships.
+- **Same-task build (M237_001 §2)** — The build now shares a task with the model's stream. §3's in-process attach and mount therefore run on `spawn_blocking`, so a slow ioctl never stalls the stream.
 - **Codex review (Nov 02, baseline `2f8c878c0`)** — one P2 finding, fixed: §1 claimed the cache drop leaves no cache behind. `posix_fadvise` is advice, so §1 now leans on the flag readback, the resident-page test and the logged buffered fallback.
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
 - **Deferrals and transfers** — none.
+
+> Owner (Indy, Nov 02, 2026 10:52 PM): "coudl we do both specs in this PR, if you need to measure do it in local? in the docker compose using make targets" — context: whether M237_001 and M237_002 ship together, and where the start figures are measured.
