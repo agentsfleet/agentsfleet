@@ -15,6 +15,7 @@
 // tests/fixtures/retry-policy/cases.json is the table both are proven
 // against.
 
+import { setTimeout as delay } from "node:timers/promises";
 import { ApiError, apiRequest, type ApiRequestOptions } from "./http.ts";
 import { isRecord } from "./guards.ts";
 import { HTTP_METHOD } from "../constants/http-method.ts";
@@ -26,7 +27,7 @@ const MAX_ATTEMPTS_HARD_CAP = 10;
 // The longest wait a server or intermediary can ask for and still be obeyed;
 // above it the answer is surfaced at once. The dashboard's policy caps at the same value.
 const DEFAULT_RETRY_AFTER_CAP_MS = 10_000;
-const RETRYABLE_STATUSES = new Set<number>([408, 425, 429, 502, 503, 504]);
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
 const RETRY_REASON_429 = "429" as const;
 const RETRY_REASON_5XX = "5xx" as const;
 const RETRY_REASON_NETWORK = "network" as const;
@@ -94,6 +95,11 @@ function hasRetryOptOut(body: unknown): boolean {
   return (errField as { retry_after_seconds?: unknown }).retry_after_seconds === 0;
 }
 
+export function isTransientResponse(error: ApiError): boolean {
+  return error.code === "TIMEOUT" || (error.status !== undefined &&
+    RETRYABLE_STATUSES.has(error.status) && !hasRetryOptOut(error.body));
+}
+
 function codeOf(value: unknown): string | undefined {
   if (!(value instanceof Object) || !("code" in value)) return undefined;
   return typeof value.code === "string" ? value.code : undefined;
@@ -108,10 +114,9 @@ function classifyRetryable(err: unknown): Classified | null {
   if (err instanceof ApiError) {
     // The transport's own clock ran out with the request on the wire.
     if (err.code === "TIMEOUT") return { reason: STATUS_TIMEOUT, provenance: PROVENANCE_POST_SEND, socketDropped: false };
-    if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
+    if (err.status !== undefined && isTransientResponse(err)) {
       // Server can opt out of retries by sending Retry-After: 0; we
       // surface that on the body so the wrapper can honor it.
-      if (hasRetryOptOut(err.body)) return null;
       if (err.status === 429) return { reason: RETRY_REASON_429, provenance: PROVENANCE_ANSWERED, socketDropped: false };
       // A 408 or 425 is the server declining to run the request; a 5xx is a
       // gateway answering for a handler that may have run.
@@ -162,8 +167,8 @@ function noRetryEnv(env: NodeJS.ProcessEnv | undefined): boolean {
   return v === "1" || v === "true";
 }
 
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return delay(ms, undefined, { signal });
 }
 
 export interface RetryConfig {
@@ -192,7 +197,7 @@ export interface ApiRequestWithRetryOptions extends ApiRequestOptions {
   // null/undefined → use apiRequestWithRetry's defaults.
   retry?: RetryConfig | null | undefined;
   env?: NodeJS.ProcessEnv;
-  sleepImpl?: (ms: number) => Promise<void>;
+  sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
   randomFn?: () => number;
   onAttempt?: (info: AttemptInfo) => void;
   onRetry?: (info: RetryInfo) => void;
@@ -214,7 +219,7 @@ interface ResolvedRetryRuntime {
   baseDelayMs: number;
   capDelayMs: number;
   retryAfterCapMs: number;
-  sleep: (ms: number) => Promise<void>;
+  sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   randomFn: () => number;
   onAttempt: ((info: AttemptInfo) => void) | undefined;
   onRetry: ((info: RetryInfo) => void) | undefined;
@@ -299,6 +304,7 @@ export async function apiRequestWithRetry(
 ): Promise<unknown> {
   const cfg = resolveRetryRuntime(options);
   async function runAttempt(attempt: number): Promise<unknown> {
+    options.signal?.throwIfAborted();
     const startedAt = Date.now();
     try {
       const result = await apiRequest(url, options);
@@ -307,9 +313,13 @@ export async function apiRequestWithRetry(
     } catch (err) {
       const durationMs = Date.now() - startedAt;
       const status = err instanceof ApiError ? err.status : undefined;
+      if (options.signal?.aborted) {
+        emitTerminalAttempt(cfg.onAttempt, attempt, status, durationMs);
+        throw options.signal.reason;
+      }
       const step = planRetry(err, cfg, { attempt, status, durationMs });
       if (step) {
-        await cfg.sleep(step.delayMs);
+        await cfg.sleep(step.delayMs, options.signal);
         return runAttempt(attempt + 1);
       }
       emitTerminalAttempt(cfg.onAttempt, attempt, status, durationMs);

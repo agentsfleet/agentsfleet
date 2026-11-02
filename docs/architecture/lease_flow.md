@@ -164,7 +164,11 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 **One lease.** The steps and their refusals are in [Runner execution](./runner_execution.md) §"One lease, end to end". The renewal ticks every 5 s with the provider requests the daemon has not recorded, one line each, moves the runner's own deadline to the reply's `lease_expires_at` less 2 s, keeps the lease on a 5xx and ends it on a 4xx ([Runner Fleet](./runner_fleet.md) §"Per-lease renewal — how a long fleet keeps its lease"). An interrupted engine gets 5 s to hand back its tokens and memory (`afr_supervisor/src/lease_loop/drive.rs`).
 
-**The turn.** The agent loop builds the prompt from the lease's `instructions` and, on a write binding, a trusted repair context; a chat lease also carries the thread's recent turns (`afr_agent/src/prompt/mod.rs`). Each call is numbered, announced, routed to the supervisor or the sandbox's executor, and closed exactly once (`afr_agent/src/ledger/mod.rs`). At the context cap the loop stops offering tools and asks for the answer (`afr_agent/src/context/mod.rs`).
+**The turn.** The loop reads installed instructions, trusted repair context and recent chat turns (`afr_agent/src/prompt/mod.rs`).
+Each call is numbered, announced, routed and closed once (`afr_agent/src/ledger/mod.rs`).
+
+Shared preparation compacts older groups while retaining instructions, tools and complete tool groups (`afr_agent/src/loop/context/mod.rs`).
+See [context lifecycle](context_lifecycle.md); output, time, cancellation and money bounds still stop the run.
 
 **Settle and report.** Full tool records post first, then the fenced memory capture, then the report is spooled and posted; the daemon settles it in one transaction ([Runner Fleet](./runner_fleet.md) §"Running one event"). A stale fence, a lease not found or a lease lost settles the spooled entry for good; 5xx, 401, 403, 408 and 413 keep it for the drainer (`afr_supervisor/src/report_spool/mod.rs`, `afr_supervisor/src/drainer/mod.rs`).
 
@@ -354,57 +358,12 @@ Each gap names what would close it.
 
 ## Original Pull Request repair: proposed follow-on
 
-This section records requested follow-on behavior; it remains unimplemented at the PR 795 review checkpoint.
-M224 first proves manually triggered fleets and a fleet-owned repair draft, including bounded corrections during its active request.
-A dedicated implementation spec for arbitrary existing-Pull-Request authority and durable continuation has not been written.
+The [durable repair scenario](scenarios/durable-repair.md) owns the proposed combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and Jev goal decisions.
+The current path creates and corrects its own event-derived draft during one request. Arbitrary existing-PR authority and durable cross-request ownership remain unimplemented.
 
-```text
-Source PR fails -> existing Slack failure thread
-  -> Indy mentions ci-responder -> fleet investigates -> same thread
-  -> Indy mentions ci-repairer -> fleet updates original PR branch
-  -> exact-head CI pending -> durable wait -> completion or fallback wake
-  -> failing checks -> same-PR correction -> repeat within one budget
-  -> verified green, named blocker, cancellation or deadline -> same thread
-```
+The future implementation must use the existing admission/lease path, not a second scheduler.
+A task wake requests fresh exact-head evidence; it does not grant authority or certify CI success.
+See the scenario for target binding, publication races, cumulative limits and combined acceptance; see [sandbox evaluation](sandbox_evaluation.md#coding-sessions-and-worktrees-across-leases) for workspace recovery mechanics.
 
-The GitHub-to-Slack notification integration supplies the initial thread.
-A mention starts investigation; enabling a fleet or saving its setup supplies no failure by itself.
-Posting a root notification and subscribing to failures are separate configured capabilities.
-
-Use an explicit reviewed existing-Pull-Request write mode, separate from new-draft repair authority.
-Native code verifies the addressed repository, open Pull Request, same-repository head, base, branch and current head before publishing.
-Refuse fork heads, protected/default/base targets and an unrelated advance by another writer.
-
-Store the repair owner, original admission, target identity, expected head, validation runs, thread destination, reviewed setup/grant and remaining limits in trusted application state.
-Model prose and memory cannot grant branch authority.
-A later admission rechecks access and resumes that owner; it must not mint a fresh repair target or reset attempts and elapsed-time limits.
-
-Use verified completion deliveries to wake matching waits, including successful and failed runs on repair branches.
-The current investigation filter intentionally drops successful runs and repair branches; continuation matching must precede that filter after signature and installation verification.
-The wake is only a signal: independently read the named checks and unchanged regression for the current exact head before reporting success.
-
-Use the existing supervised background-worker framework for bounded delayed checks and a deadline; a recurring human-configured cron is unnecessary.
-The current generic schedule tool has no Slack reply destination and creates a new admission.
-Enabling that tool alone cannot preserve repair ownership, delivery or total limits.
-
-Record expected validation before publishing; reconcile acknowledgement loss against the same target.
-Completion and fallback wakes compete through one fenced transition and stable deduplication identity.
-Cancellation, revoked access, exhausted limits and terminal outcomes prevent late deliveries from restarting work.
-
-Acceptance must use a real model through native Slack admission, GitHub reads/writes and thread delivery.
-Codex may observe evidence and correct product defects; it must not investigate or author the demonstration's repair for the fleet.
-
-Prove pending-check resume after worker replacement, repeated failure then green, duplicate/out-of-order delivery, lost completion fallback and fast completion before publication acknowledgement.
-Also prove stale heads/attempts, human pushes, revoked grants and late green after cancellation.
-An unrelated green workflow or skipped regression cannot complete the repair.
-
-The new mode must appear in setup review and its effective definition digest.
-The standing GitHub integration grant is fleet/service permission; it does not independently record approval of this repair mode.
-A continuation rechecks both the reviewed setup identity and current service access.
-
-Native start resolves the source run/attempt to one open, same-repository Pull Request.
-Native publish records an intent, checks the expected sole parent and complete bounded diff, then permits only a non-force update of that branch.
-A native verification transition records success or a blocker; model final text cannot retire the owner.
-
-A local write fence cannot cancel an already-issued GitHub update.
-After a lost reply or worker replacement, reconcile that publication intent before admitting another publication.
+M224 proves the reduced manual-first path separately.
+A dedicated reviewed implementation spec and development autonomy proof remain outstanding.

@@ -46,7 +46,7 @@ it("groups calls behind one disclosure with keyboard-accessible individual comma
   expect(first.getAttribute("aria-expanded")).toBe("true");
   expect(shell!.textContent).toContain(COMMAND);
   expect(shell!.textContent).toContain("0.08 0.04 0.00 1/199 6");
-  expect(shell!.querySelector('[data-command-outcome]')?.textContent).toBe("✓Success");
+  expect(shell!.querySelector('[data-command-outcome]')?.textContent).toBe("Success");
   expect(command(request!).getAttribute("aria-expanded")).toBe("false");
   await user.click(first);
   expect(shell!.textContent).not.toContain("0.08 0.04 0.00 1/199 6");
@@ -73,7 +73,7 @@ it("keeps open details and row identity stable while another call streams and se
   expect(command(finished!).getAttribute("aria-expanded")).toBe("true");
   expect(command(streaming!).textContent).toContain("Made request");
   expect(document.querySelectorAll('[data-tool-shimmer="true"]')).toHaveLength(0);
-  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran commands (2), Made requests");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran command (2), Made request");
 });
 
 it("keeps repeated failures separate and reveals only the command the reader opens", async () => {
@@ -94,7 +94,7 @@ it("keeps repeated failures separate and reveals only the command the reader ope
 it("does not show commands running while the model continues after their results", () => {
   show([call()], "received");
   renderThread();
-  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran commands");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran command");
   openGroup();
   expect(rows()[0]!.getAttribute("data-state")).toBe("succeeded");
   expect(document.querySelector('[data-tool-shimmer="true"]')).toBeNull();

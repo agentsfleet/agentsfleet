@@ -115,7 +115,7 @@ describe("RunnerHeader", () => {
     );
     expect(screen.getByText("degraded")).toBeTruthy();
     expect(screen.getByText(/assignment unmet: landlock unavailable/)).toBeTruthy();
-    expect(screen.getByText(/host reports landlock ✗/)).toBeTruthy();
+    expect(screen.getByText(/host reports landlock unavailable/)).toBeTruthy();
   });
 
   it("a healthy runner shows neither the degraded badge nor the mismatch line", () => {
@@ -150,10 +150,10 @@ describe("RunnerHeader", () => {
         })}
         grafanaHref={null} canWrite />,
     );
-    expect(screen.getByText(/seccomp ✗/)).toBeTruthy();
-    expect(screen.getByText(/cgroups ✗/)).toBeTruthy();
-    expect(screen.getByText(/bubblewrap ✗/)).toBeTruthy();
-    expect(screen.getByText(/egress ✓/)).toBeTruthy();
+    expect(screen.getByText(/seccomp unavailable/)).toBeTruthy();
+    expect(screen.getByText(/cgroups unavailable/)).toBeTruthy();
+    expect(screen.getByText(/bubblewrap unavailable/)).toBeTruthy();
+    expect(screen.getByText(/egress available/)).toBeTruthy();
   });
 
   it("saving a policy re-assignment refreshes the header (the row must show the new truth)", async () => {

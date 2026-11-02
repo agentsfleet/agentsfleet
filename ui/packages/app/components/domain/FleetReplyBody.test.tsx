@@ -4,7 +4,8 @@ import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } fr
 
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
-import { renderReplyPart, SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary, type ReplyContext } from "./FleetReplyBody";
+import { renderReplyPart, type ReplyContext } from "./FleetReplyParts";
+import { SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "./FleetReplyAnnouncements";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { toReplyMessage } from "./fleetReplyMessage";
 import { convertEvent } from "./useFleetEventStream";

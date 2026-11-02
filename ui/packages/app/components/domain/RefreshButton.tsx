@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { CheckIcon, RefreshCwIcon } from "lucide-react";
+import { CircleCheckIcon, RefreshCwIcon } from "lucide-react";
 import { TooltipButton, cn } from "@agentsfleet/design-system";
 
 /** How long the acknowledgement stands before it fades out. */
@@ -79,7 +79,7 @@ export function RefreshButton({
         onClick={refresh}
       >
         {refreshed ? (
-          <CheckIcon aria-hidden="true" className="text-success" />
+          <CircleCheckIcon aria-hidden="true" className="text-success" />
         ) : (
           <RefreshCwIcon aria-hidden="true" className={cn(refreshing && "animate-spin")} />
         )}

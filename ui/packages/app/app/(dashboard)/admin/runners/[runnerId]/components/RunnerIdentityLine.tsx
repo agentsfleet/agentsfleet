@@ -9,8 +9,8 @@ import { RUNNER_STATES_DOC_URL, RUNNER_STATES_HELP_LABEL } from "./runner-copy";
 const HELP_ICON_SIZE = 14;
 const ASSIGNMENT_UNMET_PREFIX = "assignment unmet: ";
 const ACHIEVABLE_PREFIX = "host reports";
-const MECHANISM_YES = "✓";
-const MECHANISM_NO = "✗";
+const MECHANISM_YES = "available";
+const MECHANISM_NO = "unavailable";
 
 // The host's own report, rendered verbatim beside the assignment it failed —
 // what the kernel can actually enforce, mechanism by mechanism. No derived

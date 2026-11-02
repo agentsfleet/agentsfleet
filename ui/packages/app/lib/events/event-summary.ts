@@ -131,6 +131,7 @@ function sourceOf(token: string): string {
   const trimmed = token.trim();
   if (trimmed.length === 0 || OPAQUE_ID.test(trimmed)) return SENDER.UNKNOWN;
   if (trimmed === "github" || trimmed === "github-app") return SENDER.GITHUB_APP;
+  if (trimmed === "slack") return "Slack";
   return trimmed;
 }
 
@@ -164,7 +165,7 @@ const FAILURE_PRESENTATION: Record<string, EventFailurePresentation> = {
   oom_kill: { label: "Ran out of memory", guidance: null },
   resource_kill: { label: "Hit a resource limit", guidance: null },
   runner_crash: { label: "The runner crashed", guidance: null },
-  transport_loss: { label: "Lost connection to the runner", guidance: null },
+  transport_loss: { label: "The response was interrupted", guidance: null },
   landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
   lease_expired: { label: "The run's lease expired", guidance: null },
   renewal_terminate: { label: "Stopped by lease renewal policy", guidance: null },

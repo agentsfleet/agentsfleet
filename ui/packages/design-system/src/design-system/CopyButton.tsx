@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, CopyIcon, XIcon } from "lucide-react";
+import { CircleCheckIcon, CopyIcon, XIcon } from "lucide-react";
 import { Button } from "./Button";
 import { cn } from "../utils";
 import { useResettableTimeout } from "./use-resettable-timeout";
@@ -75,7 +75,7 @@ export function CopyButton({ value, label, showLabel = false, onOutcomeChange, c
 
   const icon =
     outcome === "copied" ? (
-      <CheckIcon size={14} className="text-success" aria-hidden="true" />
+      <CircleCheckIcon size={14} className="text-success" aria-hidden="true" />
     ) : outcome === "failed" ? (
       <XIcon size={14} className="text-destructive" aria-hidden="true" />
     ) : (

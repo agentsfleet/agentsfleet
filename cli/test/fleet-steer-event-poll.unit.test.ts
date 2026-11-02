@@ -26,7 +26,10 @@ describe("steer recovery reads the admitted event directly", () => {
       pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(http)),
     );
     expect(outcome).toEqual({ kind: STATUS_COMPLETE, status: EVENT_STATUS.PROCESSED });
-    expect(requests).toEqual([{ path: EVENT_PATH, token: TOKEN }]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({path: EVENT_PATH, token: TOKEN, signal: abort.signal, retry: {maxAttempts: 1}});
+    expect(requests[0]?.timeoutMs).toBeGreaterThan(0);
+    expect(requests[0]?.timeoutMs).toBeLessThanOrEqual(60_000);
   });
 
   test("encodes opaque event IDs as one path segment", async () => {
@@ -54,7 +57,7 @@ describe("steer recovery reads the admitted event directly", () => {
       request: <T>(input: HttpRequestInput) => {
         paths.push(input.path);
         if (paths.length === 1) return Effect.fail(new ServerError({
-          code: "TEMPORARY_OUTAGE", detail: "Unavailable", status: 503, requestId: null, suggestion: "Retry",
+          code: "TEMPORARY_OUTAGE", detail: "Unavailable", status: 503, requestId: null, suggestion: "Retry", transient: true,
         }));
         abort.abort();
         return Effect.succeed({ event_id: EVENT, status: EVENT_STATUS.PROCESSED } as T);

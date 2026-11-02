@@ -119,7 +119,7 @@ describe("FleetActivityRow", () => {
 
     expect(screen.getByText("agentsfleet/agentsfleet#546 was edited")).toBeTruthy();
     expect(screen.getByText("EDITED")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Details" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View event" })).toBeTruthy();
     expect(time.dateTime).toBe(AT.toISOString());
     expect(time.getAttribute("aria-hidden")).toBe("true");
     expect(time.textContent).toMatch(/ago$/);

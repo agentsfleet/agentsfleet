@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  CheckIcon,
+  CircleCheckIcon,
   CircleAlertIcon,
   CoinsIcon,
   HashIcon,
@@ -197,7 +197,7 @@ function outcomeCell(latest: RunFigures | null, available: boolean): OutcomeCell
   if (latest.status === EVENT_STATUS.GATE_BLOCKED) {
     return { text, tone: "warning", Icon: HourglassIcon, live: false, at };
   }
-  return { text, tone: "success", Icon: CheckIcon, live: false, at };
+  return { text, tone: "success", Icon: CircleCheckIcon, live: false, at };
 }
 
 // What a figure cell shows: the figure, or the unknown mark when the read

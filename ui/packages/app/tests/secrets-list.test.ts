@@ -27,7 +27,7 @@ vi.mock("lucide-react", () => {
     Trash2Icon: make("Trash2Icon"),
     // CopyButton (design-system) renders these three.
     CopyIcon: make("CopyIcon"),
-    CheckIcon: make("CheckIcon"),
+    CircleCheckIcon: make("CircleCheckIcon"),
     XIcon: make("XIcon"),
     Loader2Icon: make("Loader2Icon"),
     KeyRoundIcon: make("KeyRoundIcon"),

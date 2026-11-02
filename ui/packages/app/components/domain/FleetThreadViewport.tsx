@@ -7,7 +7,7 @@ import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream"
 import { SteerComposer, type SteerComposerProps } from "./SteerComposer";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { renderFleetMessage } from "./fleetMessageRenderers";
-import { SettledReplyStatus } from "./FleetReplyBody";
+import { SettledReplyStatus } from "./FleetReplyAnnouncements";
 import { ChatThread } from "./chat/ChatThread";
 
 const PANEL_TITLE = "Chat";

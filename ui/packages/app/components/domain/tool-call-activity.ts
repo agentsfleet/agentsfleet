@@ -10,8 +10,6 @@ type Kind = "read" | "write" | "list" | "command" | "request" | "pull-request" |
 type Description = {running: string; done: string; target: string; kind: Kind};
 export type ToolActivity = {label: string; target: string; kind: Kind; state: CellState};
 const KNOWN: ReadonlySet<string> = new Set(Object.values(TOOL_NAME));
-const COMPLETED: Record<Kind, string> = {read: "Read sources", write: "Edited files", list: "Listed items", command: "Ran commands",
-  request: "Made requests", "pull-request": "Opened pull requests", check: "Completed checks", tool: "Used tools"};
 const PREFIX = {[CELL_STATE.FAILED]: "Failed", [CELL_STATE.INTERRUPTED]: "Interrupted", [CELL_STATE.SETTLED]: "Outcome unavailable"};
 const PRIORITY: Record<CellState, number> = {running: 4, failed: 3, interrupted: 2, settled: 1, succeeded: 0};
 
@@ -38,7 +36,7 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
     if (current === CELL_STATE.RUNNING) {active ??= activity; activeCount++; continue;}
     kind = activity.kind;
     if (PRIORITY[current] > PRIORITY[state]) state = current;
-    const summary = current === CELL_STATE.SUCCEEDED ? COMPLETED[kind] : PREFIX[current];
+    const summary = kind === "tool" ? [activity.label, activity.target].filter(Boolean).join(" ") : activity.label;
     summaries.set(summary, (summaries.get(summary) ?? 0) + 1);
   }
   if (active) return activeCount === 1 ? active : {...active, target: [active.target, `${activeCount} active`].filter(Boolean).join(" · ")};
@@ -89,6 +87,8 @@ function request(args: ToolArgs | undefined): Description {
     if (method === "GET" && (path.startsWith("/git/trees/") || path === "/contents")) return {running: "Listing files", done: "Listed files", target: repo, kind: "list"};
     if (method === "GET" && path.startsWith("/contents/")) return {running: "Reading file", done: "Read file", target: first(path.slice(10)), kind: "read"};
     if (method === "GET" && /\/actions\/jobs\/\d+\/logs$/.test(path)) return {running: "Reading job log", done: "Read job log", target: repo, kind: "read"};
+    if (method === "GET" && /^\/actions\/(?:runs|jobs)\//.test(path)) return {running: "Reading CI status", done: "Read CI status", target: repo, kind: "read"};
+    if (method === "GET" && path.startsWith("/git/ref/heads/")) return {running: "Checking branch head", done: "Checked branch head", target: repo, kind: "check"};
     if (method === "GET" && path === "") return {running: "Checking repository access", done: "Checked repository access", target: repo, kind: "check"};
   }
   return {running: "Making request", done: "Made request", target: first(target), kind: "request"};

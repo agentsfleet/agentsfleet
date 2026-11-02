@@ -37,6 +37,8 @@ import {
   eventLinkFrom,
   eventReferenceFrom,
   senderLabelFor,
+  steerMessageFrom,
+  parsePayload,
 } from "@/lib/events/event-summary";
 
 const SOURCE_LINK_FALLBACK = "View source";
@@ -136,6 +138,7 @@ function FleetActivityMessage({
   // outcome does not earn a second row. A real reply does, and then this is
   // its split trigger.
   const recorded = status === FLEET_ACTIVITY.status;
+  const details = activityDetails(readActor(message), recorded ? undefined : payload);
   const outcome = working || isSplitTrigger || recorded ? undefined : messageOutcome(message);
   const link = eventLinkFrom(payload);
   const reference = link ? eventReferenceFrom(payload) : null;
@@ -148,6 +151,7 @@ function FleetActivityMessage({
         outcome={outcome}
         failed={errored}
         messageRole={message.role}
+        detailsLabel={details.label}
         annotation={
           <ActivityAnnotation
             link={link}
@@ -156,7 +160,7 @@ function FleetActivityMessage({
           />
         }
       >
-        {payload && !recorded ? <FleetPayloadDisclosure json={payload} inline /> : null}
+        {details.content}
       </FleetActivityRow>
     </>
   );
@@ -188,7 +192,9 @@ function FleetGroupMessage({ senderLabel, members }: { senderLabel: string; memb
       onToggle={() => setExpanded((open) => !open)}
     >
       {expanded
-        ? members.map((member) => (
+        ? members.map((member) => {
+          const details = activityDetails(member.actor, member.custom?.requestJson);
+          return (
             <FleetActivityRow
               key={member.id}
               sender={senderLabelFor(member.actor, senderLabel)}
@@ -197,15 +203,22 @@ function FleetGroupMessage({ senderLabel, members }: { senderLabel: string; memb
               outcome={eventOutcome(member)}
               failed={member.status === STATUS_AGENT_ERROR}
               messageRole="system"
+              detailsLabel={details.label}
             >
-              {member.custom?.requestJson ? (
-                <FleetPayloadDisclosure json={member.custom.requestJson} inline />
-              ) : null}
+              {details.content}
             </FleetActivityRow>
-          ))
+          );})
         : null}
     </FleetGroupRow>
   );
+}
+
+function activityDetails(actor: string, payload: string | null | undefined) {
+  const message = actor.startsWith("slack:") ? steerMessageFrom(payload) : "";
+  const record = parsePayload(payload);
+  return {label: message ? "View message" : "View event",
+    content: message ? <FleetMarkdown expandable>{message}</FleetMarkdown>
+      : payload && (!record || Object.keys(record).length > 0) ? <FleetPayloadDisclosure json={payload} inline /> : null};
 }
 
 // The provider's source reference is the link label. Unknown payload shapes
