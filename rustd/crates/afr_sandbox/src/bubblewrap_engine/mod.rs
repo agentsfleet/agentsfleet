@@ -15,7 +15,7 @@ use rustix::fs::{Gid, Uid};
 use crate::bubblewrap::{self, Layout, NetworkLayout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup};
 use crate::egress::{self, Kernel};
-use crate::engine::{Engine, HostWorkspace, LeaseName, Limits, Sandbox, SandboxRequest};
+use crate::engine::{Engine, HostWorkspace, Killed, LeaseName, Limits, Sandbox, SandboxRequest};
 use crate::error::{Result, not_ready, unconfined};
 use crate::network::{Allowlist, Network};
 use crate::probe::HostProbe;
@@ -314,6 +314,10 @@ impl Sandbox for Bubblewrapped {
 
     async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
         self.parts.reallow(allowlist).await
+    }
+
+    async fn kill(&self) -> Killed {
+        self.parts.kill().await
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

@@ -75,19 +75,22 @@ impl LeaseRun<'_> {
             stop: &stop,
         };
         // The cell outlives the build that fills it and the turn that borrows
-        // its executor through the slot.
+        // its executor through the slot; the slot's scope ends the borrow.
         let cell = OnceLock::new();
-        let slot = ExecutorSlot::pending();
-        // Both boxed: side by side, the build's state and the turn's would sit
-        // in the lease's own future together, past the large-future bound.
-        let building = Box::pin(async {
-            self.build(&build, &cell, &slot).await;
-            setup.stop();
-        });
-        let driving = Box::pin(self.drive(memory, &slot, sink));
-        let ending = self.beside(building, driving, &stop).await;
-        self.timeline.waited(slot.held());
-        drop(slot);
+        let (ending, held) = {
+            let slot = ExecutorSlot::pending();
+            // Both boxed: side by side, the build's state and the turn's would
+            // sit in the lease's own future together, past the large-future
+            // bound.
+            let building = Box::pin(async {
+                self.build(&build, &cell, &slot).await;
+                setup.stop();
+            });
+            let driving = Box::pin(self.drive(memory, &slot, sink));
+            let ending = self.beside(building, driving, &stop).await;
+            (ending, slot.held())
+        };
+        self.timeline.waited(held);
         Worked {
             ending,
             kept: cell.into_inner().map(|sandbox| Kept { sandbox, key }),

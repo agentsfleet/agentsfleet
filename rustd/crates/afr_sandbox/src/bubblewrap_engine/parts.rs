@@ -18,11 +18,13 @@ use tokio::task::JoinHandle;
 
 use crate::cgroup::{CGROUP_PROCS, Freezer, LeaseCgroup};
 use crate::egress::{Host, Scope};
-use crate::error::{EgressRefusal, Error, Result, cgroup, egress_refused, program};
+use crate::engine::Killed;
+use crate::error::{EgressRefusal, Error, Result, cgroup, egress_refused, program, unconfined};
 use crate::network::Allowlist;
 use crate::tenant::TenantFiles;
 use crate::workspace_disk::WorkspaceDisk;
 
+use super::NO_CGROUP;
 use super::held::off_runtime;
 use super::names::Names;
 use super::stderr::drain;
@@ -202,6 +204,19 @@ impl Parts {
         self.child
             .as_mut()
             .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    }
+
+    /// Ends every process in the sandbox and waits, bounded, for its cgroup
+    /// to empty. The disk, the cgroup and the egress rules stay for the
+    /// teardown.
+    pub(super) async fn kill(&self) -> Killed {
+        let Some(cgroup) = &self.cgroup else {
+            return Killed::Unsettled(unconfined(NO_CGROUP));
+        };
+        match cgroup.kill_and_drain().await {
+            Ok(()) => Killed::Settled,
+            Err(failure) => Killed::Unsettled(failure),
+        }
     }
 
     /// Ends every process, then releases the cgroup, the disk and the

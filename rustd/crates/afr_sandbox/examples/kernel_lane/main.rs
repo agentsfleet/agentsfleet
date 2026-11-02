@@ -57,6 +57,8 @@ mod hold;
 #[path = "../../../agentsfleet_runner/tests/http_server.rs"]
 mod http_server;
 #[cfg(target_os = "linux")]
+mod kill;
+#[cfg(target_os = "linux")]
 mod lane;
 #[cfg(target_os = "linux")]
 mod release;

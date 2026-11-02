@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Allowlist, Engine, HostWorkspace, Limits, Network, Sandbox, SandboxRequest};
+use afr_sandbox::{
+    Allowlist, Engine, HostWorkspace, Killed, Limits, Network, Sandbox, SandboxRequest,
+};
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
@@ -36,6 +38,16 @@ pub(crate) enum Freezer {
     Dead,
 }
 
+/// How a fake sandbox's kill ends.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Kill {
+    /// The tree empties.
+    #[default]
+    Settles,
+    /// It cannot prove the tree empty, as one stuck in the kernel.
+    Unsettles,
+}
+
 /// An engine whose sandboxes count their teardowns.
 #[derive(Debug, Default)]
 pub(crate) struct FakeEngine {
@@ -47,6 +59,11 @@ pub(crate) struct FakeEngine {
     /// doomed lease runs; set once the token to cancel exists.
     pub(crate) halt_before_panic: Arc<std::sync::OnceLock<tokio_util::sync::CancellationToken>>,
     pub(crate) fail_teardown: bool,
+    /// How its sandboxes' kills end.
+    pub(crate) kill: Kill,
+    /// Each kill and destroy, in order, for a suite that sets the report
+    /// beside them.
+    pub(crate) steps: Arc<std::sync::Mutex<Vec<&'static str>>>,
     /// How long each teardown takes before it is counted.
     pub(crate) teardown_takes: Duration,
     /// How long each prepare takes before it answers, refused or not.
@@ -109,6 +126,8 @@ impl Engine for FakeEngine {
         });
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
+            kill: self.kill,
+            steps: Arc::clone(&self.steps),
             teardown_takes: self.teardown_takes,
             thaw_takes: self.thaw_takes,
             workspace,
@@ -129,6 +148,8 @@ impl Engine for FakeEngine {
 #[derive(Debug)]
 struct FakeSandbox {
     fail_teardown: bool,
+    kill: Kill,
+    steps: Arc<std::sync::Mutex<Vec<&'static str>>>,
     teardown_takes: Duration,
     thaw_takes: Duration,
     workspace: Option<(PathBuf, (u32, u32))>,
@@ -188,7 +209,16 @@ impl Sandbox for FakeSandbox {
         Ok(())
     }
 
+    async fn kill(&self) -> Killed {
+        self.steps.lock().unwrap().push(KILL);
+        if self.kill == Kill::Unsettles {
+            return Killed::Unsettled(std::io::Error::other(STILL_RUNNING).into());
+        }
+        Killed::Settled
+    }
+
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
+        self.steps.lock().unwrap().push(DESTROY);
         if !self.teardown_takes.is_zero() {
             tokio::time::sleep(self.teardown_takes).await;
         }
@@ -199,6 +229,12 @@ impl Sandbox for FakeSandbox {
         Ok(())
     }
 }
+
+/// The steps a fake sandbox records, by name.
+pub(crate) const KILL: &str = "kill";
+pub(crate) const DESTROY: &str = "destroy";
+/// What a kill that cannot prove the tree empty says.
+pub(crate) const STILL_RUNNING: &str = "a process is stuck in the kernel";
 
 /// What a refused freeze or thaw says.
 pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";

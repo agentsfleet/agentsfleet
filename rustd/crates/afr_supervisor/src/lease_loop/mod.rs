@@ -53,7 +53,7 @@ mod segments;
 mod settle;
 mod workspace;
 
-use self::hold::{Kept, Worked};
+use self::hold::{Fate, Kept, Worked};
 pub(crate) use self::lessee::Lessee;
 use self::refusal::failed;
 use self::segments::{Segment, Timeline};
@@ -203,9 +203,10 @@ impl LeaseRun<'_> {
             .await
     }
 
-    /// The hold and the report, with the renewal and the live tail still
-    /// polled beside them, then the wait the tail gets to drain. Timed as the
-    /// report segment up to the drain.
+    /// The hold or the kill, and the report, with the renewal and the live
+    /// tail still polled beside them; then the release of a killed sandbox's
+    /// disk beside the wait the tail gets to drain. Timed as the report
+    /// segment up to the release.
     async fn settle_and_drain(
         &self,
         kept: Option<Kept>,
@@ -215,30 +216,36 @@ impl LeaseRun<'_> {
         mut live: Live,
     ) -> Ending {
         let reporting = self.timeline.start(Segment::Report);
-        {
+        let fate: Fate = {
             let settle = async {
-                let held_until = self.keep(kept, &ending).await;
-                let superseded = self.settle(&mut ending, held_until).await;
-                if superseded && held_until.is_some() {
+                let fate = self.keep(kept, &ending).await;
+                let superseded = self.settle(&mut ending, &fate).await;
+                if superseded && fate.held_until().is_some() {
                     self.lessee.holds.supersede(self.ids.lease.clone());
                 }
+                fate
             };
             tokio::pin!(settle);
             loop {
                 tokio::select! {
                     biased;
-                    () = &mut settle => break,
+                    fate = &mut settle => break fate,
                     _class = &mut renewal, if live.renewing => live.renewing = false,
                     () = &mut pumping, if live.pumping => live.pumping = false,
                 }
             }
-        }
+        };
         reporting.stop();
-        if live.pumping
-            && tokio::time::timeout(ACTIVITY_DRAIN_WAIT, &mut pumping)
-                .await
-                .is_err()
-        {
+        // The disk goes after the report, beside the tail's drain, so neither
+        // waits on the other; the lease returns only once both are done.
+        let drained = async {
+            !live.pumping
+                || tokio::time::timeout(ACTIVITY_DRAIN_WAIT, &mut pumping)
+                    .await
+                    .is_ok()
+        };
+        let ((), drained) = tokio::join!(self.release(fate), drained);
+        if !drained {
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             let lease_id = self.ids.lease.as_str();
             let event = EVENT_DRAIN_ABANDONED;

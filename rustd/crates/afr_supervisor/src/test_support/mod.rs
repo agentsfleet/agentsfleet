@@ -38,7 +38,9 @@ pub(crate) use self::fixtures::lease;
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
-pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, NO_REFILL};
+pub(crate) use self::sandbox::{
+    DESTROY, EXECUTOR_GONE, FakeEngine, Freezer, KILL, Kill, NO_FREEZER, NO_REFILL, STILL_RUNNING,
+};
 pub(crate) use afr_egress::testing::FakeResolver;
 
 pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};

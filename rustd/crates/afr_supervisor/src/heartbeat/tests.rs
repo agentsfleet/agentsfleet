@@ -100,7 +100,7 @@ pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
 }
 
 /// Parks a sandbox `engine` builds for [`FLEET`], and answers whether `holds`
-/// held it rather than destroying it.
+/// held it; one it refuses is destroyed, as the lease would after its report.
 pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> bool {
     let request = SandboxRequest::new(LEASE, Limits::default());
     let key = HoldKey {
@@ -111,7 +111,14 @@ pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> bool {
     };
     let sandbox = engine.prepare(request).await.unwrap();
     let lease = Uuid7::parse(LEASE).unwrap();
-    holds.park(key, lease, sandbox).await.is_some()
+    match holds.park(key, lease, sandbox).await {
+        crate::holds::Parked::Held(_until) => true,
+        crate::holds::Parked::Refused(sandbox) => {
+            sandbox.destroy().await.unwrap();
+            false
+        }
+        crate::holds::Parked::Gone => false,
+    }
 }
 
 pub(super) fn sent(call: &Call) -> serde_json::Value {

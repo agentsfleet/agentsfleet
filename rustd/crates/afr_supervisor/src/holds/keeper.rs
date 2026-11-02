@@ -12,7 +12,7 @@ use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinSet;
 
-use super::{HoldKey, Release, Request, Taken};
+use super::{HoldKey, Parked, Release, Request, Taken};
 
 /// The event a parked sandbox is logged under.
 const EVENT_HELD: &str = "sandbox_held";
@@ -77,8 +77,15 @@ impl Keeper {
                     sandbox,
                     reply,
                 } => {
-                    let until = self.park(key, lease, sandbox);
-                    let _unasked = reply.send(until);
+                    let fleet = key.fleet.clone();
+                    // Nobody waits for a refused sandbox: its release is
+                    // already counted, so it is only torn down here.
+                    if let Err(Parked::Refused(sandbox)) =
+                        reply.send(self.park(key, lease, sandbox))
+                    {
+                        self.destroying
+                            .spawn(async move { tear_down(&fleet, sandbox).await });
+                    }
                 }
                 Request::Release { fleet, reason } => self.release(&fleet, reason),
                 Request::Supersede { lease } => self.supersede(&lease),
@@ -127,18 +134,18 @@ impl Keeper {
     /// Holds `sandbox` for its fleet until the idle window lapses, after
     /// making room: an older hold of the same fleet goes, then the oldest
     /// until one fewer than the cap remain. A closed keeper holds nothing.
-    fn park(&mut self, key: HoldKey, lease: Uuid7, sandbox: Box<dyn Sandbox>) -> Option<Timestamp> {
+    fn park(&mut self, key: HoldKey, lease: Uuid7, sandbox: Box<dyn Sandbox>) -> Parked {
         if self.closed {
-            self.destroy(&key.fleet, sandbox, Release::Shutdown);
-            return None;
+            released(&key.fleet, Release::Shutdown);
+            return Parked::Refused(sandbox);
         }
         if let Some(at) = self.position(&key.fleet) {
             let stale = self.held.remove(at);
             self.retire(stale, Release::Superseded);
         }
         let Some(room) = self.workers.checked_sub(1) else {
-            self.destroy(&key.fleet, sandbox, Release::Capped);
-            return None;
+            released(&key.fleet, Release::Capped);
+            return Parked::Refused(sandbox);
         };
         self.cap(room);
         let since = self.clock.now();
@@ -155,7 +162,7 @@ impl Keeper {
             since,
             until,
         });
-        Some(until)
+        Parked::Held(until)
     }
 
     /// Counts a busy worker; the one that leaves none free releases every
@@ -246,7 +253,7 @@ pub(super) async fn destroy_now(fleet: &Uuid7, sandbox: Box<dyn Sandbox>, reason
     tear_down(fleet, sandbox).await;
 }
 
-fn released(fleet: &Uuid7, reason: Release) {
+pub(super) fn released(fleet: &Uuid7, reason: Release) {
     let fleet_id = fleet.as_str();
     let outcome = reason.outcome();
     let reason = outcome.as_str();

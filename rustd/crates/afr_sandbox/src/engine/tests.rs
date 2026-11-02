@@ -81,6 +81,10 @@ impl super::Sandbox for Watchless {
         Ok(())
     }
 
+    async fn kill(&self) -> super::Killed {
+        unreachable!("never driven")
+    }
+
     async fn destroy(self: Box<Self>) -> crate::Result<()> {
         Ok(())
     }
