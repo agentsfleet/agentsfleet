@@ -184,33 +184,37 @@ try:
         environment = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"])
         if case == "direct_io_when_asked":
             environment["TOOLBOX_LOOP_DIRECT_IO"] = "on"
-        if publication:
-            # These cases prove the clean-up when a signal lands mid-publication,
-            # not the measurement, so each sandboxed step answers at once and
-            # the disk sync is skipped: publication starts within a second, on
-            # any disk. The cache drop before each step goes too: nothing here
-            # is timed. The mount, the 20 recorded runs and the publication path
-            # are the real ones. Then hold the real JSON writer once it owns its
-            # exclusive staging file.
-            hook = directory / "sitecustomize.py"
-            hook.write_text("import json, os, subprocess, time\nfrom pathlib import Path\n"
-                            "real_run = subprocess.run\n"
-                            "def instant_step(args, *rest, **options):\n"
-                            "    if args and args[0] == 'bwrap':\n"
-                            "        return subprocess.CompletedProcess(args, 0, b'', b'')\n"
-                            "    return real_run(args, *rest, **options)\n"
-                            "subprocess.run = instant_step\n"
-                            "os.sync = lambda: None\n"
-                            "real_write_text = Path.write_text\n"
-                            "def write_unless_drop(path, data, *rest, **options):\n"
-                            "    if str(path) == '/proc/sys/vm/drop_caches':\n"
-                            "        return len(data)\n"
-                            "    return real_write_text(path, data, *rest, **options)\n"
-                            "Path.write_text = write_unless_drop\n"
-                            "def hold_report(*args, **kwargs):\n"
-                            f"    Path({str(directory / 'publication-started')!r}).touch()\n"
-                            "    time.sleep(120)\n"
-                            "json.dump = hold_report\n")
+        if case in ("null_baseline", "missing_digest", *published) or publication:
+            # Every step in these cases is the stub above, so nothing is timed:
+            # the disk sync and the cache drop before each of the 160 steps go.
+            # On a loaded host those alone outlast the bound.
+            hook = ("import os\nfrom pathlib import Path\n"
+                    "os.sync = lambda: None\n"
+                    "real_write_text = Path.write_text\n"
+                    "def write_unless_drop(path, data, *rest, **options):\n"
+                    "    if str(path) == '/proc/sys/vm/drop_caches':\n"
+                    "        return len(data)\n"
+                    "    return real_write_text(path, data, *rest, **options)\n"
+                    "Path.write_text = write_unless_drop\n")
+            if publication:
+                # These cases prove the clean-up when a signal lands
+                # mid-publication, so each step answers in-process and
+                # publication starts within a second, on any disk. The mount,
+                # the 20 recorded runs and the publication path are the real
+                # ones. Then hold the real JSON writer once it owns its
+                # exclusive staging file.
+                hook += ("import json, subprocess, time\n"
+                         "real_run = subprocess.run\n"
+                         "def instant_step(args, *rest, **options):\n"
+                         "    if args and args[0] == 'bwrap':\n"
+                         "        return subprocess.CompletedProcess(args, 0, b'', b'')\n"
+                         "    return real_run(args, *rest, **options)\n"
+                         "subprocess.run = instant_step\n"
+                         "def hold_report(*args, **kwargs):\n"
+                         f"    Path({str(directory / 'publication-started')!r}).touch()\n"
+                         "    time.sleep(120)\n"
+                         "json.dump = hold_report\n")
+            (directory / "sitecustomize.py").write_text(hook)
             environment["PYTHONPATH"] = str(directory)
         if case == "missing_digest":
             # Produce a compatible baseline, then remove only its required digest.
