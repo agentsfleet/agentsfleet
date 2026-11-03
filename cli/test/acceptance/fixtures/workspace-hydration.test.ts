@@ -9,6 +9,7 @@ import {
   mintCliCredential,
   revokeHydratedCliCredentials,
 } from "./workspace-hydration.ts";
+import { MAX_ATTEMPTS } from "./retryable.ts";
 
 const API_URL = "https://api.test";
 const SESSION_TOKEN = "fixture-session-token";
@@ -26,6 +27,14 @@ const HTTP_METHOD_POST = "POST";
 const HTTP_NO_CONTENT = 204;
 const HTTP_FORBIDDEN = 403;
 const HTTP_SERVICE_UNAVAILABLE = 503;
+const HTTP_OK = 200;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_BAD_GATEWAY = 502;
+const HTTP_GATEWAY_TIMEOUT = 504;
+/** What the Cloudflare edge answers for a daemon that is not up yet. */
+const EDGE_PAGE = "<html><head><title>502 Bad Gateway</title></head></html>";
+/** The un-jittered first wait: `retryable.ts`'s 500 ms base at `random() = 0.5`. */
+const FIRST_BACKOFF_MS = 500;
 /** Every test leaves the credential map empty, so the hook never waits. */
 const NO_WAIT = async (): Promise<void> => {};
 const NO_JITTER = (): number => 0.5;
@@ -211,5 +220,83 @@ describe("revoking the credentials this process minted", () => {
       [SECOND_CLI_CREDENTIAL_ID]: [HTTP_NO_CONTENT],
     });
     await revokeHydratedCliCredentials(API_URL, REVOKE_OPTIONS);
+  });
+});
+
+/** Everything one mint call did, compared whole so no field passes unread. */
+interface MintOutcome {
+  readonly minted: { readonly id: string; readonly credential: string } | null;
+  readonly error: string | null;
+  readonly calls: number;
+  readonly slept: ReadonlyArray<number>;
+}
+
+/**
+ * Mints against a fetch stub that answers each POST from `statuses` in order,
+ * the last repeating, 200 minting; the backoff is recorded, never waited.
+ */
+async function attemptMint(statuses: ReadonlyArray<number>): Promise<MintOutcome> {
+  let calls = 0;
+  const slept: number[] = [];
+  globalThis.fetch = Object.assign(
+    async (): Promise<Response> => {
+      const status = statuses[Math.min(calls, statuses.length - 1)] ?? HTTP_OK;
+      calls += 1;
+      if (status === HTTP_OK) {
+        return Response.json({ id: CLI_CREDENTIAL_ID, credential: CLI_CREDENTIAL });
+      }
+      return new Response(EDGE_PAGE, { status });
+    },
+    { preconnect: originalFetch.preconnect },
+  );
+  const options = { sleep: async (ms: number): Promise<void> => { slept.push(ms); }, random: NO_JITTER };
+  try {
+    const minted = await mintCliCredential(API_URL, SESSION_TOKEN, MACHINE_NAME, options);
+    return { minted, error: null, calls, slept };
+  } catch (error: unknown) {
+    return { minted: null, error: (error as Error).message, calls, slept };
+  }
+}
+
+/** The un-jittered schedule after the first `n` failed attempts: 500, 1000, 2000, 4000 ms. */
+function backoffAfter(n: number): number[] {
+  return Array.from({ length: n }, (_, attempt) => FIRST_BACKOFF_MS * 2 ** attempt);
+}
+
+describe("minting a CLI credential through an edge that is not ready", () => {
+  it("mints after an edge 502", async () => {
+    expect(await attemptMint([HTTP_BAD_GATEWAY, HTTP_OK])).toEqual({
+      minted: { id: CLI_CREDENTIAL_ID, credential: CLI_CREDENTIAL },
+      error: null,
+      calls: 2,
+      slept: backoffAfter(1),
+    });
+  });
+
+  it("throws after five retryable answers", async () => {
+    expect(await attemptMint([HTTP_SERVICE_UNAVAILABLE])).toEqual({
+      minted: null,
+      error: `CLI credential mint ${HTTP_SERVICE_UNAVAILABLE}: ${EDGE_PAGE} (gave up after ${MAX_ATTEMPTS} attempts)`,
+      calls: MAX_ATTEMPTS,
+      slept: backoffAfter(MAX_ATTEMPTS - 1),
+    });
+  });
+
+  it("does not retry a rejection", async () => {
+    expect(await attemptMint([HTTP_UNAUTHORIZED])).toEqual({
+      minted: null,
+      error: `CLI credential mint ${HTTP_UNAUTHORIZED}: ${EDGE_PAGE}`,
+      calls: 1,
+      slept: [],
+    });
+  });
+
+  it("does not retry a gateway timeout, which may follow a mint that landed", async () => {
+    expect(await attemptMint([HTTP_GATEWAY_TIMEOUT])).toEqual({
+      minted: null,
+      error: `CLI credential mint ${HTTP_GATEWAY_TIMEOUT}: ${EDGE_PAGE}`,
+      calls: 1,
+      slept: [],
+    });
   });
 });
