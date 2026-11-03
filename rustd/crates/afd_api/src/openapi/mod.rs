@@ -274,10 +274,9 @@ mod tests {
     /// (`afd_http::plane_collector!`) plus this crate's own `Root`, where each
     /// type a handler reaches publishes its own schema. One type reached twice
     /// publishes the same schema twice; a name with two different schemas is
-    /// two types. Two colliding types one handler reaches collapse inside that
-    /// handler's document before this sees them, and so do types no handler
-    /// reaches; `scripts/check_rust_source.py` reads every declaration in
-    /// `afd_wire` and `afd_api_wire` for those.
+    /// two types. Two colliding types every handler reaches together collapse
+    /// inside each document before this sees them; that costs one wrong shape
+    /// in the API reference, and is accepted.
     #[cfg(feature = "test-util")]
     #[test]
     fn every_component_name_is_one_type() {

@@ -110,7 +110,8 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `scripts/check_workflow_rules{,_test}.py` | EDIT | `workflow-builder-literal`: no workflow pastes a builder tag |
 | `sgconfig.yml`, `.ast-grep/` | CREATE | The `ast-grep` rule set and a test per rule |
 | `package.json`, `bun.lock` | EDIT | `@ast-grep/cli` 0.51.1 |
-| `scripts/check_{app,cli,design_system,rust}_source{,_test}.py` | EDIT | Retired-name tombstones go, and each keeps only the rules `ast-grep` and Rust tests cannot carry |
+| `scripts/check_{app,cli,design_system}_source{,_test}.py` | EDIT | Retired-name tombstones go, and each keeps only the rules `ast-grep` and Rust tests cannot carry |
+| `scripts/check_rust_source{,_test}.py` | DELETE | Its rules moved to `ast-grep` and Rust tests; what was left guarded nothing the build or `every_component_name_is_one_type` does not |
 | `rustd/crates/afd_db/{build.rs,src/migration.rs,tests/migrations.rs}` | CREATE, EDIT | A `schema/` file with no `migration!` entry fails a test |
 | `rustd/crates/afd_http/src/openapi/{mod,collector}.rs`, `rustd/crates/afd_api_{tenant,runner,operator,ingress}/src/openapi.rs`, `rustd/crates/afd_api/src/openapi/mod.rs` | CREATE, EDIT | `plane_collector!` writes each plane's handler list once, for the document and for the component-name test |
 | `rustd/crates/agentsfleetd/{build.rs,Cargo.toml,src/preflight/mod.rs,src/preflight/stream_ceiling_tests.rs}` | CREATE, EDIT | The stream ceiling is a measured rung of the tail baseline, as a test |
@@ -445,7 +446,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
   2. Every third-party action is pinned to its newest release's commit, 182 lines, with Dependabot moving them weekly; `gh-actions-runtime.sh` goes. `superfly/flyctl-actions` keeps its master pin, 11 commits past release 1.5. `check_workflow_rules.py`'s `workflow-action-pin` refuses any pin but a full commit, as `gh-actions-runtime.sh` refused a branch; GitHub's own full-SHA setting waits ("Not yet").
   3. GitHub's cache eviction replaces `cache-prune.yml` and its script.
   4. `ast-grep` 0.51.1 rules (`sgconfig.yml`, `.ast-grep/`, run by `make lint-source`) replace the regex rules in the four source lints; each lint keeps only what `ast-grep` cannot say. It is new tooling: no repository under `~/Projects` had an `sgconfig.yml`.
-  5. Rust tests replace two cross-file checks: the migration list against `schema/` (`afd_db`) and the stream ceiling against the tail baseline (`agentsfleetd`). The component-name check runs twice, since each reader misses what the other catches. The Python scan reads only `afd_wire` and `afd_api_wire`, while 40 `schema(as = …)` aliases live in other crates, most in `afd_fleet_runtime`. The new Rust test, `every_component_name_is_one_type`, reads every handler's document, so it sees those, but it misses two colliding types one handler reaches. One check covering both needs a type-registry dependency (`inventory` or `linkme`), which is not added.
+  5. Rust tests replace two cross-file checks: the migration list against `schema/` (`afd_db`) and the stream ceiling against the tail baseline (`agentsfleetd`). The component-name check is the Rust test `every_component_name_is_one_type`, which reads every handler's document, the 40 `schema(as = …)` aliases outside the wire crates included. It misses only two colliding types every handler reaches together, which costs one wrong shape in the API reference. `scripts/check_rust_source.py` goes: its schema scan read two crates and added only that case, and its empty-tree guard added nothing a moved crate does not already break in `cargo`.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
@@ -484,3 +485,5 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 04:34 PM): "Add in lint.yml" — context: `lint-shell`, the model catalogue, `check-documentation-rules` and the tests-call-code check ran only in `make lint-all` and the pre-commit hook; `lint.yml`'s `safety-gates` job now runs them.
 
 > Owner (Indy, Nov 03, 2026 04:34 PM): "Not yet" — context: GitHub's full-SHA setting stays off, so `workflow-action-pin` holds the pins.
+
+> Owner (Indy, Nov 03, 2026 06:07 PM): "Yes delete the scripts/check_rust_source.py" — context: its last two rules, the two-crate schema scan and the empty-tree guard.
