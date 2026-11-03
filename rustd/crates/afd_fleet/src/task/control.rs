@@ -88,6 +88,9 @@ pub(super) async fn apply(
     let snapshot = read::on(&mut transaction, scope, task_id).await?;
     transaction.commit().await.map_err(query(CONTEXT))?;
     if previous != requested {
+        tasks
+            .publish_changed(scope, task_id, snapshot.resource_version)
+            .await;
         if let Some(wake) = continuation {
             wake.confirm(tasks).await;
         }

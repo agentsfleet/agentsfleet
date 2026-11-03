@@ -35,11 +35,22 @@ impl Error {
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.inner.kind {
-            ErrorKind::Datastore { .. } => true,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::TaskReadTimeout { .. }
+            | ErrorKind::TaskReadCancelled { .. } => true,
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
             _ => false,
+        }
+    }
+
+    /// Bounded diagnostic for task-read performance, without query text.
+    pub(crate) const fn task_read_timeout_reason(&self) -> Option<&'static str> {
+        match self.inner.kind {
+            ErrorKind::TaskReadTimeout { .. } => Some("read_deadline"),
+            ErrorKind::TaskReadCancelled { .. } => Some("statement_deadline"),
+            _ => None,
         }
     }
 
@@ -89,7 +100,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
-            ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::TaskReadTimeout { .. }
+            | ErrorKind::TaskReadCancelled { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Authoring { ref source } => source.code(),
@@ -159,7 +172,7 @@ impl Error {
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Authoring { ref source } => source.detail(),
             ErrorKind::Admission { ref source } => source.detail(),
-            ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
+            ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskReadCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
             // is told the same thing because there is nothing it can do about

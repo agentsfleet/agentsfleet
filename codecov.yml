@@ -2,92 +2,22 @@ coverage:
   status:
     project:
       default:
-        # 100, not `auto`. Everything Codecov measures is held to 100 by its
-        # own runner: app, website and the agentsfleet CLI by their vitest and
-        # enforce-coverage configs, and the Rust workspace by `cargo llvm-cov`
-        # in the live-datastore coverage lane, graded once over its shards.
-        # `auto` compares against the parent commit, which would have quietly
-        # accepted a slide the moment one lane dropped a point.
+        # Keep the aggregate status fixed rather than following the parent.
+        # Local Rust whole-workspace and patch checks use distinct floors;
+        # this aggregate also includes the TypeScript package reports.
         target: 100%
         threshold: 0%
         informational: false
-    # Patch targets bind per flag so a red names the lane that caused it, not
-    # just "coverage fell". Every one of them is 100: the three TypeScript
-    # packages are pinned there by their own runners (cli/bunfig.toml plus
-    # scripts/enforce-coverage.mjs, ui/packages/app/vitest.config.ts,
-    # ui/packages/website/vite.config.ts) and the Rust workspace enforces its
-    # line target before upload.
-    #
-    # Every threshold is 0%: the target IS the bar, with no give. A patch status
-    # grades only the lines this diff touched, so on a small diff one unhit line
-    # reds the build — intentionally. A red always names a genuinely unhit added
-    # line, and the answer is a test, never absorbed slack.
+    # Grade changed lines per language using the same floors as local lanes.
+    # TypeScript requires 100%; Rust must be strictly above 99% (Indy, Nov 03,
+    # 2026), enforced as 99.01% here and by RUSTD_PATCH_FLOOR in
+    # make/test-integration-rustd.mk. Whole-workspace and per-file floors remain
+    # separate checks. No rounding margin or exclusions are introduced.
     patch:
-      # 100, not a measured-minus-margin floor. These crates now include live
-      # Postgres, Redis, HTTP and runtime paths, so the Rust job measures unit
-      # and ignored integration tests together and enforces this line target
-      # before it uploads. The TypeScript packages are held to the same bar by
-      # their own runners.
-      #
-      # If a later milestone adds a genuinely untestable line, move this number
-      # in the same change and say why — do not let it drift down silently.
-      #
-      # NOT a required context — the Rust job is absent from test.yml's `test`
-      # aggregate while the port is built. Promoting either is an M181 cutover
-      # decision.
       rust-afd:
         flags:
           - rust-afd
-        # 96, and it tracks `RUSTD_COVERAGE_FLOOR` in
-        # `make/test-integration-rustd.mk` rather than standing beside it. That
-        # variable is the number the lane actually enforces, through
-        # `scripts/rustd_coverage.py`, and this status grades the report
-        # that lane uploads. Two gates over one measurement must not disagree:
-        # while this said 100 and the lane said 96, the paragraph above claiming
-        # "the Rust workspace enforces this line target before upload" was
-        # simply untrue, and the red it produced named codecov rather than any
-        # uncovered line.
-        #
-        # 96 is not slack absorbed to go green. It is a measured 96.0219% —
-        # 25,224 of 26,269 lines, 1,045 missed — recorded where the floor lives.
-        # M176 §1-§5 did reach 100.00% (3193/3193) with nothing excused, and the
-        # crates have roughly eight times the lines now.
-        #
-        # A ratchet only moves UP. Both numbers move together, in one change,
-        # with the measurement that justifies them — lowering either to turn a
-        # red lane green is the thing this comment exists to prevent.
-        # Raised 96 -> 97 with `RUSTD_COVERAGE_FLOOR` on Indy's call
-        # (2026-08-31). Both numbers move together, as the note above requires.
-        #
-        # Raised 97 -> 99 on Indy's call (2026-09-18), and this one moves ALONE
-        # — which the paragraph above forbids for the two PROJECT numbers and
-        # does not govern here, because this is the PATCH status. The two grade
-        # different things: `RUSTD_COVERAGE_FLOOR` grades the whole workspace,
-        # measured at 97.5079% (40,966 of 42,013 lines), and no single Pull
-        # Request moves that. This grades only the lines a diff adds, where a
-        # branch with no test is a branch the author can still reach.
-        #
-        # 99 is not an aspiration set ahead of the code — the mistake the
-        # 97 -> 98 -> 97 round trip above records. It is the measurement that
-        # motivated it: the diff raising this line covers 260 of 260 added
-        # lines. Two resisted and neither was excused. The poisoned-lock
-        # fallback in `sweep/reconcile.rs` is reached by a test that poisons the
-        # lock on purpose; the re-file arm in `afd_admission`'s reconcile pass
-        # is reached by running one pass against a database that will not
-        # answer. Both were written because this measurement named them.
-        #
-        # Left at 99 rather than 100 for one reason, stated so the next author
-        # does not have to rediscover it: `tracing` field expressions that
-        # contain a call are reported dead by llvm-cov whatever runs them (see
-        # the `tracing` note in `rustd/Cargo.toml`). The workspace convention is
-        # to hoist them to a `let`, and a diff that forgets one loses a line it
-        # cannot win back with a test. One point of slack is that hoist, not
-        # absorbed failure.
-        #
-        # `RUSTD_PATCH_FLOOR` in `make/test-integration-rustd.mk` is this number,
-        # graded by the lane itself over the same merged report; the two move
-        # together.
-        target: 99%
+        target: 99.01%
         threshold: 0%
         informational: false
 

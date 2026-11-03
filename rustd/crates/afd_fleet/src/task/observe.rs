@@ -24,12 +24,16 @@ pub(super) async fn measure<T>(
     producers::task::operation_completed(operation, outcome, started.elapsed());
     if let Err(error) = &result {
         tracing::warn!(event = "dt_operation_failed", operation = operation.as_str(),
-            outcome = outcome.as_str(), error_code = %error.code());
+            outcome = outcome.as_str(), error_code = %error.code(),
+            reason = error.task_read_timeout_reason().unwrap_or("operation_failed"));
     }
     result
 }
 
 fn failure(error: &Error) -> TaskOutcome {
+    if error.task_read_timeout_reason().is_some() {
+        return TaskOutcome::Timeout;
+    }
     match error.code() {
         error_code::TASK_NOT_FOUND | error_code::RUN_LEASE_NOT_FOUND => TaskOutcome::NotFound,
         error_code::TASK_STALE_STATE

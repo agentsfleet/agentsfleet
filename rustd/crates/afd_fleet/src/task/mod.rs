@@ -6,7 +6,9 @@
 mod admit;
 mod continuation;
 mod control;
+mod fetch;
 mod guard;
+mod list;
 mod observe;
 mod read;
 mod refusal;
@@ -24,8 +26,8 @@ use crate::{Result, lease::Leases};
 
 pub use refusal::TaskRefusal;
 pub use types::{
-    PreparedPlan, PreparedTask, TaskBinding, TaskBindings, TaskControl, TaskLease, TaskScope,
-    TaskSnapshot,
+    PreparedPlan, PreparedTask, TaskAfter, TaskBinding, TaskBindings, TaskControl, TaskLease,
+    TaskPage, TaskScope, TaskSnapshot, TaskSummary,
 };
 
 /// Object-safe native operation using the owning crate's error shell.
@@ -33,6 +35,13 @@ pub type TaskFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>
 
 /// Behavior of the authoritative task owner; all writes are fenced natively.
 pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
+    /// Page current work without loading private objectives or question bodies.
+    fn list<'a>(
+        &'a self,
+        scope: &'a TaskScope,
+        after: Option<&'a TaskAfter>,
+        limit: u32,
+    ) -> TaskFuture<'a, TaskPage>;
     /// Bind a complete prepared interpretation without allocating on replay.
     fn bind<'a>(
         &'a self,
@@ -65,9 +74,37 @@ impl Tasks {
     pub const fn new(leases: Leases, admissions: afd_admission::Admissions) -> Self {
         Self { leases, admissions }
     }
+
+    async fn publish_changed(&self, scope: &TaskScope, task_id: &Uuid7, version: u64) {
+        let frame = afd_api_wire::tail::TailFrame::TaskChanged {
+            task_id: std::borrow::Cow::Borrowed(task_id.as_str()),
+            resource_version: version,
+        };
+        self.leases
+            .streams()
+            .publish_frame(scope.fleet_id.as_str(), &frame)
+            .await;
+    }
 }
 
 impl TaskLifecycle for Tasks {
+    fn list<'a>(
+        &'a self,
+        scope: &'a TaskScope,
+        after: Option<&'a TaskAfter>,
+        limit: u32,
+    ) -> TaskFuture<'a, TaskPage> {
+        let span = tracing::info_span!("task_list", fleet_id = scope.fleet_id.as_str());
+        Box::pin(
+            observe::measure(
+                TaskOperation::Read,
+                list::read(self, scope, after, limit),
+                |_| TaskOutcome::Accepted,
+            )
+            .instrument(span),
+        )
+    }
+
     fn bind<'a>(
         &'a self,
         lease: TaskLease<'a>,

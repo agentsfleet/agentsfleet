@@ -109,5 +109,5 @@ agentsfleet_runner_active_leases	gauge	u64	{lease}	-	runner_id	-	runner:4096	no	
 #
 # runner:<n> is the exception, and the only one: runner_id is supplied by the
 # customer spinning up runners, so it is bounded by admission or not at all.
-agentsfleet_task_operations_total	counter	u64	1	cumulative	operation,outcome	-	fixed:45	no	errors	native task operations by bounded outcome; replays do not count as new task admissions
-agentsfleet_task_operation_seconds	histogram	f64	s	delta	operation,outcome	0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:45	no	latency	native task operation latency including lock waits and refusals
+agentsfleet_task_operations_total	counter	u64	1	cumulative	operation,outcome	-	fixed:50	no	errors	native task operations by bounded outcome; replays do not count as new task admissions
+agentsfleet_task_operation_seconds	histogram	f64	s	delta	operation,outcome	0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:50	no	latency	native task operation latency including lock waits and refusals

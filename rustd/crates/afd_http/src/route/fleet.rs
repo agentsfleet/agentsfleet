@@ -30,6 +30,10 @@ pub enum FleetRoute {
     Revisions,
     /// The fleet's message thread.
     Messages,
+    /// Current durable objectives belonging to this fleet.
+    Tasks,
+    /// One durable objective and its accepted success criteria.
+    Task,
     /// The fleet's hosted schedules.
     Schedules,
     /// One hosted schedule.
@@ -63,6 +67,8 @@ impl FleetRoute {
         Self::AuthoringContext,
         Self::Revisions,
         Self::Messages,
+        Self::Tasks,
+        Self::Task,
         Self::Schedules,
         Self::Schedule,
         Self::ScheduleSync,
@@ -86,6 +92,8 @@ impl FleetRoute {
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::AuthoringContext
+            | Self::Tasks
+            | Self::Task
             | Self::Events
             | Self::EventsStream
             | Self::Event
@@ -115,6 +123,8 @@ impl FleetRoute {
             | Self::AuthoringContext
             | Self::Revisions
             | Self::Messages
+            | Self::Tasks
+            | Self::Task
             | Self::Schedules
             | Self::Schedule
             | Self::ScheduleSync
@@ -136,6 +146,8 @@ impl FleetRoute {
             Self::AuthoringContext => fleet_path!("/authoring-context"),
             Self::Revisions => fleet_path!("/revisions"),
             Self::Messages => fleet_path!("/messages"),
+            Self::Tasks => fleet_path!("/tasks"),
+            Self::Task => fleet_path!("/tasks/{task_id}"),
             Self::Schedules => fleet_path!("/schedules"),
             Self::Schedule => fleet_path!("/schedules/{schedule_id}"),
             // `/sync` as its own segment rather than the custom verb
@@ -181,9 +193,13 @@ impl FleetRoute {
             Self::Messages => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Schedules | Self::Schedule => Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             Self::ScheduleSync => Scopes::Always(SCHEDULE_WRITE),
-            Self::Events | Self::EventsStream | Self::Event | Self::ToolCall | Self::Memories => {
-                Scopes::Always(FLEET_READ)
-            }
+            Self::Tasks
+            | Self::Task
+            | Self::Events
+            | Self::EventsStream
+            | Self::Event
+            | Self::ToolCall
+            | Self::Memories => Scopes::Always(FLEET_READ),
             Self::Grants => Scopes::Always(GRANT_READ),
             Self::Grant => Scopes::Always(GRANT_WRITE),
         }

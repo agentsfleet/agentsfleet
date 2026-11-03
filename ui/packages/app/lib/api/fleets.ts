@@ -4,22 +4,12 @@ import type { SteerAccepted, SteerRequest } from "./fleets-types";
 import { FleetDetailSchema, FleetListSchema } from "./fleet-detail";
 import { matchesResourceEtag } from "./etag";
 import { QUERY_STARTING_AFTER } from "./runners";
+import { fleetPath, fleetsPath } from "./fleet-paths";
 import type {
   Fleet,
   FleetDetail,
   FleetListResponse,
 } from "../types";
-
-// Every fleet route hangs off these two segments; the ids are encoded here,
-// once, so a caller-controlled value carrying `/`, `?` or `#` can never
-// re-target a server-held-token request at another route or query.
-function fleetsPath(workspaceId: string): string {
-  return `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets`;
-}
-
-function fleetPath(workspaceId: string, fleetId: string): string {
-  return `${fleetsPath(workspaceId)}/${encodeURIComponent(fleetId)}`;
-}
 
 
 export type { Fleet, FleetDetail, FleetListResponse };

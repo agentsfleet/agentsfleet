@@ -14473,7 +14473,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
+        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `task_changed`: committed `task_id` and `resource_version`. Read the task collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -16763,6 +16763,299 @@
           },
           "503": {
             "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks": {
+      "get": {
+        "tags": [
+          "Fleets"
+        ],
+        "summary": "List unfinished fleet work",
+        "description": "Returns unfinished tasks newest first. Task details remain readable after completion. An empty page does not imply that a conversation request has completed.",
+        "operationId": "list_fleet_tasks",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Opaque next_cursor from the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size; defaults to 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current work",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid page",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace or fleet unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "Fleets"
+        ],
+        "summary": "Read confirmed task progress and success criteria",
+        "description": "Returns the accepted objective, immutable success criteria, generation and cumulative limits. The strong ETag identifies the current native resource version.",
+        "operationId": "get_fleet_task",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "description": "Previously returned resource tag.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task detail",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Resource unchanged",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid task identifier",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -19815,6 +20108,25 @@
           }
         }
       },
+      "ChoiceOption": {
+        "type": "object",
+        "description": "One mutually exclusive choice with its reviewed meaning.",
+        "required": [
+          "value",
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Reviewed semantic meaning, never an authority grant."
+          },
+          "value": {
+            "type": "string",
+            "description": "Stable option identity, including native task identities when associating."
+          }
+        },
+        "additionalProperties": false
+      },
       "Connected": {
         "type": "object",
         "description": "The provider connected successfully, but no dashboard redirect was available. The\nconnection is active; do not repeat Connect.",
@@ -20915,6 +21227,92 @@
           }
         },
         "additionalProperties": false
+      },
+      "DecisionQuestion": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "True/false assessment with explicit criteria.",
+            "required": [
+              "instructions",
+              "criteria",
+              "type"
+            ],
+            "properties": {
+              "criteria": {
+                "$ref": "#/components/schemas/NoulCriteria",
+                "description": "Reviewed criteria for both answers."
+              },
+              "instructions": {
+                "type": "string",
+                "description": "The question to evaluate."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "noul"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Choice among a complete fixed option set.",
+            "required": [
+              "instructions",
+              "options",
+              "type"
+            ],
+            "properties": {
+              "instructions": {
+                "type": "string",
+                "description": "The question to evaluate."
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ChoiceOption"
+                },
+                "description": "Sixteen eligible tasks plus new-work and unclear fit without truncation."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "choice"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Probability-weighted rating over an ordered rubric.",
+            "required": [
+              "instructions",
+              "levels",
+              "type"
+            ],
+            "properties": {
+              "instructions": {
+                "type": "string",
+                "description": "The question to evaluate."
+              },
+              "levels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Rubric from lowest to highest, with zero-based numeric levels."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "score"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "The typed question forms used for intent and goal evaluation."
       },
       "DecisionThreshold": {
         "type": "object",
@@ -25312,6 +25710,25 @@
         ],
         "description": "Provider usage is either authoritative or unknown; estimates cannot clear liability."
       },
+      "NamedQuestion": {
+        "type": "object",
+        "description": "Names are stable question identities, not model-generated output keys.",
+        "required": [
+          "name",
+          "question"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Native question identity echoed by every adapter."
+          },
+          "question": {
+            "$ref": "#/components/schemas/DecisionQuestion",
+            "description": "Reviewed question representation."
+          }
+        },
+        "additionalProperties": false
+      },
       "Nanos": {
         "type": "string",
         "description": "A whole number of nanos (10⁻⁹ US dollars) as a decimal string.",
@@ -25359,6 +25776,25 @@
             "description": "Exact prefixes where a read-only tool may use POST for a query."
           }
         }
+      },
+      "NoulCriteria": {
+        "type": "object",
+        "description": "Accepted meanings of a true and false assessment.",
+        "required": [
+          "true",
+          "false"
+        ],
+        "properties": {
+          "false": {
+            "type": "string",
+            "description": "Evidence supporting no."
+          },
+          "true": {
+            "type": "string",
+            "description": "Evidence supporting yes."
+          }
+        },
+        "additionalProperties": false
       },
       "OnboardingResponse": {
         "type": "object",
@@ -28716,6 +29152,338 @@
           }
         ],
         "description": "Placement alone determines which protocol and authority the worker receives."
+      },
+      "TaskContext": {
+        "type": "object",
+        "description": "Context for a task-bound lease; ordinary leases omit this owner.",
+        "required": [
+          "task_id",
+          "generation",
+          "stop_generation",
+          "accepted_revision_id",
+          "objective",
+          "goal_digest",
+          "questions",
+          "state",
+          "covered_input_sequence",
+          "effect_cursor",
+          "confirmed_effect_watermark",
+          "expires_at",
+          "limits",
+          "usage"
+        ],
+        "properties": {
+          "accepted_revision_id": {
+            "type": "string",
+            "description": "Fleet revision whose reviewed goal was accepted."
+          },
+          "checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Compatible complete checkpoint, if one has been published."
+          },
+          "confirmed_effect_watermark": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Last confirmed effect covered by the saved state.",
+            "minimum": 0
+          },
+          "covered_input_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Inputs whose meaning is included in the supplied state.",
+            "minimum": 0
+          },
+          "effect_cursor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Native ordinal offered for the next immutable publication identity.",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Existing wall deadline; waking does not extend it."
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Generation the next semantic transition must assess.",
+            "minimum": 0
+          },
+          "goal_digest": {
+            "type": "string",
+            "description": "Digest of the frozen objective and completion questions."
+          },
+          "limits": {
+            "$ref": "#/components/schemas/TaskLimits",
+            "description": "Cumulative bounds, clamped by existing fleet/credit ceilings."
+          },
+          "objective": {
+            "type": "string",
+            "description": "Accepted objective, distinct from standing fleet instructions."
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedQuestion"
+            },
+            "description": "Accepted questions with stable identities and complete reviewed criteria."
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskState",
+            "description": "Current durable state."
+          },
+          "stop_generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Committed cutoff for new effects.",
+            "minimum": 0
+          },
+          "task_id": {
+            "type": "string",
+            "description": "Native task identity; never selected by a tool result."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/TaskUsage",
+            "description": "Already consumed and reserved work."
+          }
+        }
+      },
+      "TaskLimits": {
+        "type": "object",
+        "description": "Approved initial limits; a smaller existing fleet or credit limit wins.",
+        "required": [
+          "model_nanos",
+          "wall_seconds",
+          "running_seconds",
+          "leases",
+          "publications",
+          "decision_calls",
+          "fallback_reads"
+        ],
+        "properties": {
+          "decision_calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum physical decision calls, including retries.",
+            "minimum": 0
+          },
+          "fallback_reads": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum fallback dependency reads; signed events remain separate.",
+            "minimum": 0
+          },
+          "leases": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum distinct issued leases.",
+            "minimum": 0
+          },
+          "model_nanos": {
+            "$ref": "#/components/schemas/Nanos",
+            "description": "Total paid-model allowance, in whole nanodollars."
+          },
+          "publications": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum physical repair publication attempts.",
+            "minimum": 0
+          },
+          "running_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cumulative running time across all attempts.",
+            "minimum": 0
+          },
+          "wall_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Wall-clock lifetime including paused and waiting time.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskResponse": {
+        "type": "object",
+        "description": "Task detail with immutable success criteria and cumulative progress.",
+        "required": [
+          "title",
+          "resource_version",
+          "setup_revision",
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/TaskContext",
+            "description": "Accepted objective, questions, cursors and remaining limits."
+          },
+          "resource_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Version used by the strong resource tag.",
+            "minimum": 0
+          },
+          "setup_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Human-readable number of the immutable setup accepted by this task.",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "User-facing title."
+          }
+        }
+      },
+      "TaskState": {
+        "type": "string",
+        "description": "The durable objective's state, independent of its current admission.",
+        "enum": [
+          "ready",
+          "running",
+          "waiting",
+          "blocked",
+          "paused",
+          "done",
+          "cancelled",
+          "exhausted"
+        ]
+      },
+      "TaskSummary": {
+        "type": "object",
+        "description": "Compact native state for the fleet's current-work panel.",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "resource_version",
+          "generation",
+          "accepted_revision_id",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "accepted_revision_id": {
+            "type": "string",
+            "description": "Immutable fleet revision accepted by this work."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Native creation instant."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Existing cumulative deadline."
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current task ownership generation.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable objective identifier."
+          },
+          "resource_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic native resource version.",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskState",
+            "description": "Confirmed durable lifecycle state."
+          },
+          "title": {
+            "type": "string",
+            "description": "User-facing work title."
+          }
+        }
+      },
+      "TaskUsage": {
+        "type": "object",
+        "description": "Measured usage retained on the objective, including stopped attempts.",
+        "required": [
+          "model_nanos",
+          "reserved_model_nanos",
+          "running_nanos",
+          "leases",
+          "publications",
+          "decision_calls",
+          "fallback_reads"
+        ],
+        "properties": {
+          "decision_calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Physical decision calls, including retries.",
+            "minimum": 0
+          },
+          "fallback_reads": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Fallback dependency reads already consumed.",
+            "minimum": 0
+          },
+          "leases": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct issued leases.",
+            "minimum": 0
+          },
+          "model_nanos": {
+            "$ref": "#/components/schemas/Nanos",
+            "description": "Measured paid-model cost, including coding and decision calls."
+          },
+          "publications": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Physical publication attempts.",
+            "minimum": 0
+          },
+          "reserved_model_nanos": {
+            "$ref": "#/components/schemas/Nanos",
+            "description": "Outstanding native model-call reservations."
+          },
+          "running_nanos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cumulative measured running time, in nanoseconds.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "TasksResponse": {
+        "type": "object",
+        "description": "A bounded page of unfinished work belonging to one fleet.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskSummary"
+            },
+            "description": "Newest work first; completed work remains available by its identity."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque keyset boundary, absent when no later work exists."
+          }
+        }
       },
       "TenantProviderRequest": {
         "type": "object",

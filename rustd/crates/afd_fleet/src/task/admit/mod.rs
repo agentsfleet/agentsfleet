@@ -83,6 +83,7 @@ pub(super) async fn bind(
         }
     }
     for binding in &identities {
+        tasks.publish_changed(&scope, &binding.task_id, 1).await;
         tracing::info!(
             event = "dt_transition",
             task_id = binding.task_id.as_str(),

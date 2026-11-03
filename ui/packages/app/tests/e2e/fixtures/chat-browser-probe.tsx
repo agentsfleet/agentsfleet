@@ -7,6 +7,7 @@ import { ActivityFixture } from "./chat-activity-probe";
 import { SetupChecks } from "@/components/domain/chat/SetupChecks";
 import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/FleetMessageRow";
 import { ChatFailure } from "@/components/domain/chat/ChatFailure";
+import { TaskFixture } from "./task-browser-probe";
 
 const client = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
 const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, model: MODEL.ref, models: [MODEL], messages: [
@@ -18,7 +19,7 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Chat fixture root is missing");
 const query = new URLSearchParams(location.search);
 const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
-createRoot(root).render(query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
+createRoot(root).render(query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Typography fixture · deterministic conversation</p>
   <DraftConversation client={client} view={view} workspace={WORKSPACE} />
 </main>);

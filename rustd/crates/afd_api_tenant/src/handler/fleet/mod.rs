@@ -19,6 +19,7 @@ mod memory_request;
 pub mod message;
 pub mod message_steer;
 pub(crate) mod native;
+pub(crate) mod tasks;
 
 use std::borrow::Cow;
 use std::sync::Arc;

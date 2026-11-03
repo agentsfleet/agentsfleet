@@ -5,9 +5,11 @@ mod input;
 mod memory;
 mod output;
 mod revision;
+mod task;
 
 pub use collection::{FleetSummary, FleetsResponse, Triggers};
 pub use input::{PatchFleetRequest, PatchStatus, SaveFleetRequest, SaveOrigin, SaveSource, Start};
 pub use memory::{MemoryAccess, MemoryAccessRequest};
 pub use output::{FleetResponse, WebhookUrl};
 pub use revision::{AppliedRevision, ApplyRevision};
+pub use task::{TaskResponse, TaskSummary, TasksResponse};

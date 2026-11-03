@@ -67,6 +67,10 @@ impl Fleet {
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             leases: NoWork::default(),
+            tasks: afd_fleet::task::Tasks::new(
+                afd_fleet::lease::Leases::new(database.clone(), queue.clone(), Entropy::new()),
+                ledger.clone(),
+            ),
             authoring: authoring.drafts,
             authoring_setup: authoring.setup,
             authoring_models: authoring.models,

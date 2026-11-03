@@ -27,6 +27,7 @@ const DOT_ONLY_SEGMENT = /^\.+$/;
 
 const HTTP_STATUS = {
   OK: 200,
+  NOT_MODIFIED: 304,
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,
   BAD_GATEWAY: 502,
@@ -54,13 +55,14 @@ export async function proxyJsonGet(
   if (!token) return jsonResponse(HTTP_STATUS.UNAUTHORIZED, JSON.stringify({ error: "Unauthorized", code: ERROR_CODE.AUTH_401 }));
 
   let upstream: Response;
+  const headers: Record<string, string> = {Authorization: `Bearer ${token}`, Accept: CONTENT_TYPE_JSON};
+  const validator = req.headers.get("if-none-match");
+  if (validator !== null) headers["If-None-Match"] = validator;
   try {
     upstream = await fetch(upstreamUrl(req, segments, forwardedKeys), {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: CONTENT_TYPE_JSON,
-      },
+      headers,
+      cache: "no-store",
       signal: req.signal,
     });
   } catch {
@@ -69,8 +71,10 @@ export async function proxyJsonGet(
     return jsonResponse(HTTP_STATUS.BAD_GATEWAY, JSON.stringify({ error: "Upstream unreachable" }));
   }
 
+  const tag = upstream.headers.get("etag");
+  if (upstream.status === HTTP_STATUS.NOT_MODIFIED) return jsonResponse(HTTP_STATUS.NOT_MODIFIED, null, tag);
   if (!upstream.ok) return upstreamError(upstream);
-  return jsonResponse(HTTP_STATUS.OK, upstream.body);
+  return jsonResponse(HTTP_STATUS.OK, upstream.body, tag);
 }
 
 function upstreamUrl(req: Request, segments: readonly string[], forwardedKeys: readonly string[]): string {
@@ -85,8 +89,10 @@ function upstreamUrl(req: Request, segments: readonly string[], forwardedKeys: r
   return `${API_ORIGIN}${UPSTREAM_PATH_PREFIX}${path}${query.length > 0 ? `?${query}` : ""}`;
 }
 
-function jsonResponse(status: number, body: BodyInit | null): Response {
-  return new Response(body, { status, headers: noStoreHeaders(CONTENT_TYPE_JSON) });
+function jsonResponse(status: number, body: BodyInit | null, tag: string | null = null): Response {
+  const headers = new Headers(noStoreHeaders(CONTENT_TYPE_JSON));
+  if (tag !== null) headers.set("ETag", tag);
+  return new Response(body, { status, headers });
 }
 
 function noStoreHeaders(contentType: string): HeadersInit {

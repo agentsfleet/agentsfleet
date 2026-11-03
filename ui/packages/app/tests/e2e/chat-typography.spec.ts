@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test as base, type Locator, type Page } from "@playwright/test";
 import { applicationCss } from "./fixtures/fleet-output-browser-assets";
+import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 
 const test = base.extend<object, {chatProbe: string}>({
   chatProbe: [async ({browserName}, provideProbe) => {
@@ -110,6 +111,51 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("three current repairs share the fleet conversation and leave its composer visible in short windows", async ({page, chatProbe}, info) => {
+  const work = [summary(), summary(TASK_IDS[1], "running"), summary(TASK_IDS[2], "ready")];
+  const reads: string[] = [];
+  await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/tasks**", async route => {
+    expect(route.request().headers()["authorization"]).toBeUndefined();
+    const pathname = new URL(route.request().url()).pathname;
+    reads.push(pathname);
+    await route.fulfill({json: pathname.endsWith("/tasks") ? {items: work, next_cursor: null} : detail(work[0])});
+  });
+  await page.goto(`${chatProbe}?tasks=1`);
+  const panel = page.getByRole("region", {name: "Current work"});
+  await expect(panel.getByRole("heading", {name: "Current work · 3"})).toBeVisible();
+  expect(await page.evaluate(async () => (await document.fonts.load('13px "Instrument Sans Variable"', "Current work")).length)).toBeGreaterThan(0);
+  const repair = panel.getByRole("button", {name: /PR #123 repair/});
+  await expect(repair).toHaveCSS("font-size", "13px");
+  await expect(panel.getByText("In progress", {exact: true})).toHaveCSS("color", "rgb(147, 197, 253)");
+  await repair.focus(); await page.keyboard.press("Enter");
+  await expect(panel.getByText("What counts as done?", {exact: true})).toBeVisible();
+  await expect(panel.getByText("Uses the success criteria saved in setup v2.")).toHaveCSS("font-size", "12px");
+  expect(reads).toEqual([
+    "/live/v1/workspaces/workspace/fleets/linkwarden/tasks",
+    `/live/v1/workspaces/workspace/fleets/linkwarden/tasks/${TASK_IDS[0]}`,
+  ]);
+  await repair.click();
+  for (const window of [{width: 1280, height: 800}, {width: 1280, height: 360}, {width: 390, height: 667}]) {
+    await page.setViewportSize(window);
+    const input = page.getByRole("textbox", {name: /^Message your fleet/});
+    await expect(input).toBeVisible();
+    await input.fill("Keep the redirect fix in the callback handler.");
+    await expect(input).toHaveCSS("font-size", "14px");
+    const composer = await page.getByRole("form", {name: "Chat composer"}).boundingBox();
+    const history = await page.getByRole("log").boundingBox();
+    const footer = await page.getByTestId("fleet-chat-footer").boundingBox();
+    const viewport = await page.locator('[role="presentation"]').boundingBox();
+    expect(composer).not.toBeNull(); expect(history).not.toBeNull();
+    expect(footer).not.toBeNull(); expect(viewport).not.toBeNull();
+    expect(composer!.y + composer!.height).toBeLessThanOrEqual(window.height + 1);
+    expect(footer!.y - viewport!.y).toBeGreaterThanOrEqual(48);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  const screenshot = info.outputPath("fleet-current-work-mobile.png");
+  await page.screenshot({path: screenshot});
+  await info.attach("fleet-current-work-mobile", {path: screenshot, contentType: "image/png"});
 });
 
 async function expectActivityGeometry(page: Page, action: Locator, tools: Locator, mobile: boolean) {

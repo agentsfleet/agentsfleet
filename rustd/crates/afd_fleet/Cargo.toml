@@ -123,6 +123,8 @@ serde.workspace = true
 # `metadata` a runner event carries are all `jsonb`, built and read as values.
 serde_json.workspace = true
 tracing.workspace = true
+# Task progress reads bound both connection acquisition and connected queries.
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 # Reviewed decision fixtures use the same native catalogue mutations as operators.
