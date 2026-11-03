@@ -22,7 +22,7 @@ runs:
         fingerprint=$(dpkg-query -W -f="\${Package}=\${Version}\n" mmdebstrap erofs-utils debian-archive-keyring uidmap python3 curl | sha256sum | cut -d' ' -f1)
         echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: cache
       with:
         path: ${{ inputs.output-dir }}

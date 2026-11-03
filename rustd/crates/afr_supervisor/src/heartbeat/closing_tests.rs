@@ -22,7 +22,7 @@ use super::{Assignment, EVENT_LAST_FAILED, Heartbeat};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
-use crate::holds::{Holds, Release};
+use crate::holds::{Holds, Parked, Release};
 use crate::test_support::{Answer, FakeEngine, drain, plane};
 
 /// The beat the daemon answers `stop`, once leasing stopped two beats in.
@@ -49,18 +49,23 @@ fn token_refusal() -> crate::Error {
 }
 
 /// Every hold has ended and none can start: the registry lists nothing, and a
-/// sandbox parked now is destroyed rather than held.
+/// sandbox parked now is handed back to its lease rather than held, the
+/// keeper destroying only the hold it ended.
 async fn assert_closed(holds: &Holds, engine: &FakeEngine) {
     let left = holds.fleets().await;
     let parked = park(holds, engine).await;
     holds.shutdown().await;
 
+    let handed_back = matches!(parked, Parked::Refused(_));
+    let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
+    if let Parked::Refused(sandbox) = parked {
+        sandbox.destroy().await.unwrap();
+    }
     none_left(&left);
-    assert!(!parked, "a park after the close is destroyed");
+    assert!(handed_back, "a park after the close is handed back");
     assert_eq!(
-        engine.destroyed.load(Ordering::SeqCst),
-        2,
-        "the hold, then the late park"
+        destroyed_by_the_keeper, 1,
+        "the hold alone, not the late park"
     );
 }
 

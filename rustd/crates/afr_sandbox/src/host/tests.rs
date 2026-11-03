@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use std::ffi::OsString;
 
-use super::{HostTools, format_arguments, mount_arguments, run, tail};
+use super::{HostTools, format_arguments, run, tail};
 
 /// A program every Unix carries, by its absolute path.
 fn shell() -> PathBuf {
@@ -61,7 +61,6 @@ fn test_default_tools_are_where_debian_puts_them() {
     let tools = HostTools::default();
 
     assert_eq!(tools.mke2fs, Path::new(super::MKE2FS_PATH));
-    assert_eq!(tools.mount, Path::new(super::MOUNT_PATH));
     assert_eq!(tools.bwrap, Path::new(crate::probe::BWRAP_PATH));
 }
 
@@ -89,6 +88,8 @@ fn test_format_arguments_make_a_journal_free_disk_its_owner_may_write() {
         [
             "-q",
             "-F",
+            "-b",
+            "4096",
             "-t",
             "ext4",
             "-m",
@@ -100,20 +101,5 @@ fn test_format_arguments_make_a_journal_free_disk_its_owner_may_write() {
             "root_owner=1000:100",
             "/s/workspace.img",
         ]
-    );
-}
-
-#[test]
-fn test_mount_arguments_name_type_options_source_and_target() {
-    let arguments = strings(mount_arguments(
-        "ext4",
-        "loop,nosuid,nodev",
-        Path::new("/a"),
-        Path::new("/b"),
-    ));
-
-    assert_eq!(
-        arguments,
-        ["-t", "ext4", "-o", "loop,nosuid,nodev", "/a", "/b"]
     );
 }

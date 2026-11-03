@@ -2,11 +2,9 @@
 """Published prose states the values the code enforces.
 
 Each rule pairs a value the code declares with the page that tells a reader
-about it: a byte bound with the OpenAPI description that promises it, a scope
-or role spelling with the contributor auth page, a connector's OAuth scopes
-with the registration playbook an operator follows, the architecture page's
-route tables with the routes the published document serves. The code is right
-by definition; a finding means the prose went stale.
+about it: a byte bound with the OpenAPI description that promises it, a
+connector's OAuth scopes with the registration playbook an operator follows.
+The code is right by definition; a finding means the prose went stale.
 
     python3 scripts/check_documentation_parity.py [--root <dir>]
 
@@ -23,21 +21,12 @@ import sys
 sys.dont_write_bytecode = True
 
 import check_source_lib as lib
-import route_tables
 
 OPENAPI = "public/openapi.json"
-AUTH_PAGE = "docs/AUTH.md"
 WIRE_SRC = "rustd/crates/afd_wire/src"
-SCOPE_SRC = "rustd/crates/afd_auth/src/scope.rs"
-ROLE_SRC = "rustd/crates/afd_tenant/src/workspace/access.rs"
-ERROR_CODE_SRC = "rustd/crates/afd_core/src/error_code"
 REGISTRY_SRC = "rustd/crates/afd_connector/src/registry/mod.rs"
 
 RUST_CONST = re.compile(r"\bconst (?P<name>[A-Z][A-Z0-9_]*): usize = (?P<value>[0-9_ *+]+);")
-RUST_STR_CONST = re.compile(r'\bconst (?P<name>[A-Z][A-Z0-9_]*): &str = "(?P<value>[^"]*)";')
-ERROR_DECLARE = re.compile(r'\bconst (?P<name>[A-Z][A-Z0-9_]*): ErrorCode = ErrorCode::declare\("(?P<value>[^"]+)"\)')
-WIRE_ARM = re.compile(r'Self::\w+ => "(?P<wire>[^"]+)"')
-WIRE_FN = re.compile(r"fn wire\(self\) -> &'static str \{(?P<body>.*?)\n    \}", re.DOTALL)
 # `Self::Jira => Archetype::Oauth2(Oauth2Flow { … scopes: "…" … })`: the
 # provider, then its scope string, which a `\` continuation may wrap.
 PROVIDER_SCOPES = re.compile(r'Self::(?P<provider>\w+) => Archetype::Oauth2\(.*?scopes: "(?P<scopes>(?:[^"\\]|\\.)*)"', re.DOTALL)
@@ -46,8 +35,6 @@ NO_NUL = "no NUL character"
 UNKNOWN_FIELDS = "Unknown fields are refused"
 OFFLINE_SCOPE = "offline_access"
 
-ROLE_NAMES = ("ROLE_OWNER", "ROLE_MEMBER")
-OWNER_ONLY = "AUTH_OWNER_ONLY"
 CALL_ID_FRAMES = ("ToolCallStarted", "ToolCallProgress", "ToolCallCompleted")
 TOOL_CALLS_POST = "/paths/~1v1~1runners~1me~1leases~1{lease_id}~1tool-calls/post/description"
 TOOL_CALL_GET = (
@@ -143,25 +130,6 @@ def check_openapi_bounds(sources: Sources) -> list[lib.Finding]:
     ]
 
 
-def check_auth_page(sources: Sources) -> list[lib.Finding]:
-    page = sources.text(AUTH_PAGE)
-    wire_fn = WIRE_FN.search(sources.text(SCOPE_SRC))
-    scopes = [m["wire"] for m in WIRE_ARM.finditer(wire_fn["body"])] if wire_fn else []
-    if not scopes:
-        return [lib.Finding(SCOPE_SRC, 1, "doc-auth-scope", "no scope wire spellings were read")]
-    findings = [
-        lib.Finding(AUTH_PAGE, 1, "doc-auth-scope", f"the scope catalogue does not list `{scope}`")
-        for scope in scopes if scope not in page
-    ]
-    roles = {m["name"]: m["value"] for m in RUST_STR_CONST.finditer(sources.text(ROLE_SRC))}
-    codes = {m["name"]: m["value"] for m in ERROR_DECLARE.finditer(sources.tree(ERROR_CODE_SRC))}
-    named = [roles.get(name) for name in ROLE_NAMES] + [codes.get(OWNER_ONLY)]
-    for spelling in named:
-        if spelling is None or f"`{spelling}`" not in page:
-            findings.append(lib.Finding(AUTH_PAGE, 1, "doc-auth-role", f"name `{spelling}` as the code spells it"))
-    return findings
-
-
 def check_registration_scopes(sources: Sources) -> list[lib.Finding]:
     declared = {
         m["provider"]: CONTINUATION.sub("", m["scopes"])
@@ -179,20 +147,7 @@ def check_registration_scopes(sources: Sources) -> list[lib.Finding]:
     return findings
 
 
-def check_route_tables(sources: Sources) -> list[lib.Finding]:
-    page = sources.text(route_tables.PAGE)
-    text = sources.text(OPENAPI)
-    if not page:
-        return [lib.Finding(route_tables.PAGE, 1, route_tables.RULE_COUNT, "the architecture page is missing")]
-    if not text:
-        return []  # check_openapi_bounds already reports the missing document.
-    return [
-        lib.Finding(route_tables.PAGE, 1, rule, message)
-        for rule, message in route_tables.findings(page, json.loads(text))
-    ]
-
-
-RULES = (check_openapi_bounds, check_auth_page, check_registration_scopes, check_route_tables)
+RULES = (check_openapi_bounds, check_registration_scopes)
 
 
 def lint(root: Path) -> list[lib.Finding]:

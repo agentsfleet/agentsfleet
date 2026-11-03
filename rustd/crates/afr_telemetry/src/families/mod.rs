@@ -16,8 +16,8 @@ use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
 use crate::labels::{
-    FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxHold,
-    SandboxStart, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxBuild,
+    SandboxHold, SandboxRelease, SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -40,6 +40,14 @@ pub const PROVIDER_RETRIES: Declared<CounterKind> =
 pub const SANDBOX_START_DURATION: Declared<HistogramKind> =
     Declared::new("agentsfleet_runner_sandbox_start_duration_seconds");
 
+/// How long a sandbox tool call waited for its lease's build, by outcome.
+pub const SANDBOX_WAIT_DURATION: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_sandbox_wait_duration_seconds");
+
+/// Time to release a sandbox's disk after its report, by outcome.
+pub const SANDBOX_RELEASE_DURATION: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_sandbox_release_duration_seconds");
+
 /// Live-tail frames lost on the runner, by reason.
 pub const ACTIVITY_FRAMES_DROPPED: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_activity_frames_dropped_total");
@@ -55,6 +63,10 @@ pub const TOOL_CALL_DURATION: Declared<HistogramKind> =
 /// Tenant processes the kernel killed for memory inside a sandbox.
 pub const TOOL_OUT_OF_MEMORY: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_tool_out_of_memory_total");
+
+/// Lease sandbox builds, by how each ended.
+pub const SANDBOX_BUILDS: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_sandbox_builds_total");
 
 /// Sandboxes held between a fleet's leases, by what became of them.
 pub const SANDBOX_HOLDS: Declared<CounterKind> =
@@ -83,6 +95,9 @@ pub struct Families {
     turns: Histogram<f64>,
     retries: Counter<u64>,
     sandbox_starts: Histogram<f64>,
+    sandbox_waits: Histogram<f64>,
+    sandbox_releases: Histogram<f64>,
+    sandbox_builds: Counter<u64>,
     frames_dropped: Counter<u64>,
     push_failures: Counter<u64>,
     tool_calls: Histogram<f64>,
@@ -103,6 +118,9 @@ impl Families {
             turns: instruments.histogram_f64(&PROVIDER_TURN_DURATION)?,
             retries: instruments.counter_u64(&PROVIDER_RETRIES)?,
             sandbox_starts: instruments.histogram_f64(&SANDBOX_START_DURATION)?,
+            sandbox_waits: instruments.histogram_f64(&SANDBOX_WAIT_DURATION)?,
+            sandbox_releases: instruments.histogram_f64(&SANDBOX_RELEASE_DURATION)?,
+            sandbox_builds: instruments.counter_u64(&SANDBOX_BUILDS)?,
             frames_dropped: instruments.counter_u64(&ACTIVITY_FRAMES_DROPPED)?,
             push_failures: instruments.counter_u64(&MEMORY_PUSH_FAILURES)?,
             tool_calls: instruments.histogram_f64(&TOOL_CALL_DURATION)?,
@@ -142,6 +160,20 @@ impl Recorder for Families {
         );
     }
 
+    fn sandbox_wait(&self, outcome: SandboxWait, elapsed: Duration) {
+        self.sandbox_waits.record(
+            elapsed.as_secs_f64(),
+            &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())],
+        );
+    }
+
+    fn sandbox_release(&self, outcome: SandboxRelease, elapsed: Duration) {
+        self.sandbox_releases.record(
+            elapsed.as_secs_f64(),
+            &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())],
+        );
+    }
+
     fn frames_dropped(&self, reason: FrameDrop, frames: u64) {
         self.frames_dropped
             .add(frames, &[KeyValue::new(LABEL_REASON, reason.as_str())]);
@@ -168,6 +200,11 @@ impl Recorder for Families {
 
     fn sandbox_hold(&self, outcome: SandboxHold) {
         self.sandbox_holds
+            .add(1, &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())]);
+    }
+
+    fn sandbox_build(&self, outcome: SandboxBuild) {
+        self.sandbox_builds
             .add(1, &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())]);
     }
 

@@ -18,7 +18,7 @@ use afd_wire::policy::ExecutionPolicy;
 use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::ToolTrace;
 use afr_egress::Mint;
-use afr_executor::Executor;
+use afr_executor::ExecutorSource;
 use afr_memory::Seed;
 use afr_providers::Usage;
 use afr_tools::LeaseVerbs;
@@ -68,8 +68,10 @@ pub struct AgentRun<'run> {
     /// The fleet's memory, hydrated before the run started, and where a
     /// recall past it asks.
     pub memory: Seed<'run>,
-    /// The sandbox's executor, when the lease's tools need one.
-    pub executor: Option<&'run dyn Executor>,
+    /// Where the run's sandbox-side calls get the sandbox's executor. The
+    /// lease's build fills it while the run goes on; a lease with no sandbox
+    /// passes one that answers `NoSandbox`.
+    pub executor: &'run dyn ExecutorSource,
     /// Mints the credentials the lease's policy names, under the held lease.
     pub mint: &'run dyn Mint,
     /// The `agentsfleetd` verbs the schedule and message tools reach, fenced

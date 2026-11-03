@@ -1,5 +1,5 @@
-//! The turn itself: the engine runs, inside a sandbox's lifetime when the lease
-//! has one.
+//! The turn itself: the engine runs, beside its sandbox's build when the lease
+//! has one, and reaches the sandbox's executor through the build's slot.
 
 use std::panic::AssertUnwindSafe;
 use std::time::Duration;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use afd_core::error_code;
 use afd_wire::report::FailureClass;
 use afr_agent::AgentRun;
-use afr_executor::Executor;
+use afr_executor::ExecutorSource;
 use afr_memory::Seed;
 use futures_util::FutureExt as _;
 
@@ -33,7 +33,7 @@ impl LeaseRun<'_> {
     pub(super) async fn drive(
         &self,
         memory: Seed<'_>,
-        executor: Option<&dyn Executor>,
+        executor: &dyn ExecutorSource,
         sink: ActivitySink,
     ) -> Ending {
         let mint = LeaseMint::new(&self.lessee.plane, &self.ids.lease);

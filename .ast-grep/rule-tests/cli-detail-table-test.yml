@@ -1,0 +1,7 @@
+id: cli-detail-table
+valid:
+  - |
+    yield* printEntityTable(spec, rows);
+invalid:
+  - |
+    yield* output.printTable(rows);

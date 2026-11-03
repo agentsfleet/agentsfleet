@@ -21,7 +21,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: 1password/load-secrets-action@v5
+      - uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           export-env: true
         env:
@@ -33,9 +33,9 @@ jobs:
 
       # deploy/fly/cloudflared-dev is the tunnel app's build context, so the
       # from-scratch deploy branch needs the repo checked out.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: 1password/install-cli-action@v4
+      - uses: 1password/install-cli-action@1a3160d5e9de1ae0803eaa08a88746f5ae3daa50 # v4.1.0
 
       - name: Ensure cloudflared-dev tunnel is running
         # cloudflared-dev is a separate Fly app that bridges Cloudflare Edge to

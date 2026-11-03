@@ -19,7 +19,7 @@ jobs:
     # and evidence upload have their own headroom outside that test deadline.
     timeout-minutes: 70
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-bun-playwright
         with:
@@ -32,7 +32,7 @@ jobs:
         working-directory: cli
 
       - name: Load Clerk DEV credentials after installation
-        uses: 1password/load-secrets-action@v5
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           export-env: true
         env:
@@ -57,7 +57,7 @@ jobs:
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload ten-fleet acceptance evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: acceptance-ten-fleets-results

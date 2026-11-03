@@ -29,22 +29,22 @@ jobs:
     timeout-minutes: 15
     if: vars.DEV_RUNNER_READY == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runner-binary
           path: dist
 
       # The toolbox is staged beside the binary: the runner admits it at boot
       # and refuses every lease until one is admitted.
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runner-toolbox
           path: dist/toolbox
 
       - name: Load Tailscale credentials from 1Password
-        uses: 1password/load-secrets-action@v5
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           export-env: true
         env:
@@ -53,7 +53,7 @@ jobs:
           TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
 
       - name: Join Tailscale network
-        uses: tailscale/github-action@v4
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
         with:
           oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ env.TS_OAUTH_SECRET }}
@@ -90,7 +90,7 @@ jobs:
       - name: Record metal result
         run: echo "deploy-metal result = ${{ needs.deploy-metal.result }}"
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The runner deploy used to announce itself from the target host, via a
       # webhook file the workflow wrote there. A merge dropped the step that

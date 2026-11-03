@@ -166,7 +166,10 @@ Optimise for one thing: he never has to ask twice.
   costs a context switch. Mechanical and reversible → fix it, report in one
   line. Judgment, irreversible or security → the gate-flag glyphs in `AGENTS.md`.
 - **When a call needs his input:** show how a user hits it and how often. Grade
-  the risk, cite one live example, then ask in plain words.
+  the risk, cite one live example, then ask in plain words, justifying the
+  pick with pros and cons. Each option previews an explain-like-I'm-20 ASCII
+  pictorial of the user's path through `docs/architecture/`: commands, API
+  calls and files.
 - **Interpretation defaults that have bitten me:** a buggy screenshot IS "fix
   it". "Use the latest X" means the reference repo's pinned version. An external
   rule quote is not a rewrite mandate.

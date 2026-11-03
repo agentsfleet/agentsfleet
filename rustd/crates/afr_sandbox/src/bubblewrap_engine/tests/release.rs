@@ -68,6 +68,27 @@ async fn test_dropping_parts_on_a_runtime_releases_them_off_its_workers() {
     .unwrap();
 }
 
+/// A stopping runtime's pool refuses new work by dropping it on the caller's
+/// stack. Parts it refuses are released right there, as with no runtime; were
+/// they handed to the same pool again, each refusal would drop them again,
+/// until the stack overflowed.
+#[test]
+fn test_parts_a_stopped_runtime_refuses_are_released_where_they_drop() {
+    let dir = tempfile::tempdir().unwrap();
+    let lease = dir.path().join("lease-7");
+    fs::create_dir(&lease).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let stopped = runtime.handle().clone();
+    runtime.shutdown_background();
+    let _entered = stopped.enter();
+
+    drop(Parts::new("lease-7", lease.clone()));
+
+    assert!(!lease.exists());
+}
+
 /// A start abandoned mid-way — its caller stopped waiting — is released when
 /// its parts drop: the launcher is killed and what could not go is logged.
 #[tokio::test]

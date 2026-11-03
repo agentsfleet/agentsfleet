@@ -41,6 +41,10 @@ const TOKEN_USER: &str = "x-access-token";
 const STEP_FETCH: &str = "fetched";
 /// The step a failure names when the workspace copy would not check out.
 const STEP_CHECKOUT: &str = "checked out";
+/// What a request's `Debug` shows in place of its token.
+const REDACTED: &str = "[redacted]";
+/// Why a checkout stopped before it took its mirror.
+const WAIT_STOPPED: &str = "stopped while another lease held the repository's mirror";
 
 /// The repository mirrors on this host, and a lock per mirror.
 #[derive(Debug)]
@@ -50,8 +54,9 @@ pub struct Mirrors {
     locks: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
 }
 
-/// One checkout's inputs.
-#[derive(Debug, Clone, Copy)]
+/// One checkout's inputs. Its `Debug` names the token only as redacted, so a
+/// request formatted into a log line or a panic never prints it.
+#[derive(Clone, Copy)]
 pub struct Request<'a> {
     /// The workspace the lease's fleet belongs to, which keys its mirrors.
     pub scope: &'a str,
@@ -61,6 +66,17 @@ pub struct Request<'a> {
     pub token: &'a str,
     /// The lease's workspace, as the host sees it.
     pub workspace: HostWorkspace<'a>,
+}
+
+impl std::fmt::Debug for Request<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Request")
+            .field("scope", &self.scope)
+            .field("checkout", &self.checkout)
+            .field("token", &REDACTED)
+            .field("workspace", &self.workspace)
+            .finish()
+    }
 }
 
 impl Mirrors {
@@ -98,7 +114,14 @@ impl Mirrors {
         let url = format!("{}{repository}{GIT_SUFFIX}", self.origin);
         let header = authorization(request.token);
         let lock = self.lock(&mirror);
-        let _held = lock.lock().await;
+        // Another lease's clone can hold the mirror for as long as it takes;
+        // an interrupt ends the wait, and the mirror is never taken.
+        let _held = tokio::select! {
+            held = lock.lock() => held,
+            () = interrupt.cancelled() => {
+                return Err(error::git(repository, STEP_FETCH)(WAIT_STOPPED.into()));
+            }
+        };
         let stop = Arc::new(AtomicBool::new(false));
         let fetched = {
             let (url, mirror, stop_fetch) = (url.clone(), mirror.clone(), Arc::clone(&stop));

@@ -1,10 +1,9 @@
 //! The host programs the engine runs, and the one way it runs them.
 //!
-//! Three steps have no library a runner should link: launching bubblewrap,
-//! formatting an ext4 image, and attaching an image to a loop device and
-//! mounting it. The crates that attach loop devices generate their bindings
-//! with `bindgen` at build time, which would put `libclang` on every Linux
-//! build of the workspace; `mount -o loop` is what every distribution ships.
+//! Two steps have no library a runner should link: launching bubblewrap, and
+//! formatting an ext4 image. Attaching an image to a loop device and mounting
+//! it run in-process (`crate::toolbox::loop_device`), so no `mount` program
+//! starts for a lease.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -13,16 +12,13 @@ use std::process::Stdio;
 use afd_core::error_code::{Coded as _, Logged};
 
 use crate::error::{Result, program as failed};
+use crate::workspace_disk::{Mount, loop_mount};
 
 /// Where Debian and Ubuntu install `mke2fs`.
 pub const MKE2FS_PATH: &str = "/usr/sbin/mke2fs";
-/// Where Debian and Ubuntu install `mount`.
-pub const MOUNT_PATH: &str = "/usr/bin/mount";
 
 /// The name a failed `mke2fs` is reported under.
 pub(crate) const MKE2FS: &str = "mke2fs";
-/// The name a failed `mount` is reported under.
-pub(crate) const MOUNT: &str = "mount";
 /// The event a host program's start is logged under.
 const EVENT_PROGRAM_STARTED: &str = "sandbox_host_program_started";
 /// The event a host program that succeeded is logged under.
@@ -33,40 +29,29 @@ const EVENT_PROGRAM_FAILED: &str = "sandbox_host_program_failed";
 const STDERR_TAIL_BYTES: usize = 2_048;
 /// The file system every workspace disk is formatted with.
 pub(crate) const EXT4: &str = "ext4";
-/// The flag both `mke2fs` and `mount` take a file-system type after.
+/// The flag `mke2fs` takes a file-system type after.
 const TYPE_FLAG: &str = "-t";
+/// The sector every loop device is attached with, and so the smallest block
+/// a file system on one may use: a page, which EROFS and ext4 both use. A
+/// workspace disk's ext4 is formatted to it, since `mke2fs` would pick 1 KiB
+/// for a small disk and the kernel would refuse to mount that.
+pub(crate) const BLOCK_BYTES: u32 = 4096;
 
-/// Where each host program lives.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Where each host program lives, and the step that mounts a workspace disk.
+#[derive(Debug, Clone)]
 pub struct HostTools {
     /// The bubblewrap launcher.
     pub bwrap: PathBuf,
     /// The ext4 formatter.
     pub mke2fs: PathBuf,
-    /// The mount command, which attaches loop devices.
-    pub mount: PathBuf,
+    /// Attaches a workspace image to a loop device and mounts it, in-process.
+    pub mount: Mount,
 }
 
 impl HostTools {
     /// Formats `image` as a journal-free ext4 whose root `owner` may write.
     pub(crate) async fn format_ext4(&self, image: &Path, owner: (u32, u32)) -> Result<()> {
         run(MKE2FS, &self.mke2fs, format_arguments(image, owner)).await
-    }
-
-    /// Mounts `source` at `target` as `fstype` with `options`.
-    pub(crate) async fn mount(
-        &self,
-        fstype: &str,
-        options: &str,
-        source: &Path,
-        target: &Path,
-    ) -> Result<()> {
-        run(
-            MOUNT,
-            &self.mount,
-            mount_arguments(fstype, options, source, target),
-        )
-        .await
     }
 }
 
@@ -75,7 +60,7 @@ impl Default for HostTools {
         Self {
             bwrap: crate::probe::BWRAP_PATH.into(),
             mke2fs: MKE2FS_PATH.into(),
-            mount: MOUNT_PATH.into(),
+            mount: loop_mount,
         }
     }
 }
@@ -84,7 +69,7 @@ impl Default for HostTools {
 /// tail of what it wrote to standard error.
 ///
 /// The program is killed if the caller stops waiting: a cancelled lease start
-/// leaves no `mount` or `mke2fs` running behind it.
+/// leaves no `mke2fs` running behind it.
 pub(crate) async fn run<I, S>(name: &'static str, path: &Path, args: I) -> Result<()>
 where
     I: IntoIterator<Item = S>,
@@ -125,9 +110,12 @@ where
 /// No journal: the disk outlives no crash, so a journal is writes for nothing.
 pub(crate) fn format_arguments(image: &Path, owner: (u32, u32)) -> Vec<OsString> {
     let (user, group) = owner;
+    let block = BLOCK_BYTES.to_string();
     [
         "-q",
         "-F",
+        "-b",
+        block.as_str(),
         TYPE_FLAG,
         EXT4,
         "-m",
@@ -143,20 +131,6 @@ pub(crate) fn format_arguments(image: &Path, owner: (u32, u32)) -> Vec<OsString>
         image.as_os_str().to_owned(),
     ])
     .collect()
-}
-
-/// `mount -t fstype -o options source target`.
-pub(crate) fn mount_arguments(
-    fstype: &str,
-    options: &str,
-    source: &Path,
-    target: &Path,
-) -> Vec<OsString> {
-    [TYPE_FLAG, fstype, "-o", options]
-        .into_iter()
-        .map(OsString::from)
-        .chain([source.as_os_str().to_owned(), target.as_os_str().to_owned()])
-        .collect()
 }
 
 /// The last [`STDERR_TAIL_BYTES`] of `bytes`, as text, cut on a character

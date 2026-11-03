@@ -1,6 +1,7 @@
 //! The fake host every engine test builds on.
 #![expect(
     clippy::unwrap_used,
+    clippy::expect_used,
     reason = "a test fails loudly on a fake host it cannot build"
 )]
 
@@ -8,6 +9,7 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -20,12 +22,14 @@ use crate::engine::{Limits, SandboxRequest};
 use crate::host::HostTools;
 use crate::probe::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
 use crate::toolbox::Toolbox;
+use crate::workspace_disk::Caching;
 
 /// The fake launchers, by file name.
 const SLEEPER_NAME: &str = "sleeper";
 const FAILER_NAME: &str = "failer";
 const BRIEF_NAME: &str = "brief";
 const ENV_PROBE_NAME: &str = "env-probe";
+const CLOSER_NAME: &str = "closer";
 /// One processor core, in thousandths.
 const ONE_CORE: u32 = 1_000;
 /// The digest the fake host's toolbox is known by, and is configured for.
@@ -39,6 +43,10 @@ pub(super) const SLEEPER: Launcher = Launcher(SLEEPER_NAME);
 pub(super) const FAILER: Launcher = Launcher(FAILER_NAME);
 /// A "bubblewrap" that answers, then dies on its own a moment later.
 pub(super) const BRIEF: Launcher = Launcher(BRIEF_NAME);
+/// A "bubblewrap" that closes the entry's end of its link and stays up: the
+/// link is lost while the sandbox still runs. It runs under bash, since dash
+/// redirects only single-digit descriptors.
+pub(super) const CLOSER: Launcher = Launcher(CLOSER_NAME);
 /// A "bubblewrap" that reports whether it inherited the runner's environment,
 /// then fails, so the refusal quotes the report.
 pub(super) const ENV_PROBE: Launcher = Launcher(ENV_PROBE_NAME);
@@ -64,6 +72,9 @@ pub(super) const LIMITS: Limits = Limits {
 };
 /// How long a fake sandbox may take to answer.
 const READY: Duration = Duration::from_secs(5);
+/// The note an answering launcher leaves in its lease's directory: its
+/// process, and the number it holds the entry's end of the link under.
+pub(super) const SANDBOXED: &str = "sandboxed";
 /// How often the in-process executor looks for a new lease.
 pub(super) const POLL: Duration = Duration::from_millis(1);
 
@@ -80,13 +91,19 @@ fn scripts() -> &'static Path {
     DIR.get_or_init(|| {
         let dir = tempfile::tempdir().unwrap();
         for (name, text) in [
-            (SLEEPER_NAME, "#!/bin/sh\nexec sleep 30\n"),
+            (SLEEPER_NAME, answering("30").as_str()),
             (
                 FAILER_NAME,
                 "#!/bin/sh\nprintf '%5000s\\n' '' >&2\nseq 1 30 >&2\n\
                  echo 'bwrap: Can not mount tmpfs: Operation not permitted' >&2\nexit 1\n",
             ),
-            (BRIEF_NAME, "#!/bin/sh\nexec sleep 0.3\n"),
+            (BRIEF_NAME, answering("0.3").as_str()),
+            (
+                CLOSER_NAME,
+                "#!/bin/bash\nfor arg; do\n  [ \"$take\" = 1 ] && executor=\"$arg\"\n  take=0\n  \
+                 [ \"$arg\" = --executor ] && take=1\ndone\neval \"exec $executor>&-\"\n\
+                 exec sleep 30\n",
+            ),
             (
                 ENV_PROBE_NAME,
                 "#!/bin/sh\necho \"environment: ${CARGO_MANIFEST_DIR:+inherited} \
@@ -100,6 +117,18 @@ fn scripts() -> &'static Path {
         dir
     })
     .path()
+}
+
+/// A "bubblewrap" that answers: it leaves [`SANDBOXED`] in its lease's
+/// directory, found from the workspace bind, then sleeps for `seconds`.
+fn answering(seconds: &str) -> String {
+    format!(
+        "#!/bin/sh\nfor arg; do\n  [ \"$take\" = 1 ] && executor=\"$arg\"\n  take=0\n  \
+         [ \"$arg\" = --executor ] && take=1\n  \
+         case \"$arg\" in */workspace/workspace) lease=\"${{arg%/workspace/workspace}}\" ;; esac\n\
+         done\necho \"$$ $executor\" > \"$lease/.{SANDBOXED}\" && \
+         mv \"$lease/.{SANDBOXED}\" \"$lease/{SANDBOXED}\"\nexec sleep {seconds}\n"
+    )
 }
 
 /// A host that passes every probe, with `launcher` as its bubblewrap.
@@ -139,7 +168,7 @@ impl FakeHost {
             tools: HostTools {
                 bwrap,
                 mke2fs: PathBuf::from(TRUE),
-                mount: PathBuf::from(TRUE),
+                mount: |_image, _mount_point| Ok(Caching::Buffered),
             },
             toolbox: Arc::new(Toolbox::at(base.join("toolbox"), DIGEST.to_owned())),
             cgroup_root,
@@ -172,26 +201,50 @@ impl FakeHost {
     }
 }
 
-/// Serves the real executor, in-process, on every lease's socket as soon as
-/// the engine makes its socket directory — what `agentsfleet-runner sandbox`
-/// does inside a real sandbox.
+/// Serves the real executor, in-process, on every lease's link as soon as
+/// its fake bubblewrap says where it holds the entry's end — what
+/// `agentsfleet-runner sandbox` does inside a real sandbox.
 pub(super) fn serve_leases(state_dir: PathBuf) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut served = HashSet::new();
         loop {
             for entry in fs::read_dir(&state_dir).into_iter().flatten().flatten() {
                 let lease = entry.path();
-                let run = lease.join("run");
-                if run.is_dir() && served.insert(lease.clone()) {
+                let Ok(note) = fs::read_to_string(lease.join(SANDBOXED)) else {
+                    continue;
+                };
+                if served.insert(lease.clone()) {
+                    let link = taken(&note);
                     tokio::spawn(async move {
-                        let socket = run.join(crate::bubblewrap::SOCKET_NAME);
-                        afr_executor::serve(&socket, &lease.join("workspace")).await
+                        afr_executor::connected(link)?
+                            .serve(&lease.join("workspace"))
+                            .await
                     });
                 }
             }
             tokio::time::sleep(POLL).await;
         }
     })
+}
+
+/// The entry's end of a lease's link, duplicated out of the fake bubblewrap
+/// that `note` names with the number it holds the end under. A parent may
+/// take a descriptor from its own child with `pidfd_getfd`.
+fn taken(note: &str) -> UnixStream {
+    use rustix::process::{Pid, PidfdFlags, PidfdGetfdFlags, pidfd_getfd, pidfd_open};
+    let (pid, number) = note
+        .trim()
+        .split_once(' ')
+        .expect("the note names a process and a descriptor");
+    let pid = Pid::from_raw(pid.parse().expect("a process number")).expect("a live process");
+    let process =
+        pidfd_open(pid, PidfdFlags::empty()).expect("pidfd_open on the fake bubblewrap, a child");
+    let number = number.parse().expect("a descriptor number");
+    let end = pidfd_getfd(&process, number, PidfdGetfdFlags::empty()).expect(
+        "pidfd_getfd needs ptrace rights over the child; a seccomp profile that \
+         refuses ptrace, as Docker's default does, refuses it too",
+    );
+    UnixStream::from(end)
 }
 
 pub(super) fn request(lease_id: &str) -> SandboxRequest<'_> {

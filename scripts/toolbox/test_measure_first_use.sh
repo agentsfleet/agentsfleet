@@ -22,6 +22,10 @@ import time
 from pathlib import Path
 
 sampler = Path(sys.argv[1]).resolve()
+# Every case checks the image's loop devices, so a host without losetup fails
+# here, before any fixture is made, rather than mid-case.
+losetup = shutil.which("losetup")
+assert losetup, "losetup is not on PATH: every case lists the image's loop devices with it"
 fixture = Path(tempfile.mkdtemp(prefix="first-use-cleanup-", dir="/var/tmp"))
 source = fixture / "source"
 source.mkdir()
@@ -41,6 +45,8 @@ subprocess.run(["mkfs.erofs", "--quiet", str(image), str(source)], check=True)
 cases = ["signal_after_mount", "mount_failed", "command_failed", "unmount_failed",
          "null_baseline", "publication_symlink", "signal_during_measurement", "missing_digest",
          "signal_during_publication", "signal_hangup_during_publication"]
+# Cases whose measurement runs to a published report.
+published = ("publication_symlink",)
 if sys.argv[2]:
     assert sys.argv[2] in cases
     cases = [sys.argv[2]]
@@ -55,10 +61,26 @@ def mounted_root(marker):
     return root
 
 
+def loops_on(image, patience=5):
+    """The loop devices backed by `image`, once any autoclear has finished."""
+    deadline = time.monotonic() + patience
+    while True:
+        found = subprocess.run([losetup, "--noheadings", "--output", "NAME", "--associated", str(image)],
+                               capture_output=True, text=True, check=True).stdout.split()
+        if not found or time.monotonic() >= deadline:
+            return found
+        time.sleep(0.05)
+
+
+# How long one case's sampler may run: the bound catches a hang, not a slow
+# disk.
+BOUND = 90
+
+
 def run_sampler(command, environment, marker, case):
     publication = case in ("signal_during_publication", "signal_hangup_during_publication")
     if case != "signal_during_measurement" and not publication:
-        return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=90)
+        return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=BOUND)
     process = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, start_new_session=True)
     try:
@@ -118,7 +140,7 @@ try:
         baseline = []
         called = directory / "command-called"
         publication = case in ("signal_during_publication", "signal_hangup_during_publication")
-        if case in ("null_baseline", "publication_symlink", "missing_digest") or publication:
+        if case in ("null_baseline", "missing_digest", *published) or publication:
             bwrap = directory / "bwrap"
             bwrap.write_text(f'#!/bin/bash\ntouch "{called}"\nexit 0\n')
             bwrap.chmod(0o700)
@@ -134,14 +156,37 @@ try:
             invalid.write_text("null\n")
             baseline = [str(invalid)]
         environment = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"])
-        if publication:
-            # Hold the real JSON writer after it owns its exclusive staging file.
-            hook = directory / "sitecustomize.py"
-            hook.write_text("import json, time\nfrom pathlib import Path\n"
-                            "def hold_report(*args, **kwargs):\n"
-                            f"    Path({str(directory / 'publication-started')!r}).touch()\n"
-                            "    time.sleep(120)\n"
-                            "json.dump = hold_report\n")
+        if case in ("null_baseline", "missing_digest", *published) or publication:
+            # Every step in these cases is the stub above, so nothing is timed:
+            # the disk sync and the cache drop before each of the 160 steps go.
+            # On a loaded host those alone outlast the bound.
+            hook = ("import os\nfrom pathlib import Path\n"
+                    "os.sync = lambda: None\n"
+                    "real_write_text = Path.write_text\n"
+                    "def write_unless_drop(path, data, *rest, **options):\n"
+                    "    if str(path) == '/proc/sys/vm/drop_caches':\n"
+                    "        return len(data)\n"
+                    "    return real_write_text(path, data, *rest, **options)\n"
+                    "Path.write_text = write_unless_drop\n")
+            if publication:
+                # These cases prove the clean-up when a signal lands
+                # mid-publication, so each step answers in-process and
+                # publication starts within a second, on any disk. The mount,
+                # the 20 recorded runs and the publication path are the real
+                # ones. Then hold the real JSON writer once it owns its
+                # exclusive staging file.
+                hook += ("import json, subprocess, time\n"
+                         "real_run = subprocess.run\n"
+                         "def instant_step(args, *rest, **options):\n"
+                         "    if args and args[0] == 'bwrap':\n"
+                         "        return subprocess.CompletedProcess(args, 0, b'', b'')\n"
+                         "    return real_run(args, *rest, **options)\n"
+                         "subprocess.run = instant_step\n"
+                         "def hold_report(*args, **kwargs):\n"
+                         f"    Path({str(directory / 'publication-started')!r}).touch()\n"
+                         "    time.sleep(120)\n"
+                         "json.dump = hold_report\n")
+            (directory / "sitecustomize.py").write_text(hook)
             environment["PYTHONPATH"] = str(directory)
         if case == "missing_digest":
             # Produce a compatible baseline, then remove only its required digest.
@@ -165,14 +210,15 @@ try:
             assert marker.is_file(), f"{case}: injection did not execute"
             root = mounted_root(marker)
             mounted = subprocess.run(["/usr/bin/mountpoint", "-q", str(root)]).returncode == 0
-            if case == "publication_symlink":
-                assert result.returncode == 0, f"publication failed: {result.stderr}"
-                assert victim.read_text() == "preserve this file\n", "report overwrote a symlink target"
+            if case in published:
+                assert result.returncode == 0, f"{case} failed: {result.stderr}"
                 report = json.loads(output.read_text())
                 assert report["runs"] == 20 and len(report["steps"]) == 8
                 assert all(len(step["samples_ms"]) == 20 for step in report["steps"].values())
             else:
                 assert not output.exists(), f"{case}: incomplete report published"
+            if case == "publication_symlink":
+                assert victim.read_text() == "preserve this file\n", "report overwrote a symlink target"
             if publication:
                 assert not list(directory.glob(f".{output.name}.*.tmp")), "cancelled publication leaked staging file"
             if case == "null_baseline":
@@ -187,9 +233,10 @@ try:
             else:
                 expected = (129 if case == "signal_hangup_during_publication"
                             else 143 if case.startswith("signal_") else 77 if case == "mount_failed"
-                            else 0 if case == "publication_symlink" else 1)
+                            else 0 if case in published else 1)
                 assert result.returncode == expected, f"{case}: exit {result.returncode}, expected {expected}"
                 assert not mounted and not root.parent.exists(), f"{case}: leaked mount or tree"
+                assert not loops_on(image), f"{case}: a loop device still holds the image"
             print(json.dumps(dict(case=case, exit=result.returncode,
                                   mounted=mounted, tree_retained=root.parent.exists(),
                                   report_published=output.exists(), result="PASS")))

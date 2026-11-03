@@ -22,6 +22,9 @@ use crate::e2e::scenario;
 use crate::tail::lease;
 use crate::wire::{post, report_body};
 
+#[path = "integration_rust_runner_overlap.rs"]
+mod overlap;
+
 /// A key no build of the daemon carries.
 const FUTURE: &str = "future";
 
@@ -100,10 +103,12 @@ async fn test_rust_runner_lease_roundtrip() {
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = tokio_util::sync::CancellationToken::new();
+    let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
+        .expect("a debug build permits the unsandboxed engine");
     let runner = tokio::spawn(rust_runner(
         &run,
         home.path(),
-        sandboxes.path(),
+        (Box::new(engine), Box::new(scripted())),
         shutdown.clone(),
     ));
 
@@ -203,11 +208,18 @@ pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
     .expect("an operator may relax a runner's egress");
 }
 
-/// The Rust runner's supervisor, pointed at the scenario's daemon.
+/// What a runner builds sandboxes with, and what runs its turns.
+type Engines = (
+    Box<dyn afr_sandbox::Engine>,
+    Box<dyn afr_agent::AgentEngine>,
+);
+
+/// The Rust runner's supervisor, pointed at the scenario's daemon, building
+/// with `engine` and running each turn on `agent`.
 fn rust_runner(
     run: &crate::e2e::Scenario,
     home: &std::path::Path,
-    sandboxes: &std::path::Path,
+    (engine, agent): Engines,
     shutdown: tokio_util::sync::CancellationToken,
 ) -> impl std::future::Future<Output = afr_supervisor::Result<()>> + use<> {
     use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
@@ -218,19 +230,7 @@ fn rust_runner(
         (ENV_STORAGE_HOME, home.as_str()),
     ]);
     let (config, home) = afr_supervisor::boot(&env).expect("the scenario's env is valid");
-    let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.to_owned())
-        .expect("a debug build permits the unsandboxed engine");
-    async move {
-        afr_supervisor::run(
-            &config,
-            home,
-            Box::new(engine),
-            Box::new(scripted()),
-            capable(),
-            shutdown,
-        )
-        .await
-    }
+    async move { afr_supervisor::run(&config, home, engine, agent, capable(), shutdown).await }
 }
 
 /// A turn that runs one process, says one thing and remembers one item.

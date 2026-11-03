@@ -1488,6 +1488,7 @@ dependencies = [
  "afr_supervisor",
  "afr_telemetry",
  "afr_tools",
+ "async-trait",
  "axum",
  "clap",
  "futures-util",

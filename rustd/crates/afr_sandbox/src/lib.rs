@@ -59,13 +59,13 @@ pub use self::cgroup::{
 };
 pub use self::engine::{
     DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
-    HostWorkspace, Limits, Sandbox, SandboxRequest,
+    HostWorkspace, Killed, Limits, Sandbox, SandboxRequest,
 };
 pub use self::error::{Error, Result, ToolboxRefusal};
 #[cfg(target_os = "linux")]
 pub use self::harden::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 pub use self::harden::{WRITABLE, WRITABLE_DEVICES, capabilities_dropped, harden, single_threaded};
-pub use self::host::{HostTools, MKE2FS_PATH, MOUNT_PATH};
+pub use self::host::{HostTools, MKE2FS_PATH};
 pub use self::network::{
     ALLOWLIST_ADDRESSES_MAX, Allowlist, Network, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
 };
@@ -75,7 +75,9 @@ pub use self::probe::{
     ProbePaths, REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
 };
 pub use self::serve::{serve_confined, serve_sandboxed};
-pub use self::tenant::{TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors};
+pub use self::tenant::{
+    EXECUTOR_FLAG, Inherited, TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors,
+};
 #[cfg(target_os = "linux")]
 pub use self::toolbox::KernelMounter;
 pub use self::toolbox::{
@@ -85,4 +87,4 @@ pub use self::toolbox::{
 };
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;
-pub use self::workspace_disk::{Caching, WorkspaceDisk};
+pub use self::workspace_disk::{Caching, Mount, WorkspaceDisk};

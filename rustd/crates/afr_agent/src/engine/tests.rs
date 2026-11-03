@@ -13,7 +13,7 @@ fn a_run_debugs_without_the_leases_secrets() {
     let run = AgentRun {
         lease: &lease,
         memory: afr_memory::Seed::default(),
-        executor: None,
+        executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,

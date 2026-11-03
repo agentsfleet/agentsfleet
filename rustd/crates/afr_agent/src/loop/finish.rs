@@ -68,7 +68,7 @@ impl Harness<'_, '_> {
     /// the lease stopped mid-yield left its process registered, so it is
     /// closed here too.
     async fn close_sessions(&self) {
-        let Some(executor) = self.shared.executor else {
+        let Some(executor) = self.shared.executor.peek() else {
             return;
         };
         let sessions = self.shared.lease.sessions.close_all(executor).await;

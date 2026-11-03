@@ -1,0 +1,36 @@
+id: rust-integer-millis
+valid:
+  # An edge's one conversion from a `Duration`, a string constant whose name
+  # ends in `_MS`, a comment naming a retired helper, and a test's own constants.
+  - |
+    // The retired `UnixMillis` read is gone.
+    pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+    const WIRE_INTERVAL_MS: u32 = {
+        const _: () = assert!(HEARTBEAT_INTERVAL.as_millis() <= u32::MAX as u128);
+        HEARTBEAT_INTERVAL.as_millis() as u32
+    };
+    const P95_MS: &str = "p95_ms";
+
+    #[cfg(test)]
+    mod tests {
+        const BRIEF_MS: u64 = 250;
+    }
+  - |
+    pub const WAIT: Duration = Duration::from_secs(30);
+invalid:
+  - |
+    const X_MS: i64 = 60_000;
+  - |
+    pub const WAIT_MS_MAX: u64 = 3_600_000;
+  - |
+    let at = UnixMillis::now();
+  - |
+    let later = clock::add_millis(at, 5);
+  - |
+    let span = millis_between(a, b);
+  - |
+    let at = afd_core::clock::from_millis(raw);
+  - |
+    impl Lease {
+        pub(crate) const RENEW_MS: usize = 500;
+    }

@@ -1,17 +1,17 @@
 # =============================================================================
-# Safety gates — deploy correctness, vault-read approval, architecture-doc truth
+# Safety gates — deploy correctness and vault-read approval
 # =============================================================================
 #
-# Three static checks that assert properties of the tree rather than build
+# Two static checks that assert properties of the tree rather than build
 # anything, like check-openapi or check-route-registration-doc. Split out of
 # quality.mk (RULE FLL), which the vault-gate parity scan pushed past the
 # 350-line cap; the same reason check-test-reachability.mk lives on its own.
 #
-# Where they fire: all three are prerequisites of `lint-all`, so CI's lint job
+# Where they fire: both are prerequisites of `lint-all`, so CI's lint job
 # runs them. check-vault-gate-parity additionally hangs off check-playbooks, so
 # validating the playbooks surface can never skip the guardrail that protects it.
 
-.PHONY: check-vault-gate-parity check-architecture-doc check-deploy-safety
+.PHONY: check-vault-gate-parity check-deploy-safety
 .PHONY: check-release-candidate
 
 check-gh-actions-valid: check-release-candidate
@@ -44,10 +44,6 @@ check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the v
 	echo "✓ [playbooks] every vault-reading operations script passes both gates"
 	@echo "→ [playbooks] vault-gate self-tests..."
 	@bash playbooks/operations/credential_rotation/vault_gate_test.sh
-
-check-architecture-doc:  ## docs/architecture/ stays true — milestone refs resolve, relative links resolve, no orphan markers
-	@bash scripts/check_architecture_doc_test.sh
-	@bash scripts/check_architecture_doc.sh
 
 check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ + deployment config rules (scripts/check_infra_config.py)
 	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise

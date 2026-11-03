@@ -1,0 +1,21 @@
+# These components render through mapped design-system tokens alone. An
+# arbitrary-value utility (`bg-[#fff]`, `w-[42px]`) or a hex colour in a class
+# string bypasses the tokens. A bracket followed by `:` is an arbitrary variant
+# (`data-[state=checked]:`), which is standard. Widening the file list is a
+# design decision, not a lint change. That both files exist is checked by
+# scripts/check_design_system_source.py.
+id: ds-mapped-tokens
+language: Tsx
+severity: error
+message: an arbitrary-value utility or a hex colour; use a mapped token
+files:
+  - ui/packages/design-system/src/design-system/OptionCard.tsx
+  - ui/packages/design-system/src/design-system/UsageBar.tsx
+rule:
+  all:
+    - any:
+        - kind: string
+        - kind: template_string
+    - any:
+        - regex: '(^|[^\w-])[a-z][\w-]*-\[[^\]\s]+\]([^:]|$)'
+        - regex: '#[0-9a-fA-F]{3,8}\b'

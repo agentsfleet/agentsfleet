@@ -16,8 +16,8 @@ use std::time::Duration;
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
-    TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
+    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -30,6 +30,10 @@ pub enum Recorded {
     Retry(Provider, RetryReason),
     /// [`Recorder::sandbox_start`].
     SandboxStart(SandboxStart, Duration),
+    /// [`Recorder::sandbox_wait`].
+    SandboxWait(SandboxWait, Duration),
+    /// [`Recorder::sandbox_release`].
+    SandboxRelease(SandboxRelease, Duration),
     /// [`Recorder::frames_dropped`].
     FramesDropped(FrameDrop, u64),
     /// [`Recorder::push_failed`].
@@ -40,6 +44,8 @@ pub enum Recorded {
     OutOfMemory,
     /// [`Recorder::sandbox_hold`].
     SandboxHold(SandboxHold),
+    /// [`Recorder::sandbox_build`].
+    SandboxBuild(SandboxBuild),
     /// [`Recorder::spans_suppressed`].
     SpansSuppressed(u64),
     /// [`Recorder::export_discarded`].
@@ -77,6 +83,14 @@ impl Recorder for Tally {
         self.send(Recorded::SandboxStart(outcome, elapsed));
     }
 
+    fn sandbox_wait(&self, outcome: SandboxWait, elapsed: Duration) {
+        self.send(Recorded::SandboxWait(outcome, elapsed));
+    }
+
+    fn sandbox_release(&self, outcome: SandboxRelease, elapsed: Duration) {
+        self.send(Recorded::SandboxRelease(outcome, elapsed));
+    }
+
     fn frames_dropped(&self, reason: FrameDrop, frames: u64) {
         self.send(Recorded::FramesDropped(reason, frames));
     }
@@ -95,6 +109,10 @@ impl Recorder for Tally {
 
     fn sandbox_hold(&self, outcome: SandboxHold) {
         self.send(Recorded::SandboxHold(outcome));
+    }
+
+    fn sandbox_build(&self, outcome: SandboxBuild) {
+        self.send(Recorded::SandboxBuild(outcome));
     }
 
     fn spans_suppressed(&self, spans: u64) {

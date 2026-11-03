@@ -47,9 +47,9 @@ jobs:
   check-credentials:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: 1password/install-cli-action@v4
+      - uses: 1password/install-cli-action@1a3160d5e9de1ae0803eaa08a88746f5ae3daa50 # v4.1.0
 
       - name: Check vault credentials
         env:
@@ -134,8 +134,8 @@ jobs:
       needs.acceptance.outputs.cli == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: promoted-candidate
           path: dist/candidate
@@ -151,7 +151,7 @@ jobs:
           GATE_CLI: ${{ needs.acceptance.outputs.cli }}
         id: identity
         run: make candidate-qualify
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: development-candidate-${{ steps.identity.outputs.tree }}
           path: dist/candidate
@@ -165,7 +165,7 @@ jobs:
     needs: [build, fly, acceptance, metal, dashboard, qualify-candidate]
     if: always()
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Green requires qa, short acceptance-e2e and acceptance-cli to succeed.
       # Indy deferred ten-fleet acceptance to a manual run after merge.

@@ -1,0 +1,35 @@
+id: app-date-formatter
+valid:
+  # Reading the browser's zone formats nothing.
+  - |
+    export const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  # A comment after a JSX apostrophe is still a comment.
+  - |
+    export const P = () => <p>Don't panic</p>;
+    // never d.toLocaleString() here.
+    export const x = 1;
+  # A comment after a pattern holding a quote is still a comment.
+  - |
+    export const missing = /Couldn't find "it"/i;
+    // never d.toLocaleString() here.
+    export const x = 1;
+  - |
+    const half = total / 2; // toLocaleString
+invalid:
+  - |
+    export const when = (d: Date) => d.toLocaleString();
+  - |
+    export const label = (at: Date) => at.toLocaleDateString("en-US");
+  # Code after a JSX apostrophe is still checked.
+  - |
+    export const P = () => <p>Don't panic</p>;
+    // note
+    export const when = (d: Date) => d.toLocaleString();
+  - |
+    export const f = new Intl.DateTimeFormat("en-US", { month: "short" });
+  - |
+    export const rel = new Intl.RelativeTimeFormat("en");
+  - |
+    const OPTIONS: Intl.DateTimeFormatOptions = { month: "short" };
+  - |
+    export function formatterFor(built: Intl.DateTimeFormat) { return built; }
