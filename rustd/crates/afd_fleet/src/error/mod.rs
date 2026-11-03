@@ -223,7 +223,7 @@ pub(crate) enum ErrorKind {
     #[error("a stored credential body is not the JSON object the tool bridge addresses")]
     VaultDataInvalid,
 
-    #[error("a stored fencing sequence is not a sequence")]
+    #[error("a stored native sequence is outside its permitted range")]
     SequenceCorrupt,
 
     #[error("the reporting holder's fence is behind the fleet's live sequence")]

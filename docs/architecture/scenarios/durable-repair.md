@@ -110,7 +110,9 @@ Initially, a greeting can be answered after the active run reaches its permitted
 ### Goal evaluation
 
 The user defines the desired outcome and completion questions through onboarding chat.
-Review/Apply saves them in a versioned `instructions_md`; model text cannot silently alter the accepted objective.
+Review/Apply saves questions separately in the versioned `config["x-agentsfleet"].decision_policy`; instruction prose stays in `instructions_md`.
+Each DT freezes its accepted questions; [question ownership](../goal_evaluation.md#who-writes-and-stores-the-questions) requires reviewed revision adoption before they change.
+
 For Linkwarden, questions include whether the unchanged regression passes at the current PR head and whether all required exact-head checks have concluded successfully.
 
 ```text

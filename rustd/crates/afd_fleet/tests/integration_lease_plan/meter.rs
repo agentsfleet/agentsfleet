@@ -12,7 +12,7 @@ const BACKLOG: &str = "INSERT INTO fleet.admissions \
     'chat','{}',now(),now(),now() FROM fleet.fleets f,generate_series(1,$2::integer) n \
     WHERE f.id=$1::uuid";
 const PREPARE: &str = "PREPARE ledger_meter \
-    (text,text,bigint,text,boolean,interval,interval,text,boolean,text,bigint) AS ";
+    (text,text,bigint,text,boolean,interval,interval,text,boolean,text,bigint,bigint) AS ";
 
 pub(super) async fn assert_point_lookups(connection: &mut PgConnection, held: &Held) {
     run(connection, super::FORCE_GENERIC).await;
@@ -83,7 +83,7 @@ async fn meter_plan(
 ) -> serde_json::Value {
     sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE ledger_meter \
-        ('{lease}','{runner}',{ms},'{active}',{settles},'{ttl} seconds','{cap} seconds','{reported}',true,'{work}',{seq})",
+        ('{lease}','{runner}',{ms},'{active}',{settles},'{ttl} seconds','{cap} seconds','{reported}',true,'{work}',{seq},{decision_seq})",
         lease = held.lease_key.as_str(),
         runner = held.runner.as_str(),
         ms = afd_billing::nanos::MS_PER_SEC,
@@ -93,6 +93,7 @@ async fn meter_plan(
         reported = afd_fleet::lease::sql::LEASE_STATUS_REPORTED,
         work = afd_billing::sql::work::FLEET_LEASE,
         seq = afd_wire::usage::DAEMON_SEQ_BASE,
+        decision_seq = afd_wire::usage::DECISION_SEQ_BASE,
     )))
     .fetch_one(connection)
     .await

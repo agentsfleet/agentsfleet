@@ -84,6 +84,7 @@ SELECT
     g.fleet_id::text AS fleet_id, g.event_id,
     (SELECT f.name FROM fleet.fleets f WHERE f.id = g.fleet_id) AS fleet_name,
     (SELECT count(*) FROM billing.usage_lines u
-      WHERE u.work_type = $10 AND u.work_id = g.id AND u.seq >= $11)::bigint AS daemon_lines
+      WHERE u.work_type = $10 AND u.work_id = g.id
+        AND u.seq >= $11 AND u.seq < $12)::bigint AS daemon_lines
 FROM (SELECT 1) AS one
 LEFT JOIN guard g ON true

@@ -118,7 +118,8 @@ R2 holds encrypted immutable checkpoint bytes and does not decide current owners
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
 
 The branch defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; authenticated list/detail reads share the daemon task owner.
-Task mutations and runner integration remain unfinished; list reads return unfinished work, while detail retains terminal outcomes.
+Native bind/control and authenticated reads are implemented; public control routes and task-bound runtime integration remain pending.
+List reads return unfinished work, while detail retains terminal outcomes.
 
 The inline chat panel reads these native rows and lazy-loads saved criteria; committed bind/control changes publish `task_changed` on the existing fleet stream.
 Initial stream readiness, reconnect and gap recovery trigger readback; frames carry no authority.

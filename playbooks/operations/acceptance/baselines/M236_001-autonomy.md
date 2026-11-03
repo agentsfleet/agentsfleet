@@ -336,7 +336,9 @@ The production-component browser recheck passed all eight desktop/mobile cases a
 It verifies typography, lazy criteria, the shared conversation and usable composer geometry; `/tmp/m236-task-component-browser.log` records the 6.2-second run.
 Controlled read fixtures supply its data; this is not full live DT acceptance.
 
-Rust patch coverage has not been measured; raising its floor is not a measured result.
+The [native coverage attempt on `bf0684c97`](https://github.com/agentsfleet/agentsfleet/actions/runs/41723739970) passed runner, daemon and kernel shards.
+The substrate shard failed on a concurrent catalogue seed primary-key collision; the complete Rust patch percentage remains unverified.
+Raising the floor is not a measured result; only a complete report at the tested revision can satisfy it.
 
 ## Mixed-model settlement recovery
 
@@ -362,6 +364,34 @@ The new scenario passed in that clean integration run.
 No new mutex, billing queue or metrics family was added.
 Physical decision reservations, frozen call pricing, receipt accounting and hold-release guards remain pending; Rust patch coverage remains unmeasured.
 
+## Usage sequence component
+
+Coding, runtime and native decisions use disjoint sequence ranges under the same lease work identity.
+Runtime allocation rejects negative, exhausted and overflowing counters; renewal and expiry SQL exclude decision sequences from their runtime counts.
+The cohesive native scenarios compare complete boundary settlements and exercise decision usage, renewal, abandonment, expiry billing and replay together.
+
+The failed remote coverage attempt exposed a fixed catalogue seed identifier shared by concurrent tests.
+Each seed now mints a candidate and lets the existing provider/model uniqueness rule choose the logical row.
+A bounded isolated scenario releases 100 callers across two models, then checks their complete identities, inference settings and quotes together.
+
+It proves concurrent callers over the configured pool, not 100 simultaneous SQL statements.
+Exercise and teardown deadlines begin after fixture construction; they do not prove bounded migration startup.
+
+Astra reviewed this component at extra-high effort and found no material source or test defect.
+Its documentation correction is applied in the billing architecture page; the review ran no gates.
+
+`make lint-rustd` passed after correcting two fixture string assignments to reuse their allocation.
+The log is `/tmp/m236-usage-ranges-lint-final.log`.
+
+`make test-unit-rustd-runner _RUSTD_UNIT_RUNNER='afd_fleet afd_wire'` passed 291 tests; `/tmp/m236-usage-ranges-unit.log` records the scoped result.
+The initial clean integration run caught a prepared-plan fixture missing the new twelfth metering argument; both its declaration and invocation now match production.
+
+The clean `make test-integration-rustd` rerun passed 1,473 regular tests and all three exclusive tests.
+The log is `/tmp/m236-usage-ranges-integration-final.log`; the complete Rust patch coverage measurement remains pending.
+
+`orly gate work` and `orly gate verify` passed, including `make lint-all` and version agreement at 0.72.0.
+The verification log is `/tmp/m236-usage-ranges-verify.log`; these checkpoint checks do not close the full milestone.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
@@ -371,5 +401,5 @@ Physical decision reservations, frozen call pricing, receipt accounting and hold
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Eight final production-component browser checks passed for typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. SDK transfer, encryption, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |
-| Architecture and companion docs | Owning DT/decision pages track these changes. Full architecture/public-docs corpus review and the companion documentation PR remain pending. |
+| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning architecture corrections are applied; docs commit `6d595a5` adds setup-criteria and Current work guides with full documentation validation. The companion PR remains pending; new API pages follow the lead merge. |
 | Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. No feature PR exists; all required gates, actual-head Continuous Integration and Greptile resolution must precede the authorized merge. |

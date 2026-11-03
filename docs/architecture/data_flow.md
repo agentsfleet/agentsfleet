@@ -770,7 +770,7 @@ Do not delete the retained fleet on setup failure, claim activation after a zero
 ## Proposed Durable Task admission
 
 M236 adds [Durable Tasks](durable_tasks.md) beneath fleets while retaining this admission ledger and one active lease per fleet.
-The daemon saves a message before acknowledging it; the runner then uses [Jev intent routing](goal_evaluation.md#intent-routing) under its lease.
+The daemon saves a message before acknowledging it; the runner then uses [runner-assigned decision routing](goal_evaluation.md#intent-routing) under its lease.
 Native code creates work or associates input only after current authority and target checks.
 
 A waiting DT has a settled run admission and a separate wait record.

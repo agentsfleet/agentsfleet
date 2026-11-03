@@ -34,7 +34,8 @@ pub(crate) fn vault_data_invalid() -> Error {
 /// fences ITSELF out. The live sequence a memory push is checked against runs
 /// the other way: saturating it to zero would put it below every token in
 /// existence and admit every stale holder. There is no safe value, so there is
-/// no value.
+/// no value. Runtime usage allocation also refuses a count that would enter
+/// another writer's namespace rather than saturating onto an occupied number.
 pub(crate) fn sequence_corrupt() -> Error {
     Error::new(ErrorKind::SequenceCorrupt)
 }
