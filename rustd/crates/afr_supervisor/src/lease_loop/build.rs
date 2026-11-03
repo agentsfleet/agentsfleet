@@ -120,8 +120,9 @@ impl LeaseRun<'_> {
                 if let Ended::Failed(class, logged) = &ended {
                     self.build_failed(*class, logged);
                 }
-                // Waiting calls hear why before the teardown, which can take
-                // seconds while the cgroup drains.
+                // Waiting calls hear why before this teardown, which can
+                // take seconds while the cgroup drains. A prepare that failed
+                // has already torn its own parts down inside the engine.
                 slot.fill(Err(ended.class()));
                 if let Some(sandbox) = leftover {
                     // Logged where it failed; what is left is the boot sweep's.
