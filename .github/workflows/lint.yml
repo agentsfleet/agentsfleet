@@ -99,6 +99,14 @@ jobs:
       # toolchain, and it already runs on every Pull Request.
       - name: Version manifests match VERSION
         run: make check-version
+      # Four lint-all checks no other job ran, so their findings merged green:
+      # shellcheck over scripts/, the curated model catalogue, help text and
+      # public API wording, and tests that read a repository file instead of
+      # calling code. The root install carries the model check's tsrs.
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
+      - name: Shell, model catalogue, documentation and test-shape checks
+        run: make lint-shell _model_allowlist_check check-documentation-rules check-tests-call-code
 
   lint:
     runs-on: ubuntu-latest

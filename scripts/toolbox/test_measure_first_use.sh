@@ -44,10 +44,9 @@ image = fixture / "fixture.erofs"
 subprocess.run(["mkfs.erofs", "--quiet", str(image), str(source)], check=True)
 cases = ["signal_after_mount", "mount_failed", "command_failed", "unmount_failed",
          "null_baseline", "publication_symlink", "signal_during_measurement", "missing_digest",
-         "signal_during_publication", "signal_hangup_during_publication",
-         "direct_io_when_asked", "direct_io_refused"]
+         "signal_during_publication", "signal_hangup_during_publication"]
 # Cases whose measurement runs to a published report.
-published = ("publication_symlink", "direct_io_when_asked")
+published = ("publication_symlink",)
 if sys.argv[2]:
     assert sys.argv[2] in cases
     cases = [sys.argv[2]]
@@ -73,37 +72,15 @@ def loops_on(image, patience=5):
         time.sleep(0.05)
 
 
-def refused_direct_io(directory):
-    """A device that did not take direct I/O ends the run unmeasured and detached."""
-    wrapper = directory / "losetup"
-    wrapper.write_text('#!/bin/bash\nargs=()\nfor arg in "$@"; do\n'
-                       ' [ "$arg" = --direct-io=on ] || args+=("$arg")\ndone\n'
-                       f'exec {losetup} "${{args[@]}}"\n')
-    wrapper.chmod(0o700)
-    environment = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"],
-                       TOOLBOX_LOOP_DIRECT_IO="on")
-    output = directory / "report.json"
-    result = subprocess.run(["bash", str(sampler), str(image), str(output), "20"],
-                            env=environment, capture_output=True, text=True, timeout=90)
-    assert result.returncode == 1, f"direct_io_refused: exit {result.returncode}: {result.stderr}"
-    assert "did not take direct I/O" in result.stderr, result.stderr
-    assert not output.exists(), "direct_io_refused: a report was published"
-    assert not loops_on(image), "direct_io_refused: the refused device was left attached"
-    print(json.dumps(dict(case="direct_io_refused", exit=result.returncode, result="PASS")))
-
-
-# How long one case's sampler may run. A direct-I/O case reads every one of its
-# 20 runs past the host cache, which takes several times a buffered case's
-# time on a virtual disk; the bound catches a hang, not a slow disk.
+# How long one case's sampler may run: the bound catches a hang, not a slow
+# disk.
 BOUND = 90
-DIRECT_IO_BOUND = 300
 
 
 def run_sampler(command, environment, marker, case):
     publication = case in ("signal_during_publication", "signal_hangup_during_publication")
     if case != "signal_during_measurement" and not publication:
-        bound = DIRECT_IO_BOUND if case == "direct_io_when_asked" else BOUND
-        return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=bound)
+        return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=BOUND)
     process = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, start_new_session=True)
     try:
@@ -143,9 +120,6 @@ try:
     for case in cases:
         directory = fixture / case
         directory.mkdir()
-        if case == "direct_io_refused":
-            refused_direct_io(directory)
-            continue
         marker = directory / "mounted-target"
         mount = directory / "mount"
         mount.write_text(
@@ -182,8 +156,6 @@ try:
             invalid.write_text("null\n")
             baseline = [str(invalid)]
         environment = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"])
-        if case == "direct_io_when_asked":
-            environment["TOOLBOX_LOOP_DIRECT_IO"] = "on"
         if case in ("null_baseline", "missing_digest", *published) or publication:
             # Every step in these cases is the stub above, so nothing is timed:
             # the disk sync and the cache drop before each of the 160 steps go.
@@ -242,8 +214,6 @@ try:
                 assert result.returncode == 0, f"{case} failed: {result.stderr}"
                 report = json.loads(output.read_text())
                 assert report["runs"] == 20 and len(report["steps"]) == 8
-                # Exit 0 is the direct-I/O proof: the sampler refuses a device
-                # whose dio reads other than 1, which direct_io_refused shows.
                 assert all(len(step["samples_ms"]) == 20 for step in report["steps"].values())
             else:
                 assert not output.exists(), f"{case}: incomplete report published"

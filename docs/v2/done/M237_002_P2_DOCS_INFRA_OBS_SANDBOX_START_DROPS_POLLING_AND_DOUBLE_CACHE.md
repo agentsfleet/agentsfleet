@@ -323,6 +323,10 @@ N/A: no files deleted.
 - **The direct-I/O sampler case's bound** — `direct_io_when_asked` runs the sampler's minimum of 20 runs past the host cache: 41 s alone on the OrbStack lane, and past the shared 90 s bound when other cases ran first. That one case now has 300 s; every other case keeps 90 s.
 - **The kernel lane's stack overflow (Nov 03)** — `test_start_budgets_with_four_leases` aborted: a tokio blocking-pool thread overflowed its stack. A core dump held 8,392 frames of one loop. `Parts::drop` hands its release to the blocking pool; a stopping runtime's pool refuses by dropping the task on the caller's stack; the task still held the parts, whose drop handed them to the pool again. The loop predates M237 (`parts.rs:281` on `2f8c878c0`) and is in the code a release build runs, so any runtime that stops with such a release still queued meets it. A refused release now runs where it is refused, as it does with no runtime; `test_parts_a_stopped_runtime_refuses_are_released_where_they_drop` overflowed before the fix and passes after.
   The start failure that stopped the lane's runtime came from §3's in-process attach. A device `LOOP_CTL_GET_FREE` creates may have no `/dev` node yet, and the attach opened it once. util-linux, which `mount -o loop` used, retries that open on `ENOENT` or `EACCES` every 25 ms up to 16 times, and a `LOOP_CONFIGURE` answering `EAGAIN` every 250 ms up to 10 times (`lib/loopdev.c`, `loopcxt_setup_device`); the attach now does both. The ext4 `error -4` the machine logged was the abort's own signal reaching a mount in flight.
+- **The sampler's direct-I/O mode goes (Nov 03)** — with the toolbox buffered, `TOOLBOX_LOOP_DIRECT_IO=on` and its `direct_io_when_asked` and `direct_io_refused` cases measured a mode nothing ships, and the 300 s bound went with them.
+
+> Owner (Indy, Nov 03, 2026 04:34 PM): "Delete here (Recommended)" — context: the first-use sampler's direct-I/O mode.
+
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.

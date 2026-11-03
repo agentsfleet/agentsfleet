@@ -35,6 +35,13 @@ WORKFLOWS_DIR = ".github/workflows"
 # `$` after the colon, a literal with a digit.
 BUILDER_IMAGE = "ghcr.io/agentsfleet/ci-rust-alpine"
 LITERAL_BUILDER = re.compile(re.escape(BUILDER_IMAGE) + r":[0-9]")
+# Every third-party action runs at a full commit: a branch or a tag is a
+# pointer its publisher can move, changing what runs here with no commit here.
+# This repository's own actions (`./`) are files, not pins. Dependabot moves
+# the commits (.github/dependabot.yml).
+ACTIONS_DIR = ".github/actions"
+USES = re.compile(r"^\s*-?\s*uses:\s*(?P<target>[^\s#]+)")
+FULL_SHA = re.compile(r"@[0-9a-f]{40}$")
 NOTIFY_ACTION = ".github/actions/notify-discord/action.yml"
 NOTIFY_USES = "./.github/actions/notify-discord"
 WEBHOOK_INPUT = "webhook-item"
@@ -225,9 +232,22 @@ def check_builder_literal(w: Workflows) -> None:
                 ))
 
 
+def check_action_pins(w: Workflows) -> None:
+    """Every third-party action is pinned to a full commit SHA."""
+    paths = sorted((w.root / WORKFLOWS_DIR).glob("*.yml")) + sorted((w.root / ACTIONS_DIR).glob("*/action.yml"))
+    for path in paths:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            used = USES.match(line)
+            if used and not used["target"].startswith("./") and not FULL_SHA.search(used["target"]):
+                w.findings.append(lib.Finding(
+                    lib.relative(w.root, path), number, "workflow-action-pin",
+                    f"`{used['target']}` can move under this repository; pin the release's full commit SHA, its tag in a comment",
+                ))
+
+
 RULES = (
     check_discord_routes, check_deployment_stage, check_connector_secrets, check_log_level, check_collector_standup,
-    check_vault_read_approval, check_builder_literal,
+    check_vault_read_approval, check_builder_literal, check_action_pins,
 )
 
 

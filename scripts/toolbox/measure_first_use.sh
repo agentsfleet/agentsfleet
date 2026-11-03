@@ -2,9 +2,6 @@
 # Measure cold first use with the toolbox as bubblewrap's read-only root.
 # Usage: sudo bash measure_first_use.sh IMAGE OUTPUT.json [RUNS [BASELINE.json]]
 # Each command gets a fresh writable workspace and a cleared host page cache.
-# TOOLBOX_LOOP_DIRECT_IO=on attaches the image read-only with direct I/O and
-# 4096-byte sectors, to measure against the runner's buffered attach. A device that did not take direct I/O ends
-# the run before anything is measured.
 set -euo pipefail
 
 readonly MIN_RUNS=20
@@ -26,28 +23,14 @@ for command in mount mountpoint umount bwrap python3; do
   command -v "$command" >/dev/null
 done
 [ -f "$IMAGE" ]
-readonly DIRECT_IO="${TOOLBOX_LOOP_DIRECT_IO:-off}"
-case "$DIRECT_IO" in
-  on) command -v losetup >/dev/null ;;
-  off) ;;
-  *)
-    echo "measure_first_use.sh: TOOLBOX_LOOP_DIRECT_IO must be on or off" >&2
-    exit 2
-    ;;
-esac
 
 work="$(mktemp -d /var/tmp/toolbox-first-use.XXXXXX)"
-# A device attached and not yet handed to its mount, which cleanup detaches.
-attached=""
 cleanup() {
   # A failed unmount must leave its tree intact rather than remove a mounted root.
   # Observe the kernel mount even if a signal arrived before mount returned.
   if mountpoint -q "$work/root" && ! umount "$work/root"; then
     echo "measure_first_use.sh: unmount failed; retained $work" >&2
     return 1
-  fi
-  if [ -n "$attached" ]; then
-    losetup -d "$attached"
   fi
   rm -rf "$work"
 }
@@ -66,21 +49,9 @@ trap 'cancel 130' INT
 trap 'cancel 143' TERM
 trap 'cancel 129' HUP
 mkdir "$work/root"
-if [ "$DIRECT_IO" = on ]; then
-  attached="$(losetup --find --show --read-only --direct-io=on --sector-size 4096 -- "$IMAGE")"
-  if [ "$(cat "/sys/block/${attached#/dev/}/loop/dio")" != 1 ]; then
-    echo "measure_first_use.sh: $attached did not take direct I/O" >&2
-    exit 1
-  fi
-  mount -t erofs -o ro,nosuid,nodev -- "$attached" "$work/root"
-  # Detaching a mounted device defers it to the unmount, as `-o loop` does.
-  losetup -d "$attached"
-  attached=""
-else
-  mount -t erofs -o loop,ro,nosuid,nodev -- "$IMAGE" "$work/root"
-fi
+mount -t erofs -o loop,ro,nosuid,nodev -- "$IMAGE" "$work/root"
 
-python3 - "$IMAGE" "$OUTPUT" "$RUNS" "$BASELINE" "$work" "$DIRECT_IO" <<'PY' &
+python3 - "$IMAGE" "$OUTPUT" "$RUNS" "$BASELINE" "$work" <<'PY' &
 import hashlib
 import json
 import math
@@ -120,7 +91,7 @@ STEPS = {
     "jq": ["jq", "--version"],
     "curl": ["curl", "--version"],
 }
-image, output, runs, baseline_path, work, direct_io = sys.argv[1:]
+image, output, runs, baseline_path, work = sys.argv[1:]
 image, output, work = Path(image), Path(output), Path(work)
 runs = int(runs)
 baseline = json.loads(Path(baseline_path).read_text()) if baseline_path else None
@@ -223,7 +194,6 @@ report = {
     "arch": platform.machine(), "kernel": platform.release(), "cache": "cold",
     "image_sha256": digest, "image_bytes": image.stat().st_size, "runs": runs,
     "regression_limit": REGRESSION_LIMIT, "steps": {},
-    "loop": "direct" if direct_io == "on" else "buffered",
 }
 regressions = []
 for name, command in STEPS.items():
