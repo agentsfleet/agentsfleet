@@ -123,6 +123,7 @@ impl Healthy {
             selftest_requested: false,
             release_holds: Vec::new(),
             heartbeat_interval_ms: self.interval_ms,
+            woken: Some(false),
         })
     }
 

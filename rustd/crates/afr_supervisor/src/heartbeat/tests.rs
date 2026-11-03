@@ -17,7 +17,7 @@ use afr_sandbox::{Engine as _, HostProbe, Kvm, Limits, SandboxRequest};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use super::{Assignment, EVENT_RELEASE_UNREADABLE, Heartbeat, MIN_HEARTBEAT_INTERVAL};
+use super::{Assignment, EVENT_RELEASE_UNREADABLE, Heartbeat, LastBeat, MIN_HEARTBEAT_INTERVAL};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
@@ -315,4 +315,92 @@ async fn test_a_saturation_release_beats_at_once() {
     let calls = drain(&mut calls);
     assert_eq!(sent(&calls[0])[HOLDS_FIELD], serde_json::json!([FLEET]));
     assert_eq!(sent(&calls[1])[HOLDS_FIELD], serde_json::json!([]));
+}
+
+/// A daemon's answer that carries `woken`, the proof it holds beats.
+fn woken(woken: bool) -> Answer {
+    json(
+        &serde_json::json!({"status": KEEP_GOING, "assigned_policy": policy(),
+        "degraded": false, "degraded_reason": null, "selftest_requested": false,
+        "heartbeat_interval_ms": TICK_MS, "release_holds": [], "woken": woken}),
+    )
+}
+
+/// A beat asks to be held only once a reply proved the daemon holds beats,
+/// and only while a worker is idle to be woken.
+#[tokio::test]
+async fn test_wake_is_asked_only_when_proved_and_idle() {
+    let beats = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&beats);
+    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        0 => reply(KEEP_GOING, false, TICK_MS),
+        _proved => woken(false),
+    });
+    let probe = probe();
+    let held = idle_holds();
+    let wake = crate::worker_pool::Wake::default();
+    let mut heartbeat = Heartbeat::new(&plane, &probe, &held).with_wake(&wake);
+
+    let idle = wake.idle();
+    heartbeat.beat().await.unwrap();
+    heartbeat.beat().await.unwrap();
+    heartbeat.beat().await.unwrap();
+    drop(idle);
+    heartbeat.beat().await.unwrap();
+
+    let asked: Vec<serde_json::Value> = drain(&mut calls)
+        .iter()
+        .map(|call| sent(call)["wake"].clone())
+        .collect();
+    let unasked = serde_json::Value::Null;
+    assert_eq!(
+        asked,
+        [
+            unasked.clone(),
+            unasked.clone(),
+            serde_json::Value::Bool(true),
+            unasked
+        ],
+        "unproved, unproved (the older reply), proved and idle, proved and busy"
+    );
+}
+
+/// A woken beat ends one idle worker's pause, and the next beat goes after
+/// the shortest poll pause; a held beat that was not woken waits only what is
+/// left of the interval, and one that did not ask waits it all.
+#[tokio::test(start_paused = true)]
+async fn test_woken_beat_wakes_a_worker_and_paces_the_next() {
+    let (plane, _calls) = plane(|_call| woken(true));
+    let probe = probe();
+    let held = idle_holds();
+    let wake = crate::worker_pool::Wake::default();
+    let mut heartbeat = Heartbeat::new(&plane, &probe, &held).with_wake(&wake);
+    // The first reply proves the daemon holds beats; the second beat, with a
+    // worker idle, asks and is woken.
+    let idle = wake.idle();
+    heartbeat.beat().await.unwrap();
+    heartbeat.beat().await.unwrap();
+    drop(idle);
+
+    let interval = Duration::from_secs(10);
+    let took = Duration::from_secs(4);
+    let woke_a_worker = tokio::time::timeout(Duration::from_millis(1), wake.pause(interval))
+        .await
+        .is_ok();
+    let after_woken = heartbeat.next_pause(interval, took);
+    // The pacing reads only how the last beat ended, so the other two cases
+    // are set out.
+    let after_others = [LastBeat::Held, LastBeat::Unasked].map(|last| {
+        heartbeat.last_beat = last;
+        heartbeat.next_pause(interval, took)
+    });
+
+    assert_eq!(
+        (woke_a_worker, after_woken, after_others),
+        (
+            true,
+            crate::worker_pool::MIN_POLL_PAUSE,
+            [Duration::from_secs(6), interval]
+        )
+    );
 }

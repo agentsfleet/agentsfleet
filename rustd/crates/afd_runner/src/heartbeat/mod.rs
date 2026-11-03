@@ -53,6 +53,7 @@ pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     selftest: None,
     holds: HeldFleets(Vec::new()),
     closing: false,
+    wake: false,
 };
 
 /// What one beat resolved to, for the reply the host reads.

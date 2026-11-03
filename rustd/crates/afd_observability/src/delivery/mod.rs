@@ -82,6 +82,51 @@ pub struct Delivery<'a> {
     pub output_tokens: u64,
     /// How long the runner says the run took.
     pub wall: Duration,
+    /// When the event was created, on this daemon's clock: the span's start,
+    /// so the span is the whole round trip the fleet owner waited. `None`, or
+    /// an instant the span cannot start at, places the start `wall` before
+    /// the end instead.
+    pub opened_at: Option<SystemTime>,
+    /// Where the round trip's time went.
+    pub segments: Segments,
+}
+
+/// The round trip's segments, each an attribute when present.
+///
+/// Not a partition of the span: the sandbox wait runs beside the model's
+/// time, and the runner's segments are on its clock while the span's ends are
+/// on this daemon's. A segment the run never reached is absent, never zero.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Segments {
+    /// Event creation to lease issue.
+    pub queue_wait: Option<Duration>,
+    /// The runner's memory read.
+    pub memory: Option<Duration>,
+    /// The model's turns.
+    pub model: Option<Duration>,
+    /// The tools those turns called.
+    pub tools: Option<Duration>,
+    /// How long sandbox calls waited on the build.
+    pub sandbox_wait: Option<Duration>,
+    /// The runner's settle up to its report post.
+    pub settle: Option<Duration>,
+    /// The report's receipt to the `event_complete` publish.
+    pub complete: Option<Duration>,
+}
+
+impl Segments {
+    /// Each segment beside the attribute key it is exported under.
+    const fn keyed(&self) -> [(&'static str, Option<Duration>); 7] {
+        [
+            (semconv::ATTR_DELIVERY_QUEUE_WAIT_MS, self.queue_wait),
+            (semconv::ATTR_DELIVERY_MEMORY_MS, self.memory),
+            (semconv::ATTR_DELIVERY_MODEL_MS, self.model),
+            (semconv::ATTR_DELIVERY_TOOLS_MS, self.tools),
+            (semconv::ATTR_DELIVERY_SANDBOX_WAIT_MS, self.sandbox_wait),
+            (semconv::ATTR_DELIVERY_SETTLE_MS, self.settle),
+            (semconv::ATTR_DELIVERY_COMPLETE_MS, self.complete),
+        ]
+    }
 }
 
 impl Delivery<'_> {
@@ -150,6 +195,14 @@ impl Delivery<'_> {
     /// since the epoch. A start it cannot encode would be exported as some
     /// other time entirely, so it is refused here instead.
     fn started_at(&self, completed_at: SystemTime) -> Option<SystemTime> {
+        if let Some(opened) = self.opened_at.filter(|opened| {
+            completed_at
+                .duration_since(*opened)
+                .is_ok_and(|span| span <= MAX_RUN)
+                && opened.duration_since(SystemTime::UNIX_EPOCH).is_ok()
+        }) {
+            return Some(opened);
+        }
         let started_at = completed_at.checked_sub(self.wall.min(MAX_RUN))?;
         started_at.duration_since(SystemTime::UNIX_EPOCH).ok()?;
         Some(started_at)
@@ -207,6 +260,13 @@ impl Delivery<'_> {
             semconv::ATTR_EVENT_ID,
             self.event_id.to_owned(),
         ));
+        // Capped like `wall`: most of these arrive from a runner, and an
+        // absurd one must not read as a run longer than any this daemon
+        // describes.
+        attributes.extend(self.segments.keyed().into_iter().filter_map(|(key, span)| {
+            let millis = afd_core::clock::saturating_millis(span?.min(MAX_RUN));
+            Some(KeyValue::new(key, saturating_signed(millis)))
+        }));
         attributes
     }
 }

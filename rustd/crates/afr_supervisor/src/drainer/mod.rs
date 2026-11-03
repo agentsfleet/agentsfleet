@@ -14,9 +14,10 @@ use tokio::sync::Notify;
 use crate::client::{ControlPlane, endless};
 use crate::halt::Halt;
 use crate::holds::Holds;
-use crate::report_spool::{Delivery, ReportSpool, Spooled};
+use crate::report_spool::{Delivery, ReportSpool, Spooled, reshaped};
 
 const EVENT_REPLAY_FAILED: &str = "report_spool_replay_failed";
+const EVENT_MEMORY_DROPPED: &str = "report_memory_dropped";
 
 /// The drain, over one spool.
 #[derive(Debug)]
@@ -66,7 +67,12 @@ impl Drainer<'_> {
         for spooled in pending {
             match spooled.deliver(self.plane).await {
                 Ok(Delivery::Settled) => {}
-                Ok(Delivery::Superseded | Delivery::Rejected) => self.superseded(&spooled),
+                Ok(Delivery::Rejected(refusal)) => {
+                    if !self.reshape(&spooled, &refusal).await {
+                        self.superseded(&spooled);
+                    }
+                }
+                Ok(Delivery::Superseded) => self.superseded(&spooled),
                 Ok(Delivery::Kept(failure)) => {
                     if self.halt.stops_on(&failure) {
                         return true;
@@ -80,6 +86,34 @@ impl Drainer<'_> {
             }
         }
         still_held
+    }
+
+    /// A one-post report an older replica refused for its shape, mid-deploy:
+    /// posted again without the run's memory and segments, so the answer is
+    /// kept though the memory is not. The settle that first posted it pushes
+    /// the memory itself; a report that reached the drain has no lease left
+    /// to push it under. Answers whether the daemon settled the reshaped
+    /// report, or kept it to retry.
+    async fn reshape(&self, spooled: &Spooled, refusal: &crate::Error) -> bool {
+        let Some(plain) = reshaped(refusal, spooled.bytes()) else {
+            return false;
+        };
+        let Ok(lease) = Uuid7::parse(spooled.lease_id()) else {
+            return false;
+        };
+        let lease_id = lease.as_str();
+        let event = EVENT_MEMORY_DROPPED;
+        tracing::warn!(
+            lease_id,
+            event,
+            "an older daemon refused the one-post report; it is posted again without the run's memory"
+        );
+        let Ok(plain) = self.spool.hold(&lease, plain).await else {
+            return false;
+        };
+        let delivered = plain.deliver(self.plane).await;
+        drop(self.spool.forget_rejected(&lease).await);
+        matches!(delivered, Ok(Delivery::Settled | Delivery::Kept(_)))
     }
 
     /// Ends the hold `spooled`'s lease parked, as the lease's own post does

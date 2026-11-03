@@ -73,6 +73,13 @@ pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
 pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_wake_failures_total");
 
+/// Held heartbeats by how they ended; rate ÷ heartbeats is the share of beats
+/// that asked to be held, and a rising `capped` share is the cap too low.
+///
+/// Labels: `reason`.
+pub const RUNNER_WAKE_ANSWERS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_wake_answers_total");
+
 /// Installed fleets by lifecycle status, as the last census pass counted them.
 ///
 /// Labels: `status`.

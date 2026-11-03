@@ -28,7 +28,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::timing::HEARTBEAT_INTERVAL;
+use afd_core::limits::HELD_BEATS_MAX;
+use afd_core::timing::{HEARTBEAT_INTERVAL, WAKE_HOLD_MAX};
 use afd_runner::heartbeat::holds::prove;
 use afd_runner::{Beat, NO_REPORT};
 use afd_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets};
@@ -38,9 +39,10 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use garde::Valid;
 
+use super::wake;
 use crate::auth::RunnerIdentity;
 use crate::handler::refuse;
-use crate::services::Services;
+use crate::services::{Leasing as _, Services};
 
 /// The scoped event a failed beat is logged under.
 const EVENT: &str = "runner_heartbeat_failed";
@@ -81,12 +83,27 @@ pub(crate) async fn handle<D: Services>(
     // One refusal for both failures. The reply's decode repeats the one the
     // beat already passed on the same columns, so only the beat's own failure
     // reaches it in practice; the reply's stays a `Result` rather than a panic.
-    services
+    // The reply is built before the hold, so a beat that cannot be answered is
+    // refused at once rather than after waiting out the hold.
+    let recorded = match services
         .runners()
         .heartbeat(runner.id(), &beat, held.as_ref(), services.now())
         .await
-        .and_then(|beat| payload(&beat).map(|reply| Json(reply).into_response()))
-        .unwrap_or_else(|error| refuse(&error, EVENT))
+    {
+        Ok(recorded) => recorded,
+        Err(error) => return refuse(&error, EVENT),
+    };
+    let mut reply = match payload(&recorded) {
+        Ok(reply) => reply,
+        Err(error) => return refuse(&error, EVENT),
+    };
+    let wait = || {
+        services
+            .leases()
+            .wait_for_work(WAKE_HOLD_MAX, HELD_BEATS_MAX)
+    };
+    reply.woken = Some(wake::woken(beat.wake, runner.id().as_str(), wait).await);
+    Json(reply).into_response()
 }
 
 /// What the body carried, or nothing at all, beside its holds list proved
@@ -145,6 +162,7 @@ fn payload(beat: &Beat) -> afd_runner::Result<HeartbeatResponse<'_>> {
         // host offline, so it is what says how often to beat. `timing`'s
         // assertion keeps this under that threshold.
         heartbeat_interval_ms: WIRE_INTERVAL_MS,
+        woken: Some(false),
     })
 }
 

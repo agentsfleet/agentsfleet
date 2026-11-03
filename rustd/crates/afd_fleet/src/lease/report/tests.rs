@@ -33,6 +33,8 @@ fn reported(posture: &str) -> Result<Reported, &'static str> {
         provider: "anthropic".to_owned(),
         model: "claude-opus-5".to_owned(),
         fence: Fence::from_i64(1),
+        lease_created_at: at,
+        event_created_at: at,
     })
 }
 

@@ -88,11 +88,19 @@ impl Leasing for NoWork {
     /// `afd_fleet`'s integration lane and its live Postgres. Returning an error
     /// here would put a code on the wire that no datastore decided, and a
     /// router suite asserting on it would be asserting on this stub.
+    fn wait_for_work(
+        &self,
+        _deadline: std::time::Duration,
+        _max: usize,
+    ) -> impl Future<Output = afd_fleet::lease::Waited> + Send {
+        std::future::ready(afd_fleet::lease::Waited::Deadline)
+    }
+
     fn report(
         &self,
         _runner_id: &Uuid7,
         _request: &afd_wire::report::ReportRequest<'_>,
-        _now: Timestamp,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send {
         std::future::ready(Ok(Reconciled {
             charged: afd_billing::Nanos::ZERO,
@@ -109,6 +117,9 @@ impl Leasing for NoWork {
             // prove the loud one is reachable never.
             repeated: false,
             tokens: RunTokens::default(),
+            event_created_at: now,
+            lease_created_at: now,
+            completed_at: Some(now),
         }))
     }
 

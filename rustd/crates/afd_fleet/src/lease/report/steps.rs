@@ -16,6 +16,9 @@ use crate::lease::obligation::Owing;
 use crate::lease::pull::Plane;
 use crate::lease::settle::Reported;
 
+/// The `event_complete` frame was published for a settled report.
+pub(super) const EVENT_COMPLETION_PUBLISHED: &str = "completion_published";
+
 /// A settled report was written.
 const EVENT_SETTLED: &str = "report_settled";
 
@@ -38,7 +41,7 @@ impl Plane {
         closed: Option<Box<Closed>>,
         charged: Nanos,
         now: Timestamp,
-    ) {
+    ) -> Option<Timestamp> {
         let lease_id = request.lease_id.as_ref();
         // Hoisted for the `log` bridge's duplicated field expressions.
         let fleet = lease.fleet_id.as_str();
@@ -58,11 +61,22 @@ impl Plane {
         // `Leases::select` records when the lease was granted.
         producers::fleet::runner::lease_released(runner_id.as_str());
 
-        if let Some(closed) = closed {
-            self.leases
-                .publish_completion(&closed, Some(request.response_text.as_ref()))
-                .await;
-        }
+        // The completion publish is pinned here: after the two biller calls the
+        // verb makes before this, because the follow-up a fleet owner sends on
+        // seeing it is gated on the payer's balance through the biller, and
+        // before the audit row, the owed answer and the token read below, which
+        // nothing the owner sees depends on.
+        let completed_at = match closed {
+            Some(closed) => {
+                self.leases
+                    .publish_completion(&closed, Some(request.response_text.as_ref()))
+                    .await;
+                let event = EVENT_COMPLETION_PUBLISHED;
+                tracing::debug!(fleet_id = fleet, lease_id, event);
+                Some(afd_core::clock::now())
+            }
+            None => None,
+        };
         step(
             "record_released",
             lease,
@@ -71,6 +85,7 @@ impl Plane {
                 .record_released(runner_id, lease_id, &lease.fleet_id, event, now)
                 .await,
         );
+        completed_at
     }
 
     /// Put an owed answer on the delivery queue, and receipt the row.

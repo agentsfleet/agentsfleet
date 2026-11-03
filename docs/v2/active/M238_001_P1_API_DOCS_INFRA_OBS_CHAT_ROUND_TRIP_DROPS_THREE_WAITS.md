@@ -44,7 +44,7 @@ Before any of that, a fresh message waits for a worker's next idle poll. M225's 
 
 An operator reads none of this per fleet in Grafana. The runner's segments reach only its host's journal, and the one span that joins daemon and runner (`fleet.delivery`) starts at the first model call and ends at the report.
 
-**Solution summary:** §1: the report body carries the run's memory deltas; the daemon writes them before the settle commits and publishes `event_complete` as soon as it commits, before billing and the audit event. §2: the lease reply carries the fleet's memory window, read after the claim commits, so it holds the previous run's memory and the runner reads none. §3: a runner's heartbeat asks to be held; the daemon holds it until its doorbell rings or the heartbeat interval passes, and a woken runner polls at once. §4: `fleet.delivery` spans event creation to `event_complete` with one attribute per segment, so Grafana answers p95 and p99 per fleet from Tempo; the existing `DeliveryStage` histogram gains the same boundaries fleet-wide. §5: the runner's lease reply body and the memory deltas it captures zero on drop. §6: the acceptance lane's credential mint retries a Cloudflare edge error, which turned the Nov 03 deploy red.
+**Solution summary:** §1: the report body carries the run's memory deltas; the daemon captures them, fenced as the settle is, before the settle commits, so the runner's memory push goes. The completion publish keeps its place after the biller calls and now answers its instant. §2: the lease reply carries the fleet's memory window, read after the issue under the fleet's slot, so it holds the previous run's memory and the runner reads none. §3: a runner's heartbeat asks to be held; the daemon holds it until its doorbell rings or the heartbeat interval passes, and a woken runner polls at once. §4: `fleet.delivery` spans event creation to `event_complete` with one attribute per segment, so Grafana answers p95 and p99 per fleet from Tempo; the existing `DeliveryStage` histogram gains the same boundaries fleet-wide. §5: the runner's lease reply body and the memory deltas it captures zero on drop. §6: the acceptance lane's credential mint retries a Cloudflare edge error, which turned the Nov 03 deploy red.
 
 **Design flow:**
 
@@ -52,7 +52,7 @@ An operator reads none of this per fleet in Grafana. The runner's segments reach
 message ─► admission commits ─► doorbell rings ─► held heartbeat answers woken ─► one idle worker polls now
         ─► lease reply {policy, history, memory window} ─► first model call (no memory read)
         ─► answer streamed ─► ONE reports post {result, usage, memory deltas, segments}
-        ─► daemon: memory written ─► settle commits ─► event_complete ─► billing ─► audit
+        ─► daemon: memory captured (fenced) ─► settle commits ─► billing ─► event_complete ─► audit
         ─► fleet.delivery span: event created → event_complete, one attribute per segment ─► Tempo
 ```
 
@@ -80,75 +80,90 @@ message ─► admission commits ─► doorbell rings ─► held heartbeat ans
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_wire/src/report/mod.rs` | EDIT | the report body's optional memory deltas and segment durations |
+| `rustd/crates/afd_wire/src/report/mod.rs` | EDIT | the report's optional memory deltas and `telemetry.segments` (`RunSegments`) |
 | `rustd/crates/afd_wire/src/lease/payload.rs` | EDIT | the lease payload's optional memory window |
-| `rustd/crates/afd_wire/src/runner/mod.rs` | EDIT | the heartbeat's hold request and woken answer |
-| `rustd/crates/afd_fleet/src/lease/report/mod.rs` | EDIT | memory written before the commit; completion published right after it; the completion instant answered |
-| `rustd/crates/afd_fleet/src/lease/report/steps.rs` | EDIT | the publish leaves `announce`; the audit event stays |
-| `rustd/crates/afd_fleet/src/lease/report/tests.rs` | EDIT | the order proofs |
-| `rustd/crates/afd_fleet/src/lease/settle.rs` | EDIT | the loaded lease carries the event's and the lease's creation instants |
-| `rustd/crates/afd_fleet/src/lease/sql/select_lease_for_report.sql` | EDIT | selects the two instants |
-| `rustd/crates/afd_fleet/src/lease/deliver/mod.rs` | EDIT | the memory window read after the claim commits, on the payload |
-| `rustd/crates/afd_fleet/src/lease/store.rs` | EDIT | the doorbell waiter reachable from the plane |
-| `rustd/crates/afd_fleet/tests/integration_report_commit.rs` | EDIT | memory lands before the settle; a fenced settle leaves memory upserted; the publish precedes billing |
-| `rustd/crates/afd_fleet/tests/integration_lease_issue.rs` | EDIT | the window on the lease; the window after a report; no lease while the slot is held |
-| `rustd/crates/afd_fleet/tests/integration_memory_hydrate_order.rs` | EDIT | the window read failure leaves the lease issuable |
-| `rustd/crates/afd_fleet/tests/fleet_suite.rs` | EDIT | registers the new cases |
-| `rustd/crates/afd_dragonfly/src/doorbell/mod.rs` | EDIT | every ring notifies waiters before the hint dedup |
-| `rustd/crates/afd_dragonfly/src/doorbell/tests.rs` | EDIT | a waiter is woken by a ring for an already-buffered fleet |
-| `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | the hold after liveness is recorded; the cap; the woken answer |
-| `rustd/crates/afd_api_runner/src/handler/runner/wake.rs` | CREATE | the held-beat count, its cap and the wait on the doorbell |
-| `rustd/crates/afd_api_runner/src/handler/runner/wake_tests.rs` | CREATE | ring, deadline, cap and liveness-order proofs |
-| `rustd/crates/afd_api_runner/src/handler/runner/report.rs` | EDIT | the span's start and end instants and segment attributes; the extended histogram |
-| `rustd/crates/afd_api/tests/harness/stubs_runner.rs` | EDIT | builds the extended `Reconciled` |
-| `rustd/crates/afd_cron/src/service.rs` | EDIT | builds the extended `Reconciled` |
-| `rustd/crates/afd_observability/src/delivery/mod.rs` | EDIT | the span starts at event creation, ends at the completion instant, carries the segment attributes, caps every runner duration |
-| `rustd/crates/afd_observability/src/semconv/mod.rs` | EDIT | the segment attribute keys |
-| `rustd/crates/afd_observability/src/metrics/label/fleet.rs` | EDIT | `DeliveryStage` gains three boundaries; the `WakeAnswer` set |
-| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs` | EDIT | `agentsfleet_runner_wake_answers_total` |
-| `rustd/crates/afd_observability/src/producers/fleet/mod.rs` | EDIT | the wake-answer producer |
-| `rustd/crates/afd_observability/tests/producers_drive.rs` | EDIT | drives the new producer and the new stages |
-| `docs/metrics.census.tsv` | EDIT | the new family; the stage ceiling 4 → 7 |
+| `rustd/crates/afd_wire/src/runner/mod.rs` | EDIT | the heartbeat's `wake` and the reply's `woken` |
 | `rustd/crates/afd_core/src/limits.rs` | EDIT | `HELD_BEATS_MAX` |
 | `rustd/crates/afd_core/src/timing.rs` | EDIT | `WAKE_HOLD_MAX`, asserted at or below `HEARTBEAT_INTERVAL` |
+| `rustd/crates/afd_dragonfly/src/doorbell/mod.rs` | EDIT | the ring generation (a `watch`), the held-beat count and its cap, `wait_for_ring` |
+| `rustd/crates/afd_dragonfly/src/doorbell/tests.rs` | EDIT | ring, deadline, cap and buffered-fleet wait proofs |
+| `rustd/crates/afd_fleet/Cargo.toml` | EDIT | `futures-util` moves to dependencies, for the overlapped post-issue reads |
+| `rustd/crates/afd_fleet/src/error/classify.rs` | EDIT | `is_fence_refusal`, so a refused capture logs nothing twice |
+| `rustd/crates/afd_fleet/src/lease/mod.rs` | EDIT | re-exports `Waited` |
+| `rustd/crates/afd_fleet/src/lease/memory.rs` | EDIT | the fenced capture split into `capture_for`, which the report verb reuses |
+| `rustd/crates/afd_fleet/src/lease/store.rs` | EDIT | `Leases::wait_for_work` over the doorbell |
+| `rustd/crates/afd_fleet/src/lease/settle.rs` | EDIT | the loaded lease carries its own and its event's creation instants |
+| `rustd/crates/afd_fleet/src/lease/sql/select_lease_for_report.sql` | EDIT | selects the two instants |
+| `rustd/crates/afd_fleet/src/lease/answer/mod.rs` | EDIT | the rendered lease carries a `Context`: history and memory window |
+| `rustd/crates/afd_fleet/src/lease/answer/tests.rs` | EDIT | renders with an empty context |
+| `rustd/crates/afd_fleet/src/lease/deliver/mod.rs` | EDIT | reads the thread and the window after the issue, overlapped |
+| `rustd/crates/afd_fleet/src/lease/deliver/window.rs` | CREATE | the window read and its logged failure |
+| `rustd/crates/afd_fleet/src/lease/report/mod.rs` | EDIT | captures memory before the commit; answers the completion instant |
+| `rustd/crates/afd_fleet/src/lease/report/memory.rs` | CREATE | the report's capture, fenced on the lease's token, logged on failure |
+| `rustd/crates/afd_fleet/src/lease/report/steps.rs` | EDIT | the publish's position pinned and logged; answers its instant |
+| `rustd/crates/afd_fleet/src/lease/report/timing.rs` | CREATE | the three completion stages on the daemon's clock |
+| `rustd/crates/afd_fleet/src/lease/report/timing_tests.rs` | CREATE | each stage recorded once |
+| `rustd/crates/afd_fleet/src/lease/report/tests.rs` | EDIT | the loaded-lease fixture's instants |
+| `rustd/crates/afd_http/src/services/leasing/mod.rs` | EDIT | `Leasing::wait_for_work` |
+| `rustd/crates/afd_http/src/services/leasing/plane.rs` | EDIT | the production plane forwards it |
+| `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | the hold after the beat's writes; `woken` on every reply |
+| `rustd/crates/afd_api_runner/src/handler/runner/wake.rs` | CREATE | a held beat's answer, count and refusal log; the permit-share assertion |
+| `rustd/crates/afd_api_runner/src/handler/runner/wake_tests.rs` | CREATE | answer and cap proofs |
+| `rustd/crates/afd_api_runner/src/handler/runner/mod.rs` | EDIT | registers `wake` |
+| `rustd/crates/afd_api_runner/src/handler/runner/report.rs` | EDIT | the span's start, end and segment attributes; two segment proofs |
+| `rustd/crates/afd_api/tests/harness/stubs_runner.rs` | EDIT | the stub plane's hold and extended settle answer |
+| `rustd/crates/afd_api/tests/integration_runner_heartbeat.rs` | EDIT | a held beat answers `woken` after its liveness |
+| `rustd/crates/afd_observability/src/delivery/mod.rs` | EDIT | the span starts at event creation and carries capped `Segments` |
+| `rustd/crates/afd_observability/src/delivery/tests.rs` | EDIT | start, fallback, milliseconds and cap proofs |
+| `rustd/crates/afd_observability/src/lib.rs` | EDIT | exports `Segments` |
+| `rustd/crates/afd_observability/src/semconv/mod.rs` | EDIT | the seven segment keys |
+| `rustd/crates/afd_observability/src/metrics/label/fleet.rs` | EDIT | three `DeliveryStage` members; the `WakeAnswer` set |
+| `rustd/crates/afd_observability/src/metrics/label/tests.rs` | EDIT | the new family's label product |
+| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs` | EDIT | `agentsfleet_runner_wake_answers_total` |
+| `rustd/crates/afd_observability/src/producers/fleet/mod.rs` | EDIT | `wake_answered` |
+| `rustd/crates/afd_observability/tests/producers_drive.rs` | EDIT | drives the new producer and every stage |
+| `docs/metrics.census.tsv` | EDIT | the new family; the stage ceiling 4 → 7 |
 | `public/openapi.json` | EDIT | regenerated for the three changed wire types |
-| `rustd/crates/afr_supervisor/src/lease_loop/settle.rs` | EDIT | memory rides the report; the push stays for a lease without a window; a shape refusal falls back once |
-| `rustd/crates/afr_supervisor/src/report_spool/mod.rs` | EDIT | a shape refusal of a one-post body is answered to the settle, not quarantined |
-| `rustd/crates/afr_supervisor/src/lease_loop/mod.rs` | EDIT | the memory read made only when the lease carries no window |
-| `rustd/crates/afr_supervisor/src/lease_loop/segments.rs` | EDIT | the segments handed to the report builder |
-| `rustd/crates/afr_supervisor/src/report/mod.rs` | EDIT | memory deltas and segment durations on the body, only when the lease carried a window |
-| `rustd/crates/afr_supervisor/src/memory/mod.rs` | EDIT | the captured deltas as a zeroing type |
-| `rustd/crates/afr_supervisor/src/heartbeat/mod.rs` | EDIT | the beat asks to be held while leasing; a woken answer wakes one idle worker and beats again |
-| `rustd/crates/afr_supervisor/src/heartbeat/tests.rs` | EDIT | held, woken, timed-out and not-held beats |
-| `rustd/crates/afr_supervisor/src/worker_pool/mod.rs` | EDIT | an idle pause ends on the wake; the stagger stays |
-| `rustd/crates/afr_supervisor/src/worker_pool/tests.rs` | EDIT | one woken worker polls at once, the rest keep their pause |
-| `rustd/crates/afr_supervisor/src/lib.rs` | EDIT | the wake signal shared by the beat loop and the pool |
-| `rustd/crates/afr_supervisor/src/client/mod.rs` | EDIT | the reply body zeroes on drop |
-| `rustd/crates/afr_supervisor/src/client/http.rs` | EDIT | the compile-time proof that a held beat fits the call timeout |
-| `rustd/crates/afr_supervisor/src/client/lease_verbs/mod.rs` | EDIT | the report verb takes the zeroing body |
-| `rustd/crates/afr_supervisor/src/test_support/mod.rs` | EDIT | the fake daemon answers through the zeroing body |
-| `rustd/crates/afr_supervisor/src/lease_loop/tests/settlement.rs` | EDIT | one post on a window lease; the push on a lease without one |
-| `rustd/crates/afr_supervisor/src/lease_loop/tests/timing.rs` | EDIT | no memory read on a window lease |
-| `rustd/crates/afr_supervisor/src/memory/tests.rs` | CREATE | the zeroing proofs |
-| `cli/test/acceptance/fixtures/retryable.ts` | CREATE | the retryable and unprocessed status sets, the backoff and the retry loop, shared by mint and revoke |
-| `cli/test/acceptance/fixtures/cli-credential-revoke.ts` | EDIT | reads the shared retry machinery |
-| `cli/test/acceptance/fixtures/cli-credential-revoke.test.ts` | EDIT | reads the attempt cap from the shared module |
-| `cli/test/acceptance/global-teardown.ts` | EDIT | reads the worst-case budget from the shared module |
-| `cli/test/acceptance/fixtures/workspace-hydration.ts` | EDIT | the credential mint retries through it |
-| `cli/test/acceptance/fixtures/workspace-hydration.test.ts` | EDIT | the four retry proofs, each comparing the call's whole outcome |
-| `docs/architecture/lease_flow.md` | EDIT | the one-post settle and the window on the lease |
-| `docs/architecture/runner_fleet.md` | EDIT | the held heartbeat in the control protocol; memory continuity through the report |
-| `docs/architecture/runner_execution.md` | EDIT | the runner's settle and wake |
-| `docs/architecture/scaling.md` | EDIT | held beats beside the idle poll volume |
-| `docs/architecture/observability.md` | EDIT | the extended span and histogram; the chat-path coverage table |
-| `playbooks/operations/observability/002_round_trip_percentiles.md` | CREATE | the TraceQL queries a dashboard agent pastes, per fleet and fleet-wide |
-| `playbooks/README.md` | EDIT | the inventory row |
-| `VERSION` | EDIT | 0.73.0 |
-| `cli/package.json` | EDIT | 0.73.0 |
-| `rustd/Cargo.toml` | EDIT | 0.73.0 |
-| `rustd/Cargo.lock` | EDIT | 0.73.0 |
-| `docs/v2/pending/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` | EDIT | this spec, marked IN_PROGRESS in `active/` at open and DONE in `done/` at close |
-| `~/Projects/docs/changelog.mdx` | EDIT | on branch `chore/m238-chat-round-trip-changelog`: replies settle one round trip after the answer; the lease and report shapes |
+| `rustd/crates/afr_supervisor/src/client/mod.rs` | EDIT | the reply body as `Zeroizing<Vec<u8>>` |
+| `rustd/crates/afr_supervisor/src/client/http.rs` | EDIT | the held-beat versus call-timeout assertion |
+| `rustd/crates/afr_supervisor/src/memory/mod.rs` | EDIT | `CapturedMemory`, zeroed on drop; the push from borrowed views |
+| `rustd/crates/afr_supervisor/src/memory/tests.rs` | EDIT | zeroing proofs |
+| `rustd/crates/afr_supervisor/src/report/mod.rs` | EDIT | the builder's new fields |
+| `rustd/crates/afr_supervisor/src/lease_loop/mod.rs` | EDIT | the window seeds the run; the memory read only without one |
+| `rustd/crates/afr_supervisor/src/lease_loop/settle.rs` | EDIT | the one-post settle and the shape-refusal fallback |
+| `rustd/crates/afr_supervisor/src/lease_loop/segments.rs` | EDIT | the segments a report carries |
+| `rustd/crates/afr_supervisor/src/lease_loop/lessee.rs` | EDIT | the lessee holds the pool's `Wake` |
+| `rustd/crates/afr_supervisor/src/lease_loop/tests/settlement.rs` | EDIT | one post, older daemon and fallback proofs |
+| `rustd/crates/afr_supervisor/src/lease_loop/tests/timing.rs` | EDIT | the memory-read segment with and without a window |
+| `rustd/crates/afr_supervisor/src/report_spool/mod.rs` | EDIT | a rejected delivery carries its refusal; `reshaped`; `forget_rejected` |
+| `rustd/crates/afr_supervisor/src/report_spool/tests.rs` | EDIT | the rejected variant's payload |
+| `rustd/crates/afr_supervisor/src/drainer/mod.rs` | EDIT | the drain re-posts a shape-refused one-post body without its memory |
+| `rustd/crates/afr_supervisor/src/drainer/tests.rs` | EDIT | reshape proofs |
+| `rustd/crates/afr_supervisor/src/heartbeat/mod.rs` | EDIT | asks to be held, reads `woken`, paces the next beat |
+| `rustd/crates/afr_supervisor/src/heartbeat/tests.rs` | EDIT | asking and pacing proofs |
+| `rustd/crates/afr_supervisor/src/worker_pool/mod.rs` | EDIT | `Wake`: idle count and wake-one; idle pauses end on it |
+| `rustd/crates/afr_supervisor/src/worker_pool/tests.rs` | EDIT | woken-worker and hint-fallback proofs |
+| `rustd/crates/afr_supervisor/src/lib.rs` | EDIT | the beat gets the pool's wake |
+| `rustd/crates/afr_supervisor/src/test_util.rs`, `src/test_util_tests.rs`, `src/test_support/rig.rs`, `src/lease_telemetry_tests/mod.rs`, `src/client/tests/routing.rs` | EDIT | the test daemon answers `woken`; rigs build the wake; literals carry the new fields |
+| `rustd/crates/afd_runner/src/heartbeat/mod.rs` | EDIT | `NO_REPORT` carries `wake: false` |
+| `rustd/crates/afd_runner/tests/integration_runner_plane/faults.rs` | EDIT | beat literal |
+| `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `rustd/crates/afd_bench/src/lane/lease/seed/mod.rs` | EDIT | report and beat literals |
+| `rustd/crates/afd_fleet/tests/integration_report_memory.rs` | CREATE | the report's memory: lands, superseded, oversize, failed capture |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates/chat.rs` | CREATE | the chat-lease harness, moved out of `history.rs` so the window tests reuse it |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates/window.rs` | CREATE | the window on the lease, under the slot, and a failed read |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates/history.rs` | EDIT | reads the shared harness |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates/mod.rs` | EDIT | registers `chat` and `window` |
+| `rustd/crates/afd_fleet/tests/integration_memory_capture.rs`, `rustd/crates/afd_fleet/tests/support/fleet_report_seed.rs` | EDIT | `supersede` moves to the shared `Held` |
+| `rustd/crates/afd_fleet/tests/fleet_suite.rs` | EDIT | registers the report-memory suite |
+| `rustd/crates/afd_fleet/tests/{integration_held_sandbox/{mod,report}.rs,integration_lease_gates/money.rs,integration_report_owes_destination/mod.rs,integration_runner_beat/{mod,recovery}.rs,lease_renewal/fixture.rs,support/{fleet_lease_seed,view_heartbeat}.rs}` | EDIT | report and beat literals carry the new fields |
+| `cli/test/acceptance/fixtures/retryable.ts` | CREATE | the status sets, backoff and retry loop shared by mint and revoke |
+| `cli/test/acceptance/fixtures/cli-credential-revoke.ts`, `cli/test/acceptance/fixtures/cli-credential-revoke.test.ts`, `cli/test/acceptance/global-teardown.ts` | EDIT | read the shared module |
+| `cli/test/acceptance/fixtures/workspace-hydration.ts`, `cli/test/acceptance/fixtures/workspace-hydration.test.ts` | EDIT | the mint retries; four whole-outcome proofs |
+| `docs/architecture/lease_flow.md`, `docs/architecture/runner_fleet.md`, `docs/architecture/runner_execution.md`, `docs/architecture/scaling.md`, `docs/architecture/observability.md` | EDIT | the one-post settle, the window, the held heartbeat, the round-trip span and the chat-path signal table |
+| `playbooks/operations/observability/002_round_trip_percentiles.md`, `playbooks/README.md` | CREATE, EDIT | the per-fleet and fleet-wide queries; inventory line |
+| `VERSION`, `cli/package.json`, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | 0.73.0 |
+| `docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` | EDIT | this spec, moved through `active/` to `done/` |
+| `~/Projects/docs/changelog.mdx` | EDIT | own branch `chore/m238-chat-round-trip-changelog`, after merge |
 
 ## Applicable Rules
 
@@ -184,64 +199,65 @@ message ─► admission commits ─► doorbell rings ─► held heartbeat ans
 
 ## Sections (implementation slices)
 
-### §1 — A chat reply settles in one post, and `event_complete` publishes when the settle commits
+### §1 — A chat reply settles in one post, and its memory lands before the settle commits
 
-`ReportRequest` gains `memory: Vec<MemoryDelta>`, default empty. The daemon's report verb, after it loads the lease as this runner's, calls `Memories::capture` with the deltas, then `commit_report`. The capture runs in its own transaction under the memory role (`SET LOCAL ROLE memory_runtime`, `afd_memory/src/postgres`), so nothing crosses the role boundary; it precedes the commit, so a lease issued after the commit reads it (§2). The capture is an idempotent upsert, so a report the daemon then refuses (`Fenced`) or loses (the runner's spool retries) writes the same rows again without duplication. A capture that fails is logged under `memory_capture_failed` and the report still settles, the decision `settle.rs` records on `fde585971`: withholding the answer would lose it too and let the lease lapse into a re-run. `admit` truncates deltas past `MAX_PUSH_BYTES` and counts them, as the push does; the report is never refused for its memory. The completion publish moves ahead of the Postgres steps that follow the commit: `publish_completion` runs right after `settle_usage` and `release_usage` (two biller calls, kept ahead of it because `money_gates` reads the payer's balance through the biller and an open hold could park the owner's follow-up) and before `record_released`, `queue_owed_answer` and `run_tokens`.
+`ReportRequest` gains `memory: Vec<MemoryDelta>`, default empty. The daemon's report verb loads the lease as this runner's, then captures the deltas through the push verb's own fenced capture (`Plane::capture_for`), fenced on the lease row's token as the settle is, then commits the settle. The capture runs in its own transaction under the memory role (`SET LOCAL ROLE memory_runtime`), so nothing crosses the role boundary, and it is boxed so its state does not ride every report future. It precedes the commit, so a lease issued after the commit reads it (§2). A lease the fleet has moved past writes neither memory nor settle. A capture that fails is logged under `memory_capture_failed` and the report still settles: withholding the answer would lose it too. `admit` cuts deltas past `MAX_PUSH_BYTES` and counts them, as the push does; the report is never refused for its memory.
 
-Skew is handled on two sides. `ReportRequest` denies unknown fields, so a runner sends `memory` and the §4 segment durations only when the lease reply carried a `memory` window, which only a daemon at this release sends (§2). A rolling deploy can still hand a lease from a new replica and the report to an old one, so a report refused for its shape (400 `UZ-REQ-001`) on a one-post body is answered to the settle rather than quarantined: the runner pushes the deltas through the memory push verb, re-posts the report without the new fields once, and logs `report_shape_fell_back`. A lease without a window is settled as on `fde585971`: the memory push, then the report. Tool records stay as they are: posted before the report, only when the run called a tool, and absent from a chat. The renewal flush stays: it posts only usage lines that do not fit the report's `requests` field, which a chat never reaches.
+The completion publish stays where it was on `fde585971`, now pinned by a comment and logged as `completion_published`: after the two biller calls (`money_gates` reads the payer's balance through the biller, so an open hold could park the owner's follow-up), before `record_released`, `queue_owed_answer` and `run_tokens`. The settle answers the publish instant in `Reconciled.completed_at` for §4. The saving on the runner is the memory push: one round trip after the answer.
 
-- **Dimension 1.1** — Memory on a report is written before the settle commits → Test `test_report_memory_lands_before_the_settle` (integration): a report with two deltas settles; `select_all_for_fleet` reads both; a lease issued to the fleet afterwards carries both in its window. False pass rejected: a daemon that wrote memory after the commit would show the same rows here, so the test also issues the next lease inside the same request's completion and reads the window from it.
-- **Dimension 1.2** — A settle the fence refuses leaves memory upserted and the lease active, and the runner's retry settles once → Test `test_fenced_report_keeps_memory_and_settles_on_retry` (integration): the deltas are read back once after the refusal and once after the retry, identical; one settlement row.
-- **Dimension 1.3** — Deltas past `MAX_PUSH_BYTES` are truncated and counted, and the report settles → Test `test_oversize_report_memory_is_cut_and_counted` (integration): 257 KiB of deltas → `Captured.truncated` ≥ 1, the report settles, the newest entries are kept.
-- **Dimension 1.4** — `event_complete` publishes before the post-commit Postgres steps → Test `test_completion_publishes_before_the_audit_event` (integration, log capture): the `completion_published` event precedes the `record_released` finalize step in the capture, and the completion frame is on the fleet's stream when the report call returns. False pass rejected: a publish after the audit event would still leave the frame on the stream, so the order is read from the capture, not the stream.
-- **Dimension 1.5** — A capture that fails leaves the report settling → Test `test_failed_capture_still_settles` (integration): the memory store's pool is closed; the report settles; one `memory_capture_failed` line; `Captured` absent.
-- **Dimension 1.6** — The runner makes one `reports` post on a lease that carried a window → Test `test_settle_is_one_post_on_a_window_lease` (unit): the fake daemon records one `Report` call and no `Capture` call; the body's `memory` holds the run's deltas.
-- **Dimension 1.7** — On a lease without a window the runner pushes memory and sends a report with neither `memory` nor segment durations → Test `test_settle_without_a_window_posts_as_before` (unit): one `Capture` then one `Report`; the report JSON has no `memory` key and no segment keys.
-- **Dimension 1.8** — A one-post report refused for its shape falls back once → Test `test_shape_refused_report_falls_back_once` (unit): the fake daemon answers the first `Report` with 400 `UZ-REQ-001`; the runner makes one `Capture`, then one `Report` whose JSON has no `memory` key; a second 400 quarantines as before; one `report_shape_fell_back` line.
+Skew is handled on three paths. `ReportRequest` denies unknown fields, so a runner sends `memory` and `telemetry.segments` only when the lease carried a window, which only a daemon at this release sends (§2). If a rolling deploy hands the report to an old replica, the settle answers the shape refusal (400 `UZ-REQ-001`) by pushing the memory and posting the report again without the new fields, once, removing the refused copy from the spool. If the first post was kept and the drain later meets an old replica, the drain re-posts the body without its memory and segments, so the answer is kept and the memory is logged as dropped (`report_memory_dropped`). Tool records and the renewal flush stay as they were: a chat posts neither.
+
+- **Dimension 1.1** — DONE — Memory on a report is in the store when the report answers → Test `test_report_memory_lands_before_the_settle` (integration): a report with two deltas settles; the store holds both; the admission is settled; `completion_published` names the lease and `completed_at` is at or after the verb's instant.
+- **Dimension 1.2** — DONE — A lease the fleet moved past writes no memory and settles nothing → Test `test_superseded_report_writes_no_memory` (integration): after `supersede`, the report answers `RUN_STALE_FENCING_TOKEN`, the store is empty and the admission unsettled. False pass rejected: fencing on the request's token would let this report settle while its capture was refused, which the first draft of this test caught.
+- **Dimension 1.3** — DONE — Memory past the push's cap is cut and the report settles → Test `test_oversize_report_memory_is_cut_and_counted` (integration): twenty 16 KiB deltas → the first fifteen kept; the admission settled.
+- **Dimension 1.4** — DONE — The settle publishes `event_complete` and answers the instant → Test `test_report_memory_lands_before_the_settle` (integration), its `completion_published` and `completed_at` assertions.
+- **Dimension 1.5** — DONE — A capture that fails leaves the report settling → Test `test_failed_capture_still_settles` (integration): the memory store unreachable; the report settles; one `memory_capture_failed` line naming the lease.
+- **Dimension 1.6** — DONE — The runner makes one `reports` post on a lease that carried a window → Test `test_settle_is_one_post_on_a_window_lease` (unit): no `Hydrate` or `Capture` call; the report carries the run's memory and a `settle_ms` segment.
+- **Dimension 1.7** — DONE — On a lease without a window the runner reads memory, pushes it, and sends neither new field → Test `test_settle_without_a_window_posts_as_before` (unit): `Hydrate`, `Capture`, `Report`; no `memory` key, no segments.
+- **Dimension 1.8** — DONE — A one-post report refused for its shape falls back once → Test `test_shape_refused_report_falls_back_once` (unit): `Report`, `Capture`, `Report`; the first body carries memory and segments, the last neither; no report file left; one `report_shape_fell_back` line.
+- **Dimension 1.9** — DONE — The drain re-posts a shape-refused one-post body without its memory → Test `test_drain_reposts_a_shape_refused_report_without_its_memory` (unit): the last body has no `memory` and no `telemetry.segments`; nothing left in the spool; one `report_memory_dropped` line. `test_only_a_shape_refused_one_post_body_is_reshaped` proves any other refusal, a plain body, or unreadable bytes are not reshaped.
 
 ### §2 — The lease reply carries the fleet's memory window
 
-`LeasePayload.memory: Option<MemoryHydrateResponse>` carries what `GET /v1/runners/me/memory/{fleet_id}` answers today, read by `issue_ready` after `Leases::issue` returns and bounded as the verb is (`HYDRATE_WINDOW_BYTES` 256 KiB plus `HYDRATE_SHARED_BYTES` 64 KiB). A daemon at this release always sends `Some`, an empty window included, so the runner reads the field's presence as the daemon's version. The ordering invariant rests on the fleet slot: `release_through` frees the slot inside the settle transaction, the candidate query skips a held slot, so no lease issues for a fleet between a report's memory write and its commit. A window read that fails is logged under `lease_window_read_failed`, the lease issues with `memory: None`, and the runner reads memory as before. The runner seeds its run from the payload and makes no memory read when the window is present; the verb stays for a lease without one.
+`LeasePayload.memory: Option<MemoryHydrateResponse>` carries what `GET /v1/runners/me/memory/{fleet_id}` answers, read by `issue_ready` after `Leases::issue` returns, overlapped with the thread read (`future::join`), and bounded as the verb is. A daemon at this release always sends it, an empty window included. The ordering invariant rests on the fleet slot: `release_through` frees it inside the settle transaction, and the candidate query skips a held slot, so no lease issues for a fleet between a report's capture and its commit. A window read that fails is logged as `lease_window_read_failed` and the lease issues with `memory: None`. The runner seeds its run from the payload; it reads memory only when the lease carries no window.
 
-- **Dimension 2.1** — A lease reply carries the window the verb answers → Test `test_lease_carries_the_memory_window` (integration): a fleet with three entries is leased; the payload's `memory` equals the verb's answer.
-- **Dimension 2.2** — No lease issues for a fleet whose slot a running lease holds, and the lease issued after that lease's report carries the report's memory → Test `test_window_follows_the_slot` (integration): a poll during the run answers no work; the poll after the report leases and its window holds the report's deltas.
-- **Dimension 2.3** — A window read that fails leaves the lease issuable → Test `test_window_read_failure_issues_without_a_window` (integration): the memory store's pool is closed before the poll; the lease issues with `memory: None`; one `lease_window_read_failed` line.
-- **Dimension 2.4** — The runner makes no memory read when the lease carries a window → Test `test_no_memory_read_on_a_window_lease` (unit): the fake daemon records no `Hydrate` call; `memory_ms` is absent from `lease_completed`.
-- **Dimension 2.5** — The runner reads memory when the lease carries no window → Test `test_memory_read_without_a_window` (unit): one `Hydrate` call; `memory_ms` present.
+- **Dimension 2.1** — DONE — A fresh fleet's lease carries an empty window, and the next carries what the report remembered → Test `test_lease_carries_the_memory_window` (integration).
+- **Dimension 2.2** — DONE — A second message waits while the first holds the slot, and its lease carries the first's memory → Test `test_window_follows_the_slot` (integration).
+- **Dimension 2.3** — DONE — A window read that fails leaves the lease issuable → Test `test_window_read_failure_issues_without_a_window` (integration): the store unreachable; the lease issues with no window; one log line.
+- **Dimension 2.4** — DONE — No memory read on a window lease → Test `test_no_memory_read_on_a_window_lease` (unit): no `Hydrate`; `memory_ms` absent.
+- **Dimension 2.5** — DONE — One timed memory read without a window → Test `test_memory_read_without_a_window` (unit): one `Hydrate`; `memory_ms` equals the read's 40 ms.
 
 ### §3 — A held heartbeat wakes one idle worker
 
-`HeartbeatRequest` gains `wake: bool`, default false; `HeartbeatResponse` gains `woken: bool`, present on every reply a daemon at this release sends. The runner sets `wake` only when an earlier reply carried `woken` (so an older daemon, which would read the unknown field as no report at all and drop the hold list, is never asked), the assignment is `Ok` with workers above zero, and a worker is idle; with every worker busy the beat is not held, so the hold-saturation path the beat loop already has is untouched. The daemon records liveness and reconciles holds as before, then, when `wake` is set and fewer than `HELD_BEATS_MAX` (64) beats are held in this process, awaits a ring up to `WAKE_HOLD_MAX`, which equals `HEARTBEAT_INTERVAL` (10 s), so a held beat returns no later than the next beat was due and liveness is unchanged. The ring signal is a `tokio::sync::watch` generation counter the `Doorbell` increments on every ring before its hint dedup: a hold reads the generation at arrival and awaits a change, so a ring between arrival and await is kept, and a second admission for a fleet whose hint is still buffered wakes a holder. A ring answers `woken: true`; the deadline answers `woken: false`; a beat past the cap is not held and answers `woken: false` at once, counted under `reason="capped"` and logged once under `runner_wake_refused`. The ring itself is a Dragonfly sharded publish every replica's hub hears (`doorbell::publish`, `Doorbell::listen`), so a beat held on one replica is woken by an admission committed on another; a `Received::Lagged` or `Gap` rings nothing, and the runner's 1 s hint is the fallback. The held beat consumes one in-flight permit of `DEFAULT_MAX_IN_FLIGHT` (256); the cap keeps 192 for requests.
+`HeartbeatRequest` gains `wake: bool`; `HeartbeatResponse` gains `woken: Option<bool>`, `Some` on every reply from this release. The runner asks only after a reply carried `woken`, while the assignment is `Ok` with workers, and while a worker is idle (`Wake::any_idle`). The daemon records liveness, capability and holds, then waits through `Leasing::wait_for_work` up to `WAKE_HOLD_MAX` (= `HEARTBEAT_INTERVAL`, 10 s) unless `HELD_BEATS_MAX` (64) beats are held in this process. The cap's count and the ring signal live in the `Doorbell`: an `AtomicUsize` reserved with `try_update` and released by a guard on drop, and a `watch` generation `ring` moves before its hint dedup, so a ring between a hold's arrival and its await is kept. A ring answers `woken: true`; a deadline or the cap `false`, the cap counted and logged as `runner_wake_refused`. Cross-replica rings arrive through the existing hub subscription.
 
-On the runner, the beat loop runs as before; a `woken: true` sets the next pause to zero and calls `notify_one` on a `tokio::sync::Notify` the worker pool's idle pause selects on (`notify_one` stores a permit, so a worker entering its pause after the wake still takes it), so exactly one idle worker polls at once and the stagger of the others stands. `WAKE_HOLD_MAX` is asserted below the client's `CALL_TIMEOUT` (20 s) beside the existing assertion in `client/http.rs`. `NO_WORK_RETRY_AFTER` stays at 1 s: it is the fallback for a lost ring, and a lost ring must not wait five seconds. **Implementation default:** every admission, gate confirmation and approval resolution rings, and every ring wakes every held beat, whatever the runner's labels; the woken worker's one poll filters. This is bounded by held-beat count, costs one authenticated poll per runner host per ring, and is revisited above 50 runner hosts.
+On the runner a woken reply calls `notify_one` on the pool's `Wake`, which stores a permit, so one idle worker polls at once and the others keep their stagger. The next beat follows after `MIN_POLL_PAUSE` (250 ms) if woken, after what is left of the interval if held, after the interval otherwise, so a burst of admissions cannot turn beats into a busy loop. `WAKE_HOLD_MAX < CALL_TIMEOUT` is asserted in `client/http.rs`. `NO_WORK_RETRY_AFTER` stays 1 s as the fallback for a lost ring.
 
-- **Dimension 3.1** — A ring answers a held beat → Test `test_ring_answers_the_held_beat` (unit, paused clock): a beat with `wake: true` is held; `Doorbell::ring` fires; the reply reads `woken: true` within `READY_WAKE_DEADLINE` (100 ms) of the ring.
-- **Dimension 3.2** — A beat with no ring answers at the deadline → Test `test_silent_held_beat_answers_at_the_deadline` (unit, paused clock): 10 s pass; `woken: false`; `reason="deadline"` counted.
-- **Dimension 3.3** — The 65th held beat is not held → Test `test_held_beats_are_capped` (unit): 64 beats held; the 65th answers at once with `woken: false`; `reason="capped"` counted; one `runner_wake_refused` line with the cap.
-- **Dimension 3.4** — A ring for an already-buffered fleet still wakes a holder, and a ring between a hold's arrival and its await is kept → Test `test_ring_generation_survives_dedup_and_arrival` (unit): the fleet is rung twice without a `take` between, and a waiter that read its generation before the second ring and awaited after it is woken.
-- **Dimension 3.5** — Liveness is recorded before the hold → Test `test_liveness_precedes_the_hold` (unit, paused clock): the `seen` producer fires before the hold's deadline passes.
-- **Dimension 3.9** — The runner asks to be held only after a reply carried `woken`, and only with an idle worker → Test `test_wake_is_asked_only_when_proved_and_idle` (unit): the first beat carries `wake: false`; after a reply with `woken: false`, the next beat carries `wake: true`; with every worker busy it carries `wake: false`.
-- **Dimension 3.6** — A woken runner wakes exactly one idle worker → Test `test_woken_beat_polls_one_worker_at_once` (unit, paused clock): sixteen workers mid-pause; `woken: true`; one `Lease` call before 1 ms more passes; the other fifteen poll at their staggered instants.
-- **Dimension 3.7** — A beat that times out on the runner is retried on the client's backoff and the workers keep their hint → Test `test_timed_out_held_beat_backs_off` (unit, paused clock): the fake daemon stalls past `CALL_TIMEOUT`; the next beat lands after `RETRY_FIRST_DELAY`; the workers' next poll lands at the hint.
-- **Dimension 3.8** — With no ring the worker leases on the hint → Test `test_lost_ring_falls_back_to_the_hint` (unit, paused clock): no `woken`; the next poll lands at `NO_WORK_RETRY_AFTER` and leases.
+- **Dimension 3.1** — DONE — A ring answers a held wait, and a ring is what wakes → Tests `a_ring_answers_a_held_wait` (unit, `afd_dragonfly`) and `test_held_beat_answers_by_how_its_wait_ended` (unit, `afd_api_runner`).
+- **Dimension 3.2** — DONE — With no ring a wait ends at its deadline and gives its place back → Test `a_silent_wait_answers_at_its_deadline` (unit).
+- **Dimension 3.3** — DONE — A wait past the cap is refused at once, counted and logged → Tests `a_wait_past_the_cap_is_refused_at_once` (unit) and `test_held_beats_are_capped` (unit): the log carries the cap and the runner.
+- **Dimension 3.4** — DONE — A ring for a buffered fleet still wakes a wait → Test `a_ring_for_a_buffered_fleet_still_wakes_a_wait` (unit).
+- **Dimension 3.5** — DONE — A held beat answers `woken` after its liveness → Test `test_a_beat_asking_to_be_held_answers_woken_after_its_liveness` (integration, the live route).
+- **Dimension 3.6** — DONE — A woken beat polls exactly one idle worker at once → Test `test_woken_beat_polls_one_worker_at_once` (unit, paused clock): polls at 0, 250, 500, 750 and the woken one at 900 ms.
+- **Dimension 3.7** — DONE — A woken beat wakes a worker, and the next beat is paced by how the last ended → Test `test_woken_beat_wakes_a_worker_and_paces_the_next` (unit): 250 ms, interval less the hold, the full interval.
+- **Dimension 3.8** — DONE — With no wake a worker polls on the hint → Test `test_lost_ring_falls_back_to_the_hint` (unit): polls at 0, 1000 and 2000 ms.
+- **Dimension 3.9** — DONE — The runner asks only when proved and idle → Test `test_wake_is_asked_only_when_proved_and_idle` (unit): absent, absent, `true`, absent.
 
 ### §4 — Every segment of every chat is read in Grafana at p95 and p99, per fleet
 
-`fleet.delivery` starts at the event's creation (`event_created_at`, selected with the lease for the report) and ends at the instant `publish_completion` returns, which `Reconciled` carries to the handler. It keeps `gen_ai.agent.id` (the fleet) and gains one attribute per segment: `agentsfleet.delivery.queue_wait_ms` (event creation to lease issue, both daemon instants on the lease row), `agentsfleet.delivery.memory_ms`, `.model_ms`, `.tools_ms`, `.sandbox_wait_ms` and `.settle_ms` (the runner's segments, carried in `ReportTelemetry`; `settle_ms` is hold-or-destroy to the report post's start), and `agentsfleet.delivery.complete_ms` (report received to `event_complete`). Every runner-supplied duration is capped at `MAX_RUN` as `wall` is today. `time_to_first_token_ms` already rides the body and is not duplicated. The segments are not a partition of the span (`sandbox_wait_ms` runs beside the model call), so no sum is asserted.
+`fleet.delivery` starts at the event's creation (`event_created_at`, selected with the lease for the report) and ends at the publish instant `Reconciled.completed_at` carries. It keeps `gen_ai.agent.id` and gains `agentsfleet.delivery.queue_wait_ms` and `complete_ms`, measured on the daemon, and `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms` and `settle_ms` from the runner's `telemetry.segments`, every one capped at `MAX_RUN`. A start the span cannot place falls back to the end less `wall_ms`. Fleet-wide, `DeliveryStage` gains `event_to_complete`, `lease_to_report` and `report_to_complete`, recorded at the publish; the census ceiling rises to seven. The playbook page holds the per-fleet TraceQL queries, with a search query for a Tempo without a metrics generator. No fleet, workspace or tenant identity reaches a metric.
 
-Per fleet, the playbook page holds two queries against Tempo in Grafana Explore: a TraceQL search over `fleet.delivery` filtered by `gen_ai.agent.id`, which every Tempo answers and whose duration column Grafana aggregates to p95 and p99 with a transformation, and a TraceQL metrics query (`quantile_over_time`) that needs Tempo's metrics generator; Dimension 4.4 records which of the two dev answered. `fleet.delivery` is one span per settled report, so the lease-poll request spans that share `SPAN_QUEUE` (2048) with it are the only thing that could drop it under load; §3 adds one poll per ring, not one per worker. Fleet-wide, `DeliveryStage` gains `EventToComplete`, `LeaseToReport` and `ReportToComplete`, recorded at the publish on `agentsfleet_fleet_delivery_stage_seconds`, whose census ceiling rises to seven. No fleet, workspace or tenant identity reaches a metric. The dashboard JSON is not edited here (Discovery).
-
-- **Dimension 4.1** — The span's start, end and segment attributes come from the loaded lease and the report → Test `test_delivery_span_spans_event_to_complete` (unit): a `Reconciled` with `event_created_at` T, `lease_created_at` T+40 ms, `completed_at` T+900 ms and a report with `memory_ms` 90, `model_ms` 500, `settle_ms` 30 → start T, end T+900 ms, `queue_wait_ms` 40, the three figures, `complete_ms` = T+900 ms minus the receipt instant.
-- **Dimension 4.2** — A runner-supplied duration past `MAX_RUN` is capped → Test `test_segment_attributes_are_capped` (unit): `model_ms` = `u64::MAX` → the attribute reads `MAX_RUN` in milliseconds.
-- **Dimension 4.3** — The three new stages record on the existing histogram under closed labels only → Test `test_completion_records_three_stages` (unit): one publish → three samples, labels in `DeliveryStage::ALL`, no other label key.
-- **Dimension 4.4** — The two TraceQL queries answer per-fleet quantiles on dev → Test `test_round_trip_queries_answer_on_dev` (manual): after ten chats, the two queries from `002_round_trip_percentiles.md` are pasted into Grafana Explore against dev Tempo; the screenshot path is recorded in Discovery.
+- **Dimension 4.1** — DONE — The span runs from event creation to the publish and carries both clocks' segments → Tests `the_delivery_span_starts_at_the_events_creation`, `an_unplaceable_creation_falls_back_to_the_reported_duration`, `segments_are_exported_in_milliseconds_and_absent_ones_omitted` (unit, `afd_observability`) and `test_span_joins_daemon_and_runner_segments` (unit, `afd_api_runner`).
+- **Dimension 4.2** — DONE — A runner-supplied segment past `MAX_RUN` is capped → Test `an_implausible_segment_is_capped` (unit).
+- **Dimension 4.3** — DONE — A published completion records each new stage once → Test `test_completion_records_three_stages` (unit): 900, 660 and 200 ms; nothing for a report that published nothing.
+- **Dimension 4.4** — The per-fleet queries answer on dev → Test `test_round_trip_queries_answer_on_dev` (manual, after deploy): ten chats, the queries from `002_round_trip_percentiles.md` in Grafana Explore, the answering query and a screenshot path recorded here. Disposition in Discovery.
 
 ### §5 — The runner's lease reply body and captured memory deltas zero on drop
 
-`Body` holds its bytes in a `zeroize::Zeroizing<Vec<u8>>`, so the lease payload and the memory window borrowed from it zero when the lease run drops; `RunnerApi::send` answers that type and the fake daemon converts its `Bytes` once. The deltas a run produces travel in `CapturedMemory`, a newtype over `Vec<MemoryDelta<'static>>` whose `Zeroize` impl zeroes every owned string and whose `Drop` calls it, in the `zero_on_drop!` shape `afd_crypto` uses. The claim is scoped to the heap copies the runner owns at a lease's end. Not covered, and said so in `runner_execution.md`: the bytes handed to `reqwest` for a post, which the client frees unzeroed; and the report spool's copy, which `ReportSpool::hold` writes to disk in clear and keeps as `Bytes` until delivery. Widening the spool's storage is a later spec. **Implementation default:** no type is added for the report body, because its sensitive content is the deltas, which `CapturedMemory` covers before they are serialised.
+`Body` holds its bytes in a `zeroize::Zeroizing<Vec<u8>>`, taken from the transport with `Vec::from` so no second clear copy is left, and the lease payload and memory window borrow from it. The run's deltas travel in `CapturedMemory`, whose `Drop` overwrites every owned string in place and clears the entries, in the `zero_on_drop!` shape `afd_crypto` uses. The claim is scoped to the runner's own heap copies: the bytes handed to the HTTP client and the report spool's on-disk copy are not covered, and `runner_execution.md` says so.
 
-- **Dimension 5.1** — The body and the deltas are zeroing types → Test `test_sensitive_buffers_zeroize` (unit): `fn pins<T: Zeroize>()` instantiated for `Body`'s bytes and `CapturedMemory` compiles and runs.
-- **Dimension 5.2** — `zeroize` empties every owned delta string → Test `test_captured_memory_zeroizes_its_strings` (unit): two deltas with owned key, content and category; `zeroize()`; every field is empty and the vector is empty.
+- **Dimension 5.1** — DONE — The body's bytes and the deltas are zeroing types → Test `test_sensitive_buffers_zeroize` (unit).
+- **Dimension 5.2** — DONE — Scrubbing empties every owned string in place, and zeroizing drops the entries → Test `test_captured_memory_zeroizes_its_strings` (unit).
 
 ### §6 — The acceptance lane survives a Cloudflare edge error
 
@@ -254,70 +270,75 @@ Per fleet, the playbook page holds two queries against Tempo in Grafana Explore:
 
 ## Interfaces
 
-- `POST /v1/runners/me/reports` body gains `memory: [MemoryDelta]` (default empty; admitted through `afd_memory::admit` at `MAX_PUSH_BYTES`) and `telemetry` gains `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms`, `settle_ms`, each optional. A runner sends them only when its lease carried `memory`.
-- `POST /v1/runners/me/leases` reply: `lease.memory` is a `MemoryHydrateResponse`, present on every lease a daemon at this release issues, absent when the window read failed.
-- `POST /v1/runners/me/heartbeats` body gains `wake: bool` (default false); the reply gains `woken: bool`, present on every reply. A beat with `wake` is held up to `WAKE_HOLD_MAX` or until a ring.
-- `fleet.delivery` span: start at event creation, end at `event_complete`; attributes `agentsfleet.delivery.{queue_wait,memory,model,tools,sandbox_wait,settle,complete}_ms`.
-- `DeliveryStage` gains `event_to_complete`, `lease_to_report`, `report_to_complete`. New family `agentsfleet_runner_wake_answers_total{reason}` with `reason` ∈ `ring`, `deadline`, `capped`.
+- `POST /v1/runners/me/reports` body gains `memory: [MemoryDelta]` (default empty) and `telemetry.segments: RunSegments` (`memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms`, `settle_ms`, each optional), sent only when the lease carried `memory`.
+- `POST /v1/runners/me/leases` reply: `lease.memory` is a `MemoryHydrateResponse`, on every lease from this release, absent when the window read failed.
+- `POST /v1/runners/me/heartbeats` body gains `wake: bool` (default false); the reply gains `woken: bool`, present on every reply from this release.
+- `Leasing::wait_for_work(deadline, max) -> Waited` (`afd_http`); `Doorbell::wait_for_ring` (`afd_dragonfly`); `Waited` ∈ `Rung`, `Deadline`, `Capped`.
+- `Reconciled` gains `event_created_at`, `lease_created_at`, `completed_at`; `Reported` gains `lease_created_at`, `event_created_at`.
+- `fleet.delivery` span: event creation to publish; attributes `agentsfleet.delivery.{queue_wait,memory,model,tools,sandbox_wait,settle,complete}_ms`.
+- `DeliveryStage` gains `event_to_complete`, `lease_to_report`, `report_to_complete`. New family `agentsfleet_runner_wake_answers_total{reason}`, `reason` ∈ `ring`, `deadline`, `capped`.
 
 ## Failure Modes
 
 | Mode | Kind | Cause | Handling (response and what the caller observes) | Test |
 |------|------|-------|--------------------------------------------------|------|
-| Report fenced after its memory was written | failure | a reclaim won the fence between the write and the commit | the capture stands (idempotent upsert); the report answers `stale_fence`; the runner's retry rewrites the same rows and settles once | `test_fenced_report_keeps_memory_and_settles_on_retry` |
-| Oversize memory on the report | capacity | deltas past `MAX_PUSH_BYTES` | truncated newest-first and counted; the report settles | `test_oversize_report_memory_is_cut_and_counted` |
-| Memory capture fails on the report | failure | the memory store refuses the write | logged; the report settles; the fleet's next run starts without those items | `test_failed_capture_still_settles` |
-| Audit or owed-answer step stalls after the commit | failure | a slow Postgres step after the biller calls | `event_complete` is already published; the step is logged if it fails | `test_completion_publishes_before_the_audit_event` |
-| Newer runner, older replica mid-deploy | failure | a one-post report meets a daemon that denies the new fields | 400 answered to the settle; the runner pushes memory, re-posts without the fields once | `test_shape_refused_report_falls_back_once` |
-| Window read fails at issue | failure | the memory store refuses the read | the lease issues with `memory: None`; one log line; the runner reads memory as before | `test_window_read_failure_issues_without_a_window` |
-| Older daemon, newer runner | failure | a lease without `memory` | the runner pushes memory and sends a report without the new fields | `test_settle_without_a_window_posts_as_before` |
-| Held beats past the cap | capacity | more than 64 held beats in one process | the beat answers at once, `woken: false`, counted, logged once | `test_held_beats_are_capped` |
-| Ring lost | failure | `Received::Lagged` or `Gap` on the hub | the held beat answers `woken: false` at the deadline; the 1 s hint leases | `test_lost_ring_falls_back_to_the_hint` |
-| Held beat times out on the runner | failure | a stall past `CALL_TIMEOUT` | the beat is retried on the client's backoff; the last assignment stands; workers keep the hint | `test_timed_out_held_beat_backs_off` |
-| Runner-supplied duration out of range | security | a runner reports an absurd segment | capped at `MAX_RUN` on the span | `test_segment_attributes_are_capped` |
+| Superseded lease reports | failure | a reclaim moved the fleet's sequence past the lease | capture refused by the fence; settle `stale_fence`; nothing written | `test_superseded_report_writes_no_memory` |
+| Oversize memory on the report | capacity | deltas past `MAX_PUSH_BYTES` | cut and counted; the report settles | `test_oversize_report_memory_is_cut_and_counted` |
+| Memory capture fails on the report | failure | the memory store refuses the write | logged; the report settles; the next run starts without those items | `test_failed_capture_still_settles` |
+| Window read fails at issue | failure | the memory store refuses the read | the lease issues without a window; one log line; the runner reads memory | `test_window_read_failure_issues_without_a_window` |
+| Older daemon, newer runner | failure | a lease without `memory` | the runner reads and pushes memory and sends no new field | `test_settle_without_a_window_posts_as_before` |
+| Newer runner, older replica mid-deploy | failure | a one-post report meets a daemon that denies the new fields | settle: push memory, re-post once; drain: re-post without memory | `test_shape_refused_report_falls_back_once`, `test_drain_reposts_a_shape_refused_report_without_its_memory` |
+| Held beats past the cap | capacity | more than 64 held beats in one process | answered at once, `woken: false`, counted, logged | `test_held_beats_are_capped` |
+| Ring lost | failure | `Received::Lagged` or `Gap` on the hub | the held beat answers at the deadline; the 1 s hint leases | `test_lost_ring_falls_back_to_the_hint` |
+| A held beat fails on the runner | failure | a stall past `CALL_TIMEOUT` or a refusal | the beat loop's existing backoff; the last assignment stands | `a_failed_beat_retries_and_a_stop_ends_leases_in_flight` (existing) |
+| A burst of rings | capacity | many admissions while workers idle | one re-beat per ring at most every 250 ms per host | `test_woken_beat_wakes_a_worker_and_paces_the_next` |
+| Runner-supplied duration out of range | security | a runner reports an absurd segment | capped at `MAX_RUN` on the span | `an_implausible_segment_is_capped` |
 | Edge 502 at credential mint | failure | daemon restarting behind the edge | bounded retries; the last status thrown | `throws after five retryable answers` |
 | Mint answered 504 or timed out | failure | the mint may have landed | thrown at once; no second credential minted | `does not retry a gateway timeout, which may follow a mint that landed` |
 
 ## Invariants
 
-1. A lease issued after a report's commit carries that report's memory. The authority is the fleet slot: `release_through` frees it inside the settle transaction, the candidate query skips a held slot, and the capture precedes the commit in the report verb.
-2. `event_complete` publishes before the post-commit Postgres steps. `publish_completion` follows the two biller calls and precedes `record_released`, `queue_owed_answer` and `run_tokens`; Dimension 1.4 reads the order from the log capture.
+1. A lease issued after a report's commit carries that report's memory. The fleet slot is the authority: `release_through` frees it inside the settle transaction, the candidate query skips a held slot, and the capture precedes the commit in the report verb.
+2. A report's capture is fenced exactly as its settle: on the lease row's token. `capture_reported` passes `lease.fence`; Dimension 1.2 fails if a superseded lease writes either.
 3. Fleet identity never reaches a metric. `DeliveryStage` and `WakeAnswer` are closed sets and the only labels; the census rows declare no other key.
-4. `WAKE_HOLD_MAX ≤ HEARTBEAT_INTERVAL < CALL_TIMEOUT`. `const` assertions in `afd_core/src/timing.rs` and `afr_supervisor/src/client/http.rs`.
-5. A held beat never starves requests. The per-process held-beat count is an `AtomicUsize` in `wake.rs`, capped at `HELD_BEATS_MAX` = 64 of the 256 permits; Dimension 3.3 reads the 65th answered at once.
+4. `WAKE_HOLD_MAX ≤ HEARTBEAT_INTERVAL` and `WAKE_HOLD_MAX < CALL_TIMEOUT`, and `HELD_BEATS_MAX × 4 ≤ DEFAULT_MAX_IN_FLIGHT`. `const` assertions in `afd_core/src/timing.rs`, `afr_supervisor/src/client/http.rs` and `afd_api_runner/src/handler/runner/wake.rs`.
+5. A held beat's place under the cap is always given back. The `Held` guard decrements on drop, a dropped request included; Dimensions 3.1 to 3.3 read `held()` back at zero.
 6. The lease body and the captured deltas zero on drop. `Zeroizing<Vec<u8>>` and `CapturedMemory`'s `Drop`, pinned by Dimension 5.1.
-7. A runner never loses a report to a field the daemon refuses. `memory` and the segment durations ride the report only when the lease carried `memory`, and a shape refusal re-posts without them once; Dimensions 1.7 and 1.8. `wake` rides the beat only after a reply carried `woken`; Dimension 3.9.
+7. A runner never loses a report to a field the daemon refuses. The new fields ride only on a window lease, the settle falls back once, and the drain reshapes; Dimensions 1.7 to 1.9. `wake` rides only after a reply carried `woken`; Dimension 3.9.
 
 ## Metrics & Observability
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
-| `fleet.delivery` (span, extended) | operator | a report settles | segment durations, `gen_ai.agent.id`, event and workspace ids | identifiers and durations only; no content | `test_delivery_span_spans_event_to_complete` |
+| `fleet.delivery` (span, extended) | operator | a report settles | segment durations, `gen_ai.agent.id`, event and workspace ids | identifiers and durations only; no content | `the_delivery_span_starts_at_the_events_creation` |
 | `agentsfleet_fleet_delivery_stage_seconds{stage}` (three new stages) | operator | `event_complete` publishes | `stage` from `DeliveryStage` | closed label set | `test_completion_records_three_stages` |
 | `agentsfleet_runner_wake_answers_total{reason}` | operator | a held beat answers | `reason` ∈ `ring`, `deadline`, `capped` | closed label set | `producers_drive` |
 | `runner_wake_refused` (log) | operator | a beat past the cap | `runner_id`, `cap` | no token | `test_held_beats_are_capped` |
 | `lease_window_read_failed` (log) | operator | the window read fails at issue | `fleet_id`, `error_code` | no content | `test_window_read_failure_issues_without_a_window` |
+| `memory_capture_failed` (log) | operator | a report's capture fails | `fleet_id`, `lease_id`, `error_code` | no content | `test_failed_capture_still_settles` |
+| `completion_published` (log, debug) | operator | `event_complete` publishes | `fleet_id`, `lease_id` | none | `test_report_memory_lands_before_the_settle` |
+| `report_shape_fell_back`, `report_memory_dropped` (runner logs) | operator | an older replica refused the one-post body | `lease_id` | no content | `test_shape_refused_report_falls_back_once`, `test_drain_reposts_a_shape_refused_report_without_its_memory` |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The one-post settle and its order proofs exist in tracked sources (§1) | `git grep -l test_report_memory_lands_before_the_settle rustd/crates/afd_fleet/tests` | one path | P0 | |
-| R2 | The window on the lease and its ordering proofs exist (§2) | `git grep -l test_window_follows_the_slot rustd/crates/afd_fleet/tests` | one path | P0 | |
-| R3 | The held beat's ring, deadline and cap proofs exist (§3) | `git grep -l test_held_beats_are_capped rustd/crates/afd_api_runner/src` | one path | P0 | |
-| R4 | The runner wakes one worker and falls back to the hint (§3) | `git grep -l test_woken_beat_polls_one_worker_at_once rustd/crates/afr_supervisor/src` | one path | P0 | |
-| R5 | The span covers event creation to completion with capped segments (§4) | `git grep -l test_delivery_span_spans_event_to_complete rustd/crates/afd_api_runner/src` | one path | P1 | |
-| R6 | The playbook holds the two per-fleet queries (§4) | `grep -c quantile_over_time playbooks/operations/observability/002_round_trip_percentiles.md` | `2` | P1 | |
+| R1 | The report's memory lands before the settle, fenced and cut (§1) | `git grep -l test_superseded_report_writes_no_memory rustd/crates/afd_fleet/tests` | one path | P0 | |
+| R2 | The lease carries the window under the slot (§2) | `git grep -l test_window_follows_the_slot rustd/crates/afd_fleet/tests` | one path | P0 | |
+| R3 | A held wait answers a ring, its deadline and its cap (§3) | `git grep -l a_wait_past_the_cap_is_refused_at_once rustd/crates/afd_dragonfly/src` | one path | P0 | |
+| R4 | A woken beat polls one worker at once (§3) | `git grep -l test_woken_beat_polls_one_worker_at_once rustd/crates/afr_supervisor/src` | one path | P0 | |
+| R5 | The span covers event creation to the publish with capped segments (§4) | `git grep -l the_delivery_span_starts_at_the_events_creation rustd/crates/afd_observability/src` | one path | P1 | |
+| R6 | The playbook holds the per-fleet queries (§4) | `grep -c quantile_over_time playbooks/operations/observability/002_round_trip_percentiles.md` | `2` | P1 | |
 | R7 | The lease body and the deltas zero on drop (§5) | `git grep -l test_captured_memory_zeroizes_its_strings rustd/crates/afr_supervisor/src` | one path | P1 | |
 | R8 | The credential mint retries an edge error (§6) | `git grep -l "throws after five retryable answers" cli/test/acceptance/fixtures` | one path | P1 | |
-| R9 | The census carries the new family and the raised ceiling (§4) | `grep -c agentsfleet_runner_wake_answers_total docs/metrics.census.tsv` | `1` | P1 | |
+| R9 | The census carries the new family (§4) | `grep -c agentsfleet_runner_wake_answers_total docs/metrics.census.tsv` | `1` | P1 | |
 | S1 | Declared lint green | `make lint-all` | exit 0 | P0 | |
 | S2 | Declared unit lane green | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Declared integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
 | S4 | Version files agree | `make check-version` | exit 0 | P0 | |
 | S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
-| S6 | Rust patch coverage at or above 99% per touched file (the CI coverage lane's merge, graded with the PR's base) | `make test-coverage-rustd-merge RUSTD_PATCH_BASE=HEAD^1` | exit 0 | P0 | |
-| S7 | TypeScript coverage 100% (CLI, app, website, design system) | `make test-coverage-all` | exit 0 | P0 | |
+| S6 | Rust patch coverage at or above 99% per touched file | `make test-coverage-rustd-merge RUSTD_PATCH_BASE=HEAD^1` (the CI coverage lane) | exit 0 | P0 | |
+| S7 | TypeScript coverage 100% | `make test-coverage-all` | exit 0 | P0 | |
 
 ## Dead Code Sweep
 
@@ -367,6 +388,11 @@ N/A: no files deleted. The `memory/{fleet_id}` read and push verbs stay for a le
   - *Why the heartbeat and not a route* (M225 Discovery, Indy, Oct 12, 2026: "New spec, wake hint (Recommended)"): a held request per worker was rejected. §3 holds one request per runner host, the heartbeat the runner already sends, counted and capped. The scope was put to Indy on Nov 03 as "Per-runner wake hold — one held request per runner host, not per worker (what you rejected Oct 12)" and chosen. The EGM zoom-out review (below) turned the first draft's new route into the held heartbeat.
   - *M233_001 overlap*: M233 §1 adds per-verb request-span attributes and §3 edge `Server-Timing`; this spec's §4 extends `fleet.delivery` and `DeliveryStage`. The two are complementary; M233's unstarted Sections rebase onto the keys declared here, and M233 §4's planned `002_round_trip_playbook.md` becomes a Section of `002_round_trip_percentiles.md` created here.
 - **Model reviews** — Elephant-Goldfish Model (EGM) review, Claude Fable 5.1, Nov 03, 2026, six reviewers on the first draft: structural 16 findings, comprehension 33, zoom-out 16, style 38, implementation readiness 24 (3 blockers), design 24 (2 blockers). Accepted from the design review on top of the list below: a capture failure keeps today's "the report still settles" decision; the publish follows the two biller calls because `money_gates` reads the balance through the biller; a shape-refused one-post report falls back once (the rolling-deploy skew); the ring signal is a generation counter so no ring is lost between a hold's arrival and its await; the beat is held only with an idle worker, so the saturation path stands; the runner asks to be held only after a reply carried `woken`; §5's claim is scoped to the runner's own heap copies, with the spool's clear-text copy named as not covered; the TraceQL metrics query is paired with a search query that needs no metrics generator. Declined: dropping `deny_unknown_fields` on the report types (the pre-port runner refusal depends on it; the fallback covers skew instead). Accepted and applied in this revision from the other five: no new route (the heartbeat is held); the idle hint stays at 1 s; `DeliveryStage` extended instead of a second histogram; memory written through `Memories::capture` before the commit instead of inside the settle transaction; `event_created_at` read off the lease row; tool records left as they are; the 413 branch replaced by `admit`'s cut-and-count; §6 (coverage audit) folded into Discovery and §4; the report path corrected to `/v1/runners/me/reports`; the retry extracted from the revoke fixture; the zeroing test replaced by a `zeroize()` proof; every path in Files Changed resolved on disk; globs, compound actions, em dashes and `hydrate`-as-prose removed; acronyms expanded. Declined: splitting into four Workstreams and PRs (Indy's one-PR direction below); dropping §5 (Indy asked for it, scope kept minimal); deferring §4 to M233 (complementary, recorded above).
+- **Implementation notes** (Nov 04, 2026, on `feat/m238-chat-round-trip`):
+  - *Built against the draft.* The capture is fenced on the lease row's token, not the request's: the settle authorizes on the row, and the first run of `test_superseded_report_writes_no_memory` showed a request-token fence refusing the memory while the report settled. The completion publish already sat after the biller calls and before the audit row on `fde585971`; the draft's "moves" was wrong, and the build pins and logs it instead. The drain-side reshape (Dimension 1.9) was added after the design review named the kept-then-drained gap. `RunSegments` nests under `telemetry.segments` so each report literal adds one field.
+  - *Refactors taken, per Indy's 10:30 PM ask:* the push verb's fenced capture split into `capture_for`, the one write path both the push and the report use; the revoke fixture's retry loop extracted to `retryable.ts` and shared with the mint; the chat-lease integration harness moved to `integration_lease_gates/chat.rs` and shared by the history and window suites; `supersede` moved to the shared `Held`; the post-issue thread and window reads overlapped with `future::join`; the report verb's capture boxed so the report future stays under the large-future bound.
+  - *Refactors left, and why:* splitting `afd_fleet` (its `report/` and `deliver/` modules sit near the file cap) is a milestone of its own; the report spool's clear-text copy needs a security spec; the ring wakes every held beat whatever its labels, bounded by host count and revisited above 50 hosts; authoring leases are never rung (as on `fde585971`), so authoring pickup stays on the 1 s hint.
+  - *Races checked:* a ring between a hold's arrival and its await (the `watch` generation is taken at arrival); a ring for a fleet whose hint is buffered (the generation moves before the dedup); a held beat dropped mid-wait (the cap's guard releases on drop); a worker entering its pause just after a wake (`notify_one` stores a permit); a lease issued between a report's capture and its commit (the slot forbids it).
 - **Open blockers** — none.
 - **Deferrals and transfers** — Each one carries its owner quote:
   > Owner (Indy, Nov 03, 2026 10:07 AM): "All three (Recommended)" — context: the M237 follow-up (per-step timers, warm slots, shorter poll wait) is a separate spec; this spec's §3 takes the poll wait.
@@ -375,5 +401,6 @@ N/A: no files deleted. The `memory/{fleet_id}` read and push verbs stay for a le
   > Owner (Indy, Nov 03, 2026 09:55 PM): "Fold the spec into the implementation PR (one PR), Edit .github/workflows if the acceptance-cli fix lives there, Push the ~/Projects/docs changelog branch and open its PR after merge" — context: the spec lands in the implementation PR rather than its own; §6's fix is fixture-level, so no workflow edit is needed.
   > Owner (Indy, Nov 03, 2026 09:50 PM): "Indy is going to bed. Ensure you spec out, comment the implementation using /orly-build and then /orly-ship conduct reviews, gates pass push the PR. Ensure the CI gates are green, with greptile feedback resolved. Then merge the PR. Prior to the push fix the acceptance-cli to pass." — context: authorises the commit, push, PR and merge of this milestone in this session, with the six Sections in one PR.
   > Owner (Indy, Nov 03, 2026 10:30 PM): "When touching code analyze for a refactor to see if the crates can be made smaller, performant, better concurrent and avoid races." — context: each Section's commit records, in the PR Session Notes, the refactor it took (folded when it completes the Section) and the ones it left with their reason.
+  > Owner (Indy, Nov 03, 2026 09:40 PM): "so i can have another agent fix the grafana dashboard later" — context: Dimension 4.4, the Grafana check of the per-fleet queries, runs after deploy with the dashboard work; this PR lands the span, the stages and the queries.
   > Owner (Indy, Nov 03, 2026 10:50 PM): "also avoid singular field assertion test cases, you need make sure the ts,tsx are 100%, rust rs is 99>% coverage on the patch diff" — context: every new test compares the whole value or outcome it checks; rubric rows S6 and S7 hold the coverage floors the CI lanes already enforce (`scripts/rustd_coverage.py --per-file-floor 99`, `cli/bunfig.toml`).
   > Owner (Indy, Nov 03, 2026 10:35 PM): "avoid duplicate code and handrolled code, but rather look for other places where you may have implemented the same or using any batle tests crates" — context: every mechanism here names the existing code it reuses (Prior-Art); the build searches the workspace before writing a helper and prefers a workspace crate already in `Cargo.lock` over new code.

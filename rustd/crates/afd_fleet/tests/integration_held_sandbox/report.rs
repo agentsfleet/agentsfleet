@@ -35,6 +35,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: SLICE_MS.unsigned_abs(),
+            segments: None,
         },
         checkpoint: ReportCheckpoint {
             last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
@@ -42,6 +43,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
         },
         tool_calls: None,
         held_until,
+        memory: Vec::new(),
     }
 }
 

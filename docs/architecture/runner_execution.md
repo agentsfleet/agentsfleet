@@ -124,13 +124,15 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
    │
    ├─ admit       the policy's tools and provider; an unhosted one refuses the lease here
    ├─ turn        one run per fleet on this runner; a second lease for it waits
-   ├─ hydrate     the fleet's memory window, through agentsfleetd
+   ├─ memory      the fleet's memory window, carried on the lease; read through
+   │              agentsfleetd only when an older daemon sent none
    ├─ admitted    only when a tool runs in a sandbox: size, egress and checkout plan
    ├─ run         the agent loop in the supervisor; tool calls cross the executor socket
    │  └─ build    beside it: the fleet's held sandbox, or a fresh one on the assigned
    │              network, bound repositories checked out; a sandbox call waits for it
    ├─ keep        a processed lease's sandbox is frozen and held; any other is killed
-   ├─ settle      full tool records, the fenced memory push, the report spooled, then posted
+   ├─ settle      full tool records, then one report post carrying the run's memory and
+   │              segments; without a window, the memory push first, as before
    └─ release     a killed sandbox's disk, beside the live tail's drain of at most 5 s
         renewal ticks alongside from the lease's start until the report is answered
 ```
@@ -140,6 +142,10 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
 **A refusal ends the lease with a report.** It ends as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Refusals cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and a binding no checkout serves.
 
 A sandbox that cannot be built leaves the turn going, and its sandbox-side calls answer `sandbox_unavailable`. Nothing runs unsandboxed in a sandbox's place.
+
+**One post settles a lease that carried its window.** A daemon at this release puts the fleet's memory window on every lease, an empty one included, and only such a daemon reads a report's `memory` and `telemetry.segments`. So the runner sends them, and skips both the memory read and the memory push, exactly when the lease carried a window (`afr_supervisor/src/lease_loop/settle.rs`). During a rolling deploy a lease from a new replica can meet an old replica at report time; that daemon refuses the body's shape with 400 `UZ-REQ-001`, and the runner pushes the memory and posts the report again without the new fields, once. A report that is first kept and later re-posted by the drain does not fall back; the drain quarantines a refused body as before.
+
+**The lease reply and the run's memory zero on drop.** The reply body the run borrows its policy, memory window and earlier turns from is held in a `zeroize::Zeroizing` buffer, and the deltas a run hands back travel in `CapturedMemory`, whose drop overwrites every string the run owns (`afr_supervisor/src/client/mod.rs`, `afr_supervisor/src/memory/mod.rs`). Not covered: the bytes handed to the HTTP client for a post, which it frees unzeroed, and the report spool's copy, which `ReportSpool::hold` writes to disk in clear and keeps until delivery.
 
 **The report is the record.** The report settles before the live tail is waited on, and a report the daemon cannot take stays spooled for the drain (`afr_supervisor/src/lease_loop/settle.rs`, `afr_supervisor/src/report_spool/mod.rs`). A renewal the daemon refuses, or a runner told to stop, cuts the run; the cut keeps the tokens and memory the run handed back and reports why it ended (`afr_supervisor/src/lease_loop/mod.rs`).
 
@@ -575,8 +581,10 @@ settle_and_drain                                    lease_loop/mod.rs
     otherwise ─► kill: cgroup.kill, then populated 0 within 5 s ─► Killed
                  an unsettled kill posts anyway and logs sandbox_kill_unsettled
   settle(&Fate)                                     lease_loop/settle.rs
-    tool records posted ─► memory pushed ─► usage flushed by renewal
-    ─► report spooled ─► report posted
+    tool records posted ─► [no window: memory pushed] ─► usage flushed by renewal
+    ─► report spooled (window: memory + segments ride it) ─► report posted
+    a one-post body refused for its shape (UZ-REQ-001) ─► memory pushed,
+      report re-posted without the new fields, once; the refused copy removed
   release, beside the live tail's drain
     destroy: egress removed, cgroup removed, umount, image and directory removed
     run_lease returns after it, so a worker never holds two leases' disks

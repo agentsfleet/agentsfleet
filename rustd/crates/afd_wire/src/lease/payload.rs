@@ -79,4 +79,10 @@ pub struct LeasePayload<'a> {
     /// True when the runner can reuse its latest held sandbox for a new event. Reassigned
     /// events and expired or outdated sandboxes require a fresh sandbox.
     pub resume_hold: bool,
+    /// The fleet's memory window, as `GET /v1/runners/me/memory/{fleet_id}`
+    /// returns it. A daemon that reads a report's `memory` sends it on every
+    /// lease, an empty window included. It is absent when the read failed; the
+    /// runner then reads memory itself.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<crate::memory::MemoryHydrateResponse<'a>>,
 }
