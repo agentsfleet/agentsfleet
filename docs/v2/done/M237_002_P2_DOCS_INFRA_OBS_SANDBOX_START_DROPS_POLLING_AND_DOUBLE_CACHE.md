@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Date:** Nov 02, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P2, host memory and sandbox start time; after M237_001 the start is hidden from users
 
@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Baseline revision:** 2f8c878c09e9c4048da1724385ec58746d348ed4
 
-**Test Baseline:** pending, measured before the Pull Request
+**Test Baseline:** base `2f8c878c0`, measured in an isolated checkout: runner unit 1382 and daemon unit 139 passed. Its unit lane stopped at the macOS `base64` test this Pull Request fixes; its integration lane stopped at 630 passed, 2 failed, both `afd_authoring` contention timeouts. Branch: unit 4911 Rust and 5289 TypeScript passed; integration 1458 passed.
 
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_002-start.md`, the kernel lane's budgets at `937c8d34d` and `c24c4b481`, with `beeacb8b0` and `e7c03a27d` between
 
@@ -170,7 +170,7 @@ Autoclear means unmounting frees the device, so the release and the boot sweep k
 
 `runner_execution.md` §Toolbox, §"A lease's sandbox today" and Parts A.1, D and E change to the built calls. The Section records the budgets trial's cold start before and after, with each host's kernel.
 
-- **Dimension 4.1** — Parts A.1, D and E match the code at merge → Test `manual_walkthrough_matches_code_after_engine_changes`
+- **Dimension 4.1** — Parts A.1, D and E match the code at merge → Test `manual_walkthrough_matches_code_after_engine_changes` — DONE: walked at `5ea5b8839` by the final standards review, whose two drifts were fixed in `4c091806d`; `make check-architecture-doc`: all 513 cited source paths resolve
 
 ## Interfaces
 
@@ -232,10 +232,10 @@ Wire, schema, OpenAPI and CLI: no change.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Buffered toolbox, socket pair and in-process disk proven on the lane (§1 to §3) | `make test-runner-kernel` | exit 0 | P0 | |
-| R2 | The same trials pass on Debian 13: the OrbStack machine `afr-kernel` stands in for the dev host (Discovery) | `make test-runner-kernel` on `afr-kernel`, `uname -r` and output in Session Notes | exit 0 | P0 | |
-| R3 | The toolbox goes direct only within 10% p99 of buffered (§1); `IMAGE` is the admitted toolbox; baseline from the same command without the variable | `sudo TOOLBOX_LOOP_DIRECT_IO=on bash scripts/toolbox/measure_first_use.sh "$IMAGE" first-use-direct.json 120 first-use-buffered.json` | `0` steps marked `REGRESSION`, or the toolbox attaches buffered | P1 | |
-| R4 | Start figures recorded (§4) | `test -s playbooks/operations/acceptance/baselines/M237_002-start.md` | exit 0 | P2 | |
+| R1 | Buffered toolbox, socket pair and in-process disk proven on the lane (§1 to §3) | `make test-runner-kernel` | exit 0 | P0 | ✅ `test result: ok. 69 passed; 0 failed` at `c24c4b481` |
+| R2 | The same trials pass on Debian 13: the OrbStack machine `afr-kernel` stands in for the dev host (Discovery) | `make test-runner-kernel` on `afr-kernel`, `uname -r` and output in Session Notes | exit 0 | P0 | ✅ on `afr-kernel`, `7.2.12-orbstack-00394-gbecdd6130068`: `69 passed; 0 failed` |
+| R3 | The toolbox goes direct only within 10% p99 of buffered (§1); `IMAGE` is the admitted toolbox; baseline from the same command without the variable | `sudo TOOLBOX_LOOP_DIRECT_IO=on bash scripts/toolbox/measure_first_use.sh "$IMAGE" first-use-direct.json 120 first-use-buffered.json` | `0` steps marked `REGRESSION`, or the toolbox attaches buffered | P1 | ✅ 8 of 8 steps `REGRESSION`, so the toolbox attaches buffered (`Access::direct_io`) |
+| R4 | Start figures recorded (§4) | `test -s playbooks/operations/acceptance/baselines/M237_002-start.md` | exit 0 | P2 | ✅ `exit 0` |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
