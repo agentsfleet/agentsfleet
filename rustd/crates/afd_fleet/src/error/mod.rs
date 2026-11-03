@@ -83,6 +83,16 @@ afd_core::error_shell!(
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("task progress could not be read before its deadline")]
+    TaskReadTimeout {
+        #[source]
+        source: tokio::time::error::Elapsed,
+    },
+    #[error("the database cancelled an overdue task progress read")]
+    TaskReadCancelled {
+        #[source]
+        source: sqlx::Error,
+    },
     #[error("task continuation admission failed")]
     Admission {
         #[source]

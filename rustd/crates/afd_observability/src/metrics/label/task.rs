@@ -37,6 +37,8 @@ closed_set! {
         Limit => "limit",
         /// A required datastore did not answer.
         Unavailable => "unavailable",
+        /// An acquisition, query or connected read exceeded its native deadline.
+        Timeout => "timeout",
         /// Another native error prevented completion.
         Failed => "failed",
     }

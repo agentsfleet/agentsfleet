@@ -146,6 +146,13 @@ pub struct FleetCounters {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TailFrame<'a> {
+    /// A committed task change invalidates the fleet's authenticated work read.
+    TaskChanged {
+        /// The task within the fleet named by this channel.
+        task_id: Cow<'a, str>,
+        /// The committed resource version; the frame is only a read hint.
+        resource_version: u64,
+    },
     /// A person's message was accepted and waits for a runner.
     ///
     /// Published once, by the steer route, after the admission commits and

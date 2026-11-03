@@ -73,18 +73,18 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | Files | Action | Role |
 | --- | --- | --- |
 | `schema/{2190_fleet_task_items,2200_fleet_tasks,2210_fleet_task_inputs,2220_fleet_task_bindings,2260_runner_decision_model,2270_runner_lease_decisions}.sql`; `rustd/crates/afd_db/src/migration.rs`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection and explicit migration/schema/role inventories; wait/effect/checkpoint slots follow |
-| `rustd/crates/afd_fleet/src/task/`; `lease/{claim,issue,reclaim,finalize,settle,context,decision}.rs`, `lease/{report,usage}/`; tests | CREATE / EDIT | guarded DT ownership, complete interpretation plans, typed rows/controls, effect reconciliation, snapshots and settlement integration |
+| `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,context,decision,coverage,billing_sweep}.rs`, `lease/{report,renew,usage}/`; tests | CREATE / EDIT | guarded DT ownership, bounded reads, typed errors/plans/controls, effect reconciliation, snapshots and settlement integration |
 | `rustd/crates/afd_wire/src/{lease,policy,report}/`; matching wire tests | EDIT | explicit task generation, goal revision and decision/evidence boundaries |
 | `rustd/crates/afr_agent/src/{prompt,loop}/`; matching agent tests | EDIT | current intent, consumed human input and goal-aware action/decision loop |
 | `rustd/crates/afr_agent/src/decision/{mod,questions,routing,goal}.rs`; `afr_providers/src/{decision/,lib.rs,error/,retry/}`; `afd_fleet_runtime/src/{config/,definition/}`; `afd_authoring/src/model/provider/{prompt.rs,prompt/*.md}`; existing authoring review/Apply owners and tests | CREATE / EDIT | one typed decision trait/client; customer-owned instructions/questions; Markdown authoring guidance; linkable starters reuse immutable Library copies and existing setup chat |
 | `rustd/crates/afd_gate/src/policy/`; `rustd/crates/afd_credential/src/credential/github/`; matching policy tests | EDIT | reviewed task/existing-PR authority and selected publication precondition |
 | `rustd/crates/afr_supervisor/src/{holds,lease_loop}/`; matching recovery tests | EDIT | compatible task-bound workspace recovery and effect reconciliation |
 | `rustd/crates/afd_api_ingress/src/handler/webhook/{app_route.rs,github/}`; `afd_ingress/src/app/`; `afd_cron/src/fire/`; `agentsfleetd/src/sweepers/{mod.rs,tasks.rs}` and supervisor inventory/tests | EDIT / CREATE | signed completion matching, existing scheduler observation and supervised bounded task maintenance |
-| `rustd/crates/afd_api_tenant/src/handler/fleet/tasks/`; `afd_api_runner/src/handler/runner/tasks/`; `afd_api_wire/src/fleet/`; `afd_wire/src/{lease,report,paths,usage}`; `afd_http/src/{route,route_inventory,route_meta_total}`; `public/openapi.json` | CREATE / EDIT / GENERATE | authenticated task/lease APIs and capability negotiation defined by Interfaces |
-| `package.json`, `bun.lock`, `ui/packages/{app,design-system,website}/package.json`; `ui/packages/app/components/domain/chat/{TaskPanel,TaskDetail,TaskControls,SetupQuestions}.tsx`; existing fleet ChatView, setup/review/history, streaming and `lib/api/{tasks,decision-policy}.ts`; related tests | CREATE / EDIT | latest dependencies; retain setup/chat layout, spinner, theming/save flow; compact work summaries, success criteria/revisions and recovery; omit routing rules from setup display |
+| `rustd/crates/afd_api_tenant/src/handler/{fleet/tasks,stream}/`; `afd_api_runner/src/handler/runner/tasks/`; `afd_api_wire/src/fleet/`; `afd_wire/src/{lease,report,paths,usage}`; `afd_http/src/{route/,services/contract.rs}`; `afd_api/tests/{route_*,fleet_tasks.rs,openapi_stream_frames.rs,integration_fleet_tasks/,harness/,tenant_plane_suite.rs}`; `agentsfleetd/src/plane/{mod,services}.rs`; `public/openapi.json` | CREATE / EDIT / GENERATE | authenticated task/lease APIs and capability negotiation defined by Interfaces |
+| `package.json`, `bun.lock`, `ui/packages/{app,design-system,website}/package.json`; `ui/packages/app/components/domain/chat/{TaskPanel,TaskDetail,TaskControls,SetupQuestions,ChatThread,ChatComposerFrame}.tsx`, `use-task-read.ts`; existing fleet thread, setup/review/history, streaming, `app/live/` and `lib/api/{tasks,decision-policy,fleet-paths,live-json-proxy}.ts`; related tests | CREATE / EDIT | retain setup/chat layout, spinner, theming/save flow; compact work summaries, criteria/revisions and recovery; omit routing rules from setup display |
 | `docs/architecture/` owning topics; `docs/AUTH.md`; this spec and eventual done destination; `docs/DESIGN_SYSTEM.md` | EDIT / MOVE | architecture, credential custody and actual final evidence without duplicate owners |
 | `rustd/crates/afd_outbound/src/` | REUSE | no default edits; DT records correlate existing obligations and Slack markers |
-| `tests/fixtures/fleets/goal-repair/{cases,decision-policy}.json`; `playbooks/operations/acceptance/baselines/M236_001-autonomy.md` | CREATE | pin shared editable questions, actual-model inputs/expectations and concise attributed evidence ledger, without a new bespoke checker |
+| `tests/fixtures/fleets/goal-repair/{cases,decision-policy}.json`; `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`; `make/test-integration-rustd.mk`, `codecov.yml` | CREATE / EDIT | pin shared editable questions and attributed evidence; strengthen the existing Rust patch floor to 99.01% without a new checker |
 | `docs/architecture/scenarios/durable-repair.md`; scenario index | EDIT | acceptance results and current/proposed distinction |
 | `docs/architecture/{durable_tasks,goal_evaluation}.md` | CREATE | lifecycle and decision-provider owners |
 | `docs/architecture/{README,data_flow,lease_flow,fleet_definitions,context_lifecycle,sandbox_evaluation}.md` | EDIT | owning mechanisms and explicit cross-lease handoff |
@@ -110,7 +110,7 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 
 ## Applicable Gates
 
-Authoring is Markdown-only. Implementation retains `orly gate pr`, `make lint-all`, `make test-unit-all`, `make test-integration-rustd`, `make check-version` and gitleaks.
+Implementation retains `orly gate pr`, `make lint-all`, `make test-unit-all`, `make test-integration-rustd`, `make check-version` and gitleaks.
 Run one native test lane at a time with the cloud Cargo settings; no test, coverage, authentication or TLS bypass is authorized.
 User-visible source changes need browser checks and matching documentation in its owning repository.
 
@@ -357,7 +357,7 @@ Retain call inventory and stage timings across compaction. Record baseline/candi
 
 ## Test Specification (tiered)
 
-Use modular scenario tests through production owners, with independent expected outcomes and several assertions for each invariant.
+Use modular scenarios through production owners with independent expected outcomes and several assertions per invariant; measured against latest main, changed executable TS/TSX lines require 100% coverage and Rust lines strictly above 99% (Indy, Nov 03, 2026).
 Avoid test-only production seams, coverage-padding field tests and duplicated proof; broader test cleanup belongs to Indy's other agent.
 Complete one crate slice before running its focused gates; repeat only for concrete failures. Concurrency proofs use isolated fixtures and bounded channels/barriers; justify mutexes.
 

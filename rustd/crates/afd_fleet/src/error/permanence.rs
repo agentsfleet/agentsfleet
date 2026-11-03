@@ -60,6 +60,8 @@ impl Error {
             | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::SetupUnavailable => true,
             ErrorKind::Datastore { .. }
+            | ErrorKind::TaskReadTimeout { .. }
+            | ErrorKind::TaskReadCancelled { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Admission { .. }
             | ErrorKind::Authoring { .. }

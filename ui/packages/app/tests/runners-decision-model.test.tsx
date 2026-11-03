@@ -18,8 +18,8 @@ const stored = {decision_model_id: SELECTED, sandbox_tier: "landlock_full" as co
   network_policy: "allow_all" as const, registry_allowlist: ["registry.npmjs.org"], worker_count: 3,
   extra_binds: [{path: "/srv/models", mode: "read_only" as const, note: "shared cache"}]};
 const saved = vi.fn();
-function Harness() {
-  const form = useForm<PolicyFormValues>({defaultValues: formFromPolicy(stored)});
+function Harness({defaults = formFromPolicy(stored)}: {defaults?: PolicyFormValues}) {
+  const form = useForm<PolicyFormValues>({defaultValues: defaults});
   return <Form {...form}><form onSubmit={event => {event.preventDefault(); saved(policyFromForm(form.getValues()));}}>
     <PolicyDecisionField control={form.control} /><button type="submit">Save assignment</button>
   </form></Form>;
@@ -52,5 +52,30 @@ it("retains the assignment through a catalogue failure, retries, selects an enab
   await user.click(screen.getByRole("button", {name: "Save assignment"}));
   const {decision_model_id: _removed, ...cleared} = stored;
   await waitFor(() => expect(saved).toHaveBeenLastCalledWith({policy: cleared, error: null}));
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+it("keeps an unassigned runner's policy through a refused catalogue read before selecting a reviewed model", async () => {
+  const defaults = formFromPolicy(stored);
+  delete defaults.decision_model_id;
+  const {decision_model_id: _unassigned, ...unassigned} = stored;
+  const catalogue = adminModelListSchema.parse({models: [{...ADMIN_MODEL, id: AVAILABLE, prices: [],
+    metadata: {...ADMIN_MODEL.metadata, display_name: "Jev"},
+    decision: {enabled: true, profile: {revision: "reviewed-1", api: "typesafe"}}}]});
+  read.mockResolvedValueOnce({ok: false, error: "Model read access unavailable"})
+    .mockResolvedValueOnce({ok: true, data: catalogue});
+  const user = userEvent.setup();
+  render(<Harness defaults={defaults} />);
+  expect(screen.getByRole("combobox", {name: "Decision model"}).textContent).toBe("None");
+  await user.click(screen.getByRole("combobox", {name: "Decision model"}));
+  expect(await screen.findByText(/Could not load models/)).toBeTruthy();
+  expect(screen.queryByRole("option", {name: /Current selection/})).toBeNull();
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", {name: "Save assignment"}));
+  expect(saved).toHaveBeenLastCalledWith({policy: unassigned, error: null});
+  await user.click(screen.getByRole("combobox", {name: "Decision model"}));
+  await user.click(await screen.findByRole("option", {name: "Jev · fireworks"}));
+  await user.click(screen.getByRole("button", {name: "Save assignment"}));
+  expect(saved).toHaveBeenLastCalledWith({policy: {...unassigned, decision_model_id: AVAILABLE}, error: null});
   expect(read).toHaveBeenCalledTimes(2);
 });

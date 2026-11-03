@@ -85,6 +85,10 @@ impl Services for ServingPlane {
         &self.leases
     }
 
+    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+        &self.tasks
+    }
+
     fn sessions(&self) -> &Logins {
         &self.login.logins
     }

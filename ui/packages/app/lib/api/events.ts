@@ -169,6 +169,7 @@ export type FleetCountersSnapshot = {
 };
 
 export type ActivityLiveFrame =
+  | {kind: typeof FRAME_KIND.TASK_CHANGED; task_id: string; resource_version: number}
   // A person's message, accepted and waiting for a runner: the id the send's
   // 202 names, who sent it, and what they typed. Fields past the identifier
   // are optional on the TYPE because the wire is untrusted.

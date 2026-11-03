@@ -238,6 +238,7 @@ pub(crate) struct Fleet {
     authenticator: Planes<Directory, MockCapabilities, MockVerifier>,
     runners: Runners,
     leases: NoWork,
+    tasks: afd_fleet::task::Tasks,
     workspaces: Ownership,
     workspace_directory: Workspaces,
     api_keys: ApiKeys,

@@ -155,6 +155,8 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         ))),
         FleetRoute::Revisions => Some(post(handler::fleet::native::revision::apply::<D>)),
         FleetRoute::Events => Some(get(handler::event::fleet_list::<D>)),
+        FleetRoute::Tasks => Some(get(handler::fleet::tasks::list::<D>)),
+        FleetRoute::Task => Some(get(handler::fleet::tasks::one::<D>)),
         FleetRoute::Event => Some(get(handler::event::detail::<D>)),
         FleetRoute::ToolCall => Some(get(handler::event::tool_call::read::<D>)),
         FleetRoute::Grants => Some(get(handler::grant::list::<D>)),

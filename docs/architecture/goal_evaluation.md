@@ -427,6 +427,30 @@ Retain the original usage categories and normalize them through tested provider 
 
 Unknown calls retain their reservation; replacement or task binding cannot charge the same physical call again or reset cumulative limits.
 
+### Native billing integration
+
+Use the original lease's `WorkKey::FleetLease`; binding an intent call to a later task does not create another billing identity.
+The call record retains its runner, original admission/lease, optional task, authorized generation, native usage sequence, immutable profile/price snapshot and reservation.
+Coding usage keeps `[0, 2^31)`, runtime uses `[2^31, 3 * 2^30)`, and native decision calls use `[3 * 2^30, 2^32)`; both native allocators refuse exhaustion.
+Runtime-line counts in `meter_lease.sql` and `bill_expired_slice.sql` must exclude decision sequences.
+
+Reuse `afd_billing::price::{PriceBook, Rater}` with frozen decision tiers and platform posture.
+Do not pass decision usage through the coding lease's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
+The existing billing sweeper must group those three attributes as well as work identity, so delayed settlement preserves attribution.
+
+A hold ceiling is absolute and monotonic, so repeating a two-cent ceiling cannot reserve another physical call.
+Compute the requested ceiling from all logged charges, current coding headroom and all unresolved physical-call reservations.
+Persist call identity before releasing the connection for `Biller::reserve`, then recheck current authority and aggregate coverage before credential dispatch.
+Only confirmed `Hold::Held` admits a new paid decision; an unconfirmed or absent wallet cannot authorize provider spend.
+Resolve the platform-admin secret freshly after confirmation; missing or revoked keys do not select a tenant or environment substitute.
+
+One receipt recorder serves PATCH, renew and report.
+It authenticates the original call owner, validates usage once, and commits call accounting plus `ledger::log_lines` in the same transaction; settlement follows commit.
+Identical receipts replay; conflicting known usage fails. An unknown result creates no zero-cost placeholder that could consume the actual billing sequence.
+Record attributable late usage before rejecting stale execution; accounting does not grant current task-transition authority.
+Report and sweep release the whole lease hold only after all physical calls are reconciled, including calls whose original lease is no longer active.
+The existing whole-hold API conservatively retains excess headroom until then; it cannot lower a live ceiling safely.
+
 ## Concrete repair decision example
 
 This request illustrates an assigned bookmark-import repair; it is not a live Linkwarden observation or Jev result.

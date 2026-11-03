@@ -1,6 +1,7 @@
 import React, { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { summary } from "@/tests/helpers/task-reads";
 
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { OUTCOME } from "@/lib/events/event-summary";
@@ -87,6 +88,7 @@ const AGAIN_ID = "evt_flush_again";
 
 // Stable across flushes, as the registry's callbacks are.
 const STABLE = {
+  tasksSeq: 0,
   connectionStatus: CONNECTION_STATUS.LIVE,
   isRunning: false,
   appendOptimistic: vi.fn(),
@@ -132,6 +134,26 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+it("clears confirmed work and cancels its reads when the fleet stream revokes access", async () => {
+  const network = vi.fn<typeof fetch>().mockResolvedValue(Response.json({items: [summary()], next_cursor: null}));
+  vi.stubGlobal("fetch", network);
+  try {
+    const events = [turn("Last confirmed answer", AGENTSFLEET_EVENT_STATUS.PROCESSED)];
+    shell.stream.mockReturnValue({...STABLE, events});
+    const view = render(thread());
+    expect(await screen.findByText("PR #123 repair")).toBeTruthy();
+    expect(screen.getByText("Last confirmed answer")).toBeTruthy();
+    const requestSignal = network.mock.calls[0]?.[1]?.signal;
+    expect(requestSignal?.aborted).toBe(false);
+    shell.stream.mockReturnValue({...STABLE, connectionStatus: CONNECTION_STATUS.REVOKED, events});
+    view.rerender(thread());
+    expect(screen.queryByRole("region", {name: "Current work"})).toBeNull();
+    expect(screen.queryByText("PR #123 repair")).toBeNull();
+    expect(requestSignal?.aborted).toBe(true);
+    expect(network).toHaveBeenCalledTimes(1);
+  } finally {vi.unstubAllGlobals();}
+});
 
 it("does not decode runtime bodies as receipts and tolerates a recorded event with no payload", () => {
   const decode = vi.spyOn(activity, "readFleetActivity");

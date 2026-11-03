@@ -39,11 +39,13 @@ it("preserves ordinary fleets without adding decision defaults", () => {
 
 it("keeps malformed, missing and unsupported criteria visibly unconfirmed", () => {
   const policy = parsedFixture();
-  for (const value of [null, {}, {routing: {}},
+  const definitions = [null, {}, {routing: {}},
     {...policy, completion: {...policy.completion, statements: [policy.completion.statements[0], policy.completion.statements[0]]}},
     {...policy, completion: {...policy.completion, next_action: {question: "Choose", criteria: {CONTINUE: "Go", WAIT: "Wait", DONE: "Done", PUBLISH: "Any target"}}}},
-  ]) {
-    const result = render(<SetupQuestions definition={definition(value)} />);
+  ].map(definition);
+  definitions.push({...REVIEW.effective.definition, config: {}});
+  for (const candidate of definitions) {
+    const result = render(<SetupQuestions definition={candidate} />);
     expect(screen.getByText("Success criteria unavailable")).toBeTruthy();
     expect(screen.queryByText(`1. ${QUESTION}`)).toBeNull();
     result.unmount();

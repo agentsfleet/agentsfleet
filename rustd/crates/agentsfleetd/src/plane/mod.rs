@@ -64,6 +64,7 @@ pub struct ServingPlane {
     authenticator: Authenticator,
     runners: Runners,
     leases: Plane,
+    tasks: afd_fleet::task::Tasks,
     /// What a signup event from the identity provider is verified against.
     identity_webhook_secret: Option<SecretBytes>,
     platform_admin_workspace: Option<Uuid7>,
@@ -158,6 +159,7 @@ impl ServingPlane {
         let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
         let tenant = stores::tenant(&database, &kek, &providers, &activity_streams);
         let activity = stores::activity(&database, &queue, &kek, &admissions);
+        let task_admissions = admissions.clone();
         let outbound = surfaces::outbound(
             &database,
             &queue,
@@ -169,6 +171,16 @@ impl ServingPlane {
                 slack_api_base,
             },
         );
+        let leases = lease_plane(
+            database.clone(),
+            queue.clone(),
+            kek,
+            providers,
+            doorbell,
+            broker,
+            biller,
+        );
+        let tasks = afd_fleet::task::Tasks::new(leases.leases.clone(), task_admissions);
         Self {
             authoring,
             tenant,
@@ -180,7 +192,8 @@ impl ServingPlane {
             signup_writeback,
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
-            leases: lease_plane(database, queue, kek, providers, doorbell, broker, biller),
+            leases,
+            tasks,
             identity_webhook_secret,
             platform_admin_workspace,
             live,

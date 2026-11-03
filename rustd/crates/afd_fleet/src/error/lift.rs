@@ -28,6 +28,7 @@
 use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
+    tokio::time::error::Elapsed => TaskReadTimeout,
     afd_core::json::Unreadable => TaskDocument,
     afd_admission::Error => Admission,
     afd_authoring::Error => Authoring,

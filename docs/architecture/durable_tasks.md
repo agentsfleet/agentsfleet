@@ -9,6 +9,14 @@ Indy approved implementation on November 3, 2026; runtime acceptance remains pen
 The mechanisms below define the approved implementation target, including the concrete limits and protocol in the final sections.
 The acceptance ledger distinguishes implemented components from pending runtime integration and live proof.
 
+The current component exposes authenticated unfinished-work and task-detail reads through the existing fleet service.
+The inline panel displays native state, accepted setup revision and saved criteria; its rows reuse the existing fleet conversation.
+Initial stream hello, task-change hints and reconnect gaps trigger scoped readback rather than inventing progress.
+
+The read owner bounds pool acquisition, SQL and commit together; server statement cancellation also bounds connected lock waits.
+Access loss clears browser task state; transient failures retain explicitly labelled last-confirmed data.
+Task creation from model decisions, waits, publication and encrypted recovery remain unfinished runtime work.
+
 A fleet retains its instructions, grants, conversation, memory and schedules.
 A DT names one accepted objective within that fleet.
 A lease gives one runner worker temporary permission to advance work.
@@ -117,7 +125,10 @@ R2 holds encrypted immutable checkpoint bytes and does not decide current owners
 
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
 
-The branch defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; task handlers and runner integration remain unfinished.
+The branch defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; authenticated list/detail reads share the daemon task owner.
+Task mutations and runner integration remain unfinished; list reads return unfinished work, while detail retains terminal outcomes.
+The inline chat panel reads these native rows and lazy-loads saved criteria; committed bind/control changes publish `task_changed` on the existing fleet stream.
+Initial stream readiness, reconnect and gap recovery invalidate that read; frames carry no authority, and failed refreshes preserve explicitly labelled confirmed progress until access is lost.
 Wait, effect, decision and checkpoint storage below describe proposed additions, with exact scope in the [active spec](../v2/active/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
 
 The daemon binds admissions and leases to a nullable task identity; ordinary exchanges retain the existing path.

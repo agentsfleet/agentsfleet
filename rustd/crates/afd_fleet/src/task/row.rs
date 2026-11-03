@@ -12,6 +12,7 @@ use crate::error::{Error, ErrorKind, Result};
 pub(super) struct TaskRow {
     pub id: String,
     pub accepted_revision_id: String,
+    pub accepted_revision_number: i64,
     pub title: String,
     pub objective: String,
     pub questions: String,
@@ -49,6 +50,7 @@ impl TaskRow {
         Ok(TaskSnapshot {
             title: self.title,
             resource_version: counter(self.resource_version, "resource_version")?,
+            accepted_revision_number: counter(self.accepted_revision_number, "revision")?,
             context: TaskContext {
                 task_id: Cow::Owned(self.id),
                 generation: counter(self.generation, "generation")?,

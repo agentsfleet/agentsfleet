@@ -35,6 +35,8 @@ export type FleetStreamSnapshot = {
   // the value it saw when it asked, so a frame that landed while the render
   // was in flight is not rolled back by facts the server read before it.
   factsSeq: number;
+  /** Read invalidations only; task rows remain authoritative on the server. */
+  tasksSeq: number;
   // The newest server row's figures, recomputed whenever the rows change and
   // kept by identity when the figures did not — so a subscriber selecting
   // `latest` does not re-render per chunk of a streaming reply.
@@ -83,6 +85,7 @@ export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
 
   fleet: NO_FACTS,
   factsSeq: 0,
+  tasksSeq: 0,
   latest: null,
 }) as FleetStreamSnapshot;
 
@@ -96,6 +99,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
 
       fleet: NO_FACTS,
       factsSeq: 0,
+      tasksSeq: 0,
       latest: latestFigures(events),
     },
     replyStreams: new Map(),

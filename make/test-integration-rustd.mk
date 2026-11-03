@@ -263,7 +263,8 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/afd_bench/)
 # ones, and a renamed file counts (Indy, Oct 15, 2026: "its 99% of the rust git
 # diff patch files"; "all renames must be graded for 99%").
 # Codecov has no per-file status, so this is the only place it is graded.
-RUSTD_PATCH_FLOOR ?= 99
+# Strictly above 99% on Indy's Nov 03, 2026 instruction; Codecov agrees.
+RUSTD_PATCH_FLOOR ?= 99.01
 RUSTD_PER_FILE_FLOOR ?= 99
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \

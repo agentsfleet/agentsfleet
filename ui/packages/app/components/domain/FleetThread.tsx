@@ -28,6 +28,7 @@ import { useFleetSteerQueue } from "./useFleetSteerQueue";
 import { reportsOwnRun } from "./fleetReplyMessage";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 import { FleetScopeProvider } from "./FleetScope";
+import { TaskPanel } from "./chat/TaskPanel";
 
 export type FleetThreadProps = {
   modelLabel?: string;
@@ -70,8 +71,11 @@ export type FleetThreadProps = {
  * (`reportsOwnRun`).
  */
 export function FleetThread(props: FleetThreadProps) {
-  const {stream, arrived, names, ledger, delivery, runtime, setupEventId} = useThreadRuntime(props);
+  const {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject} = useThreadRuntime(props);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
+  const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
+  const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
+    subject={taskSubject} revision={stream.tasksSeq} />, [props.workspaceId, props.fleetId, taskSubject, stream.tasksSeq]);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
@@ -84,6 +88,7 @@ export function FleetThread(props: FleetThreadProps) {
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
               <FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
+                work={work}
                 eventsCount={stream.events.length} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
                 onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} />
@@ -135,5 +140,5 @@ function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, s
     runtimeRef.current = runtime;
     return () => { runtimeRef.current = null; };
   }, [runtime]);
-  return {stream, arrived, names, ledger, delivery, runtime, setupEventId};
+  return {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject};
 }

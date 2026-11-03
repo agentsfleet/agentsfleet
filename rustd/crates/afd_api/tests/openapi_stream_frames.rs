@@ -23,7 +23,7 @@ const FLEET_STREAM: &str = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/even
 const KIND: &str = "kind";
 
 /// How many variants [`TailFrame`] has: one per slot [`slot`] hands out.
-const VARIANTS: usize = 5;
+const VARIANTS: usize = 6;
 
 /// Which variant `frame` is. The guard, not the source of the kinds.
 const fn slot(frame: &TailFrame<'_>) -> usize {
@@ -33,6 +33,7 @@ const fn slot(frame: &TailFrame<'_>) -> usize {
         TailFrame::EventComplete { .. } => 2,
         TailFrame::GateOpened { .. } => 3,
         TailFrame::GateResolved { .. } => 4,
+        TailFrame::TaskChanged { .. } => 5,
     }
 }
 
@@ -69,6 +70,10 @@ fn one_of_each() -> Vec<TailFrame<'static>> {
             resolved_by: text(),
             pending_approvals: 0,
             counters: None,
+        },
+        TailFrame::TaskChanged {
+            task_id: Cow::Borrowed("019a42b0-0000-7000-8000-000000000123"),
+            resource_version: 1,
         },
     ]
 }

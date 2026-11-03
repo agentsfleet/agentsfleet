@@ -60,6 +60,9 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// returning both would put the money path behind every heartbeat.
     fn leases(&self) -> &Self::Leases;
 
+    /// Authoritative task lifecycle over the same fleet lease and admission stores.
+    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle;
+
     /// What the device-flow login surface acts through.
     ///
     /// An associated type for the reason [`Services::Leases`] is one: the

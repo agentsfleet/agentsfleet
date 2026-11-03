@@ -25,7 +25,7 @@ export function SetupQuestions({definition, label}: {definition: Definition; lab
   </Section>;
 }
 
-function QuestionDetails({number, question}: {number: number; question: Question}) {
+export function QuestionDetails({number, question}: {number: number; question: Question}) {
   return <div className="space-y-xs text-sm">
     <p className="break-words font-medium">{number}. {question.question}</p>
     <dl className="space-y-xs text-muted-foreground">

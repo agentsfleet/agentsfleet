@@ -94,6 +94,8 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "`counters`. It confirms subscription readiness. No `hello` means the live ",
         "subscription is unavailable.\n\n",
         "Activity includes:\n",
+        "- `task_changed`: committed `task_id` and `resource_version`. Read the task ",
+        "collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n",
         "- `event_admitted`: accepted chat message, with `event_id`, `actor`, ",
         "`event_type`, `message`, and `created_at`.\n",
         "- `event_received`: run started, with the same fields; `message` appears for ",

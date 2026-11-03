@@ -295,3 +295,56 @@ The log is `/tmp/m236-lease-decision-affected-unit.log`; this checks eight affec
 The daemon regenerated OpenAPI with 107 paths and 933,655 bytes, including the lease assignment and its 256-byte requested-model bound.
 
 This component supplies a frozen selection. Physical reservation, key dispatch, task decisions and full DT acceptance remain pending.
+
+## Current work read component
+
+Authenticated collection/detail routes now use the daemon's shared task owner, keyset cursors, immutable accepted criteria and native resource tags.
+Collection reads distinguish missing scoped fleets from owned empty fleets; both scope and task SQL run inside one five-second deadline with transaction-local statement cancellation.
+Timeouts use a closed metric outcome and bounded reason, alongside the existing task operation counters and duration measurements.
+
+The inline work panel uses the existing fleet chat, fonts, components and stream.
+It reads confirmed rows, expands saved criteria lazily and retains explicitly labelled progress during transient refresh failures.
+Identity changes and access refusal clear its cached work; the first stream hello closes the initial read/subscription gap.
+The native bind/control owner publishes read hints after commit; no extra queue, chat or EventSource was introduced.
+
+Astra reviewed this slice at extra-high effort and verified the subscription-gap, scoped-fleet lookup and SQL cancellation corrections in source.
+That review ran no gates. Real publisher-to-browser delivery and forced client-transport deadline behavior still require execution evidence.
+
+Indy's coverage requirement is recorded in the active spec: all changed executable TS/TSX lines reach 100%; Rust patch coverage is strictly above 99%, measured against latest main.
+The existing Make and Codecov Rust patch floors now agree at 99.01%; per-file and whole-workspace checks retain their separate floors.
+Scenario tests exercise several observable invariants together; the broader test cleanup remains with the other agent.
+
+`make lint-rustd` passed after the final scenario corrections, including workspace Clippy with all targets and features.
+The log is `/tmp/m236-task-read-component-lint.log`.
+The clean `make test-integration-rustd` run passed 1,471 regular tests and all three exclusive tests; `/tmp/m236-task-read-component-integration.log` records both tallies.
+
+The revised native scenarios prove scoped paging, independent timestamp ordering, accepted revision pinning after a newer save, resource revalidation and connected SQL cancellation.
+Their guards dispose owned rows and isolated databases after assertion failure; no new mutex was added.
+The daemon regenerated `public/openapi.json`: 109 paths, 957,320 bytes, including both task reads and their response schemas.
+
+`make test-coverage-all` passed on the final UI source; `/tmp/m236-task-component-ts-coverage.log` records the package gates.
+
+| Package | Tests | Measured coverage |
+|---|---|---|
+| App | 4,653 passed across 468 files | 100% statements, branches, functions and lines; 10,412 executable lines covered. |
+| Website | 133 passed | 100% statements, branches, functions and lines. |
+| CLI | 1,989 passed, 16 skipped | Existing enforcement passed 100% function and line coverage; Bun does not report branch coverage. |
+| Design system | 522 passed | 100% statements, branches, functions and lines. |
+
+The production-component browser recheck passed all eight desktop/mobile cases after the final copy refinement.
+It verifies typography, lazy criteria, the shared conversation and usable composer geometry; `/tmp/m236-task-component-browser.log` records the 6.2-second run.
+Controlled read fixtures supply its data; this is not full live DT acceptance.
+
+Rust patch coverage has not been measured; raising its floor is not execution evidence.
+
+## Owner work-item status
+
+| Requested work | Current state and evidence |
+|---|---|
+| Integrate merged main before shipping | PR 798 ancestry is retained by `28bc628aad363d18498c1a15d5c0a9d85b0a9c37`; latest fetch still reports six commits ahead, zero behind. Recheck before push and ship. |
+| Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions and task reads are foundations. Physical calls, full agent/lease integration, waits, publication and recovery remain incomplete. |
+| Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Eight final production-component browser checks passed for typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
+| Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. SDK transfer, encryption, recovery and live bucket checks remain pending. |
+| Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |
+| Architecture and companion docs | Owning DT/decision pages track these changes. Full architecture/public-docs corpus review and the companion documentation PR remain pending. |
+| Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. No feature PR exists; all required gates, actual-head Continuous Integration and Greptile resolution must precede the authorized merge. |

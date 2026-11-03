@@ -76,6 +76,47 @@ pub struct TaskSnapshot {
     pub title: String,
     /// Version of the entire native resource, including accounted progress.
     pub resource_version: u64,
+    /// Human-readable immutable setup revision number.
+    pub accepted_revision_number: u64,
+}
+
+/// One bounded page of unfinished work, newest creation time and identity first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskPage {
+    /// Compact rows without objective text or evidence.
+    pub items: Vec<TaskSummary>,
+    /// Whether another row exists beyond this page.
+    pub more: bool,
+}
+
+/// Native keyset boundary for a page ordered by creation time and identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskAfter {
+    /// Creation instant of the last returned row.
+    pub created_at: jiff::Timestamp,
+    /// Identity breaking ties at the same instant.
+    pub id: Uuid7,
+}
+
+/// Confirmed native progress suitable for the fleet's current-work panel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskSummary {
+    /// Stable objective identity.
+    pub id: String,
+    /// User-facing compact name.
+    pub title: String,
+    /// Current durable lifecycle state.
+    pub state: TaskState,
+    /// Version of this native resource.
+    pub resource_version: u64,
+    /// Generation required by subsequent task operations.
+    pub generation: u64,
+    /// Setup revision accepted by this objective.
+    pub accepted_revision_id: String,
+    /// Admission instant used by the keyset boundary.
+    pub created_at: jiff::Timestamp,
+    /// Fixed cumulative wall deadline.
+    pub expires_at: jiff::Timestamp,
 }
 
 /// Public lifecycle controls; completion is available only through native proof.
