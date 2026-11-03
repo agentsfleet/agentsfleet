@@ -67,14 +67,15 @@ impl Drainer<'_> {
         };
         let mut still_held = false;
         for spooled in pending {
-            match spooled.deliver(self.plane).await {
+            // A reshaped report's own answer goes through the same branches,
+            // so one the daemon keeps is backed off and retried like any other.
+            let delivered = match spooled.deliver(self.plane).await {
+                Ok(Delivery::Rejected(refusal)) => self.reshape(&spooled, refusal).await,
+                delivered => delivered,
+            };
+            match delivered {
                 Ok(Delivery::Settled) => {}
-                Ok(Delivery::Rejected(refusal)) => {
-                    if !self.reshape(&spooled, &refusal).await {
-                        self.superseded(&spooled);
-                    }
-                }
-                Ok(Delivery::Superseded) => self.superseded(&spooled),
+                Ok(Delivery::Superseded | Delivery::Rejected(_)) => self.superseded(&spooled),
                 Ok(Delivery::Kept(failure)) => {
                     if self.halt.stops_on(&failure) {
                         return true;
@@ -94,14 +95,17 @@ impl Drainer<'_> {
     /// posted again without the run's memory and segments, so the answer is
     /// kept though the memory is not. The settle that first posted it pushes
     /// the memory itself; a report that reached the drain has no lease left
-    /// to push it under. Answers whether the daemon settled the reshaped
-    /// report, or kept it to retry.
-    async fn reshape(&self, spooled: &Spooled, refusal: &crate::Error) -> bool {
-        let Some(plain) = reshaped(refusal, spooled.bytes()) else {
-            return false;
+    /// to push it under. Answers the reshaped report's delivery, or the
+    /// refusal itself when the report cannot be reshaped or spooled again.
+    ///
+    /// # Errors
+    /// A reshaped entry that cannot be removed or moved aside.
+    async fn reshape(&self, spooled: &Spooled, refusal: crate::Error) -> crate::Result<Delivery> {
+        let Some(plain) = reshaped(&refusal, spooled.bytes()) else {
+            return Ok(Delivery::Rejected(refusal));
         };
         let Ok(lease) = Uuid7::parse(spooled.lease_id()) else {
-            return false;
+            return Ok(Delivery::Rejected(refusal));
         };
         let lease_id = lease.as_str();
         let cause_error_code = refusal.code().as_str();
@@ -117,7 +121,7 @@ impl Drainer<'_> {
                     event,
                     "the reshaped report could not be spooled; the refused copy stays aside"
                 );
-                return false;
+                return Ok(Delivery::Rejected(refusal));
             }
         };
         let event = EVENT_MEMORY_DROPPED;
@@ -138,7 +142,7 @@ impl Drainer<'_> {
                 "the refused one-post copy stays in the spool for the boot sweep"
             );
         }
-        matches!(delivered, Ok(Delivery::Settled | Delivery::Kept(_)))
+        delivered
     }
 
     /// Ends the hold `spooled`'s lease parked, as the lease's own post does
