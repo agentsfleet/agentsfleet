@@ -37,9 +37,11 @@ use crate::report::Ending;
 /// How long a turn that ended processed waits for its build, so the
 /// complete sandbox can be held: long enough for a checkout from a warm
 /// mirror, short against the fleet's next turn, which waits on this lease's
-/// report. The answer is already out; past this, the build is stopped and
-/// the report goes, so a stalled token mint, a wait on another lease's
-/// mirror or a slow fetch does not hold the lease.
+/// report. The answer is already out; past this, the build is told to stop
+/// and the report goes once its current step ends, so a stalled token mint or
+/// a wait on another lease's mirror does not hold the lease. A step that
+/// cannot hear the stop, such as a fetch stalled inside one network read,
+/// holds it until that step ends.
 pub(super) const BUILD_AFTER_ANSWER: Duration = Duration::from_secs(20);
 /// The event a build stopped because it outlasted its turn is logged under.
 pub(super) const EVENT_BUILD_OUTLASTED: &str = "sandbox_build_outlasted_turn";
