@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# Self-tests for the test_arch_schema_layout_matches_doc row of
-# check_architecture_doc.sh. Sourced by scripts/check_architecture_doc_test.sh,
-# never run alone: it reads that script's ok/bad counters, WORK_DIR, GATE,
-# REPO_ROOT and build_spec_root.
+# Self-tests for scripts/check_schema_doc.py, the check that
+# docs/architecture/postgres_schemas.md lists exactly the tables and columns
+# schema/ creates. Each case builds a fixture design page and a fixture schema
+# directory that match, then plants exactly one difference, so a failing check
+# can only be that difference. A failing case must also name the table or
+# column it planted: a checker that refused everything would pass a test that
+# only read its exit status.
 #
-# Each case builds a fixture design page and a fixture schema directory that
-# match, then plants exactly one difference, so a failing gate can only be this
-# row. A failing case must also name the table or column it planted.
+#     bash scripts/check_schema_doc_test.sh
+set -euo pipefail
 
-readonly LAYOUT_CHECK="test_arch_schema_layout_matches_doc"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly CHECK="$SCRIPT_DIR/check_schema_doc.py"
+readonly LAYOUT_CHECK="check_schema_doc"
+
+passed=0
+failed=0
+ok()  { printf 'ok   %s\n' "$1"; passed=$((passed + 1)); }
+bad() { printf 'FAIL %s\n       %s\n' "$1" "$2" >&2; failed=$((failed + 1)); }
+
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 # A design page listing `identity.tenants` and `vault.secrets`, with one
 # column carrying a parenthesised note the check must drop.
@@ -38,11 +50,10 @@ write_layout_schema() {
     '    FOREIGN KEY (id) REFERENCES identity.tenants(id);' >"$dir/1200_vault_secrets.sql"
 }
 
-# The gate's whole output against one fixture pair; its status is the gate's.
+# The checker's whole output against one fixture pair; its status is the checker's.
 run_layout_gate() {
   local arch="$1" schema="$2"
-  (cd "$REPO_ROOT" && ARCH_DIR="$arch" SPEC_ROOT="$WORK_DIR/specs" SCHEMA_DIR="$schema" \
-    DOC_SET_EXTRA="" bash "$GATE" 2>&1)
+  python3 -B "$CHECK" "$arch/postgres_schemas.md" "$schema" 2>&1
 }
 
 # Fails `name` unless the gate rejects the fixture and names `expected`.
@@ -52,22 +63,21 @@ expect_layout_refusal() {
     bad "$name" "the gate passed a layout that differs: $expected"
     return 1
   fi
-  if [[ "$output" != *"$LAYOUT_CHECK: $expected"* ]]; then
+  if [[ "$output" != *"$expected"* ]]; then
     bad "$name" "the failure did not name '$expected': $output"
     return 1
   fi
 }
 
-test_arch_schema_layout_matches_doc() {
-  local name="test_arch_schema_layout_matches_doc" root="$WORK_DIR/layout" output
-  build_spec_root "$WORK_DIR/specs"
+test_schema_doc_matches_the_migrations() {
+  local name="test_schema_doc_matches_the_migrations" root="$WORK_DIR/layout" output
   write_layout_doc "$root/arch" 'id (PK), name, created_at'
   write_layout_schema "$root/schema" ''
   if ! output="$(run_layout_gate "$root/arch" "$root/schema")"; then
     bad "$name" "a matching layout was rejected: $output"
     return
   fi
-  if [[ "$output" != *"$LAYOUT_CHECK: 2 tables and 5 columns match"* ]]; then
+  if [[ "$output" != *"2 tables and 5 columns match"* ]]; then
     bad "$name" "the pass did not count both tables and their columns: $output"
     return
   fi
@@ -145,8 +155,8 @@ test_layout_forward_columns() {
     "$root/premature/1300_forward.sql: ALTER TABLE identity.later: table has not been created" || return
 }
 
-test_arch_schema_forward_columns() {
-  local name="test_arch_schema_forward_columns" root="$WORK_DIR/forward_layout" output
+test_schema_doc_follows_forward_columns() {
+  local name="test_schema_doc_follows_forward_columns" root="$WORK_DIR/forward_layout" output
   write_layout_doc "$root/arch" 'id, name, created_at' 'id, key_name, label, score'
   write_layout_schema "$root/schema" ''
   printf '%s\n' 'ALTER TABLE vault.secrets' \
@@ -158,7 +168,7 @@ test_arch_schema_forward_columns() {
     bad "$name" "documented forward additions were rejected: $output"
     return
   fi
-  if [[ "$output" != *"$LAYOUT_CHECK: 2 tables and 7 columns match"* ]]; then
+  if [[ "$output" != *"2 tables and 7 columns match"* ]]; then
     bad "$name" "added columns were not counted: $output"
     return
   fi
@@ -171,8 +181,8 @@ test_arch_schema_forward_columns() {
   ok "$name"
 }
 
-test_arch_schema_unsupported_changes() {
-  local name="test_arch_schema_unsupported_changes" root="$WORK_DIR/unsupported_layout"
+test_schema_doc_refuses_unsupported_changes() {
+  local name="test_schema_doc_refuses_unsupported_changes" root="$WORK_DIR/unsupported_layout"
   local action index=0 schema
   write_layout_doc "$root/arch" 'id, name, created_at'
   for action in 'RENAME COLUMN key_name TO other_name' \
@@ -201,3 +211,10 @@ test_arch_schema_unsupported_changes() {
     "$root/malformed/1300_change.sql: ALTER TABLE vault.secrets: the column list never closes" || return
   ok "$name"
 }
+
+test_schema_doc_matches_the_migrations
+test_schema_doc_follows_forward_columns
+test_schema_doc_refuses_unsupported_changes
+
+printf '\n%d passed, %d failed\n' "$passed" "$failed"
+[[ "$failed" -eq 0 ]]

@@ -1,5 +1,5 @@
 # =============================================================================
-# Safety gates — deploy correctness, vault-read approval, architecture-doc truth
+# Safety gates — deploy correctness, vault-read approval, schema-doc truth
 # =============================================================================
 #
 # Three static checks that assert properties of the tree rather than build
@@ -11,7 +11,7 @@
 # runs them. check-vault-gate-parity additionally hangs off check-playbooks, so
 # validating the playbooks surface can never skip the guardrail that protects it.
 
-.PHONY: check-vault-gate-parity check-architecture-doc check-deploy-safety
+.PHONY: check-vault-gate-parity check-schema-doc check-deploy-safety
 .PHONY: check-release-candidate
 
 check-gh-actions-valid: check-release-candidate
@@ -45,9 +45,9 @@ check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the v
 	@echo "→ [playbooks] vault-gate self-tests..."
 	@bash playbooks/operations/credential_rotation/vault_gate_test.sh
 
-check-architecture-doc:  ## docs/architecture/ stays true — milestone refs resolve, relative links resolve, no orphan markers
-	@bash scripts/check_architecture_doc_test.sh
-	@bash scripts/check_architecture_doc.sh
+check-schema-doc:  ## docs/architecture/postgres_schemas.md lists exactly the tables and columns schema/ creates
+	@bash scripts/check_schema_doc_test.sh
+	@python3 -B scripts/check_schema_doc.py docs/architecture/postgres_schemas.md schema
 
 check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ + deployment config rules (scripts/check_infra_config.py)
 	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise
