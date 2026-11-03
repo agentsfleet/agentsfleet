@@ -19,11 +19,12 @@
 //! `include_str!` needs a literal path, so the alternative is a build script
 //! that scans `schema/`. A scan cannot tell a file that belongs in the ledger
 //! from one that was dropped in the directory, and it would make the migration
-//! set depend on the state of a working tree. The list is explicit, and
-//! `scripts/check_rust_source.py` (rule `rust-migration-list`, in
-//! `make lint-all`) compares it against the tracked `schema/*.sql` files — so
-//! a file added to `schema/` and missing here fails the lint rather than a
-//! production migrate.
+//! set depend on the state of a working tree. The list is explicit, and the
+//! crate's build script writes the `schema/*.sql` names into `OUT_DIR` for
+//! `tests/migrations.rs` to compare against it — so a file added to `schema/`
+//! and missing here fails `make test-unit-all` rather than a production
+//! migrate. A listed file that does not exist fails `include_str!`, and one
+//! listed twice claims its slot twice, which the ordering test refuses.
 
 use std::borrow::Cow;
 

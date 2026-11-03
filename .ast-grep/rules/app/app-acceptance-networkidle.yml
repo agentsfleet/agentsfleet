@@ -1,0 +1,14 @@
+# The Clerk testing proxy holds retried requests in flight, so a page under
+# acceptance never reaches network idle and a wait for it only times out.
+id: app-acceptance-networkidle
+language: Tsx
+severity: error
+message: never wait for networkidle; the Clerk testing proxy keeps requests in flight
+files:
+  - ui/packages/app/tests/e2e/acceptance/**/*.ts
+rule:
+  regex: networkidle
+  any:
+    - kind: string_fragment
+    - kind: identifier
+    - kind: property_identifier

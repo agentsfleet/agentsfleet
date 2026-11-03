@@ -102,7 +102,19 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `make/{check-safety-gates,quality}.mk`, `.github/workflows/lint.yml` | EDIT | `check-architecture-doc` leaves `lint-all` and CI's lint job |
 | `make/{quality,bench,dry,build}.mk`, `Makefile`, `.githooks/pre-commit`, `playbooks/README.md`, `playbooks/operations/ci_rust_images/001_playbook.md` | EDIT | The gate audit's cuts: targets and recipes that fail the owner's bar |
 | `scripts/{make_reset_order_test.sh,bench_datastore.py,bench_datastore_test.py,route_tables.py}` | DELETE | Scripts only those cut targets ran |
-| `scripts/{check_documentation_parity,check_cli_source,check_app_source,check_tests_call_code}*.py`, `scripts/checks/gh-actions-runtime.sh` | EDIT | Hand-kept copies, retired-name tombstones and a call-shape test leave the checkers |
+| `scripts/{check_documentation_parity,check_tests_call_code}*.py` | EDIT | Hand-kept copies, retired-name tombstones and a call-shape test leave the checkers |
+| `.github/workflows/*.yml`, `.github/actions/*/action.yml` | EDIT | Every third-party action pinned to its release's commit, tag beside it; two lint jobs install the root dependencies that carry `ast-grep` |
+| `.github/dependabot.yml` | CREATE | One grouped pull request a week moves the pins |
+| `.github/workflows/cache-prune.yml`, `scripts/select-prunable-caches.sh` | DELETE | GitHub evicts caches itself |
+| `scripts/check_builder_pin{,_test}.sh`, `scripts/checks/gh-actions-runtime.sh` | DELETE | The builder tag becomes a workflow rule; GitHub's full-SHA setting refuses a moving pin |
+| `scripts/check_workflow_rules{,_test}.py` | EDIT | `workflow-builder-literal`: no workflow pastes a builder tag |
+| `sgconfig.yml`, `.ast-grep/` | CREATE | The `ast-grep` rule set and a test per rule |
+| `package.json`, `bun.lock` | EDIT | `@ast-grep/cli` 0.51.1 |
+| `scripts/check_{app,cli,design_system,rust}_source{,_test}.py` | EDIT | Retired-name tombstones go, and each keeps only the rules `ast-grep` and Rust tests cannot carry |
+| `rustd/crates/afd_db/{build.rs,src/migration.rs,tests/migrations.rs}` | CREATE, EDIT | A `schema/` file with no `migration!` entry fails a test |
+| `rustd/crates/afd_http/src/openapi/{mod,collector}.rs`, `rustd/crates/afd_api_{tenant,runner,operator,ingress}/src/openapi.rs`, `rustd/crates/afd_api/src/openapi/mod.rs` | CREATE, EDIT | `plane_collector!` writes each plane's handler list once, for the document and for the component-name test |
+| `rustd/crates/agentsfleetd/{build.rs,Cargo.toml,src/preflight/mod.rs,src/preflight/stream_ceiling_tests.rs}` | CREATE, EDIT | The stream ceiling is a measured rung of the tail baseline, as a test |
+| `docs/architecture/testing.md` | EDIT | What `lint-rustd` runs now |
 | `docs/architecture/postgres_schemas.md` | EDIT | Its tables stop copying each column list from `schema/`; each table's purpose and design notes stay |
 | `docs/architecture/datastore_scaling.md`, `rustd/crates/afd_db/tests/integration_migrate/shape.rs` | EDIT | Their mentions of the deleted gate |
 | `rustd/crates/afr_supervisor/src/heartbeat/closing_tests.rs` | EDIT | A park the keeper refuses is handed back to the test, which counts only the keeper's destroys |
@@ -428,7 +440,12 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
   Once deployed, `lease_completed`'s `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` give the production split.
 - **The architecture-doc gate** — Indy asked whether `check_architecture_doc*.sh` was worth running. The repository wrote it in M51_001, not orly, and it was slow: shell loops spawning a pipeline per markdown file. Its schema-layout check only kept `postgres_schemas.md`'s column lists, a hand-kept copy of `schema/*.sql`, in step with the SQL. So the gate goes, and so does the copy: the page keeps each table's purpose and design notes, and `schema/` alone holds columns. `afd_db`'s migration shape test still fails on any unplanned column change.
 - **Gate audit (Nov 03)** — Opus at high effort marked every script and make target by the test-audit bar. Most catch a real failure and stay. Cut: the no-feature `cargo check --bin` pair, which CI's musl build already proves, at 9–10 s a lint; the `LintAllWiring` call-shape test; `make_reset_order_test.sh`, which guards only the local compose; `bench-datastore`, which grades M192 results no lane writes; `dry-app-rustd`; the `push`, `push-dev`, `build-dev` and `_docker_login` targets for mutable tags nothing deploys from; the route-table and README inventory parities, both hand-kept copies; and three retired-name tombstone rules. The sampler's direct-I/O mode and three local-only checks CI never runs wait for Indy.
-- **Gate-audit follow-up, approved** — one spec after M237 merges replaces five groups, each failure re-proved by a deliberate break first. (1) Workflows derive the builder tag, and `check_builder_pin.sh` goes. (2) GitHub's full-SHA pin setting and Dependabot replace `gh-actions-runtime.sh`. (3) GitHub's cache eviction replaces `cache-prune.yml` and its script. (4) One `ast-grep` rule set replaces the four regex source lints; it is new tooling, since no repository under `~/Projects` has an `sgconfig.yml`. (5) Rust tests in `afd_db` and `afd_http` replace the cross-file Rust checks.
+- **Gate replacements, folded in** — approved first for a follow-up spec, then moved into this Pull Request. Each replacement failed on a deliberate break before it was kept.
+  1. `check_workflow_rules.py`'s `workflow-builder-literal` rule replaces `check_builder_pin.sh`.
+  2. Every third-party action is pinned to its newest release's commit, 182 lines, with Dependabot moving them weekly; `gh-actions-runtime.sh` goes. `superfly/flyctl-actions` keeps its master pin, 11 commits past release 1.5. GitHub's "require full-length SHA" setting is Indy's to turn on after merge.
+  3. GitHub's cache eviction replaces `cache-prune.yml` and its script.
+  4. `ast-grep` 0.51.1 rules (`sgconfig.yml`, `.ast-grep/`, run by `make lint-source`) replace the regex rules in the four source lints; each lint keeps only what `ast-grep` cannot say. It is new tooling: no repository under `~/Projects` had an `sgconfig.yml`.
+  5. Rust tests replace two cross-file checks: the migration list against `schema/` (`afd_db`) and the stream ceiling against the tail baseline (`agentsfleetd`). The component-name check runs twice, since each reader misses what the other catches. The Python scan reads only `afd_wire` and `afd_api_wire`, while 40 `schema(as = …)` aliases live in other crates, most in `afd_fleet_runtime`. The new Rust test, `every_component_name_is_one_type`, reads every handler's document, so it sees those, but it misses two colliding types one handler reaches. One check covering both needs a type-registry dependency (`inventory` or `linkme`), which is not added.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
@@ -459,3 +476,5 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 12:18 PM): "yes cleanup the targets, and the unused script/*.* files any docs/architechture/* files as well." and, at 12:38 PM, "well just do the scripts here with opus 5.5 high" — context: the gate audit and its cuts, in this Pull Request.
 
 > Owner (Indy, Nov 03, 2026 01:31 PM): "1. OK 2. OK 3. OK 4. OK - is there a sgconfig.yml available? 5. Okay" — context: the five gate replacements, in the gate-audit follow-up after M237.
+
+> Owner (Indy, Nov 03, 2026 01:48 PM): "All five here" — context: the five gate replacements move into this Pull Request, with the workflow edits they need.

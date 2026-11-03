@@ -163,6 +163,25 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         code, output = lint_tree(seeded("release.yml", "./playbooks/lib/runner/deploy.sh", "./scripts/other.sh"))
         self.assertIn("release.yml:1: workflow-vault-read-approval: no step runs the runner playbook", output)
 
+    def test_a_builder_tag_is_derived_never_pasted(self) -> None:
+        def with_builder(container: str) -> dict[str, str]:
+            files = clean_tree()
+            files[f"{checker.WORKFLOWS_DIR}/build.yml"] = (
+                "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                f"    container: {container}\n    steps:\n      - run: true\n"
+            )
+            return files
+
+        derived = with_builder(checker.BUILDER_IMAGE + ":${{ env.RUST_VERSION }}-alpine${{ env.ALPINE_SERIES }}")
+        pasted = with_builder(checker.BUILDER_IMAGE + ":1.99.1-alpine3.22")
+        code, output = lint_tree(derived)
+        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+        # A literal fails even when it names today's version: that is the one
+        # that rots at the bump.
+        code, output = lint_tree(pasted)
+        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+        self.assertIn("build.yml:5: workflow-builder-literal: ", output)
+
     def test_an_unknown_argument_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(checker.lib.EXIT_USAGE, checker.main(["--bogus"]))

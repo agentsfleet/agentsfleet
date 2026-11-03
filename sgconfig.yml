@@ -1,0 +1,17 @@
+# The repository's single-file source rules, as ast-grep patterns over syntax.
+# `make lint-source` runs `ast-grep test` (each rule refuses the regression it
+# was written for) and then `ast-grep scan` (the tree is clean).
+#
+# Rules that compare two files, count across the tree, run a tool or compute a
+# value stay in the Python lints under scripts/.
+ruleDirs:
+  - .ast-grep/rules
+utilDirs:
+  - .ast-grep/utils
+testConfigs:
+  - testDir: .ast-grep/rule-tests
+# ast-grep refuses two rules with one id, so a rule over both `.ts` and `.tsx`
+# is one Tsx rule, and `.ts` parses as Tsx. Over this tree the Tsx grammar
+# reports the same parse errors on `.ts` files as the TypeScript grammar does.
+languageGlobs:
+  tsx: ["*.ts", "*.js"]

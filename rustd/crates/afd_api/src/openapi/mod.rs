@@ -265,6 +265,59 @@ mod tests {
         describe_every_refusal_as_a_problem, is_a_refusal, require_the_credential_each_route_guards,
     };
 
+    /// No component name is published by two different types.
+    ///
+    /// utoipa keys components by name, and a second type under a taken name
+    /// replaces the first without a word: every operation that named the lost
+    /// type then points at the other one's shape. The merged document cannot
+    /// show it, so this reads one document per handler from every plane
+    /// (`afd_http::plane_collector!`) plus this crate's own `Root`, where each
+    /// type a handler reaches publishes its own schema. One type reached twice
+    /// publishes the same schema twice; a name with two different schemas is
+    /// two types. Two colliding types one handler reaches collapse inside that
+    /// handler's document before this sees them, and so do types no handler
+    /// reaches; `scripts/check_rust_source.py` reads every declaration in
+    /// `afd_wire` and `afd_api_wire` for those.
+    #[cfg(feature = "test-util")]
+    #[test]
+    fn every_component_name_is_one_type() {
+        use std::collections::BTreeMap;
+        use std::collections::btree_map::Entry;
+
+        use utoipa::OpenApi as _;
+
+        let documents = std::iter::once(super::Root::openapi())
+            .chain(afd_api_tenant::openapi::handler_documents())
+            .chain(afd_api_runner::openapi::handler_documents())
+            .chain(afd_api_operator::openapi::handler_documents())
+            .chain(afd_api_ingress::openapi::handler_documents());
+        let mut published = BTreeMap::new();
+        let mut collisions = Vec::new();
+        for document in documents {
+            for (name, schema) in document.components.into_iter().flat_map(|c| c.schemas) {
+                match published.entry(name) {
+                    Entry::Vacant(first) => {
+                        first.insert(schema);
+                    }
+                    Entry::Occupied(first) if *first.get() != schema => {
+                        collisions.push(first.key().clone());
+                    }
+                    Entry::Occupied(_) => {}
+                }
+            }
+        }
+        collisions.sort_unstable();
+        collisions.dedup();
+        assert!(
+            !published.is_empty(),
+            "no handler published a component; the audit read nothing"
+        );
+        assert!(
+            collisions.is_empty(),
+            "{collisions:?} each published by two different types; utoipa keeps one and drops the other"
+        );
+    }
+
     /// A document missing every route is left as it is, not invented into.
     #[test]
     fn a_route_the_document_lacks_is_left_to_the_coverage_gate() {

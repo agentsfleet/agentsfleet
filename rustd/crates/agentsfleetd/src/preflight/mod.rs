@@ -26,6 +26,8 @@ mod knob_tests;
 mod knobs;
 mod otlp;
 mod read;
+#[cfg(test)]
+mod stream_ceiling_tests;
 
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
 pub use afd_otlp::{

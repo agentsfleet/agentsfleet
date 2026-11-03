@@ -1,0 +1,29 @@
+id: cli-raw-escape
+valid:
+  - |
+    // Reads AGENTSFLEET_API_URL in prose only.
+    export const live = () => palette.pulse("●");
+  - |
+    import { API_URL_ENV } from "../constants/env.ts";
+    export const heading = (t: string) => palette.pulse(t) + API_URL_ENV;
+invalid:
+  - |
+    const red = "\x1b[31m";
+  - |
+    const red = "\x1B[31m";
+  - |
+    const red = "\u001b[31m";
+  - |
+    const red = "\u001B[31m";
+  - |
+    const red = "\u{1b}[31m";
+  - |
+    const red = "\u{001B}[31m";
+  - |
+    const red = "\e[31m";
+  # The control character itself; YAML's "\e" is ESC.
+  - "const red = \"\e[31m\";\n"
+  - |
+    export const pulse = (text: string) => `\u001b[38;5;51m${text}\u001b[0m`;
+  - |
+    const cyan = `38;5;51m`;

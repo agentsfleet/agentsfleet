@@ -64,8 +64,9 @@ and will resolve to 3.24.2 — so the musl, gcc and binutils layer floats by pat
 while the compiler does not. Closing that would mean pinning `alpine@sha256:`
 and paying a commit per Alpine patch. The float is accepted because the input
 that decides the shipped binary is the compiler, which is pinned exactly. The
-repository holds GitHub Actions to the stricter rule
-(`audits/gh-actions-runtime.sh`), where the cost of a digest is one line.
+repository holds GitHub Actions to the stricter rule, where the cost of a
+digest is one line: every action is pinned to a commit, GitHub's full-SHA
+setting refuses a moving ref, and Dependabot moves the pins.
 
 ## Why the base is Alpine and not `rust:*-alpine`
 
@@ -138,11 +139,10 @@ accept a multi-platform manifest. That is a docker limitation, not a choice.
 5. Move `BUILDER_IMAGE`'s default in `make/build.mk` only if the tag shape changed;
    it is derived from `versions.env`, so a version move needs no edit there. The
    same goes for the workflows, which compute the tag with the same `sed`.
-6. Update the version the README states, and the literal in
-   `scripts/check_builder_pin_test.sh` whose test is named for being *currently
-   correct* — a stale literal there leaves the test passing while no longer
-   testing what it says. Nothing else: every other mention of the number is
-   prose that rots, and belongs written as "the pin" instead.
+6. Update the version the README states. Nothing else: every other mention of
+   the number is prose that rots, and belongs written as "the pin" instead.
+   `scripts/check_workflow_rules.py` refuses any literal builder tag in a
+   workflow, current or not.
 7. Re-run `./build_and_push.sh` and confirm `docker manifest inspect` shows both
    architectures on the new tag. The image is not a build product of CI; if you
    do not push it, nothing does.

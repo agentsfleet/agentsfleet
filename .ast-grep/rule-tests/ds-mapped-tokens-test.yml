@@ -1,0 +1,17 @@
+id: ds-mapped-tokens
+valid:
+  # A variant bracket is standard.
+  - |
+    export const card = cn("rounded-md bg-surface-1", "data-[state=checked]:border-pulse");
+  # A comment may name a hex colour or an index.
+  - |
+    export const bar = "h-2 w-full bg-surface-2"; // a comment may say #123 or items[0]
+invalid:
+  - |
+    export const bar = "h-2 w-[42px] bg-surface-2"; // a comment may say #123 or items[0]
+  - |
+    export const card = cn("rounded-md text-[#fff] bg-surface-1", "data-[state=checked]:border-pulse");
+  - |
+    export const card = cn('rounded-md', `border-[#0e171b]`);
+  - |
+    export const dot = { color: "#5eead4" };

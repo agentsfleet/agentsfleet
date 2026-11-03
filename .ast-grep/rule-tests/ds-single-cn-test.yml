@@ -1,0 +1,14 @@
+id: ds-single-cn
+valid:
+  - |
+    export { cn } from "@agentsfleet/design-system";
+  - |
+    export const cnx = (a: string) => a;
+  - |
+    import { cn } from "@agentsfleet/design-system";
+    export const card = cn("rounded-md");
+invalid:
+  - |
+    export const cn = (a: string) => a;
+  - |
+    export function cn(...inputs: string[]) { return inputs.join(' '); }

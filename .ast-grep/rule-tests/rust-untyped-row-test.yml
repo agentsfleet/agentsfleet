@@ -1,0 +1,30 @@
+id: rust-untyped-row
+valid:
+  # A comment naming the call, and a test module's own reads.
+  - |
+    // row.try_get(0) belongs in a FromRow struct
+    #[cfg(test)]
+    mod tests { fn f() { row.try_get(0); } }
+  - |
+    #[cfg(test)]
+    #[expect(clippy::unwrap_used, reason = "fixture")]
+    mod tests {
+        fn f() { let id: i64 = row.try_get(0).unwrap(); }
+    }
+  - |
+    let lease: Lease = sqlx::query_as(LEASE).fetch_one(pool).await?;
+invalid:
+  - |
+    let id: i64 = row.try_get(0)?;
+  - |
+    let name = row.try_get::<String, _>("name")?;
+  - |
+    let raw = row.try_get_unchecked::<i64, _>(0)?;
+  - |
+    let ids = vec![row.try_get(0)?];
+  # An earlier test module covers only its own body.
+  - |
+    #[cfg(test)]
+    mod tests {}
+
+    fn read(row: &PgRow) -> Result<i64> { Ok(row.try_get(0)?) }

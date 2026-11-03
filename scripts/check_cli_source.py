@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Source rules for the agentsfleet CLI (`cli/`).
 
-Each rule is a convention the CLI keeps by declaring a thing in one place:
-an environment-variable name in `constants/env.ts`, a terminal escape in
-`output/palette.ts`, a detail table in the three modules that render one. A
-finding is a second spelling somewhere else.
+The rule is a convention the CLI keeps by declaring a thing in one place: an
+environment-variable name in `constants/env.ts`. A finding is a second
+spelling somewhere else. It stays here because the names it bans are read
+from that module; the single-file rules (escapes in the palette, detail
+tables) are ast-grep rules under .ast-grep/rules/cli/, run by
+`make lint-source`.
 
     python3 scripts/check_cli_source.py [--root <dir>]
 
@@ -23,20 +25,7 @@ import check_source_lib as lib
 
 CLI_SRC = "cli/src"
 ENV_MODULE = "cli/src/constants/env.ts"
-PALETTE = "cli/src/output/palette.ts"
-COMMANDS = "cli/src/commands"
 ENV_DECLARATION = re.compile(r'export const \w+ = "(?P<name>[A-Z][A-Z0-9_]+)"')
-
-# A raw escape spelled any of the ways a TypeScript source can: the \u001b,
-# \u{1b} and \x1b escapes in either case, the \e some editors paste, and the
-# control character itself.
-RAW_ESCAPE = re.compile(r"\\(?:u001b|u\{0*1b\}|x1b|e)\[|\x1b\[", re.IGNORECASE)
-COLOR_256 = re.compile(r"38;5;\d+")
-# A two-column label/value table for ONE resource is a different shape from a
-# list of entities, and these are the commands that render one; every entity
-# list goes through printEntityTable so its columns come from one order.
-DETAIL_TABLE_MODULES = frozenset({"api_key.ts", "connector.ts", "tenant.ts"})
-DETAIL_TABLE_CALL = "output.printTable("
 
 
 def finding(root: Path, path: Path, text: str, offset: int, rule: str, message: str) -> lib.Finding:
@@ -63,36 +52,10 @@ def check_env_spelling(root: Path, sources: dict[Path, str]) -> list[lib.Finding
     return found
 
 
-def check_raw_escapes(root: Path, sources: dict[Path, str]) -> list[lib.Finding]:
-    found = []
-    for path, text in sources.items():
-        if lib.relative(root, path) == PALETTE:
-            continue
-        for pattern, what in ((RAW_ESCAPE, "a raw terminal escape"), (COLOR_256, "a 256-color code")):
-            for match in pattern.finditer(text):
-                found.append(finding(root, path, text, match.start(), "cli-raw-escape", f"{what} belongs in {PALETTE}, which honours NO_COLOR"))
-    return found
-
-
-def check_detail_tables(root: Path) -> list[lib.Finding]:
-    found = []
-    for path in sorted((root / COMMANDS).glob("*.ts")):
-        text = path.read_text(encoding="utf-8")
-        at = text.find(DETAIL_TABLE_CALL)
-        if at != -1 and path.name not in DETAIL_TABLE_MODULES:
-            found.append(finding(root, path, text, at, "cli-detail-table", "an entity list renders through printEntityTable, not its own columns"))
-    return found
-
-
 def lint(root: Path) -> list[lib.Finding]:
     paths = lib.source_files(root / CLI_SRC, (".ts", ".js"))
-    raw = {path: path.read_text(encoding="utf-8") for path in paths}
-    code = {path: lib.blank_js_comments(text) for path, text in raw.items()}
-    return (
-        check_env_spelling(root, code)
-        + check_raw_escapes(root, raw)
-        + check_detail_tables(root)
-    )
+    code = {path: lib.blank_js_comments(path.read_text(encoding="utf-8")) for path in paths}
+    return check_env_spelling(root, code)
 
 
 if __name__ == "__main__":

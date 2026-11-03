@@ -1,0 +1,45 @@
+# A row decodes into a `#[derive(sqlx::FromRow)]` struct, so a renamed or
+# retyped column fails at the one place that names it. Test code, test files
+# and test-only directories are outside the rule.
+#
+# Clippy's `disallowed-methods` could name `sqlx::Row::try_get`, but it has no
+# test exemption and the lane runs `--all-targets`, so every integration test
+# that reads a column would need an `#[expect]`.
+id: rust-untyped-row
+language: Rust
+severity: error
+message: a column read by position or name; decode the row into a `#[derive(sqlx::FromRow)]` struct through `query_as`, or one column through `query_scalar`
+files:
+  - rustd/crates/*/src/**/*.rs
+ignores:
+  - rustd/crates/*/src/**/{tests,test_util,test_support,testing,fixture,examples,benches}/**
+  - rustd/crates/*/src/**/{test,tests,*_test,*_tests,test_util,test_support,testing,fixture}.rs
+utils:
+  try-get:
+    regex: ^try_get(_unchecked)?$
+rule:
+  not: { matches: rust-in-cfg-test }
+  # The report lands on the method name, the line a long chain reads it on.
+  any:
+    # row.try_get(0)
+    - kind: field_identifier
+      matches: try-get
+      inside:
+        field: field
+        kind: field_expression
+        inside: { field: function, kind: call_expression }
+    # row.try_get::<String, _>("name")
+    - kind: field_identifier
+      matches: try-get
+      inside:
+        field: field
+        kind: field_expression
+        inside:
+          field: function
+          kind: generic_function
+          inside: { field: function, kind: call_expression }
+    # Inside a macro the call is tokens: the name after a `.`.
+    - kind: identifier
+      matches: try-get
+      inside: { kind: token_tree }
+      follows: { regex: ^\.$ }

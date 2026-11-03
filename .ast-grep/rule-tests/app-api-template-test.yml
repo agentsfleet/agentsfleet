@@ -1,0 +1,10 @@
+id: app-api-template
+valid:
+  - |
+    const bearer = await getToken();
+  - |
+    // getToken({ template: "api" }) belongs to the CLI handoff alone.
+    const t = await getToken({ template: "session" });
+invalid:
+  - |
+    const t = await getToken({ template: "api" });

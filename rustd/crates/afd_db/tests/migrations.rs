@@ -2,10 +2,8 @@
 //!
 //! The integration half proves a fresh database ends up with the right rows.
 //! This half proves the hand-written list in `afd_db::migration` is ordered,
-//! one slot per file, each applying as its filename's number. That every
-//! tracked `schema/*.sql` has an entry is checked by a lint
-//! (`scripts/check_rust_source.py`, rule `rust-migration-list`), which reads
-//! both listings without running anything.
+//! one slot per file, each applying as its filename's number, and that every
+//! `schema/*.sql` file has an entry.
 #![expect(
     clippy::unwrap_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -14,6 +12,33 @@
 use std::collections::BTreeSet;
 
 use afd_db::migration::{MIGRATIONS, Migration};
+
+/// Every `.sql` file in `schema/`, sorted, as `build.rs` found it at compile time.
+const SCHEMA_FILES: &[&str] = include!(concat!(env!("OUT_DIR"), "/schema_files.rs"));
+
+/// A schema file with no entry in the list never runs.
+///
+/// `include_str!` already refuses an entry with no file; this is the other
+/// direction, which nothing else can see: a file dropped into `schema/` and
+/// left out of `MIGRATIONS` builds, passes every other test, and is simply
+/// never applied.
+#[test]
+fn test_every_schema_file_is_in_the_migration_list() {
+    assert!(
+        !SCHEMA_FILES.is_empty(),
+        "build.rs read no schema file; the scan is broken, not the tree"
+    );
+    let listed: BTreeSet<&str> = MIGRATIONS.iter().map(Migration::name).collect();
+    let unlisted: Vec<&str> = SCHEMA_FILES
+        .iter()
+        .copied()
+        .filter(|file| !listed.contains(file))
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "{unlisted:?} in schema/ with no `migration!` entry in afd_db::migration::MIGRATIONS; it would never run"
+    );
+}
 
 /// The version is the slot number, derived rather than restated.
 ///

@@ -4,7 +4,8 @@
     python3 scripts/check_app_source_test.py
 
 Covers check_app_source.py and the identity-provider import boundary in
-ui/packages/app/.oxlintrc.json.
+ui/packages/app/.oxlintrc.json. The single-file rules that moved to ast-grep
+are proved by their own cases under .ast-grep/rule-tests/.
 """
 
 from __future__ import annotations
@@ -33,24 +34,12 @@ def listed(stdout: str, returncode: int = 0, stderr: str = "") -> subprocess.Com
 LISTING = listed(f"  [journeys] › {checker.EXECUTION_SPEC}:12:3 › a fleet executes\nTotal: 1 test in 1 file\n")
 
 EVENTS_TS = 'export const EVENTS = {\n  fleet_created: "fleet_created",\n} as const;\n'
-SPEC_TS = 'await page.waitForLoadState("load");\n'
-CLIENT_TSX = '"use client";\nexport function Panel({ label }: { label: string }) {\n  const tokenCount = 3;\n  return <p>{label}{tokenCount}</p>;\n}\n'
-SERVER_TS = 'const bearer = await getToken();\nexport const headers = { Authorization: `Bearer ${bearer}` };\n'
-HANDOFF_TSX = '"use client";\nconst token = await getToken({ template: "api" });\n'
-CHARGES_TS = 'export const label = (at: Date) => at.toLocaleDateString("en-US");\n'
-ZONE_TS = "export const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;\n"
 
 
 def clean_tree() -> dict[str, str]:
     return {
         checker.EVENTS_MODULE: EVENTS_TS,
         f"{APP}/components/track.ts": 'import { EVENTS } from "@/lib/analytics/events";\ncapture(EVENTS.fleet_created);\n',
-        f"{checker.ACCEPTANCE}/install.spec.ts": SPEC_TS,
-        f"{APP}/components/Panel.tsx": CLIENT_TSX,
-        f"{APP}/lib/actions/with-token.ts": SERVER_TS,
-        checker.CLI_HANDOFF: HANDOFF_TSX,
-        checker.DATE_LABEL_HOME: CHARGES_TS,
-        f"{APP}/lib/zone.ts": ZONE_TS,
     }
 
 
@@ -82,20 +71,14 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         code, output = lint_tree(clean_tree())
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
 
-    def test_moved_rules_reject_seeded_violations(self) -> None:
-        spec = f"{checker.ACCEPTANCE}/install.spec.ts"
-        cases = {
-            "app-acceptance-networkidle": with_file(spec, SPEC_TS.replace('"load"', '"networkidle"')),
-            "app-event-literal": with_file(f"{APP}/tests/track.test.ts", 'expect(name).toBe("fleet_created");\n'),
-            "app-api-template": with_file(f"{APP}/app/login/page.tsx", 'const t = await getToken({ template: "api" });\n'),
-            "app-client-credential": with_file(f"{APP}/components/Panel.tsx", CLIENT_TSX.replace("{ label }: { label: string }", "{ token }: { token: string }")),
-            "app-date-formatter": with_file(f"{APP}/lib/when.ts", "export const when = (d: Date) => d.toLocaleString();\n"),
-        }
-        for rule, files in cases.items():
-            with self.subTest(rule=rule):
-                code, output = lint_tree(files)
-                self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
-                self.assertIn(f": {rule}: ", output)
+    def test_a_second_spelling_of_an_event_name_is_refused(self) -> None:
+        code, output = lint_tree(with_file(f"{APP}/tests/track.test.ts", 'expect(name).toBe("fleet_created");\n'))
+        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+        self.assertIn(f"{APP}/tests/track.test.ts:1: app-event-literal: ", output)
+
+    def test_an_empty_catalog_is_a_finding(self) -> None:
+        code, output = lint_tree({**clean_tree(), checker.EVENTS_MODULE: "export const EVENTS = {} as const;\n"})
+        self.assertIn("no event name was read from the catalog", output)
 
     def test_a_journeys_project_that_drops_the_execution_spec_is_refused(self) -> None:
         code, output = lint_tree(clean_tree(), listing=listed("  [journeys] › other.spec.ts:1:1 › x\n"))
@@ -115,25 +98,25 @@ class CommentBlankingKeepsLiteralsWhole(unittest.TestCase):
     """A quote inside JSX text or a pattern must not hide the comments after it."""
 
     def test_a_comment_after_a_jsx_apostrophe_is_still_a_comment(self) -> None:
-        source = "export const P = () => <p>Don't panic</p>;\n// never d.toLocaleString() here.\nexport const x = 1;\n"
+        source = "export const P = () => <p>Don't panic</p>;\n// never \"fleet_created\" here.\nexport const x = 1;\n"
         code, output = lint_tree(with_file(f"{APP}/lib/when.tsx", source))
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
 
     def test_a_comment_after_a_pattern_holding_a_quote_is_still_a_comment(self) -> None:
-        source = "export const missing = /Couldn't find \"it\"/i;\n// never d.toLocaleString() here.\nexport const x = 1;\n"
+        source = "export const missing = /Couldn't find \"it\"/i;\n// never \"fleet_created\" here.\nexport const x = 1;\n"
         code, output = lint_tree(with_file(f"{APP}/lib/when.ts", source))
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
 
     def test_code_after_a_jsx_apostrophe_is_still_checked(self) -> None:
-        source = "export const P = () => <p>Don't panic</p>;\n// note\nexport const when = (d: Date) => d.toLocaleString();\n"
+        source = "export const P = () => <p>Don't panic</p>;\n// note\ncapture(\"fleet_created\");\n"
         code, output = lint_tree(with_file(f"{APP}/lib/when.tsx", source))
-        self.assertIn(f"{APP}/lib/when.tsx:3: app-date-formatter: ", output)
+        self.assertIn(f"{APP}/lib/when.tsx:3: app-event-literal: ", output)
 
     def test_slashes_inside_a_pattern_are_kept_and_a_division_still_ends_before_its_comment(self) -> None:
         pattern = "const slashes = path.replace(/\\//g, \"-\");\n"
         self.assertEqual(pattern, checker.lib.blank_js_comments(pattern))
-        division = "const half = total / 2; // toLocaleString\n"
-        self.assertEqual("const half = total / 2; " + " " * len("// toLocaleString") + "\n", checker.lib.blank_js_comments(division))
+        division = "const half = total / 2; // fleet_created\n"
+        self.assertEqual("const half = total / 2; " + " " * len("// fleet_created") + "\n", checker.lib.blank_js_comments(division))
 
 
 OXLINT = checker.lib.ROOT / APP / "node_modules/.bin/oxlint"

@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""Rules over the Rust tree that no compiler pass and no unit test can see.
+"""Rules over the Rust tree that neither ast-grep nor a Rust test can see.
 
-Most rules compare two things the repository declares in separate places and
-that must agree: a schema file with the migration list, a component name with
-every other component name, a default with the benchmark behind it. One holds
-a type rule across every crate: no span as integer milliseconds.
+Most rules moved out. The single-file type rules are ast-grep rules
+(`.ast-grep/rules/rust/rust-integer-millis.yml`, `rust-untyped-row.yml`, run
+by `make lint-source`), and two cross-file rules are Rust tests: the migration
+list against `schema/` (`afd_db` `tests/migrations.rs`) and the stream ceiling
+against its tail baseline (`agentsfleetd` `preflight/stream_ceiling_tests.rs`).
+
+Two stay here. One component name, one type: `afd_api`'s
+`every_component_name_is_one_type` test reads one document per handler, so two
+colliding types the same handler reaches collapse before it sees them; this
+scan reads every declaration in the two wire crates. And finding no
+`rustd/crates/**/*.rs` file is a finding, because a moved crate root would turn
+every Rust source rule green without reading a line.
 
     python3 scripts/check_rust_source.py [--root <dir>]
 
@@ -14,7 +22,6 @@ Exit 0 clean, 1 with one line per finding, 2 on a usage error.
 from __future__ import annotations
 
 from collections import defaultdict
-import json
 from pathlib import Path
 import re
 import sys
@@ -22,7 +29,8 @@ import sys
 sys.dont_write_bytecode = True
 
 import check_source_lib as lib
-from check_tests_call_code_text import cfg_test_regions
+
+CRATES = "rustd/crates"
 
 # --- One component name, one type -------------------------------------------
 # utoipa keys a document's components by name alone; a second type registered
@@ -32,41 +40,8 @@ from check_tests_call_code_text import cfg_test_regions
 SCHEMA_CRATES = ("rustd/crates/afd_wire/src", "rustd/crates/afd_api_wire/src")
 DERIVE = "derive(utoipa::ToSchema)"
 ALIAS = "schema(as = "
-MANUAL_IMPL = "impl utoipa::ToSchema for "
 ITEM = re.compile(r"^(?:pub(?:\([^)]*\))? )?(?:struct|enum) (?P<name>\w+)")
 MANUAL_NAME = re.compile(r"^impl utoipa::ToSchema for (?P<name>\w+)")
-
-# --- The migration list is the schema directory ----------------------------
-MIGRATION_LIST = "rustd/crates/afd_db/src/migration.rs"
-MIGRATION_ENTRY = re.compile(r'migration!\("(?P<file>[^"]+)"\)')
-SCHEMA_GLOB = "schema/*.sql"
-
-# --- The stream ceiling is a measured rung ----------------------------------
-KNOBS = "rustd/crates/agentsfleetd/src/preflight/knobs.rs"
-STREAM_DEFAULT = re.compile(r"\bconst SSE_MAX_STREAMS_DEFAULT: usize = (?P<value>[0-9_]+);")
-TAIL_BASELINE = "bench/baselines/tail.rig.json"
-P95_BOUND_MS = 250.0
-HEAP_BOUND_BYTES = 256 * 1024 * 1024
-UNDELIVERED_BOUND = 0
-
-# --- No span or instant held as integer milliseconds -------------------------
-# A span is a `Duration` and an instant a `jiff::Timestamp` (M229 Dimension
-# 3.4). Milliseconds exist only at a protocol edge, converted there once, so an
-# integer `*_MS` constant is legal only as that conversion: its value read from
-# a `Duration` (`HEARTBEAT_INTERVAL.as_millis()`). The clock helpers that did
-# millisecond arithmetic are deleted and stay deleted.
-CRATES = "rustd/crates"
-MILLIS_CONST = re.compile(
-    r"\bconst (?P<name>[A-Z0-9_]*_MS(?:_[A-Z0-9_]+)?)\s*:\s*(?:[ui](?:8|16|32|64|128|size))\s*="
-)
-MILLIS_HELPER = re.compile(r"\b(?:UnixMillis|add_millis|millis_between)\b|\bclock::from_millis\b")
-EDGE_CONVERSION = ".as_millis()"
-LINE_COMMENT = re.compile(r"//.*$", re.MULTILINE)
-TRY_GET = re.compile(r"\.try_get(?:_unchecked)?\s*(?:::<[^>]*>)?\s*\(")
-# Files and directories that only tests compile: unit-test files and the
-# `cfg(test)` or `test-util` seams beside them.
-RUST_TEST_FILE = re.compile(r"(?:^|_)tests?\.rs$|^(?:test_util|test_support|testing|fixture)\.rs$")
-RUST_TEST_DIRS = frozenset({"tests", "test_util", "test_support", "testing", "fixture", "examples", "benches"})
 
 
 def published_name(lines: list[str], derive_at: int) -> str | None:
@@ -111,112 +86,13 @@ def check_schema_names(root: Path) -> list[lib.Finding]:
     return findings
 
 
-def check_migration_list(root: Path) -> list[lib.Finding]:
-    listing = (root / MIGRATION_LIST).read_text(encoding="utf-8") if (root / MIGRATION_LIST).is_file() else ""
-    listed = [match["file"] for match in MIGRATION_ENTRY.finditer(listing)]
-    tracked = {Path(path).name for path in lib.tracked_files(root, SCHEMA_GLOB)}
-    if not listed or not tracked:
-        return [lib.Finding(MIGRATION_LIST, 1, "rust-migration-list", "no migration entry or no tracked schema file was read")]
-    findings = [
-        lib.Finding(f"schema/{name}", 1, "rust-migration-list", f"no `migration!(\"{name}\")` entry in {MIGRATION_LIST}; it would never run")
-        for name in sorted(tracked - set(listed))
-    ]
-    findings += [
-        lib.Finding(MIGRATION_LIST, 1, "rust-migration-list", f"`{name}` is not a tracked schema file")
-        for name in sorted(set(listed) - tracked)
-    ]
-    findings += [
-        lib.Finding(MIGRATION_LIST, 1, "rust-migration-list", f"`{name}` is listed twice")
-        for name in sorted({name for name in listed if listed.count(name) > 1})
-    ]
-    return findings
+def check_sources_exist(root: Path) -> list[lib.Finding]:
+    if lib.source_files(root / CRATES, (".rs",), include_tests=True):
+        return []
+    return [lib.Finding(CRATES, 1, "rust-source-read", f"no `{CRATES}/**/*.rs` file was found; every Rust source rule would pass without reading one")]
 
 
-def check_stream_ceiling(root: Path) -> list[lib.Finding]:
-    def finding(message: str) -> list[lib.Finding]:
-        return [lib.Finding(KNOBS, 1, "rust-stream-ceiling", message)]
-
-    knobs = (root / KNOBS).read_text(encoding="utf-8") if (root / KNOBS).is_file() else ""
-    declared = STREAM_DEFAULT.search(knobs)
-    if not declared or not (root / TAIL_BASELINE).is_file():
-        return finding(f"SSE_MAX_STREAMS_DEFAULT and {TAIL_BASELINE} must both exist")
-    default = int(declared["value"].replace("_", ""))
-    baseline = json.loads((root / TAIL_BASELINE).read_text(encoding="utf-8"))
-    series = baseline.get("series", {})
-    measured = baseline.get("measurements", {})
-    rungs = series.get("ladder_streams", [])
-    p95 = series.get("stream_receive_p95_ms", [])
-    if len(p95) != len(rungs) or default not in rungs:
-        return finding(f"{default} streams is not a rung {TAIL_BASELINE} measured with its p95")
-    at = rungs.index(default)
-    live, heap = series.get("streams_live", []), series.get("heap_bytes_per_stream", [])
-    if at >= min(len(live), len(heap)) or live[at] != default:
-        return finding(f"the {default}-stream rung did not reach every stream")
-    if measured.get("frames_undelivered", 1) > UNDELIVERED_BOUND or measured.get("streams_unreached", 1) > UNDELIVERED_BOUND:
-        return finding("the baseline lost frames or streams")
-    if p95[at] >= P95_BOUND_MS or heap[at] * default >= HEAP_BOUND_BYTES:
-        return finding(f"the {default}-stream rung missed its p95 or heap bound")
-    return []
-
-
-def rust_sources(root: Path) -> list[Path]:
-    """Every crate's non-test Rust source under `rustd/crates/*/src`."""
-    found = []
-    for crate in sorted((root / CRATES).glob("*/src")):
-        for path in lib.source_files(crate, (".rs",), include_tests=True):
-            if RUST_TEST_DIRS.intersection(path.relative_to(crate).parts[:-1]) or RUST_TEST_FILE.search(path.name):
-                continue
-            found.append(path)
-    return found
-
-
-def statement(code: str, start: int) -> str:
-    """The text from `start` to the `;` that ends its statement, braces balanced."""
-    depth = 0
-    for at in range(start, len(code)):
-        char = code[at]
-        depth += (char == "{") - (char == "}")
-        if char == ";" and depth == 0:
-            return code[start : at + 1]
-    return code[start:]
-
-
-def check_integer_millis(root: Path) -> list[lib.Finding]:
-    sources = rust_sources(root)
-    if not sources:
-        return [lib.Finding(CRATES, 1, "rust-integer-millis", "no crate source was read; the scan is broken, not the tree")]
-    findings = []
-    for path in sources:
-        source = path.read_text(encoding="utf-8")
-        tests = cfg_test_regions(source)
-        code = LINE_COMMENT.sub(lambda comment: " " * len(comment.group()), source)
-        for match in MILLIS_CONST.finditer(code):
-            if any(begin <= match.start() < end for begin, end in tests):
-                continue
-            if EDGE_CONVERSION in statement(code, match.end()):
-                continue
-            findings.append(lib.Finding(lib.relative(root, path), lib.line_of(code, match.start()), "rust-integer-millis", f"`{match['name']}` holds a span as integer milliseconds; declare a `Duration` and convert at the edge with `.as_millis()`"))
-        for match in MILLIS_HELPER.finditer(code):
-            if any(begin <= match.start() < end for begin, end in tests):
-                continue
-            findings.append(lib.Finding(lib.relative(root, path), lib.line_of(code, match.start()), "rust-integer-millis", f"`{match.group()}` is millisecond arithmetic; use `jiff::Timestamp` and `Duration`"))
-    return findings
-
-
-def check_untyped_rows(root: Path) -> list[lib.Finding]:
-    findings = []
-    for path in rust_sources(root):
-        source = path.read_text(encoding="utf-8")
-        tests = cfg_test_regions(source)
-        code = LINE_COMMENT.sub(lambda comment: " " * len(comment.group()), source)
-        for match in TRY_GET.finditer(code):
-            if any(begin <= match.start() < end for begin, end in tests):
-                continue
-            findings.append(lib.Finding(lib.relative(root, path), lib.line_of(code, match.start()), "rust-untyped-row", "a column read by position or name; decode the row into a `#[derive(sqlx::FromRow)]` struct through `query_as`, or one column through `query_scalar`"))
-    return findings
-
-
-RULES = (check_schema_names, check_migration_list, check_stream_ceiling, check_integer_millis, check_untyped_rows)
+RULES = (check_schema_names, check_sources_exist)
 
 
 def lint(root: Path) -> list[lib.Finding]:
