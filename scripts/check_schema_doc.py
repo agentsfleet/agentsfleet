@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The tables and columns the design doc signs off are the ones schema/ creates.
 
-The `test_arch_schema_layout_matches_doc` row of `check_architecture_doc.sh`:
+Run by `make check-schema-doc`, and proved by `scripts/check_schema_doc_test.sh`:
 
-    python3 scripts/check_architecture_doc_schema.py <postgres_schemas.md> <schema dir>
+    python3 scripts/check_schema_doc.py <postgres_schemas.md> <schema dir>
 
 Exit 0 with a one-line count when both sides list the same tables with the
 same columns, 1 with one line per difference (naming the table and column), 2

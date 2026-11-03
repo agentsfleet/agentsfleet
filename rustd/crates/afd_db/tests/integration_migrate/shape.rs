@@ -3,9 +3,8 @@
 //!
 //! The expected layout is [`LAYOUT`], held here. That
 //! `docs/architecture/postgres_schemas.md` lists the same tables and columns as
-//! the registered migrations is the architecture-doc lint's row
-//! `test_arch_schema_layout_matches_doc` (`make check-architecture-doc`), so the
-//! doc, the slots and this list cannot drift apart without one of them failing.
+//! the registered migrations is `make check-schema-doc`'s, so the doc, the
+//! slots and this list cannot drift apart without one of them failing.
 
 use std::collections::BTreeMap;
 
