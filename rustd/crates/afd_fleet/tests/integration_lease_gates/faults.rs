@@ -233,6 +233,40 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     fixtures.cleanup().await;
 }
 
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
+    // Every gate admits the run and no rival takes the slot, but the claim's
+    // own deadline passed while the gates ran. The issue refuses a claim past
+    // its lapse rather than write a lease another runner may soon hold.
+    let fixtures = Fixtures::create_with_queue().await;
+    let seeded = ready(&fixtures).await;
+    set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let mut claimed = claim(&fixtures, &seeded).await;
+    claimed.leased_until = jiff::Timestamp::UNIX_EPOCH;
+
+    let log = Capture::install();
+    let answer = drive(&fixtures, &seeded, claimed).await;
+    let lost = log.only("lease_claim_lost");
+    drop(log);
+
+    assert_eq!(
+        (
+            answer.contains(NO_LEASE),
+            lost.field("runner_id"),
+            lost.field("agentsfleet_event_id"),
+        ),
+        (
+            true,
+            Some(seeded.runner.as_str()),
+            Some(seeded.event_id.as_str())
+        ),
+        "a lapsed claim issued a lease: {answer}"
+    );
+    fixtures.cleanup().await;
+}
+
 /// A [`Ready`] whose `chat` event is enqueued under `workspace`, which the
 /// caller picks: the fleet's own, or one no row carries.
 async fn ready_in(

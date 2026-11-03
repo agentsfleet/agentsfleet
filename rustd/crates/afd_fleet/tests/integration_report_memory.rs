@@ -264,3 +264,50 @@ async fn test_failed_capture_still_settles() {
     drop(forgetful);
     held.fixtures.cleanup().await;
 }
+
+/// A repeated report, whose first post wrote the run's memory and settled the
+/// lease, skips its capture quietly: the lease is no longer live, the answer
+/// is the repeat's, and the store holds the memory once.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_repeated_report_skips_its_memory_capture() {
+    let held = held().await;
+    let plane = held.fixtures.plane();
+    let body = report(&held, held.fence.as_u64(), learned());
+    plane
+        .report(&held.runner, &body, held.now)
+        .await
+        .expect("the holder's report settles");
+    let log = Capture::install();
+
+    let repeated = plane
+        .report(&held.runner, &body, held.now)
+        .await
+        .expect("a repeated report answers as the first did");
+    let skipped = log.only("memory_capture_skipped");
+    let failed = log
+        .events()
+        .iter()
+        .filter(|event| event.field("event") == Some("memory_capture_failed"))
+        .count();
+    drop(log);
+
+    assert_eq!(
+        (
+            (repeated.repeated, repeated.completed_at),
+            (skipped.field("fleet_id"), skipped.field("lease_id")),
+            failed,
+            stored(&held).await,
+        ),
+        (
+            (true, None),
+            (
+                Some(held.fleet.as_str()),
+                Some(held.issued.lease_id.as_str())
+            ),
+            0,
+            remembered(),
+        )
+    );
+    held.fixtures.cleanup().await;
+}

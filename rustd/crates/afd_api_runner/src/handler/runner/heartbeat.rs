@@ -83,27 +83,29 @@ pub(crate) async fn handle<D: Services>(
     // One refusal for both failures. The reply's decode repeats the one the
     // beat already passed on the same columns, so only the beat's own failure
     // reaches it in practice; the reply's stays a `Result` rather than a panic.
-    // The reply is built before the hold, so a beat that cannot be answered is
-    // refused at once rather than after waiting out the hold.
-    let recorded = match services
+    // A beat the daemon could not record is refused at once, never held.
+    let recorded = services
         .runners()
         .heartbeat(runner.id(), &beat, held.as_ref(), services.now())
-        .await
-    {
-        Ok(recorded) => recorded,
-        Err(error) => return refuse(&error, EVENT),
+        .await;
+    let woken = if recorded.is_ok() {
+        let wait = || {
+            services
+                .leases()
+                .wait_for_work(WAKE_HOLD_MAX, HELD_BEATS_MAX)
+        };
+        wake::woken(beat.wake, runner.id().as_str(), wait).await
+    } else {
+        false
     };
-    let mut reply = match payload(&recorded) {
-        Ok(reply) => reply,
-        Err(error) => return refuse(&error, EVENT),
-    };
-    let wait = || {
-        services
-            .leases()
-            .wait_for_work(WAKE_HOLD_MAX, HELD_BEATS_MAX)
-    };
-    reply.woken = Some(wake::woken(beat.wake, runner.id().as_str(), wait).await);
-    Json(reply).into_response()
+    recorded
+        .and_then(|recorded| {
+            payload(&recorded).map(|reply| {
+                let woken = Some(woken);
+                Json(HeartbeatResponse { woken, ..reply }).into_response()
+            })
+        })
+        .unwrap_or_else(|error| refuse(&error, EVENT))
 }
 
 /// What the body carried, or nothing at all, beside its holds list proved

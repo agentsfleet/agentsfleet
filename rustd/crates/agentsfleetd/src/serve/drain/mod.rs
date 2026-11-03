@@ -219,8 +219,11 @@ impl Drain {
         drop(tokio::time::timeout(bound, self.idle()).await);
         let abandoned = self.in_flight();
         if abandoned > 0 {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
-                error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+                error_code,
                 in_flight = abandoned,
                 event = EVENT_DRAIN_TIMED_OUT,
                 "drain bound expired; in-flight requests will be cut"
@@ -234,16 +237,13 @@ impl Drain {
 
     /// Resolves once nothing is in flight.
     ///
-    /// The re-check after registering is load-bearing: `Notify` wakes only a
-    /// waiter that was already registered, so a guard dropped between the load
-    /// and the registration would notify nobody and this would wait out the
-    /// whole bound with an empty server. `enable()` registers first, then the
-    /// count is read again.
+    /// Registers, then reads the count: `Notify` wakes only a waiter already
+    /// registered, so a count read first could see a guard still live, miss
+    /// its drop before the registration, and wait out the whole bound with an
+    /// empty server. Registered first, a drop either lands before the read,
+    /// which sees zero, or after it, which wakes this waiter.
     async fn idle(&self) {
         loop {
-            if self.in_flight() == 0 {
-                return;
-            }
             let notified = self.idle.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
