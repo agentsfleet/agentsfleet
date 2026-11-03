@@ -1,4 +1,5 @@
-//! One lease's workspace: a sparse ext4 image, loop-mounted, sized to its limit.
+//! One lease's workspace: a sparse ext4 image, loop-mounted in-process, sized
+//! to its limit.
 //!
 //! A block image rather than a quota on the host's file system, so it works on
 //! any host and a full disk answers `ENOSPC` inside the sandbox; a microVM
@@ -18,16 +19,19 @@ use afd_core::error_code::{Coded as _, Logged};
 use rustix::fs::{Gid, Uid};
 
 use crate::error::Result;
-use crate::host::{EXT4, HostTools};
 #[cfg(target_os = "linux")]
-use crate::toolbox::loop_device::{self, LOOP_MAJOR};
+use crate::host::EXT4;
+use crate::host::HostTools;
+#[cfg(target_os = "linux")]
+use crate::toolbox::loop_device::{self, Access};
 
 /// The image's file name inside the lease's directory.
 const IMAGE_NAME: &str = "workspace.img";
 /// Where the image is mounted inside the lease's directory.
 const MOUNT_DIR: &str = "workspace";
-/// Mount options: a loop device, and nothing on the disk may raise privilege.
-const WORKSPACE_OPTIONS: &str = "loop,nosuid,nodev";
+/// Why a workspace disk cannot be built off Linux.
+#[cfg(not(target_os = "linux"))]
+const NO_LOOP_DEVICES: &str = "no loop devices: only Linux mounts a workspace disk";
 /// The image's permissions: root reads and writes it, nobody else.
 const IMAGE_MODE: u32 = 0o600;
 /// The directory on the disk bound at `/workspace`.
@@ -48,8 +52,22 @@ pub enum Caching {
     /// cached once, in the sandbox's own memory.
     Direct,
     /// The host's page cache holds the image's blocks as well: the backing
-    /// file system refused direct I/O, or the mount made no loop device.
+    /// file system refused direct I/O.
     Buffered,
+}
+
+/// Attaches a workspace image to a loop device and mounts it, blocking its
+/// thread; says how the host caches it. [`loop_mount`] in production; a test
+/// swaps in one that mounts nothing.
+pub type Mount = fn(image: &Path, mount_point: &Path) -> Result<Caching>;
+
+/// A disk the blocking pool mounted. The start that asked takes it with
+/// [`Mounted::heard`]. A start dropped mid-mount never does: tokio drops this
+/// output in its place, so the disk is undone where it lands, since nothing
+/// else knows it is mounted.
+struct Mounted {
+    disk: Option<WorkspaceDisk>,
+    caching: Caching,
 }
 
 /// A mounted workspace disk. Releasing it is the only cleanup, and consumes it.
@@ -59,6 +77,17 @@ pub struct WorkspaceDisk {
     mount_point: PathBuf,
     workspace: PathBuf,
     tmp: PathBuf,
+}
+
+impl Caching {
+    /// The spelling a log field carries.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Buffered => "buffered",
+        }
+    }
 }
 
 impl WorkspaceDisk {
@@ -77,15 +106,20 @@ impl WorkspaceDisk {
     ) -> Result<(Self, Caching)> {
         let disk = Self::in_dir(dir);
         let built = disk.make_and_mount(tools, bytes, owner).await;
-        match built.and_then(|()| disk.ready(owner)) {
+        match built.and_then(|caching| lay_out(&disk.mount_point, owner).map(|()| caching)) {
             Ok(caching) => Ok((disk, caching)),
             Err(error) => Err(disk.undo(error)),
         }
     }
 
-    /// Makes the sparse image, formats it and mounts it. A failure can still
-    /// leave the disk mounted: a mount helper may mount and then fail.
-    async fn make_and_mount(&self, tools: &HostTools, bytes: u64, owner: (u32, u32)) -> Result<()> {
+    /// Makes the sparse image, formats it and mounts it; says how the host
+    /// caches it.
+    async fn make_and_mount(
+        &self,
+        tools: &HostTools,
+        bytes: u64,
+        owner: (u32, u32),
+    ) -> Result<Caching> {
         // Readable by root alone: the raw image is every file the lease wrote.
         fs::OpenOptions::new()
             .write(true)
@@ -95,20 +129,17 @@ impl WorkspaceDisk {
             .set_len(bytes)?;
         tools.format_ext4(&self.image, owner).await?;
         fs::create_dir(&self.mount_point)?;
-        tools
-            .mount(EXT4, WORKSPACE_OPTIONS, &self.image, &self.mount_point)
-            .await
-    }
-
-    /// Readies the mounted disk: direct I/O where the host allows it, then
-    /// `workspace/` and `tmp/`; says how the host caches it.
-    fn ready(&self, owner: (u32, u32)) -> Result<Caching> {
-        #[cfg(target_os = "linux")]
-        let caching = self.direct_io()?;
-        #[cfg(not(target_os = "linux"))]
-        let caching = Caching::Buffered;
-        lay_out(&self.mount_point, owner)?;
-        Ok(caching)
+        let (mount, disk) = (tools.mount, self.paths());
+        // Off the async runtime: the lease's build shares its task with the
+        // model's stream, and an ioctl must not stall it.
+        let mounted = tokio::task::spawn_blocking(move || {
+            mount(&disk.image, &disk.mount_point).map(|caching| Mounted {
+                disk: Some(disk),
+                caching,
+            })
+        })
+        .await??;
+        Ok(mounted.heard())
     }
 
     /// Undoes a disk whose build failed, the way a leftover is released:
@@ -117,6 +148,13 @@ impl WorkspaceDisk {
     /// what cannot be undone is logged and kept for the boot sweep. Hands
     /// `failure`, the step's own, back unchanged.
     fn undo(self, failure: crate::Error) -> crate::Error {
+        self.discard();
+        failure
+    }
+
+    /// Unmounts the disk where anything is mounted, then removes its files;
+    /// logs what it could not undo, which the boot sweep finds.
+    fn discard(self) {
         let mount_point = self.mount_point.clone();
         #[cfg(target_os = "linux")]
         let undone = self.release_leftover();
@@ -136,7 +174,16 @@ impl WorkspaceDisk {
                 "a failed workspace disk could not be unmounted and removed"
             );
         }
-        failure
+    }
+
+    /// The same disk's paths, for the blocking pool to own.
+    fn paths(&self) -> Self {
+        Self {
+            image: self.image.clone(),
+            mount_point: self.mount_point.clone(),
+            workspace: self.workspace.clone(),
+            tmp: self.tmp.clone(),
+        }
     }
 
     /// The disk's paths under `dir`, made or not.
@@ -178,19 +225,6 @@ impl WorkspaceDisk {
         Ok((rustix::fs::major(device), rustix::fs::minor(device)))
     }
 
-    /// Switches the loop device the mount made to direct I/O, so the image is
-    /// cached once, in the sandbox's own memory, rather than again on the
-    /// host. A mount helper that made no loop device has none to switch.
-    #[cfg(target_os = "linux")]
-    fn direct_io(&self) -> Result<Caching> {
-        match self.device()? {
-            (major, minor) if major == LOOP_MAJOR => {
-                loop_device::direct_io(&loop_device::node(major, minor)?)
-            }
-            _ => Ok(Caching::Buffered),
-        }
-    }
-
     /// Unmounts the disk, which frees its loop device, then deletes the image.
     ///
     /// The image is deleted only once nothing is mounted from it: an unmount
@@ -228,6 +262,48 @@ impl WorkspaceDisk {
         fs::remove_file(&self.image).or_else(absent)?;
         Ok(())
     }
+}
+
+impl Mounted {
+    /// The start heard the mount, so the disk is its own to release.
+    fn heard(mut self) -> Caching {
+        self.disk = None;
+        self.caching
+    }
+}
+
+impl Drop for Mounted {
+    fn drop(&mut self) {
+        if let Some(disk) = self.disk.take() {
+            disk.discard();
+        }
+    }
+}
+
+/// Attaches `image` read-write with direct I/O asked for, and mounts it at
+/// `mount_point` `nosuid,nodev` while that handle still holds the device.
+/// Closing the handle then leaves the mount the device's only holder, so the
+/// unmount frees it.
+///
+/// # Errors
+/// The image cannot be opened, no loop device attaches it, or the kernel
+/// refuses the mount.
+#[cfg(target_os = "linux")]
+pub(crate) fn loop_mount(image: &Path, mount_point: &Path) -> Result<Caching> {
+    let image = fs::OpenOptions::new().read(true).write(true).open(image)?;
+    let attached = loop_device::attach(&image, Access::ReadWrite)?;
+    let flags = rustix::mount::MountFlags::NOSUID | rustix::mount::MountFlags::NODEV;
+    rustix::mount::mount(&attached.node, mount_point, EXT4, flags, None)?;
+    Ok(attached.caching)
+}
+
+/// No other kernel has loop devices, so the build stops here.
+///
+/// # Errors
+/// Always: only Linux mounts a workspace disk.
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn loop_mount(_image: &Path, _mount_point: &Path) -> Result<Caching> {
+    Err(crate::error::unconfined(NO_LOOP_DEVICES))
 }
 
 /// Makes `workspace/` and `tmp/` on the disk mounted at `root`, each with its

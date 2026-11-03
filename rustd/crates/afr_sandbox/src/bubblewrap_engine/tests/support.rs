@@ -20,6 +20,7 @@ use crate::engine::{Limits, SandboxRequest};
 use crate::host::HostTools;
 use crate::probe::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
 use crate::toolbox::Toolbox;
+use crate::workspace_disk::Caching;
 
 /// The fake launchers, by file name.
 const SLEEPER_NAME: &str = "sleeper";
@@ -139,7 +140,7 @@ impl FakeHost {
             tools: HostTools {
                 bwrap,
                 mke2fs: PathBuf::from(TRUE),
-                mount: PathBuf::from(TRUE),
+                mount: |_image, _mount_point| Ok(Caching::Buffered),
             },
             toolbox: Arc::new(Toolbox::at(base.join("toolbox"), DIGEST.to_owned())),
             cgroup_root,

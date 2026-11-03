@@ -31,7 +31,7 @@ pub(crate) const NO_OOM_KILLS: &str = "oom_kill 0";
 const SYS_DEV_BLOCK: &str = "/sys/dev/block";
 const LOOP_DIO: &str = "loop/dio";
 /// What that file holds when direct I/O is on.
-const DIO_ON: &str = "1";
+pub(crate) const DIO_ON: &str = "1";
 /// Where a lease's workspace disk is mounted, under its directory.
 const DISK_MOUNT: &str = "workspace";
 /// Twice the default memory limit, written to `/workspace`, past its disk.
@@ -246,24 +246,28 @@ pub(crate) fn workspace_disk_uses_direct_io(lane: &Lane) -> Result<(), Failed> {
             .prepare(SandboxRequest::new(lease_id, Limits::default()))
             .await?;
         // Read while the sandbox holds the device: destroy detaches it.
-        let dio = fs::metadata(lane.lease_dir(lease_id).join(DISK_MOUNT)).and_then(|meta| {
-            let number = format!(
-                "{}:{}",
-                rustix::fs::major(meta.dev()),
-                rustix::fs::minor(meta.dev())
-            );
-            fs::read_to_string(
-                std::path::Path::new(SYS_DEV_BLOCK)
-                    .join(number)
-                    .join(LOOP_DIO),
-            )
-        });
+        let dio = loop_dio(&lane.lease_dir(lease_id).join(DISK_MOUNT));
         sandbox.destroy().await?;
         Ok::<_, Failed>(dio?)
     })?;
     expect(
         dio.trim() == DIO_ON,
         format!("the loop device reports direct I/O, got {dio:?}"),
+    )
+}
+
+/// What the loop device mounted at `mounted` says of direct I/O: `1` on.
+pub(crate) fn loop_dio(mounted: &std::path::Path) -> std::io::Result<String> {
+    let device = fs::metadata(mounted)?.dev();
+    let number = format!(
+        "{}:{}",
+        rustix::fs::major(device),
+        rustix::fs::minor(device)
+    );
+    fs::read_to_string(
+        std::path::Path::new(SYS_DEV_BLOCK)
+            .join(number)
+            .join(LOOP_DIO),
     )
 }
 
