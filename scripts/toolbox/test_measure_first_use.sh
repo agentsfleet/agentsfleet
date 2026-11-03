@@ -92,10 +92,18 @@ def refused_direct_io(directory):
     print(json.dumps(dict(case="direct_io_refused", exit=result.returncode, result="PASS")))
 
 
+# How long one case's sampler may run. A direct-I/O case reads every one of its
+# 20 runs past the host cache, which takes several times a buffered case's
+# time on a virtual disk; the bound catches a hang, not a slow disk.
+BOUND = 90
+DIRECT_IO_BOUND = 300
+
+
 def run_sampler(command, environment, marker, case):
     publication = case in ("signal_during_publication", "signal_hangup_during_publication")
     if case != "signal_during_measurement" and not publication:
-        return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=90)
+        bound = DIRECT_IO_BOUND if case == "direct_io_when_asked" else BOUND
+        return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=bound)
     process = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, start_new_session=True)
     try:

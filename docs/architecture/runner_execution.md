@@ -322,7 +322,7 @@ Warm slots (`afr_sandbox/src/warm_slots/mod.rs`) are sandboxes started ahead of 
 
 In the kernel lane, a debug build went from lease accept to executor ready in 23.6 ms cold, median of five. From a warm slot it took 0.66 ms ([M210_001](../v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md) Discovery). That lane kept its state under a tmpfs `/tmp`.
 
-On a disk under `/var/tmp`, with 100 leases 4 at once, executor ready took 100.8 ms cold at p50 before M237. The in-process disk took that under 50 ms. Both files hold every figure ([lease waits](../../playbooks/operations/acceptance/baselines/M237_001-lease-waits.md), [start](../../playbooks/operations/acceptance/baselines/M237_002-start.md)).
+On a disk under `/var/tmp`, with 100 leases 4 at once, executor ready took 100.8 ms cold at p50 before M237. The in-process disk took that under 50 ms. The specs' Discovery holds every figure ([lease waits](../v2/done/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md), [start](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md)).
 
 A run's first seconds go to the poll interval (up to 1 s), loading the fleet's memory and the first model call. The toolbox download never sits on a lease's path: a host fetches the image when it boots or reconciles.
 
