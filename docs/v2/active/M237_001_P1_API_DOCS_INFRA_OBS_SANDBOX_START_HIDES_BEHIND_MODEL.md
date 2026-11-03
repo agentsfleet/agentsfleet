@@ -91,6 +91,10 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/afr_telemetry/src/{labels,families,record,testing}*`, `docs/metrics.runner.census.tsv` | EDIT | The `sandbox_wait`, `sandbox_release` and `sandbox_builds` families, declared in the census both directions read |
 | `rustd/crates/agentsfleetd/{Cargo.toml,src/lib.rs}`, `rustd/crates/afr_executor/Cargo.toml` | EDIT | A stalled engine in the daemon suite needs `async-trait`; the slot's tests need paused time |
 | `rustd/crates/afr_supervisor/src/lease_loop/tests/` | EDIT | Ordering, failure, cancellation and timing proofs |
+| `rustd/crates/afr_supervisor/src/workspace_clone/{mod.rs,tests.rs,failure_tests.rs}` | EDIT | A stop ends a wait on another lease's mirror, so the 20 s deadline holds |
+| `rustd/crates/afr_agent/src/{scripted.rs,nested/run_tests.rs}` | EDIT | Callers of the run's executor slot |
+| `rustd/crates/afr_sandbox/src/unsandboxed/tests.rs`, `afr_sandbox/src/warm_slots/tests/mod.rs` | EDIT | `kill` proved on the unsandboxed engine; the trait's default `workspace()` covered, since `engine/mod.rs` changed |
+| `rustd/Cargo.lock` | EDIT | The `async-trait` line for `agentsfleetd`'s test engine |
 | `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox,resolver,rig}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill; a stalled resolver times the egress bind |
 | `rustd/crates/afr_supervisor/src/holds/{mod,keeper}.rs` and tests, `heartbeat/tests.rs`, `drainer/tests.rs` | EDIT | A park the keeper refuses comes back to the lease, which kills it now and releases it after the report |
 | `rustd/crates/afr_sandbox/src/{cgroup,engine}/` | EDIT | `cgroup.kill`, then a bounded wait on `populated 0`; the `Killed` record |
@@ -144,13 +148,13 @@ Before PLAN, the implementing agent records today's lease waits as Baseline evid
 Under §2's owner decision the egress bind stays ahead of the model call. Its share of `sandbox` is therefore the setup wait this spec leaves in place.
 
 - **Dimension 1.1** — `lease_completed` carries `egress_ms`, `prepare_ms` and `checkout_ms` apart → Test `test_lease_completed_splits_prepare_and_checkout` — DONE
-- **Dimension 1.2** — The baseline file exists before PLAN with both hosts' figures → Test `manual_baseline_recorded_before_plan` — DONE
+- **Dimension 1.2** — The baseline file exists before PLAN with the local kernel lane's figures, which Indy chose over the dev host's → Test `manual_baseline_recorded_before_plan` — DONE
 
 ### §2 — The sandbox builds beside the first model call
 
 Checks whose failure would repeat on every lease stay before the model call: `sized`, the `checkouts(policy)` refusal, the workspace identifier parse and the egress bind. Their refusals stay `startup_posture`, as today. After memory loading succeeds, `work` runs two futures in one task: the build and `drive`. The build revives or prepares the sandbox and checks repositories out. It never runs on `tokio::spawn`, since it borrows the lease.
 
-The build ends by filling the slot: with the executor, or with `Unavailable` naming why. The classes are `prepare`, `checkout`, and `stopped` for a build the run's end stopped. Only a ready sandbox moves into the lease's cell; a stopped or failed build destroys what it made first. A `CancellationToken` stops it only between steps, never by dropping the future, so a hold taken by `revive` always finishes its thaw.
+The build ends by filling the slot: with the executor, or with `Unavailable` naming why. The classes are `prepare`, `checkout`, and `stopped` for a build the run's end stopped. Only a ready sandbox moves into the lease's cell; a stopped or failed build destroys what it made first. A `CancellationToken` stops it only between steps, never by dropping a step mid-way, so a hold taken by `revive` always finishes its thaw. The token mint is the one future a stop drops: an HTTP call whose short-lived token lapses unused.
 
 The run receives `&dyn ExecutorSource` in place of `Option<&dyn Executor>`, and the lease's `ExecutorSlot` is its one implementation. The slot borrows the executor from the cell, so the run's lifetimes stay free of the slot's. The router awaits it on a call whose runtime is `Sandbox`, and child loops route through the same slot. Run end reads it without waiting.
 
@@ -158,7 +162,7 @@ The run receives `&dyn ExecutorSource` in place of `Option<&dyn Executor>`, and 
 
 End rules, in order of precedence:
 
-1. A run that ended processed and uncut waits up to 20 s for the build outcome. An answer that arrives mid-checkout therefore still leaves a complete sandbox, held by `keep`'s existing conditions. A build still running then is stopped and logged as `sandbox_build_outlasted_turn`, so a stalled fetch cannot hold the lease.
+1. A run that ended processed and uncut, on a runner still leasing, waits up to 20 s for the build outcome. An answer that arrives mid-checkout therefore still leaves a complete sandbox, held by `keep`'s existing conditions. A build still running then is stopped and logged as `sandbox_build_outlasted_turn`. So a stalled token mint, a wait on another lease's mirror or a slow fetch cannot hold the lease.
 2. A cut, refused or failed run cancels the build and awaits its outcome. A `Partial` or `Failed` outcome is killed and destroyed, never held. The report carries the run's own ending.
 3. A build that fails after the run already ended keeps the run's ending in the report. Nothing is held, and `sandbox_build_failed` is logged.
 
@@ -177,6 +181,9 @@ A processed ending proves that the answer was given, not that the workspace was 
 - **Dimension 2.11** — A turn that fails mid-build stops the build, which holds nothing → Test `test_a_failed_turn_stops_its_build_and_holds_nothing` — DONE
 - **Dimension 2.12** — Every build is counted once by how it ended: ready, prepare, checkout or stopped → Test `test_every_build_is_counted_by_how_it_ended` — DONE
 - **Dimension 2.13** — A build that outlasts its answered turn by 20 s is stopped, and the report goes with nothing held → Test `test_a_build_that_outlasts_its_answer_is_stopped` — DONE
+- **Dimension 2.14** — A turn on a runner that stopped leasing waits for no build → Test `test_a_runner_that_stopped_leasing_waits_for_no_build` — DONE
+- **Dimension 2.15** — A stopped build waits on no other lease's mirror → Test `a_stopped_checkout_waits_for_no_other_lease` — DONE
+- **Dimension 2.16** — A checkout the stop ended logs as stopped, not as failed → Test `test_a_stopped_checkout_logs_no_failure` — DONE
 
 ### §3 — The report posts before the disk is released
 
@@ -247,7 +254,7 @@ Wire, schema, OpenAPI and CLI: no change.
 1. Nothing runs unsandboxed in a sandbox's place — the router holds no executor until the slot yields one, enforced by the slot's type.
 2. No report posts before its sandbox's kill was issued and awaited — `settle` takes the `Killed` record or the hold's lapse time, so the compiler rejects a call without one. An `Unsettled` record posts and warns, and proves no empty tree.
 3. A worker holds one lease's disk at a time — the release future is `#[must_use]` and `run_lease` awaits it before returning.
-4. The build is never dropped mid-step — it runs to a typed outcome, and the lease awaits that outcome on every ending.
+4. The build is never dropped mid-step — it runs to a typed outcome, and the lease awaits that outcome on every ending. Only the token mint is dropped on a stop, and a mint holds nothing.
 
 ## Metrics & Observability
 
@@ -260,6 +267,7 @@ Wire, schema, OpenAPI and CLI: no change.
 | `sandbox_build_failed` | operator | The build fails, while the run is live or after it ended; never for a build a cut stopped | lease id, class, error code | no host, address or path | `test_build_failure_leaves_the_run_going`, `test_late_build_failure_keeps_the_run_ending` |
 | `agentsfleet_runner_sandbox_builds_total` | operator | A build ends | `outcome`: ready, prepare, checkout or stopped | no lease id | `test_every_build_is_counted_by_how_it_ended` |
 | `sandbox_build_outlasted_turn` | operator | A build is stopped 20 s past its answered turn | lease id | none needed | `test_a_build_that_outlasts_its_answer_is_stopped` |
+| `repository_checkout_stopped` | operator | A checkout the stop ended | lease id, repository, reason | no token | `test_a_stopped_checkout_logs_no_failure` |
 
 The `segments.rs` comment that segments tile the lease changes: `prepare` and `checkout` now overlap `model`.
 
@@ -282,6 +290,9 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | 2.11 | unit | `test_a_failed_turn_stops_its_build_and_holds_nothing` | Engine fails while the build stalls → build stopped, sandbox destroyed once, no hold, report carries the failure |
 | 2.12 | unit | `test_every_build_is_counted_by_how_it_ended` | One lease each ready, failing at prepare, failing at checkout and stopped → one `sandbox_build` count each, by that outcome |
 | 2.13 | unit | `test_a_build_that_outlasts_its_answer_is_stopped` | Turn answers, token mint stalls 80 s, paused clock → report `processed` under 40 s, nothing held, counted `stopped`, `sandbox_build_outlasted_turn` logged |
+| 2.14 | unit | `test_a_runner_that_stopped_leasing_waits_for_no_build` | Leasing stopped, turn answers, mint stalls 80 s, paused clock → report `processed` under 20 s, counted `stopped`, no `sandbox_build_outlasted_turn` |
+| 2.15 | unit | `a_stopped_checkout_waits_for_no_other_lease` | Mirror lock held, interrupt cancelled → checkout fails within 5 s naming the wait, nothing fetched |
+| 2.16 | unit | `test_a_stopped_checkout_logs_no_failure` | Unfinished checkout, stopped → only `repository_checkout_stopped`; not stopped → only `repository_checkout_failed` |
 | 3.1 | unit | `test_report_posts_between_kill_and_release` | Recording sandbox and plane → kill, report, destroy |
 | 3.2 | kernel | `test_no_sandbox_process_outlives_the_report` | `sleep 600` running, lease ends → kill `Settled`, cgroup empty when report posts |
 | 3.3 | unit | `test_unsettled_kill_still_reports` | Tree never empties → `Unsettled` with its reason, report posted, `sandbox_kill_unsettled` logged, nothing asserts the tree empty |
@@ -382,10 +393,11 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
   6. The Mac unit lane's `base64` failure needs Indy's override at the Pull Request: "Pass for now". Superseded on Nov 03: Indy chose the fix, below.
 - **A failed build was counted nowhere** — under decision B a failed build ends `processed`, so it left the platform-fault count, and a checkout failure left only a log line. `sandbox_builds_total` counts every build by outcome.
 - **macOS `base64`** — `deploy/local/codex.sh` passed the signature file to `base64 --decode` as an argument, which macOS's tool rejects, so the Mac unit lane failed on main too. It now reads stdin, which both tools accept.
+- **Final review (Nov 03)** — two readers over the whole diff at `0b33ed95b`, neither told how it was written. The orly standards reviewer, Claude Opus 5.5, made 15 findings, 4 blocking; the blocking 4 are fixed, with Files Changed rows that Indy approved. An adversarial runtime reviewer, Claude Opus 5.5, made 4 findings. Fixed: the mirror wait a stop could not end, a halted runner's 20 s wait, and the stopped-checkout warning. The fourth, a failed build torn down before its report, follows decision B's text.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
-- **Deferrals and transfers** — the review's findings outside this diff go to one hardening spec after M237 merges. They are the tenant's `pidfd_getfd` copy of its own link on `ptrace_scope` 0 hosts, the deploy window, the boot trial sandbox and Landlock socket scopes.
+- **Deferrals and transfers** — the review's findings outside this diff go to one hardening spec after M237 merges. They are the tenant's `pidfd_getfd` copy of its own link on `ptrace_scope` 0 hosts, the deploy window, the boot trial sandbox and Landlock socket scopes. Two final-review findings join them: a fetch stalled inside one network read, which gix's reqwest transport cannot time out and which predates M237; and a failed or stopped build's teardown before its report.
 
 > Owner (Indy, Nov 02, 2026 09:52 PM): "B: model carries on" — note: "i assume they (setup -> sandbox) and model are not connected? they can be independent?" — context: M237_001 §2, a build that fails while the run is live.
 
@@ -396,3 +408,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 08:53 AM): "Fold the build deadline in here" — context: of the review's five findings outside the diff, the unbounded wait for a build after the answer lands here (Dimension 2.13); the other four wait for one hardening spec.
 
 > Owner (Indy, Nov 03, 2026 08:53 AM): "Fix it here (Recommended)" — context: the macOS `base64` failure in `deploy/local/codex.sh`, fixed in this Pull Request rather than carried as an override.
+
+> Owner (Indy, Nov 03, 2026 10:37 AM): "Approve the rows (Recommended)" — context: changed files outside both specs' Files Changed tables, each forced by the change, now listed in them.
+
+> Owner (Indy, Nov 03, 2026 10:37 AM): "Fix (b) here too" — context: of three final-review findings, (b) the stopped-checkout warning is fixed here (Dimension 2.16); (a) the fetch stalled in one network read and (c) the teardown before the report go to the hardening spec.

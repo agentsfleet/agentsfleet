@@ -92,6 +92,17 @@ impl Fixture {
         workspace: &Path,
         base: &str,
     ) -> crate::error::Result<Fetched> {
+        self.check_out_under(workspace, base, &CancellationToken::new())
+            .await
+    }
+
+    /// Checks the fixture's repository out into `workspace`, under `interrupt`.
+    pub(super) async fn check_out_under(
+        &self,
+        workspace: &Path,
+        base: &str,
+        interrupt: &CancellationToken,
+    ) -> crate::error::Result<Fetched> {
         let request = Request {
             scope: SCOPE,
             checkout: Checkout {
@@ -106,9 +117,7 @@ impl Fixture {
                 owner: self.owner,
             },
         };
-        self.mirrors
-            .check_out(request, &CancellationToken::new())
-            .await
+        self.mirrors.check_out(request, interrupt).await
     }
 }
 

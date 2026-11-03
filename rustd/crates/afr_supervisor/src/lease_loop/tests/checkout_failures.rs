@@ -16,7 +16,10 @@ use tokio_util::sync::CancellationToken;
 
 use super::super::build::EVENT_BUILD_FAILED;
 use super::tests::{REPOSITORY, WORKSPACE_ID, bound, is_empty, mints, rig, served};
-use super::{DETAIL_CHECKOUT, EVENT_CHECKOUT_FAILED, Ended, each_until_stopped};
+use super::{
+    DETAIL_CHECKOUT, EVENT_CHECKOUT_FAILED, EVENT_CHECKOUT_STOPPED, Ended, checkout_ended,
+    each_until_stopped,
+};
 use crate::client::{Call, Verb};
 use crate::test_support::{Answer, LEASE_ID, OUTCOME, PROCESSED, Rig, STARTUP_POSTURE, reported};
 
@@ -179,4 +182,23 @@ async fn test_a_stop_between_repositories_starts_no_next_checkout() {
 
     assert!(matches!(ended, Err(Ended::Stopped)));
     assert_eq!(started, ["first"]);
+}
+
+/// What a checkout that did not finish logs: the stop's end is no failure,
+/// so only a checkout that failed on its own warns.
+#[test]
+fn test_a_stopped_checkout_logs_no_failure() {
+    let failure = crate::error::git(REPOSITORY, "fetched")("interrupted".into());
+    let logged = |stopped| {
+        let capture = Capture::install();
+        checkout_ended(LEASE_ID, REPOSITORY, &failure, stopped);
+        capture
+            .events()
+            .iter()
+            .filter_map(|event| event.field("event").map(str::to_owned))
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(logged(true), [EVENT_CHECKOUT_STOPPED]);
+    assert_eq!(logged(false), [EVENT_CHECKOUT_FAILED]);
 }

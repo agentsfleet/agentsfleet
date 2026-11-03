@@ -210,7 +210,11 @@ A lease whose tools are all supervisor-side starts no sandbox. A lease offered a
 
 Fleets on shared hosts run their own programs — build scripts, test suites, package installs, Python the model writes — so the sandbox is the only thing between two tenants' processes and one kernel:
 
-- bubblewrap: a fresh user, PID, IPC, UTS and mount namespace per lease, and a fresh network namespace unless the policy is `allow_all`; `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent`, `--new-session`. `--new-session` detaches the sandbox from any terminal, which closes terminal-input injection (`TIOCSTI`). The entry runs as uid and gid 1000 in `/workspace`. It is bound read-only at `/opt/agentsfleet/agentsfleet-runner` and started by that path, never through `$PATH`. It is told only the tenant leaf's descriptors and, when one is set, the log level (`afr_sandbox/src/bubblewrap/mod.rs`).
+- bubblewrap: a fresh user, PID, IPC, UTS and mount namespace per lease. A fresh network namespace too, unless the policy is `allow_all`. It runs with `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent` and `--new-session`.
+
+  `--new-session` detaches the sandbox from any terminal, which closes terminal-input injection (`TIOCSTI`). The entry runs as uid and gid 1000 in `/workspace`. It is bound read-only at `/opt/agentsfleet/agentsfleet-runner` and started by that path, never through `$PATH`.
+
+  The entry is told the tenant leaf's descriptors and its end of the executor's socket pair. It also gets the log level, when one is set (`afr_sandbox/src/bubblewrap/mod.rs`).
 - `no_new_privs`, then Landlock, then seccomp. The seccomp filter refuses 12 calls: the three `io_uring` calls, `ptrace`, `process_vm_readv`/`writev`, `unshare`, `bpf`, `keyctl`, `add_key`, `request_key` and `perf_event_open` (`afr_sandbox/src/harden/linux.rs`). Codex's own filter leaves `unshare`, `bpf`, `keyctl` and `perf_event_open` open.
 - cgroup v2 limits on memory, processor, process count and I/O, with whole-tree kill. The lease cgroup has two leaves. `sandbox` holds bubblewrap and the executor, and `tenant` holds every process the fleet starts.
 
@@ -458,7 +462,7 @@ sandboxed                                          lease_loop/workspace.rs
        │    acquire: revive(hold key) or prepare   lease_loop/hold.rs, Part D
        │      resume_hold, reallow, thaw, executor answers within 2 s ─► reuse
        │    check_out unless held                  mints the token, Mirrors::check_out
-       │    a stop ends the mint and a fetch, and is read between repositories
+       │    a stop ends the mint, a wait on the mirror and a fetch between git's steps
        │    fill the ExecutorSlot: the executor, or Unavailable(prepare | checkout | stopped)
        │    a failure or a stop fills the slot first, then destroys what it made
        │    count it: sandbox_builds_total{outcome = ready | prepare | checkout | stopped}
@@ -469,7 +473,9 @@ sandboxed                                          lease_loop/workspace.rs
 
 The first model request waits for the size, egress and plan checks alone. A sandbox-side call waits on the slot for what is left of the build, and `lease_completed` logs that wait as `sandbox_wait_ms`. A build that fails leaves the turn going: its sandbox-side calls answer `sandbox_unavailable` naming the class, and `sandbox_build_failed` is logged.
 
-A build still running 20 s after its turn answered is stopped and logged as `sandbox_build_outlasted_turn`. So a stalled fetch cannot hold the lease, and the report goes with nothing held.
+A build still running 20 s after its turn answered is stopped and logged as `sandbox_build_outlasted_turn`. A stalled token mint, a wait on another lease's mirror or a slow fetch cannot hold the lease. The report goes with nothing held.
+
+A runner that stops leasing waits for no build, since nothing would hold its sandbox.
 
 ### Part D: `prepare`, where bubblewrap is spawned
 
@@ -698,5 +704,5 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 | Oct 17, 2026 | Saved model inference settings replace the embedded provider routing JSON. Workspace-owner registrations and the active platform default supply credentialed choices; model output limits come from their saved catalogue row. Both inference hosts filter private SDK content. | Indy: "Also replace the JSON routing table with persistent provider configuration"; "have the persisted model details as the source of truth." |
 | Oct 19, 2026 | The runner reports cache writes apart from input, by the lifetime the provider names, and the daemon bills each class at its own rate instead of at the input rate (M229 Dimension 8.6) | Indy (2026-10-18): cache-write tokens are reported and billed by lifetime, "Bill them now" |
 | Nov 02, 2026 | A sandbox build that fails while the run is live leaves the run going; sandbox tools answer `sandbox_unavailable` naming the failure, and egress checks stay before the model call (M237_001) | Indy chose "B: model carries on", asking whether setup and the model are independent |
-| Nov 02, 2026 | Built by M237_001 and M237_002: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O, the executor speaks over an inherited socket pair, and the workspace disk mounts in-process | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
+| Nov 02, 2026 | Built by M237_001 and M237_002: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O (reverted Nov 03), the executor speaks over an inherited socket pair, and the workspace disk mounts in-process | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
 | Nov 03, 2026 | The toolbox loop device stays buffered, superseding Nov 02's direct I/O. A build waits at most 20 s past its answered turn. `sandbox_builds_total` counts builds by outcome | Direct I/O failed the 10% p99 rule on all 8 first-use steps. Indy chose "Revert to buffered", "Counter in this PR" and "Fold the build deadline in here" |

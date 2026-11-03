@@ -2,8 +2,8 @@
 # Measure cold first use with the toolbox as bubblewrap's read-only root.
 # Usage: sudo bash measure_first_use.sh IMAGE OUTPUT.json [RUNS [BASELINE.json]]
 # Each command gets a fresh writable workspace and a cleared host page cache.
-# TOOLBOX_LOOP_DIRECT_IO=on attaches the image as the runner does: read-only,
-# direct I/O, 4096-byte sectors. A device that did not take direct I/O ends
+# TOOLBOX_LOOP_DIRECT_IO=on attaches the image read-only with direct I/O and
+# 4096-byte sectors, to measure against the runner's buffered attach. A device that did not take direct I/O ends
 # the run before anything is measured.
 set -euo pipefail
 

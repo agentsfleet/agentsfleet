@@ -12,7 +12,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use super::tests::{BASE, Fixture, NAME, ORIGINS, OWNER, REPOSITORY, SCOPE, TOKEN, walk};
-use super::{Fetched, Mirrors, authorization, blocking, fetch};
+use super::{Fetched, Mirrors, WAIT_STOPPED, authorization, blocking, fetch};
 use crate::test_support::git;
 
 #[tokio::test]
@@ -313,4 +313,26 @@ async fn an_origin_that_is_not_a_url_fails_the_fetch_and_makes_no_mirror() {
             .join(format!("{NAME}.git"))
             .exists()
     );
+}
+
+/// A lease stopped while another holds the mirror waits for none of that
+/// clone: the interrupt ends the wait, and nothing is fetched.
+#[tokio::test]
+async fn a_stopped_checkout_waits_for_no_other_lease() {
+    let fixture = Fixture::new();
+    let lock = fixture.mirrors.lock(&fixture.mirror());
+    let _held = lock.lock().await;
+    let interrupt = CancellationToken::new();
+    interrupt.cancel();
+
+    let stopped = tokio::time::timeout(
+        Duration::from_secs(5),
+        fixture.check_out_under(&fixture.workspace("lease_1"), BASE, &interrupt),
+    )
+    .await
+    .unwrap();
+
+    let reason = afd_core::error_code::Coded::logged(&stopped.unwrap_err()).reason;
+    assert!(reason.contains(WAIT_STOPPED), "{reason}");
+    assert!(!fixture.mirror().exists(), "nothing was fetched");
 }

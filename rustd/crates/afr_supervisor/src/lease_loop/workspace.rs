@@ -7,7 +7,7 @@
 //! ```
 //!
 //! Checks that would fail on every lease run before any model request, and
-//! refuse it as today. Then the build and the turn run in one task: the turn's
+//! refuse it. Then the build and the turn run in one task: the turn's
 //! first model call never waits for the sandbox, and only a sandbox-side call
 //! does. A build that fails leaves the turn going; its sandbox-side calls
 //! answer `sandbox_unavailable`. The sandbox goes back to the lease, which
@@ -38,7 +38,8 @@ use crate::report::Ending;
 /// complete sandbox can be held: long enough for a checkout from a warm
 /// mirror, short against the fleet's next turn, which waits on this lease's
 /// report. The answer is already out; past this, the build is stopped and
-/// the report goes, rather than a stalled fetch holding the lease.
+/// the report goes, so a stalled token mint, a wait on another lease's
+/// mirror or a slow fetch does not hold the lease.
 pub(super) const BUILD_AFTER_ANSWER: Duration = Duration::from_secs(20);
 /// The event a build stopped because it outlasted its turn is logged under.
 pub(super) const EVENT_BUILD_OUTLASTED: &str = "sandbox_build_outlasted_turn";
@@ -123,7 +124,10 @@ impl LeaseRun<'_> {
             biased;
             () = &mut building => driving.await,
             ending = &mut driving => {
-                let waits = ending.processed() && !self.interrupt.is_cancelled();
+                // Only a sandbox `keep` would hold is worth waiting for.
+                let waits = ending.processed()
+                    && !self.interrupt.is_cancelled()
+                    && !self.lessee.halt.leasing().is_cancelled();
                 if !waits || tokio::time::timeout(BUILD_AFTER_ANSWER, &mut building).await.is_err() {
                     if waits {
                         let lease_id = self.ids.lease.as_str();

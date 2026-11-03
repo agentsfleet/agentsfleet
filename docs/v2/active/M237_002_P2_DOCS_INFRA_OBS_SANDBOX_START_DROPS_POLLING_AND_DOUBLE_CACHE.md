@@ -96,6 +96,10 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 | `docs/architecture/runner_execution.md` | EDIT | Toolbox, Parts A, D and E after the change |
 | `playbooks/operations/acceptance/baselines/M237_002-start.md` | CREATE | The start figures before and after |
 | `docs/AUTH.md` | EDIT | The `env_clear()` citation follows `parts.rs` to `parts/mod.rs` |
+| `rustd/crates/afr_sandbox/src/harden/mod.rs` | EDIT | Its comment named the socket directory the pair removed |
+| `rustd/crates/afr_sandbox/src/host/tests.rs` | EDIT | `HostTools.mount` is a function, not a program path |
+| `rustd/crates/agentsfleet_runner/src/{main.rs,main_tests.rs}`, `agentsfleet_runner/tests/entries.rs` | EDIT | The entry takes `--executor <fd>` beside the tenant descriptors |
+| `docs/architecture/runner_fleet.md` | EDIT | Its `/run/agentsfleet` mount row went with the socket directory |
 | `docs/v2/active/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md` | EDIT | This spec, opened at CHORE(open); moves to `done/` at close |
 
 ## Applicable Rules
@@ -136,7 +140,8 @@ The toolbox attaches buffered, with `LO_FLAGS_READ_ONLY`, `LO_FLAGS_AUTOCLEAR` a
 - **Dimension 1.2** — A buffered toolbox device admits its toolbox and logs `caching: buffered` → Test `test_toolbox_buffered_fallback_is_logged` — DONE
 - **Dimension 1.3** — A toolbox mount from the previous runner, buffered or direct, is adopted → Test `test_direct_io_toolbox_is_adopted` — DONE
 - **Dimension 1.4** — The toolbox goes direct only if no first-use step regresses past 10% at p99 → Test `manual_first_use_holds_after_direct_io` — DONE: all 8 steps regressed, so the toolbox stays buffered (Discovery)
-- **Dimension 1.5** — The harness attaches with direct I/O when asked and refuses a device that did not take it → the `direct_io_when_asked` and `direct_io_refused` cases of `scripts/toolbox/test_measure_first_use.sh` — DONE
+- **Dimension 1.5** — The harness attaches with direct I/O when asked → Test `direct_io_when_asked`, a case of `scripts/toolbox/test_measure_first_use.sh` — DONE
+- **Dimension 1.6** — The harness refuses a device that did not take direct I/O, with no report and no device left → Test `direct_io_refused`, a case of the same script — DONE
 
 ### §2 — The executor speaks over an inherited socket pair
 
@@ -210,7 +215,8 @@ Wire, schema, OpenAPI and CLI: no change.
 | 1.2 | unit | `test_toolbox_buffered_fallback_is_logged` | A buffered device → `caching: buffered` logged, admission succeeds |
 | 1.3 | unit | `test_direct_io_toolbox_is_adopted` | Backing flags read-only plus direct → adopted |
 | 1.4 | manual | `manual_first_use_holds_after_direct_io` | Buffered run, then a `TOOLBOX_LOOP_DIRECT_IO=on` run against it on the OrbStack lane → a step past 1.10 p99 ratio keeps the toolbox buffered |
-| 1.5 | unit | `direct_io_when_asked`, `direct_io_refused` | Mode on, the device reads `dio 0` → sampler exits non-zero with no report and no device; mode on with direct I/O → report says `loop: direct` |
+| 1.5 | unit | `direct_io_when_asked` | Mode on with direct I/O → report says `loop: direct` |
+| 1.6 | unit | `direct_io_refused` | Mode on, the device reads `dio 0` → sampler exits non-zero with no report and no device |
 | 2.1 | kernel | `test_executor_answers_over_the_inherited_pair` | New sandbox → no `executor.sock` on host or inside |
 | 2.2 | kernel | `test_tenant_process_holds_no_executor_socket` | `ls -l /proc/self/fd` in `shell` → no socket entries |
 | 2.3 | kernel | `test_concurrent_spawn_inherits_no_other_socket` | Two sandboxes start at once on several workers → no process of one lease holds the other's link |
@@ -292,7 +298,7 @@ N/A: no files deleted.
 - **One Pull Request (Indy, Nov 02)** — Both Workstreams ship in one Pull Request, which is the milestone's one ready Pull Request. Measurement runs locally through the make targets: the OrbStack kernel lane (Debian 13.7 on OrbStack's `7.2.12` kernel) stands in for the dev host in R2 and R3. The dev host stays on `6.12.111` until M237 ships.
 - **Same-task build (M237_001 §2)** — The build now shares a task with the model's stream. §3's in-process attach and mount therefore run on `spawn_blocking`, so a slow ioctl never stalls the stream.
 - **Codex review (Nov 02, baseline `2f8c878c0`)** — one P2 finding, fixed: §1 claimed the cache drop leaves no cache behind. `posix_fadvise` is advice, so §1 now leans on the flag readback, the resident-page test and the logged buffered fallback.
-- **Outside Files Changed** — `agentsfleet_runner/src/{main.rs,main_tests.rs}` and `tests/entries.rs` take the entry's new `Inherited` flags; they are callers of the entry API. `docs/architecture/runner_fleet.md` loses its `/run/agentsfleet` mount row, which the change made false.
+- **Outside Files Changed, now listed** — the entry's callers, `runner_fleet.md`, the `harden` comment and the host tests are in Files Changed, which Indy approved on Nov 03 (M237_001 Discovery).
 - **Probe unchanged** — `probe/mod.rs` reads the host before any toolbox is attached, so it has no device to report on. Admission's `sandbox_toolbox_admission_completed` carries `caching` instead.
 - **Read-write device opened read-only** — `LOOP_CONFIGURE` makes a device read-only when the handle configuring it cannot write. Every workspace disk came up read-only and its ext4 mount was refused, which the kernel lane caught (`55cfb02e7`).
 - **Small disks had 1 KiB blocks** — the attach gives every loop device 4096-byte sectors, and `mke2fs` picks 1 KiB blocks for a small disk. ext4 refused those mounts ("bad block size 1024"), so `mke2fs` now gets `-b 4096` (`beeacb8b0`).
