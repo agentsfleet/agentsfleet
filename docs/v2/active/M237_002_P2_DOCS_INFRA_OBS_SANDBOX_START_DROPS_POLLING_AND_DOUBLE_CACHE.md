@@ -303,11 +303,14 @@ N/A: no files deleted.
 - **First use, direct against buffered (Nov 03, OrbStack lane)** — three runs of 120 a mode, pooled to 360 a step. Direct I/O was 3 to 12% faster at p50 on all 8 steps and 1.12 to 2.98 times slower at p99 on all 8. The worst were `uv` 27.3 → 81.2 ms, `git_commit` 19.2 → 48.1 ms and `jq` 13.4 → 30.5 ms; `node_test` went 278.1 → 409.5 ms. The double cache direct I/O saved is one image of at most 160 MB a host.
 - **The revert** — the toolbox attaches buffered again, and admission drops no cache. The workspace disk keeps direct I/O. The caching trial went with it: it proved only the direct-I/O toolbox, so `caching.rs` was added and removed on this branch.
 - **The release half of `parts.rs`** — the socket pair took `parts.rs` past 350 lines. Its release half moves to `parts/teardown.rs`, and `parts.rs` becomes `parts/mod.rs`, so `docs/AUTH.md` cites the new path.
+- **Sandbox ready under 10 ms** — a fresh build reads 42.3 ms at p50, cold; a lease that took a warm slot read 1.17 ms (`test_warm_start_beats_cold_start`, p50 of 5). Nothing times the steps inside a prepare yet. Indy chose one follow-up spec after M237 merges: time each step, wire warm slots for default-sized leases, and shorten the lease-poll wait, at least 250 ms today (`worker_pool/mod.rs:30`).
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
 - **Deferrals and transfers** — Dimension 1.1, with the direct-I/O toolbox it proved:
 
 > Owner (Indy, Nov 03, 2026 08:53 AM): "Revert to buffered (Recommended)" — context: Dimension 1.4 measured direct I/O failing the 10% p99 rule on all 8 first-use steps, so the toolbox loop device stays buffered and Dimension 1.1's direct-I/O trial goes.
+
+> Owner (Indy, Nov 03, 2026 10:07 AM): "All three (Recommended)" — context: a follow-up spec after M237 merges to bring sandbox-ready under 10 ms: per-step timers, warm slots for default-sized leases, and a shorter lease-poll wait.
 
 > Owner (Indy, Nov 02, 2026 10:52 PM): "coudl we do both specs in this PR, if you need to measure do it in local? in the docker compose using make targets" — context: whether M237_001 and M237_002 ship together, and where the start figures are measured.
