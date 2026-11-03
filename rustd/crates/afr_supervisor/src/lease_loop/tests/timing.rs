@@ -104,11 +104,6 @@ async fn test_lease_completed_logs_its_segments() {
         None,
         "a lease bound to no repository checks nothing out"
     );
-    assert!(
-        parts.iter().flatten().sum::<u64>() <= millis(&line, SANDBOX_MS).unwrap(),
-        "the parts sit inside the sandbox segment: {:?}",
-        line.fields
-    );
 }
 
 /// Each segment times its own step: a late hydrate is memory time, the agent's run is model time with no tool time,

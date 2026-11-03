@@ -310,12 +310,15 @@ N/A: no files deleted.
 - **The revert** — the toolbox attaches buffered again, and admission drops no cache. The workspace disk keeps direct I/O. The caching trial went with it: it proved only the direct-I/O toolbox, so `caching.rs` was added and removed on this branch.
 - **The release half of `parts.rs`** — the socket pair took `parts.rs` past 350 lines. Its release half moves to `parts/teardown.rs`, and `parts.rs` becomes `parts/mod.rs`, so `docs/AUTH.md` cites the new path.
 - **Sandbox ready under 10 ms** — a fresh build reads 42.3 ms at p50, cold; a lease that took a warm slot read 1.17 ms (`test_warm_start_beats_cold_start`, p50 of 5). Nothing times the steps inside a prepare yet. Indy chose one follow-up spec after M237 merges: time each step, wire warm slots for default-sized leases, and shorten the lease-poll wait, at least 250 ms today (`worker_pool/mod.rs:30`).
+- **Performance a durable task can watch** — every figure the follow-up cuts becomes an exported signal, so a later regression shows as a moved percentile on Grafana rather than a re-run of the kernel lane. Today the runner exports build, wait, release and model durations and the build outcome count; `runner_execution.md` lists which answers which question. Three have no signal yet: admission to lease, lease to first model request, and each prepare step. The follow-up adds them, with a baseline per release that a durable task compares against.
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
 - **Deferrals and transfers** — Dimension 1.1, with the direct-I/O toolbox it proved:
 
 > Owner (Indy, Nov 03, 2026 08:53 AM): "Revert to buffered (Recommended)" — context: Dimension 1.4 measured direct I/O failing the 10% p99 rule on all 8 first-use steps, so the toolbox loop device stays buffered and Dimension 1.1's direct-I/O trial goes.
+
+> Owner (Indy, Nov 03, 2026 11:36 AM): "I want to monitor the observability, logging, metrics across so ensure we can do that to answer the performance questions. I wanna run Durable Task to figure out performance regression later using agentsfleet. so ensure you think in that way and record." — context: the follow-up to M237 and every later performance change.
 
 > Owner (Indy, Nov 03, 2026 10:07 AM): "All three (Recommended)" — context: a follow-up spec after M237 merges to bring sandbox-ready under 10 ms: per-step timers, warm slots for default-sized leases, and a shorter lease-poll wait.
 

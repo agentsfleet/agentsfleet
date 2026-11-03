@@ -19,7 +19,7 @@ use std::time::Duration;
 use backon::{BlockingRetryable as _, ConstantBuilder};
 
 use crate::engine::Limits;
-use crate::error::{Result, cgroup, cgroup_left};
+use crate::error::{Result, cgroup, cgroup_left, cgroup_unreadable};
 use crate::probe::REQUIRED_CONTROLLERS;
 
 mod delegated;
@@ -244,8 +244,8 @@ impl LeaseCgroup {
 
     /// Whether the tree still holds a live process.
     fn populated(&self) -> Result<bool> {
-        let events =
-            fs::read_to_string(self.dir.join(CGROUP_EVENTS)).map_err(cgroup(CGROUP_EVENTS))?;
+        let events = fs::read_to_string(self.dir.join(CGROUP_EVENTS))
+            .map_err(cgroup_unreadable(CGROUP_EVENTS))?;
         Ok(!events.lines().any(|line| line == UNPOPULATED))
     }
 

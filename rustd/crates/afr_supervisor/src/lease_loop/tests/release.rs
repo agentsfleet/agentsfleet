@@ -2,37 +2,59 @@
 //! only then is its disk released; the lease returns once the release is
 //! done, and a kill or a release that fails never holds the report back.
 
-use std::sync::{Arc, Mutex};
+#![expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test module: a failed precondition should fail the test loudly"
+)]
+
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use afd_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxRelease;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
+use tokio::sync::mpsc;
+use tokio::time::Instant;
 
 use super::super::EVENT_COMPLETED;
-use super::super::hold::{EVENT_DESTROY_FAILED, EVENT_KILL_UNSETTLED};
-use super::*;
-use crate::test_support::{DESTROY, KILL};
+use super::{EVENT_DESTROY_FAILED, EVENT_KILL_UNSETTLED};
+use crate::client::Verb;
+use crate::test_support::{
+    Behaviour, DESTROY, FLEET_ID, FakeAgent, FakeEngine, KILL, LEASE_ID, OUTCOME, PROCESSED, Rig,
+    daemon, lease, reported,
+};
 
 /// The step the fake daemon records when the report arrives.
 const REPORT: &str = "report";
 /// How long the stalled release takes.
 const RELEASE_TAKES: Duration = Duration::from_secs(3);
 
-/// A rig whose daemon writes each report into `engine`'s step log, beside
-/// the sandbox's kill and destroy.
-fn recording(engine: FakeEngine) -> (Rig, Arc<Mutex<Vec<&'static str>>>) {
-    let steps = Arc::clone(&engine.steps);
-    let reported = Arc::clone(&steps);
+/// A rig whose daemon reports each report into the channel `engine`'s
+/// sandboxes report their kill and destroy into, and that channel's reader.
+fn recording(engine: FakeEngine) -> (Rig, mpsc::UnboundedReceiver<&'static str>) {
+    let (steps, recorded) = mpsc::unbounded_channel();
+    let reported = steps.clone();
+    let engine = FakeEngine {
+        steps: Some(steps),
+        ..engine
+    };
     let answers = daemon(move |call| {
         if call.verb == Verb::Report {
-            reported.lock().unwrap().push(REPORT);
+            let _reader_gone = reported.send(REPORT);
         }
         None
     });
     (
         Rig::new(answers, engine, FakeAgent::new(Behaviour::Answer)),
-        steps,
+        recorded,
     )
+}
+
+/// Every step recorded since the last look, in order.
+fn in_order(recorded: &mut mpsc::UnboundedReceiver<&'static str>) -> Vec<&'static str> {
+    std::iter::from_fn(|| recorded.try_recv().ok()).collect()
 }
 
 /// The releases the recorder saw, in order.
@@ -48,14 +70,14 @@ fn releases(recorded: &std::sync::mpsc::Receiver<Recorded>) -> Vec<SandboxReleas
 
 #[tokio::test(start_paused = true)]
 async fn test_report_posts_between_kill_and_release() {
-    let (rig, steps) = recording(FakeEngine::default());
+    let (rig, mut steps) = recording(FakeEngine::default());
     let (tally, recorded) = Tally::new();
 
     scoped(tally, rig.run(&lease(LEASE_ID, FLEET_ID)))
         .await
         .unwrap();
 
-    assert_eq!(*steps.lock().unwrap(), [KILL, REPORT, DESTROY]);
+    assert_eq!(in_order(&mut steps), [KILL, REPORT, DESTROY]);
     assert_eq!(releases(&recorded), [SandboxRelease::Released]);
 }
 
@@ -68,12 +90,12 @@ async fn test_unsettled_kill_still_reports() {
         kill: crate::test_support::Kill::Unsettles,
         ..FakeEngine::default()
     };
-    let (mut rig, steps) = recording(engine);
+    let (mut rig, mut steps) = recording(engine);
 
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
 
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
-    assert_eq!(*steps.lock().unwrap(), [KILL, REPORT, DESTROY]);
+    assert_eq!(in_order(&mut steps), [KILL, REPORT, DESTROY]);
     let unsettled = capture.only(EVENT_KILL_UNSETTLED);
     assert_eq!(unsettled.field("lease_id"), Some(LEASE_ID));
     assert_eq!(
@@ -94,13 +116,13 @@ async fn test_unsettled_kill_still_reports() {
 /// A release that fails after the report changes nothing the report said:
 /// it is logged, counted as failed, and its leftovers are the boot sweep's.
 #[tokio::test(start_paused = true)]
-async fn test_late_release_failure_leaves_work_for_the_sweep() {
+async fn test_late_release_failure_is_logged_and_counted() {
     let capture = Capture::install();
     let engine = FakeEngine {
         fail_teardown: true,
         ..FakeEngine::default()
     };
-    let (mut rig, steps) = recording(engine);
+    let (mut rig, mut steps) = recording(engine);
     let (tally, recorded) = Tally::new();
 
     scoped(tally, rig.run(&lease(LEASE_ID, FLEET_ID)))
@@ -108,7 +130,7 @@ async fn test_late_release_failure_leaves_work_for_the_sweep() {
         .unwrap();
 
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
-    assert_eq!(*steps.lock().unwrap(), [KILL, REPORT, DESTROY]);
+    assert_eq!(in_order(&mut steps), [KILL, REPORT, DESTROY]);
     assert_eq!(releases(&recorded), [SandboxRelease::Failed]);
     let failed = capture.only(EVENT_DESTROY_FAILED);
     assert_eq!(failed.field("lease_id"), Some(LEASE_ID));

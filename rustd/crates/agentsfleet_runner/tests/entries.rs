@@ -70,16 +70,23 @@ fn run_stops_at_boot_on_a_host_it_cannot_lease_on() {
     );
 }
 
+/// Past any descriptor a test process holds, so none of the three below is
+/// open in the child by chance.
+const NEVER_OPENED: i32 = 1_000_000;
+
 /// The descriptor flags the engine passes, so `sandbox` parses and runs
 /// rather than stopping at a usage error. Outside a sandbox none of the three
 /// was inherited, so adoption refuses before anything is hardened.
 const INHERITED: afr_sandbox::Inherited = afr_sandbox::Inherited {
     tenant: afr_sandbox::TenantDescriptors {
-        tenant_procs: 5,
-        tenant_events: 6,
+        tenant_procs: NEVER_OPENED + 1,
+        tenant_events: NEVER_OPENED + 2,
     },
-    executor: 7,
+    executor: NEVER_OPENED,
 };
+
+/// What adoption says of a descriptor the engine did not hand over.
+const NOT_INHERITED: &str = "was not inherited from the engine";
 
 /// The exit code of an entry that ran and refused, as opposed to clap's 2 for
 /// a command line it would not parse.
@@ -96,14 +103,15 @@ fn sandbox(extra: &[(&str, &str)]) -> Output {
         .expect("the runner binary starts")
 }
 
-/// Outside a sandbox the entry inherited no link to serve, and on a host that
-/// cannot harden there is not even that far to go: `sandbox` never serves.
+/// Outside a sandbox the entry inherited no link to serve, so adoption
+/// refuses it before anything is hardened, naming the missing descriptor.
 #[test]
 fn sandbox_refuses_outside_a_sandbox() {
     let served = sandbox(&[]);
 
-    assert_eq!(served.status.code(), Some(REFUSED));
-    assert!(!served.stderr.is_empty(), "the refusal says why");
+    let stderr = String::from_utf8_lossy(&served.stderr);
+    assert_eq!(served.status.code(), Some(REFUSED), "{stderr}");
+    assert!(stderr.contains(NOT_INHERITED), "{stderr}");
 }
 
 /// A collector that refuses every connection, promptly.
@@ -203,7 +211,7 @@ fn run_refuses_a_credential_naming_the_knob() {
 /// (`tests/confine.rs`, a child process confining itself); this one proves the
 /// entry never builds the export that would start a thread before it.
 #[test]
-fn test_sandbox_hardens_with_telemetry_configured() {
+fn test_sandbox_entry_never_builds_an_export() {
     let plain = sandbox(&[]);
     let exporting = sandbox(&[(OTEL_ENDPOINT_KNOB, REFUSING_COLLECTOR)]);
 

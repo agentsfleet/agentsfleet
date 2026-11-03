@@ -28,12 +28,17 @@ static MOUNTING: AtomicBool = AtomicBool::new(false);
 /// Set by that test once the start is dropped, so the mount lands only
 /// after nobody can hear it.
 static DROPPED: AtomicBool = AtomicBool::new(false);
-/// Tools that cannot run, so every build stops at a known step.
+/// What the broken tools' mount answers: it attaches and mounts nothing.
+const MOUNT_REFUSED: &str = "a fake mount that refuses every disk";
+
+/// Tools that cannot run, so every build stops at a known step. The mount is
+/// a fake that refuses, never the real loop mount, so no build here touches a
+/// loop device whoever runs it.
 fn broken(mke2fs: &str) -> HostTools {
     HostTools {
         bwrap: PathBuf::from("/nonexistent/bwrap"),
         mke2fs: PathBuf::from(mke2fs),
-        ..HostTools::default()
+        mount: |_image, _mount_point| Err(std::io::Error::other(MOUNT_REFUSED).into()),
     }
 }
 
@@ -78,10 +83,11 @@ async fn test_a_disk_that_cannot_be_mounted_leaves_nothing_behind() {
     let dir = tempfile::tempdir().unwrap();
 
     // `true` formats nothing and succeeds, so the build reaches the mount,
-    // which the kernel refuses: no file system, no loop device, or no root.
+    // which the fake refuses.
     let refused = WorkspaceDisk::create(&broken(SUCCEEDS), dir.path(), DISK_BYTES, (0, 0)).await;
 
-    refused.unwrap_err();
+    let said = refused.unwrap_err().told();
+    assert!(said.contains(MOUNT_REFUSED), "stopped at the mount: {said}");
     assert_eq!(
         fs::read_dir(dir.path()).unwrap().count(),
         0,
@@ -145,7 +151,16 @@ async fn test_a_disk_whose_layout_is_refused_is_undone() {
     )
     .await;
 
-    refused.unwrap_err();
+    let failure = refused.err().map(|error| {
+        std::error::Error::source(&error)
+            .and_then(|cause| cause.downcast_ref::<std::io::Error>())
+            .map(std::io::Error::kind)
+    });
+    assert_eq!(
+        failure,
+        Some(Some(std::io::ErrorKind::AlreadyExists)),
+        "the layout's own failure reaches the caller"
+    );
     assert_eq!(
         fs::read_dir(dir.path()).unwrap().count(),
         0,
@@ -184,10 +199,12 @@ async fn test_a_mount_nobody_heard_is_undone() {
     .unwrap();
 
     start.abort();
-    DROPPED.store(true, Ordering::SeqCst);
 
     assert!(start.await.unwrap_err().is_cancelled(), "dropped mid-mount");
     assert!(dir.path().join(WORKSPACE_DIR).exists(), "still mounting");
+    // Only now may the mount land: set earlier, the pool could discard the
+    // disk before the check above looks.
+    DROPPED.store(true, Ordering::SeqCst);
     tokio::time::timeout(PATIENCE, async {
         while fs::read_dir(dir.path()).unwrap().count() > 0 {
             tokio::time::sleep(POLL).await;

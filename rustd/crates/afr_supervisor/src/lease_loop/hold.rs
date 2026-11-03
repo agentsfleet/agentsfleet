@@ -34,10 +34,10 @@ const EVENT_REFILL_FAILED: &str = "sandbox_refill_failed";
 const EVENT_FREEZE_STARTED: &str = "sandbox_freeze_started";
 const EVENT_FREEZE_COMPLETED: &str = "sandbox_freeze_completed";
 const EVENT_FREEZE_FAILED: &str = "sandbox_freeze_failed";
-pub(super) const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
+const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
 const EVENT_KILL_STARTED: &str = "sandbox_kill_started";
 const EVENT_KILL_COMPLETED: &str = "sandbox_kill_completed";
-pub(super) const EVENT_KILL_UNSETTLED: &str = "sandbox_kill_unsettled";
+const EVENT_KILL_UNSETTLED: &str = "sandbox_kill_unsettled";
 /// The workspace's own top, as the executor reads a relative path whatever
 /// its root is mounted at.
 const WORKSPACE_TOP: &str = ".";
@@ -322,3 +322,7 @@ mod reassign_tests;
 #[cfg(test)]
 #[path = "tests/holds/refill.rs"]
 mod refill_tests;
+
+#[cfg(test)]
+#[path = "tests/release.rs"]
+mod release_tests;

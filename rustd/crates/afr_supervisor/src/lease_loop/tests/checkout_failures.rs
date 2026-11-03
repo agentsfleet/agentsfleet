@@ -44,10 +44,10 @@ fn assert_refused_before_the_sandbox(rig: &Rig, calls: &[Call]) {
 /// A checkout that failed inside the build leaves the run going: the model
 /// answers, its sandbox-side calls read `checkout`, the half-built sandbox is
 /// destroyed, and the failure is logged once.
-fn assert_ran_without_the_sandbox(rig: &Rig, calls: &[Call], capture: &Capture) {
+fn assert_ran_without_the_sandbox(rig: &mut Rig, calls: &[Call], capture: &Capture) {
     assert_eq!(reported(calls)[OUTCOME], PROCESSED);
     assert_eq!(rig.runs.load(Ordering::SeqCst), 1, "the run went on");
-    assert_eq!(*rig.lent.lock().unwrap(), [Some(Unavailable::Checkout)]);
+    assert_eq!(rig.lent(), [Some(Unavailable::Checkout)]);
     assert_eq!(
         rig.destroyed.load(Ordering::SeqCst),
         1,
@@ -67,7 +67,7 @@ async fn a_sandbox_the_host_cannot_reach_leaves_the_run_without_it() {
     rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
 
     let calls = rig.calls();
-    assert_ran_without_the_sandbox(&rig, &calls, &capture);
+    assert_ran_without_the_sandbox(&mut rig, &calls, &capture);
     assert_eq!(
         mints(&calls),
         0,
@@ -101,7 +101,7 @@ async fn a_refused_mint_leaves_the_run_without_the_sandbox() {
     rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
 
     let calls = rig.calls();
-    assert_ran_without_the_sandbox(&rig, &calls, &capture);
+    assert_ran_without_the_sandbox(&mut rig, &calls, &capture);
     assert!(is_empty(workspace.path()));
 }
 
@@ -117,7 +117,7 @@ async fn a_repository_that_will_not_check_out_leaves_the_run_without_it() {
         .unwrap();
 
     let calls = rig.calls();
-    assert_ran_without_the_sandbox(&rig, &calls, &capture);
+    assert_ran_without_the_sandbox(&mut rig, &calls, &capture);
     let counted: Vec<_> = recorded
         .try_iter()
         .filter(|counted| matches!(counted, afr_telemetry::testing::Recorded::SandboxBuild(_)))

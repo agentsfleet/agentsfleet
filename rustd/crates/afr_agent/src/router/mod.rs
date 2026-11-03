@@ -6,7 +6,7 @@
 //! offered is a tool error the model reads, never a failed run, so the next
 //! turn still runs (`docs/architecture/runner_execution.md` §"Tool catalog").
 
-use std::time::Instant;
+use tokio::time::Instant;
 
 use afr_executor::{ExecutorSource, Outcome};
 use afr_telemetry::labels::SandboxWait;

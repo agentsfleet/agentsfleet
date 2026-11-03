@@ -11,19 +11,19 @@ use std::time::Duration;
 
 use afd_core::test_util::trace::Capture;
 
-use super::tests::{FLEET_A, FLEET_B, LEASE, holds, id, key, park, released, releases, sandbox};
+use super::tests::{FLEET_A, FLEET_B, fleets, hold, holds, park, released, releases};
 use super::{Parked, Release};
-use crate::test_support::FakeEngine;
+use crate::test_support::{FakeEngine, bounded};
 
 #[tokio::test]
 async fn test_shutdown_destroys_every_hold_and_waits() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
-    park(&holds, &engine, FLEET_B).await;
+    hold(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_B).await;
 
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 2);
     assert_eq!(
@@ -43,11 +43,9 @@ async fn test_a_park_after_shutdown_hands_the_sandbox_back() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
-    let parked = holds
-        .park(key(FLEET_A), id(LEASE), sandbox(&engine).await)
-        .await;
+    let parked = park(&holds, &engine, FLEET_A).await;
 
     let handed_back = matches!(parked, Parked::Refused(_));
     let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
@@ -57,7 +55,7 @@ async fn test_a_park_after_shutdown_hands_the_sandbox_back() {
     assert!(handed_back, "a stopped keeper hands the sandbox back");
     assert_eq!(destroyed_by_the_keeper, 0, "and destroys nothing itself");
     assert_eq!(releases(&capture), [released(FLEET_A, Release::Shutdown)]);
-    let left = holds.fleets().await;
+    let left = fleets(&holds).await;
     assert!(left.is_empty(), "{left:?}");
 }
 
@@ -65,8 +63,8 @@ async fn test_a_park_after_shutdown_hands_the_sandbox_back() {
 async fn test_a_second_shutdown_returns_at_once() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
-    holds.shutdown().await;
+    hold(&holds, &engine, FLEET_A).await;
+    bounded("the keeper's first shutdown", holds.shutdown()).await;
 
     // The task is gone, so nothing is left to answer; waiting for it would
     // hang a runner whose exit path calls this twice.

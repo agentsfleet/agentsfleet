@@ -61,17 +61,17 @@ pub(crate) struct FakeEngine {
     pub(crate) fail_teardown: bool,
     /// How its sandboxes' kills end.
     pub(crate) kill: Kill,
-    /// Each kill and destroy, in order, for a suite that sets the report
-    /// beside them.
-    pub(crate) steps: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    /// Where each sandbox reports its kill and its destroy, in order, for a
+    /// suite that sets the report beside them.
+    pub(crate) steps: Option<mpsc::UnboundedSender<&'static str>>,
     /// How long each teardown takes before it is counted.
     pub(crate) teardown_takes: Duration,
     /// How long each prepare takes before it answers, refused or not.
     pub(crate) prepare_takes: Duration,
     /// How long each thaw takes before it answers.
     pub(crate) thaw_takes: Duration,
-    /// When each prepare answered with a sandbox.
-    pub(crate) ready: Arc<std::sync::Mutex<Vec<tokio::time::Instant>>>,
+    /// Where each prepare reports when it answered with a sandbox.
+    pub(crate) ready: Option<mpsc::UnboundedSender<tokio::time::Instant>>,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
     /// Where each sandbox's executor reports the files written into it.
@@ -119,7 +119,9 @@ impl Engine for FakeEngine {
             !(self.panic_once && prepared == 0),
             "the fake engine panics on its first prepare"
         );
-        self.ready.lock().unwrap().push(tokio::time::Instant::now());
+        if let Some(ready) = &self.ready {
+            let _reader_gone = ready.send(tokio::time::Instant::now());
+        }
         let workspace = self.workspace.clone().map(|root| {
             let metadata = std::fs::metadata(&root).unwrap();
             (root, (metadata.uid(), metadata.gid()))
@@ -127,7 +129,7 @@ impl Engine for FakeEngine {
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
             kill: self.kill,
-            steps: Arc::clone(&self.steps),
+            steps: self.steps.clone(),
             teardown_takes: self.teardown_takes,
             thaw_takes: self.thaw_takes,
             workspace,
@@ -149,7 +151,7 @@ impl Engine for FakeEngine {
 struct FakeSandbox {
     fail_teardown: bool,
     kill: Kill,
-    steps: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    steps: Option<mpsc::UnboundedSender<&'static str>>,
     teardown_takes: Duration,
     thaw_takes: Duration,
     workspace: Option<(PathBuf, (u32, u32))>,
@@ -159,6 +161,15 @@ struct FakeSandbox {
     reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
     freezer: Freezer,
     executor: FakeExecutor,
+}
+
+impl FakeSandbox {
+    /// Reports `step` to the suite reading the steps, if one is.
+    fn step(&self, step: &'static str) {
+        if let Some(steps) = &self.steps {
+            let _reader_gone = steps.send(step);
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -210,7 +221,7 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn kill(&self) -> Killed {
-        self.steps.lock().unwrap().push(KILL);
+        self.step(KILL);
         if self.kill == Kill::Unsettles {
             return Killed::Unsettled(std::io::Error::other(STILL_RUNNING).into());
         }
@@ -218,7 +229,7 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
-        self.steps.lock().unwrap().push(DESTROY);
+        self.step(DESTROY);
         if !self.teardown_takes.is_zero() {
             tokio::time::sleep(self.teardown_takes).await;
         }

@@ -74,8 +74,8 @@ async fn the_sandbox_is_asked_for_the_network_the_egress_resolved() {
 }
 
 /// What a refusal at bind leaves behind: a startup-posture report carrying
-/// `detail`, no sandbox built, and one refusal log naming `host` among the two
-/// hosts asked for, never `address`.
+/// `detail`, no sandbox built, no model request, and one refusal log naming
+/// `host` among the two hosts asked for, never `address`.
 fn assert_refused_at_bind(
     rig: &mut Rig,
     capture: &Capture,
@@ -91,6 +91,7 @@ fn assert_refused_at_bind(
         0,
         "no sandbox is built"
     );
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no model request");
     let refused = capture.only(EVENT_EGRESS_REFUSED);
     assert_eq!(refused.field("lease_id"), Some(LEASE_ID));
     assert_eq!(refused.field("detail"), Some(detail));

@@ -43,7 +43,7 @@ async fn builds_counted(rig: &Rig, payload: &LeasePayload<'_>) -> Vec<SandboxBui
 
 /// Every build is counted by how it ended: a failed build no longer ends its
 /// lease, so the count is where a host's fault shows. A checkout's failure
-/// is counted in `checkout.rs`.
+/// is counted in `checkout_failures.rs`.
 #[tokio::test(start_paused = true)]
 async fn test_every_build_is_counted_by_how_it_ended() {
     let refusing = FakeEngine {

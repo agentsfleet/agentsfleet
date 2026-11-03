@@ -15,11 +15,15 @@ use afr_executor::{Ending, Spawn};
 use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
 use super::support::{
     BRIEF, ENV_PROBE, ENV_PROBE_INHERITED, ENV_PROBE_REPORT, ENV_PROBE_VARIABLES, FAILER,
-    FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SANDBOXED, SLEEPER, request, serve_leases,
+    FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SLEEPER, request, serve_leases,
 };
 use crate::cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
 use crate::engine::Engine;
 use crate::warm_slots::WarmSlots;
+
+/// How long a test waits for something the fake host does on its own: past
+/// the fake's 5 s ready wait, so a wait that fails names what never came.
+const PATIENCE: Duration = Duration::from_secs(10);
 
 #[tokio::test]
 async fn test_a_lease_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount() {
@@ -58,9 +62,9 @@ async fn test_a_lease_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount
     assert!(host.lease_dir("lease-1").join(IMAGE).exists());
 }
 
-/// The fake host's mount makes no loop device, so there is none to switch to
-/// direct I/O: the lease still starts, and is named as one whose disk the
-/// host caches a second time.
+/// The fake host's mount says its disk is buffered, as a device that refused
+/// direct I/O does: the lease still starts, and is named as one whose disk
+/// the host caches a second time.
 #[tokio::test]
 async fn test_a_disk_without_a_loop_device_is_logged_buffered_under_its_lease() {
     let host = FakeHost::new(SLEEPER);
@@ -222,13 +226,20 @@ async fn test_a_sandbox_that_dies_reports_it_is_no_longer_running() {
     let mut sandbox = host.engine().prepare(request("lease-10")).await.unwrap();
 
     let alive = sandbox.is_running();
-    while sandbox.is_running() {
-        tokio::time::sleep(POLL).await;
-    }
+    let died = tokio::time::timeout(PATIENCE, async {
+        while sandbox.is_running() {
+            tokio::time::sleep(POLL).await;
+        }
+    })
+    .await;
     let _left = sandbox.destroy().await;
     server.abort();
 
     assert!(alive, "running while bubblewrap is");
+    assert!(
+        died.is_ok(),
+        "bubblewrap still reported running after {PATIENCE:?}"
+    );
 }
 
 #[tokio::test]
@@ -237,14 +248,25 @@ async fn test_warm_slots_hand_out_a_bubblewrap_sandbox_started_ahead() {
     let server = serve_leases(host.config.state_dir.clone());
     let capture = Capture::install();
     let slots = WarmSlots::start(Arc::new(host.engine()), 1, LIMITS);
-    while !host
-        .leases()
-        .iter()
-        .any(|lease| host.lease_dir(lease).join(SANDBOXED).exists())
-    {
-        tokio::time::sleep(POLL).await;
-    }
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Bounded: this test holds the process's capture lock, so a wait that
+    // never ends would stall every other capturing test with it.
+    let ready = tokio::time::timeout(PATIENCE, async {
+        while capture
+            .events()
+            .iter()
+            .all(|event| event.field("event") != Some("sandbox_prepare_completed"))
+        {
+            tokio::time::sleep(POLL).await;
+        }
+    })
+    .await;
+    assert!(
+        ready.is_ok(),
+        "no warm slot logged sandbox_prepare_completed within {PATIENCE:?}"
+    );
+    // The start offers the slot to the keeper right after it logs, and may
+    // yield to the runtime's budget there: one yield lets the offer land.
+    tokio::task::yield_now().await;
 
     let warm = slots.prepare(request("lease-8")).await.unwrap();
     let _left = warm.destroy().await;

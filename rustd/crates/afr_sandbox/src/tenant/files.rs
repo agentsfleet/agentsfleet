@@ -10,7 +10,9 @@ use std::path::Path;
 use rustix::fs::{Mode, OFlags};
 use rustix::io::FdFlags;
 
-use super::{Inherited, TenantDescriptors};
+#[cfg(target_os = "linux")]
+use super::Inherited;
+use super::TenantDescriptors;
 use crate::cgroup::{CGROUP_PROCS, MEMORY_EVENTS};
 use crate::error::{Result, cgroup, cgroup_unreadable};
 
@@ -79,25 +81,13 @@ impl Handover {
         ))
     }
 
-    /// The numbers the sandbox entry will hold all three under.
+    /// The numbers the sandbox entry will hold all three under; only the
+    /// bubblewrap engine, which is Linux's, names them.
+    #[cfg(target_os = "linux")]
     pub(crate) fn descriptors(&self) -> Inherited {
         Inherited {
             tenant: self.tenant.descriptors(),
             executor: self.executor.as_raw_fd(),
-        }
-    }
-
-    /// What an exec does to the handover, for a test standing in for the
-    /// entry: the numbers stay open in this process, and nothing owns them.
-    #[cfg(test)]
-    pub(crate) fn into_inherited(self) -> Inherited {
-        use std::os::fd::IntoRawFd as _;
-        Inherited {
-            tenant: TenantDescriptors {
-                tenant_procs: self.tenant.procs.into_raw_fd(),
-                tenant_events: self.tenant.events.into_raw_fd(),
-            },
-            executor: self.executor.into_raw_fd(),
         }
     }
 

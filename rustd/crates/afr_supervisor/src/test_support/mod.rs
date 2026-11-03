@@ -7,8 +7,8 @@
     reason = "test support: a fixture that cannot be built is a broken test"
 )]
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
@@ -25,6 +25,7 @@ use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
+use tokio::sync::mpsc;
 use tokio::time::Instant;
 mod daemon;
 mod fixtures;
@@ -115,12 +116,12 @@ pub(crate) struct FakeAgent {
     pub(crate) behaviour: Behaviour,
     pub(crate) runs: Arc<AtomicUsize>,
     pub(crate) peak: Arc<AtomicUsize>,
-    /// When each run began: its first model request, for a suite to set
-    /// beside when its sandbox was ready.
-    pub(crate) began: Arc<Mutex<Vec<Instant>>>,
-    /// What each run's sandbox source lent it: none for an executor, or why
-    /// there was none.
-    pub(crate) lent: Arc<Mutex<Vec<Option<Unavailable>>>>,
+    /// Where each run reports when it began: its first model request, for a
+    /// suite to set beside when its sandbox was ready.
+    pub(crate) began: Option<mpsc::UnboundedSender<Instant>>,
+    /// Where each run reports what its sandbox source lent it: none for an
+    /// executor, or why there was none. [`Rig`] reads it back.
+    pub(crate) lent: Option<mpsc::UnboundedSender<Option<Unavailable>>>,
     running: AtomicUsize,
     catalog: Catalog,
     connect: Connector,
@@ -132,8 +133,8 @@ impl FakeAgent {
             behaviour,
             runs: Arc::default(),
             peak: Arc::default(),
-            began: Arc::default(),
-            lent: Arc::default(),
+            began: None,
+            lent: None,
             running: AtomicUsize::new(0),
             catalog: Catalog::new(vec![
                 Stub::boxed(&FILE_READ),
@@ -158,7 +159,9 @@ impl AgentEngine for FakeAgent {
         self.runs.fetch_add(1, Ordering::SeqCst);
         let overlapping = self.running.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(overlapping, Ordering::SeqCst);
-        self.began.lock().unwrap().push(Instant::now());
+        if let Some(began) = &self.began {
+            let _reader_gone = began.send(Instant::now());
+        }
         run.events
             .emit(ActivityFrame::FleetResponseChunk(FleetResponseChunk {
                 text: "hi".into(),
@@ -171,7 +174,9 @@ impl AgentEngine for FakeAgent {
         if !matches!(self.behaviour, Behaviour::Talks | Behaviour::Break) {
             // The turn's first sandbox-side call: it waits for the build.
             let lent = run.executor.get().await;
-            self.lent.lock().unwrap().push(lent.err());
+            if let Some(reader) = &self.lent {
+                let _reader_gone = reader.send(lent.err());
+            }
             if let Ok(executor) = lent {
                 exercise(executor).await;
             }

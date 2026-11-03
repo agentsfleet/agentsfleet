@@ -48,7 +48,7 @@ pub(super) struct Named {
 #[async_trait::async_trait]
 impl Sandbox for Named {
     async fn kill(&self) -> Killed {
-        Killed::Settled
+        unreachable!("a warm slot is handed out or destroyed, never killed")
     }
 
     fn executor(&self) -> &dyn Executor {

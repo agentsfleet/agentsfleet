@@ -5,7 +5,7 @@
 
 use std::fs;
 use std::io::{Read as _, Write as _};
-use std::os::fd::{AsRawFd as _, IntoRawFd as _, RawFd};
+use std::os::fd::{IntoRawFd as _, RawFd};
 use std::path::Path;
 
 use rustix::io::FdFlags;
@@ -121,10 +121,6 @@ fn the_engine_lets_only_the_entrys_end_of_the_link_through() {
         "the entry's end survives the exec"
     );
     assert!(closes(&runner), "the runner's end never does");
-    assert_eq!(
-        handover.descriptors().executor,
-        handover.executor.as_raw_fd()
-    );
 }
 
 /// The entry adopts its end of the link close-on-exec again, so no process

@@ -96,6 +96,9 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/afr_sandbox/src/unsandboxed/tests.rs`, `afr_sandbox/src/warm_slots/tests/mod.rs` | EDIT | `kill` proved on the unsandboxed engine; the trait's default `workspace()` covered, since `engine/mod.rs` changed |
 | `rustd/Cargo.lock` | EDIT | The `async-trait` line for `agentsfleetd`'s test engine |
 | `.orly/` | EDIT | `orly update --no-hooks` to 0.28.0, which Indy asked to ship here |
+| `rustd/crates/afd_core/src/test_util/trace.rs` | EDIT | A log capture waits at most ten minutes for the one before it, then fails naming the wait |
+| `rustd/crates/afr_agent/Cargo.toml` | EDIT | tokio's `time` feature: the router times a sandbox wait on tokio's clock |
+| `rustd/crates/afr_supervisor/src/heartbeat/closing_tests.rs` | EDIT | A park the keeper refuses is handed back to the test, which counts only the keeper's destroys |
 | `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox,resolver,rig}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill; a stalled resolver times the egress bind |
 | `rustd/crates/afr_supervisor/src/holds/{mod,keeper}.rs` and tests, `heartbeat/tests.rs`, `drainer/tests.rs` | EDIT | A park the keeper refuses comes back to the lease, which kills it now and releases it after the report |
 | `rustd/crates/afr_sandbox/src/{cgroup,engine}/` | EDIT | `cgroup.kill`, then a bounded wait on `populated 0`; the `Killed` record |
@@ -170,14 +173,14 @@ End rules, in order of precedence:
 A processed ending proves that the answer was given, not that the workspace was ready. After a `Failed` build, live or late, no files are left for a later lease to continue. A build that a cut stopped is not a failure and logs no `sandbox_build_failed`.
 
 - **Dimension 2.1** — The first model request leaves before the sandbox answers → Test `test_first_model_call_starts_before_the_sandbox_is_ready` — DONE
-- **Dimension 2.2** — A sandbox tool called mid-build waits, then runs in that sandbox → Test `test_sandbox_tool_waits_for_the_build` — DONE
+- **Dimension 2.2** — A sandbox tool called mid-build waits, then runs in that sandbox → Test `test_first_model_call_starts_before_the_sandbox_is_ready` — DONE
 - **Dimension 2.3** — A build failure mid-run leaves the run going, and each sandbox call answers `sandbox_unavailable` naming the class → Test `test_build_failure_leaves_the_run_going` — DONE
-- **Dimension 2.4** — A size, policy or egress refusal still happens before any model request → Test `test_static_refusals_precede_the_model_call` — DONE
+- **Dimension 2.4** — A size, policy or egress refusal still happens before any model request → Test `a_fleet_host_at_a_blocked_address_ends_the_lease_at_startup` — DONE
 - **Dimension 2.5** — A run cut mid-checkout destroys the partial sandbox and holds nothing → Test `test_partial_checkout_is_never_held` — DONE
 - **Dimension 2.6** — A cut during a thaw finishes the thaw, then destroys → Test `test_cut_during_thaw_settles_the_hold` — DONE
-- **Dimension 2.7** — A supervisor-only lease starts no build → Test `test_supervisor_only_lease_starts_no_build` — DONE
+- **Dimension 2.7** — A supervisor-only lease starts no build → Test `test_lease_without_sandbox_tools_starts_no_sandbox` — DONE
 - **Dimension 2.8** — Through the daemon, a chat's first stream frame precedes sandbox ready → Test `test_chat_streams_before_sandbox_ready` — DONE
-- **Dimension 2.9** — A memory load refusal starts no build → Test `test_memory_refusal_starts_no_build` — DONE
+- **Dimension 2.9** — A memory load refusal starts no build → Test `a_lease_that_cannot_start_reports_why` — DONE
 - **Dimension 2.10** — A build failing after the run ended leaves the run's ending in the report → Test `test_late_build_failure_keeps_the_run_ending` — DONE
 - **Dimension 2.11** — A turn that fails mid-build stops the build, which holds nothing → Test `test_a_failed_turn_stops_its_build_and_holds_nothing` — DONE
 - **Dimension 2.12** — Every build is counted once by how it ended: ready, prepare, checkout or stopped → Test `test_every_build_is_counted_by_how_it_ended` — DONE
@@ -197,7 +200,7 @@ Only `Settled` proves the sandbox's process tree is empty. `Unsettled` still let
 - **Dimension 3.1** — The order is kill, report, then release → Test `test_report_posts_between_kill_and_release` — DONE
 - **Dimension 3.2** — After a `Settled` kill, no sandbox process runs once the report is posted → Test `test_no_sandbox_process_outlives_the_report` — DONE
 - **Dimension 3.3** — A kill that never settles still posts the report, warns, and claims no empty tree → Test `test_unsettled_kill_still_reports` — DONE
-- **Dimension 3.4** — A release that fails after the report changes nothing it said, and is logged and counted for the boot sweep → Test `test_late_release_failure_leaves_work_for_the_sweep` — DONE
+- **Dimension 3.4** — A release that fails after the report changes nothing it said, and is logged and counted for the boot sweep → Test `test_late_release_failure_is_logged_and_counted` — DONE
 - **Dimension 3.5** — A lease returns, so its worker polls again, only after the release → Test `test_a_lease_returns_only_after_its_release` — DONE
 
 ### §4 — The architecture page tells the new order
@@ -238,8 +241,8 @@ Wire, schema, OpenAPI and CLI: no change.
 | Mode | Kind | Cause | Handling (system response + what the caller observes) | Test |
 |------|------|-------|--------------------------------------------------------|------|
 | Build fails mid-run | failure | Disk, cgroup, bubblewrap or checkout fails after the model started | Run continues; sandbox calls answer `sandbox_unavailable` with the class; sandbox killed and destroyed at once; `sandbox_build_failed` logged | `test_build_failure_leaves_the_run_going` |
-| Static refusal | failure | Size out of bounds, a binding with no checkout, or an egress host that will not resolve or is private | Refused before any model request, as today | `test_static_refusals_precede_the_model_call` |
-| Memory refused | failure | Memory load refused before the build | No build starts; lease refused as today | `test_memory_refusal_starts_no_build` |
+| Static refusal | failure | Size out of bounds, a binding with no checkout, or an egress host that will not resolve or is private | Refused before any model request, as today | `a_fleet_host_at_a_blocked_address_ends_the_lease_at_startup` |
+| Memory refused | failure | Memory load refused before the build | No build starts; lease refused as today | `a_lease_that_cannot_start_reports_why` |
 | Late build failure | failure | Build fails after the run ended | Report keeps the run's ending; whatever was built is destroyed; nothing held; `sandbox_build_failed` logged | `test_late_build_failure_keeps_the_run_ending` |
 | Partial checkout | failure | Run cut or refused while a repository was still copying | Build stops at the next step; sandbox destroyed, never held | `test_partial_checkout_is_never_held` |
 | Cut during thaw | failure | Renewal refused while a hold thaws | Thaw finishes, sandbox destroyed once, nothing held | `test_cut_during_thaw_settles_the_hold` |
@@ -248,7 +251,7 @@ Wire, schema, OpenAPI and CLI: no change.
 | Waiter at failure | failure | A tool call waits on the slot when the build fails | The call answers `sandbox_unavailable` naming the class | `test_build_failure_leaves_the_run_going` |
 | Process outlives report | security | Kill skipped on some drop path | Every pre-report drop kills first; report waits, bounded, on `populated 0`; only `Settled` claims an empty tree | `test_no_sandbox_process_outlives_the_report` |
 | Kill never settles | capacity | A process stuck in uninterruptible sleep | Bounded wait, report posts, warning names the lease; the record claims no empty tree, so no save reads the disk | `test_unsettled_kill_still_reports` |
-| Release fails late | failure | Unmount refused after the report | Logged with its duration; directory left for the boot sweep | `test_late_release_failure_leaves_work_for_the_sweep` |
+| Release fails late | failure | Unmount refused after the report | Logged with its duration; directory left for the boot sweep | `test_late_release_failure_is_logged_and_counted` |
 
 ## Invariants
 
@@ -262,8 +265,8 @@ Wire, schema, OpenAPI and CLI: no change.
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|----------|------------|--------------------|---------------|------------|
 | `lease_completed` fields `egress_ms`, `prepare_ms`, `checkout_ms`, `sandbox_wait_ms` | operator | A lease concludes | lease id, milliseconds | no tool arguments | `test_lease_completed_splits_prepare_and_checkout` |
-| `agentsfleet_runner_sandbox_wait_duration_seconds` | operator | A sandbox tool call waited on the slot | outcome label only, no lease id | none needed | `test_sandbox_tool_waits_for_the_build` |
-| `agentsfleet_runner_sandbox_release_duration_seconds` | operator | Release ends after the report | outcome label only | none needed | `test_late_release_failure_leaves_work_for_the_sweep` |
+| `agentsfleet_runner_sandbox_wait_duration_seconds` | operator | A sandbox tool call waited on the slot | outcome label only, no lease id | none needed | `test_first_model_call_starts_before_the_sandbox_is_ready` |
+| `agentsfleet_runner_sandbox_release_duration_seconds` | operator | Release ends after the report | outcome label only | none needed | `test_late_release_failure_is_logged_and_counted` |
 | `sandbox_kill_unsettled` | operator | Kill wait hits its bound | lease id, error code | none needed | `test_unsettled_kill_still_reports` |
 | `sandbox_build_failed` | operator | The build fails, while the run is live or after it ended; never for a build a cut stopped | lease id, class, error code | no host, address or path | `test_build_failure_leaves_the_run_going`, `test_late_build_failure_keeps_the_run_ending` |
 | `agentsfleet_runner_sandbox_builds_total` | operator | A build ends | `outcome`: ready, prepare, checkout or stopped | no lease id | `test_every_build_is_counted_by_how_it_ended` |
@@ -279,14 +282,14 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | 1.1 | unit | `test_lease_completed_splits_prepare_and_checkout` | Fake resolver 10 ms, engine 30 ms, checkout 50 ms → fields near 10, 30 and 50 |
 | 1.2 | manual | `manual_baseline_recorded_before_plan` | Baseline evidence file names the local kernel lane, its kernel version and p50/p95; Indy moved the measurement local |
 | 2.1 | unit | `test_first_model_call_starts_before_the_sandbox_is_ready` | Engine stalled 500 ms → provider request time before ready time |
-| 2.2 | unit | `test_sandbox_tool_waits_for_the_build` | `shell` first, engine stalled → call runs on that engine's executor |
+| 2.2 | unit | `test_first_model_call_starts_before_the_sandbox_is_ready` | `shell` first, engine stalled → call runs on that engine's executor |
 | 2.3 | unit | `test_build_failure_leaves_the_run_going` | Engine fails after first request → waiting and later `shell` calls answer `sandbox_unavailable` naming `prepare`; the run answers; no hold |
-| 2.4 | unit | `test_static_refusals_precede_the_model_call` | Disk size past bound, or an allowlisted host at a private address → zero provider requests, `startup_posture` |
+| 2.4 | unit | `a_fleet_host_at_a_blocked_address_ends_the_lease_at_startup` | Allowlisted host at a private address, `read_only` off → zero provider requests, `startup_posture`; the size half is `a_size_past_its_bounds_refuses_the_lease_before_any_sandbox` |
 | 2.5 | unit | `test_partial_checkout_is_never_held` | Renewal refused mid-checkout → `Partial`, sandbox destroyed, no hold; a processed answer mid-checkout → `Ready`, held |
 | 2.6 | unit | `test_cut_during_thaw_settles_the_hold` | Renewal refused during thaw → thaw completes, destroy once |
-| 2.7 | unit | `test_supervisor_only_lease_starts_no_build` | Policy `http_request` only → engine `prepare` never called |
+| 2.7 | unit | `test_lease_without_sandbox_tools_starts_no_sandbox` | Policy `http_request` only → engine `prepare` never called |
 | 2.8 | integration | `test_chat_streams_before_sandbox_ready` | Daemon plus runner, stalled engine → first frame before sandbox ready |
-| 2.9 | unit | `test_memory_refusal_starts_no_build` | Memory load refused → engine `prepare` never called, `startup_posture` |
+| 2.9 | unit | `a_lease_that_cannot_start_reports_why` | Memory load refused → engine `prepare` never called, `startup_posture` |
 | 2.10 | unit | `test_late_build_failure_keeps_the_run_ending` | Answer processed, then build fails → report `processed` path kept, sandbox destroyed, no hold, `sandbox_build_failed` logged; a cut-stopped build logs none |
 | 2.11 | unit | `test_a_failed_turn_stops_its_build_and_holds_nothing` | Engine fails while the build stalls → build stopped, sandbox destroyed once, no hold, report carries the failure |
 | 2.12 | unit | `test_every_build_is_counted_by_how_it_ended` | One lease each ready, failing at prepare, failing at checkout and stopped → one `sandbox_build` count each, by that outcome |
@@ -297,7 +300,7 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | 3.1 | unit | `test_report_posts_between_kill_and_release` | Recording sandbox and plane → kill, report, destroy |
 | 3.2 | kernel | `test_no_sandbox_process_outlives_the_report` | `sleep 600` running, lease ends → kill `Settled`, cgroup empty when report posts |
 | 3.3 | unit | `test_unsettled_kill_still_reports` | Tree never empties → `Unsettled` with its reason, report posted, `sandbox_kill_unsettled` logged, nothing asserts the tree empty |
-| 3.4 | unit | `test_late_release_failure_leaves_work_for_the_sweep` | Release fails → report already posted `processed`, kill, report and destroy in order, release counted `failed`, `sandbox_destroy_failed` logged |
+| 3.4 | unit | `test_late_release_failure_is_logged_and_counted` | Release fails → report already posted `processed`, kill, report and destroy in order, release counted `failed`, `sandbox_destroy_failed` logged |
 | 3.5 | unit | `test_a_lease_returns_only_after_its_release` | Release stalled 3 s → `report_ms` under 3 s, the lease returns only after it |
 | 4.1 | manual | `manual_walkthrough_matches_code` | Reviewer follows each Part's file references at the merge commit |
 
@@ -397,6 +400,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 - **Final review (Nov 03)** — two readers over the whole diff at `0b33ed95b`, neither told how it was written. The orly standards reviewer, Claude Opus 5.5, made 15 findings, 4 blocking; the blocking 4 are fixed, with Files Changed rows that Indy approved. An adversarial runtime reviewer, Claude Opus 5.5, made 4 findings. Fixed: the mirror wait a stop could not end, a halted runner's 20 s wait, and the stopped-checkout warning. The fourth, a failed build torn down before its report, follows decision B's text.
 - **orly 0.28.0** — `orly update --no-hooks` rewrote `AGENTS.md`, two skills and the spec, spec-template and shell standards, and moved the pin. `orly doctor` reads green. CI installs `orly@latest`, so no workflow pin moved. Both specs were written to the 0.27.0 spec standard, and they close under it.
 - **Changelog** — the entry is on `chore/m237-sandbox-start-changelog` in `agentsfleet/docs`, marked coming soon until M237 deploys.
+- **Test audit (Nov 03)** — three readers marked every test this branch added or changed, by the test-audit skill's bar (`~/Projects/openclaw/.agents/skills/test-audit`). The hang the owner saw came from `afd_core`'s log capture: it holds one process-wide lock for a test's whole life, so one stuck capturing test froze every capturing test in the binary. That lock now fails after ten minutes naming the wait, and every unbounded await under a capture is bounded. The fakes' `Mutex` recorders became channels; the overlap test's `ready` is a `OnceLock`. Four tests were folded into stronger ones, one that passed on the wrong guard was dropped, and assertions that could not fail went.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
@@ -417,3 +421,5 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 10:37 AM): "Fix (b) here too" — context: of three final-review findings, (b) the stopped-checkout warning is fixed here (Dimension 2.16); (a) the fetch stalled in one network read and (c) the teardown before the report go to the hardening spec.
 
 > Owner (Indy, Nov 03, 2026 10:14 AM): "i expect you to refresh the setup here and then ensure we can do orly update -- here? and push in this PR" — context: orly 0.28.0, published that morning, ships in M237's Pull Request.
+
+> Owner (Indy, Nov 03, 2026 11:12 AM): "Also i want you to do this review in this PR and fix them." and "In tests i notice for rust you use Mutex and get screwed royally on hangs, i suggest you candidly review and use Mutex in a lesser way." — context: the test audit above, folded into this Pull Request.

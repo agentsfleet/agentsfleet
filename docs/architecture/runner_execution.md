@@ -326,6 +326,19 @@ On a disk under `/var/tmp`, with 100 leases 4 at once, executor ready took 100.8
 
 A run's first seconds go to the poll interval (up to 1 s), loading the fleet's memory and the first model call. The toolbox download never sits on a lease's path: a host fetches the image when it boots or reconciles.
 
+**Reading the lease path's speed.** A regression should show as a moved percentile on a signal the runner exports. A fleet watching Grafana can then find it ([durable repair](scenarios/durable-repair.md)). Each question below has one:
+
+| Question | Signal |
+|---|---|
+| How long does a sandbox take to build? | `agentsfleet_runner_sandbox_start_duration_seconds`, by outcome |
+| Did a tool call wait on the build, and for how long? | `agentsfleet_runner_sandbox_wait_duration_seconds`; `sandbox_wait_ms` on `lease_completed` |
+| How often does a build fail, and at which step? | `agentsfleet_runner_sandbox_builds_total`, by outcome |
+| How long is the release after the report? | `agentsfleet_runner_sandbox_release_duration_seconds` |
+| Where did one lease's setup time go? | `egress_ms`, `prepare_ms` and `checkout_ms` on `lease_completed` |
+| How fast is the model? | `agentsfleet_runner_provider_turn_duration_seconds` |
+
+Three questions have no signal yet. Nothing times an event's wait for its lease, or a lease's wait for its first model request. Nothing times each step inside a prepare either; the follow-up to M237 adds all three.
+
 **Where the bytes live.**
 
 | Thing | Lives in | Bound | Lifetime | Source |
