@@ -17,11 +17,13 @@ const LEASE: &str = "killed";
 /// A process that would outlive the lease by ten minutes, out of the
 /// command's process group, so only the cgroup's kill can end it. The
 /// executor kills what is left in a command's group once its shell exits, so
-/// the shell waits, at most five seconds, until the sleeper leads a session of
-/// its own (its `stat` session field is its own pid) before it exits.
+/// the shell waits, at most thirty seconds, until the sleeper leads a session
+/// of its own (its `stat` session field is its own pid) before it exits, and
+/// says what it saw: the sleeper's pid, the tries it took, and its `stat`.
 const SLEEPER: &str = "setsid sleep 600 >/dev/null 2>&1 </dev/null & sleeper=$!; tries=0; \
-    until [ \"$(cut -d' ' -f6 /proc/$sleeper/stat)\" = \"$sleeper\" ] || [ \"$tries\" -ge 500 ]; \
-    do sleep 0.01; tries=$((tries + 1)); done";
+    until [ \"$(cut -d' ' -f6 /proc/$sleeper/stat)\" = \"$sleeper\" ] || [ \"$tries\" -ge 3000 ]; \
+    do sleep 0.01; tries=$((tries + 1)); done; \
+    echo \"sleeper $sleeper after $tries tries: $(cut -d' ' -f1-6 /proc/$sleeper/stat 2>&1)\"";
 /// What the sleeper's command line holds, as `setsid` and as the `sleep` it
 /// becomes.
 const SLEEPING: &str = "sleep 600";
@@ -36,6 +38,9 @@ const DISK_MOUNT: &str = "workspace";
 /// What the host saw before the kill, and between the kill and the release.
 struct Seen {
     sleeping: bool,
+    /// What the shell said, and what the tenant leaf held, when no sleeper
+    /// was found there.
+    why_not: String,
     killed: Killed,
     events: String,
     mounted: bool,
@@ -50,14 +55,25 @@ pub(crate) fn no_sandbox_process_outlives_the_report(lane: &Lane) -> Result<(), 
     let seen = runtime().block_on(async {
         let request = SandboxRequest::new(LEASE, Limits::default());
         let sandbox = lane.engine().prepare(request).await?;
-        run_in(sandbox.executor(), shell(SLEEPER)).await?;
-        let sleeping = sleeper_in(&cgroup.join(TENANT_LEAF))?;
+        let said = run_in(sandbox.executor(), shell(SLEEPER)).await?;
+        let leaf = cgroup.join(TENANT_LEAF);
+        let sleeping = sleeper_in(&leaf)?;
+        let why_not = if sleeping {
+            String::new()
+        } else {
+            format!(
+                "the shell said {:?}; the leaf held {:?}",
+                said.output,
+                held(&leaf)
+            )
+        };
         let killed = sandbox.kill().await;
         let events = fs::read_to_string(cgroup.join(CGROUP_EVENTS))?;
         let mounted = mounted_at(&lane.lease_dir(LEASE).join(DISK_MOUNT))?;
         sandbox.destroy().await?;
         Ok::<_, Failed>(Seen {
             sleeping,
+            why_not,
             killed,
             events,
             mounted,
@@ -65,7 +81,10 @@ pub(crate) fn no_sandbox_process_outlives_the_report(lane: &Lane) -> Result<(), 
     })?;
     expect(
         seen.sleeping,
-        "the setsid sleeper ran in the tenant leaf before the kill",
+        format!(
+            "the setsid sleeper ran in the tenant leaf before the kill: {}",
+            seen.why_not
+        ),
     )?;
     expect(
         matches!(seen.killed, Killed::Settled),
@@ -95,6 +114,22 @@ fn sleeper_in(leaf: &Path) -> Result<bool, Failed> {
                 .contains(SLEEPING)
         })
     }))
+}
+
+/// Every process the cgroup at `leaf` holds, as `pid: command line`.
+fn held(leaf: &Path) -> Vec<String> {
+    fs::read_to_string(leaf.join(CGROUP_PROCS))
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(|pid| {
+            let cmdline =
+                fs::read(Path::new("/proc").join(pid).join("cmdline")).unwrap_or_default();
+            format!(
+                "{pid}: {}",
+                String::from_utf8_lossy(&cmdline).replace('\0', " ").trim()
+            )
+        })
+        .collect()
 }
 
 /// Whether anything is mounted at `point` on the host.
