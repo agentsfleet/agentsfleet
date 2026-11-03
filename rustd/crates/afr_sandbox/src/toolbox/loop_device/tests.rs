@@ -7,10 +7,12 @@ use std::cell::Cell;
 use std::fs::{self, File};
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 use super::{
     ATTACH_RETRIES, Access, Attempt, LO_FLAGS_DIRECT_IO, LO_FLAGS_READ_ONLY, LoopConfig,
-    LoopInfo64, caching, configure_free, direct_or_buffered, node_in, status, until_free,
+    LoopInfo64, NODE_PATIENCE, Patience, SETTLE_PATIENCE, caching, configure_free,
+    direct_or_buffered, node_in, status, until_free, waiting_out,
 };
 use crate::host::BLOCK_BYTES;
 use crate::workspace_disk::Caching;
@@ -62,6 +64,69 @@ fn should_stop_at_once_on_a_final_failure() {
     assert_eq!(
         refused.err().and_then(|error| error.raw_os_error()),
         Some(libc::EBUSY)
+    );
+}
+
+/// A call that fails with `errno` until its `ok_on`th try, counting tries.
+fn failing_until(errno: i32, ok_on: usize, tries: &Cell<usize>) -> io::Result<usize> {
+    tries.set(tries.get() + 1);
+    if tries.get() >= ok_on {
+        Ok(tries.get())
+    } else {
+        Err(io::Error::from_raw_os_error(errno))
+    }
+}
+
+/// A device `LOOP_CTL_GET_FREE` just made may have no node yet, or one udev
+/// has not handed over: the open is made again until it is there. The kernel
+/// lane met the missing node while four leases started at once.
+#[test]
+fn should_wait_out_a_node_udev_has_not_made_yet() {
+    for errno in [libc::ENOENT, libc::EACCES] {
+        let tries = Cell::new(0_usize);
+
+        let opened = waiting_out(NODE_PATIENCE, || failing_until(errno, 3, &tries));
+
+        assert_eq!(opened.ok(), Some(3), "errno {errno}");
+    }
+}
+
+/// A device still letting go of its last file answers `EAGAIN`; the
+/// configure is made again once it has.
+#[test]
+fn should_wait_out_a_device_still_letting_go() {
+    let tries = Cell::new(0_usize);
+
+    let configured = waiting_out(SETTLE_PATIENCE, || failing_until(libc::EAGAIN, 2, &tries));
+
+    assert_eq!(configured.ok(), Some(2));
+}
+
+/// Once its tries run out, the wait returns the last refusal; a refusal no
+/// wait can cure is returned at once.
+#[test]
+fn should_return_the_refusal_a_wait_cannot_cure() {
+    let brief = Patience {
+        errnos: &[libc::ENOENT],
+        wait: Duration::ZERO,
+        tries: 3,
+    };
+    let tries = Cell::new(0_usize);
+    let refused = waiting_out(brief, || failing_until(libc::ENOENT, usize::MAX, &tries));
+    assert_eq!(tries.get(), 4);
+    assert_eq!(
+        refused.err().and_then(|error| error.raw_os_error()),
+        Some(libc::ENOENT)
+    );
+
+    let tries = Cell::new(0_usize);
+    let refused = waiting_out(NODE_PATIENCE, || {
+        failing_until(libc::EINVAL, usize::MAX, &tries)
+    });
+    assert_eq!(tries.get(), 1);
+    assert_eq!(
+        refused.err().and_then(|error| error.raw_os_error()),
+        Some(libc::EINVAL)
     );
 }
 

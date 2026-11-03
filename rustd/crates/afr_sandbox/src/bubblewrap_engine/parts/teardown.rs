@@ -98,25 +98,35 @@ impl Drop for Parts {
         if !held {
             return;
         }
-        let mut owned = self.take();
-        let mut release = move || {
-            let released = owned.release();
-            log_release(&owned.lease_id, released.as_ref().err());
-        };
-        // A cgroup can take seconds to empty. On a runtime of either flavor
-        // the release goes to its blocking pool, logging where this thread
-        // logs, so a drop never holds a worker; with no runtime there is no
-        // worker to hold. A release a stopping runtime never runs is left to
-        // the boot sweep.
+        let release = Release(self.take());
+        // A cgroup can take seconds to empty. On a running runtime of either
+        // flavor the release goes to its blocking pool, logging where this
+        // thread logs, so a drop never holds a worker; with no runtime there
+        // is no worker to hold. A stopping runtime's pool refuses the task by
+        // dropping it, and the release runs wherever that drop lands.
         match tokio::runtime::Handle::try_current() {
             Ok(runtime) => {
                 let logs = tracing::dispatcher::get_default(Clone::clone);
                 drop(runtime.spawn_blocking(move || {
-                    tracing::dispatcher::with_default(&logs, release);
+                    tracing::dispatcher::with_default(&logs, || drop(release));
                 }));
             }
-            Err(_no_runtime) => release(),
+            Err(_no_runtime) => drop(release),
         }
+    }
+}
+
+/// Parts on their way to [`Parts::release`], which runs when this drops: on
+/// the blocking pool, or where a stopping pool drops the task it refused.
+/// Released parts hold nothing, so their own drop ends there. Dropping held
+/// parts instead would hand them to the same refusing pool, whose refusal
+/// drops them again, until the stack runs out.
+struct Release(Parts);
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        let released = self.0.release();
+        log_release(&self.0.lease_id, released.as_ref().err());
     }
 }
 

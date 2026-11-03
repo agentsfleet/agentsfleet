@@ -49,6 +49,31 @@ const LO_KEY_SIZE: usize = 32;
 /// How many more free devices to try after the first: another process may
 /// take the one the kernel offered before this one configures it.
 const ATTACH_RETRIES: usize = 7;
+/// How long the node of a device `LOOP_CTL_GET_FREE` just made is waited on:
+/// udev may create it, or give it its owner, after the call returns. The
+/// figures are util-linux's (`lib/loopdev.c`, `loopcxt_setup_device`).
+const NODE_PATIENCE: Patience = Patience {
+    errnos: &[libc::ENOENT, libc::EACCES],
+    wait: Duration::from_millis(25),
+    tries: 16,
+};
+/// How long a device still letting go of its last file is waited on: until
+/// then `LOOP_CONFIGURE` answers `EAGAIN`. util-linux's figures again
+/// (`repeat_on_eagain`).
+const SETTLE_PATIENCE: Patience = Patience {
+    errnos: &[libc::EAGAIN],
+    wait: Duration::from_millis(250),
+    tries: 10,
+};
+
+/// Which refusals of one call are worth the same call again, how far apart,
+/// and how many more times.
+#[derive(Debug, Clone, Copy)]
+struct Patience {
+    errnos: &'static [i32],
+    wait: Duration,
+    tries: usize,
+}
 
 /// `struct loop_info64`, its fields named without the header's `lo_` prefix.
 #[repr(C)]
@@ -264,6 +289,23 @@ fn until_free<T>(attempt: impl FnMut() -> Result<T, Attempt>) -> io::Result<T> {
         .map_err(Attempt::into_error)
 }
 
+/// `call`, made again while it fails with one of `patience`'s errnos, at most
+/// `patience.tries` more times; the last failure is returned.
+fn waiting_out<T>(patience: Patience, call: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    call.retry(
+        ConstantBuilder::default()
+            .with_delay(patience.wait)
+            .with_max_times(patience.tries),
+    )
+    .sleep(std::thread::sleep)
+    .when(|refused: &io::Error| {
+        refused
+            .raw_os_error()
+            .is_some_and(|errno| patience.errnos.contains(&errno))
+    })
+    .call()
+}
+
 /// Asks the kernel for a free loop device, opens it as `access` needs, and
 /// configures it with `config`.
 fn configure_free(
@@ -278,17 +320,25 @@ fn configure_free(
         return Err(Attempt::Failed(io::Error::last_os_error()));
     }
     let node = PathBuf::from(format!("{LOOP_NODE_PREFIX}{number}"));
-    let device = OpenOptions::new()
-        .read(true)
-        .write(access.writes())
-        .open(&node)
-        .map_err(Attempt::Failed)?;
-    // SAFETY: `config` is a `struct loop_config` laid out as the kernel
-    // declares it (asserted above), alive for the call and only read.
-    let configured = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_CONFIGURE, &raw const *config) };
-    if configured != 0 {
-        return Err(Attempt::configure(io::Error::last_os_error()));
-    }
+    let device = waiting_out(NODE_PATIENCE, || {
+        OpenOptions::new()
+            .read(true)
+            .write(access.writes())
+            .open(&node)
+    })
+    .map_err(Attempt::Failed)?;
+    waiting_out(SETTLE_PATIENCE, || {
+        // SAFETY: `config` is a `struct loop_config` laid out as the kernel
+        // declares it (asserted above), alive for the call and only read.
+        let configured =
+            unsafe { libc::ioctl(device.as_raw_fd(), LOOP_CONFIGURE, &raw const *config) };
+        if configured == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    })
+    .map_err(Attempt::configure)?;
     let flags = status(&device).map_err(Attempt::Failed)?.flags;
     Ok(Attached {
         node,
