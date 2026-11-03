@@ -249,11 +249,24 @@ async fn test_a_drained_rejected_report_releases_what_its_lease_parked() {
 /// rest of the body.
 const ONE_POST_REPORT: &str = r#"{"lease_id":"x","memory":[{"key":"k","content":"v","category":"core"}],"telemetry":{"wall_ms":5,"segments":{"settle_ms":2}}}"#;
 
-/// A report the drain posts to an older replica, which refuses its shape, is
-/// posted again without the run's memory and segments, and nothing is left in
-/// the spool: the answer is kept though the memory is not.
-#[tokio::test(start_paused = true)]
-async fn test_drain_reposts_a_shape_refused_report_without_its_memory() {
+/// That report as the older replica reads it: no memory, no segments.
+fn plain_report() -> serde_json::Value {
+    serde_json::json!({"lease_id": "x", "telemetry": {"wall_ms": 5}})
+}
+
+/// The refusal an older replica gives a body shaped past what it reads.
+fn shape_refused() -> Answer {
+    let shape = Some(afd_core::error_code::INVALID_REQUEST);
+    Answer::Fail(error::refused(Verb::Report, 400, shape))
+}
+
+/// Drains a spool holding [`ONE_POST_REPORT`] against a daemon answering its
+/// `n`th report post with `answer(n)`, until the spool empties or ten virtual
+/// minutes pass. Returns the bodies posted and the files left in the spool.
+async fn drain_one_post<F>(answer: F) -> (Vec<serde_json::Value>, Vec<std::path::PathBuf>)
+where
+    F: Fn(usize) -> Answer + Send + Sync + 'static,
+{
     let root = tempfile::tempdir().unwrap();
     let home = StorageHome::open(root.path()).unwrap();
     let spool = ReportSpool::new(&home);
@@ -264,16 +277,8 @@ async fn test_drain_reposts_a_shape_refused_report_without_its_memory() {
         )
         .await
         .unwrap();
-    let posts = Arc::new(AtomicUsize::new(0));
-    let counted = Arc::clone(&posts);
-    let (plane, mut calls) = plane(move |_call| {
-        if counted.fetch_add(1, Ordering::SeqCst) == 0 {
-            let shape = Some(afd_core::error_code::INVALID_REQUEST);
-            Answer::Fail(error::refused(Verb::Report, 400, shape))
-        } else {
-            json(&ReportResponse { ok: true })
-        }
-    });
+    let posts = AtomicUsize::new(0);
+    let (plane, mut calls) = plane(move |_call| answer(posts.fetch_add(1, Ordering::SeqCst)));
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
     let held = Notify::new();
@@ -285,33 +290,66 @@ async fn test_drain_reposts_a_shape_refused_report_without_its_memory() {
         held: &held,
         holds: &holds,
     };
-    let capture = Capture::install();
 
-    let ((), ()) = tokio::join!(drainer.run(), async {
-        until_empty(&spool).await;
+    let ((), _emptied) = tokio::join!(drainer.run(), async {
+        let emptied = tokio::time::timeout(Duration::from_secs(600), until_empty(&spool)).await;
         shutdown.cancel();
+        emptied
     });
 
-    let bodies: Vec<serde_json::Value> = crate::test_support::drain(&mut calls)
+    let bodies = crate::test_support::drain(&mut calls)
         .iter()
         .map(|call| serde_json::from_slice(call.body.as_ref().unwrap()).unwrap())
         .collect();
-    let left: Vec<_> = fs::read_dir(home.spool())
+    let left = fs::read_dir(home.spool())
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .filter(|path| path.is_file())
         .collect();
-    assert_eq!(
-        (bodies.last().cloned(), left),
-        (
-            Some(serde_json::json!({"lease_id": "x", "telemetry": {"wall_ms": 5}})),
-            Vec::<std::path::PathBuf>::new()
-        )
-    );
+    (bodies, left)
+}
+
+/// A report the drain posts to an older replica, which refuses its shape, is
+/// posted again without the run's memory and segments, and nothing is left in
+/// the spool: the answer is kept though the memory is not.
+#[tokio::test(start_paused = true)]
+async fn test_drain_reposts_a_shape_refused_report_without_its_memory() {
+    let capture = Capture::install();
+
+    let drained = drain_one_post(|post| {
+        if post == 0 {
+            shape_refused()
+        } else {
+            json(&ReportResponse { ok: true })
+        }
+    })
+    .await;
+
+    let one_post: serde_json::Value = serde_json::from_str(ONE_POST_REPORT).unwrap();
+    assert_eq!(drained, (vec![one_post, plain_report()], Vec::new()));
     let dropped = capture.only("report_memory_dropped");
     assert_eq!(
         (dropped.field("lease_id"), dropped.field("cause_error_code")),
         (Some(LEASE_ID), Some("UZ-REQ-001"))
+    );
+}
+
+/// A reshaped report the daemon keeps, a 503 mid-deploy, stays held and is
+/// posted again on the drain's backoff rather than waiting on an unrelated
+/// wake; the spool empties once the daemon takes it.
+#[tokio::test(start_paused = true)]
+async fn test_a_reshaped_report_the_daemon_keeps_is_retried() {
+    let drained = drain_one_post(|post| match post {
+        0 => shape_refused(),
+        1 => Answer::Fail(error::unavailable(Verb::Report, 503)),
+        _ => json(&ReportResponse { ok: true }),
+    })
+    .await;
+
+    let one_post: serde_json::Value = serde_json::from_str(ONE_POST_REPORT).unwrap();
+    assert_eq!(
+        drained,
+        (vec![one_post, plain_report(), plain_report()], Vec::new())
     );
 }
 
