@@ -420,7 +420,7 @@ Keep bucket credentials in trusted daemon code and key references in native meta
 
 The trusted supervisor receives only scoped temporary object keys and exact-object authorizations.
 
-Restore into a fresh private workspace inside M237_001's build.
+Restore into a fresh private workspace inside the joined sandbox build.
 Choose restore or fresh checkout; ordinary checkout must not overwrite recovered branch, index or edits.
 Publish ExecutorSlot readiness only after validation and required remote reconciliation.
 
@@ -506,7 +506,6 @@ The proposed transfer, scanning, quota and restore budgets below are resource ce
 Incremental uploads do not prove constant-time capture; checking a large dirty working tree can still require substantial scanning or hashing.
 Measure that cost separately and refuse unsafe shortcuts based only on tenant-controlled timestamps or claimed changed-file lists.
 
-Indy assigned M237 reconciliation to Claude Code and parked revision review in this chat.
 M236 uses per-task referenced-generation retention and independently retained base custody as its proposed rules.
 The following protocol preserves lease-scoped signed storage operations without giving a sandbox bucket access.
 

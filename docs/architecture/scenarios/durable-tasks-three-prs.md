@@ -90,7 +90,6 @@ An ambiguous `cancel that` asks which task rather than guessing from the newest 
 
 Paths below are relative to `rustd/crates/` unless prefixed with `cli/` or `ui/`.
 Existing means inspected at this worktree's source baseline; proposed means a type or behavior to implement under M236.
-M237's revision remains Claude Code's responsibility, so its changed function signatures are not claimed here.
 
 | Boundary | Existing source/type | Proposed M236 addition |
 |---|---|---|
@@ -99,7 +98,7 @@ M237's revision remains Claude Code's responsibility, so its changed function si
 | Fleet serialization | `afd_fleet/src/lease/claim.rs`, `Leases`; `lease/pull/mod.rs`, `Plane` | Keep the fleet-slot fence and queue ownership; attach only the selected task context. |
 | Agent entry | `afr_agent/src/engine/mod.rs`, `AgentRun`, `AgentEngine`; `loop/mod.rs`, `Loop` | Supply `TaskContext` and the safe input boundary through existing engine/lease verbs. |
 | Decision call | Existing `afr_providers` connection/transport ownership and `afd_inference/src/transport.rs` | `afr_providers/src/decision/`: trait `DecisionEvaluator`, `DecisionClient` with four native wire adapters; agent policy stays in `afr_agent/src/decision/`. |
-| Native task creation | Existing leased mutation/authentication pattern | `afd_api_runner/src/handler/runner/tasks/binding.rs`; `afd_fleet/src/task/admit.rs`, struct `Tasks`. |
+| Native task creation | Existing leased mutation/authentication pattern | Planned task binding handler under `afd_api_runner/src/handler/runner/`; `afd_fleet/src/task/admit/mod.rs`, struct `Tasks`. |
 | Shared wire | Existing `afd_wire` lease/report types | `afd_wire/src/task/`: `TaskContext`, `TaskBindingRequest`, `TaskBindingResponse`, `TaskInputReceipt`. |
 
 `DecisionEvaluator` selects the lease's frozen runner profile; [decision models](../goal_evaluation.md#one-trait-inside-the-existing-provider-layer) owns its adapters and capabilities.
@@ -161,13 +160,13 @@ Waiting has no active agent lease, so T2/T3 can use the fleet slot.
 
 | Boundary | Existing source/type | Proposed M236 addition |
 |---|---|---|
-| Sandbox lifecycle | `afr_sandbox/src/engine/mod.rs`, traits `Engine` and `Sandbox`; `afr_supervisor/src/lease_loop/` | Add task-aware attachment and recovery inside M237's supplied joined build/ExecutorSlot seam. |
+| Sandbox lifecycle | `afr_sandbox/src/engine/mod.rs`, traits `Engine` and `Sandbox`; `afr_supervisor/src/lease_loop/` | Add task-aware attachment and recovery inside the joined build and `ExecutorSlot` readiness boundary. |
 | Tool dispatch | `afr_agent/src/router/mod.rs`; `afr_executor` trait `Executor` | Sandbox calls await compatible workspace readiness; supervisor calls do not gain sandbox write access. |
 | Repository preparation | `afr_supervisor/src/workspace_clone/{fetch,checkout}.rs` | Reuse verified base bytes; choose recovery or fresh checkout without overwriting restored edits. |
-| Candidate publishing | Existing repair policy and GitHub credential broker | `afd_fleet/src/task/publication.rs`, `PublicationIntent`, `EffectReceipt`; fixed expected-head mutation and readback. |
+| Candidate publishing | Existing repair policy and GitHub credential broker | Planned publication module under `afd_fleet/src/task/`, `PublicationIntent`, `EffectReceipt`; fixed expected-head mutation and readback. |
 | Capture and restore | Existing host workspace and context checkpoint boundaries | `afr_supervisor/src/recovery/`, struct `Recovery`, methods `capture` and `restore`; `TaskCheckpointManifest` wire data. |
-| R2 transport | New dependency on inspected `object_store` 0.14.2 | `R2CheckpointStore` in `afd_fleet/src/task/storage.rs`, using existing `object_store::ObjectStore` trait, not another storage framework. |
-| Encrypted format | `afd_crypto::entropy`, `envelope`, secret byte types | `afd_crypto/src/checkpoint.rs`: domain-separated object encryption and authentication, preserving vault ciphertext compatibility. |
+| R2 transport | New dependency on inspected `object_store` 0.14.2 | Planned storage module under `afd_fleet/src/task/`, with `R2CheckpointStore` using the existing `object_store::ObjectStore` trait. |
+| Encrypted format | `afd_crypto::entropy`, `envelope`, secret byte types | Planned checkpoint module under `afd_crypto/src/` adds domain-separated object encryption and authentication, preserving vault ciphertext compatibility. |
 | Settlement | `afd_fleet/src/lease/{settle,finalize}.rs`, `lease/report/` | Commit usage, manifest pointer, wait, input responses and admission settlement before releasing the fleet slot. |
 
 `POST L/tasks/effects` saves E1 and its immutable head/tree, commits issuance, then makes one bounded native publication within that request.
@@ -246,7 +245,7 @@ No source message, fallback read or replacement worker resets its allowance.
 | Trigger | Existing entry | Proposed M236 continuation |
 |---|---|---|
 | GitHub completion | `afd_api_ingress/src/handler/webhook/{app_route.rs,github/}`; installation and signature validation | Match task wait before ordinary investigation filters; atomically consume one generation and append one native continuation. |
-| Missed event | Existing daemon supervisor/sweeper framework | `agentsfleetd/src/sweepers/tasks.rs` calls `Tasks::check_due_waits`; read-only bounded status checks enqueue only changed evidence. |
+| Missed event | Existing daemon supervisor/sweeper framework | Planned task maintenance under `agentsfleetd/src/sweepers/` calls `Tasks::check_due_waits`; bounded status reads enqueue only changed evidence. |
 | Worker loss | Existing fleet-slot expiry, lease claim and report fences | Select compatible task history before coding inference; `Recovery::restore` reconstructs its private files and replays accepted input. |
 | Human status/steer | Same `POST F/messages` path as picture 1 | Jev routing, native association and durable per-item receipt; status does not restart repair. |
 | Explicit controls | New `PATCH F/tasks/{task_id}` | Existing workspace/FleetWrite guards, ETag/If-Match, idempotent lifecycle update and generation fence. |
