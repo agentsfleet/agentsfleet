@@ -71,11 +71,11 @@ jobs:
   test-unit-rustd-runner:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Show the pinned toolchain
         run: rustup show && rustc --version && cargo --version
         working-directory: rustd
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rustd
           shared-key: rustd-unit
@@ -86,11 +86,11 @@ jobs:
   test-unit-rustd-daemon:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Show the pinned toolchain
         run: rustup show && rustc --version && cargo --version
         working-directory: rustd
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rustd
           shared-key: rustd-unit
@@ -101,16 +101,16 @@ jobs:
   test-unit-rustd-daemon-libs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Show the pinned toolchain
         run: rustup show && rustc --version && cargo --version
         working-directory: rustd
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rustd
           shared-key: rustd-unit
           save-if: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install local bootstrap test dependencies
@@ -123,7 +123,7 @@ jobs:
     env:
       MIRI_TOOLCHAIN: nightly-2026-10-22
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned Miri toolchain
         run: rustup toolchain install "$MIRI_TOOLCHAIN" --profile minimal --component miri
       - name: Check preview, daemon and runner secret wiping under Miri
@@ -133,15 +133,21 @@ jobs:
   lint-rustd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Show the pinned toolchain
         run: rustup show && rustc --version && cargo --version
         working-directory: rustd
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rustd
           shared-key: rustd-lint
           save-if: true
+      # lint-rustd runs lint-source, whose ast-grep comes from the root install.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
       - name: Lint the Rust workspace
         run: make lint-rustd
 

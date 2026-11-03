@@ -2,6 +2,9 @@
 """Each design-system rule refuses the regression it was written for.
 
     python3 scripts/check_design_system_source_test.py
+
+The patterns that moved to ast-grep are proved by their own cases under
+.ast-grep/rule-tests/.
 """
 
 from __future__ import annotations
@@ -89,22 +92,15 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         code, output = lint_tree(ds, clean_tree())
         self.assertEqual(ds.lib.EXIT_CLEAN, code, output)
 
-    def test_moved_rules_reject_seeded_violations(self) -> None:
-        cases = {
-            "ds-mapped-tokens": (ds, seeded(ds.TOKEN_ONLY_COMPONENTS[1], "w-full", "w-[42px]")),
-            "ds-contrast": (ds, seeded(ds.TOKENS_CSS, "--text-subtle: #4e655b;", "--text-subtle: #c0c8c4;")),
-            "ds-single-cn": (ds, {**clean_tree(), f"{ds.PACKAGES}/app/lib/cn.ts": "export const cn = (a: string) => a;\n"}),
-        }
-        for rule, (module, files) in cases.items():
-            with self.subTest(rule=rule):
-                code, output = lint_tree(module, files)
-                self.assertEqual(module.lib.EXIT_FINDINGS, code, output)
-                self.assertIn(f": {rule}: ", output)
+    def test_text_under_the_contrast_floor_is_refused(self) -> None:
+        code, output = lint_tree(ds, seeded(ds.TOKENS_CSS, "--text-subtle: #4e655b;", "--text-subtle: #c0c8c4;"))
+        self.assertEqual(ds.lib.EXIT_FINDINGS, code, output)
+        self.assertIn(": ds-contrast: light: --text-subtle on --bg is ", output)
 
-    def test_a_hex_colour_in_a_class_string_is_refused_and_a_variant_bracket_is_not(self) -> None:
-        code, output = lint_tree(ds, seeded(ds.TOKEN_ONLY_COMPONENTS[0], "bg-surface-1", "text-[#fff] bg-surface-1"))
-        self.assertIn("`text-[#fff]` is an arbitrary-value utility", output)
-        self.assertIn("`#fff` is a hex colour", output)
+    def test_a_lost_token_only_component_is_named(self) -> None:
+        files = {k: v for k, v in clean_tree().items() if k != ds.TOKEN_ONLY_COMPONENTS[1]}
+        code, output = lint_tree(ds, files)
+        self.assertIn(f"{ds.TOKEN_ONLY_COMPONENTS[1]}:1: ds-mapped-tokens: the component this rule guards is missing", output)
 
     def test_a_colour_the_check_cannot_evaluate_is_named_rather_than_skipped(self) -> None:
         code, output = lint_tree(ds, seeded(ds.TOKENS_CSS, "--warn: #754c00;", "--warn: oklch(0.5 0.1 80);"))

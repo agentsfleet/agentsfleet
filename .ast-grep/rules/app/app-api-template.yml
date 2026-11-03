@@ -1,0 +1,20 @@
+# The api-template token is a dashboard credential; one page mints it, for the
+# CLI handoff, and nothing else in the app may.
+id: app-api-template
+language: Tsx
+severity: error
+message: only ui/packages/app/app/cli-auth/[session_id]/page.tsx mints the api-template token
+files:
+  - ui/packages/app/**/*.ts
+  - ui/packages/app/**/*.tsx
+ignores:
+  - ui/packages/app/tests/**
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/*_test.*"
+  - ui/packages/app/app/cli-auth/\[session_id\]/page.tsx
+rule:
+  kind: pair
+  all:
+    - has: { field: key, regex: '^["'']?template["'']?$' }
+    - has: { field: value, regex: '^["'']api["'']$' }

@@ -23,7 +23,7 @@ jobs:
   warm-rustd-unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Show the pinned toolchain
         run: rustup show && rustc --version && cargo --version
@@ -31,7 +31,7 @@ jobs:
 
       # The key must match test-unit-rustd.yml's shards, and save-if is always
       # true here: this job exists to save it.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rustd
           shared-key: rustd-unit
@@ -47,7 +47,7 @@ jobs:
   warm-rustd-registry:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Show the pinned toolchain
         run: rustup show && cargo --version
@@ -56,7 +56,7 @@ jobs:
       # Restore first: an exact hit means `cargo fetch` finds nothing to download.
       # On a miss the post step saves whatever `cargo fetch` added.
       - name: Restore the shards' registry cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -64,7 +64,7 @@ jobs:
           key: cargo-integration-v3-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
 
       - name: Restore the kernel lane's registry cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -81,10 +81,10 @@ jobs:
   warm-musl-fast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Restore and save the fast-profile musl cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .cargo-cache/registry

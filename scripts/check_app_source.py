@@ -2,9 +2,14 @@
 """Source rules for the dashboard (`ui/packages/app`).
 
 Each rule is a convention the app keeps by declaring a thing once: an event
-name in the analytics catalog, a timestamp through `Time`, a bearer only on
-the server, an acceptance bundle in the shared seed. A finding is a second
-spelling somewhere else.
+name in the analytics catalog, the execution journey in the journeys project.
+A finding is a second spelling, or the journey gone missing.
+
+The rules that are one pattern in one file (no networkidle wait, Time for
+dates, no browser bearer, one api-template mint) are ast-grep rules under
+.ast-grep/rules/app/, run by `make lint-source`. These two stay here because
+each compares the tree with something outside the file it reads: the catalog
+module, or Playwright's own listing.
 
     python3 scripts/check_app_source.py [--root <dir>]
 
@@ -27,9 +32,6 @@ APP = "ui/packages/app"
 TS = (".ts", ".tsx")
 
 # --- The acceptance suite ----------------------------------------------------
-ACCEPTANCE = f"{APP}/tests/e2e/acceptance"
-# Unreachable while the Clerk testing proxy holds retried requests in flight.
-NETWORK_IDLE = "networkidle"
 JOURNEYS_PROJECT = "journeys"
 EXECUTION_SPEC = "fleet-execution.spec.ts"
 ACCEPTANCE_CONFIG = "playwright.acceptance.config.ts"
@@ -44,41 +46,9 @@ EVENTS_MODULE = f"{APP}/lib/analytics/events.ts"
 EVENTS_BLOCK = re.compile(r"export const EVENTS = \{(?P<body>.*?)\}", re.DOTALL)
 EVENT_ENTRY = re.compile(r'^\s*\w+:\s*"(?P<name>[a-z_]+)"', re.MULTILINE)
 
-# --- The browser holds no dashboard credential ------------------------------
-CLI_HANDOFF = f"{APP}/app/cli-auth/[session_id]/page.tsx"
-API_TEMPLATE_MINT = re.compile(r'template:\s*"api"')
-USE_CLIENT = re.compile(r"""^\s*["']use client["']""", re.MULTILINE)
-CLIENT_CREDENTIAL = {
-    "a getToken() call": re.compile(r"\bgetToken\("),
-    "an Authorization: Bearer header": re.compile(r"Authorization\s*:\s*.?Bearer"),
-    "a token-typed prop": re.compile(r"(?:^|[^A-Za-z_.])token\s*[?:=](?!=)"),
-}
-
-# --- Timestamps render through Time -----------------------------------------
-DATE_LABEL_HOME = f"{APP}/app/(dashboard)/settings/billing/lib/charges.ts"
-LOCALE_DATE = re.compile(r"toLocale(?:Date|Time)?String|Intl\.RelativeTimeFormat")
-INTL_DATE = re.compile(r"Intl\.DateTimeFormat")
-TIMEZONE_READ = "resolvedOptions"
-NON_PRODUCTION_DIRS = ("tests",)
-
 
 def finding(root: Path, path: Path, text: str, offset: int, rule: str, message: str) -> lib.Finding:
     return lib.Finding(lib.relative(root, path), lib.line_of(text, offset), rule, message)
-
-
-def production_files(root: Path) -> list[Path]:
-    base = root / APP
-    return [p for p in lib.source_files(base, TS) if p.relative_to(base).parts[0] not in NON_PRODUCTION_DIRS]
-
-
-def check_acceptance_suite(root: Path) -> list[lib.Finding]:
-    found = []
-    for path in lib.source_files(root / ACCEPTANCE, (".ts",), include_tests=True):
-        code = lib.blank_js_comments(path.read_text(encoding="utf-8"))
-        at = code.find(NETWORK_IDLE)
-        if at != -1:
-            found.append(finding(root, path, code, at, "app-acceptance-networkidle", f"never wait for {NETWORK_IDLE}; the Clerk testing proxy keeps requests in flight"))
-    return found
 
 
 def journey_findings(listing: subprocess.CompletedProcess[str]) -> list[lib.Finding]:
@@ -132,40 +102,7 @@ def check_event_literals(root: Path) -> list[lib.Finding]:
     return found
 
 
-def check_client_credentials(root: Path) -> list[lib.Finding]:
-    found = []
-    for path in production_files(root):
-        relative_path = lib.relative(root, path)
-        if relative_path == CLI_HANDOFF:
-            continue
-        code = lib.blank_js_comments(path.read_text(encoding="utf-8"))
-        mint = API_TEMPLATE_MINT.search(code)
-        if mint:
-            found.append(finding(root, path, code, mint.start(), "app-api-template", f"only {CLI_HANDOFF} mints the api-template token"))
-        if not USE_CLIENT.search(code):
-            continue
-        for what, pattern in CLIENT_CREDENTIAL.items():
-            for match in pattern.finditer(code):
-                found.append(finding(root, path, code, match.start(), "app-client-credential", f"{what} in a client component would ship a bearer to the browser"))
-    return found
-
-
-def check_date_formatters(root: Path) -> list[lib.Finding]:
-    found = []
-    for path in production_files(root):
-        code = lib.blank_js_comments(path.read_text(encoding="utf-8"))
-        if lib.relative(root, path) == DATE_LABEL_HOME:
-            continue
-        for number, line in enumerate(code.splitlines(), start=1):
-            if LOCALE_DATE.search(line) or (INTL_DATE.search(line) and TIMEZONE_READ not in line):
-                found.append(lib.Finding(lib.relative(root, path), number, "app-date-formatter", "a bespoke date formatter; render through Time from @agentsfleet/design-system"))
-    return found
-
-
-RULES = (
-    check_acceptance_suite, check_execution_journey, check_event_literals,
-    check_client_credentials, check_date_formatters,
-)
+RULES =(check_execution_journey, check_event_literals)
 
 
 def lint(root: Path) -> list[lib.Finding]:

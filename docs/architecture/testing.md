@@ -44,11 +44,11 @@ datastore-free, because every Rust test that needs one is `#[ignore]`d and runs
 only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never
 sets it.
 
-`make lint-all` is the lint claim: `lint-rustd` (the Rust source checks in
-`scripts/check_rust_source.py`, `cargo fmt --check`,
-`cargo clippy --workspace --all-targets --all-features -- -D warnings`, and a
-no-feature `cargo check` of each binary), the TypeScript lints, the shell and
-OpenAPI checks, and the safety gates.
+`make lint-all` is the lint claim: `lint-rustd` (the ast-grep rules under
+`.ast-grep/` through `make lint-source`, the component-name scan in
+`scripts/check_rust_source.py`, `cargo fmt --check`, and
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`), the
+TypeScript lints, the shell and OpenAPI checks, and the safety gates.
 
 `make test-runner-kernel` proves the runner's sandbox on a real Linux kernel. It
 builds the toolbox image, then runs `afr_sandbox`'s kernel lane as root with

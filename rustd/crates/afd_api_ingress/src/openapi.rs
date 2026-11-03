@@ -21,18 +21,19 @@
 
 use utoipa::OpenApi as _;
 
-/// The collector. Private: [`document`] is the whole of what this module offers.
-#[derive(utoipa::OpenApi)]
-#[openapi(paths(
-    crate::handler::events::receive,
-    crate::handler::webhook::app_route::receive,
-    crate::handler::webhook::approval_route::receive,
-    crate::handler::webhook::github_route::receive,
-    crate::handler::webhook::identity_route::receive,
-    crate::handler::webhook::qstash_route::receive,
-    crate::handler::webhook::source_route::receive,
-))]
-struct Plane;
+afd_http::plane_collector! {
+    /// The collector. Private: [`document`] is the whole of what this module offers.
+    struct Plane;
+    paths(
+        crate::handler::events::receive,
+        crate::handler::webhook::app_route::receive,
+        crate::handler::webhook::approval_route::receive,
+        crate::handler::webhook::github_route::receive,
+        crate::handler::webhook::identity_route::receive,
+        crate::handler::webhook::qstash_route::receive,
+        crate::handler::webhook::source_route::receive,
+    )
+}
 
 /// What the ingress plane serves, as an `OpenAPI` document.
 ///

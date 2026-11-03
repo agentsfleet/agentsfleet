@@ -1,0 +1,29 @@
+# Timestamps render through Time, which owns the format and the zone. Reading
+# the browser's zone (`Intl.DateTimeFormat().resolvedOptions()`) formats nothing.
+id: app-date-formatter
+language: Tsx
+severity: error
+message: a bespoke date formatter; render through Time from @agentsfleet/design-system
+files:
+  - ui/packages/app/**/*.ts
+  - ui/packages/app/**/*.tsx
+ignores:
+  - ui/packages/app/tests/**
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/*_test.*"
+  - ui/packages/app/app/(dashboard)/settings/billing/lib/charges.ts
+rule:
+  any:
+    - kind: property_identifier
+      regex: ^toLocale(Date|Time)?String$
+    - pattern: Intl.RelativeTimeFormat
+    # The types too: `Intl.DateTimeFormatOptions` is a formatter being built.
+    - kind: nested_type_identifier
+      regex: ^Intl\.(DateTimeFormat|RelativeTimeFormat)
+    - pattern: Intl.DateTimeFormat
+      not:
+        inside:
+          stopBy: end
+          kind: member_expression
+          has: { field: property, regex: ^resolvedOptions$ }

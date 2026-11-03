@@ -18,9 +18,9 @@ jobs:
       contains(github.event.deployment.environment, 'agentsfleet-app'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
 
@@ -68,7 +68,7 @@ jobs:
         working-directory: ${{ steps.detect.outputs.workdir }}
 
       - name: Load Vercel bypass secret from 1Password
-        uses: 1password/load-secrets-action@v5
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           export-env: true
         env:
@@ -83,7 +83,7 @@ jobs:
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: smoke-post-deploy-${{ steps.detect.outputs.package }}-${{ github.sha }}
@@ -139,9 +139,9 @@ jobs:
       group: acceptance-e2e-prod
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
 
@@ -169,7 +169,7 @@ jobs:
 
       - name: Restore Playwright browser cache
         id: playwright-cache-acceptance
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           # Real inputs only: the repo-root lock (ui/packages/app has no lock
@@ -187,7 +187,7 @@ jobs:
         working-directory: ui/packages/app
 
       - name: Load Clerk PROD credentials from 1Password
-        uses: 1password/load-secrets-action@v5
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           export-env: true
         env:
@@ -209,7 +209,7 @@ jobs:
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload acceptance evidence (raw results + rendered report)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         # Raw per-test artifacts are written DURING the run — a canceled or
         # hard-failed job still uploads diagnosable evidence even when the
         # HTML report was never rendered. Mirrors acceptance-e2e.

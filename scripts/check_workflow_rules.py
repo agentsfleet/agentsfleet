@@ -28,6 +28,13 @@ import check_source_lib as lib
 
 YQ = "yq"
 WORKFLOWS_DIR = ".github/workflows"
+# The musl builder image. Its tag is derived from
+# playbooks/operations/ci_rust_images/versions.env, as make/build.mk does; a
+# workflow that pastes it as a literal keeps compiling on the old toolchain
+# after a bump, because the old tag still pulls. The derived form starts with
+# `$` after the colon, a literal with a digit.
+BUILDER_IMAGE = "ghcr.io/agentsfleet/ci-rust-alpine"
+LITERAL_BUILDER = re.compile(re.escape(BUILDER_IMAGE) + r":[0-9]")
 NOTIFY_ACTION = ".github/actions/notify-discord/action.yml"
 NOTIFY_USES = "./.github/actions/notify-discord"
 WEBHOOK_INPUT = "webhook-item"
@@ -206,9 +213,21 @@ def check_vault_read_approval(w: Workflows) -> None:
                 w.find(path, "workflow-vault-read-approval", f"step `{step.get('name', '?')}` runs the runner playbook without `{key}: \"{value}\"`")
 
 
+def check_builder_literal(w: Workflows) -> None:
+    """No workflow pins a literal builder tag, even one correct today: that is
+    the one that rots at the next bump."""
+    for path in sorted((w.root / WORKFLOWS_DIR).glob("*.yml")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if LITERAL_BUILDER.search(line):
+                w.findings.append(lib.Finding(
+                    f"{WORKFLOWS_DIR}/{path.name}", number, "workflow-builder-literal",
+                    "pins a literal builder tag; derive it from playbooks/operations/ci_rust_images/versions.env",
+                ))
+
+
 RULES = (
     check_discord_routes, check_deployment_stage, check_connector_secrets, check_log_level, check_collector_standup,
-    check_vault_read_approval,
+    check_vault_read_approval, check_builder_literal,
 )
 
 

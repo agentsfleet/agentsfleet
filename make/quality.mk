@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: _model_allowlist_check lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
+.PHONY: _model_allowlist_check lint-all lint-source lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -12,33 +12,47 @@ check-documentation-rules:  ## Check public API and command help text
 
 ACTIONLINT ?= actionlint
 
+# The single-file source rules, as ast-grep patterns over syntax (sgconfig.yml,
+# .ast-grep/). `test` first: each rule must refuse the regression it was
+# written for before a clean scan means anything. `--no-install` runs only the
+# version package.json pins; a missing binary fails rather than fetching
+# whatever the registry serves. `--skip-snapshot-tests`: a rule test proves
+# which cases match, not the label layout ast-grep would snapshot.
+AST_GREP := bunx --no-install ast-grep
+
+lint-source:  ## Source rules over app, CLI, design system and Rust (ast-grep test + scan)
+	@echo "→ [source] ast-grep rule tests, then the scan..."
+	@$(AST_GREP) test --skip-snapshot-tests
+	@$(AST_GREP) scan
+	@echo "✓ [source] clean"
+
 lint-website:  ## Lint website only (Oxlint + tsrs)
 	@echo "→ [website] Running Oxlint + TypeScript check..."
 	@cd ui/packages/website && bun run lint
 	@cd ui/packages/website && bun run typecheck
 	@echo "✓ [website] Lint passed"
 
-lint-app:  ## Lint ui/packages/app only (Oxlint + tsrs)
+lint-app: lint-source  ## Lint ui/packages/app only (Oxlint + tsrs + source rules)
 	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
-	@echo "→ [app] Source rules: one event catalog, Time for dates, no browser bearer, the acceptance conventions..."
+	@echo "→ [app] Source rules ast-grep cannot hold: one event catalog, the journeys project runs the execution spec..."
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source.py
 	@echo "✓ [app] Lint passed"
 
-lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsrs)
+lint-design-system: lint-source  ## Lint ui/packages/design-system only (Oxlint + tsrs + source rules)
 	@echo "→ [design-system] Running Oxlint + TypeScript check..."
 	@cd ui/packages/design-system && bun run lint
-	@echo "→ [design-system] Source rules: mapped tokens, text contrast on every surface, one cn..."
+	@echo "→ [design-system] Source rules ast-grep cannot hold: text contrast on every surface, the guarded files exist..."
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source.py
 	@echo "✓ [design-system] Lint passed"
 
-lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
+lint-cli: check-documentation-rules lint-source  ## Lint agentsfleet CLI and its public text
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsrs..."
 	@cd cli && bun run lint
-	@echo "→ [agentsfleet] Source rules: one env spelling, escapes in the palette, detail tables..."
+	@echo "→ [agentsfleet] Source rules ast-grep cannot hold: one env spelling..."
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source.py
 	@echo "✓ [agentsfleet] Lint passed"
@@ -64,11 +78,11 @@ _model_allowlist_check:
 # becomes the place lint rules go to die.
 RUSTD_DIR := rustd
 
-lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
+lint-rustd: lint-source  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
-	@# What no compiler pass sees: one component name per schema type, every
-	@# tracked schema/*.sql in the migration list, the stream ceiling on a
-	@# measured rung, no span held as integer milliseconds.
+	@# What no compiler pass and no Rust test sees: one component name per
+	@# schema type across the two wire crates, and a crate tree that exists
+	@# to be scanned. The rest moved to ast-grep and Rust tests.
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source.py
@@ -112,20 +126,13 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@echo "→ [gh-actions] Running actionlint on workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
 	@$(ACTIONLINT) .github/workflows/*.yml
-	@# actionlint validates the YAML and the `run:` shell; it has no opinion on
-	@# whether a pin's ref can move. That is this script's half.
-	@echo "→ [gh-actions] Checking action pins for mutable refs..."
-	@bash scripts/checks/gh-actions-runtime.sh
-	@# The builder pin lives in its own script so it can have its own tests.
-	@# A gate with no self-test can pass
-	@# vacuously: a broken grep reports a clean tree and reads like success.
-	@echo "→ [gh-actions] Builder-image tag is derived, not pasted..."
-	@bash scripts/check_builder_pin_test.sh
-	@bash scripts/check_builder_pin.sh
+	@# Every action is pinned to a commit; GitHub's full-SHA setting refuses a
+	@# moving ref, and Dependabot (.github/dependabot.yml) keeps the pins current.
 	@# What the deploy workflows run and in which order, which actionlint
 	@# cannot see: the collector app exists before `flyctl secrets set`
 	@# addresses it, Discord routes by stage, the connector's signing secret
-	@# and vault row are both seeded, the daemon's own log level is set.
+	@# and vault row are both seeded, the daemon's own log level is set, and
+	@# no workflow pastes a literal builder tag.
 	@echo "→ [gh-actions] Deploy workflows run the right steps in the right order..."
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules.py

@@ -1,0 +1,12 @@
+id: app-acceptance-networkidle
+valid:
+  - |
+    await page.waitForLoadState("load");
+  - |
+    // never wait for networkidle here.
+    await page.waitForLoadState("load");
+invalid:
+  - |
+    await page.waitForLoadState("networkidle");
+  - |
+    await page.goto(url, { waitUntil: `networkidle` });

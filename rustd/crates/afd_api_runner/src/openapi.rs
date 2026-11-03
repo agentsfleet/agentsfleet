@@ -21,36 +21,37 @@
 
 use utoipa::OpenApi as _;
 
-/// The collector. Private: [`document`] is the whole of what this module offers.
-#[derive(utoipa::OpenApi)]
-#[openapi(paths(
-    crate::handler::runner::activity::handle,
-    crate::handler::runner::authoring::activity::handle,
-    crate::handler::runner::authoring::model_call::handle,
-    crate::handler::runner::authoring::renew::handle,
-    crate::handler::runner::authoring::report::handle,
-    crate::handler::runner::credential::handle,
-    crate::handler::runner::context::load,
-    crate::handler::runner::context::put,
-    crate::handler::runner::enrolment::handle,
-    crate::handler::runner::heartbeat::handle,
-    crate::handler::runner::lease::handle,
-    crate::handler::runner::memory::capture,
-    crate::handler::runner::tool_call::handle,
-    crate::handler::runner::memory::hydrate,
-    crate::handler::runner::memory::recall,
-    crate::handler::runner::message::handle,
-    crate::handler::runner::renew::handle,
-    crate::handler::runner::report::handle,
-    crate::handler::runner::schedule::create,
-    crate::handler::runner::schedule::list,
-    crate::handler::runner::schedule_edit::remove,
-    crate::handler::runner::schedule_edit::update,
-    crate::handler::runner::schedule_run::run,
-    crate::handler::runner::schedule_run::runs,
-    crate::handler::runner::self_record::handle,
-))]
-struct Plane;
+afd_http::plane_collector! {
+    /// The collector. Private: [`document`] is the whole of what this module offers.
+    struct Plane;
+    paths(
+        crate::handler::runner::activity::handle,
+        crate::handler::runner::authoring::activity::handle,
+        crate::handler::runner::authoring::model_call::handle,
+        crate::handler::runner::authoring::renew::handle,
+        crate::handler::runner::authoring::report::handle,
+        crate::handler::runner::credential::handle,
+        crate::handler::runner::context::load,
+        crate::handler::runner::context::put,
+        crate::handler::runner::enrolment::handle,
+        crate::handler::runner::heartbeat::handle,
+        crate::handler::runner::lease::handle,
+        crate::handler::runner::memory::capture,
+        crate::handler::runner::tool_call::handle,
+        crate::handler::runner::memory::hydrate,
+        crate::handler::runner::memory::recall,
+        crate::handler::runner::message::handle,
+        crate::handler::runner::renew::handle,
+        crate::handler::runner::report::handle,
+        crate::handler::runner::schedule::create,
+        crate::handler::runner::schedule::list,
+        crate::handler::runner::schedule_edit::remove,
+        crate::handler::runner::schedule_edit::update,
+        crate::handler::runner::schedule_run::run,
+        crate::handler::runner::schedule_run::runs,
+        crate::handler::runner::self_record::handle,
+    )
+}
 
 /// What the runner plane serves, as an `OpenAPI` document.
 ///
