@@ -264,7 +264,7 @@ Two builds of one record are byte-identical. A changed dependency is a new relea
 4. the same descriptor is attached read-only to a buffered loop device with `LOOP_CONFIGURE` (Linux 5.8), then mounted `ro,nosuid,nodev`;
 5. only then does the host report ready.
 
-The toolbox device stays buffered, though direct I/O kept the host from caching the image twice: one image of at most 160 MB a host. Over 360 cold first uses a mode, direct I/O was 3 to 12% faster at p50 and 1.12 to 2.98 times slower at p99. Every first-use step regressed ([M237_002](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md) Discovery).
+The toolbox device stays buffered, though direct I/O kept the host from caching the image twice: one image of at most 160 MB a host. Over 360 cold first uses a mode, direct I/O was 3 to 12% faster at p50 and 1.12 to 2.98 times slower at p99. Every first-use step regressed ([M237_002](../v2/active/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md) Discovery).
 
 Nothing reopens the image by path after its hash is taken, so a file substituted at that path never reaches the kernel's filesystem parser. A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the admitted file; a directory named after a digest proves nothing. Each lease holds the image it runs on; past the current and previous releases, an image nothing holds is unmounted at the next admission or retention pass, and the startup sweep removes whatever an interrupted stage left. Host root is inside the trust boundary: it controls the runner, the kernel and the mounts, and no integrity mechanism protects a tenant from it.
 
