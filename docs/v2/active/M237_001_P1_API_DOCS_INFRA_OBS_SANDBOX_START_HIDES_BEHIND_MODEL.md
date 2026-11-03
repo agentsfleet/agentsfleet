@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Test Baseline:** pending, measured before the Pull Request
 
-**Baseline evidence:** pending, set by §1 to a report path before PLAN
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_001-lease-waits.md`, measured on the local kernel lane at `937c8d34d`
 
 **Depends on:** none. M236_001 (pending) builds its §5 restore inside this spec's background build; see Discovery.
 
@@ -141,7 +141,7 @@ Before PLAN, the implementing agent records today's lease waits as Baseline evid
 Under §2's owner decision the egress bind stays ahead of the model call. Its share of `sandbox` is therefore the setup wait this spec leaves in place.
 
 - **Dimension 1.1** — `lease_completed` carries `egress_ms`, `prepare_ms` and `checkout_ms` apart → Test `test_lease_completed_splits_prepare_and_checkout` — DONE
-- **Dimension 1.2** — The baseline file exists before PLAN with both hosts' figures → Test `manual_baseline_recorded_before_plan`
+- **Dimension 1.2** — The baseline file exists before PLAN with both hosts' figures → Test `manual_baseline_recorded_before_plan` — DONE
 
 ### §2 — The sandbox builds beside the first model call
 
@@ -181,7 +181,7 @@ At lease end the order becomes: `keep` freezes a held sandbox or kills any other
 Only `Settled` proves the sandbox's process tree is empty. `Unsettled` still lets the report post the run's ending, and a `sandbox_kill_unsettled` warning names the lease. It proves no writer has stopped, so nothing may save the workspace on its strength.
 
 - **Dimension 3.1** — The order is kill, report, then release → Test `test_report_posts_between_kill_and_release` — DONE
-- **Dimension 3.2** — After a `Settled` kill, no sandbox process runs once the report is posted → Test `test_no_sandbox_process_outlives_the_report`
+- **Dimension 3.2** — After a `Settled` kill, no sandbox process runs once the report is posted → Test `test_no_sandbox_process_outlives_the_report` — DONE
 - **Dimension 3.3** — A kill that never settles still posts the report, warns, and claims no empty tree → Test `test_unsettled_kill_still_reports` — DONE
 - **Dimension 3.4** — A release that fails after the report leaves its directory for the boot sweep → Test `test_late_release_failure_leaves_work_for_the_sweep` — DONE
 - **Dimension 3.5** — The worker polls again only after the release → Test `test_worker_polls_after_release` — DONE
@@ -259,7 +259,7 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_lease_completed_splits_prepare_and_checkout` | Fake resolver 10 ms, engine 30 ms, checkout 50 ms → fields near 10, 30 and 50 |
-| 1.2 | manual | `manual_baseline_recorded_before_plan` | Baseline evidence file names both hosts, kernel versions and p50/p95 |
+| 1.2 | manual | `manual_baseline_recorded_before_plan` | Baseline evidence file names the local kernel lane, its kernel version and p50/p95; Indy moved the measurement local |
 | 2.1 | unit | `test_first_model_call_starts_before_the_sandbox_is_ready` | Engine stalled 500 ms → provider request time before ready time |
 | 2.2 | unit | `test_sandbox_tool_waits_for_the_build` | `shell` first, engine stalled → call runs on that engine's executor |
 | 2.3 | unit | `test_build_failure_leaves_the_run_going` | Engine fails after first request → waiting and later `shell` calls answer `sandbox_unavailable` naming `prepare`; the run answers; no hold |
@@ -358,6 +358,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
   A reflink checkout cannot help: ext4 has no reflink, and the copy crosses file systems. Asked Nov 02 which become specs; Indy has not answered yet.
 - **Built shape (§2)** — The spec's `Arc<dyn Executor>` became a borrow behind the `ExecutorSource` trait. A slot holding the borrow is invariant in its lifetime, so `AgentRun` could not name it; the trait object hides it, and `Sandbox::executor` keeps its signature. The typed outcome is the slot's fill, because nothing reads a separate enum. `sandbox_build_failed` replaces `sandbox_refused`, which no dashboard or alert names, because a failed build no longer refuses the lease.
 - **Built shape (§3)** — `keep` answers a `Fate`: held until a time, killed and waiting for release, or gone. `settle` takes the `Fate`, so no report settles before its kill. The release runs beside the live tail's drain, so neither stalls the other, and the lease returns only after both. The park fallback no longer destroys inside the hold keeper: `park` hands a refused sandbox back as `Parked::Refused`, with its release already counted. The unsandboxed engine answers `Unsettled`, since no cgroup proves its processes gone.
+- **Measured locally (Indy, Nov 02)** — "if you need to measure do it in local? in the docker compose using make targets". The baseline uses the OrbStack kernel lane's budgets trial and the supervisor's paused-clock tests, not the dev host, whose logs held three prepares in seven days.
 - **Dev host kernel** — The dev host stays on `6.12.111` until M237 ships, so before and after figures share one kernel. Indy chose this on Nov 02; the quote is below.
 - **PLAN (Nov 02, 2026: 10:38 PM)** — Intent restated: the first model request stops waiting on sandbox setup, and the report stops waiting on disk cleanup. A failed build leaves the run going. ASSUMPTIONS I'M MAKING:
   1. §1 lands as its own commit before any §2 code: three timers, then the baseline file.
