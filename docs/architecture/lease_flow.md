@@ -382,4 +382,4 @@ slot: [A1]            [B1]       [idle]         [A2]
 
 The worker is a slot in `agentsfleet-runner`'s pool, not the conversational model or a subagent.
 A replacement worker receives a fresh lease and compatible DT state under current authority.
-M237_001's implementation must land before M236 adds recovery to its joined sandbox build.
+DT recovery must use the joined sandbox build and existing workspace readiness boundary.

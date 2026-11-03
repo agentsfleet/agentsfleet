@@ -117,7 +117,8 @@ R2 holds encrypted immutable checkpoint bytes and does not decide current owners
 
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
 
-The proposed schema adds `fleet.tasks`, `fleet.task_inputs`, `fleet.task_waits`, `fleet.task_effects` and `fleet.task_checkpoints`.
+The branch defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; task handlers and runner integration remain unfinished.
+Wait, effect, decision and checkpoint storage below describe proposed additions, with exact scope in the [active spec](../v2/active/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
 
 The daemon binds admissions and leases to a nullable task identity; ordinary exchanges retain the existing path.
 Schema numbering must be rechecked against main before implementation.
@@ -260,21 +261,21 @@ Use UUIDv7 native row identities and application-owned state constants, followin
 All task-owned rows carry workspace and fleet ownership; composite foreign keys reject cross-workspace links.
 Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollars with overflow checks.
 
-| Table or addition | Required fields and uniqueness |
+| Table or proposed addition in the fleet schema | Required fields and uniqueness |
 |---|---|
 | `fleet.tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
 | `fleet.task_items` | Source admission, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique admission/ordinal; conflicting replay returns 409. |
 | `fleet.task_inputs` | Task/item/sequence, accepted text and interpretation, accepting lease/fence, answer state, applied-effect references. Unique task/item and task/sequence. |
-| `fleet.task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumed admission. One current wait per task through a partial unique index. |
-| `fleet.task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
-| `fleet.task_decisions` | Physical call identity, lease/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
-| `fleet.task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
-| `fleet.task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
-| `fleet.task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
-| `fleet.task_objects` | Scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
-| `fleet.task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
-| `fleet.task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
-| `fleet.task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
+| Proposed `task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumed admission. One current wait per task through a partial unique index. |
+| Proposed `task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
+| Proposed `task_decisions` | Physical call identity, lease/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
+| Proposed `task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
+| Proposed `task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
+| Proposed `task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
+| Proposed `task_objects` | Scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
+| Proposed `task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
+| Proposed `task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
+| Proposed `task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
 | Existing admissions and leases | Nullable task/item identities; input claim lease/fence on admissions; capability-selected task context on leases. Existing one-shot rows retain null bindings. |
 
 Task targets include repository installation identity, PR identity, head repository/ref, approved base and last independently verified head.
@@ -286,7 +287,7 @@ Deleting a task removes its references after retention rules permit; shared base
 
 Workspace deletion records durable storage-purge receipts before deleting ownership rows.
 Receipts contain only random object identities, bucket references and wrapped-key deletion state, and survive owner-row removal until cleanup completes.
-Use `fleet.task_storage_purges` for those independent cleanup receipts; deleting ownership cannot strand an untracked private object.
+Proposed `task_storage_purges` rows in the fleet schema track independent cleanup; deleting ownership cannot strand an untracked private object.
 
 Task mutations lock the fleet parent against deletion, then its slot, admissions by sequence, lease, tasks by identity and subordinate rows by identity.
 Checkpoint commit locks task before objects; collection locks candidate tasks before objects in the same order.
@@ -450,7 +451,7 @@ Wire records remain validated data rather than gaining a trait for each field.
 | `afd_fleet/src/task/{mod,admit,input,wait,effect,limits}.rs` | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native admission staging and lease fences with real database tests. |
 | `afr_providers/src/decision/{mod,client,wire,types}.rs` | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
 | `afr_supervisor/src/recovery/{mod,capture,restore,manifest}.rs` | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
-| `afd_fleet/src/task/storage.rs` | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
+| Planned `storage` module under `afd_fleet/src/task/` | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
 | `afd_wire/src/task/`, `afd_wire/src/decision/` | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
 
 Use trait objects at existing runtime composition boundaries, following `AgentRun` and its `Executor`, `LeaseVerbs`, `EventSink` and `Clock` dependencies.
@@ -659,7 +660,7 @@ The supervised worker also advances abandoned input claims, uncertain effects an
 
 Provider/model reservations and unknown physical call outcomes are tracked separately from task ready/wait state.
 
-Implement maintenance in `agentsfleetd/src/sweepers/tasks.rs` using the current supervision/shutdown pattern.
+Add task maintenance under `agentsfleetd/src/sweepers/`, following its current supervision and shutdown pattern.
 Do not spawn detached recovery loops or a recurring user-visible cron for each DT.
 Workspace authorization and repository grants are checked again on every continuation, even when stored files remain available.
 

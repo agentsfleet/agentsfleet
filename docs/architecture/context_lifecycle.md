@@ -255,7 +255,7 @@ DT resume:      compatible handoff + accepted input beyond checkpoint cursor
 ```
 
 Codex source comparison uses `openai/codex` revision `05c08d76552371400d273d4539c2a116d6340755`.
-Its `codex-rs/core/src/session/turn.rs` drains eligible pending input before prompt assembly and prepares history with current tools.
+Codex [turn handling](https://github.com/openai/codex/blob/05c08d76552371400d273d4539c2a116d6340755/codex-rs/core/src/session/turn.rs) drains eligible pending input before prompt assembly and prepares history with current tools.
 Its `client.rs` can send a full prepared request or an eligible WebSocket continuation with `previous_response_id` and incremental input.
 
 That transport shortcut preserves logical context and does not establish hidden server behavior.
