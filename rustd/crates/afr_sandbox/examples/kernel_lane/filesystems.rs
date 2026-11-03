@@ -183,13 +183,33 @@ pub(crate) fn refused_mount_leaves_nothing(lane: &Lane) -> Result<(), Failed> {
     };
 
     let built = runtime().block_on(WorkspaceDisk::create(&tools, &dir, SMALL_DISK, SANDBOX_IDS));
+    let refused = match built {
+        Ok((disk, _caching)) => {
+            disk.release()?;
+            None
+        }
+        Err(refused) => Some(refused),
+    };
 
     let left: Vec<_> = fs::read_dir(&dir)?
         .flatten()
         .map(|entry| entry.file_name())
         .collect();
     let mounts = fs::read_to_string(MOUNTINFO).unwrap_or_default();
-    expect(built.is_err(), "an image with no file system is refused")?;
+    // The mount's own refusal, a system call's `EINVAL`: an attach that failed
+    // first is an input/output failure, and would leave no loop device to free.
+    let cause = refused
+        .as_ref()
+        .and_then(|refused| std::error::Error::source(refused))
+        .and_then(|cause| cause.downcast_ref::<rustix::io::Errno>())
+        .copied();
+    expect(
+        cause == Some(rustix::io::Errno::INVAL),
+        format!(
+            "the mount refused an image with no file system, got {:?}",
+            refused.as_ref().map(afr_sandbox::Error::told)
+        ),
+    )?;
     expect(
         left.is_empty(),
         format!("the lease's directory is left empty, got {left:?}"),

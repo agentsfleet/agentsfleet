@@ -31,7 +31,7 @@ pub(crate) const NO_OOM_KILLS: &str = "oom_kill 0";
 const SYS_DEV_BLOCK: &str = "/sys/dev/block";
 const LOOP_DIO: &str = "loop/dio";
 /// What that file holds when direct I/O is on.
-pub(crate) const DIO_ON: &str = "1";
+const DIO_ON: &str = "1";
 /// Where a lease's workspace disk is mounted, under its directory.
 const DISK_MOUNT: &str = "workspace";
 /// Twice the default memory limit, written to `/workspace`, past its disk.
@@ -257,7 +257,7 @@ pub(crate) fn workspace_disk_uses_direct_io(lane: &Lane) -> Result<(), Failed> {
 }
 
 /// What the loop device mounted at `mounted` says of direct I/O: `1` on.
-pub(crate) fn loop_dio(mounted: &std::path::Path) -> std::io::Result<String> {
+fn loop_dio(mounted: &std::path::Path) -> std::io::Result<String> {
     let device = fs::metadata(mounted)?.dev();
     let number = format!(
         "{}:{}",

@@ -35,7 +35,7 @@ A sandbox tool call waits only for what is left of the build, and `lease_complet
 |---|---|---|---|
 | First model request behind the prepare | the whole prepare, about 100 ms warm and 322 ms cold at p95 | none | `test_first_model_call_starts_before_the_sandbox_is_ready`: with a 500 ms prepare, the model began 500 ms before the sandbox was ready |
 | First model request behind the checkout | every checkout's token mint and copy | none | `test_an_answer_mid_checkout_holds_the_whole_sandbox` |
-| A sandbox tool call | the build had already finished | what is left of the build, logged as `sandbox_wait_ms` | `test_sandbox_tool_waits_for_the_build`: `sandbox_wait_ms=500` |
+| A sandbox tool call | the build had already finished | what is left of the build, logged as `sandbox_wait_ms` | `test_first_model_call_starts_before_the_sandbox_is_ready`: `sandbox_wait_ms=500` |
 | The report behind the disk's release | unmount and image removal | none | `test_a_lease_returns_only_after_its_release`: a 3 s release left `report_ms` under 3 s, and the lease still returned after it |
 
 `lease_completed` now carries `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` beside `sandbox_ms`.

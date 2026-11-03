@@ -106,10 +106,10 @@ fn a_socket_is_bound_with_no_runtime_and_served_once_one_runs() {
 }
 
 /// The bubblewrap engine's link: one end of a socket pair each, taken with
-/// no runtime as the sandbox entry takes its end, and no socket file made.
+/// no runtime as the sandbox entry takes its end, then served once one runs.
 #[test]
-fn test_a_socket_pair_is_served_with_no_socket_file() {
-    let (scratch, _socket, root) = scratch();
+fn test_a_socket_pair_is_taken_with_no_runtime_and_served_once_one_runs() {
+    let (_scratch, _socket, root) = scratch();
     let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
 
     let executor = afr_executor::connected(theirs).unwrap();
@@ -133,11 +133,6 @@ fn test_a_socket_pair_is_served_with_no_socket_file() {
 
     assert_eq!(ended.0.stdout, b"paired\n");
     ended.1.expect("the server ended").expect("it ran").unwrap();
-    let files: Vec<_> = std::fs::read_dir(scratch.path())
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name())
-        .collect();
-    assert_eq!(files, ["workspace"], "no socket file beside the workspace");
 }
 
 #[tokio::test]

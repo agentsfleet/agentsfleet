@@ -67,9 +67,10 @@ pub(crate) fn landlock_denies(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// Nothing the sandbox does lands on the host as host root: the socket
-/// directory takes no write at all once the sandbox is confined, and what it
-/// writes in its workspace is owned by the unprivileged user it runs as.
+/// Nothing the sandbox does lands on the host as host root: its private
+/// `/run` takes no set-user-ID file once the sandbox is confined, it runs as
+/// its own user, and what it writes in its workspace is owned on the host by
+/// the unprivileged user bubblewrap was started as.
 pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = lane.engine();

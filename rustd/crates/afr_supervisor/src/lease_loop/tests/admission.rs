@@ -12,6 +12,7 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
 use afd_wire::policy::ExecutionPolicy;
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
+use afr_executor::Unavailable;
 use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 
 use super::{
@@ -93,10 +94,15 @@ async fn test_unhosted_tool_refuses_lease() {
 
 #[tokio::test(start_paused = true)]
 async fn test_lease_without_sandbox_tools_starts_no_sandbox() {
-    let rig = rig();
+    let mut rig = rig();
     rig.run(&offering(&[HTTP_REQUEST.name()])).await.unwrap();
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(rig.runs.load(Ordering::SeqCst), 1, "the turn still ran");
+    assert_eq!(
+        rig.lent(),
+        [Some(Unavailable::NoSandbox)],
+        "its sandbox source answers that there is none"
+    );
 
     let mut rig = self::rig();
     rig.run(&offering(&[UPDATE_PLAN.name(), FILE_READ.name()]))

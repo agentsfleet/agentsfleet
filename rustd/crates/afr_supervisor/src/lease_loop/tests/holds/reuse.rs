@@ -21,7 +21,7 @@ use crate::error;
 use crate::holds::Release;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, OUTCOME,
-    PROCESSED, RENEWAL_TERMINATE, Rig, daemon, lease, position, reported,
+    PROCESSED, RENEWAL_TERMINATE, Rig, bounded, daemon, lease, position, reported,
 };
 use afd_core::timing::RENEWAL_TICK;
 
@@ -96,7 +96,7 @@ pub(super) fn resumed(lease_id: &str, fleet: &str) -> LeasePayload<'static> {
 /// Waits until every release the registry was asked for is done, by asking
 /// it to stop: the answer comes after each teardown.
 pub(super) async fn settled(rig: &Rig) {
-    rig.lessee.holds.shutdown().await;
+    bounded("the holds' shutdown", rig.lessee.holds.shutdown()).await;
 }
 
 /// Every release logged, as (fleet, reason), in the order they happened.

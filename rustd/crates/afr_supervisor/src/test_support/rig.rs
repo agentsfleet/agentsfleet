@@ -1,8 +1,8 @@
 //! A lessee over the fakes, for every suite that runs a lease.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
-use std::sync::{Arc, Mutex};
 
 use afd_wire::lease::LeasePayload;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
@@ -10,7 +10,7 @@ use afr_agent::AgentEngine;
 use afr_egress::Resolve;
 use afr_executor::Unavailable;
 use afr_sandbox::Limits;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -44,9 +44,9 @@ pub(crate) struct Rig {
     pub(crate) peak: Arc<AtomicUsize>,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
-    /// What each fake run's sandbox source lent it; empty for an engine
-    /// that is not the fake agent.
-    pub(crate) lent: Arc<Mutex<Vec<Option<Unavailable>>>>,
+    /// What each fake run's sandbox source lent it, read by [`Rig::lent`];
+    /// empty for an engine that is not the fake agent.
+    lent: mpsc::UnboundedReceiver<Option<Unavailable>>,
 }
 
 impl Rig {
@@ -100,13 +100,14 @@ impl Rig {
     fn build(
         answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
         engine: FakeEngine,
-        agent: FakeAgent,
+        mut agent: FakeAgent,
         holds: Holds,
         resolver: impl Resolve + 'static,
     ) -> Self {
         let runs = Arc::clone(&agent.runs);
         let peak = Arc::clone(&agent.peak);
-        let lent = Arc::clone(&agent.lent);
+        let (lending, lent) = mpsc::unbounded_channel();
+        agent.lent = Some(lending);
         let mut rig = Self::assemble(
             answer,
             engine,
@@ -154,6 +155,9 @@ impl Rig {
             whoami: Whoami::default(),
         });
         let (runs, peak, prepared, destroyed) = counters;
+        // No agent lends through this one: its sender is gone, so it reads
+        // back empty.
+        let (_unlent, lent) = mpsc::unbounded_channel();
         Self {
             root,
             home,
@@ -164,7 +168,7 @@ impl Rig {
             peak,
             prepared,
             destroyed,
-            lent: Arc::default(),
+            lent,
         }
     }
 
@@ -197,6 +201,11 @@ impl Rig {
     /// Every call the daemon received since the last look.
     pub(crate) fn calls(&mut self) -> Vec<Call> {
         drain(&mut self.calls)
+    }
+
+    /// What each fake run's sandbox source lent it since the last look.
+    pub(crate) fn lent(&mut self) -> Vec<Option<Unavailable>> {
+        std::iter::from_fn(|| self.lent.try_recv().ok()).collect()
     }
 }
 

@@ -44,7 +44,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 # `select!` races each turn and each call against the lease's stop.
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "time"] }
 # The token that stops a run when its lease ends early.
 tokio-util.workspace = true
 tracing.workspace = true

@@ -41,7 +41,8 @@ async fn a_lease_that_cannot_start_reports_why() {
 
         let calls = rig.calls();
         assert_eq!(reported(&calls)[FAILURE_REASON], STARTUP_POSTURE);
-        assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
+        assert_eq!(rig.prepared.load(Ordering::SeqCst), 0, "no build started");
+        assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no model request");
         let setup: Vec<_> = calls
             .iter()
             .map(|call| call.verb)

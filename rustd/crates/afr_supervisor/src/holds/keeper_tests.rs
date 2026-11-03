@@ -19,10 +19,10 @@ use futures_util::FutureExt as _;
 
 use super::EVENT_DESTROY_FAILED;
 use crate::holds::tests::{
-    FLEET_A, FLEET_B, LEASE, fleets, holds, id, key, park, released, releases, sandbox,
+    FLEET_A, FLEET_B, LEASE, fleets, hold, holds, id, key, park, released, releases, sandbox,
 };
-use crate::holds::{Holds, Release};
-use crate::test_support::FakeEngine;
+use crate::holds::{Holds, Parked, Release};
+use crate::test_support::{FakeEngine, bounded};
 
 /// How long a test waits for something that should already have happened.
 const PROMPT: Duration = Duration::from_secs(1);
@@ -35,11 +35,11 @@ async fn test_a_take_nobody_waits_for_destroys_the_hold() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     let abandoned = holds.take(&key(FLEET_A)).now_or_never();
     let left = fleets(&holds).await;
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
     assert!(abandoned.is_none(), "asked, and gone before the answer");
     assert!(left.is_empty(), "{left:?}");
@@ -57,10 +57,10 @@ async fn test_a_hold_that_will_not_tear_down_is_logged() {
         ..FakeEngine::default()
     };
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     holds.release(id(FLEET_A), Release::Inactive);
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
     let failed = capture.only(EVENT_DESTROY_FAILED);
     assert_eq!(failed.field("fleet_id"), Some(FLEET_A));
@@ -79,7 +79,7 @@ async fn test_a_hold_that_will_not_tear_down_is_logged() {
 async fn test_saturation_that_releases_nothing_does_not_ring() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     let _first = holds.occupy(id(FLEET_B));
     let _last = holds.occupy(id(FLEET_A));
@@ -97,11 +97,12 @@ async fn test_after_shutdown_a_take_finds_nothing_and_a_discard_still_destroys()
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
-    let taken = holds.take(&key(FLEET_A)).await;
+    let taken = bounded("a take after the shutdown", holds.take(&key(FLEET_A))).await;
     let late = sandbox(&engine).await;
-    holds.discard(id(FLEET_A), late, Release::ThawFailed).await;
+    let discarded = holds.discard(id(FLEET_A), late, Release::ThawFailed);
+    bounded("a discard after the shutdown", discarded).await;
 
     assert!(taken.is_none());
     assert_eq!(releases(&capture), [released(FLEET_A, Release::ThawFailed)]);
@@ -118,9 +119,9 @@ async fn test_a_park_is_counted_and_a_take_is_not() {
     let holds = Holds::recording(clock, tally);
     holds.resize(2);
 
-    park(&holds, &engine, FLEET_A).await;
-    let taken = holds.take(&key(FLEET_A)).await;
-    holds.shutdown().await;
+    hold(&holds, &engine, FLEET_A).await;
+    let taken = bounded("the fleet's hold", holds.take(&key(FLEET_A))).await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
     assert!(taken.is_some());
     let counted: Vec<Recorded> = recorded.try_iter().collect();
@@ -128,20 +129,30 @@ async fn test_a_park_is_counted_and_a_take_is_not() {
 }
 
 /// Once the runner takes no new lease the task ends every hold, and a sandbox
-/// parked after that is destroyed at once rather than held.
+/// parked after that is handed back to its lease rather than held: the
+/// keeper destroys only the hold it ended.
 #[tokio::test]
 async fn test_closed_holds_end_every_hold_and_refuse_a_later_park() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     holds.close();
     let late = park(&holds, &engine, FLEET_B).await;
     let left = fleets(&holds).await;
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
-    assert_eq!(late, None, "not held");
+    let handed_back = matches!(late, Parked::Refused(_));
+    let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
+    if let Parked::Refused(sandbox) = late {
+        sandbox.destroy().await.unwrap();
+    }
+    assert!(handed_back, "a closed keeper hands the sandbox back");
+    assert_eq!(
+        destroyed_by_the_keeper, 1,
+        "the hold it ended, not the late park"
+    );
     assert!(left.is_empty(), "{left:?}");
     assert_eq!(
         releases(&capture),
@@ -150,22 +161,26 @@ async fn test_closed_holds_end_every_hold_and_refuse_a_later_park() {
             released(FLEET_B, Release::Shutdown)
         ]
     );
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 2);
 }
 
-/// A runner with no workers holds nothing: the sandbox is destroyed at once,
-/// as capped.
+/// A runner with no workers holds nothing: the sandbox is handed back to its
+/// lease, its release counted as capped, and the keeper destroys nothing.
 #[tokio::test]
 async fn test_a_runner_with_no_workers_holds_nothing() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(0);
 
-    let until = park(&holds, &engine, FLEET_A).await;
-    holds.shutdown().await;
+    let parked = park(&holds, &engine, FLEET_A).await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
-    assert_eq!(until, None);
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
+    let handed_back = matches!(parked, Parked::Refused(_));
+    let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
+    if let Parked::Refused(sandbox) = parked {
+        sandbox.destroy().await.unwrap();
+    }
+    assert!(handed_back, "a keeper with no room hands the sandbox back");
+    assert_eq!(destroyed_by_the_keeper, 0, "and destroys nothing itself");
     assert_eq!(releases(&capture), [released(FLEET_A, Release::Capped)]);
 }
 
@@ -176,7 +191,7 @@ async fn test_dropping_every_handle_destroys_every_hold() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     drop(holds);
     let torn_down = async {
@@ -195,7 +210,7 @@ async fn test_releasing_a_fleet_not_held_ends_nothing() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     holds.release(id(FLEET_B), Release::Inactive);
 
@@ -211,11 +226,13 @@ async fn test_releasing_a_fleet_not_held_ends_nothing() {
 async fn test_a_take_across_a_clock_jump_back_reads_as_no_time_held() {
     let engine = FakeEngine::default();
     let (holds, clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     clock.set(jiff::Timestamp::MIN);
-    let taken = holds.take(&key(FLEET_A)).await.unwrap();
-    holds.shutdown().await;
+    let taken = bounded("the fleet's hold", holds.take(&key(FLEET_A)))
+        .await
+        .unwrap();
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
     assert_eq!(taken.held, Duration::ZERO);
 }
@@ -232,7 +249,7 @@ async fn test_a_refused_park_nobody_waits_for_is_torn_down() {
 
     let abandoned = holds.park(key(FLEET_A), id(LEASE), parked).now_or_never();
     let left = fleets(&holds).await;
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
     assert!(abandoned.is_none(), "asked, and gone before the answer");
     assert!(left.is_empty(), "{left:?}");
@@ -252,7 +269,7 @@ async fn test_a_held_park_nobody_waits_for_is_superseded() {
 
     let abandoned = holds.park(key(FLEET_A), id(LEASE), parked).now_or_never();
     let left = fleets(&holds).await;
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
 
     assert!(abandoned.is_none(), "asked, and gone before the answer");
     assert!(left.is_empty(), "{left:?}");

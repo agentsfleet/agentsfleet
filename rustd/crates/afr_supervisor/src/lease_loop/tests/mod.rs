@@ -51,6 +51,5 @@ mod build;
 mod build_endings;
 mod completion;
 mod failures;
-mod release;
 mod renewal;
 mod usage;

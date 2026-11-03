@@ -23,6 +23,9 @@ const LOST_LINK_WITHIN: Duration = Duration::from_secs(3);
 /// How long the first wait for an exit lasts: past the process, short of
 /// the error stream it left open.
 const CUT_SHORT: Duration = Duration::from_millis(50);
+/// How long the second wait may last: far past the straggler's 0.3 s, so only
+/// a wait that would never end runs into it.
+const PATIENCE: Duration = Duration::from_secs(5);
 /// `O_CLOEXEC`, as `/proc/self/fdinfo` prints a descriptor's flags.
 const O_CLOEXEC: u32 = 0o2_000_000;
 
@@ -124,13 +127,19 @@ async fn test_a_wait_cut_short_keeps_the_error_stream() {
         .unwrap();
 
     let cut_short = tokio::time::timeout(CUT_SHORT, parts.exited()).await;
-    let exited = parts.exited().await;
+    // Bounded: with no child left to wait on, `exited` never resolves.
+    let exited = tokio::time::timeout(PATIENCE, parts.exited()).await;
 
     assert!(
         cut_short.is_err(),
         "the error stream outlasted the first wait"
     );
-    let said = exited.to_string();
+    let said = exited.map(|error| error.to_string());
+    assert!(
+        said.is_ok(),
+        "the second wait for bubblewrap's exit outlasted {PATIENCE:?}"
+    );
+    let said = said.unwrap();
     assert!(said.contains("held-open-reason"), "{said}");
 }
 

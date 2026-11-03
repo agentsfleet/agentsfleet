@@ -101,25 +101,36 @@ fn test_an_entry_without_its_tenant_leaf_is_refused_before_hardening() {
 /// kernel has Landlock.
 #[test]
 fn test_an_entry_handed_its_descriptors_goes_on_to_harden() {
+    use std::os::fd::IntoRawFd as _;
     let leaf = tempfile::tempdir().unwrap();
+    let events = leaf.path().join("memory.events");
     std::fs::write(
-        leaf.path().join("memory.events"),
+        &events,
         "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
     )
     .unwrap();
-    let tenant = crate::tenant::TenantFiles::open(
-        &leaf.path().join("cgroup.procs"),
-        &leaf.path().join("memory.events"),
-    )
-    .unwrap();
-    let (handover, _runner) = crate::tenant::Handover::with_link(tenant).unwrap();
+    let procs = std::fs::File::create(leaf.path().join("cgroup.procs")).unwrap();
+    let events = std::fs::File::open(&events).unwrap();
+    let (runner, entry) = std::os::unix::net::UnixStream::pair().unwrap();
+    // Hung up before the call: were hardening ever to pass here, the link
+    // would read its end at once and the call return, rather than serve this
+    // test process forever.
+    drop(runner);
+    // What an exec does: the numbers stay open, and nothing here owns them.
+    let inherited = crate::Inherited {
+        tenant: crate::TenantDescriptors {
+            tenant_procs: procs.into_raw_fd(),
+            tenant_events: events.into_raw_fd(),
+        },
+        executor: entry.into_raw_fd(),
+    };
 
     // A second thread held open for the call, so hardening refuses whatever
     // the test harness does with its own: nothing confines this process.
     let refused = std::thread::scope(|scope| {
         let (hold, wait) = mpsc::channel::<()>();
         scope.spawn(move || wait.recv());
-        let refused = super::serve_sandboxed(handover.into_inherited()).unwrap_err();
+        let refused = super::serve_sandboxed(inherited).err();
         drop(hold);
         refused
     });
@@ -129,6 +140,9 @@ fn test_an_entry_handed_its_descriptors_goes_on_to_harden() {
     } else {
         "landlock"
     };
-    let said = refused.to_string();
-    assert!(said.contains(expected), "{said}");
+    let said = refused.map(|error| error.to_string());
+    assert!(
+        said.as_deref().is_some_and(|said| said.contains(expected)),
+        "{said:?}"
+    );
 }

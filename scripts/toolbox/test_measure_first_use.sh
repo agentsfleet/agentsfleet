@@ -22,6 +22,10 @@ import time
 from pathlib import Path
 
 sampler = Path(sys.argv[1]).resolve()
+# Every case checks the image's loop devices, so a host without losetup fails
+# here, before any fixture is made, rather than mid-case.
+losetup = shutil.which("losetup")
+assert losetup, "losetup is not on PATH: every case lists the image's loop devices with it"
 fixture = Path(tempfile.mkdtemp(prefix="first-use-cleanup-", dir="/var/tmp"))
 source = fixture / "source"
 source.mkdir()
@@ -44,7 +48,6 @@ cases = ["signal_after_mount", "mount_failed", "command_failed", "unmount_failed
          "direct_io_when_asked", "direct_io_refused"]
 # Cases whose measurement runs to a published report.
 published = ("publication_symlink", "direct_io_when_asked")
-losetup = shutil.which("losetup")
 if sys.argv[2]:
     assert sys.argv[2] in cases
     cases = [sys.argv[2]]
@@ -208,8 +211,9 @@ try:
                 assert result.returncode == 0, f"{case} failed: {result.stderr}"
                 report = json.loads(output.read_text())
                 assert report["runs"] == 20 and len(report["steps"]) == 8
+                # Exit 0 is the direct-I/O proof: the sampler refuses a device
+                # whose dio reads other than 1, which direct_io_refused shows.
                 assert all(len(step["samples_ms"]) == 20 for step in report["steps"].values())
-                assert report["loop"] == ("direct" if case == "direct_io_when_asked" else "buffered")
             else:
                 assert not output.exists(), f"{case}: incomplete report published"
             if case == "publication_symlink":

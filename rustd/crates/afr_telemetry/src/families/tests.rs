@@ -158,6 +158,12 @@ fn label_products() -> [(&'static str, usize); 13] {
 #[test]
 fn test_runner_ceilings_admit_their_label_product() {
     let registry = registry().expect("the runner census reads");
+    let listed: BTreeSet<&str> = label_products().iter().map(|(name, _)| *name).collect();
+    let declared: BTreeSet<&str> = registry.families().map(|family| &*family.name).collect();
+    assert_eq!(
+        listed, declared,
+        "every census family has its label product checked"
+    );
     for (name, product) in label_products() {
         let family = registry
             .family(name)

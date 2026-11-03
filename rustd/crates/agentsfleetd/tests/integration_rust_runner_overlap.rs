@@ -4,7 +4,7 @@
 //! sandbox once it is ready.
 
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use afd_core::event::status::PROCESSED;
@@ -30,13 +30,13 @@ const TOOL_COMPLETED: &str = "tool_call_completed";
 #[derive(Debug)]
 struct Stalled {
     inner: UnsandboxedEngine,
-    ready: Arc<Mutex<Option<Instant>>>,
+    ready: Arc<OnceLock<Instant>>,
 }
 
 impl Stalled {
     /// An engine whose sandboxes live under `sandboxes`, noting in `ready`
     /// when its first one was.
-    fn new(sandboxes: &Path, ready: &Arc<Mutex<Option<Instant>>>) -> Self {
+    fn new(sandboxes: &Path, ready: &Arc<OnceLock<Instant>>) -> Self {
         Self {
             inner: UnsandboxedEngine::new(sandboxes.to_owned())
                 .expect("a debug build permits the unsandboxed engine"),
@@ -51,10 +51,7 @@ impl Engine for Stalled {
         tokio::time::sleep(PREPARE_TAKES).await;
         let prepared = self.inner.prepare(request).await;
         if prepared.is_ok() {
-            self.ready
-                .lock()
-                .expect("nothing panics holding the clock")
-                .get_or_insert_with(Instant::now);
+            self.ready.get_or_init(Instant::now);
         }
         prepared
     }
@@ -73,10 +70,14 @@ fn answering_first() -> afr_agent::scripted::ScriptedEngine {
 }
 
 /// Every frame the tail carried after the first chunk, read until it falls
-/// quiet.
+/// quiet or [`SETTLE_DEADLINE`] passes, whichever is first.
 async fn later_frames(tail: &mut afd_dragonfly::Subscription) -> Vec<serde_json::Value> {
+    let deadline = Instant::now() + SETTLE_DEADLINE;
     let mut frames = Vec::new();
-    while let Some(frame) = crate::tail::next_frame(tail).await {
+    while Instant::now() < deadline {
+        let Some(frame) = crate::tail::next_frame(tail).await else {
+            break;
+        };
         frames.push(frame);
     }
     frames
@@ -84,11 +85,8 @@ async fn later_frames(tail: &mut afd_dragonfly::Subscription) -> Vec<serde_json:
 
 /// The first chunk reached the tail before the sandbox the turn's tool call
 /// built was ready.
-fn assert_streamed_first(streamed: Instant, ready: &Mutex<Option<Instant>>) {
-    let ready = ready
-        .lock()
-        .expect("nothing panics holding the clock")
-        .expect("the turn's tool call built a sandbox");
+fn assert_streamed_first(streamed: Instant, ready: &OnceLock<Instant>) {
+    let ready = *ready.get().expect("the turn's tool call built a sandbox");
     assert!(
         streamed < ready,
         "the first chunk streamed {:?} after the sandbox was ready",
