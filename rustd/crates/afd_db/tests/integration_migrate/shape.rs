@@ -25,14 +25,12 @@ const LEDGER_SCHEMA: &str = "audit";
 /// sqlx's ledger: the migrator's, not a slot's.
 const LEDGER_TABLE: &str = "audit._sqlx_migrations";
 
-/// Every table outside the system schemas, once per column.
-const BUILT_COLUMNS: &str = "\
-SELECT c.table_schema || '.' || c.table_name, c.column_name::text
-  FROM information_schema.columns c
-  JOIN information_schema.tables t
-    ON t.table_schema = c.table_schema AND t.table_name = c.table_name
- WHERE t.table_type = 'BASE TABLE'
-   AND c.table_schema NOT IN ('pg_catalog', 'information_schema')";
+/// Every table outside the system schemas.
+const BUILT_TABLES: &str = "\
+SELECT table_schema || '.' || table_name
+  FROM information_schema.tables
+ WHERE table_type = 'BASE TABLE'
+   AND table_schema NOT IN ('pg_catalog', 'information_schema')";
 
 /// Every schema the database holds beyond the system ones and `public`.
 const BUILT_SCHEMAS: &str = "\
@@ -41,12 +39,12 @@ SELECT nspname::text FROM pg_namespace
 
 /// The tables the migrated database holds, ledger excluded.
 async fn built(connection: &mut PgConnection) -> BTreeSet<String> {
-    let rows: Vec<(String, String)> = sqlx::query_as(BUILT_COLUMNS)
+    let tables: Vec<String> = sqlx::query_scalar(BUILT_TABLES)
         .fetch_all(connection)
         .await
         .unwrap();
-    rows.into_iter()
-        .map(|(table, _column)| table)
+    tables
+        .into_iter()
         .filter(|table| table != LEDGER_TABLE)
         .collect()
 }

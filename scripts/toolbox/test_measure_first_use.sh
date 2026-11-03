@@ -188,7 +188,8 @@ try:
             # These cases prove the clean-up when a signal lands mid-publication,
             # not the measurement, so each sandboxed step answers at once and
             # the disk sync is skipped: publication starts within a second, on
-            # any disk. The mount, the 20 recorded runs and the publication path
+            # any disk. The cache drop before each step goes too: nothing here
+            # is timed. The mount, the 20 recorded runs and the publication path
             # are the real ones. Then hold the real JSON writer once it owns its
             # exclusive staging file.
             hook = directory / "sitecustomize.py"
@@ -200,6 +201,12 @@ try:
                             "    return real_run(args, *rest, **options)\n"
                             "subprocess.run = instant_step\n"
                             "os.sync = lambda: None\n"
+                            "real_write_text = Path.write_text\n"
+                            "def write_unless_drop(path, data, *rest, **options):\n"
+                            "    if str(path) == '/proc/sys/vm/drop_caches':\n"
+                            "        return len(data)\n"
+                            "    return real_write_text(path, data, *rest, **options)\n"
+                            "Path.write_text = write_unless_drop\n"
                             "def hold_report(*args, **kwargs):\n"
                             f"    Path({str(directory / 'publication-started')!r}).touch()\n"
                             "    time.sleep(120)\n"
