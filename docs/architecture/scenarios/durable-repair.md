@@ -4,7 +4,9 @@
 
 This is a proposed development-autonomy scenario, not shipped behavior.
 It brings goal evaluation, later-event continuation, existing-Pull-Request authority and worker recovery into one implementation-spec scope.
-The detailed design, storage changes, Jev integration and runtime acceptance remain pending.
+The proposed [DT lifecycle](../durable_tasks.md), [decision models](../goal_evaluation.md) and [R2 recovery](../sandbox_evaluation.md#durable-task-checkpoints-in-r2) define mechanisms.
+
+Detailed limits, final signoff and runtime acceptance remain pending.
 
 The existing manual path can investigate a GitHub Actions failure and open or correct its own event-derived repair draft during one active request.
 It does not supply arbitrary existing-Pull-Request writes, durable cross-request repair ownership or recoverable coding workspaces.
@@ -15,6 +17,9 @@ M224 remains the separate manual-first evidence campaign; its reduced closure sc
 Elasticsearch is not required for the proposed Grafana-only demonstration.
 
 ## One Linkwarden task, three distinct requirements
+
+The [three-task walkthrough](durable-tasks-three-prs.md) expands caller messages, human steering, queue switching and recovery into three pictures.
+It maps existing Rust interfaces and proposed M236 types without claiming a completed repair.
 
 Use a controlled Linkwarden development repository and an unchanged regression that fails for a known code defect.
 A person using Codex opens PR X; the authoring tool is irrelevant to authority.
@@ -88,7 +93,7 @@ New human message + current task state + standing instructions
 ```
 
 Pure social input must not restart, finish or reset a repair.
-It makes no investigation or Jev completion call.
+It may use one Jev intent-routing call but makes no investigation or goal-evaluation call.
 Reply briefly without recapping the diagnosis, naming the old run or suggesting a repair.
 
 A status question can answer from recorded evidence while stating its age; an explicit refresh request can read current status within current authority.
@@ -122,22 +127,26 @@ Accepted goal/questions + current trusted task/evidence
                     and release  validation    / escalation
 ```
 
-Jev is the proposed decision model, not an implemented runtime integration.
+The runner-assigned decision provider supplies typed assessments; [goal evaluation](../goal_evaluation.md) owns provider selection and capabilities.
 Its input includes the accepted questions, current task/target identities, bounded evidence references and the remaining limits.
-Its structured result must bind the assessed setup revision, task generation and exact evidence/head, with reasons for unresolved questions.
+Native metadata binds each result to the assessed setup revision, task generation and exact evidence/head.
+
+Recorded facts and the conversational model explain unresolved questions.
 
 Native code enforces current grants, write targets, stale-generation rejection, budgets and the mandatory proof requirements of the admitted task.
-A Jev `DONE` without current required evidence cannot close a task.
+A decision-model `DONE` without current required evidence cannot close a task.
 Invalid, timed-out, unavailable or contradictory judgments consume bounded attempts and end in a named blocked result rather than default success.
 
-The spec must define the Jev API/model, output schema, call placement, timeout, cost accounting and any live-provider authorization before implementation.
-Jev calls share the task's cumulative money/time/attempt bounds; a new admission cannot reset them.
+Jev `jev-latest` is the initial runner profile; Perplexity, Clef or OpenAI Decisions profiles use the same decision boundary.
+The provider policy fixes proposed bounds; each alternative still needs its own capability, rate and regression proofs.
+
+Decision calls share the task's cumulative money/time/attempt bounds; a new admission cannot reset them.
 Raw logs, repository files and summaries are untrusted evidence and cannot change completion questions or authority.
 
 ## Durable ownership and event matching
 
 The daemon must own trusted task/attempt identity, workspace and fleet, approved repository/base/PR/head, notification destination, current wait, compatible saved generation and cumulative limits.
-The detailed design must place these records in the existing stores and select transaction/fencing boundaries; prose and semantic memory are not the authority store.
+[Durable Tasks](../durable_tasks.md#state-authority-and-transaction-boundaries) assigns native ownership to Postgres and encrypted checkpoint bytes to R2.
 Every run uses the existing admission and lease path with one active lease per fleet.
 
 Validate completion-event signatures and installation scope before matching the exact task wait.
@@ -160,7 +169,7 @@ A push that can deploy or trigger a privileged workflow is outside the initial d
 
 Read the remote head before preparing a patch and enforce the expected-head precondition at publication.
 On another writer's advance, preserve saved work, stop publication and re-evaluate under fresh evidence; never overwrite a laptop push.
-The publication mechanism and response to an unrelated advance require detailed design, not an assumed safe read-then-write sequence.
+The native publisher proposes `createCommitOnBranch` with `expectedHeadOid`, candidate-tree verification and uncertain-result reconciliation.
 
 After a timeout, inspect the recorded branch and PR before retrying a write.
 Closed or merged PRs, revoked access, cancellation and exhausted limits stop further effects and late wakes.
@@ -260,7 +269,7 @@ Do not display "Opening handshake" unless that technical detail helps the user a
 Use a labelled status/error icon and text, with keyboard-accessible recovery actions; avoid toast-only failures or an indefinite spinner.
 Keep browser reconnection, inference retry and tool-effect reconciliation distinct, with retries charged to the same task limits.
 
-## Acceptance and unresolved design decisions
+## Acceptance and proposed implementation decisions
 
 The reviewed spec must map every row below to exact current-code changes, named checks and retained evidence.
 No review score or synthetic fixture marks a live row passed.
@@ -278,6 +287,41 @@ No review score or synthetic fixture marks a live row passed.
 | Progress and failure recovery | Short confirmed action/result and waiting/blocked summaries survive worker replacement; connection loss, interrupted inference, uncertain write and unavailable Jev show distinct notices and recovery actions without duplicate inference/publication |
 | Audit and notifications | Complete call inventory, retained evidence references, visible thread result and reconciled delivery retries |
 
-Before implementation, resolve durable store/schema ownership, publication transport/precondition, Jev integration, instruction-revision adoption, incident grouping, standing authority, retention/quotas and scheduler timing.
-Assign the implementation spec number from current remote state; no number is reserved by this scenario.
+The owning DT, decision-model and checkpoint pages now specify the proposed mechanisms and limits.
+Implementation awaits Indy's signoff; controlled acceptance still needs actual configuration, runtime proofs and measured results.
+M236 owns the implementation scope and signoff record.
+
 Production and the new sandbox backend are outside this development-autonomy implementation scope.
+
+## Actual PR submitted through a coding agent
+
+Indy supplies the actual Linkwarden PR URL through Claude Code, Codex or the Codex app.
+Authenticated command-line interface access reaches the same fleet message API as browser chat.
+The client does not need to create or name a Durable Task (DT).
+
+```text
+Indy -> coding agent -> GitHub: open PR X at A; CI(A) fails
+  |
+  +-> "Repair PR X until required checks pass; do not merge or deploy"
+       |
+       daemon: authenticate -> save message -> issue fleet lease
+       runner: Jev intent -> bounded objective -> native DT admission T
+       worker 1: exact evidence -> reproduce -> patch -> test candidate tree
+       save compatible generation G -> record intent and validation expectation
+       native publisher: append only if expected head is A -> head B
+       reconcile -> commit wait/usage/report -> release fleet slot
+       |
+       original client closes; worker disappears; T remains waiting
+       |
+       signed CI(B) completion OR bounded fallback -> one continuation
+       worker 2: fresh authority -> compatible G -> reconcile remote effects
+       reread current head/checks
+         failing -> repair same PR within remaining limits
+         passing -> Jev assessment + native proof -> done -> existing reply path
+       |
+       human review/merge -> separately authorized deployment
+```
+
+A human push to H rejects publication prepared against A.
+The fleet retains saved work and reevaluates against H without overwriting human edits.
+The Grafana variant requires fresh symptom evidence from the separately deployed revision.

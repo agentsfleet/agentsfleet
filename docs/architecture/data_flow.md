@@ -766,3 +766,13 @@ lost wake -> the next idle poll still reads the ledger
 ```
 
 Do not delete the retained fleet on setup failure, claim activation after a zero-row update, or submit another initial event on retry. Undelivered, unsettled steer admissions participate in ordinary message history alongside delivered events in one statement snapshot, with stable event identity and pagination (`afd_events/src/history/statement/select_thread_page.sql`). No creation worker is introduced.
+
+## Proposed Durable Task admission
+
+M236 adds [Durable Tasks](durable_tasks.md) beneath fleets while retaining this admission ledger and one active lease per fleet.
+The daemon saves a message before acknowledging it; the runner then uses [Jev intent routing](goal_evaluation.md#intent-routing) under its lease.
+Native code creates work or associates input only after current authority and target checks.
+
+A waiting DT has a settled run admission and a separate wait record.
+Another queued objective can use the fleet slot; a matched completion creates one continuation admission.
+Neither model classification nor an R2 checkpoint replaces queue or ownership authority.

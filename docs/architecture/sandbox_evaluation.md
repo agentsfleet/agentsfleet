@@ -398,6 +398,256 @@ Required proof includes a new admission resuming the same draft after worker rep
 Also test duplicate approvals, lost update acknowledgements, revoked access, changed proposal scope and a merged or closed draft.
 Incident B must retain its own workspace and publication targets throughout those cases.
 
+### Durable Task checkpoints in R2
+
+M236 selects Cloudflare R2 for encrypted immutable coding checkpoints.
+[Durable Tasks](durable_tasks.md) owns lifecycle and guarded manifest publication.
+Use Rust `object_store` 0.14.2 with its S3-compatible client in trusted daemon storage code.
+
+Its published dependency metadata uses reqwest 0.13, matching the workspace's transport line; build verification still checks features and crypto-provider compatibility.
+
+Capture logical repository files and Git state instead of copying a live mounted ext4 image.
+Quiesce writers and validate the save boundary before reading files.
+A settled kill or verified freeze can establish that boundary; an unsettled kill cannot.
+
+Include base identity, required Git objects/local commits, index, staged and unstaged edits, and declared untracked files.
+Exclude toolbox bytes, credentials, sockets, devices, caches and running-process state.
+Every host retains the shared read-only toolbox by digest; a checkpoint records compatibility without uploading that image.
+
+Reject hostile paths, escaping symlinks, unsupported file types and oversized expansions before attaching writable restored state.
+Encrypt checkpoint content before upload and verify immutable object digests before publishing a manifest.
+Keep bucket credentials in trusted daemon code and key references in native metadata.
+
+The trusted supervisor receives only scoped temporary object keys and exact-object authorizations.
+
+Restore into a fresh private workspace inside M237_001's build.
+Choose restore or fresh checkout; ordinary checkout must not overwrite recovered branch, index or edits.
+Publish ExecutorSlot readiness only after validation and required remote reconciliation.
+
+The host-mounted bubblewrap workspace supports this initial path.
+A later backend without a host workspace needs guest restoration or pre-attach image preparation; M236 does not add that backend.
+The checkpoint format must not encode host-only absolute worktree paths.
+
+```text
+verified writer quiescence -> logical capture -> encrypt/upload R2
+    -> verify objects -> publish compatible manifest under current fences
+    -> settle report/wait -> release slot -> destroy or retain compatible compute
+```
+
+A mounted raw-image copy would require separate filesystem freeze/unmount consistency handling.
+Failed capture or upload preserves the previous manifest and cannot claim the latest work is recoverable.
+After a crash, show the last completed generation and reconcile effects newer than that generation.
+
+Do not expire a live DT's only referenced checkpoint through idle-cache eviction.
+Deletion fences new access before asynchronous object cleanup; unreferenced uploads need bounded orphan collection.
+The proposed limits and key protocol below are for signoff; they have not been benchmarked or deployed.
+
+#### Large repositories and incremental checkpoints
+
+A six-gigabyte checkout must not become a six-gigabyte upload after each small edit.
+Separate repository acquisition, private checkout materialization, dependency setup and DT checkpoint transfer in measurements.
+Large history, large tracked files, Git LFS content and generated dependencies have different costs.
+
+Six gigabytes was Indy's example, not a required repository size or approved maximum.
+All size checks use measured bytes and declared capacity; the proposed storage caps below are independent choices awaiting signoff.
+Include smaller repositories and capacity-limit cases in acceptance, alongside the large-repository fixture.
+
+The current host mirror fetches missing Git objects on reuse rather than cloning every lease.
+`afr_supervisor/src/workspace_clone/fetch.rs` owns that behavior; `checkout.rs` still copies mirror objects into fresh private repositories.
+A replacement host with no mirror can still require a large cold transfer.
+
+```text
+Reusable source base B, pinned by verified Git identity
+  host mirror cache -----------> private checkout
+  retained R2 base if required -> cold replacement host
+                                      |
+DT checkpoint G1: base B + local Git objects + index + changed-file manifest
+DT checkpoint G2: base B + new changed chunks + complete logical manifest
+DT checkpoint G3: reuse existing chunks; upload only newly changed content
+
+Resume G3: obtain verified B -> overlay manifest -> restore index/Git state
+```
+
+Store immutable changed-file chunks and a complete manifest for each recoverable generation.
+Represent deletions and file modes explicitly; retain required local Git objects without copying all remote history into every checkpoint.
+Each manifest references a bounded base and chunks rather than an unbounded chain of earlier checkpoints.
+
+Repeated saves reuse unchanged chunks within the authorized workspace and repository scope.
+New large files need bounded chunking, encryption-compatible object identities and upload reservations; small text diffs do not predict their cost.
+Avoid cross-workspace deduplication that exposes content existence or couples deletion authority.
+
+A Git commit identifier alone is not a durable base copy.
+Before claiming cross-worker recovery, retain required base objects independently or prove their availability under a declared source-retention guarantee.
+The proposed R2 base is immutable, workspace-scoped and shared across authorized DT checkpoints referencing that repository base.
+
+Initial base retention can transfer substantial data once; report its bytes, cost and delay rather than hiding it in checkpoint time.
+Current grants still gate restore even when R2 contains the bytes.
+
+Garbage collection checks retained manifests, reader pins and upload/publication pins in one guarded native transition.
+Tombstoning and new pin acquisition serialize on the same object identity; tombstoned objects cannot acquire new references.
+Pins precede upload verification; manifest publication atomically converts live writer pins into durable references.
+
+An expired pin cannot publish a manifest.
+The runner must reacquire eligible pins and reverify objects, or abandon that checkpoint while retaining the prior generation.
+Deletion remains fenced against current readers and writers; orphan collection cannot race a live save.
+
+Warm attachment and host mirrors reduce repeated transfer but cannot guarantee a warm replacement host.
+Fetch the pinned base and required objects where supported; sparse or partial checkout is opt-in only when tools and tests tolerate it.
+Git LFS and submodules require declared capture/restore support or an explicit refusal, never an incomplete success.
+
+Reserve workspace capacity for materialized files, Git objects, capture staging and restore expansion.
+Stop before exhausting byte/inode limits; a sparse disk's nominal size does not prove free host capacity.
+Do not retry an oversized checkout or checkpoint indefinitely across wakes.
+
+Benchmark a controlled six-gigabyte fixture with small edits, a large binary edit and a large new untracked file.
+Measure first base retention, repeated uploaded bytes, scan/capture time, warm resume and cold-host resume separately.
+The proposed transfer, scanning, quota and restore budgets below are resource ceilings; no fast cold restore is assumed.
+
+Incremental uploads do not prove constant-time capture; checking a large dirty working tree can still require substantial scanning or hashing.
+Measure that cost separately and refuse unsafe shortcuts based only on tenant-controlled timestamps or claimed changed-file lists.
+
+Indy assigned M237 reconciliation to Claude Code and parked revision review in this chat.
+M236 uses per-task referenced-generation retention and independently retained base custody as its proposed rules.
+The following protocol preserves lease-scoped signed storage operations without giving a sandbox bucket access.
+
+#### Proposed storage authorization and encryption
+
+The daemon alone resolves the R2 endpoint, bucket and access credentials through platform configuration and vault references.
+Use an R2 bucket-scoped token for this deployment's private checkpoint bucket; disable public access.
+Do not grant the runner or sandbox a permanent bucket token, bucket listing or general delete permission.
+
+R2 keys use random native object identities beneath workspace/repository prefixes.
+The daemon assigns each missing chunk an exact random key, fixed nonce and one native upload owner under a live reservation.
+Reserve the object/key first; accept its immutable ciphertext digest and length before returning any PUT authorization.
+
+Return five-minute HTTPS URLs only for registered bytes; never log their query strings.
+
+Use conditional object creation and replay the identical ciphertext buffer when a retry is authorized.
+Before enabling R2, an integration proof must reject a second different write to the same object key.
+If the configured backend cannot enforce create-only writes, checkpoint publication stays disabled rather than accepting mutable referenced objects.
+
+For each new object, the daemon generates a fresh 256-bit data key through `afd_crypto::entropy`.
+Wrap that key with the existing `afd_crypto::envelope` under the daemon's configured versioned master key.
+Bind the wrapped key to workspace, repository, random object identity and checkpoint format through associated data.
+
+The trusted supervisor receives only the scoped temporary data key and its assigned nonce, never the master key.
+Encrypt each object with AES-256-GCM, its native fresh 96-bit nonce and the ownership/format binding.
+Save only ciphertext, nonce, authentication tag, wrapped key envelope and ciphertext digest; zero plaintext keys when buffers leave scope.
+
+Use a new `afd_crypto::checkpoint` module for the domain-separated byte format; preserve vault envelope compatibility unchanged.
+Deduplication reuses a registered encrypted object and its existing envelope within the same authorized scope.
+It does not use convergent encryption or share content identities across workspaces.
+
+Compute scoped keyed content identities in trusted daemon code; do not expose them as public object URLs or analytics.
+The supervisor checks capture bytes, encryption, upload size and response before attesting upload completion under its authenticated lease.
+Verify stored length and a strong provider checksum matching the native ciphertext descriptor; an ETag alone is not a cryptographic proof.
+
+If the provider cannot supply that checksum, authorized trusted code reads and hashes the object before accepting its upload.
+Show the verification stage and measure its additional read bytes; do not hide readback cost in a claimed incremental-upload speedup.
+Restore also checks the ciphertext hash and authenticated decryption before returning writable files.
+
+Restore always verifies the recorded ciphertext digest, authentication tag and plaintext content identity before attaching writable state.
+Incomplete or mismatched objects preserve the prior manifest and block that restore.
+Presigned URLs are not immediately revocable; stopped tasks cannot publish manifests and no sandbox receives an outstanding URL or key.
+
+Record wrapping-key versions without changing the vault format or deployment master key under M236.
+The format permits later authorized rewrapping without changing object ciphertext or content identities.
+Authorized deletion removes access first, then references, wrapped keys and unreferenced storage through guarded collection.
+
+AES-256-GCM is the proposed strong symmetric encryption at rest.
+It is generally considered resistant to known quantum attacks on symmetric encryption; this proposal makes no end-to-end post-quantum security claim.
+HTTPS key exchange, credential setup and host key protection need separate verification before any broader quantum-safe claim.
+
+#### Proposed storage and recovery limits
+
+Use a gibibyte (GiB) as 1,073,741,824 bytes and a mebibyte (MiB) as 1,048,576 bytes.
+These are proposed limits, not observed throughput or latency promises.
+Charge reservations against unique stored bytes within a workspace; track logical expansion separately.
+
+| Bound | Proposed value and failure behavior |
+|---|---|
+| Base storage | At most 16 GiB of unique base bytes per repository base; reserve before retaining its objects. |
+| Incremental save | At most 1 GiB of newly uploaded content per checkpoint and 8 MiB plaintext per object; larger changes block durable handoff. |
+| Total private storage | 50 GiB unique bytes per workspace, including bases, chunks, in-progress uploads and retained generations. |
+| Logical restore | At most 24 GiB and 200,000 entries; refuse oversized expansion before attachment. |
+| Manifests | Complete logical manifest at most 64 MiB, sent in 1 MiB pages; at most 256 object operations per authorization page. |
+| Transfer concurrency | Four object transfers per task; eight per runner; retry transient storage errors twice within the overall deadline. |
+| Deadlines | Five minutes for capture/scan; 15 minutes each for initial base retention, checkpoint upload or cold restore. Timeout blocks that handoff and keeps the prior generation. |
+| Save trigger | At safe boundaries before waits, publication and worker release, plus after five minutes of dirty work between complete action groups. |
+| Live retention | Latest three compatible generations per DT plus any generation protected by a current input/effect dependency or reader; no expiry of a live task's sole recoverable state. |
+| Terminal retention | Seven days after terminal state; explicit authorized deletion starts cleanup immediately. |
+| Pins | Thirty-minute reader/writer pins renewed every minute; expired pins cannot publish or attach files. |
+| Collection | One-hour orphan grace after the last live pin; five-minute scans, at most 256 objects per pass. Referenced objects never use blind bucket-expiry rules. |
+
+Before large checkout/restore, reserve the task's declared disk limit and available host capacity for staging and expanded files.
+The six-GiB acceptance fixture uses a 32-GiB workspace disk; fleet limits below required capacity produce an explicit refusal.
+The upper logical size does not permit crossing the actual disk-byte or inode limits.
+
+Tests compare exact recovered state at the same base across a small text edit, a large binary edit and a new large untracked file.
+After retaining a base, two identical saves upload zero content bytes; new manifests and bookkeeping remain bounded overhead.
+Record scan time, first base bytes and cold restore separately; no result may hide those costs behind the first model call.
+
+Keep `node_modules`, build caches, sockets, device files and toolbox contents outside the declared durable file set.
+Include ordinary project files, local Git objects, index and explicitly declared untracked work; unsupported LFS/submodule state blocks the promised full recovery.
+Preserve existing hostile-Git and secret-scanning requirements; never follow tenant hooks, helpers or escaping symlinks during capture or restore.
+
+Storage endpoint/bucket, vault references and a successful encryption/create-only round trip are activation prerequisites.
+The spec can be approved for implementation before those credentials exist; the deployment must refuse durable coding tasks until prerequisites pass.
+
+#### Keyed identity lifecycle and conditional-upload recovery
+
+The daemon generates one random 256-bit content-identity key per workspace/repository version and wraps it using native envelope primitives.
+Compute the identity as HMAC-SHA-256 over a domain tag, plaintext SHA-256 and size; keys never leave trusted daemon code.
+The plaintext SHA-256 descriptor comes from trusted capture and stays in private native metadata.
+
+Authorized restore receives that expected digest and compares it after authenticated decryption; the daemon alone retains the keyed-identity secret.
+
+Content-identity keys and object encryption keys have different roles and lifetimes.
+Master-key rewrapping preserves the content-identity key bytes and does not invalidate deduplication or re-upload stored chunks.
+Actual identity-key rotation creates a new native identity version; preserve old wrapped versions while retained objects require verification.
+
+M236 does not rotate the deployment's existing master key or assume old key versions remain loadable after an operator overwrites configuration.
+Activation and restore require every referenced wrapping-key version to be available; missing versions refuse restore explicitly.
+Broader master-key custody and migration remain with the separately assigned security work.
+
+A unique live-content index serializes concurrent reservations for the same scope, identity version and keyed content identity.
+One native upload owner gets the object key, nonce and data key; another task waits or reuses a verified object.
+No second worker may encrypt different bytes for the same object identity.
+
+The immutable ciphertext descriptor is saved before upload authorization and remains discoverable through the native checkpoint plan.
+After acknowledgement loss or a create-only precondition response, verify the existing remote object against that descriptor.
+Matching bytes complete the existing upload; mismatched bytes block publication and report a storage integrity failure.
+
+If the remote object is absent, only the current native owner can retry with the recorded key, nonce and descriptor.
+An expired owner can be atomically adopted by a fresh authorized lease after native scope/generation checks.
+If the source bytes cannot reproduce the descriptor, abandon the incomplete plan; never overwrite its assigned object or attach a partial checkpoint.
+
+Tombstoned objects never acquire new references or revive.
+Reintroduced identical content receives a new random object identity after the live-content index releases the old tombstone.
+Retain historical rows and purge receipts until remote cleanup and outstanding authorization windows are resolved.
+
+Collection respects the last signed-URL expiry, bounded in-flight request window and orphan grace before deleting bytes.
+Keep purge receipts while a remote result remains uncertain; a stopped lease cannot refresh authorization or publish a new manifest.
+Per-object transfer requests have a 60-second deadline inside the overall operation deadline.
+
+Manifest pages, URL refresh and one-minute pin renewal use the explicit [checkpoint APIs](durable_tasks.md#proposed-native-api).
+Missing/conflicting pages, expired reservations or lost base custody refuse commit without replacing the prior recovery pointer.
+All renewal and adoption operations preserve original task budgets and hard deadlines.
+
+#### Parallel chunks and multipart uploads
+
+The initial format uses independent encrypted objects of at most 8 MiB, uploaded with bounded parallel PUT requests.
+Completed immutable objects survive a retry; manifest publication waits until every referenced object is verified.
+This is resumable chunk transfer, not one large S3 multipart object.
+
+Do not wrap every small checkpoint chunk in another multipart session.
+That adds initiate/complete/abort state without reducing the bytes that must cross the network.
+If measurements later justify larger aggregate objects, native multipart requires separately specified part receipts, completion integrity and abandoned-upload cleanup.
+
+Four per-task uploads and eight per-runner uploads limit pressure on the host and network.
+Parallelism can improve throughput but cannot guarantee a faster save when scanning, encryption or bandwidth is the bottleneck.
+Expose the real capture/upload/verification stages through [task progress](durable_tasks.md#user-visible-decisions-and-transfer-progress).
+
 ### Workspace approval in chat or Slack
 
 Present the diagnosis, evidence references, affected environment, repository, target revision, intended fix and planned tests before asking to start patch work.
