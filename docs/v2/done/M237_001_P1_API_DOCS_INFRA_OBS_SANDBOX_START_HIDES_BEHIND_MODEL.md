@@ -106,7 +106,7 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `.github/workflows/*.yml`, `.github/actions/*/action.yml` | EDIT | Every third-party action pinned to its release's commit, tag beside it; two lint jobs install the root dependencies that carry `ast-grep` |
 | `.github/dependabot.yml` | CREATE | One grouped pull request a week moves the pins |
 | `.github/workflows/cache-prune.yml`, `scripts/select-prunable-caches.sh` | DELETE | GitHub evicts caches itself |
-| `scripts/check_builder_pin{,_test}.sh`, `scripts/checks/gh-actions-runtime.sh` | DELETE | The builder tag becomes a workflow rule; GitHub's full-SHA setting refuses a moving pin |
+| `scripts/check_builder_pin{,_test}.sh`, `scripts/checks/gh-actions-runtime.sh` | DELETE | The builder tag and the action pins become workflow rules |
 | `scripts/check_workflow_rules{,_test}.py` | EDIT | `workflow-builder-literal`: no workflow pastes a builder tag |
 | `sgconfig.yml`, `.ast-grep/` | CREATE | The `ast-grep` rule set and a test per rule |
 | `package.json`, `bun.lock` | EDIT | `@ast-grep/cli` 0.51.1 |
@@ -442,7 +442,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 - **Gate audit (Nov 03)** — Opus at high effort marked every script and make target by the test-audit bar. Most catch a real failure and stay. Cut: the no-feature `cargo check --bin` pair, which CI's musl build already proves, at 9–10 s a lint; the `LintAllWiring` call-shape test; `make_reset_order_test.sh`, which guards only the local compose; `bench-datastore`, which grades M192 results no lane writes; `dry-app-rustd`; the `push`, `push-dev`, `build-dev` and `_docker_login` targets for mutable tags nothing deploys from; the route-table and README inventory parities, both hand-kept copies; and three retired-name tombstone rules. The sampler's direct-I/O mode and three local-only checks CI never runs wait for Indy.
 - **Gate replacements, folded in** — approved first for a follow-up spec, then moved into this Pull Request. Each replacement failed on a deliberate break before it was kept.
   1. `check_workflow_rules.py`'s `workflow-builder-literal` rule replaces `check_builder_pin.sh`.
-  2. Every third-party action is pinned to its newest release's commit, 182 lines, with Dependabot moving them weekly; `gh-actions-runtime.sh` goes. `superfly/flyctl-actions` keeps its master pin, 11 commits past release 1.5. GitHub's "require full-length SHA" setting is Indy's to turn on after merge.
+  2. Every third-party action is pinned to its newest release's commit, 182 lines, with Dependabot moving them weekly; `gh-actions-runtime.sh` goes. `superfly/flyctl-actions` keeps its master pin, 11 commits past release 1.5. `check_workflow_rules.py`'s `workflow-action-pin` refuses any pin but a full commit, as `gh-actions-runtime.sh` refused a branch; GitHub's own full-SHA setting waits ("Not yet").
   3. GitHub's cache eviction replaces `cache-prune.yml` and its script.
   4. `ast-grep` 0.51.1 rules (`sgconfig.yml`, `.ast-grep/`, run by `make lint-source`) replace the regex rules in the four source lints; each lint keeps only what `ast-grep` cannot say. It is new tooling: no repository under `~/Projects` had an `sgconfig.yml`.
   5. Rust tests replace two cross-file checks: the migration list against `schema/` (`afd_db`) and the stream ceiling against the tail baseline (`agentsfleetd`). The component-name check runs twice, since each reader misses what the other catches. The Python scan reads only `afd_wire` and `afd_api_wire`, while 40 `schema(as = …)` aliases live in other crates, most in `afd_fleet_runtime`. The new Rust test, `every_component_name_is_one_type`, reads every handler's document, so it sees those, but it misses two colliding types one handler reaches. One check covering both needs a type-registry dependency (`inventory` or `linkme`), which is not added.
@@ -478,3 +478,9 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 01:31 PM): "1. OK 2. OK 3. OK 4. OK - is there a sgconfig.yml available? 5. Okay" — context: the five gate replacements, in the gate-audit follow-up after M237.
 
 > Owner (Indy, Nov 03, 2026 01:48 PM): "All five here" — context: the five gate replacements move into this Pull Request, with the workflow edits they need.
+
+> Owner (Indy, Nov 03, 2026 04:34 PM): "first decision plane_collector! i assume is 1 place to fix the openapi.json documentation. so it stays." — context: the component-name Rust test and its macro stay beside the Python scan.
+
+> Owner (Indy, Nov 03, 2026 04:34 PM): "Add in lint.yml" — context: `lint-shell`, the model catalogue, `check-documentation-rules` and the tests-call-code check ran only in `make lint-all` and the pre-commit hook; `lint.yml`'s `safety-gates` job now runs them.
+
+> Owner (Indy, Nov 03, 2026 04:34 PM): "Not yet" — context: GitHub's full-SHA setting stays off, so `workflow-action-pin` holds the pins.

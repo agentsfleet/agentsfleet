@@ -70,7 +70,7 @@ patch. The float is accepted because the compiler decides the shipped binary,
 and the compiler is pinned exactly.
 
 GitHub Actions are held to the stricter rule, since a digest there costs one
-line. Every action is pinned to a commit, GitHub's full-SHA setting refuses a
+line. Every action is pinned to a commit, `check_workflow_rules.py` refuses a
 moving ref, and Dependabot moves the pins.
 
 ## Why the base is Alpine and not `rust:*-alpine`
