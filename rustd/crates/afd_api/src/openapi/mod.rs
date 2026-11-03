@@ -280,9 +280,6 @@ mod tests {
     #[cfg(feature = "test-util")]
     #[test]
     fn every_component_name_is_one_type() {
-        use std::collections::BTreeMap;
-        use std::collections::btree_map::Entry;
-
         use utoipa::OpenApi as _;
 
         let documents = std::iter::once(super::Root::openapi())
@@ -290,6 +287,51 @@ mod tests {
             .chain(afd_api_runner::openapi::handler_documents())
             .chain(afd_api_operator::openapi::handler_documents())
             .chain(afd_api_ingress::openapi::handler_documents());
+        let (read, collisions) = component_collisions(documents);
+        assert!(
+            read > 0,
+            "no handler published a component; the audit read nothing"
+        );
+        assert!(
+            collisions.is_empty(),
+            "{collisions:?} each published by two different types; utoipa keeps one and drops the other"
+        );
+    }
+
+    /// The audit names a component two documents publish with different
+    /// schemas, and passes one published the same way twice: an audit that
+    /// never compared would pass every tree.
+    #[cfg(feature = "test-util")]
+    #[test]
+    fn the_audit_names_two_types_under_one_name() {
+        use utoipa::openapi::schema::{ObjectBuilder, Schema, Type};
+        use utoipa::openapi::{ComponentsBuilder, OpenApiBuilder};
+
+        let publishing = |kind: Type| {
+            let schema = Schema::Object(ObjectBuilder::new().schema_type(kind).build());
+            OpenApiBuilder::new()
+                .components(Some(
+                    ComponentsBuilder::new().schema("Policy", schema).build(),
+                ))
+                .build()
+        };
+
+        let (_, clashing) =
+            component_collisions([publishing(Type::String), publishing(Type::Integer)]);
+        let (read, agreeing) =
+            component_collisions([publishing(Type::String), publishing(Type::String)]);
+
+        assert_eq!(clashing, ["Policy"]);
+        assert_eq!((read, agreeing.len()), (1, 0));
+    }
+
+    /// How many component names `documents` publish, and every name two of
+    /// them publish with different schemas, sorted, once each.
+    #[cfg(feature = "test-util")]
+    fn component_collisions(documents: impl IntoIterator<Item = OpenApi>) -> (usize, Vec<String>) {
+        use std::collections::BTreeMap;
+        use std::collections::btree_map::Entry;
+
         let mut published = BTreeMap::new();
         let mut collisions = Vec::new();
         for document in documents {
@@ -307,14 +349,7 @@ mod tests {
         }
         collisions.sort_unstable();
         collisions.dedup();
-        assert!(
-            !published.is_empty(),
-            "no handler published a component; the audit read nothing"
-        );
-        assert!(
-            collisions.is_empty(),
-            "{collisions:?} each published by two different types; utoipa keeps one and drops the other"
-        );
+        (published.len(), collisions)
     }
 
     /// A document missing every route is left as it is, not invented into.

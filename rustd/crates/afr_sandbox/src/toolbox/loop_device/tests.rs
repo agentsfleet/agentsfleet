@@ -178,23 +178,28 @@ fn test_only_the_toolbox_is_attached_read_only() {
 #[test]
 fn should_fall_back_to_buffered_only_when_direct_io_is_refused() {
     let buffered = Cell::new(false);
-    let attach = |direct: io::Result<()>| {
+    let attach = |direct_answer: fn() -> io::Result<()>| {
         direct_or_buffered(
-            || direct,
-            || {
-                buffered.set(true);
-                Ok(())
+            |&direct: &bool| {
+                if direct {
+                    direct_answer()
+                } else {
+                    buffered.set(true);
+                    Ok(())
+                }
             },
+            &true,
+            &false,
         )
     };
 
-    attach(Err(io::Error::from_raw_os_error(libc::EINVAL))).unwrap();
+    attach(|| Err(io::Error::from_raw_os_error(libc::EINVAL))).unwrap();
     assert!(
         buffered.replace(false),
         "refused direct I/O, attached buffered"
     );
-    attach(Err(io::Error::from_raw_os_error(libc::EBUSY))).unwrap_err();
-    attach(Ok(())).unwrap();
+    attach(|| Err(io::Error::from_raw_os_error(libc::EBUSY))).unwrap_err();
+    attach(|| Ok(())).unwrap();
     assert!(!buffered.get(), "nothing else falls back");
 }
 

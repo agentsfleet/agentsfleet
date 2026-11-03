@@ -121,6 +121,32 @@ impl Fixture {
     }
 }
 
+/// A checkout request printed for a log names everything but its token.
+#[test]
+fn a_request_prints_without_its_token() {
+    let root = Path::new("/workspace");
+    let request = Request {
+        scope: SCOPE,
+        checkout: Checkout {
+            repository: REPOSITORY,
+            owner: OWNER,
+            name: NAME,
+            base: BASE,
+        },
+        token: TOKEN,
+        workspace: HostWorkspace {
+            root,
+            owner: (1000, 1000),
+        },
+    };
+
+    let printed = format!("{request:?}");
+
+    assert!(!printed.contains(TOKEN), "{printed}");
+    assert!(printed.contains("[redacted]"), "{printed}");
+    assert!(printed.contains(REPOSITORY), "{printed}");
+}
+
 #[tokio::test]
 async fn the_first_checkout_clones_and_lands_on_the_base_head() {
     let fixture = Fixture::new();
