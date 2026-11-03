@@ -13,6 +13,7 @@ use afd_wire::runner::{
 };
 use afr_sandbox::HostProbe;
 use tokio::sync::watch;
+use tokio::time::Instant;
 
 use crate::capability::{capability_report, selftest};
 use crate::client::{ControlPlane, Verb, endless};
@@ -20,6 +21,7 @@ use crate::egress::Egress;
 use crate::error::Result;
 use crate::halt::Halt;
 use crate::holds::{Holds, Release};
+use crate::worker_pool::{MIN_POLL_PAUSE, Wake};
 
 /// The shortest pause between beats, whatever the daemon asks: a reply saying
 /// zero must not turn the heartbeat into a busy loop.
@@ -79,6 +81,25 @@ pub(crate) struct Heartbeat<'a> {
     /// Whether the holds have closed, which makes every list from here on
     /// final: nothing is held, and nothing more is parked.
     closed: bool,
+    /// The pool's idle workers, which a beat held until fresh work wakes.
+    /// `None` never asks to be held.
+    wake: Option<&'a Wake>,
+    /// Whether a reply carried `woken`, the proof this daemon holds beats; an
+    /// older daemon would read the field as no report at all.
+    wake_proved: bool,
+    /// How the last answered beat ended, which paces the next.
+    last_beat: LastBeat,
+}
+
+/// How an answered beat ended, as the next beat's pause reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LastBeat {
+    /// It did not ask to be held.
+    Unasked,
+    /// It was held and answered without fresh work.
+    Held,
+    /// It was held and woken by fresh work.
+    Woken,
 }
 
 impl<'a> Heartbeat<'a> {
@@ -92,7 +113,27 @@ impl<'a> Heartbeat<'a> {
             selftest_due: false,
             last: Assignment::initial(),
             closed: false,
+            wake: None,
+            wake_proved: false,
+            last_beat: LastBeat::Unasked,
         }
+    }
+
+    /// The same beat, asking to be held while one of `wake`'s workers is idle.
+    pub(crate) const fn with_wake(mut self, wake: &'a Wake) -> Self {
+        self.wake = Some(wake);
+        self
+    }
+
+    /// Whether this beat asks the daemon to hold it until fresh work: the
+    /// daemon has proved it holds beats, the runner takes work, and a worker
+    /// is idle to take it. With every worker busy there is nothing to wake.
+    fn asks(&self) -> bool {
+        self.wake_proved
+            && !self.closed
+            && self.last.status == HeartbeatStatus::Ok
+            && self.last.workers > 0
+            && self.wake.is_some_and(Wake::any_idle)
     }
 
     /// Beats once, carrying a self-test when one was asked for.
@@ -111,9 +152,20 @@ impl<'a> Heartbeat<'a> {
                     .collect(),
             ),
             closing: self.closed,
+            wake: self.asks(),
         };
+        let asked = request.wake;
         let body = self.plane.heartbeat(&request).await?;
         let reply: HeartbeatResponse<'_> = body.decode()?;
+        self.wake_proved = reply.woken.is_some();
+        self.last_beat = match (asked, reply.woken) {
+            (true, Some(true)) => LastBeat::Woken,
+            (true, _) => LastBeat::Held,
+            (false, _) => LastBeat::Unasked,
+        };
+        if let Some(wake) = self.wake.filter(|_| self.last_beat == LastBeat::Woken) {
+            wake.one();
+        }
         for inactive in &reply.release_holds {
             match Uuid7::parse(inactive) {
                 Ok(fleet) => self.holds.release(fleet, Release::Inactive),
@@ -162,6 +214,7 @@ impl<'a> Heartbeat<'a> {
             }
             // A daemon that does not answer must not hold up a stop for a
             // whole call timeout: the beat is dropped for the last one.
+            let began = Instant::now();
             let beaten = tokio::select! {
                 biased;
                 () = halt.serving().cancelled() => return self.last_beat(halt).await,
@@ -170,7 +223,7 @@ impl<'a> Heartbeat<'a> {
             match beaten {
                 Ok(beat) => {
                     retries = endless();
-                    pause = beat.interval;
+                    pause = self.next_pause(beat.interval, began.elapsed());
                     let stop = beat.status == HeartbeatStatus::Stop;
                     assignment.send_replace(beat);
                     if stop {
@@ -198,6 +251,18 @@ impl<'a> Heartbeat<'a> {
 
     /// Ends every hold and parks nothing more, so each beat from here on
     /// says its list is final.
+    /// How long to wait before the next beat. A woken beat goes again after
+    /// the shortest poll pause, so a burst of admissions cannot turn beats
+    /// into a busy loop; a held beat already waited, so it waits only what is
+    /// left of the interval; any other waits the interval.
+    fn next_pause(&self, interval: Duration, took: Duration) -> Duration {
+        match self.last_beat {
+            LastBeat::Woken => MIN_POLL_PAUSE,
+            LastBeat::Held => interval.saturating_sub(took),
+            LastBeat::Unasked => interval,
+        }
+    }
+
     fn close(&mut self) {
         self.closed = true;
         self.holds.close();

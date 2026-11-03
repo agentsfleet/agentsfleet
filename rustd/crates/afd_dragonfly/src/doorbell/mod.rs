@@ -13,8 +13,13 @@ use afd_core::{
 use afd_observability::{metrics::label::fleet::ReadyWake, producers};
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
+use tokio::sync::watch;
 
 /// Independent publish channels spread notifications over cluster slots.
 pub const WAKE_SHARDS: u16 = 16;
@@ -22,10 +27,54 @@ const HINT_CAPACITY: usize = 64;
 const CHANNEL_PREFIX: &str = "fleet:wake";
 const EVENT_RING_FAILED: &str = "admission_wake_ring_failed";
 
-/// Recent fleet hints shared by the hub listener and every lease poll.
+/// Recent fleet hints shared by the hub listener and every lease poll, and the
+/// rings a held heartbeat waits for.
 #[derive(Debug, Clone, Default)]
 pub struct Doorbell {
     hints: Arc<Mutex<VecDeque<Uuid7>>>,
+    rings: Arc<Rings>,
+}
+
+/// Every ring this process heard, as a generation a held beat compares
+/// against, and how many beats are held waiting for the next one.
+///
+/// A `watch` rather than a `Notify`: a holder takes the generation when it
+/// arrives and waits for it to move, so a ring that lands between the two is
+/// still seen, and every holder hears every ring.
+#[derive(Debug)]
+struct Rings {
+    generation: watch::Sender<u64>,
+    held: AtomicUsize,
+}
+
+impl Default for Rings {
+    fn default() -> Self {
+        Self {
+            generation: watch::Sender::new(0),
+            held: AtomicUsize::new(0),
+        }
+    }
+}
+
+/// How a held beat ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Waited {
+    /// A ring arrived: fresh work was admitted somewhere.
+    Rung,
+    /// The deadline passed with no ring.
+    Deadline,
+    /// `max` beats were already held, so this one was not.
+    Capped,
+}
+
+/// One held beat's place under the cap, given back when the wait ends or the
+/// request is dropped mid-wait.
+struct Held<'a>(&'a AtomicUsize);
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 impl Doorbell {
@@ -36,7 +85,13 @@ impl Doorbell {
     }
 
     /// Store a hint without allowing a burst to grow process memory.
+    ///
+    /// The generation moves first, before the dedup: a second admission for a
+    /// fleet whose hint is still buffered is fresh work a held beat must hear.
     pub fn ring(&self, fleet: Uuid7) {
+        self.rings
+            .generation
+            .send_modify(|generation| *generation = generation.wrapping_add(1));
         let mut hints = self
             .hints
             .lock()
@@ -57,6 +112,35 @@ impl Doorbell {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .pop_front()
+    }
+
+    /// Holds the caller until the next ring or `deadline`, unless `max` beats
+    /// are already held. The generation is taken before the wait starts, so a
+    /// ring between the two is not lost.
+    pub async fn wait_for_ring(&self, deadline: Duration, max: usize) -> Waited {
+        let reserved = self
+            .rings
+            .held
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+                (held < max).then_some(held + 1)
+            });
+        if reserved.is_err() {
+            return Waited::Capped;
+        }
+        let _held = Held(&self.rings.held);
+        let mut generation = self.rings.generation.subscribe();
+        match tokio::time::timeout(deadline, generation.changed()).await {
+            Ok(Ok(())) => Waited::Rung,
+            // The sender lives as long as this doorbell, so a closed channel
+            // cannot happen while `self` is borrowed; it reads as no ring.
+            Ok(Err(_)) | Err(_) => Waited::Deadline,
+        }
+    }
+
+    /// How many beats are held right now.
+    #[must_use]
+    pub fn held(&self) -> usize {
+        self.rings.held.load(Ordering::Acquire)
     }
 
     /// Listen through the process's existing subscription hub.

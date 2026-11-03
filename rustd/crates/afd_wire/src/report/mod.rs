@@ -104,6 +104,35 @@ pub struct ReportTelemetry {
     pub time_to_first_token_ms: u32,
     /// Total wall-clock milliseconds.
     pub wall_ms: u64,
+    /// Where the run's time went, segment by segment. Send it only when the
+    /// lease carried `memory`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segments: Option<RunSegments>,
+}
+
+/// The runner's own segments of one run, in milliseconds on its clock.
+///
+/// Not a partition of the run: the sandbox wait runs beside the model's
+/// time. A segment the run never reached is absent, never zero.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunSegments {
+    /// The memory read, when the lease carried no window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_ms: Option<u64>,
+    /// The model's turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_ms: Option<u64>,
+    /// The tools those turns called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools_ms: Option<u64>,
+    /// How long the turn's sandbox calls waited on the build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_wait_ms: Option<u64>,
+    /// Hold-or-destroy up to the start of the report post.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settle_ms: Option<u64>,
 }
 
 /// Session resume cursor written to the fleet's stored session context.
@@ -170,6 +199,12 @@ pub struct ReportRequest<'a> {
         with = "crate::instant::option"
     )]
     pub held_until: Option<jiff::Timestamp>,
+    /// What the run learned, for the fleet's next run. Written before the
+    /// report settles, so the next lease's memory window holds it. Entries
+    /// past 262144 bytes in total are dropped and counted, never refused.
+    /// Send it only when the lease carried `memory`.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
+    pub memory: Vec<crate::memory::MemoryDelta<'a>>,
 }
 
 /// `POST /v1/runners/me/reports` reply.

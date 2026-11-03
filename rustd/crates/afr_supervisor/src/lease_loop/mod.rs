@@ -219,7 +219,7 @@ impl LeaseRun<'_> {
         let fate: Fate = {
             let settle = async {
                 let fate = self.keep(kept, &ending).await;
-                let superseded = self.settle(&mut ending, &fate).await;
+                let superseded = self.settle(&mut ending, &fate, &reporting).await;
                 if superseded && fate.held_until().is_some() {
                     self.lessee.holds.supersede(self.ids.lease.clone());
                 }
@@ -280,24 +280,33 @@ impl LeaseRun<'_> {
         let Some(_turn) = claimed else {
             return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
         };
-        let hydrating = self.timeline.start(Segment::Memory);
-        let hydrated = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
-            Ok(hydrated) => hydrated,
-            Err(failure) => {
-                return self
-                    .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
-                    .into();
-            }
+        // The window rides the lease from a daemon at this release; only a
+        // lease without one costs the memory read, and only that read is timed.
+        let read;
+        let decoded;
+        let memory = if let Some(window) = self.lease.memory.as_ref() {
+            window
+        } else {
+            let hydrating = self.timeline.start(Segment::Memory);
+            read = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
+                Ok(read) => read,
+                Err(failure) => {
+                    return self
+                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                        .into();
+                }
+            };
+            decoded = match read.decode::<MemoryHydrateResponse<'_>>() {
+                Ok(decoded) => decoded,
+                Err(failure) => {
+                    return self
+                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                        .into();
+                }
+            };
+            hydrating.stop();
+            &decoded
         };
-        let memory = match hydrated.decode::<MemoryHydrateResponse<'_>>() {
-            Ok(memory) => memory,
-            Err(failure) => {
-                return self
-                    .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
-                    .into();
-            }
-        };
-        hydrating.stop();
         let recaller = memory::Recaller::new(&lessee.plane, &self.ids.fleet, self.lease);
         let seed = Seed {
             window: &memory.memory,

@@ -291,6 +291,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: u64::try_from(SLICE_MS).expect("a slice is positive"),
+            segments: None,
         },
         checkpoint: ReportCheckpoint {
             last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
@@ -298,6 +299,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         },
         tool_calls: None,
         held_until: None,
+        memory: Vec::new(),
     };
     stage
         .fixtures

@@ -109,3 +109,66 @@ async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> afd_co
     );
     Ok(())
 }
+
+/// Longer than any test waits, so a wait that ends early ended for a reason.
+const LONG: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// A held wait ends on the next ring, and gives its place back when it does.
+#[tokio::test]
+async fn a_ring_answers_a_held_wait() -> afd_core::error::Result<()> {
+    let bell = Doorbell::new();
+    let fleet = fleet(1)?;
+    let (waited, ()) = tokio::join!(bell.wait_for_ring(LONG, 2), async {
+        tokio::task::yield_now().await;
+        bell.ring(fleet);
+    });
+    assert_eq!((waited, bell.held()), (super::Waited::Rung, 0));
+    Ok(())
+}
+
+/// With no ring the wait ends at its deadline, and gives its place back.
+#[tokio::test]
+async fn a_silent_wait_answers_at_its_deadline() {
+    let bell = Doorbell::new();
+    let waited = bell
+        .wait_for_ring(std::time::Duration::from_millis(20), 1)
+        .await;
+    assert_eq!((waited, bell.held()), (super::Waited::Deadline, 0));
+}
+
+/// A wait past the cap is refused at once while the held one keeps waiting.
+#[tokio::test]
+async fn a_wait_past_the_cap_is_refused_at_once() -> afd_core::error::Result<()> {
+    let bell = Doorbell::new();
+    let fleet = fleet(1)?;
+    let (held, refused) = tokio::join!(bell.wait_for_ring(LONG, 1), async {
+        let refused = bell.wait_for_ring(LONG, 1).await;
+        let while_held = bell.held();
+        bell.ring(fleet);
+        (refused, while_held)
+    });
+    assert_eq!(
+        (held, refused, bell.held()),
+        (super::Waited::Rung, (super::Waited::Capped, 1), 0)
+    );
+    Ok(())
+}
+
+/// A second admission for a fleet whose hint is still buffered is fresh work
+/// too: the generation moves before the hint dedup, so the wait hears it.
+#[tokio::test]
+async fn a_ring_for_a_buffered_fleet_still_wakes_a_wait() -> afd_core::error::Result<()> {
+    let bell = Doorbell::new();
+    let fleet = fleet(1)?;
+    bell.ring(fleet.clone());
+    let (waited, ()) = tokio::join!(bell.wait_for_ring(LONG, 1), async {
+        tokio::task::yield_now().await;
+        bell.ring(fleet.clone());
+    });
+    assert_eq!(
+        (waited, bell.take(), bell.take()),
+        (super::Waited::Rung, Some(fleet), None),
+        "woken, with the hint still buffered once"
+    );
+    Ok(())
+}

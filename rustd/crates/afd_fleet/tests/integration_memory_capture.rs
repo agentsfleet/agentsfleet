@@ -200,7 +200,7 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
         .hydrate(&run.runner, &fleet_id)
         .await
         .expect("and hydrates");
-    let live = supersede(&run).await;
+    let live = run.supersede().await;
 
     for presented in [run.fence.as_u64(), live, u64::MAX] {
         let pushed = plane
@@ -299,30 +299,6 @@ async fn stored_window(run: &report_seed::Held, fleet_id: &Uuid7) -> Vec<String>
         .into_iter()
         .map(|entry| entry.content.into_owned())
         .collect()
-}
-
-/// Moves the fleet's live sequence one past the held lease, as a won claim
-/// does before it expires the prior lease, and answers the new sequence.
-async fn supersede(run: &report_seed::Held) -> u64 {
-    let mut connection = run
-        .fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    let live: i64 = sqlx::query_scalar(
-        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1
-         WHERE fleet_id = $1::uuid RETURNING fencing_token",
-    )
-    .bind(&run.fleet)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the held fleet has an affinity row");
-    assert!(
-        live > run.fence.as_i64(),
-        "the sequence must outrank the held lease, or this test proves nothing"
-    );
-    u64::try_from(live).expect("a sequence is never negative")
 }
 
 /// One recall body, matching every entry.

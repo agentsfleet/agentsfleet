@@ -244,3 +244,90 @@ async fn test_a_drained_rejected_report_releases_what_its_lease_parked() {
     assert_eq!(released.field("reason"), Some(superseded));
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }
+
+/// A one-post report a lease left held, its memory and segments beside the
+/// rest of the body.
+const ONE_POST_REPORT: &str = r#"{"lease_id":"x","memory":[{"key":"k","content":"v","category":"core"}],"telemetry":{"wall_ms":5,"segments":{"settle_ms":2}}}"#;
+
+/// A report the drain posts to an older replica, which refuses its shape, is
+/// posted again without the run's memory and segments, and nothing is left in
+/// the spool: the answer is kept though the memory is not.
+#[tokio::test(start_paused = true)]
+async fn test_drain_reposts_a_shape_refused_report_without_its_memory() {
+    let root = tempfile::tempdir().unwrap();
+    let home = StorageHome::open(root.path()).unwrap();
+    let spool = ReportSpool::new(&home);
+    spool
+        .hold(
+            &Uuid7::parse(LEASE_ID).unwrap(),
+            Bytes::from_static(ONE_POST_REPORT.as_bytes()),
+        )
+        .await
+        .unwrap();
+    let posts = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&posts);
+    let (plane, mut calls) = plane(move |_call| {
+        if counted.fetch_add(1, Ordering::SeqCst) == 0 {
+            let shape = Some(afd_core::error_code::INVALID_REQUEST);
+            Answer::Fail(error::refused(Verb::Report, 400, shape))
+        } else {
+            json(&ReportResponse { ok: true })
+        }
+    });
+    let shutdown = CancellationToken::new();
+    let halt = Halt::new(shutdown.clone());
+    let held = Notify::new();
+    let holds = Holds::start(clock());
+    let drainer = Drainer {
+        spool: &spool,
+        plane: &plane,
+        halt: &halt,
+        held: &held,
+        holds: &holds,
+    };
+    let capture = Capture::install();
+
+    let ((), ()) = tokio::join!(drainer.run(), async {
+        until_empty(&spool).await;
+        shutdown.cancel();
+    });
+
+    let bodies: Vec<serde_json::Value> = crate::test_support::drain(&mut calls)
+        .iter()
+        .map(|call| serde_json::from_slice(call.body.as_ref().unwrap()).unwrap())
+        .collect();
+    let left: Vec<_> = fs::read_dir(home.spool())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.is_file())
+        .collect();
+    assert_eq!(
+        (bodies.last().cloned(), left),
+        (
+            Some(serde_json::json!({"lease_id": "x", "telemetry": {"wall_ms": 5}})),
+            Vec::<std::path::PathBuf>::new()
+        )
+    );
+    let dropped = capture.only("report_memory_dropped");
+    assert_eq!(dropped.field("lease_id"), Some(LEASE_ID));
+}
+
+/// A refusal of any other shape is quarantined as before, never reshaped.
+#[test]
+fn test_only_a_shape_refused_one_post_body_is_reshaped() {
+    let shape = error::refused(
+        Verb::Report,
+        400,
+        Some(afd_core::error_code::INVALID_REQUEST),
+    );
+    let other = error::refused(Verb::Report, 400, None);
+    let plain = br#"{"lease_id":"x","telemetry":{"wall_ms":5}}"#;
+    assert_eq!(
+        (
+            crate::report_spool::reshaped(&other, ONE_POST_REPORT.as_bytes()),
+            crate::report_spool::reshaped(&shape, plain),
+            crate::report_spool::reshaped(&shape, b"not json"),
+        ),
+        (None, None, None)
+    );
+}

@@ -73,6 +73,14 @@ pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 /// `retry_after_ms`.
 pub const NO_WORK_RETRY_AFTER: Duration = Duration::from_secs(1);
 
+/// How long the daemon holds a heartbeat that asked to be woken, waiting for
+/// fresh work to be admitted.
+///
+/// Equal to [`HEARTBEAT_INTERVAL`], so a held beat returns no later than the
+/// runner's next beat was due and the runner's liveness is unchanged by the
+/// hold. The runner's call timeout is asserted above it where it is declared.
+pub const WAKE_HOLD_MAX: Duration = HEARTBEAT_INTERVAL;
+
 /// How long a readiness-doorbell command may take before its caller goes on
 /// without it: the ring a mark publishes, and the peek of the partition a ring
 /// named.
@@ -105,6 +113,10 @@ const _: () = assert!(
 const _: () = assert!(
     HEARTBEAT_INTERVAL.as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
     "an idle host must heartbeat before a fleet read would derive it offline"
+);
+const _: () = assert!(
+    WAKE_HOLD_MAX.as_nanos() <= HEARTBEAT_INTERVAL.as_nanos(),
+    "a held beat must return before the runner's next beat is due"
 );
 const _: () = assert!(
     LEASE_TTL.as_nanos() < MAX_RUNTIME.as_nanos(),

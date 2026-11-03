@@ -153,6 +153,7 @@ impl Rig {
             halt: Halt::new(shutdown.clone()),
             held: Notify::new(),
             whoami: Whoami::default(),
+            wake: crate::worker_pool::Wake::default(),
         });
         let (runs, peak, prepared, destroyed) = counters;
         // No agent lends through this one: its sender is gone, so it reads

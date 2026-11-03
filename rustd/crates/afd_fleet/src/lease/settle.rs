@@ -68,6 +68,10 @@ pub struct Reported {
     pub model: String,
     /// The token this lease was issued under — what the settle is fenced on.
     pub fence: Fence,
+    /// When the lease was issued, on this daemon's clock.
+    pub lease_created_at: Timestamp,
+    /// When the event it runs was created, as the lease row copied it.
+    pub event_created_at: Timestamp,
 }
 
 /// What the claim-and-settle statement decided.
@@ -253,6 +257,10 @@ struct LeaseForReport {
     provider: String,
     model: String,
     fencing_token: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    event_created_at: Timestamp,
 }
 
 impl LeaseForReport {
@@ -270,6 +278,8 @@ impl LeaseForReport {
             provider: self.provider,
             model: self.model,
             fence: Fence::from_i64(self.fencing_token),
+            lease_created_at: self.created_at,
+            event_created_at: self.event_created_at,
         })
     }
 }
