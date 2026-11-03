@@ -11,8 +11,8 @@
 **Batch:** B1 — one unified development-autonomy implementation scope
 **Branch:** feat/m236-durable-tasks
 **Baseline revision:** 2f8c878c09e9c4048da1724385ec58746d348ed4
-**Test Baseline:** pending, measured before implementation publication
-**Baseline evidence:** pending, implementation has not started
+**Test Baseline:** Rust unit=4972 after the approved Rig upgrade; JavaScript and integration baselines pending
+**Baseline evidence:** playbooks/operations/acceptance/baselines/M236_001-autonomy.md
 **Depends on:** M235 bounded repair and M230 compaction. Claude Code owns M237 integration; Indy parked its revision review in this chat.
 **Provenance:** agent-drafted from Indy's decisions; historical scenario reviews plus a fresh-context Astra design review and verified correction pass
 **Canonical architecture:** `docs/architecture/scenarios/durable-repair.md` owns the combined outcome; topic pages retain their existing mechanisms
@@ -97,7 +97,7 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | `rustd/crates/afd_billing/src/`; `afd_wire/src/usage/`; `afd_fleet/src/lease/usage/`; tests | EDIT | decision-protocol price schedules and one call-linked billing line across receipt/renew/report |
 | `rustd/crates/afd_core/src/{error_code,problem}/`; registry and problem tests | CREATE / EDIT | UZ-DT errors without speculative unused code |
 | `docs/architecture/scenarios/durable-tasks-three-prs.md` | CREATE | three-picture implementation-readiness walkthrough requested by Indy |
-| `rustd/crates/afd_wire/src/{task/,activity/}`; `afd_api_wire/src/tail/`; native activity publisher; CLI/UI stream decoders and tests | CREATE / EDIT | typed task context, decision and transfer states with reconnect readback |
+| `rustd/crates/afd_wire/src/{task/,activity/}`; `afd_api_wire/src/tail/`; `afd_observability/src/{producers,metrics,semconv}/`; `docs/metrics.census.tsv`; CLI/UI stream decoders and tests | CREATE / EDIT | typed task context, decision and transfer states with reconnect readback |
 | `rustd/crates/afr_tools/src/verbs/mod.rs`; `afr_supervisor/src/client/lease_verbs/`; matching tests | EDIT | extend existing native LeaseVerbs for task calls rather than adding another runtime interface |
 | `rustd/crates/afd_runner/src/{edit,policy,heartbeat}/`; runner assignment SQL; `afd_wire/src/runner/`; `afd_api_wire/src/admin/`; runner edit UI/tests | EDIT | reviewed decision-model selection per runner through existing edit/heartbeat and frozen lease profile |
 | `rustd/crates/afd_wire/src/{inference,decision}.rs`; owning model-catalogue read/write modules; `afd_inference/src/`; schema migration | EDIT / CREATE | decision profile metadata beside current catalogue entries; reuse guarded transport, vault references and rates |
@@ -297,12 +297,14 @@ Pin real query/window/threshold and measured timing tolerances before the demons
 ## Interfaces
 
 [The native API table](../../architecture/durable_tasks.md#proposed-native-api) fixes methods, paths, request/response fields and guards.
+Runner resources use plural `L/tasks/{bindings,inputs,input-receipts,decisions,effects,checkpoints}` under the existing lease.
 Runner mutations require current lease/fence, expected task generation and operation identity; workspace reads/writes use existing FleetRead/FleetWrite capabilities.
 Task detail GET returns ETag; PATCH requires If-Match, with missing/stale tags mapped to 428/412 and lifecycle conflicts to 409.
 Task-bound leases require `durable_tasks_v1`; incompatible runners refuse those admissions while ordinary one-shot work remains compatible.
 
 Lease task context carries identity/generation, accepted goal revision, native target, limits, input/effect cursors, checkpoint and decision policy.
 Reports carry transition/evidence, input responses, covered cursor, checkpoint and confirmed-effect watermark.
+The owning DT architecture page fixes the proposed structs, behavior traits, dispatch choices, error composition and tracked signals before their implementation.
 Native code validates every claim; duplicate physical call or effect identities cannot charge or publish again.
 
 The daemon alone creates native continuation admissions through `Producer::TaskContinuation` and task event kind.
@@ -488,3 +490,9 @@ A backend rewrite cannot supply task authority; neither is a substitute for this
 > Indy, Nov 03, 2026: "And give me a final one to signoff"; "do a review with Astra extra high as well"
 
 > Indy, Nov 03, 2026: "Yes approved,  use the latest crates i see rig-core has 0.46.0 and what is next?" — implementation and latest stable in-scope dependency selection approved.
+
+> Indy, Nov 03, 2026: "And use the standard like `L/task-bindings` to `L/tasks/bindings` ?" — runner task resources use the nested plural namespace.
+
+- **Opening dependency check** — Rig/rig-http 0.46.0 passed `make test-unit-rustd`: runner 1490, daemon 139, libraries 3343; exit 0. Environment assumptions and unrun DT acceptance are recorded in Baseline evidence.
+
+> Indy, Nov 03, 2026: "Let me know before you start the abstractions you will buidl" — struct/trait/generic/error/observability boundaries are proposed in the owning DT architecture page before source edits.

@@ -38,7 +38,7 @@ Indy                  Caller                  agentsfleetd             Runner/Je
  |                       |                         |---- lease L1 ---------->|
  |                       |                         |                        | Jev intent:
  |                       |                         |                        | new_work
- |                       |                         |<-- task-bindings -------|
+ |                       |                         |<-- tasks/bindings ------|
  |                       |                         | validate target/grants |
  |                       |                         | commit T1, item I1     |
  |                       |                         |---- current T1 -------->|
@@ -46,7 +46,7 @@ Indy                  Caller                  agentsfleetd             Runner/Je
  |                       |                         |                        |
  | "Also repair PR Y    | POST F/messages         |                        |
  |  and PR Z" --------->|------------------------>| save A2                |
- |                       |                         |<-- task-inputs ---------|
+ |                       |                         |<-- tasks/inputs --------|
  |                       |                         |---- A2 ---------------->|
  |                       |                         |                        | Jev + bounded
  |                       |                         |                        | decomposition
@@ -57,7 +57,7 @@ Indy                  Caller                  agentsfleetd             Runner/Je
  |                       |                         |                        |
  | "For import PR X,    | POST F/messages         |                        |
  |  keep its existing   |------------------------>| save A3                |
- |  fallback title" --->|                         |<-- task-inputs ---------|
+ |  fallback title" --->|                         |<-- tasks/inputs --------|
  |                       |                         |---- A3 ---------------->|
  |                       |                         |                        | Jev: steer T1
  |                       |                         |<-- input receipt -------|
@@ -107,8 +107,8 @@ M237's revision remains Claude Code's responsibility, so its changed function si
 Existing `LeaseVerbs` carries native task calls; do not add a competing task-runtime interface to agent tools.
 
 Runner task APIs use prefix L: `/v1/runners/me/leases/{lease_id}`.
-`POST L/task-bindings`, `GET L/task-inputs` and `POST L/task-input-receipts` bind A1/A2/A3 under current lease/fence and expected generations.
-`POST L/task-decisions` reserves a physical decision call; `PATCH L/task-decisions/{call_id}` records its typed result, identity and usage.
+`POST L/tasks/bindings`, `GET L/tasks/inputs` and `POST L/tasks/input-receipts` bind A1/A2/A3 under current lease/fence and expected generations.
+`POST L/tasks/decisions` reserves a physical decision call; `PATCH L/tasks/decisions/{call_id}` records its typed result, identity and usage.
 
 ## Picture 2: work, publication, save and fair switching
 
@@ -170,18 +170,18 @@ Waiting has no active agent lease, so T2/T3 can use the fleet slot.
 | Encrypted format | `afd_crypto::entropy`, `envelope`, secret byte types | `afd_crypto/src/checkpoint.rs`: domain-separated object encryption and authentication, preserving vault ciphertext compatibility. |
 | Settlement | `afd_fleet/src/lease/{settle,finalize}.rs`, `lease/report/` | Commit usage, manifest pointer, wait, input responses and admission settlement before releasing the fleet slot. |
 
-`POST L/task-effects` saves E1 and its immutable head/tree, commits issuance, then makes one bounded native publication within that request.
+`POST L/tasks/effects` saves E1 and its immutable head/tree, commits issuance, then makes one bounded native publication within that request.
 It returns the confirmed receipt or an explicit uncertainty failure; no separate client dispatch or background publishing queue is added.
-`GET L/task-effects?ordinal_after=<watermark>&starting_after=<cursor>` discovers effects even when no worker received E1's first response.
+`GET L/tasks/effects?ordinal_after=<watermark>&starting_after=<cursor>` discovers effects even when no worker received E1's first response.
 
 The individual effect read returns confirmed, refused or uncertain status; it does not invent publication success.
 Human advancement from A to another head rejects the prepared write against A.
 
-`POST L/task-checkpoints` reserves the base/incremental plan and writer pin.
+`POST L/tasks/checkpoints` reserves the base/incremental plan and writer pin.
 UUID-identified page, object and upload requests bind the complete manifest and immutable ciphertext before signed transfer.
 The supervisor encrypts chunks and uses exact-object signed URLs with explicit refresh and pin renewal.
 
-`PATCH L/task-checkpoints/{checkpoint_id}` publishes only a complete compatible manifest with verified base custody.
+`PATCH L/tasks/checkpoints/{checkpoint_id}` publishes only a complete compatible manifest with verified base custody.
 Restore authorization acquires one reader pin and returns the ordered page identities; page GETs supply bounded file/chunk/history mappings.
 The daemon's R2 credential and master key never enter the sandbox.
 
