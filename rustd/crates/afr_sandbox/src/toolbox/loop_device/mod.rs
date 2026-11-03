@@ -15,6 +15,7 @@ use std::time::Duration;
 use backon::{BlockingRetryable as _, ConstantBuilder};
 
 use crate::error::Result;
+use crate::host::BLOCK_BYTES;
 use crate::workspace_disk::Caching;
 
 /// The device that hands out free loop devices.
@@ -42,8 +43,6 @@ const LO_FLAGS_AUTOCLEAR: u32 = 4;
 /// `LO_FLAGS_DIRECT_IO`: the device reads and writes its file past the host's
 /// page cache, so its blocks are cached once, by whoever reads the device.
 pub(crate) const LO_FLAGS_DIRECT_IO: u32 = 16;
-/// The block size every attach asks for: a page, which EROFS and ext4 use.
-const BLOCK_SIZE: u32 = 4096;
 /// `LO_NAME_SIZE` and `LO_KEY_SIZE`.
 const LO_NAME_SIZE: usize = 64;
 const LO_KEY_SIZE: usize = 32;
@@ -166,22 +165,32 @@ pub(crate) fn attach(image: &File, access: Access) -> Result<Attached> {
     let fd = u32::try_from(image.as_raw_fd()).map_err(io::Error::other)?;
     let config = |direct| LoopConfig {
         fd,
-        block_size: BLOCK_SIZE,
+        block_size: BLOCK_BYTES,
         info: LoopInfo64 {
             flags: access.flags() | LO_FLAGS_AUTOCLEAR | direct,
             ..LoopInfo64::ZERO
         },
         reserved: [0; 8],
     };
-    let direct = config(LO_FLAGS_DIRECT_IO);
-    let attached = match until_free(|| configure_free(&control, &direct, access)) {
-        Err(refused) if refused.raw_os_error() == Some(libc::EINVAL) => {
-            let buffered = config(0);
-            until_free(|| configure_free(&control, &buffered, access))
-        }
-        attached => attached,
-    };
+    let (direct, buffered) = (config(LO_FLAGS_DIRECT_IO), config(0));
+    let attached = direct_or_buffered(
+        || until_free(|| configure_free(&control, &direct, access)),
+        || until_free(|| configure_free(&control, &buffered, access)),
+    );
     Ok(attached?)
+}
+
+/// The attach `direct` makes, or `buffered`'s when the kernel refuses direct
+/// I/O for this file (`EINVAL`): a buffered device, not a failure. Any other
+/// refusal is the answer.
+fn direct_or_buffered<T>(
+    direct: impl FnOnce() -> io::Result<T>,
+    buffered: impl FnOnce() -> io::Result<T>,
+) -> io::Result<T> {
+    match direct() {
+        Err(refused) if refused.raw_os_error() == Some(libc::EINVAL) => buffered(),
+        attached => attached,
+    }
 }
 
 /// How a device whose flags read `flags` caches its file.
@@ -300,11 +309,12 @@ fn status(device: &File) -> io::Result<Backing> {
 
 /// The node of loop device `major:minor`, as the kernel names it.
 pub(crate) fn node(major: u32, minor: u32) -> Result<PathBuf> {
-    let uevent = fs::read_to_string(
-        Path::new(SYS_DEV_BLOCK)
-            .join(format!("{major}:{minor}"))
-            .join(UEVENT),
-    )?;
+    node_in(Path::new(SYS_DEV_BLOCK), major, minor)
+}
+
+/// [`node`], read from the block devices listed under `sys_dev_block`.
+fn node_in(sys_dev_block: &Path, major: u32, minor: u32) -> Result<PathBuf> {
+    let uevent = fs::read_to_string(sys_dev_block.join(format!("{major}:{minor}")).join(UEVENT))?;
     uevent
         .lines()
         .find_map(|line| line.strip_prefix(DEVNAME))

@@ -27,7 +27,7 @@ use super::checkout::Plan;
 use super::hold::mark_reused;
 use super::segments::Segment;
 use crate::egress::Bound;
-use crate::holds::HoldKey;
+use crate::holds::{HoldKey, Release};
 
 pub(super) const EVENT_BUILD_FAILED: &str = "sandbox_build_failed";
 
@@ -64,6 +64,22 @@ impl Ended {
     }
 }
 
+/// A build that ended without a sandbox: why, and the sandbox it made and
+/// could not hand over, which is destroyed once the slot says why.
+struct Unbuilt {
+    ended: Ended,
+    leftover: Option<Box<dyn Sandbox>>,
+}
+
+impl From<Ended> for Unbuilt {
+    fn from(ended: Ended) -> Self {
+        Self {
+            ended,
+            leftover: None,
+        }
+    }
+}
+
 impl LeaseRun<'_> {
     /// Builds the lease's sandbox into `cell` and fills `slot`: with its
     /// executor once every repository is in place, or with why not.
@@ -78,20 +94,31 @@ impl LeaseRun<'_> {
                 let sandbox = cell.get_or_init(|| sandbox);
                 slot.fill(Ok(sandbox.executor()));
             }
-            Err(ended) => {
+            Err(Unbuilt { ended, leftover }) => {
                 if let Ended::Failed(class, logged) = &ended {
                     self.build_failed(*class, logged);
                 }
+                // Waiting calls hear why before the teardown, which can take
+                // seconds while the cgroup drains.
                 slot.fill(Err(ended.class()));
+                if let Some(sandbox) = leftover {
+                    self.destroy(sandbox).await;
+                }
             }
         }
     }
 
-    /// The sandbox, with every repository in place, or why there is none; a
-    /// sandbox the build made and cannot hand over is destroyed here.
-    async fn built(&self, build: &Build<'_>) -> Result<Box<dyn Sandbox>, Ended> {
+    /// The sandbox, with every repository in place, or why there is none and
+    /// the sandbox the build made and cannot hand over.
+    async fn built(&self, build: &Build<'_>) -> Result<Box<dyn Sandbox>, Unbuilt> {
         if build.stop.is_cancelled() {
-            return Err(Ended::Stopped);
+            // Stopped before it took the fleet's hold: the lease settles with
+            // no hold, so the daemon tells the fleet's next lease not to
+            // resume it. Released now, it does not wait out its idle window.
+            self.lessee
+                .holds
+                .release(self.ids.fleet.clone(), Release::Superseded);
+            return Err(Ended::Stopped.into());
         }
         let (sandbox, held) = self.acquire(build).await?;
         let landed = match build.plan {
@@ -110,10 +137,10 @@ impl LeaseRun<'_> {
         };
         match landed {
             Ok(()) => Ok(sandbox),
-            Err(ended) => {
-                self.destroy(sandbox).await;
-                Err(ended)
-            }
+            Err(ended) => Err(Unbuilt {
+                ended,
+                leftover: Some(sandbox),
+            }),
         }
     }
 

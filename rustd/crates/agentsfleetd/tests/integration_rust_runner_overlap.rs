@@ -33,10 +33,12 @@ impl Engine for Stalled {
     async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
         tokio::time::sleep(PREPARE_TAKES).await;
         let prepared = self.inner.prepare(request).await;
-        self.ready
-            .lock()
-            .expect("nothing panics holding the clock")
-            .get_or_insert_with(Instant::now);
+        if prepared.is_ok() {
+            self.ready
+                .lock()
+                .expect("nothing panics holding the clock")
+                .get_or_insert_with(Instant::now);
+        }
         prepared
     }
 }
@@ -95,6 +97,7 @@ async fn test_chat_streams_before_sandbox_ready() {
     ));
 
     let streamed = chunk_arrived(&mut tail).await.expect("the answer streamed");
+    let later = super::frame_kinds(&mut tail).await;
     assert_eq!(
         settled_status(&run).await.as_deref(),
         Some(LEASE_STATUS_REPORTED)
@@ -108,8 +111,16 @@ async fn test_chat_streams_before_sandbox_ready() {
         "the first chunk streamed {:?} before the sandbox was ready",
         ready.saturating_duration_since(streamed)
     );
+    assert!(
+        later.iter().any(|kind| kind == "tool_call_completed"),
+        "the tool ran in the sandbox once it was ready: {later:?}"
+    );
     let status = crate::reads::event_column(&run, &run.event_id, "status").await;
-    assert_eq!(status.as_deref(), Some("processed"), "the tool ran in it");
+    assert_eq!(
+        status.as_deref(),
+        Some("processed"),
+        "the turn was processed"
+    );
 
     shutdown.cancel();
     runner

@@ -1,3 +1,8 @@
+#![expect(
+    clippy::unwrap_used,
+    reason = "a test fails loudly on a fixture it cannot write"
+)]
+
 use std::sync::mpsc;
 
 use super::serve_confined;
@@ -89,4 +94,33 @@ fn test_an_entry_without_its_tenant_leaf_is_refused_before_hardening() {
             .is_some_and(|text| text.contains(&NEVER_OPENED.to_string())),
         "{refused:?}"
     );
+}
+
+/// An entry handed every descriptor it needs adopts all three and goes on to
+/// harden, which refuses here: a second thread exists on Linux, and no other
+/// kernel has Landlock.
+#[test]
+fn test_an_entry_handed_its_descriptors_goes_on_to_harden() {
+    let leaf = tempfile::tempdir().unwrap();
+    std::fs::write(
+        leaf.path().join("memory.events"),
+        "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+    )
+    .unwrap();
+    let tenant = crate::tenant::TenantFiles::open(
+        &leaf.path().join("cgroup.procs"),
+        &leaf.path().join("memory.events"),
+    )
+    .unwrap();
+    let (handover, _runner) = crate::tenant::Handover::with_link(tenant).unwrap();
+
+    let refused = super::serve_sandboxed(handover.into_inherited()).unwrap_err();
+
+    let expected = if cfg!(target_os = "linux") {
+        "second thread"
+    } else {
+        "landlock"
+    };
+    let said = refused.to_string();
+    assert!(said.contains(expected), "{said}");
 }

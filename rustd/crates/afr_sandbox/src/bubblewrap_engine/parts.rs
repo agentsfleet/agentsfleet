@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use afd_core::error_code::{Coded as _, Logged};
-use futures_util::future::OptionFuture;
 use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
 
@@ -163,18 +162,16 @@ impl Parts {
             // root sets a user, so no host group survives either.
             command.uid(uid).gid(gid);
         }
-        let hook = move || {
-            enter(&join)?;
-            handover.inherit()
-        };
+        let hook = move || in_child(&join, &handover);
         // SAFETY: the hook runs in the child between fork and exec, where only
-        // async-signal-safe calls are sound. It makes one `write` system call on
-        // a file opened before the fork, then three `fcntl` calls on the tenant
-        // leaf's files and the entry's end of the executor's pair, all owned by
-        // the hook, and allocates nothing, so every process bubblewrap starts
-        // is born inside the sandbox leaf and the entry inherits all three. The kernel checks
-        // the write against the opener's credentials, so it holds after the
-        // user change above. The files close with the command, after the spawn.
+        // async-signal-safe calls are sound. [`in_child`] makes one `write`
+        // system call on a file opened before the fork, then three `fcntl`
+        // calls on the tenant leaf's files and the entry's end of the
+        // executor's pair, all owned by the hook, and allocates nothing, so
+        // every process bubblewrap starts is born inside the sandbox leaf and
+        // the entry inherits all three. The kernel checks the write against
+        // the opener's credentials, so it holds after the user change above.
+        // The files close with the command, after the spawn.
         unsafe { command.pre_exec(hook) };
         let mut child = command.spawn()?;
         self.stderr = child
@@ -191,11 +188,15 @@ impl Parts {
             return std::future::pending().await;
         };
         let waited = child.wait().await;
-        // The error stream closes with the process, so its drain finishes.
-        let reason = OptionFuture::from(self.stderr.take())
-            .await
-            .and_then(std::result::Result::ok)
-            .unwrap_or_default();
+        // The error stream closes with the process, so its drain finishes. It
+        // is awaited where it stands and cleared only once done: a caller that
+        // stops waiting here, as the ready check's race does, leaves the
+        // stream for its next call rather than losing it.
+        let reason = match self.stderr.as_mut() {
+            Some(drain) => drain.await.unwrap_or_default(),
+            None => String::new(),
+        };
+        self.stderr = None;
         waited.map_or_else(Error::from, |status| program(BWRAP, status, reason))
     }
 
@@ -353,4 +354,12 @@ fn log_release(lease_id: &str, failed: Option<&Error>) {
 pub(super) fn enter(procs: &File) -> std::io::Result<()> {
     rustix::io::write(procs, SELF)?;
     Ok(())
+}
+
+/// What bubblewrap's child does between fork and exec: moves into the
+/// sandbox leaf whose `cgroup.procs` is open as `join`, then lets
+/// `handover`'s descriptors through the exec.
+pub(super) fn in_child(join: &File, handover: &Handover) -> std::io::Result<()> {
+    enter(join)?;
+    handover.inherit()
 }

@@ -239,3 +239,23 @@ async fn test_a_refused_park_nobody_waits_for_is_torn_down() {
     assert_eq!(releases(&capture), [released(FLEET_A, Release::Capped)]);
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }
+
+/// A lease that parked into a keeper with room and stopped waiting before
+/// the answer came: no report will name the hold, so the keeper ends it as
+/// superseded at once and tears it down once.
+#[tokio::test]
+async fn test_a_held_park_nobody_waits_for_is_superseded() {
+    let capture = Capture::install();
+    let engine = FakeEngine::default();
+    let (holds, _clock) = holds(2);
+    let parked = sandbox(&engine).await;
+
+    let abandoned = holds.park(key(FLEET_A), id(LEASE), parked).now_or_never();
+    let left = fleets(&holds).await;
+    holds.shutdown().await;
+
+    assert!(abandoned.is_none(), "asked, and gone before the answer");
+    assert!(left.is_empty(), "{left:?}");
+    assert_eq!(releases(&capture), [released(FLEET_A, Release::Superseded)]);
+    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
+}

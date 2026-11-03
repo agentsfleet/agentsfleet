@@ -203,6 +203,46 @@ fn next_lease_cut(call: &Call) -> Option<Answer> {
         .then(|| Answer::Fail(crate::error::refused(Verb::Renew, 409, None)))
 }
 
+/// Holds up every lease's memory a while, and refuses the renewals of the
+/// fleet's next lease: that lease is cut before its build starts.
+fn next_lease_cut_while_its_memory_loads(call: &Call) -> Option<Answer> {
+    match call.verb {
+        Verb::Hydrate => match daemon(|_call| None)(call) {
+            Answer::Reply(bytes) => Some(Answer::Late(
+                afd_core::timing::RENEWAL_TICK.saturating_mul(2),
+                bytes,
+            )),
+            other => Some(other),
+        },
+        _other => next_lease_cut(call),
+    }
+}
+
+/// The fleet's next lease is cut while its memory loads, so its build never
+/// starts: the hold it was told to resume is released as superseded at once,
+/// not left in its slot until it lapses.
+#[tokio::test(start_paused = true)]
+async fn test_a_cut_before_the_build_releases_the_hold() {
+    let capture = Capture::install();
+    let (rig, counted) = holding(
+        next_lease_cut_while_its_memory_loads,
+        FakeEngine::default(),
+        Behaviour::Answer,
+    );
+
+    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
+    rig.run(&resumed(NEXT_LEASE_ID, FLEET_ID)).await.unwrap();
+    let before_shutdown = releases(&capture);
+    settled(&rig).await;
+
+    assert_eq!(
+        before_shutdown,
+        [released(FLEET_ID, Release::Superseded)],
+        "released by the cut lease, not by the shutdown"
+    );
+    assert_eq!(counted.read(), (1, 1, 0, 1), "held once, never thawed");
+}
+
 /// A renewal refused while the fleet's next lease thaws its hold: the thaw
 /// finishes before the build reads its stop, and the thawed sandbox is then
 /// destroyed once and held by nobody.

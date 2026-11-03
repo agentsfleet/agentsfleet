@@ -87,6 +87,20 @@ impl Handover {
         }
     }
 
+    /// What an exec does to the handover, for a test standing in for the
+    /// entry: the numbers stay open in this process, and nothing owns them.
+    #[cfg(test)]
+    pub(crate) fn into_inherited(self) -> Inherited {
+        use std::os::fd::IntoRawFd as _;
+        Inherited {
+            tenant: TenantDescriptors {
+                tenant_procs: self.tenant.procs.into_raw_fd(),
+                tenant_events: self.tenant.events.into_raw_fd(),
+            },
+            executor: self.executor.into_raw_fd(),
+        }
+    }
+
     /// Lets all three survive the coming exec. Runs in the child between fork
     /// and exec, so that child alone keeps the entry's end: three `fcntl`
     /// calls, and nothing allocated.

@@ -209,12 +209,6 @@ impl WorkspaceDisk {
         &self.tmp
     }
 
-    /// Where the disk is mounted on the host.
-    #[must_use]
-    pub fn mount_point(&self) -> &Path {
-        &self.mount_point
-    }
-
     /// The loop device's `major:minor`, which `io.max` limits.
     ///
     /// # Errors

@@ -44,7 +44,8 @@ pub fn serve_sandboxed(inherited: Inherited) -> Result<()> {
 /// one of [`crate::WRITABLE`], or the executor cannot write there once confined.
 ///
 /// # Errors
-/// As [`serve_sandboxed`].
+/// The socket cannot be bound, the process cannot be confined, the runtime
+/// will not build, or the executor stops with an error.
 pub fn serve_confined(socket: &Path, root: &Path) -> Result<()> {
     serve_hardened(afr_executor::bind(socket)?, root)
 }

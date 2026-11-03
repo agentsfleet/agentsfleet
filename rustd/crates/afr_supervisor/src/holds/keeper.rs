@@ -78,13 +78,18 @@ impl Keeper {
                     reply,
                 } => {
                     let fleet = key.fleet.clone();
-                    // Nobody waits for a refused sandbox: its release is
-                    // already counted, so it is only torn down here.
-                    if let Err(Parked::Refused(sandbox)) =
-                        reply.send(self.park(key, lease, sandbox))
-                    {
-                        self.destroying
-                            .spawn(async move { tear_down(&fleet, sandbox).await });
+                    match reply.send(self.park(key, lease, sandbox)) {
+                        // Nobody waits for a refused sandbox: its release is
+                        // already counted, so it is only torn down here.
+                        Err(Parked::Refused(sandbox)) => {
+                            self.destroying
+                                .spawn(async move { tear_down(&fleet, sandbox).await });
+                        }
+                        // Held for a lease that stopped waiting: no report will
+                        // name the hold, so it is superseded now, not at its
+                        // lapse.
+                        Err(Parked::Held(_)) => self.release(&fleet, Release::Superseded),
+                        Ok(()) | Err(Parked::Gone) => {}
                     }
                 }
                 Request::Release { fleet, reason } => self.release(&fleet, reason),

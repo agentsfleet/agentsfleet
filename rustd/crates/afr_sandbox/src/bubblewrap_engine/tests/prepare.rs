@@ -12,13 +12,15 @@ use std::time::Duration;
 use afd_core::test_util::trace::Capture;
 use afr_executor::{Ending, Spawn};
 
+use super::super::parts::{Parts, in_child};
 use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
 use super::support::{
-    BRIEF, ENV_PROBE, ENV_PROBE_INHERITED, ENV_PROBE_REPORT, ENV_PROBE_VARIABLES, FAILER,
+    BRIEF, CLOSER, ENV_PROBE, ENV_PROBE_INHERITED, ENV_PROBE_REPORT, ENV_PROBE_VARIABLES, FAILER,
     FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SANDBOXED, SLEEPER, request, serve_leases,
 };
 use crate::cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
-use crate::engine::Engine;
+use crate::engine::{Engine, Killed};
+use crate::tenant::{Handover, TenantFiles};
 use crate::warm_slots::WarmSlots;
 
 #[tokio::test]
@@ -291,12 +293,12 @@ async fn test_a_warm_slot_that_died_is_discarded_and_the_lease_starts_cold() {
     );
 }
 
-/// A root runner starts bubblewrap as the sandbox's own host user, which owns
-/// what bubblewrap writes; here the "sandbox user" is this test's own, which
-/// is the one change of user an unprivileged process may make.
+/// A root runner starts bubblewrap as the sandbox's own host user.
+/// Unprivileged, the one user this test may name is its own, so it proves
+/// that a runner naming a user still starts its sandbox; the kernel lane
+/// proves who owns what the sandbox writes.
 #[tokio::test]
 async fn test_a_root_runner_starts_the_sandbox_as_its_own_user() {
-    use std::os::unix::fs::MetadataExt as _;
     let host = FakeHost::new(SLEEPER);
     let server = serve_leases(host.config.state_dir.clone());
     let mut engine = host.engine();
@@ -307,10 +309,84 @@ async fn test_a_root_runner_starts_the_sandbox_as_its_own_user() {
     engine.run_as = Some(me);
     engine.owner = me;
 
-    let sandbox = engine.prepare(request("lease-12")).await.unwrap();
-    let note = fs::metadata(host.lease_dir("lease-12").join(SANDBOXED)).unwrap();
+    let mut sandbox = engine.prepare(request("lease-12")).await.unwrap();
+    let running = sandbox.is_running();
     let _left = sandbox.destroy().await;
     server.abort();
 
-    assert_eq!(note.uid(), me.0, "bubblewrap ran as the sandbox user");
+    assert!(running, "started as the named user");
+}
+
+/// A kill proves the sandbox empty only once its cgroup reads `populated 0`:
+/// with no events to read it is unsettled, and once they say so it settles.
+#[tokio::test]
+async fn test_a_kill_settles_only_once_the_cgroup_reads_empty() {
+    let host = FakeHost::new(SLEEPER);
+    let server = serve_leases(host.config.state_dir.clone());
+    let sandbox = host.engine().prepare(request("lease-13")).await.unwrap();
+
+    let unread = sandbox.kill().await;
+    fs::write(
+        host.config
+            .cgroup_root
+            .join("lease-13")
+            .join("cgroup.events"),
+        "populated 0\n",
+    )
+    .unwrap();
+    let read = sandbox.kill().await;
+    let _left = sandbox.destroy().await;
+    server.abort();
+
+    assert!(matches!(unread, Killed::Unsettled(_)), "{unread:?}");
+    assert!(matches!(read, Killed::Settled), "{read:?}");
+}
+
+/// Parts that never made a cgroup hold no process to kill and so prove
+/// nothing: their kill is unsettled.
+#[tokio::test]
+async fn test_parts_with_no_cgroup_kill_unsettled() {
+    let base = tempfile::tempdir().unwrap();
+    let dir = base.path().join("lease-14");
+    fs::create_dir(&dir).unwrap();
+    let parts = Parts::new("lease-14", dir);
+
+    let killed = parts.kill().await;
+
+    assert!(matches!(killed, Killed::Unsettled(_)), "{killed:?}");
+}
+
+/// A sandbox whose entry dropped its end of the link while it runs is
+/// refused as not ready, once it had a moment to exit and did not.
+#[tokio::test]
+async fn test_a_sandbox_that_drops_its_link_is_refused_as_not_ready() {
+    let host = FakeHost::new(CLOSER);
+
+    let refused = host
+        .engine()
+        .prepare(request("lease-15"))
+        .await
+        .unwrap_err();
+
+    let said = refused.to_string();
+    assert!(said.contains("did not answer within"), "{said}");
+}
+
+/// What bubblewrap's child does before its exec: it writes itself into the
+/// sandbox leaf through the descriptor the runner opened.
+#[test]
+fn test_the_child_joins_the_sandbox_leaf_before_its_exec() {
+    let leaf = tempfile::tempdir().unwrap();
+    let procs = leaf.path().join("procs");
+    let join = fs::File::create(&procs).unwrap();
+    let tenant = TenantFiles::open(
+        &leaf.path().join("cgroup.procs"),
+        &leaf.path().join("memory.events"),
+    )
+    .unwrap();
+    let (handover, _runner) = Handover::with_link(tenant).unwrap();
+
+    in_child(&join, &handover).unwrap();
+
+    assert_eq!(fs::read_to_string(procs).unwrap(), "0");
 }

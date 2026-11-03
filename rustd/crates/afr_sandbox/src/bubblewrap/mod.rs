@@ -8,8 +8,7 @@
 //! # What the binds allow
 //!
 //! bubblewrap mounts every `--bind` `nosuid,nodev` unless asked otherwise, so
-//! nothing on the workspace disk or in the socket directory can raise a
-//! privilege or open a device. The process inside runs as [`SANDBOX_UID`],
+//! nothing on the workspace disk can raise a privilege or open a device. The process inside runs as [`SANDBOX_UID`],
 //! never as root, and the runner starts bubblewrap itself as an unprivileged
 //! host user, so a file the sandbox creates is never owned by host root.
 
@@ -50,8 +49,7 @@ const SHARED_MEMORY_MODE: &str = "1777";
 /// disk's limit, so filling it answers `ENOSPC` rather than taking the
 /// lease's memory.
 pub(crate) const SANDBOX_TMP: &str = "/tmp";
-/// Where a private runtime directory is mounted, beneath which the executor's
-/// socket directory is bound.
+/// Where a private runtime directory is mounted.
 const RUN: &str = "/run";
 
 /// A fresh namespace of every kind a tool call could share with the host, the

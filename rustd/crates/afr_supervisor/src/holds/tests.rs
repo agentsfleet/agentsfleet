@@ -324,16 +324,28 @@ async fn test_shutdown_destroys_every_hold_and_waits() {
     );
 }
 
+/// A park after the keeper stopped hands the sandbox back to the lease, which
+/// kills it, reports, and only then releases it; the keeper destroys
+/// nothing itself.
 #[tokio::test]
-async fn test_a_park_after_shutdown_destroys_the_sandbox_itself() {
+async fn test_a_park_after_shutdown_hands_the_sandbox_back() {
+    let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
     holds.shutdown().await;
 
-    let until = park(&holds, &engine, FLEET_A).await;
+    let parked = holds
+        .park(key(FLEET_A), id(LEASE), sandbox(&engine).await)
+        .await;
 
-    assert_eq!(until, None);
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
+    let handed_back = matches!(parked, Parked::Refused(_));
+    let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
+    if let Parked::Refused(sandbox) = parked {
+        sandbox.destroy().await.unwrap();
+    }
+    assert!(handed_back, "a stopped keeper hands the sandbox back");
+    assert_eq!(destroyed_by_the_keeper, 0, "and destroys nothing itself");
+    assert_eq!(releases(&capture), [released(FLEET_A, Release::Shutdown)]);
     let left = holds.fleets().await;
     assert!(left.is_empty(), "{left:?}");
 }
