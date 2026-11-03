@@ -93,7 +93,7 @@ impl<'lane> Tasks<'lane> {
             .enumerate()
         {
             let item = mint_id();
-            sqlx::query(include_str!("seed_item.sql"))
+            sqlx::query(include_str!("fixtures/seed_item.sql"))
                 .bind(&item)
                 .bind(&self.base.fleet)
                 .bind(self.base.workspace.as_str())
@@ -103,7 +103,7 @@ impl<'lane> Tasks<'lane> {
                 .execute(&mut *transaction)
                 .await
                 .expect("immutable item");
-            sqlx::query(include_str!("seed_task.sql"))
+            sqlx::query(include_str!("fixtures/seed_task.sql"))
                 .bind(id)
                 .bind(&self.base.fleet)
                 .bind(&item)
@@ -141,7 +141,7 @@ impl<'lane> Owner<'lane> {
         let workspace = Uuid7::parse(&mint_id()).expect("workspace identity");
         let fleet = mint_id();
         let mut cleanup = OwnedRows::new(lane);
-        cleanup.record(include_str!("cleanup.sql"), &tenant);
+        cleanup.record(include_str!("fixtures/cleanup.sql"), &tenant);
         let token = format!(
             "agt_t{}",
             format!("{}{}", mint_id(), mint_id()).replace('-', "")

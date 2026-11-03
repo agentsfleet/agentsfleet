@@ -305,12 +305,13 @@ Timeouts use a closed metric outcome and bounded reason, alongside the existing 
 The inline work panel uses the existing fleet chat, fonts, components and stream.
 It reads confirmed rows, expands saved criteria lazily and retains explicitly labelled progress during transient refresh failures.
 Identity changes and access refusal clear its cached work; the first stream hello closes the initial read/subscription gap.
+
 The native bind/control owner publishes read hints after commit; no extra queue, chat or EventSource was introduced.
 
 Astra reviewed this slice at extra-high effort and verified the subscription-gap, scoped-fleet lookup and SQL cancellation corrections in source.
-That review ran no gates. Real publisher-to-browser delivery and forced client-transport deadline behavior still require execution evidence.
+That review ran no gates. Real publisher-to-browser delivery and forced client-transport deadline behavior still require live proof.
 
-Indy's coverage requirement is recorded in the active spec: all changed executable TS/TSX lines reach 100%; Rust patch coverage is strictly above 99%, measured against latest main.
+Changed executable TS/TSX lines require 100% coverage; Rust patch coverage must strictly exceed 99% against latest main, per Indy's instruction in the active spec.
 The existing Make and Codecov Rust patch floors now agree at 99.01%; per-file and whole-workspace checks retain their separate floors.
 Scenario tests exercise several observable invariants together; the broader test cleanup remains with the other agent.
 
@@ -335,7 +336,7 @@ The production-component browser recheck passed all eight desktop/mobile cases a
 It verifies typography, lazy criteria, the shared conversation and usable composer geometry; `/tmp/m236-task-component-browser.log` records the 6.2-second run.
 Controlled read fixtures supply its data; this is not full live DT acceptance.
 
-Rust patch coverage has not been measured; raising its floor is not execution evidence.
+Rust patch coverage has not been measured; raising its floor is not a measured result.
 
 ## Owner work-item status
 
