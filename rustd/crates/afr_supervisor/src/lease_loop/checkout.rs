@@ -79,21 +79,20 @@ impl LeaseRun<'_> {
             minted = minting => minted.map_err(|failure| unfinished(&failure))?,
             () = stop.cancelled() => return Err(Ended::Stopped),
         };
-        for checkout in &plan.wanted {
-            if stop.is_cancelled() {
-                return Err(Ended::Stopped);
-            }
+        each_until_stopped(&plan.wanted, stop, |checkout| {
             let request = Request {
                 scope: plan.scope.as_str(),
                 checkout: *checkout,
                 token: token.expose(),
                 workspace,
             };
-            self.check_out_one(request, stop)
-                .await
-                .map_err(|failure| unfinished(&failure))?;
-        }
-        Ok(())
+            async move {
+                self.check_out_one(request, stop)
+                    .await
+                    .map_err(|failure| unfinished(&failure))
+            }
+        })
+        .await
     }
 
     /// Checks out one repository, logging it from start to end.
@@ -129,6 +128,27 @@ impl LeaseRun<'_> {
     }
 }
 
+/// Runs `work` on each of `items` in order, reading `stop` before each one.
+/// A stop ends the run between items and never inside one, so no checkout is
+/// dropped half written, and none starts once the turn has ended.
+async fn each_until_stopped<T, Work, Done>(
+    items: impl IntoIterator<Item = T>,
+    stop: &CancellationToken,
+    mut work: Work,
+) -> Result<(), Ended>
+where
+    Work: FnMut(T) -> Done,
+    Done: Future<Output = Result<(), Ended>>,
+{
+    for item in items {
+        if stop.is_cancelled() {
+            return Err(Ended::Stopped);
+        }
+        work(item).await?;
+    }
+    Ok(())
+}
+
 /// A checkout the build could not finish, as its sandbox-side calls read it.
 fn unfinished(failure: &impl Coded) -> Ended {
     Ended::Failed(Unavailable::Checkout, failure.logged())
@@ -137,3 +157,7 @@ fn unfinished(failure: &impl Coded) -> Ended {
 #[cfg(test)]
 #[path = "tests/checkout.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/checkout_failures.rs"]
+mod failure_tests;
