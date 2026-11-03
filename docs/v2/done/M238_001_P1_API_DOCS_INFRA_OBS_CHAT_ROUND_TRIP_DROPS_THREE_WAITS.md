@@ -89,7 +89,7 @@ message ─► admission commits ─► doorbell rings ─► held heartbeat ans
 | `rustd/crates/afd_dragonfly/src/doorbell/tests.rs` | EDIT | ring, deadline, cap, buffered-fleet, close and contended-cap proofs |
 | `rustd/crates/afd_dragonfly/src/streams/tail.rs` | EDIT | the tail publish answers whether the frame landed |
 | `rustd/crates/afd_fleet/src/lease/bracket.rs` | EDIT | the completion publish answers whether it landed |
-| `rustd/crates/agentsfleetd/src/serve/drain/mod.rs`, `rustd/crates/agentsfleetd/src/serve/drain/tests.rs`, `rustd/crates/agentsfleetd/src/serve/mod.rs` | EDIT | the drain closes the doorbell when it stops accepting; proof; serve wires it |
+| `rustd/crates/agentsfleetd/src/serve/drain/mod.rs`, `rustd/crates/agentsfleetd/src/serve/drain/tests.rs`, `rustd/crates/agentsfleetd/src/serve/mod.rs` | EDIT | the drain closes the doorbell when it stops accepting; `idle` registers before it reads the count; proof; serve wires it |
 | `rustd/crates/afd_api/src/openapi/stability/mod.rs` | EDIT | `HeartbeatResponse.woken` and `LeasePayload.memory` publish as beta |
 | `rustd/crates/afr_supervisor/src/client/tests/mod.rs` | EDIT | pins the reply body's zeroing buffer |
 | `rustd/crates/afd_fleet/Cargo.toml` | EDIT | `futures-util` moves to dependencies, for the overlapped post-issue reads |
@@ -111,13 +111,14 @@ message ─► admission commits ─► doorbell rings ─► held heartbeat ans
 | `rustd/crates/afd_fleet/src/lease/report/tests.rs` | EDIT | the loaded-lease fixture's instants |
 | `rustd/crates/afd_http/src/services/leasing/mod.rs` | EDIT | `Leasing::wait_for_work` |
 | `rustd/crates/afd_http/src/services/leasing/plane.rs` | EDIT | the production plane forwards it |
-| `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | the hold after the beat's writes; `woken` on every reply |
+| `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | the hold after the beat's writes, skipped for a beat not recorded; one refusal for both failures; `woken` on every reply |
 | `rustd/crates/afd_api_runner/src/handler/runner/wake.rs` | CREATE | a held beat's answer, count and refusal log; the permit-share assertion |
 | `rustd/crates/afd_api_runner/src/handler/runner/wake_tests.rs` | CREATE | answer and cap proofs |
 | `rustd/crates/afd_api_runner/src/handler/runner/mod.rs` | EDIT | registers `wake` |
 | `rustd/crates/afd_api_runner/src/handler/runner/report.rs` | EDIT | the span's start, end and segment attributes; two segment proofs |
 | `rustd/crates/afd_api/tests/harness/stubs_runner.rs` | EDIT | the stub plane's hold and extended settle answer |
 | `rustd/crates/afd_api/tests/integration_runner_heartbeat.rs` | EDIT | a held beat answers `woken` after its liveness |
+| `rustd/crates/agentsfleetd/tests/integration_runner_wake.rs`, `rustd/crates/agentsfleetd/tests/daemon_suite.rs` | CREATE, EDIT | a held beat woken by admitted work through the production lease plane |
 | `rustd/crates/afd_observability/src/delivery/mod.rs` | EDIT | the span starts at event creation and carries capped `Segments` |
 | `rustd/crates/afd_observability/src/delivery/tests.rs` | EDIT | start, fallback, milliseconds and cap proofs |
 | `rustd/crates/afd_observability/src/lib.rs` | EDIT | exports `Segments` |
@@ -138,12 +139,14 @@ message ─► admission commits ─► doorbell rings ─► held heartbeat ans
 | `rustd/crates/afr_supervisor/src/lease_loop/settle.rs` | EDIT | the one-post settle and the shape-refusal fallback |
 | `rustd/crates/afr_supervisor/src/lease_loop/segments.rs` | EDIT | the segments a report carries |
 | `rustd/crates/afr_supervisor/src/lease_loop/lessee.rs` | EDIT | the lessee holds the pool's `Wake` |
-| `rustd/crates/afr_supervisor/src/lease_loop/tests/settlement.rs` | EDIT | one post, older daemon and fallback proofs |
+| `rustd/crates/afr_supervisor/src/lease_loop/tests/settlement.rs` | EDIT | one post and older-daemon proofs; `without_spool` |
+| `rustd/crates/afr_supervisor/src/lease_loop/tests/fallback.rs` | CREATE | the fall-back: once, for a failed run, unspooled, and a refused copy that will not go |
 | `rustd/crates/afr_supervisor/src/lease_loop/tests/timing.rs` | EDIT | the memory-read segment with and without a window |
 | `rustd/crates/afr_supervisor/src/report_spool/mod.rs` | EDIT | a rejected delivery carries its refusal; `reshaped`; `forget_rejected` |
 | `rustd/crates/afr_supervisor/src/report_spool/tests.rs` | EDIT | the rejected variant's payload |
 | `rustd/crates/afr_supervisor/src/drainer/mod.rs` | EDIT | the drain re-posts a shape-refused one-post body without its memory |
-| `rustd/crates/afr_supervisor/src/drainer/tests.rs` | EDIT | reshape proofs |
+| `rustd/crates/afr_supervisor/src/drainer/tests.rs` | EDIT | the reshape proofs move out |
+| `rustd/crates/afr_supervisor/src/drainer/reshape_tests.rs` | CREATE | the reshape: posted, kept and retried, not set aside, nameless, not held, refused copy kept |
 | `rustd/crates/afr_supervisor/src/heartbeat/mod.rs` | EDIT | asks to be held, reads `woken`, paces the next beat |
 | `rustd/crates/afr_supervisor/src/heartbeat/tests.rs` | EDIT | asking and pacing proofs |
 | `rustd/crates/afr_supervisor/src/worker_pool/mod.rs` | EDIT | `Wake`: idle count and wake-one; idle pauses end on it |
@@ -153,7 +156,8 @@ message ─► admission commits ─► doorbell rings ─► held heartbeat ans
 | `rustd/crates/afd_runner/src/heartbeat/mod.rs` | EDIT | `NO_REPORT` carries `wake: false` |
 | `rustd/crates/afd_runner/tests/integration_runner_plane/faults.rs` | EDIT | beat literal |
 | `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `rustd/crates/afd_bench/src/lane/lease/seed/mod.rs` | EDIT | report and beat literals |
-| `rustd/crates/afd_fleet/tests/integration_report_memory.rs` | CREATE | the report's memory: lands, superseded, oversize, failed capture |
+| `rustd/crates/afd_fleet/tests/integration_report_memory.rs` | CREATE | the report's memory: lands, superseded, oversize, failed capture, repeated report |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates/faults.rs` | EDIT | a pass that outlived its claim writes no lease |
 | `rustd/crates/afd_fleet/tests/integration_lease_gates/chat.rs` | CREATE | the chat-lease harness, moved out of `history.rs` so the window tests reuse it |
 | `rustd/crates/afd_fleet/tests/integration_lease_gates/window.rs` | CREATE | the window on the lease, under the slot, and a failed read |
 | `rustd/crates/afd_fleet/tests/integration_lease_gates/history.rs` | EDIT | reads the shared harness |
@@ -406,6 +410,10 @@ N/A: no files deleted. The `memory/{fleet_id}` read and push verbs stay for a le
   - *Races checked:* a ring between a hold's arrival and its await (the `watch` generation is taken at arrival); a ring for a fleet whose hint is buffered (the generation moves before the dedup); a held beat dropped mid-wait (the cap's guard releases on drop); a worker entering its pause just after a wake (`notify_one` stores a permit); a lease issued between a report's capture and its commit (the slot forbids it).
 - **Ship reviews** (Nov 04, 2026): gstack `/review` (native, this session) and `orly-standards-reviewer` (Claude Opus 5.5, fresh context; 30 findings against 26 rules). Fixed: a held beat holding the drain open past Fly's 5 s kill, which would cut the shutdown telemetry flush (the drain now closes the doorbell); a close between the closed check and the subscribe (subscribe first); a holds-saturation release and a leasing stop waiting out a held beat (both now cut it short); the completion timed even when its publish was dropped (the tail publish now answers whether it landed); a lost-lease capture logged as a failure (now a debug skip); drain-side failures swallowed and the cause code missing on the fallback logs; the held-beat refusal logged at info on a per-host path (now debug); vacuous zeroing tests (now pin the body field and prove in-place zeroing); the wake counter and the truncation counter unasserted; single-field log assertions (now whole tuples with codes); the completion instant unbounded (now bounded by the call); the wake ask's drain branch untested; the new reply fields published as stable (now beta); a derived `Debug` printing captured memory (now redacted); misplaced and stale doc comments; mutable-default patterns. Declined, with reasons: the mint's 502 retry kept for edge-answered pages only, because no route lists CLI credentials so a replay cannot be made idempotent, and the residual lost-reply risk falls on the dev fixture account (recorded for Indy below); `retryable.ts` kept as the fixture's own loop, extracted from the revoke fixture rather than added, because `cli/src/lib/http-retry.ts` refuses every POST replay on a 5xx and is Effect-based; folding the fixtures into it is a later change; `reshaped` edits the JSON value by field name rather than decoding `ReportRequest`, because the drain must strip fields an older daemon refuses without the runner's own version of the type deciding what survives; `capture_reported` and `window_for` log and carry on like the sibling `step()`, because neither may refuse the report or the lease; the span's `queue_wait_ms` and `event_to_complete` count a reclaimed event's earlier attempt, which is the round trip its owner waited, where `runner_lease_issued`'s `queue_wait_ms` counts only fresh entries (documented in `observability.md`); files already over the 350-line cap on `fde585971` (`deliver/mod.rs`, the heartbeat and pool test files) are not split here.
 - **Greptile on PR #799** (Nov 04, 2026): one P1, fixed. The drain counted a reshaped report the daemon kept, a 503 mid-deploy, as done, so it slept with that report still spooled until an unrelated lease woke it. `Drainer::reshape` now answers the reshaped post's `Delivery`, which `pass` takes through the same branches as any other: kept and backed off, stopped on a refused token, or set aside. `test_a_reshaped_report_the_daemon_keeps_is_retried` fails on the old drain (two posts, the file left) and passes on the fix.
+- **CI on PR #799** (Nov 04, 2026): two reds after the Greptile fix, both from this PR.
+  - The new drain test failed once in 800 runs at 16-way load. It stopped on an empty `pending()`, which reads empty while a refused report sits renamed and its reshaped copy is unwritten. It now stops when the spool directory holds no file; 2,000 runs at 16-way load then failed none.
+  - The Rust patch floor read 95.16% (610 of 641 lines), with 8 touched files under 99%. New tests cover the drain's reshape failures, the settle's fall-back variants and a repeated report's capture skip. Others cover a lapsed claim's refused issue and a held beat woken through the production lease plane.
+  - The heartbeat folds its reply-decode failure back into one refusal, as on `fde585971`. The drain's `idle` registers before it reads the count, dropping a second check only a parallel guard drop reached. Its timeout log hoists the error code, as `pull/step.rs` does.
 - **For Indy** — the one residual risk this PR carries: an acceptance-lane mint that the daemon writes but whose reply the edge loses as a 502 is retried, leaving one unrevoked CLI credential on the dev fixture account. It needs a list-or-revoke-by-machine route to remove; no such route exists.
 - **Open blockers** — none.
 - **Deferrals and transfers** — Each one carries its owner quote:

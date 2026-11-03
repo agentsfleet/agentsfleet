@@ -91,11 +91,15 @@ async fn a_failed_memory_push_still_reports() {
     assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
 }
 
-/// A directory occupies this lease's report path, so its durable write fails.
-fn unspoolable(special: Special) -> Rig {
-    let rig = rig(special);
+/// `rig` with a directory where this lease's report goes, so its durable
+/// write fails.
+fn without_spool(rig: Rig) -> Rig {
     fs::create_dir(rig.home.spool().join(format!("{LEASE_ID}.json"))).unwrap();
     rig
+}
+
+fn unspoolable(special: Special) -> Rig {
+    without_spool(rig(special))
 }
 
 #[tokio::test(start_paused = true)]
@@ -285,59 +289,5 @@ async fn test_settle_without_a_window_posts_as_before() {
     );
 }
 
-/// A one-post report an older replica refuses for its shape falls back once:
-/// the memory through the push, the report again without the new fields, and
-/// the refused copy, which holds the memory in clear, removed from the spool.
-#[tokio::test(start_paused = true)]
-async fn test_shape_refused_report_falls_back_once() {
-    let capture = Capture::install();
-    let reports = std::sync::atomic::AtomicUsize::new(0);
-    let mut rig = Rig::new(
-        daemon(move |call| {
-            (call.verb == Verb::Report && reports.fetch_add(1, Ordering::SeqCst) == 0).then(|| {
-                let shape = Some(afd_core::error_code::INVALID_REQUEST);
-                Answer::Fail(error::refused(Verb::Report, 400, shape))
-            })
-        }),
-        FakeEngine::default(),
-        FakeAgent::new(Behaviour::Answer),
-    );
-
-    rig.run(&window_lease()).await.unwrap();
-
-    let calls = rig.calls();
-    let first = calls
-        .iter()
-        .find(|call| call.verb == Verb::Report)
-        .and_then(|call| call.body.as_ref())
-        .map(|body| serde_json::from_slice::<serde_json::Value>(body).unwrap())
-        .unwrap();
-    // Reports only: the authoring spool keeps its own directory beside them.
-    let leftovers: Vec<_> = fs::read_dir(rig.home.spool())
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.is_file())
-        .collect();
-    assert_eq!(
-        (
-            settle_verbs(&calls),
-            one_post_fields(&first),
-            one_post_fields(&reported(&calls)),
-            leftovers,
-        ),
-        (
-            vec![Verb::Report, Verb::Capture, Verb::Report],
-            (Some(the_runs_memory()), true),
-            (None, false),
-            Vec::<std::path::PathBuf>::new(),
-        )
-    );
-    let fell_back = capture.only("report_shape_fell_back");
-    assert_eq!(
-        (
-            fell_back.field("lease_id"),
-            fell_back.field("cause_error_code")
-        ),
-        (Some(LEASE_ID), Some("UZ-REQ-001"))
-    );
-}
+#[path = "fallback.rs"]
+mod fallback;

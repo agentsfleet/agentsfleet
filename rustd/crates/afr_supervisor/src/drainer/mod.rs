@@ -177,3 +177,7 @@ fn replay_failed(failure: &crate::Error) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "reshape_tests.rs"]
+mod reshape_tests;
