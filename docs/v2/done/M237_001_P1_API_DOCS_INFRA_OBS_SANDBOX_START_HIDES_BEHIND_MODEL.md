@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Date:** Nov 02, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, every lease that offers a sandbox tool waits for sandbox setup and checkout before the model starts
 
@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Baseline revision:** 2f8c878c09e9c4048da1724385ec58746d348ed4
 
-**Test Baseline:** pending, measured before the Pull Request
+**Test Baseline:** base `2f8c878c0`, measured in an isolated checkout: runner unit 1382 and daemon unit 139 passed. Its unit lane stopped at the macOS `base64` test this Pull Request fixes; its integration lane stopped at 630 passed, 2 failed, both `afd_authoring` contention timeouts. Branch: unit 4911 Rust and 5289 TypeScript passed; integration 1458 passed.
 
 **Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_001-lease-waits.md`, measured on the local kernel lane at `937c8d34d`
 
@@ -95,6 +95,7 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/afr_agent/src/{scripted.rs,nested/run_tests.rs}` | EDIT | Callers of the run's executor slot |
 | `rustd/crates/afr_sandbox/src/unsandboxed/tests.rs`, `afr_sandbox/src/warm_slots/tests/mod.rs` | EDIT | `kill` proved on the unsandboxed engine; the trait's default `workspace()` covered, since `engine/mod.rs` changed |
 | `rustd/Cargo.lock` | EDIT | The `async-trait` line for `agentsfleetd`'s test engine |
+| `.orly/` | EDIT | `orly update --no-hooks` to 0.28.0, which Indy asked to ship here |
 | `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox,resolver,rig}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill; a stalled resolver times the egress bind |
 | `rustd/crates/afr_supervisor/src/holds/{mod,keeper}.rs` and tests, `heartbeat/tests.rs`, `drainer/tests.rs` | EDIT | A park the keeper refuses comes back to the lease, which kills it now and releases it after the report |
 | `rustd/crates/afr_sandbox/src/{cgroup,engine}/` | EDIT | `cgroup.kill`, then a bounded wait on `populated 0`; the `Killed` record |
@@ -175,7 +176,7 @@ A processed ending proves that the answer was given, not that the workspace was 
 - **Dimension 2.5** — A run cut mid-checkout destroys the partial sandbox and holds nothing → Test `test_partial_checkout_is_never_held` — DONE
 - **Dimension 2.6** — A cut during a thaw finishes the thaw, then destroys → Test `test_cut_during_thaw_settles_the_hold` — DONE
 - **Dimension 2.7** — A supervisor-only lease starts no build → Test `test_supervisor_only_lease_starts_no_build` — DONE
-- **Dimension 2.8** — Through the daemon, a chat's first stream frame precedes sandbox ready → Test `test_chat_streams_before_sandbox_ready`
+- **Dimension 2.8** — Through the daemon, a chat's first stream frame precedes sandbox ready → Test `test_chat_streams_before_sandbox_ready` — DONE
 - **Dimension 2.9** — A memory load refusal starts no build → Test `test_memory_refusal_starts_no_build` — DONE
 - **Dimension 2.10** — A build failing after the run ended leaves the run's ending in the report → Test `test_late_build_failure_keeps_the_run_ending` — DONE
 - **Dimension 2.11** — A turn that fails mid-build stops the build, which holds nothing → Test `test_a_failed_turn_stops_its_build_and_holds_nothing` — DONE
@@ -203,7 +204,7 @@ Only `Settled` proves the sandbox's process tree is empty. `Unsettled` still let
 
 `runner_execution.md` carries §"Code walkthrough" from the spec's own pull request. This Section rewrites Parts C and G to the built order at merge, and records §1's before and after figures.
 
-- **Dimension 4.1** — Every walkthrough call exists in that order at the merge commit → Test `manual_walkthrough_matches_code`
+- **Dimension 4.1** — Every walkthrough call exists in that order at the merge commit → Test `manual_walkthrough_matches_code` — DONE: walked at `5ea5b8839` by the final standards review, whose two drifts were fixed in `4c091806d`; `make check-architecture-doc`: all 513 cited source paths resolve
 
 ## Interfaces
 
@@ -304,10 +305,10 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Model starts before the sandbox; failures keep today's refusals (§2) | `make test-unit-rustd-runner` | exit 0 | P0 | |
-| R2 | Through the daemon, the stream precedes sandbox ready (§2) | `make test-integration-rustd` | exit 0 | P0 | |
-| R3 | After a settled kill, no sandbox process outlives its report (§3) | `make test-runner-kernel` | exit 0 | P0 | |
-| R4 | Baseline and after figures recorded (§1, §4) | `test -s playbooks/operations/acceptance/baselines/M237_001-lease-waits.md` | exit 0 | P1 | |
+| R1 | Model starts before the sandbox; failures keep today's refusals (§2) | `make test-unit-rustd-runner` | exit 0 | P0 | ✅ `✓ [rustd] unit: runner — 1432 passed` |
+| R2 | Through the daemon, the stream precedes sandbox ready (§2) | `make test-integration-rustd` | exit 0 | P0 | ✅ `✓ [rustd] integration suite — 1455 passed`, `test_chat_streams_before_sandbox_ready ... ok` |
+| R3 | After a settled kill, no sandbox process outlives its report (§3) | `make test-runner-kernel` | exit 0 | P0 | ✅ `test result: ok. 69 passed; 0 failed` at `c24c4b481` |
+| R4 | Baseline and after figures recorded (§1, §4) | `test -s playbooks/operations/acceptance/baselines/M237_001-lease-waits.md` | exit 0 | P1 | ✅ `exit 0` |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -394,6 +395,8 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 - **A failed build was counted nowhere** — under decision B a failed build ends `processed`, so it left the platform-fault count, and a checkout failure left only a log line. `sandbox_builds_total` counts every build by outcome.
 - **macOS `base64`** — `deploy/local/codex.sh` passed the signature file to `base64 --decode` as an argument, which macOS's tool rejects, so the Mac unit lane failed on main too. It now reads stdin, which both tools accept.
 - **Final review (Nov 03)** — two readers over the whole diff at `0b33ed95b`, neither told how it was written. The orly standards reviewer, Claude Opus 5.5, made 15 findings, 4 blocking; the blocking 4 are fixed, with Files Changed rows that Indy approved. An adversarial runtime reviewer, Claude Opus 5.5, made 4 findings. Fixed: the mirror wait a stop could not end, a halted runner's 20 s wait, and the stopped-checkout warning. The fourth, a failed build torn down before its report, follows decision B's text.
+- **orly 0.28.0** — `orly update --no-hooks` rewrote `AGENTS.md`, two skills and the spec, spec-template and shell standards, and moved the pin. `orly doctor` reads green. CI installs `orly@latest`, so no workflow pin moved. Both specs were written to the 0.27.0 spec standard, and they close under it.
+- **Changelog** — the entry is on `chore/m237-sandbox-start-changelog` in `agentsfleet/docs`, marked coming soon until M237 deploys.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
@@ -412,3 +415,5 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 10:37 AM): "Approve the rows (Recommended)" — context: changed files outside both specs' Files Changed tables, each forced by the change, now listed in them.
 
 > Owner (Indy, Nov 03, 2026 10:37 AM): "Fix (b) here too" — context: of three final-review findings, (b) the stopped-checkout warning is fixed here (Dimension 2.16); (a) the fetch stalled in one network read and (c) the teardown before the report go to the hardening spec.
+
+> Owner (Indy, Nov 03, 2026 10:14 AM): "i expect you to refresh the setup here and then ensure we can do orly update -- here? and push in this PR" — context: orly 0.28.0, published that morning, ships in M237's Pull Request.
