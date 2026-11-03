@@ -244,7 +244,7 @@ Private history loading does not wait for model or sidebar lists.
 
 Fleet chat also renders `TaskPanel` inline above its composer through `FleetThreadViewport`.
 Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `TaskDetail`.
-The [DT owner](durable_tasks.md#status-and-ownership) distinguishes these implemented reads from pending execution and recovery.
+The [DT owner](durable_tasks.md#status-and-ownership) distinguishes these implemented reads from pending task attempts and recovery.
 
 The existing fleet stream supplies `task_changed` read hints through `tasksSeq`; its initial hello and gap recovery also invalidate task reads.
 Account or workspace changes abort old requests, and access loss clears private rows.

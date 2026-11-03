@@ -45,7 +45,7 @@ async fn exercise(lane: &TestDatabase) {
     .router();
     let migrator = fixture.base.lane.open(DbRole::Migrator, &[]).await;
     let mut connection = migrator.acquire().await.expect("lock owner");
-    let blocker: i32 = sqlx::query_scalar(include_str!("backend_pid.sql"))
+    let blocker: i32 = sqlx::query_scalar(include_str!("fixtures/backend_pid.sql"))
         .fetch_one(&mut *connection)
         .await
         .expect("lock identity");
@@ -63,7 +63,7 @@ async fn page_waits(
     blocker: i32,
 ) {
     let mut lock = connection.begin().await.expect("lock transaction");
-    sqlx::query(include_str!("lock.sql"))
+    sqlx::query(include_str!("fixtures/lock.sql"))
         .execute(&mut *lock)
         .await
         .expect("isolated task table locks");
@@ -116,7 +116,7 @@ async fn scope_waits(
 ) {
     let collection = fixture.collection();
     let mut lock = connection.begin().await.expect("scope blocker transaction");
-    sqlx::query(include_str!("lock_fleet.sql"))
+    sqlx::query(include_str!("fixtures/lock_fleet.sql"))
         .execute(&mut *lock)
         .await
         .expect("isolated fleet table lock");
@@ -157,7 +157,7 @@ async fn blocked(database: &Db, blocker: i32, expected: i64) -> bool {
     let mut observer = database.acquire().await.expect("autocommit lock observer");
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
-            let count: i64 = sqlx::query_scalar(include_str!("blocked.sql"))
+            let count: i64 = sqlx::query_scalar(include_str!("fixtures/blocked.sql"))
                 .bind(blocker)
                 .fetch_one(&mut *observer)
                 .await

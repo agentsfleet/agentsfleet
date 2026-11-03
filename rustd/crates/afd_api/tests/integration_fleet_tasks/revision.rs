@@ -30,7 +30,7 @@ pub(super) async fn advance(fixture: &Tasks<'_>) {
         .acquire()
         .await
         .expect("history connection");
-    let revision: i64 = sqlx::query_scalar(include_str!("advance_revision.sql"))
+    let revision: i64 = sqlx::query_scalar(include_str!("fixtures/advance_revision.sql"))
         .bind(afd_db::test_util::mint_id())
         .bind(&fixture.base.fleet)
         .bind(serde_json::to_value(definition).expect("typed revised definition"))
