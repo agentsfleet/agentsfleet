@@ -49,7 +49,7 @@ const FIND_SOCKETS: &str = "find /run /tmp /workspace /dev /opt -type s 2>/dev/n
 const LIST_DESCRIPTORS: &str = "ls -l /proc/self/fd";
 /// The sandbox's mount table.
 const MOUNTS: &str = "cat /proc/self/mountinfo";
-/// Where the socket directory was bound before the link was a pair.
+/// A socket directory's path, which no mount in the sandbox may name.
 const SOCKET_DIR: &str = "/run/agentsfleet";
 /// Where the sandbox may write: the disk's two directories.
 const WRITABLE: [&str; 2] = ["/tmp", "/workspace"];

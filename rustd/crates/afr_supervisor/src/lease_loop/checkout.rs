@@ -29,6 +29,7 @@ const EVENT_CHECKOUT_REFUSED: &str = "repository_checkout_refused";
 const EVENT_CHECKOUT_STARTED: &str = "repository_checkout_started";
 const EVENT_CHECKOUT_COMPLETED: &str = "repository_checkout_completed";
 const EVENT_CHECKOUT_FAILED: &str = "repository_checkout_failed";
+const EVENT_CHECKOUT_STOPPED: &str = "repository_checkout_stopped";
 
 /// What a lease checks out: its repositories, under its workspace's id.
 #[derive(Debug)]
@@ -113,9 +114,7 @@ impl LeaseRun<'_> {
                 Ok(())
             }
             Err(failure) => {
-                let Logged { error_code, reason } = failure.logged();
-                let event = EVENT_CHECKOUT_FAILED;
-                tracing::warn!(error_code, lease_id, repository, reason, event);
+                checkout_ended(lease_id, repository, &failure, stop.is_cancelled());
                 Err(failure)
             }
         }
@@ -125,6 +124,19 @@ impl LeaseRun<'_> {
     /// it at startup.
     fn unready(&self, failure: &impl Coded) -> Box<Ending> {
         Box::new(self.refuse(failure, EVENT_CHECKOUT_REFUSED, DETAIL_CHECKOUT))
+    }
+}
+
+/// Logs a checkout of `repository` that did not finish: one the stop ended
+/// is no failure, and is logged at debug as stopped.
+fn checkout_ended(lease_id: &str, repository: &str, failure: &impl Coded, stopped: bool) {
+    let Logged { error_code, reason } = failure.logged();
+    if stopped {
+        let event = EVENT_CHECKOUT_STOPPED;
+        tracing::debug!(lease_id, repository, reason, event);
+    } else {
+        let event = EVENT_CHECKOUT_FAILED;
+        tracing::warn!(error_code, lease_id, repository, reason, event);
     }
 }
 

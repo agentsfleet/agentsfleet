@@ -1,6 +1,7 @@
 //! How a lease's build ends: counted by outcome, stopped before it starts,
-//! failing after its turn answered, stopped by a failed turn, or stopped
-//! because it outlasted its answered turn.
+//! failing after its turn answered, stopped by a failed turn, stopped
+//! because it outlasted its answered turn, or not waited for at all on a
+//! runner that takes no further lease.
 
 use std::sync::Arc;
 
@@ -172,5 +173,36 @@ async fn test_a_build_that_outlasts_its_answer_is_stopped() {
     assert_eq!(
         capture.only(EVENT_BUILD_OUTLASTED).field("lease_id"),
         Some(LEASE_ID)
+    );
+}
+
+/// A runner that takes no further lease holds no sandbox, so a turn that
+/// answered waits for no build: the build is stopped at once, and nothing
+/// is logged as outlasting the turn.
+#[tokio::test(start_paused = true)]
+async fn test_a_runner_that_stopped_leasing_waits_for_no_build() {
+    let capture = Capture::install();
+    let workspace = tempfile::tempdir().unwrap();
+    let mut rig = Rig::new(
+        daemon(stalled_mint),
+        checking_out(workspace.path()),
+        FakeAgent::new(Behaviour::Talks),
+    );
+    served(&rig);
+    rig.lessee.halt.stop_leasing();
+    let started = tokio::time::Instant::now();
+
+    let counted = builds_counted(&rig, &bound()).await;
+
+    let took = started.elapsed();
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+    assert_eq!(counted, [SandboxBuild::Stopped]);
+    assert!(took < BUILD_AFTER_ANSWER, "the report waited {took:?}");
+    assert!(
+        capture
+            .events()
+            .iter()
+            .all(|event| event.field("event") != Some(EVENT_BUILD_OUTLASTED)),
+        "a build nobody would hold is not waited for"
     );
 }

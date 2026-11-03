@@ -41,6 +41,8 @@ const TOKEN_USER: &str = "x-access-token";
 const STEP_FETCH: &str = "fetched";
 /// The step a failure names when the workspace copy would not check out.
 const STEP_CHECKOUT: &str = "checked out";
+/// Why a checkout stopped before it took its mirror.
+const WAIT_STOPPED: &str = "stopped while another lease held the repository's mirror";
 
 /// The repository mirrors on this host, and a lock per mirror.
 #[derive(Debug)]
@@ -98,7 +100,14 @@ impl Mirrors {
         let url = format!("{}{repository}{GIT_SUFFIX}", self.origin);
         let header = authorization(request.token);
         let lock = self.lock(&mirror);
-        let _held = lock.lock().await;
+        // Another lease's clone can hold the mirror for as long as it takes;
+        // an interrupt ends the wait, and the mirror is never taken.
+        let _held = tokio::select! {
+            held = lock.lock() => held,
+            () = interrupt.cancelled() => {
+                return Err(error::git(repository, STEP_FETCH)(WAIT_STOPPED.into()));
+            }
+        };
         let stop = Arc::new(AtomicBool::new(false));
         let fetched = {
             let (url, mirror, stop_fetch) = (url.clone(), mirror.clone(), Arc::clone(&stop));

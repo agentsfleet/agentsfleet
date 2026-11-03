@@ -15,8 +15,9 @@ impl Parts {
     /// directory, off the async runtime: removing a cgroup waits for the
     /// kernel to reap.
     pub(in crate::bubblewrap_engine) async fn teardown(mut self) -> Result<()> {
+        let lease_id = self.lease_id.as_str();
         let event = EVENT_TEARDOWN_STARTED;
-        tracing::debug!(lease_id = self.lease_id.as_str(), event);
+        tracing::debug!(lease_id, event);
         if let Some(drain) = self.stderr.take() {
             drain.abort();
         }

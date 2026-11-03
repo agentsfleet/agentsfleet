@@ -3,6 +3,7 @@
 //! the turn's first model call, and the turn's tool call still runs in the
 //! sandbox once it is ready.
 
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -30,6 +31,18 @@ const TOOL_COMPLETED: &str = "tool_call_completed";
 struct Stalled {
     inner: UnsandboxedEngine,
     ready: Arc<Mutex<Option<Instant>>>,
+}
+
+impl Stalled {
+    /// An engine whose sandboxes live under `sandboxes`, noting in `ready`
+    /// when its first one was.
+    fn new(sandboxes: &Path, ready: &Arc<Mutex<Option<Instant>>>) -> Self {
+        Self {
+            inner: UnsandboxedEngine::new(sandboxes.to_owned())
+                .expect("a debug build permits the unsandboxed engine"),
+            ready: Arc::clone(ready),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -69,6 +82,33 @@ async fn later_frames(tail: &mut afd_dragonfly::Subscription) -> Vec<serde_json:
     frames
 }
 
+/// The first chunk reached the tail before the sandbox the turn's tool call
+/// built was ready.
+fn assert_streamed_first(streamed: Instant, ready: &Mutex<Option<Instant>>) {
+    let ready = ready
+        .lock()
+        .expect("nothing panics holding the clock")
+        .expect("the turn's tool call built a sandbox");
+    assert!(
+        streamed < ready,
+        "the first chunk streamed {:?} after the sandbox was ready",
+        streamed.saturating_duration_since(ready)
+    );
+}
+
+/// The turn's tool call ran in the sandbox once it was ready, and succeeded.
+fn assert_tool_succeeded(later: &[serde_json::Value]) {
+    let completed = later
+        .iter()
+        .find(|frame| frame.get("kind").and_then(serde_json::Value::as_str) == Some(TOOL_COMPLETED))
+        .and_then(|frame| frame.get("status").cloned());
+    assert_eq!(
+        completed,
+        serde_json::to_value(ToolCallStatus::Succeeded).ok(),
+        "the tool ran in the sandbox once it was ready: {later:?}"
+    );
+}
+
 /// When the first answer chunk reached the tail, read while the runner runs.
 async fn chunk_arrived(tail: &mut afd_dragonfly::Subscription) -> Option<Instant> {
     let deadline = Instant::now() + SETTLE_DEADLINE;
@@ -98,11 +138,7 @@ async fn test_chat_streams_before_sandbox_ready() {
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = tokio_util::sync::CancellationToken::new();
     let ready = Arc::default();
-    let engine = Stalled {
-        inner: UnsandboxedEngine::new(sandboxes.path().to_owned())
-            .expect("a debug build permits the unsandboxed engine"),
-        ready: Arc::clone(&ready),
-    };
+    let engine = Stalled::new(sandboxes.path(), &ready);
     let runner = tokio::spawn(rust_runner(
         &run,
         home.path(),
@@ -116,24 +152,8 @@ async fn test_chat_streams_before_sandbox_ready() {
         settled_status(&run).await.as_deref(),
         Some(LEASE_STATUS_REPORTED)
     );
-    let ready = ready
-        .lock()
-        .expect("nothing panics holding the clock")
-        .expect("the turn's tool call built a sandbox");
-    assert!(
-        streamed < ready,
-        "the first chunk streamed {:?} before the sandbox was ready",
-        ready.saturating_duration_since(streamed)
-    );
-    let completed = later
-        .iter()
-        .find(|frame| frame.get("kind").and_then(serde_json::Value::as_str) == Some(TOOL_COMPLETED))
-        .and_then(|frame| frame.get("status").cloned());
-    assert_eq!(
-        completed,
-        serde_json::to_value(ToolCallStatus::Succeeded).ok(),
-        "the tool ran in the sandbox once it was ready: {later:?}"
-    );
+    assert_streamed_first(streamed, &ready);
+    assert_tool_succeeded(&later);
     let status = crate::reads::event_column(&run, &run.event_id, "status").await;
     assert_eq!(status.as_deref(), Some(PROCESSED), "the turn was processed");
 
