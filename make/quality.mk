@@ -38,7 +38,7 @@ lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsrs)
 lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsrs..."
 	@cd cli && bun run lint
-	@echo "→ [agentsfleet] Source rules: one env spelling, escapes in the palette, detail tables, live citations..."
+	@echo "→ [agentsfleet] Source rules: one env spelling, escapes in the palette, detail tables..."
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source.py
 	@echo "✓ [agentsfleet] Lint passed"
@@ -79,18 +79,6 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
 	  cargo clippy --workspace --all-targets --all-features -- -D warnings
-	@# The configuration that ships: each binary, no features. Every other lane
-	@# turns `openapi` and `test-util` on, so an import that exists only for an
-	@# annotation broke the production build once without any lane noticing.
-	@# One invocation per binary, as the deploy builds them: a single invocation
-	@# unifies features across both dependency graphs and hides a feature only
-	@# the other binary turns on. The release cfg on Linux, where a name used only
-	@# under `cfg(debug_assertions)` turns unused, is proved by CI's
-	@# `build-daemon-musl` job, which builds both with the `dist` profile.
-	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
-	  cargo check -p agentsfleetd --bin agentsfleetd
-	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleet-runner (no features)" -- \
-	  cargo check -p agentsfleet_runner --bin agentsfleet-runner
 
 SHELLCHECK ?= shellcheck
 
@@ -112,7 +100,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-deploy-safety bench-datastore-self-test  ## Run all linters + quality gates
+lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-deploy-safety  ## Run all linters + quality gates
 	@# A test calls the code it proves; a test that reads a repository file
 	@# asserts on text instead (docs/architecture/testing.md).
 	@echo "→ [tests] No test reads a repository file..."
@@ -125,10 +113,8 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
 	@$(ACTIONLINT) .github/workflows/*.yml
 	@# actionlint validates the YAML and the `run:` shell; it has no opinion on
-	@# whether a pin's runtime still exists or whether its ref can move. That is
-	@# this script's half, and it rides the same target because both answer one
-	@# question: will these workflows still work tomorrow.
-	@echo "→ [gh-actions] Checking action pins — runtimes and mutable refs..."
+	@# whether a pin's ref can move. That is this script's half.
+	@echo "→ [gh-actions] Checking action pins for mutable refs..."
 	@bash scripts/checks/gh-actions-runtime.sh
 	@# The builder pin lives in its own script so it can have its own tests.
 	@# A gate with no self-test can pass
@@ -136,11 +122,6 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@echo "→ [gh-actions] Builder-image tag is derived, not pasted..."
 	@bash scripts/check_builder_pin_test.sh
 	@bash scripts/check_builder_pin.sh
-	@# The integration lane CI runs resets, then migrates. Under `make -j` that
-	@# order holds only as an edge in make's graph, and the bench lanes' guard
-	@# on whose rig they may reset rides the same pair.
-	@echo "→ [gh-actions] Reset runs before migrate, and only on an owned rig..."
-	@bash scripts/make_reset_order_test.sh
 	@# What the deploy workflows run and in which order, which actionlint
 	@# cannot see: the collector app exists before `flyctl secrets set`
 	@# addresses it, Discord routes by stage, the connector's signing secret
@@ -192,20 +173,20 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 PLAYBOOK_TEST_SCRUB = -u ENV -u STAGE -u ACTION -u PUSH -u REVISION \
   -u VAULT -u VAULT_DEV -u VAULT_PROD -u RUNNER_ITEM -u AGENTSFLEET_API_URL
 
-# Split by what a change can actually break. The reference-integrity and
-# README-parity halves are cheap greps over the tree and are the ONLY things a
-# Makefile or workflow edit can invalidate (a make target citing a playbook
-# path). The shellcheck + regression-test halves cost minutes and can only be
-# invalidated by editing playbooks/ itself. .githooks/pre-commit routes
-# accordingly, so a one-line make/*.mk change stops paying for 21 test suites.
-check-playbooks: check-playbooks-refs check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + regression tests + reference integrity + README/tree parity
+# Split by what a change can actually break. The reference-integrity half is a
+# cheap grep over the tree and is the ONLY thing a Makefile or workflow edit can
+# invalidate (a make target citing a playbook path). The shellcheck +
+# regression-test halves cost minutes and can only be invalidated by editing
+# playbooks/ itself. .githooks/pre-commit routes accordingly, so a one-line
+# make/*.mk change stops paying for 21 test suites.
+check-playbooks: check-playbooks-refs check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + regression tests + reference integrity
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x
 	@echo "→ [playbooks] focused shell regression tests (bounded parallel)..."
 	@PLAYBOOK_TEST_SCRUB="$(PLAYBOOK_TEST_SCRUB)" bash scripts/run-playbook-tests.sh
 
-check-playbooks-refs:  ## playbooks/ reference integrity + README parity only (cheap; what a Makefile edit can break)
+check-playbooks-refs:  ## playbooks/ reference integrity only (cheap; what a Makefile edit can break)
 	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
 	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
 	@# themselves). Excludes docs/v2/: specs are historical records that
@@ -219,17 +200,3 @@ check-playbooks-refs:  ## playbooks/ reference integrity + README parity only (c
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] reference integrity failed"; exit 1; fi; \
 	echo "✓ [playbooks] all references resolve"
-	@echo "→ [playbooks] README ↔ tree parity..."
-	@ACTUAL=$$(mktemp); DOCUMENTED=$$(mktemp); \
-	trap 'rm -f "$$ACTUAL" "$$DOCUMENTED"' EXIT; \
-	find playbooks/founding playbooks/deploy playbooks/operations -type f -name '001_playbook.md' \
-	  -exec dirname {} \; | sed 's|^playbooks/||' | sort > "$$ACTUAL"; \
-	sed -n '/<!-- playbook-inventory:start -->/,/<!-- playbook-inventory:end -->/p' \
-	  playbooks/README.md | sed -n 's/^- `\([^`]*\)`.*/\1/p' | sort > "$$DOCUMENTED"; \
-	if [ ! -s "$$DOCUMENTED" ]; then echo "✗ [playbooks] README inventory is empty"; exit 1; fi; \
-	if ! cmp -s "$$ACTUAL" "$$DOCUMENTED"; then \
-	  echo "✗ [playbooks] README inventory differs from disk"; \
-	  diff -u "$$DOCUMENTED" "$$ACTUAL" || true; \
-	  exit 1; \
-	fi; \
-	echo "✓ [playbooks] README inventory exactly matches disk"

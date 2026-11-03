@@ -22,7 +22,6 @@ sys.dont_write_bytecode = True
 import check_source_lib as lib
 
 CLI_SRC = "cli/src"
-CLI_TEST = "cli/test"
 ENV_MODULE = "cli/src/constants/env.ts"
 PALETTE = "cli/src/output/palette.ts"
 COMMANDS = "cli/src/commands"
@@ -38,10 +37,6 @@ COLOR_256 = re.compile(r"38;5;\d+")
 # list goes through printEntityTable so its columns come from one order.
 DETAIL_TABLE_MODULES = frozenset({"api_key.ts", "connector.ts", "tenant.ts"})
 DETAIL_TABLE_CALL = "output.printTable("
-
-# A path a comment cites: at least one directory, then a file with an extension.
-CITED_PATH = re.compile(r"(?<![\w./:-])(?:[\w-]+/)+[\w.-]*\w(?P<extension>\.[a-z]{1,4})(?![\w/])")
-COMMENT_LINE = re.compile(r"^\s*(?://|/\*|\*)")
 
 
 def finding(root: Path, path: Path, text: str, offset: int, rule: str, message: str) -> lib.Finding:
@@ -89,21 +84,6 @@ def check_detail_tables(root: Path) -> list[lib.Finding]:
     return found
 
 
-def check_cited_paths(root: Path) -> list[lib.Finding]:
-    tracked = {Path(path).suffix for path in lib.tracked_files(root)}
-    found = []
-    for base in (CLI_SRC, CLI_TEST):
-        for path in lib.source_files(root / base, (".ts",), include_tests=True):
-            lines = path.read_text(encoding="utf-8").splitlines()
-            for number, line in enumerate(lines, start=1):
-                if not COMMENT_LINE.match(line):
-                    continue
-                for match in CITED_PATH.finditer(line):
-                    if match["extension"] not in tracked:
-                        found.append(lib.Finding(lib.relative(root, path), number, "cli-retired-citation", f"`{match.group(0)}` cites a file in a language the repository no longer has"))
-    return found
-
-
 def lint(root: Path) -> list[lib.Finding]:
     paths = lib.source_files(root / CLI_SRC, (".ts", ".js"))
     raw = {path: path.read_text(encoding="utf-8") for path in paths}
@@ -112,7 +92,6 @@ def lint(root: Path) -> list[lib.Finding]:
         check_env_spelling(root, code)
         + check_raw_escapes(root, raw)
         + check_detail_tables(root)
-        + check_cited_paths(root)
     )
 
 

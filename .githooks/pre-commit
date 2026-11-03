@@ -22,7 +22,7 @@
 #   - check-playbooks          (playbooks/*, deploy/* — the full gate: static
 #                               analysis + the 21 regression suites + refs)
 #   - check-playbooks-refs     (.github/workflows/*, Makefile, make/*.mk —
-#                               ref integrity + README parity only, ~1s. A
+#                               ref integrity only, ~1s. A
 #                               Makefile edit can re-point a playbooks/ path
 #                               but cannot change a playbook's behaviour.)
 #
@@ -167,7 +167,7 @@ while IFS= read -r f; do
       needs_check_documentation=1
       # A workflow / Makefile / make-fragment change can re-point or break a
       # playbooks/ REFERENCE (deploy.yml runs playbook gates at deploy time) —
-      # so the reference + README-parity checks fire. It cannot break a
+      # so the reference check fires. It cannot break a
       # playbook's BEHAVIOUR, so the shellcheck + 21-suite regression half does
       # not: that half is reachable only by editing playbooks/ itself, and
       # charging it to every one-line Makefile edit cost ~27s against the ~1s

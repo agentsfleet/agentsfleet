@@ -100,6 +100,9 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/afr_agent/Cargo.toml` | EDIT | tokio's `time` feature: the router times a sandbox wait on tokio's clock |
 | `scripts/check_architecture_doc*` (seven files) | DELETE | The architecture-doc gate and its schema-layout check go |
 | `make/{check-safety-gates,quality}.mk`, `.github/workflows/lint.yml` | EDIT | `check-architecture-doc` leaves `lint-all` and CI's lint job |
+| `make/{quality,bench,dry,build}.mk`, `Makefile`, `.githooks/pre-commit`, `playbooks/README.md`, `playbooks/operations/ci_rust_images/001_playbook.md` | EDIT | The gate audit's cuts: targets and recipes that fail the owner's bar |
+| `scripts/{make_reset_order_test.sh,bench_datastore.py,bench_datastore_test.py,route_tables.py}` | DELETE | Scripts only those cut targets ran |
+| `scripts/{check_documentation_parity,check_cli_source,check_app_source,check_tests_call_code}*.py`, `scripts/checks/gh-actions-runtime.sh` | EDIT | Hand-kept copies, retired-name tombstones and a call-shape test leave the checkers |
 | `docs/architecture/postgres_schemas.md` | EDIT | Its tables stop copying each column list from `schema/`; each table's purpose and design notes stay |
 | `docs/architecture/datastore_scaling.md`, `rustd/crates/afd_db/tests/integration_migrate/shape.rs` | EDIT | Their mentions of the deleted gate |
 | `rustd/crates/afr_supervisor/src/heartbeat/closing_tests.rs` | EDIT | A park the keeper refuses is handed back to the test, which counts only the keeper's destroys |
@@ -424,6 +427,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 
   Once deployed, `lease_completed`'s `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` give the production split.
 - **The architecture-doc gate** — Indy asked whether `check_architecture_doc*.sh` was worth running. The repository wrote it in M51_001, not orly, and it was slow: shell loops spawning a pipeline per markdown file. Its schema-layout check only kept `postgres_schemas.md`'s column lists, a hand-kept copy of `schema/*.sql`, in step with the SQL. So the gate goes, and so does the copy: the page keeps each table's purpose and design notes, and `schema/` alone holds columns. `afd_db`'s migration shape test still fails on any unplanned column change.
+- **Gate audit (Nov 03)** — Opus at high effort marked every script and make target by the test-audit bar. Most catch a real failure and stay. Cut: the no-feature `cargo check --bin` pair, which CI's musl build already proves, at 9–10 s a lint; the `LintAllWiring` call-shape test; `make_reset_order_test.sh`, which guards only the local compose; `bench-datastore`, which grades M192 results no lane writes; `dry-app-rustd`; the `push`, `push-dev`, `build-dev` and `_docker_login` targets for mutable tags nothing deploys from; the route-table and README inventory parities, both hand-kept copies; and three retired-name tombstone rules. The sampler's direct-I/O mode and three local-only checks CI never runs wait for Indy.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
@@ -450,3 +454,5 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 12:07 PM): "Nuke the scripts" — then, at 12:12 PM, on the scope: "Nuke shell, keep schema (Recommended)" — context: `check-architecture-doc`'s shell scripts go, its schema-layout check stays as `check-schema-doc`, and Indy approved the `.github/workflows/lint.yml` edit that follows.
 
 > Owner (Indy, Nov 03, 2026 12:15 PM): "this seems pointless and absurd unless we have vaule or solves problems for us" — context: the schema-layout check, which guarded only the copied column lists; both go.
+
+> Owner (Indy, Nov 03, 2026 12:18 PM): "yes cleanup the targets, and the unused script/*.* files any docs/architechture/* files as well." and, at 12:38 PM, "well just do the scripts here with opus 5.5 high" — context: the gate audit and its cuts, in this Pull Request.

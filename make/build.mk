@@ -1,8 +1,8 @@
 # =============================================================================
-# BUILD & REGISTRY — container builds and pushes
+# BUILD — container builds and version manifests
 # =============================================================================
 
-.PHONY: build build-dev push-dev push _docker_login _dist-daemons _builder-image sync-version check-version toolbox-image
+.PHONY: build _dist-daemons _builder-image sync-version check-version toolbox-image
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 # The commit, computed once and EXPORTED. It tags the image below, and
@@ -18,7 +18,6 @@ DOCKER_REGISTRY ?= ghcr.io
 IMAGE_REPO ?= $(DOCKER_REGISTRY)/agentsfleet/$(SERVICE_NAME)
 _IMAGE := $(IMAGE_REPO)
 PLATFORMS ?= linux/amd64,linux/arm64
-_DEV_TAGS := --tag $(_IMAGE):$(VERSION)-dev --tag $(_IMAGE):$(VERSION)-dev-$(GIT_COMMIT) --tag $(_IMAGE):dev-latest
 _PROD_TAGS := --tag $(_IMAGE):$(VERSION) --tag $(_IMAGE):$(VERSION)-$(GIT_COMMIT) --tag $(_IMAGE):latest
 
 # Internal: shared buildx command
@@ -99,20 +98,6 @@ _dist-daemons: _builder-image
 build: _dist-daemons ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
 
-# One Dockerfile, two tag sets. `Dockerfile.dev` has not existed for some time,
-# so this target could only ever fail — while `push-dev` beneath it built the
-# same image from `Dockerfile` and worked. Development and production differ in
-# what they are TAGGED and where they deploy, never in what is in the image;
-# a second Dockerfile would be a second thing to keep true.
-build-dev: _dist-daemons  ## Build development container (multi-arch)
-	$(call _buildx,Dockerfile,$(_DEV_TAGS),)
-
-push: _docker_login ## Push production image (expects prebuilt binaries in dist/)
-	$(call _buildx,Dockerfile,$(_PROD_TAGS),--push)
-
-push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
-	$(call _buildx,Dockerfile,$(_DEV_TAGS),--push)
-
 sync-version: ## Propagate VERSION → rustd/Cargo.toml + cli/package.json (cli.js reads pkg.version at runtime)
 	@set -e; \
 	V="$$(cat VERSION)"; \
@@ -129,15 +114,6 @@ check-version: ## Verify cli/package.json and rustd/Cargo.toml match VERSION
 	grep -q "^version = \"$$V\"" rustd/Cargo.toml \
 		|| { printf 'DRIFT  rustd/Cargo.toml [workspace.package]: %s\n' "$$(grep -m1 '^version =' rustd/Cargo.toml | xargs)"; FAIL=1; }; \
 	[ "$$FAIL" = "0" ] && echo "✓ all versions match $$V" || { echo "Run: make sync-version"; exit 1; }
-
-_docker_login:
-	@if [ -n "$(GITHUB_TOKEN)" ]; then \
-		echo "$(GITHUB_TOKEN)" | docker login ghcr.io -u "$(GITHUB_ACTOR)" --password-stdin; \
-	elif [ -n "$(DOCKER_USER)" ] && [ -n "$(DOCKER_PASS)" ]; then \
-		echo "$(DOCKER_PASS)" | docker login $(DOCKER_REGISTRY) -u "$(DOCKER_USER)" --password-stdin; \
-	else \
-		echo "Error: No credentials. Set GITHUB_TOKEN or DOCKER_USER/DOCKER_PASS." >&2; exit 1; \
-	fi
 
 # The runner's toolbox: the read-only root every sandbox runs on. Reproducible
 # from scripts/toolbox/manifest.txt, so the file name (its SHA-256) names the

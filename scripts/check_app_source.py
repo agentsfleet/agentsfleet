@@ -56,7 +56,6 @@ CLIENT_CREDENTIAL = {
 
 # --- Timestamps render through Time -----------------------------------------
 DATE_LABEL_HOME = f"{APP}/app/(dashboard)/settings/billing/lib/charges.ts"
-RETIRED_FORMATTER = re.compile(r"\bformatDate\b")
 LOCALE_DATE = re.compile(r"toLocale(?:Date|Time)?String|Intl\.RelativeTimeFormat")
 INTL_DATE = re.compile(r"Intl\.DateTimeFormat")
 TIMEZONE_READ = "resolvedOptions"
@@ -155,9 +154,6 @@ def check_date_formatters(root: Path) -> list[lib.Finding]:
     found = []
     for path in production_files(root):
         code = lib.blank_js_comments(path.read_text(encoding="utf-8"))
-        retired = RETIRED_FORMATTER.search(code)
-        if retired:
-            found.append(finding(root, path, code, retired.start(), "app-date-formatter", "formatDate was deleted; render through Time"))
         if lib.relative(root, path) == DATE_LABEL_HOME:
             continue
         for number, line in enumerate(code.splitlines(), start=1):

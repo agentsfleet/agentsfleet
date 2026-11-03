@@ -21,7 +21,6 @@ GLYPH_TS = '// Reads AGENTSFLEET_API_URL in prose only.\nexport const live = () 
 FORMAT_TS = 'import { API_URL_ENV } from "../constants/env.ts";\nexport const heading = (t: string) => palette.pulse(t) + API_URL_ENV;\n'
 CONNECTOR_TS = "yield* output.printTable(rows);\n"
 LIST_TS = "yield* printEntityTable(spec, rows);\n"
-CITING_TEST = "// See rustd/crates/afd_core/src/env.rs for the knob.\n"
 
 
 def clean_tree() -> dict[str, str]:
@@ -32,8 +31,6 @@ def clean_tree() -> dict[str, str]:
         "cli/src/output/format.ts": FORMAT_TS,
         f"{checker.COMMANDS}/connector.ts": CONNECTOR_TS,
         f"{checker.COMMANDS}/fleet.ts": LIST_TS,
-        "cli/test/env.unit.test.ts": CITING_TEST,
-        "rustd/crates/afd_core/src/env.rs": "pub const LOG_LEVEL_VAR: &str = \"AGENTSFLEET_LOG_LEVEL\";\n",
     }
 
 
@@ -61,7 +58,6 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
             "cli-env-spelling": ("cli/src/lib/api.ts", 'const url = process.env["AGENTSFLEET_API_URL"];\n'),
             "cli-raw-escape": ("cli/src/lib/spinner.ts", 'const red = "\\x1b[31m";\n'),
             "cli-detail-table": (f"{checker.COMMANDS}/fleet.ts", "yield* output.printTable(rows);\n"),
-            "cli-retired-citation": ("cli/test/old.unit.test.ts", "// mirrors src/fleet/lease.zig\n"),
         }
         for rule, (path, text) in cases.items():
             with self.subTest(rule=rule):
@@ -90,10 +86,6 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
     def test_a_name_inside_a_comment_or_a_longer_name_is_not(self) -> None:
         text = "/* set AGENTSFLEET_API_URL */\nconst other = env.AGENTSFLEET_API_URL_OVERRIDE;\n"
         code, output = lint_tree(with_file("cli/src/lib/api.ts", text))
-        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
-
-    def test_a_citation_without_a_directory_is_out_of_reach(self) -> None:
-        code, output = lint_tree(with_file("cli/test/old.unit.test.ts", "// once lived in lease.zig\n"))
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
 
 
