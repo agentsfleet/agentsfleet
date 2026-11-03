@@ -3,10 +3,14 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_billing::biller::Attribution;
 use afd_billing::rates::Posture;
+use afd_billing::{
+    Nanos,
+    biller::{Account, Attribution, Settlement, WorkKey},
+    price::RatedLine,
+};
 use afd_core::test_util::trace::Capture;
-use afd_wire::usage::{DAEMON_SEQ_BASE, RequestUsage};
+use afd_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RUNNER_SEQ_MAX, RequestUsage, UsageLine};
 use tracing::Level;
 
 use super::{EVENT_TOKENS_UNPRICED, Pricing, Slice, charged};
@@ -92,6 +96,90 @@ async fn requests_keep_their_numbers_and_runtime_takes_the_daemons() {
         afd_billing::RUN_NANOS_PER_SEC,
         "one second of runtime is the whole self-managed charge"
     );
+}
+
+/// Existing coding usage remains intact at both runtime boundaries. Exhausted
+/// or malformed counters cannot enter the paid-decision sequence namespace.
+#[tokio::test]
+async fn coding_and_runtime_keep_their_ranges_and_refuse_runtime_exhaustion() {
+    let pricing = pricing(Posture::SelfManaged).await;
+    let last = i64::from(DAEMON_SEQ_MAX - DAEMON_SEQ_BASE);
+    for (ordinal, expected_seq) in [(0, DAEMON_SEQ_BASE), (last, DAEMON_SEQ_MAX)] {
+        let actual = pricing
+            .settlement(
+                &test_dead::id(4),
+                slice(ONE_SECOND_MS, ordinal),
+                &[request(RUNNER_SEQ_MAX)],
+            )
+            .expect("coding and runtime remain independently numbered")
+            .expect("both writers produce a line");
+        assert_eq!(actual, expected_boundary(expected_seq));
+    }
+    for ordinal in [-1, last + 1, i64::from(u32::MAX), i64::MAX] {
+        let failure = pricing
+            .settlement(
+                &test_dead::id(4),
+                slice(ONE_SECOND_MS, ordinal),
+                &[request(RUNNER_SEQ_MAX)],
+            )
+            .expect_err("runtime cannot reuse a decision sequence or wrap");
+        assert_eq!(failure.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+        assert!(!failure.is_config_permanent());
+        assert_eq!(
+            pricing
+                .settlement(&test_dead::id(4), slice(0, ordinal), &[])
+                .expect("an empty pass allocates no sequence"),
+            None
+        );
+    }
+}
+
+fn expected_boundary(runtime_seq: u32) -> Settlement {
+    let uncharged = |usage| RatedLine {
+        usage,
+        price: None,
+        charged: Nanos::ZERO,
+        unpriced_tokens: 0,
+    };
+    let coding = uncharged(UsageLine {
+        seq: RUNNER_SEQ_MAX,
+        at: test_dead::AT,
+        input_tokens: 25_000,
+        cached_input_tokens: 2_500,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: 4_000,
+        runtime_ms: 0,
+    });
+    let mut runtime = uncharged(UsageLine {
+        seq: runtime_seq,
+        at: test_dead::AT,
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: 0,
+        runtime_ms: 1_000,
+    });
+    runtime.charged = Nanos::from_i64(afd_billing::RUN_NANOS_PER_SEC);
+    Settlement {
+        work: WorkKey::FleetLease(test_dead::id(4)),
+        payer: Account {
+            tenant: test_dead::id(2),
+            workspace: test_dead::id(3),
+        },
+        attribution: Attribution::Fleet {
+            fleet: test_dead::id(1),
+            fleet_name: test_dead::id(1).as_str().to_owned(),
+            event_id: "1767225600000-1".to_owned(),
+        },
+        provider: "anthropic".to_owned(),
+        model: "claude-opus-5-5".to_owned(),
+        posture: Posture::SelfManaged,
+        lines: vec![coding, runtime],
+    }
 }
 
 /// A line of a purged fleet still logs, naming the fleet by its identifier:

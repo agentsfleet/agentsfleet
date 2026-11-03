@@ -197,22 +197,25 @@ There are no plan tiers in the cost function. The `Rater` in §4 takes no plan p
 
 A fleet run is charged for what it uses, and only that: no event costs anything to receive. The run's usage is logged inside the lease's own transactions and the money moves afterwards, through the `Biller` every product path holds (§11).
 
-> ```
->  ONE event → the fleet runs in a sandbox, renewing as it works:
->    issue ─renew─ renew ─renew─ … ─report─►   each step carries the runner's request lines:
->      request line = one provider request, numbered by the runner (seq < 2^31)
->      runtime line = run time since the lease's cursor, numbered by the daemon (seq >= 2^31)
->      each line priced by the Rater: run fee (both postures) + tokens (platform), rounded UP
->
->    inside the lease's transaction (fenced; a lost or capped pass writes nothing):
->      ① move the deadlines or flip the lease to reported, advance the lease's cursor
->      ② log every line in billing.usage_lines (work = the lease), once per (work, seq)
->    after commit, through Arc<dyn Biller>:
->      issue  → reserve(floor)               the lease's first hold
->      renew  → reserve(spent + floor), settle(line)
->      report → settle(line), release(Completed | Failed)
->    sweeper:billing settles any line left unsettled and releases holds of leases that ended
-> ```
+```text
+ ONE event → the fleet runs in a sandbox, renewing as it works:
+   issue ─renew─ renew ─renew─ … ─report─►   each step carries the runner's request lines:
+     request line = one provider request, numbered by the runner (seq < 2^31)
+     runtime line = run time since the lease's cursor (2^31 <= seq < 3 * 2^30)
+     native decisions reserve the upper quarter (seq >= 3 * 2^30)
+     each line priced by the Rater: run fee (both postures) + tokens (platform), rounded UP
+
+   inside the lease's transaction (fenced; a lost or capped pass writes nothing):
+     ① move the deadlines or flip the lease to reported, advance the lease's cursor
+     ② log every line in billing.usage_lines (work = the lease), once per (work, seq)
+   after commit, through Arc<dyn Biller>:
+     issue  → reserve(floor)               the lease's first hold
+     renew  → reserve(spent + floor), settle(line)
+     report → settle(line), release(Completed | Failed)
+   sweeper:billing settles any line left unsettled and releases holds of leases that ended
+```
+
+The decision range is reserved; physical-call allocation and receipt accounting remain pending under the [native decision billing design](goal_evaluation.md#native-billing-integration).
 
 | Step | What moves | Where |
 |---|---|---|

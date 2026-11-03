@@ -380,7 +380,7 @@ Preserve local work while incorporating any verified remote changes, then test t
 
 If a person updates that branch from a laptop, fetch those changes before preparing the next patch.
 Reject an update if the remote head changed after the publication precondition was established.
-The trusted publication path must enforce that precondition without overwriting another writer's work; choosing the transport remains detailed design work.
+The approved [existing-PR publication design](durable_tasks.md#existing-pull-request-publication) uses `createCommitOnBranch` with `expectedHeadOid` and reconciles uncertain outcomes.
 
 Use current repository grants and narrowly scoped authority for the recorded branch and draft on every continuation.
 If the evidence, repository or intended change falls outside the approved proposal, refresh the proposal before patch work.
@@ -444,7 +444,7 @@ After a crash, show the last completed generation and reconcile effects newer th
 
 Do not expire a live DT's only referenced checkpoint through idle-cache eviction.
 Deletion fences new access before asynchronous object cleanup; unreferenced uploads need bounded orphan collection.
-The proposed limits and key protocol below are for signoff; they have not been benchmarked or deployed.
+The limits and key protocol below are approved initial implementation targets; they have not been benchmarked or deployed.
 
 #### Large repositories and incremental checkpoints
 
@@ -453,7 +453,7 @@ Separate repository acquisition, private checkout materialization, dependency se
 Large history, large tracked files, Git LFS content and generated dependencies have different costs.
 
 Six gigabytes was Indy's example, not a required repository size or approved maximum.
-All size checks use measured bytes and declared capacity; the proposed storage caps below are independent choices awaiting signoff.
+All size checks use measured bytes and declared capacity; the approved storage caps below are independent resource ceilings.
 Include smaller repositories and capacity-limit cases in acceptance, alongside the large-repository fixture.
 
 The current host mirror fetches missing Git objects on reuse rather than cloning every lease.

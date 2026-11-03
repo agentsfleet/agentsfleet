@@ -184,6 +184,7 @@ async fn log_last_slice(
         .bind(afd_billing::nanos::MS_PER_SEC)
         .bind(afd_billing::sql::work::FLEET_LEASE)
         .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+        .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
         .fetch_optional(&mut *transaction)
         .await
         .map_err(query(CONTEXT_EXPIRED))?

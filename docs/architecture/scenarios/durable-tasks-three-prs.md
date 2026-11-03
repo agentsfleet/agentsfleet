@@ -89,19 +89,21 @@ An ambiguous `cancel that` asks which task rather than guessing from the newest 
 ### Code and API path for picture 1
 
 Paths below are relative to `rustd/crates/` unless prefixed with `cli/` or `ui/`.
-Existing means inspected at this worktree's source baseline; proposed means a type or behavior to implement under M236.
+The table separates current foundations from task-runtime wiring still to implement.
 
-| Boundary | Existing source/type | Proposed M236 addition |
+| Boundary | Current source/type | Remaining M236 integration |
 |---|---|---|
 | Caller admission | `afd_api_tenant/src/handler/fleet/message_steer/mod.rs`, `SteerRequest`, `SteerAccepted` | Preserve source admission and optional validated work selection; ordinary chat syntax stays unchanged. |
 | Saved acceptance | `afd_admission/src/admission.rs`, `Admission`, `Producer`, `Reply`; `admit.rs` | Nullable task/item binding, `Producer::TaskContinuation`, durable single-use input claims. |
 | Fleet serialization | `afd_fleet/src/lease/claim.rs`, `Leases`; `lease/pull/mod.rs`, `Plane` | Keep the fleet-slot fence and queue ownership; attach only the selected task context. |
 | Agent entry | `afr_agent/src/engine/mod.rs`, `AgentRun`, `AgentEngine`; `loop/mod.rs`, `Loop` | Supply `TaskContext` and the safe input boundary through existing engine/lease verbs. |
-| Decision call | Existing `afr_providers` connection/transport ownership and `afd_inference/src/transport.rs` | `afr_providers/src/decision/`: trait `DecisionEvaluator`, `DecisionClient` with four native wire adapters; agent policy stays in `afr_agent/src/decision/`. |
-| Native task creation | Existing leased mutation/authentication pattern | Planned task binding handler under `afd_api_runner/src/handler/runner/`; `afd_fleet/src/task/admit/mod.rs`, struct `Tasks`. |
+| Decision call | `afr_providers/src/decision/`: trait `DecisionEvaluator`, configured `DecisionClient` and four native wire adapters | Call the client from agent policy in `afr_agent/src/decision/`, with native reservations and usage receipts. |
+| Native task creation | `afd_fleet/src/task/mod.rs`: struct `Tasks`, trait `TaskLifecycle`, native binding and control | Task binding handler under `afd_api_runner/src/handler/runner/` and task-aware lease execution. |
 | Shared wire | Existing `afd_wire` lease/report types | `afd_wire/src/task/`: `TaskContext`, `TaskBindingRequest`, `TaskBindingResponse`, `TaskInputReceipt`. |
 
-`DecisionEvaluator` selects the lease's frozen runner profile; [decision models](../goal_evaluation.md#one-trait-inside-the-existing-provider-layer) owns its adapters and capabilities.
+`DecisionClient` uses the lease's frozen runner profile; `DecisionEvaluator` evaluates through that configured client.
+[Decision models](../goal_evaluation.md#one-trait-inside-the-existing-provider-layer) owns its adapters and capabilities.
+
 `Tasks` owns database mutations; no generic second scheduler or plugin-selected workflow engine is proposed.
 Existing `LeaseVerbs` carries native task calls; do not add a competing task-runtime interface to agent tools.
 
@@ -176,13 +178,9 @@ It returns the confirmed receipt or an explicit uncertainty failure; no separate
 The individual effect read returns confirmed, refused or uncertain status; it does not invent publication success.
 Human advancement from A to another head rejects the prepared write against A.
 
-`POST L/tasks/checkpoints` reserves the base/incremental plan and writer pin.
-UUID-identified page, object and upload requests bind the complete manifest and immutable ciphertext before signed transfer.
-The supervisor encrypts chunks and uses exact-object signed URLs with explicit refresh and pin renewal.
-
-`PATCH L/tasks/checkpoints/{checkpoint_id}` publishes only a complete compatible manifest with verified base custody.
-Restore authorization acquires one reader pin and returns the ordered page identities; page GETs supply bounded file/chunk/history mappings.
-The daemon's R2 credential and master key never enter the sandbox.
+T1's checkpoint reserves a verified base, changed chunks and a writer pin through `POST L/tasks/checkpoints`.
+Its publication and restore follow the canonical [checkpoint APIs](../durable_tasks.md#proposed-native-api) and [storage protocol](../sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
+The daemon's R2 credential and master key never enter T1's sandbox.
 
 Repository size is discovered and checked against capacity; no six-GB assumption enters the clone, restore or manifest identity.
 An initial retained base can be large; later checkpoints upload only new chunk bytes plus metadata.
@@ -288,9 +286,9 @@ It does not define another implementation route or duplicate the provider policy
 | Decision-provider question bodies and uncertainty | Concrete example in [goal evaluation](../goal_evaluation.md#concrete-repair-decision-example); no live evaluation result claimed. |
 | Large repository and R2 transfers | Incremental encrypted chunks and retained base; actual repository size unknown; capacity/throughput tests still required. |
 | Crash/unknown effect/input replay | Defined negative boundaries; proposed integration tests must implement and prove them. |
-| Progress in CLI/browser | Required decision and scan/upload/verify states; source implementation and browser/CLI tests remain pending. |
+| Progress in CLI/browser | Browser task reads, saved criteria and reconnect refresh are implemented; decision/transfer progress and CLI integration remain pending. |
 | Astra review | Extra-high Astra review verified all four material findings corrected, with no material residual finding. Final dispositions live in M236 Discovery; runtime acceptance remains unrun. |
-| Runtime implementation | Approved on November 3, 2026; opening baseline and implementation work now begin. |
+| Runtime implementation | Foundations are implemented; the [acceptance ledger](../../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md#owner-work-item-status) records completed components and remaining work. |
 | Live acceptance | Not run; requires authorized PRs, credentials, task-capable runner and controlled fixtures. |
 
 ## Why the proposal allows 16 unfinished tasks

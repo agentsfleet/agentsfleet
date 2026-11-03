@@ -13,7 +13,7 @@
 )]
 
 use crate::support::Fixtures;
-use afd_db::test_util::ModelSeed;
+use afd_db::test_util::{ModelSeed, mint_id};
 
 /// The fixture model routes through Anthropic Messages.
 const MESSAGES_INFERENCE: &str =
@@ -25,15 +25,6 @@ INSERT INTO billing.wallets (tenant_id, balance_nanos, exhausted_at, created_at,
 VALUES ($1::uuid, $2, NULL, now(), now())
 ON CONFLICT (tenant_id) DO UPDATE
   SET balance_nanos = EXCLUDED.balance_nanos, updated_at = now()";
-
-/// The catalogue row a seeded rate is written under.
-///
-/// Fixed and SHARED. These suites price exactly one `(provider, model)` pair,
-/// so the `ON CONFLICT (provider, model_name)` arm always resolves to THIS
-/// row: Postgres tests the arbiter index before attempting the insert, so the
-/// primary key never enters into it and one shared database is safe. A suite
-/// that prices a SECOND pair needs a second constant.
-const FIXTURE_MODEL_ROW: &str = "0195b4ba-8d3a-7f01-8abc-000000000001";
 
 /// Per-million-token rates a seeded catalogue row carries.
 ///
@@ -74,21 +65,19 @@ impl Fixtures {
     /// test naming the credits refusal seeds past it.
     pub(crate) async fn seed_model_rate(&self, provider: &str, model: &str) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        ModelSeed::new(
-            FIXTURE_MODEL_ROW,
-            provider,
-            model,
-            FIXTURE_CONTEXT_CAP_TOKENS,
-        )
-        .rates(
-            FIXTURE_INPUT_NANOS_PER_MTOK,
-            FIXTURE_CACHED_INPUT_NANOS_PER_MTOK,
-            FIXTURE_OUTPUT_NANOS_PER_MTOK,
-        )
-        .inference(MESSAGES_INFERENCE)
-        .insert(&mut *connection)
-        .await
-        .expect("the catalogue seed must run");
+        // Independent candidate identifiers let the provider/model arbiter
+        // select an existing row even when another seed inserts it first.
+        let candidate = mint_id();
+        ModelSeed::new(&candidate, provider, model, FIXTURE_CONTEXT_CAP_TOKENS)
+            .rates(
+                FIXTURE_INPUT_NANOS_PER_MTOK,
+                FIXTURE_CACHED_INPUT_NANOS_PER_MTOK,
+                FIXTURE_OUTPUT_NANOS_PER_MTOK,
+            )
+            .inference(MESSAGES_INFERENCE)
+            .insert(&mut *connection)
+            .await
+            .expect("the catalogue seed must run");
     }
 
     /// A tenant's current balance, or `None` when it has no wallet row.

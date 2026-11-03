@@ -238,7 +238,9 @@ UI review and CLI setup output show owner-editable success criteria under `What 
 Show the saved setup revision, current revision, question changes and the revision each DT has accepted.
 Use the existing numeric fleet revision and history rather than creating another question-version counter.
 
-The task view shows its accepted question text, criteria, latest assessment and assessed evidence identity.
+The browser task view shows accepted success criteria and the saved setup revision.
+Latest assessments and assessed evidence identity remain targets pending task-runtime integration.
+
 Label Noul values as probability of yes; they are neither a separate confidence value nor a percentage of work completed.
 Preserve readable CLI output alongside the existing machine-readable representation.
 

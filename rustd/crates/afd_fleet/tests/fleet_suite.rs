@@ -12,6 +12,7 @@
 )]
 
 mod installed;
+mod integration_model_seed;
 mod lease_renewal;
 
 #[path = "../../afd_runner/tests/integration_runner_plane/decision_fixture.rs"]
