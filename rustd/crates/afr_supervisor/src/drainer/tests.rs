@@ -309,7 +309,10 @@ async fn test_drain_reposts_a_shape_refused_report_without_its_memory() {
         )
     );
     let dropped = capture.only("report_memory_dropped");
-    assert_eq!(dropped.field("lease_id"), Some(LEASE_ID));
+    assert_eq!(
+        (dropped.field("lease_id"), dropped.field("cause_error_code")),
+        (Some(LEASE_ID), Some("UZ-REQ-001"))
+    );
 }
 
 /// A refusal of any other shape is quarantined as before, never reshaped.

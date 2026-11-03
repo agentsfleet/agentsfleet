@@ -66,17 +66,19 @@ impl Plane {
         // seeing it is gated on the payer's balance through the biller, and
         // before the audit row, the owed answer and the token read below, which
         // nothing the owner sees depends on.
-        let completed_at = match closed {
-            Some(closed) => {
-                self.leases
-                    .publish_completion(&closed, Some(request.response_text.as_ref()))
-                    .await;
-                let event = EVENT_COMPLETION_PUBLISHED;
-                tracing::debug!(fleet_id = fleet, lease_id, event);
-                Some(afd_core::clock::now())
-            }
-            None => None,
-        };
+        // Timed only when the frame landed: a dropped announcement is logged
+        // by the tail and leaves no completion instant to measure from.
+        let mut completed_at = None;
+        if let Some(closed) = closed
+            && self
+                .leases
+                .publish_completion(&closed, Some(request.response_text.as_ref()))
+                .await
+        {
+            let event = EVENT_COMPLETION_PUBLISHED;
+            tracing::debug!(fleet_id = fleet, lease_id, event);
+            completed_at = Some(afd_core::clock::now());
+        }
         step(
             "record_released",
             lease,

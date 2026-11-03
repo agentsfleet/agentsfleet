@@ -18,6 +18,8 @@ use crate::report_spool::{Delivery, ReportSpool, Spooled, reshaped};
 
 const EVENT_REPLAY_FAILED: &str = "report_spool_replay_failed";
 const EVENT_MEMORY_DROPPED: &str = "report_memory_dropped";
+const EVENT_RESHAPE_UNSPOOLED: &str = "report_reshape_unspooled";
+const EVENT_REJECTED_KEPT: &str = "report_spool_rejected_kept";
 
 /// The drain, over one spool.
 #[derive(Debug)]
@@ -102,17 +104,40 @@ impl Drainer<'_> {
             return false;
         };
         let lease_id = lease.as_str();
+        let cause_error_code = refusal.code().as_str();
+        let plain = match self.spool.hold(&lease, plain).await {
+            Ok(plain) => plain,
+            Err(failure) => {
+                let error_code = failure.code().as_str();
+                let event = EVENT_RESHAPE_UNSPOOLED;
+                tracing::warn!(
+                    error_code,
+                    cause_error_code,
+                    lease_id,
+                    event,
+                    "the reshaped report could not be spooled; the refused copy stays aside"
+                );
+                return false;
+            }
+        };
         let event = EVENT_MEMORY_DROPPED;
         tracing::warn!(
+            cause_error_code,
             lease_id,
             event,
             "an older daemon refused the one-post report; it is posted again without the run's memory"
         );
-        let Ok(plain) = self.spool.hold(&lease, plain).await else {
-            return false;
-        };
         let delivered = plain.deliver(self.plane).await;
-        drop(self.spool.forget_rejected(&lease).await);
+        if let Err(failure) = self.spool.forget_rejected(&lease).await {
+            let error_code = failure.code().as_str();
+            let event = EVENT_REJECTED_KEPT;
+            tracing::warn!(
+                error_code,
+                lease_id,
+                event,
+                "the refused one-post copy stays in the spool for the boot sweep"
+            );
+        }
         matches!(delivered, Ok(Delivery::Settled | Delivery::Kept(_)))
     }
 

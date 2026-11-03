@@ -1,9 +1,9 @@
 //! One lease, end to end.
 //!
 //! ```text
-//!   admit ─► turn ─► hydrate ─► [size, egress, checkout plan] ─► run
+//!   admit ─► turn ─► memory (the lease's window, or read) ─► [size, egress, checkout plan] ─► run
 //!                                  └─► [take hold or prepare ─► checkout] ─┘ beside it
-//!   ─► [hold frozen, or kill] ─► memory push (fenced) ─► report spooled ─► report posted
+//!   ─► [hold frozen, or kill] ─► [no window: memory push] ─► report spooled ─► report posted
 //!   ─► [release the killed sandbox's disk ∥ activity drained]
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
 //! ```

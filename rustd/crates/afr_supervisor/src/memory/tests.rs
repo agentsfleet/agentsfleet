@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_core::id::Uuid7;
+use std::borrow::Cow;
+
 use afd_wire::memory::{MemoryDelta, MemoryHydrateResponse};
 
 use afr_agent::Checkpoint as _;
@@ -256,32 +258,45 @@ fn owned_memory() -> CapturedMemory {
     ])
 }
 
-/// The lease reply's bytes and the captured memory are zeroing types, so
-/// dropping either zeroes what it holds.
+/// The captured memory is a zeroing type, and its debug form names how many
+/// entries it holds and nothing they say.
 #[test]
 fn test_sensitive_buffers_zeroize() {
     fn pins<T: zeroize::Zeroize>() {}
-    pins::<zeroize::Zeroizing<Vec<u8>>>();
     pins::<CapturedMemory>();
+    assert_eq!(
+        format!("{:?}", owned_memory()),
+        "CapturedMemory { entries: 2 }"
+    );
 }
 
-/// Scrubbing overwrites every owned string in place and leaves each entry
-/// empty; zeroizing then drops the entries.
+/// Each string the run owns is zeroed in place, its allocation kept until
+/// the clear frees it; zeroizing then drops the entries.
 #[test]
 fn test_captured_memory_zeroizes_its_strings() {
-    let empty = MemoryDelta {
-        key: "".into(),
-        content: "".into(),
-        category: "".into(),
-        visibility: afd_wire::memory::Visibility::Fleet,
-    };
+    let lengths: Vec<usize> = owned_memory()
+        .views()
+        .iter()
+        .flat_map(|delta| [delta.key.len(), delta.content.len(), delta.category.len()])
+        .collect();
     let mut scrubbed = owned_memory();
     scrubbed.scrub();
+    let after: Vec<(bool, usize, bool)> = scrubbed
+        .0
+        .iter()
+        .flat_map(|delta| [&delta.key, &delta.content, &delta.category])
+        .zip(&lengths)
+        .map(|(text, length)| match text {
+            Cow::Owned(owned) => (true, owned.len(), owned.capacity() >= *length),
+            Cow::Borrowed(borrowed) => (false, borrowed.len(), false),
+        })
+        .collect();
     let mut zeroized = owned_memory();
     zeroize::Zeroize::zeroize(&mut zeroized);
 
     assert_eq!(
-        (scrubbed.views(), zeroized.views()),
-        (vec![empty.clone(), empty], Vec::new())
+        (after, zeroized.views()),
+        (vec![(true, 0, true); 6], Vec::new()),
+        "owned, emptied in place with its allocation, then the entries dropped"
     );
 }

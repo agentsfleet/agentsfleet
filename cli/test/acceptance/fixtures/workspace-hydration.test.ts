@@ -31,6 +31,9 @@ const HTTP_OK = 200;
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_BAD_GATEWAY = 502;
 const HTTP_GATEWAY_TIMEOUT = 504;
+const HTTP_TOO_MANY_REQUESTS = 429;
+/** A two-second `Retry-After`, plus its jitter at `random() = 0.5`: 2000 + 2000 × 0.2 × 0.5. */
+const RETRY_AFTER_WAIT_MS = 2_200;
 /** What the Cloudflare edge answers for a daemon that is not up yet. */
 const EDGE_PAGE = "<html><head><title>502 Bad Gateway</title></head></html>";
 /** The un-jittered first wait: `retryable.ts`'s 500 ms base at `random() = 0.5`. */
@@ -223,6 +226,9 @@ describe("revoking the credentials this process minted", () => {
   });
 });
 
+/** A status the stub answers with an edge page, a full response, or a thrown fault. */
+type MintAnswer = number | Error | { status: number; body: string; headers?: Record<string, string> };
+
 /** Everything one mint call did, compared whole so no field passes unread. */
 interface MintOutcome {
   readonly minted: { readonly id: string; readonly credential: string } | null;
@@ -235,17 +241,19 @@ interface MintOutcome {
  * Mints against a fetch stub that answers each POST from `statuses` in order,
  * the last repeating, 200 minting; the backoff is recorded, never waited.
  */
-async function attemptMint(statuses: ReadonlyArray<number>): Promise<MintOutcome> {
+async function attemptMint(statuses: ReadonlyArray<MintAnswer>): Promise<MintOutcome> {
   let calls = 0;
   const slept: number[] = [];
   globalThis.fetch = Object.assign(
     async (): Promise<Response> => {
-      const status = statuses[Math.min(calls, statuses.length - 1)] ?? HTTP_OK;
+      const answer = statuses[Math.min(calls, statuses.length - 1)] ?? HTTP_OK;
       calls += 1;
-      if (status === HTTP_OK) {
+      if (answer instanceof Error) throw answer;
+      if (typeof answer === "object") return new Response(answer.body, answer);
+      if (answer === HTTP_OK) {
         return Response.json({ id: CLI_CREDENTIAL_ID, credential: CLI_CREDENTIAL });
       }
-      return new Response(EDGE_PAGE, { status });
+      return new Response(EDGE_PAGE, { status: answer });
     },
     { preconnect: originalFetch.preconnect },
   );
@@ -288,6 +296,45 @@ describe("minting a CLI credential through an edge that is not ready", () => {
       error: `CLI credential mint ${HTTP_UNAUTHORIZED}: ${EDGE_PAGE}`,
       calls: 1,
       slept: [],
+    });
+  });
+
+  it("does not retry a 502 the daemon answered", async () => {
+    const problem = JSON.stringify({ error_code: "UZ-INTERNAL-002" });
+    expect(await attemptMint([{ status: HTTP_BAD_GATEWAY, body: problem }])).toEqual({
+      minted: null,
+      error: `CLI credential mint ${HTTP_BAD_GATEWAY}: ${problem}`,
+      calls: 1,
+      slept: [],
+    });
+  });
+
+  it("retries a connection that never opened", async () => {
+    expect(await attemptMint([new TypeError("fetch failed"), HTTP_OK])).toEqual({
+      minted: { id: CLI_CREDENTIAL_ID, credential: CLI_CREDENTIAL },
+      error: null,
+      calls: 2,
+      slept: backoffAfter(1),
+    });
+  });
+
+  it("does not retry a timeout, which may follow a mint that landed", async () => {
+    const timedOut = new DOMException("the attempt timed out", "TimeoutError");
+    expect(await attemptMint([timedOut])).toEqual({
+      minted: null,
+      error: `CLI credential mint never reached the API: ${String(timedOut)}`,
+      calls: 1,
+      slept: [],
+    });
+  });
+
+  it("waits out a Retry-After before retrying a shed mint", async () => {
+    const shed = { status: HTTP_TOO_MANY_REQUESTS, body: "", headers: { "Retry-After": "2" } };
+    expect(await attemptMint([shed, HTTP_OK])).toEqual({
+      minted: { id: CLI_CREDENTIAL_ID, credential: CLI_CREDENTIAL },
+      error: null,
+      calls: 2,
+      slept: [RETRY_AFTER_WAIT_MS],
     });
   });
 

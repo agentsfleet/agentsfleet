@@ -333,5 +333,11 @@ async fn test_shape_refused_report_falls_back_once() {
         )
     );
     let fell_back = capture.only("report_shape_fell_back");
-    assert_eq!(fell_back.field("lease_id"), Some(LEASE_ID));
+    assert_eq!(
+        (
+            fell_back.field("lease_id"),
+            fell_back.field("cause_error_code")
+        ),
+        (Some(LEASE_ID), Some("UZ-REQ-001"))
+    );
 }

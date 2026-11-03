@@ -327,13 +327,19 @@ fn woken(woken: bool) -> Answer {
 }
 
 /// A beat asks to be held only once a reply proved the daemon holds beats,
-/// and only while a worker is idle to be woken.
+/// only while a worker is idle to be woken, and only while the daemon says
+/// to keep taking work.
 #[tokio::test]
 async fn test_wake_is_asked_only_when_proved_and_idle() {
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
     let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
         0 => reply(KEEP_GOING, false, TICK_MS),
+        3 => json(
+            &serde_json::json!({"status": "drain", "assigned_policy": policy(),
+            "degraded": false, "degraded_reason": null, "selftest_requested": false,
+            "heartbeat_interval_ms": TICK_MS, "release_holds": [], "woken": false}),
+        ),
         _proved => woken(false),
     });
     let probe = probe();
@@ -347,21 +353,28 @@ async fn test_wake_is_asked_only_when_proved_and_idle() {
     heartbeat.beat().await.unwrap();
     drop(idle);
     heartbeat.beat().await.unwrap();
+    let idle = wake.idle();
+    heartbeat.beat().await.unwrap();
+    heartbeat.beat().await.unwrap();
+    drop(idle);
 
     let asked: Vec<serde_json::Value> = drain(&mut calls)
         .iter()
         .map(|call| sent(call)["wake"].clone())
         .collect();
     let unasked = serde_json::Value::Null;
+    let asks = serde_json::Value::Bool(true);
     assert_eq!(
         asked,
         [
             unasked.clone(),
             unasked.clone(),
-            serde_json::Value::Bool(true),
-            unasked
+            asks.clone(),
+            unasked.clone(),
+            unasked,
+            asks
         ],
-        "unproved, unproved (the older reply), proved and idle, proved and busy"
+        "unproved, unproved (the older reply), proved and idle, busy, told to drain, idle again"
     );
 }
 
@@ -402,5 +415,126 @@ async fn test_woken_beat_wakes_a_worker_and_paces_the_next() {
             crate::worker_pool::MIN_POLL_PAUSE,
             [Duration::from_secs(6), interval]
         )
+    );
+}
+
+/// A saturation release during a held beat does not wait for the hold: the
+/// held beat is dropped and the release beats at once.
+#[tokio::test(start_paused = true)]
+async fn test_a_saturation_release_does_not_wait_out_a_held_beat() {
+    const NEXT_BEAT_MS: u64 = 1_000;
+    let engine = FakeEngine::default();
+    let holds = holding(&engine, 1).await;
+    let beats = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&beats);
+    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        // The proof the daemon holds beats, asking for the next in a second.
+        0 => json(
+            &serde_json::json!({"status": KEEP_GOING, "assigned_policy": policy(),
+            "degraded": false, "degraded_reason": null, "selftest_requested": false,
+            "heartbeat_interval_ms": NEXT_BEAT_MS, "release_holds": [], "woken": false}),
+        ),
+        1 => Answer::Stall,
+        _later => releasing(STOP, &[]),
+    });
+    let probe = probe();
+    let wake = crate::worker_pool::Wake::default();
+    let idle = wake.idle();
+    let (published, mut watching) = watch::channel(Assignment::initial());
+    let halt = Halt::new(CancellationToken::new());
+    let started = tokio::time::Instant::now();
+
+    let beating = Heartbeat::new(&plane, &probe, &holds)
+        .with_wake(&wake)
+        .keep_beating(&published, &halt);
+    let saturating = async {
+        watching.changed().await.unwrap();
+        // The second beat goes out at one second and is held; saturate after.
+        tokio::time::sleep(Duration::from_millis(NEXT_BEAT_MS + 500)).await;
+        holds.occupy(Uuid7::parse(OTHER_FLEET).unwrap())
+    };
+    let (_beaten, _busy) = tokio::join!(beating, saturating);
+    drop(idle);
+
+    let calls = drain(&mut calls);
+    let sent: Vec<(serde_json::Value, serde_json::Value)> = calls
+        .iter()
+        .map(|call| (sent(call)["wake"].clone(), sent(call)[HOLDS_FIELD].clone()))
+        .collect();
+    assert_eq!(
+        (
+            sent,
+            started.elapsed() < Duration::from_millis(u64::from(TICK_MS))
+        ),
+        (
+            vec![
+                (serde_json::Value::Null, serde_json::json!([FLEET])),
+                (serde_json::Value::Bool(true), serde_json::json!([FLEET])),
+                (serde_json::Value::Bool(true), serde_json::json!([])),
+                (serde_json::Value::Null, serde_json::json!([])),
+            ],
+            true
+        ),
+        "the proof, the held beat, the release at once, then the stop's last beat"
+    );
+}
+
+/// Leasing stopping during a held beat does not wait for the hold: the held
+/// beat is dropped and the closing beat, its list final, goes at once.
+#[tokio::test(start_paused = true)]
+async fn test_a_leasing_stop_does_not_wait_out_a_held_beat() {
+    const NEXT_BEAT_MS: u64 = 1_000;
+    let holds = idle_holds();
+    let beats = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&beats);
+    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        0 => json(
+            &serde_json::json!({"status": KEEP_GOING, "assigned_policy": policy(),
+            "degraded": false, "degraded_reason": null, "selftest_requested": false,
+            "heartbeat_interval_ms": NEXT_BEAT_MS, "release_holds": [], "woken": false}),
+        ),
+        1 => Answer::Stall,
+        _later => releasing(STOP, &[]),
+    });
+    let probe = probe();
+    let wake = crate::worker_pool::Wake::default();
+    let idle = wake.idle();
+    let (published, mut watching) = watch::channel(Assignment::initial());
+    let halt = Halt::new(CancellationToken::new());
+    let started = tokio::time::Instant::now();
+
+    let beating = Heartbeat::new(&plane, &probe, &holds)
+        .with_wake(&wake)
+        .keep_beating(&published, &halt);
+    let stopping = async {
+        watching.changed().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(NEXT_BEAT_MS + 500)).await;
+        halt.stop_leasing();
+    };
+    let ((), ()) = tokio::join!(beating, stopping);
+    drop(idle);
+
+    let sent: Vec<(serde_json::Value, serde_json::Value)> = drain(&mut calls)
+        .iter()
+        .map(|call| (sent(call)["wake"].clone(), sent(call)["closing"].clone()))
+        .collect();
+    assert_eq!(
+        (
+            sent,
+            started.elapsed() < Duration::from_millis(u64::from(TICK_MS))
+        ),
+        (
+            vec![
+                (serde_json::Value::Null, serde_json::Value::Bool(false)),
+                (
+                    serde_json::Value::Bool(true),
+                    serde_json::Value::Bool(false)
+                ),
+                (serde_json::Value::Null, serde_json::Value::Bool(true)),
+                (serde_json::Value::Null, serde_json::Value::Bool(true)),
+            ],
+            true
+        ),
+        "the proof, the held beat, the closing beat at once, then the stop's last beat"
     );
 }

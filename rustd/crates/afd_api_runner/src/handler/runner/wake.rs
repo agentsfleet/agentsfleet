@@ -52,7 +52,7 @@ where
     if waited == Waited::Capped {
         let cap = HELD_BEATS_MAX;
         let event = EVENT_WAKE_REFUSED;
-        tracing::info!(
+        tracing::debug!(
             runner_id,
             cap,
             event,

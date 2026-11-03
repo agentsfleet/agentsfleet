@@ -125,6 +125,11 @@ impl Chat {
         .expect("the finished run carries its turn");
     }
 
+    /// The fleet every lease here is for.
+    pub(super) fn fleet(&self) -> &str {
+        &self.fleet
+    }
+
     /// `runner`'s claim on this fleet, or nothing while another holds it.
     pub(super) async fn claim(&self, runner: &Uuid7) -> Option<afd_fleet::lease::Acquired> {
         let leases = self.fixtures.leases();

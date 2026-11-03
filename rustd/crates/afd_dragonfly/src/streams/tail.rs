@@ -73,14 +73,16 @@ impl FleetStreams {
     /// costs the tail a marker and the verb that wrote the row nothing, and
     /// that contract is stated here once rather than at every publisher. The
     /// row the frame announces is already durable, and a lost announcement is
-    /// what the client's reconnect backfill recovers.
-    pub async fn publish_frame<F: Serialize>(&self, fleet_id: &str, frame: &F) {
+    /// what the client's reconnect backfill recovers. Answers whether the
+    /// frame landed, for a caller that times the announcement.
+    pub async fn publish_frame<F: Serialize>(&self, fleet_id: &str, frame: &F) -> bool {
         // Strings and integers cannot fail to serialize; the arm is the
         // signature's, not a path a test could reach.
         let Ok(payload) = serde_json::to_string(frame) else {
-            return;
+            return false;
         };
-        if let Err(unreachable_queue) = self.publish_tail(fleet_id, &payload).await {
+        let published = self.publish_tail(fleet_id, &payload).await;
+        if let Err(unreachable_queue) = &published {
             let Logged { error_code, reason } = unreachable_queue.logged();
             tracing::debug!(
                 error_code,
@@ -90,6 +92,7 @@ impl FleetStreams {
                 "the queue would not take a live-tail frame; the row it announces stands"
             );
         }
+        published.is_ok()
     }
 }
 

@@ -36,6 +36,7 @@ import {
   ATTEMPT_TIMEOUT_MS,
   type RetryFault,
   type RetryOptions,
+  edgeAnswered,
   retryAfterMs,
   UNPROCESSED_STATUSES,
   withRetries,
@@ -128,7 +129,7 @@ async function mintOnce(
   return {
     fault: {
       message,
-      retryable: UNPROCESSED_STATUSES.has(response.status),
+      retryable: UNPROCESSED_STATUSES.has(response.status) || edgeAnswered(response.status, detail),
       retryAfterMs: retryAfterMs(response),
     },
   };
@@ -136,8 +137,9 @@ async function mintOnce(
 
 /**
  * Mints a durable CLI credential for `machineName`, retrying only the answers
- * that prove nothing was minted (`UNPROCESSED_STATUSES`), so a retry never
- * leaves a second live credential behind the first.
+ * that prove nothing was minted (`UNPROCESSED_STATUSES`, and a 502 the edge
+ * answered), so a retry does not leave a second live credential behind the
+ * first.
  */
 export async function mintCliCredential(
   apiUrl: string,

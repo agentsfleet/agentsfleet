@@ -215,9 +215,25 @@ impl<'a> Heartbeat<'a> {
             // A daemon that does not answer must not hold up a stop for a
             // whole call timeout: the beat is dropped for the last one.
             let began = Instant::now();
+            let holds = self.holds;
+            let leasing = halt.leasing();
             let beaten = tokio::select! {
                 biased;
                 () = halt.serving().cancelled() => return self.last_beat(halt).await,
+                // A release cannot wait out a held beat: that beat is dropped,
+                // its writes already done, and sent again at once with the
+                // holds as they now stand.
+                () = holds.saturated().notified() => {
+                    pause = Duration::ZERO;
+                    continue;
+                }
+                // Nor can the final list: once leasing stops, the held beat is
+                // dropped and the closing beat goes at once.
+                () = leasing.cancelled(), if !self.closed => {
+                    self.close();
+                    pause = Duration::ZERO;
+                    continue;
+                }
                 beaten = self.beat() => beaten,
             };
             match beaten {
@@ -249,8 +265,6 @@ impl<'a> Heartbeat<'a> {
         }
     }
 
-    /// Ends every hold and parks nothing more, so each beat from here on
-    /// says its list is final.
     /// How long to wait before the next beat. A woken beat goes again after
     /// the shortest poll pause, so a burst of admissions cannot turn beats
     /// into a busy loop; a held beat already waited, so it waits only what is
@@ -263,6 +277,8 @@ impl<'a> Heartbeat<'a> {
         }
     }
 
+    /// Ends every hold and parks nothing more, so each beat from here on
+    /// says its list is final.
     fn close(&mut self) {
         self.closed = true;
         self.holds.close();

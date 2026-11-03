@@ -135,9 +135,12 @@ async fn test_window_read_failure_issues_without_a_window() {
         (
             leased.event_id,
             leased.memory,
-            failed.field("fleet_id").is_some()
+            failed
+                .field("error_code")
+                .is_some_and(|code| code.starts_with("UZ-")),
+            failed.field("fleet_id").map(str::to_owned),
         ),
-        (asked, None, true)
+        (asked, None, true, Some(chat.fleet().to_owned()))
     );
     chat.fixtures.cleanup().await;
 }
