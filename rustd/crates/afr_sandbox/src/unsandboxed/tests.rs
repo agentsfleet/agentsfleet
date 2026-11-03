@@ -220,3 +220,23 @@ async fn should_refuse_new_addresses_it_has_no_scope_to_hold() {
         Some(&EgressRefusal::NoScope)
     );
 }
+
+/// No cgroup holds an unsandboxed lease's processes, so its kill proves
+/// nothing about them: it is never settled.
+#[tokio::test]
+async fn test_an_unsandboxed_kill_is_never_settled() {
+    let base = tempfile::Builder::new()
+        .prefix("afr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
+    let sandbox = engine
+        .prepare(SandboxRequest::new("l9", Limits::default()))
+        .await
+        .unwrap();
+
+    let killed = sandbox.kill().await;
+    sandbox.destroy().await.unwrap();
+
+    assert!(matches!(killed, crate::engine::Killed::Unsettled(_)));
+}

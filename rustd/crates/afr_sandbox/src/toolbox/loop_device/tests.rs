@@ -1,9 +1,18 @@
+#![expect(
+    clippy::unwrap_used,
+    reason = "a test fails loudly on a fixture it cannot write"
+)]
+
 use std::cell::Cell;
+use std::fs::{self, File};
 use std::io;
+use std::path::Path;
 
 use super::{
-    ATTACH_RETRIES, Access, Attempt, LO_FLAGS_DIRECT_IO, LO_FLAGS_READ_ONLY, caching, until_free,
+    ATTACH_RETRIES, Access, Attempt, LO_FLAGS_DIRECT_IO, LO_FLAGS_READ_ONLY, LoopConfig,
+    LoopInfo64, caching, configure_free, direct_or_buffered, node_in, status, until_free,
 };
+use crate::host::BLOCK_BYTES;
 use crate::workspace_disk::Caching;
 
 /// A `LOOP_CONFIGURE` refusal with `errno`.
@@ -95,4 +104,66 @@ fn test_only_the_toolbox_is_attached_read_only() {
     // The kernel makes a device read-only when its configuring handle
     // cannot write, so only the workspace disk's device opens for writing.
     assert!(!Access::ReadOnly.writes() && Access::ReadWrite.writes());
+}
+
+/// Direct I/O first, and the buffered attach only when the kernel refuses
+/// direct I/O for this file: any other refusal is the answer as it stands.
+#[test]
+fn should_fall_back_to_buffered_only_when_direct_io_is_refused() {
+    let buffered = Cell::new(false);
+    let attach = |direct: io::Result<()>| {
+        direct_or_buffered(
+            || direct,
+            || {
+                buffered.set(true);
+                Ok(())
+            },
+        )
+    };
+
+    attach(Err(io::Error::from_raw_os_error(libc::EINVAL))).unwrap();
+    assert!(
+        buffered.replace(false),
+        "refused direct I/O, attached buffered"
+    );
+    attach(Err(io::Error::from_raw_os_error(libc::EBUSY))).unwrap_err();
+    attach(Ok(())).unwrap();
+    assert!(!buffered.get(), "nothing else falls back");
+}
+
+/// A descriptor that is no loop device fails the control call and the status
+/// call alike, as a failure and never a device taken.
+#[test]
+fn should_fail_on_a_descriptor_that_is_no_loop_device() {
+    let null = File::open("/dev/null").unwrap();
+    let config = LoopConfig {
+        fd: 0,
+        block_size: BLOCK_BYTES,
+        info: LoopInfo64::ZERO,
+        reserved: [0; 8],
+    };
+
+    let refused = configure_free(&null, &config, Access::ReadOnly);
+
+    assert!(matches!(refused, Err(Attempt::Failed(_))));
+    status(&null).unwrap_err();
+}
+
+/// A device is named by its `uevent`'s `DEVNAME`; one that lists no name, or
+/// is not listed at all, names no node.
+#[test]
+fn should_name_a_device_from_its_uevent() {
+    let sys = tempfile::tempdir().unwrap();
+    for (number, uevent) in [
+        ("7:1", "MAJOR=7\nMINOR=1\nDEVNAME=loop1\n"),
+        ("7:2", "MAJOR=7\nMINOR=2\n"),
+    ] {
+        fs::create_dir(sys.path().join(number)).unwrap();
+        fs::write(sys.path().join(number).join("uevent"), uevent).unwrap();
+    }
+
+    assert_eq!(node_in(sys.path(), 7, 1).unwrap(), Path::new("/dev/loop1"));
+    // No name listed, then no such device.
+    node_in(sys.path(), 7, 2).unwrap_err();
+    node_in(sys.path(), 7, 3).unwrap_err();
 }

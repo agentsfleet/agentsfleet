@@ -73,6 +73,29 @@ mod refusals {
         assert_eq!(refusal(&other), Some(ToolboxRefusal::Digest));
     }
 
+    /// A path with nothing at it fails the admission as an input/output
+    /// failure, not a refusal: no image was offered to judge.
+    #[test]
+    fn should_fail_without_refusing_an_image_that_is_not_there() {
+        let dir = tempfile::tempdir().unwrap();
+        let mounts = tempfile::tempdir().unwrap();
+        let manifest = Signer::new().manifest(IMAGE);
+
+        let failed = Toolbox::admit_now(&manifest, &dir.path().join("absent"), mounts.path());
+
+        assert_eq!(failed.unwrap_err().toolbox_refusal(), None);
+    }
+
+    /// A descriptor that cannot be read fails its hash: nothing unread is
+    /// ever called hashed.
+    #[test]
+    fn should_fail_a_hash_it_cannot_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let written = fs::File::create(dir.path().join("write-only")).unwrap();
+
+        crate::toolbox::admit::sha256_of(&written).unwrap_err();
+    }
+
     /// A device that refused direct I/O still admits its toolbox, and the
     /// admission names the buffered caching it took.
     #[test]

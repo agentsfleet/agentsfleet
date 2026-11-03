@@ -1,6 +1,7 @@
 //! The fake host every engine test builds on.
 #![expect(
     clippy::unwrap_used,
+    clippy::expect_used,
     reason = "a test fails loudly on a fake host it cannot build"
 )]
 
@@ -28,6 +29,7 @@ const SLEEPER_NAME: &str = "sleeper";
 const FAILER_NAME: &str = "failer";
 const BRIEF_NAME: &str = "brief";
 const ENV_PROBE_NAME: &str = "env-probe";
+const CLOSER_NAME: &str = "closer";
 /// One processor core, in thousandths.
 const ONE_CORE: u32 = 1_000;
 /// The digest the fake host's toolbox is known by, and is configured for.
@@ -41,6 +43,10 @@ pub(super) const SLEEPER: Launcher = Launcher(SLEEPER_NAME);
 pub(super) const FAILER: Launcher = Launcher(FAILER_NAME);
 /// A "bubblewrap" that answers, then dies on its own a moment later.
 pub(super) const BRIEF: Launcher = Launcher(BRIEF_NAME);
+/// A "bubblewrap" that closes the entry's end of its link and stays up: the
+/// link is lost while the sandbox still runs. It runs under bash, since dash
+/// redirects only single-digit descriptors.
+pub(super) const CLOSER: Launcher = Launcher(CLOSER_NAME);
 /// A "bubblewrap" that reports whether it inherited the runner's environment,
 /// then fails, so the refusal quotes the report.
 pub(super) const ENV_PROBE: Launcher = Launcher(ENV_PROBE_NAME);
@@ -92,6 +98,12 @@ fn scripts() -> &'static Path {
                  echo 'bwrap: Can not mount tmpfs: Operation not permitted' >&2\nexit 1\n",
             ),
             (BRIEF_NAME, answering("0.3").as_str()),
+            (
+                CLOSER_NAME,
+                "#!/bin/bash\nfor arg; do\n  [ \"$take\" = 1 ] && executor=\"$arg\"\n  take=0\n  \
+                 [ \"$arg\" = --executor ] && take=1\ndone\neval \"exec $executor>&-\"\n\
+                 exec sleep 30\n",
+            ),
             (
                 ENV_PROBE_NAME,
                 "#!/bin/sh\necho \"environment: ${CARGO_MANIFEST_DIR:+inherited} \
@@ -220,10 +232,18 @@ pub(super) fn serve_leases(state_dir: PathBuf) -> JoinHandle<()> {
 /// take a descriptor from its own child with `pidfd_getfd`.
 fn taken(note: &str) -> UnixStream {
     use rustix::process::{Pid, PidfdFlags, PidfdGetfdFlags, pidfd_getfd, pidfd_open};
-    let (pid, number) = note.trim().split_once(' ').unwrap();
-    let pid = Pid::from_raw(pid.parse().unwrap()).unwrap();
-    let process = pidfd_open(pid, PidfdFlags::empty()).unwrap();
-    let end = pidfd_getfd(&process, number.parse().unwrap(), PidfdGetfdFlags::empty()).unwrap();
+    let (pid, number) = note
+        .trim()
+        .split_once(' ')
+        .expect("the note names a process and a descriptor");
+    let pid = Pid::from_raw(pid.parse().expect("a process number")).expect("a live process");
+    let process =
+        pidfd_open(pid, PidfdFlags::empty()).expect("pidfd_open on the fake bubblewrap, a child");
+    let number = number.parse().expect("a descriptor number");
+    let end = pidfd_getfd(&process, number, PidfdGetfdFlags::empty()).expect(
+        "pidfd_getfd needs ptrace rights over the child; a seccomp profile that \
+         refuses ptrace, as Docker's default does, refuses it too",
+    );
     UnixStream::from(end)
 }
 

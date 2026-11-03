@@ -31,10 +31,11 @@ const STDERR_TAIL_BYTES: usize = 2_048;
 pub(crate) const EXT4: &str = "ext4";
 /// The flag `mke2fs` takes a file-system type after.
 const TYPE_FLAG: &str = "-t";
-/// The file system's block size: the sector the loop device attaches every
-/// disk with, which a block may not undercut. Left to itself, `mke2fs` picks
-/// 1 KiB for a small disk, and the kernel refuses to mount it.
-const EXT4_BLOCK_BYTES: &str = "4096";
+/// The sector every loop device is attached with, and so the smallest block
+/// a file system on one may use: a page, which EROFS and ext4 both use. A
+/// workspace disk's ext4 is formatted to it, since `mke2fs` would pick 1 KiB
+/// for a small disk and the kernel would refuse to mount that.
+pub(crate) const BLOCK_BYTES: u32 = 4096;
 
 /// Where each host program lives, and the step that mounts a workspace disk.
 #[derive(Debug, Clone)]
@@ -109,11 +110,12 @@ where
 /// No journal: the disk outlives no crash, so a journal is writes for nothing.
 pub(crate) fn format_arguments(image: &Path, owner: (u32, u32)) -> Vec<OsString> {
     let (user, group) = owner;
+    let block = BLOCK_BYTES.to_string();
     [
         "-q",
         "-F",
         "-b",
-        EXT4_BLOCK_BYTES,
+        block.as_str(),
         TYPE_FLAG,
         EXT4,
         "-m",

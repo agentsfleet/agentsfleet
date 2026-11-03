@@ -6,9 +6,12 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use super::{Caching, Mount, TMP_DIR, WORKSPACE_DIR, WorkspaceDisk, absent, lay_out};
+use super::{
+    Caching, IMAGE_MODE, IMAGE_NAME, Mount, TMP_DIR, WORKSPACE_DIR, WorkspaceDisk, absent, lay_out,
+};
 use crate::host::HostTools;
 
 /// A program that does nothing and succeeds: a format that made nothing.
@@ -17,6 +20,13 @@ const SUCCEEDS: &str = "/usr/bin/true";
 const SLOW_MOUNT: Duration = Duration::from_millis(200);
 /// How long a test waits for the blocking pool to undo a mount.
 const PATIENCE: Duration = Duration::from_secs(5);
+/// How often a test looks again while it waits.
+const POLL: Duration = Duration::from_millis(5);
+/// The size every test disk asks for.
+const DISK_BYTES: u64 = 4_096;
+/// Set by the slow mount once the blocking pool runs it, so its test drops
+/// the start mid-mount and never before the mount began.
+static MOUNTING: AtomicBool = AtomicBool::new(false);
 /// Tools that cannot run, so every build stops at a known step.
 fn broken(mke2fs: &str) -> HostTools {
     HostTools {
@@ -46,8 +56,13 @@ fn me() -> (u32, u32) {
 async fn test_a_disk_that_cannot_be_formatted_leaves_nothing_behind() {
     let dir = tempfile::tempdir().unwrap();
 
-    let refused =
-        WorkspaceDisk::create(&broken("/nonexistent/mke2fs"), dir.path(), 4_096, (0, 0)).await;
+    let refused = WorkspaceDisk::create(
+        &broken("/nonexistent/mke2fs"),
+        dir.path(),
+        DISK_BYTES,
+        (0, 0),
+    )
+    .await;
 
     refused.unwrap_err();
     assert_eq!(
@@ -63,7 +78,7 @@ async fn test_a_disk_that_cannot_be_mounted_leaves_nothing_behind() {
 
     // `true` formats nothing and succeeds, so the build reaches the mount,
     // which the kernel refuses: no file system, no loop device, or no root.
-    let refused = WorkspaceDisk::create(&broken(SUCCEEDS), dir.path(), 4_096, (0, 0)).await;
+    let refused = WorkspaceDisk::create(&broken(SUCCEEDS), dir.path(), DISK_BYTES, (0, 0)).await;
 
     refused.unwrap_err();
     assert_eq!(
@@ -81,7 +96,7 @@ async fn test_a_leftover_that_cannot_be_removed_is_logged() {
     // runs the test.
     fs::write(dir.path().join(WORKSPACE_DIR), "").unwrap();
 
-    let refused = WorkspaceDisk::create(&broken(SUCCEEDS), dir.path(), 4_096, (0, 0)).await;
+    let refused = WorkspaceDisk::create(&broken(SUCCEEDS), dir.path(), DISK_BYTES, (0, 0)).await;
 
     refused.unwrap_err();
     assert_eq!(
@@ -97,7 +112,7 @@ async fn test_a_heard_mount_is_laid_out_and_kept() {
     let (disk, caching) = WorkspaceDisk::create(
         &faked(|_image, _mount_point| Ok(Caching::Direct)),
         dir.path(),
-        4_096,
+        DISK_BYTES,
         me(),
     )
     .await
@@ -105,9 +120,35 @@ async fn test_a_heard_mount_is_laid_out_and_kept() {
 
     assert_eq!(caching, Caching::Direct);
     assert!(disk.workspace().is_dir() && disk.tmp().is_dir());
-    assert!(
-        dir.path().join("workspace.img").exists(),
-        "kept for release"
+    // Root alone may read the raw image: it is every file the lease wrote.
+    let image = fs::metadata(dir.path().join(IMAGE_NAME)).unwrap();
+    assert_eq!(image.len(), DISK_BYTES, "sized to the lease's limit");
+    assert_eq!(image.permissions().mode() & 0o7777, IMAGE_MODE);
+}
+
+/// A mount that worked and a disk whose layout is then refused: the build
+/// fails and is undone like any other step, and nothing is left.
+#[tokio::test]
+async fn test_a_disk_whose_layout_is_refused_is_undone() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // The fake mount leaves a file where the layout makes `workspace/`.
+    let refused = WorkspaceDisk::create(
+        &faked(|_image, mount_point| {
+            fs::write(mount_point.join(WORKSPACE_DIR), "")?;
+            Ok(Caching::Direct)
+        }),
+        dir.path(),
+        DISK_BYTES,
+        me(),
+    )
+    .await;
+
+    refused.unwrap_err();
+    assert_eq!(
+        fs::read_dir(dir.path()).unwrap().count(),
+        0,
+        "image and mount point removed"
     );
 }
 
@@ -116,26 +157,31 @@ async fn test_a_heard_mount_is_laid_out_and_kept() {
 #[tokio::test]
 async fn test_a_mount_nobody_heard_is_undone() {
     let dir = tempfile::tempdir().unwrap();
-
-    let dropped = tokio::time::timeout(
-        SLOW_MOUNT / 10,
+    let path = dir.path().to_owned();
+    let start = tokio::spawn(async move {
         WorkspaceDisk::create(
             &faked(|_image, _mount_point| {
+                MOUNTING.store(true, Ordering::SeqCst);
                 std::thread::sleep(SLOW_MOUNT);
                 Ok(Caching::Direct)
             }),
-            dir.path(),
-            4_096,
+            &path,
+            DISK_BYTES,
             me(),
-        ),
-    )
-    .await;
+        )
+        .await
+    });
+    while !MOUNTING.load(Ordering::SeqCst) {
+        tokio::time::sleep(POLL).await;
+    }
 
-    dropped.unwrap_err();
-    assert!(dir.path().join("workspace").exists(), "still mounting");
+    start.abort();
+
+    assert!(start.await.unwrap_err().is_cancelled(), "dropped mid-mount");
+    assert!(dir.path().join(WORKSPACE_DIR).exists(), "still mounting");
     tokio::time::timeout(PATIENCE, async {
         while fs::read_dir(dir.path()).unwrap().count() > 0 {
-            tokio::time::sleep(SLOW_MOUNT / 10).await;
+            tokio::time::sleep(POLL).await;
         }
     })
     .await
