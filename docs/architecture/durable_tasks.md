@@ -342,23 +342,23 @@ The following proposed endpoints extend those existing resource families:
 
 | Method and path | Request and successful response |
 |---|---|
-| `POST L/task-bindings` | Source admission, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
-| `GET L/task-inputs?starting_after=<cursor>&limit=4` | Returns eligible human messages in sequence and current task summaries, scoped to the source conversation. Machine work rows do not obstruct steering. Does not consume them. |
-| `POST L/task-input-receipts` | Source admission/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
-| `POST L/task-decisions` | Reserve a physical decision call with purpose, request/question digests and maximum cost; 201 returns call identity, resolved rate/version policy and frozen decision profile and scoped provider credential material. |
-| `PATCH L/task-decisions/{call_id}` | Bounded typed answers, actual resolved model and usage or explicit unknown outcome; 200 returns native disposition and settled/reserved usage. |
-| `POST L/task-effects` | Immutable source item/cursor, operation identity, expected head, tested tree and supported changes; reserve and issue one bounded native publication synchronously. Confirmed creation returns 201; confirmed replay 200; unknown outcome returns 409 without retrying the mutation. |
-| `GET L/task-effects?ordinal_after=<watermark>&starting_after=<cursor>&limit=50` | 200 returns the selected task's ordered effects after its checkpoint watermark, including unresolved and newly confirmed effects. Replacement workers need no previously returned effect identity. |
-| `GET L/task-effects/{effect_id}` | 200 returns prepared/issued/confirmed/unknown/refused state and attributable remote receipt; unknown results require reconciliation. |
-| `POST L/task-checkpoints` | Expected generation, operation identity, retain_base/incremental mode, exact repository/base, declared byte budget/page count (maximum 64) and format; 201 returns the plan, expiry, writer pin, base/checkpoint identity and native UUIDv7 page identities. |
-| `PUT L/task-checkpoints/{checkpoint_id}/pages/{page_id}` | Complete page representation with page number, digest and contents; identical replay succeeds, changed page or number conflicts. Final root requires every declared page in order. |
-| `GET L/task-checkpoints/{checkpoint_id}/pages/{page_id}` | 200 returns one bounded manifest page only under the current restore pin and live lease; verify its digest and ordered manifest root before using file/chunk mappings. |
-| `POST L/task-checkpoints/{checkpoint_id}/objects` | At most 256 plaintext SHA-256/size/kind descriptors; 201 returns missing/reused/busy objects. The native upload owner receives the fixed nonce and temporary data key for new objects. |
-| `POST L/task-checkpoints/{checkpoint_id}/uploads` | Registered object identities plus immutable ciphertext digest/length; 201 freezes descriptors and returns exact create-only PUT authorizations. It cannot change a prior descriptor. |
-| `POST L/task-checkpoints/{checkpoint_id}/authorizations` | Read purpose without object IDs acquires/adopts one restore pin and returns root plus at most 64 ordered page IDs. Registered object batches then obtain/refresh five-minute read/upload URLs after scope/descriptor/pin checks; no arbitrary keys or paths. |
-| `PATCH L/task-checkpoints/{checkpoint_id}/pins/{pin_id}` | Expected pin/task version; 200 renews the native reader/writer pin. One capture/restore pin protects its object set; no per-object renewal request or extension of task/transfer deadlines. |
-| `PATCH L/task-checkpoints/{checkpoint_id}` | Ready state, expected generation, completed manifest root, covered-input cursor and trusted upload attestations; 200 publishes after native guards and object verification. |
-| `GET L/task-checkpoints/{checkpoint_id}/objects?starting_after=<cursor>` | 200 returns at most 100 authorized object reads/keys; every page rechecks ownership, pins and current lease. |
+| `POST L/tasks/bindings` | Source admission, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
+| `GET L/tasks/inputs?starting_after=<cursor>&limit=4` | Returns eligible human messages in sequence and current task summaries, scoped to the source conversation. Machine work rows do not obstruct steering. Does not consume them. |
+| `POST L/tasks/input-receipts` | Source admission/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
+| `POST L/tasks/decisions` | Reserve a physical decision call with purpose, request/question digests and maximum cost; 201 returns call identity, resolved rate/version policy and frozen decision profile and scoped provider credential material. |
+| `PATCH L/tasks/decisions/{call_id}` | Bounded typed answers, actual resolved model and usage or explicit unknown outcome; 200 returns native disposition and settled/reserved usage. |
+| `POST L/tasks/effects` | Immutable source item/cursor, operation identity, expected head, tested tree and supported changes; reserve and issue one bounded native publication synchronously. Confirmed creation returns 201; confirmed replay 200; unknown outcome returns 409 without retrying the mutation. |
+| `GET L/tasks/effects?ordinal_after=<watermark>&starting_after=<cursor>&limit=50` | 200 returns the selected task's ordered effects after its checkpoint watermark, including unresolved and newly confirmed effects. Replacement workers need no previously returned effect identity. |
+| `GET L/tasks/effects/{effect_id}` | 200 returns prepared/issued/confirmed/unknown/refused state and attributable remote receipt; unknown results require reconciliation. |
+| `POST L/tasks/checkpoints` | Expected generation, operation identity, retain_base/incremental mode, exact repository/base, declared byte budget/page count (maximum 64) and format; 201 returns the plan, expiry, writer pin, base/checkpoint identity and native UUIDv7 page identities. |
+| `PUT L/tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | Complete page representation with page number, digest and contents; identical replay succeeds, changed page or number conflicts. Final root requires every declared page in order. |
+| `GET L/tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | 200 returns one bounded manifest page only under the current restore pin and live lease; verify its digest and ordered manifest root before using file/chunk mappings. |
+| `POST L/tasks/checkpoints/{checkpoint_id}/objects` | At most 256 plaintext SHA-256/size/kind descriptors; 201 returns missing/reused/busy objects. The native upload owner receives the fixed nonce and temporary data key for new objects. |
+| `POST L/tasks/checkpoints/{checkpoint_id}/uploads` | Registered object identities plus immutable ciphertext digest/length; 201 freezes descriptors and returns exact create-only PUT authorizations. It cannot change a prior descriptor. |
+| `POST L/tasks/checkpoints/{checkpoint_id}/authorizations` | Read purpose without object IDs acquires/adopts one restore pin and returns root plus at most 64 ordered page IDs. Registered object batches then obtain/refresh five-minute read/upload URLs after scope/descriptor/pin checks; no arbitrary keys or paths. |
+| `PATCH L/tasks/checkpoints/{checkpoint_id}/pins/{pin_id}` | Expected pin/task version; 200 renews the native reader/writer pin. One capture/restore pin protects its object set; no per-object renewal request or extension of task/transfer deadlines. |
+| `PATCH L/tasks/checkpoints/{checkpoint_id}` | Ready state, expected generation, completed manifest root, covered-input cursor and trusted upload attestations; 200 publishes after native guards and object verification. |
+| `GET L/tasks/checkpoints/{checkpoint_id}/objects?starting_after=<cursor>` | 200 returns at most 100 authorized object reads/keys; every page rechecks ownership, pins and current lease. |
 | `GET F/tasks?starting_after=<cursor>&limit=20` | `FleetRead`; 200 returns titles, states, version, next dependency and confirmed result links. Maximum limit 100. |
 | `GET F/tasks/{task_id}` | `FleetRead`; 200 returns task progress, evidence references and ETag, with local versus published file labels. |
 | `PATCH F/tasks/{task_id}` | `FleetWrite` and `If-Match`; requested lifecycle state; 200 returns state/version, ETag and any in-flight effect warning. Repeating an accepted state adds no effects. |
@@ -391,10 +391,114 @@ Map missing children to 404, stale/replay/target/checkpoint/protocol conflicts t
 Ambiguous input is a normal clarification response; code 006 is reserved for malformed explicit association requests with HTTP 409.
 Publication uncertainty returns 409 with code 010 and a recorded unknown effect; a later authorized read can report its reconciliation result.
 
+### What the runner uses each collection for
+
+These APIs connect the trusted runner supervisor to the daemon during an existing lease.
+The daemon owns accepted task state; the coding model proposes work through the agent loop.
+The user continues messaging the fleet without typing task identities.
+
+| Runner collection under L | Responsibility and example |
+|---|---|
+| `tasks/bindings` | Associate an admitted request with new or existing DTs. One message assigning PR X creates its task; independent PR Y work queues another. |
+| `tasks/inputs` | Read eligible human messages at a safe boundary, such as preserving the existing title fallback. Reading does not claim that instruction was applied. |
+| `tasks/input-receipts` | Save the accepted message, interpretation and task association once. Recovery can replay its meaning without applying the same effects twice. |
+| `tasks/decisions` | Reserve and record physical decision-provider calls, including typed answers, model identity, usage and native disposition. |
+| `tasks/effects` | Record and perform supported external writes, such as appending a tested repair to the approved PR. Lost acknowledgements require readback before another mutation. |
+| `tasks/checkpoints` | Save and restore compatible task files, Git state and conversation coverage across worker replacement. Live process memory is excluded. |
+
+### Existing mechanisms to reuse
+
+Reuse current runner authentication, lease fencing and vault/credential resolution for storage requests.
+`afd_fleet/src/lease/fence/` already proves the live holder; `afd_credential` already scopes credential requests to native workspace identity.
+Storage authorization applies those checks before issuing exact-object transfer URLs; it is not another permission service.
+
+Local toolbox retention already protects mounted images through `Arc` ownership in `afr_sandbox/src/toolbox/holds/`.
+Those local references cannot protect R2 objects from a collector on another daemon or survive host replacement.
+M236 adds durable object references and transfer pins for that storage boundary.
+
+The existing snapshot architecture already describes presigned URLs as a target, explicitly marked unbuilt in this checkout.
+Reuse the selected storage library's signing support; implement only its native ownership, bounds and recovery integration.
+
+### Rust abstractions before implementation
+
+Indy requested this boundary review before new DT abstractions are written.
+Structs own data and dependencies; behavior lives on the narrow traits below.
+Wire records remain validated data rather than gaining a trait for each field.
+
+| Owner and planned files | Data structs and behavior |
+|---|---|
+| `afd_fleet/src/task/{mod,admit,input,wait,effect,limits}.rs` | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native admission staging and lease fences with real database tests. |
+| `afr_providers/src/decision/{mod,client,wire,types}.rs` | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
+| `afr_supervisor/src/recovery/{mod,capture,restore,manifest}.rs` | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
+| `afd_fleet/src/task/storage.rs` | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
+| `afd_wire/src/task/`, `afd_wire/src/decision.rs` | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
+
+Use trait objects at existing runtime composition boundaries, following `AgentRun` and its `Executor`, `LeaseVerbs`, `EventSink` and `Clock` dependencies.
+An `Arc<dyn DecisionEvaluator>` can share the configured client; the loop borrows it through the current run context.
+Object-safe async methods use existing boxed-future conventions and each owning crate's `Result`.
+
+Concrete native task services use static dispatch unless a caller actually needs runtime substitution.
+Use generics such as `R: Read` and `W: Write` for streaming chunk transforms with different concrete readers/writers.
+Reuse current checked identifiers, fences and clocks; add newtypes only where different generations, cursors or digests must remain distinct.
+
+A local `FnMut(TransferProgress)` can coalesce progress in one coordinator before emitting existing activity frames.
+Use `Fn` or `FnOnce` only for a concrete predicate or one-shot local callback; durable mutations remain named trait operations.
+Do not duplicate the existing storage SDK, database transaction layer, credential broker or metrics registry behind another generic interface.
+
+Extend the owning crate's private `ErrorKind`, existing `error_shell!` error and `error_lifts!` conversions.
+Preserve causal sources with `?`; contextual mapping adds native identifiers or operation names without exposing secrets or private provider bodies.
+Keep native HTTP refusal and wire validation types consistent with their existing crate boundaries.
+
+### Observability aligned to native outcomes
+
+Reuse `afd_observability` producers, typed metric families, closed label sets, tracing and `docs/metrics.census.tsv`.
+Instrument asynchronous futures rather than holding an entered span across an await.
+Task rows and canonical billing lines remain the source of truth; emit signals from validated native outcomes.
+
+| Operator question | Recorded signals and intended measurement |
+|---|---|
+| Is work advancing? | `dt_transition`; counts by bounded state/reason and current-state gauges through existing census machinery. |
+| Are steers accepted and waits waking? | `dt_input_accepted`, `dt_wake_claimed`; accepted/replayed/stale outcomes and due-wake delay. |
+| What do decisions cost? | `dt_decision_recorded`; provider/purpose/outcome counts and latency. Existing billing records hold per-model tokens, cache categories and cost exactly once. |
+| Are writes confirmed? | `dt_effect_uncertain` plus native effect outcomes; uncertain/reconciled/refused/confirmed state and reconciliation latency. |
+| How expensive is save/restore? | `dt_checkpoint_published`; capture/upload/verify/restore duration, unique uploaded/reused/readback bytes and quota/integrity failures. |
+| What does the person see? | `task_decision_started`, `task_decision_completed`, `task_transfer_progress`; current provider, stage and acknowledged progress through existing CLI/browser activity. |
+
+Logs and traces carry approved task, admission, lease, decision-call, effect and checkpoint identities for correlation.
+Metrics use bounded enums; never label a series with those identities, private paths, URLs, prompts or arbitrary model output.
+Signal tests verify replay accounting, stage ordering, asynchronous context and sensitive-field exclusion alongside each relevant Dimension.
+
+### Workspace checkout and recovery terms
+
+A fresh checkout supplies the initial repository at its verified base.
+Task restoration reconstructs that task's saved files, local Git state and conversation coverage before coding continues.
+The toolbox remains a separately shared read-only image.
+
+| Storage term | Meaning |
+|---|---|
+| Manifest page | One bounded part of the saved-state index: paths, modes, deletions, chunk mappings and Git/history coverage. It is metadata, not another task or running agent. |
+| Reusable object | An immutable encrypted chunk already verified within the authorized workspace/repository scope. Unchanged content can be referenced again instead of uploaded again. |
+| Authorization | Short-lived permission to transfer exact registered objects. The daemon retains bucket credentials and the master key; the trusted supervisor receives scoped transfer material. |
+| Pin | A temporary native in-use record protecting an object set from collection during capture or restore. Once a save commits, retained manifest references provide durable protection. |
+
+```text
+First run:      verified repository base -> private checkout -> edits
+Save:           manifest + newly changed encrypted chunks -> R2
+Replacement:    authorize + pin -> read manifest pages
+                                 -> reuse/fetch base and chunks
+                                 -> verify -> restore private workspace
+                                 -> continue the same DT under a new lease
+```
+
+The lease authorizes the current worker; a storage pin protects the bytes that worker is transferring.
+A pin does not permit coding, extend the task budget or grant repository write authority.
+
 ### URL conventions and replay
 
 Follow the repository's [HTTP rules](../../.orly/standards/domains/http.md): versioned plural resources, explicit owning scope and typed identifiers.
-`task-bindings`, `task-input-receipts` and `task-decisions` name records; they do not introduce a second task processor.
+`tasks` is the plural lease-scoped namespace; its `bindings`, `input-receipts` and `decisions` collections name protocol records.
+The namespace does not create another task processor or another lease claim path.
+
 Runner URLs are lease-authorized views of the bound DT, including earlier effects needed during recovery.
 
 The path supplies `lease_id`, `task_id` or an effect identity only once; do not repeat those path identifiers in request bodies.

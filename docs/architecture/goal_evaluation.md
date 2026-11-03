@@ -99,9 +99,8 @@ Compatibility still requires injected guarded transport, disabled hidden retries
 
 The `jev` 0.1.2 crate enables reqwest's blocking feature; do not add a blocking path to the runner loop.
 
-The workspace already pins Rig 0.45.0 and reqwest 0.13.5.
-Indy approved upgrading Rig to latest stable 0.46.0.
-Reqwest 0.13.5 remains current; crate metadata was checked on November 3, 2026.
+The workspace pins Rig 0.46.0 and reqwest 0.13.5.
+Both matched latest stable crate metadata checked on November 3, 2026; Indy approved these dependency targets.
 
 [async-openai](https://crates.io/crates/async-openai) is another community SDK, but this scope needs no extra OpenAI SDK.
 Start with the existing dependencies and thin typed adapters; adopt a provider crate only if source review removes meaningful code without weakening those controls.

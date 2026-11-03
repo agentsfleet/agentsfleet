@@ -450,7 +450,7 @@ html2text = { version = "0.17.4", default-features = false }
 # their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
 # change. No default features: the transport is ours, so no HTTP stack, async
 # runtime or TLS comes with it.
-rig-core = { version = "=0.45.0", default-features = false }
+rig-core = { version = "=0.46.0", default-features = false }
 
 # A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
 # the lock through hyper, which parses the same header family with it.
