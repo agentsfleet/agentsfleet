@@ -45,8 +45,7 @@ only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never
 sets it.
 
 `make lint-all` is the lint claim. Its Rust half is `lint-rustd`: the ast-grep
-rules under `.ast-grep/` through `make lint-source`, the component-name scan in
-`scripts/check_rust_source.py`, `cargo fmt --check`, and
+rules under `.ast-grep/` through `make lint-source`, `cargo fmt --check`, and
 `cargo clippy --workspace --all-targets --all-features -- -D warnings`. The rest
 are the TypeScript lints, the shell and OpenAPI checks, and the safety gates.
 
