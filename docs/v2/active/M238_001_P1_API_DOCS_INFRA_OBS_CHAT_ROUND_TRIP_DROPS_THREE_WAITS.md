@@ -130,10 +130,12 @@ message ─► admission commits ─► doorbell rings ─► held heartbeat ans
 | `rustd/crates/afr_supervisor/src/lease_loop/tests/settlement.rs` | EDIT | one post on a window lease; the push on a lease without one |
 | `rustd/crates/afr_supervisor/src/lease_loop/tests/timing.rs` | EDIT | no memory read on a window lease |
 | `rustd/crates/afr_supervisor/src/memory/tests.rs` | CREATE | the zeroing proofs |
-| `cli/test/acceptance/fixtures/retryable.ts` | CREATE | the retryable status set, the backoff and the injectable sleep, shared by mint and revoke |
+| `cli/test/acceptance/fixtures/retryable.ts` | CREATE | the retryable and unprocessed status sets, the backoff and the retry loop, shared by mint and revoke |
 | `cli/test/acceptance/fixtures/cli-credential-revoke.ts` | EDIT | reads the shared retry machinery |
+| `cli/test/acceptance/fixtures/cli-credential-revoke.test.ts` | EDIT | reads the attempt cap from the shared module |
+| `cli/test/acceptance/global-teardown.ts` | EDIT | reads the worst-case budget from the shared module |
 | `cli/test/acceptance/fixtures/workspace-hydration.ts` | EDIT | the credential mint retries through it |
-| `cli/test/acceptance/fixtures/workspace-hydration.test.ts` | EDIT | the three retry proofs |
+| `cli/test/acceptance/fixtures/workspace-hydration.test.ts` | EDIT | the four retry proofs, each comparing the call's whole outcome |
 | `docs/architecture/lease_flow.md` | EDIT | the one-post settle and the window on the lease |
 | `docs/architecture/runner_fleet.md` | EDIT | the held heartbeat in the control protocol; memory continuity through the report |
 | `docs/architecture/runner_execution.md` | EDIT | the runner's settle and wake |
@@ -243,11 +245,12 @@ Per fleet, the playbook page holds two queries against Tempo in Grafana Explore:
 
 ### §6 — The acceptance lane survives a Cloudflare edge error
 
-`mintCliCredential` gains `options: { sleep, random }` and retries through the machinery extracted from the revoke fixture into `retryable.ts`: `RETRYABLE_STATUSES` (408, 425, 429, 500, 502, 503, 504), doubling jittered backoff from 500 ms, `Retry-After` honoured up to 10 s, at most five attempts. The fifth failure throws the last status and detail, as the first does today; any other status throws at once. The Nov 03 deploy went red on one 502 from the Cloudflare edge while the dev daemon restarted (Discovery); the lane's 170 other live tests passed.
+`mintCliCredential` gains `options: { sleep, random }` and retries through `withRetries`, the loop extracted from the revoke fixture into `retryable.ts` with its backoff (doubling from 500 ms, jittered, `Retry-After` honoured up to 10 s) and its cap (five attempts). The mint is a `POST` that writes a credential, so it retries only `UNPROCESSED_STATUSES` (425, 429, 502, 503), the answers that prove nothing was minted, and a connection that never opened; a 500, 504 or timeout may follow a mint that landed and throws at once, so a retry never leaves a second live credential behind the first. The revoke keeps the wider `RETRYABLE_STATUSES` set, because its `DELETE` is idempotent. The last failure throws the last status and detail. The Nov 03 deploy went red on one 502 from the Cloudflare edge while the dev daemon restarted (Discovery); the lane's 170 other live tests passed.
 
-- **Dimension 6.1** — An edge 502 followed by a 200 mints → Test `mints after an edge 502` (unit, `workspace-hydration.test.ts`): a fetch stub answering 502 then 200 → the credential, two calls, one sleep of 500 ms.
-- **Dimension 6.2** — Five retryable answers throw the last status → Test `throws after five retryable answers` (unit): five 503 → `CLI credential mint 503`, five calls, no sixth.
-- **Dimension 6.3** — A rejection is not retried → Test `does not retry a rejection` (unit): one 401 → the throw, one call, no sleep.
+- **Dimension 6.1** — DONE — An edge 502 followed by a 200 mints → Test `mints after an edge 502` (unit, `workspace-hydration.test.ts`): a fetch stub answering 502 then 200 → the whole outcome `{minted, error: null, calls: 2, slept: [500]}`.
+- **Dimension 6.2** — DONE — Five retryable answers throw the last status → Test `throws after five retryable answers` (unit): 503 every time → `{minted: null, error: "CLI credential mint 503: … (gave up after 5 attempts)", calls: 5, slept: [500, 1000, 2000, 4000]}`.
+- **Dimension 6.3** — DONE — A rejection is not retried → Test `does not retry a rejection` (unit): 401 → one call, no sleep, the status in the error.
+- **Dimension 6.4** — DONE — A gateway timeout is not retried, because it may follow a mint that landed → Test `does not retry a gateway timeout, which may follow a mint that landed` (unit): 504 → one call, no sleep.
 
 ## Interfaces
 
@@ -273,6 +276,7 @@ Per fleet, the playbook page holds two queries against Tempo in Grafana Explore:
 | Held beat times out on the runner | failure | a stall past `CALL_TIMEOUT` | the beat is retried on the client's backoff; the last assignment stands; workers keep the hint | `test_timed_out_held_beat_backs_off` |
 | Runner-supplied duration out of range | security | a runner reports an absurd segment | capped at `MAX_RUN` on the span | `test_segment_attributes_are_capped` |
 | Edge 502 at credential mint | failure | daemon restarting behind the edge | bounded retries; the last status thrown | `throws after five retryable answers` |
+| Mint answered 504 or timed out | failure | the mint may have landed | thrown at once; no second credential minted | `does not retry a gateway timeout, which may follow a mint that landed` |
 
 ## Invariants
 
@@ -312,6 +316,8 @@ Per fleet, the playbook page holds two queries against Tempo in Grafana Explore:
 | S3 | Declared integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
 | S4 | Version files agree | `make check-version` | exit 0 | P0 | |
 | S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| S6 | Rust patch coverage at or above 99% per touched file (the CI coverage lane's merge, graded with the PR's base) | `make test-coverage-rustd-merge RUSTD_PATCH_BASE=HEAD^1` | exit 0 | P0 | |
+| S7 | TypeScript coverage 100% (CLI, app, website, design system) | `make test-coverage-all` | exit 0 | P0 | |
 
 ## Dead Code Sweep
 
@@ -369,4 +375,5 @@ N/A: no files deleted. The `memory/{fleet_id}` read and push verbs stay for a le
   > Owner (Indy, Nov 03, 2026 09:55 PM): "Fold the spec into the implementation PR (one PR), Edit .github/workflows if the acceptance-cli fix lives there, Push the ~/Projects/docs changelog branch and open its PR after merge" — context: the spec lands in the implementation PR rather than its own; §6's fix is fixture-level, so no workflow edit is needed.
   > Owner (Indy, Nov 03, 2026 09:50 PM): "Indy is going to bed. Ensure you spec out, comment the implementation using /orly-build and then /orly-ship conduct reviews, gates pass push the PR. Ensure the CI gates are green, with greptile feedback resolved. Then merge the PR. Prior to the push fix the acceptance-cli to pass." — context: authorises the commit, push, PR and merge of this milestone in this session, with the six Sections in one PR.
   > Owner (Indy, Nov 03, 2026 10:30 PM): "When touching code analyze for a refactor to see if the crates can be made smaller, performant, better concurrent and avoid races." — context: each Section's commit records, in the PR Session Notes, the refactor it took (folded when it completes the Section) and the ones it left with their reason.
+  > Owner (Indy, Nov 03, 2026 10:50 PM): "also avoid singular field assertion test cases, you need make sure the ts,tsx are 100%, rust rs is 99>% coverage on the patch diff" — context: every new test compares the whole value or outcome it checks; rubric rows S6 and S7 hold the coverage floors the CI lanes already enforce (`scripts/rustd_coverage.py --per-file-floor 99`, `cli/bunfig.toml`).
   > Owner (Indy, Nov 03, 2026 10:35 PM): "avoid duplicate code and handrolled code, but rather look for other places where you may have implemented the same or using any batle tests crates" — context: every mechanism here names the existing code it reuses (Prior-Art); the build searches the workspace before writing a helper and prefers a workspace crate already in `Cargo.lock` over new code.
