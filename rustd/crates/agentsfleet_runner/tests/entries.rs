@@ -70,12 +70,15 @@ fn run_stops_at_boot_on_a_host_it_cannot_lease_on() {
     );
 }
 
-/// The tenant flags the engine passes, so `sandbox` parses and runs rather
-/// than stopping at a usage error. Outside a sandbox the bind refuses before
-/// either descriptor is touched.
-const TENANT: afr_sandbox::TenantDescriptors = afr_sandbox::TenantDescriptors {
-    tenant_procs: 5,
-    tenant_events: 6,
+/// The descriptor flags the engine passes, so `sandbox` parses and runs
+/// rather than stopping at a usage error. Outside a sandbox none of the three
+/// was inherited, so adoption refuses before anything is hardened.
+const INHERITED: afr_sandbox::Inherited = afr_sandbox::Inherited {
+    tenant: afr_sandbox::TenantDescriptors {
+        tenant_procs: 5,
+        tenant_events: 6,
+    },
+    executor: 7,
 };
 
 /// The exit code of an entry that ran and refused, as opposed to clap's 2 for
@@ -86,14 +89,14 @@ const REFUSED: i32 = 1;
 fn sandbox(extra: &[(&str, &str)]) -> Output {
     Command::new(BINARY)
         .arg(afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND)
-        .args(TENANT.arguments())
+        .args(INHERITED.arguments())
         .env_remove(afd_core::env::LOG_LEVEL_VAR)
         .envs(extra.iter().copied())
         .output()
         .expect("the runner binary starts")
 }
 
-/// Outside a sandbox there is no executor socket to bind, and on a host that
+/// Outside a sandbox the entry inherited no link to serve, and on a host that
 /// cannot harden there is not even that far to go: `sandbox` never serves.
 #[test]
 fn sandbox_refuses_outside_a_sandbox() {
@@ -193,9 +196,9 @@ fn run_refuses_a_credential_naming_the_knob() {
 /// reaches the export decision: `run` logs one of two export lines whichever
 /// way it decides, and `sandbox` logs neither.
 ///
-/// What this binary-level test can prove outside a sandbox. The entry binds
-/// its executor socket at a fixed path before it hardens, and outside a
-/// sandbox that bind refuses first, so both runs stop there. That the
+/// What this binary-level test can prove outside a sandbox. The entry adopts
+/// the descriptors it inherited before it hardens, and outside a sandbox that
+/// adoption refuses first, so both runs stop there. That the
 /// sequence hardens once bound is `afr_sandbox`'s own proof
 /// (`tests/confine.rs`, a child process confining itself); this one proves the
 /// entry never builds the export that would start a thread before it.

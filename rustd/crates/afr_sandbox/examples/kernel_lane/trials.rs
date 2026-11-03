@@ -33,6 +33,11 @@ use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
 use crate::kill::no_sandbox_process_outlives_the_report;
 use crate::lane::{Lane, missing};
+use crate::link::{
+    answers_over_the_inherited_pair, concurrent_spawn_inherits_no_other_socket,
+    dead_entry_is_refused_with_its_reason, has_no_socket_directory_bind,
+    tenant_holds_no_executor_socket,
+};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::shared_memory::full_shared_memory_spares_the_tenant;
 use crate::toolbox::toolbox_carries_the_tools;
@@ -173,6 +178,26 @@ const TRIALS: &[(&str, Body)] = &[
     (
         "test_toolbox_loop_reads_past_the_host_cache",
         toolbox_reads_past_the_host_cache,
+    ),
+    (
+        "test_executor_answers_over_the_inherited_pair",
+        answers_over_the_inherited_pair,
+    ),
+    (
+        "test_tenant_process_holds_no_executor_socket",
+        tenant_holds_no_executor_socket,
+    ),
+    (
+        "test_concurrent_spawn_inherits_no_other_socket",
+        concurrent_spawn_inherits_no_other_socket,
+    ),
+    (
+        "test_dead_entry_is_refused_with_its_reason",
+        dead_entry_is_refused_with_its_reason,
+    ),
+    (
+        "test_sandbox_has_no_socket_directory_bind",
+        has_no_socket_directory_bind,
     ),
     ("test_probe_reads_direct_io_per_filesystem", probe_direct_io),
     ("test_lane_refuses_a_disk_short_of_room", short_disk),

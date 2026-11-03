@@ -35,46 +35,26 @@ fn test_a_process_that_cannot_be_confined_never_serves() {
     );
 }
 
-/// Outside a sandbox there is no socket directory, so nothing is served and
-/// nothing is confined: the socket is bound before anything else.
-#[test]
-fn test_outside_a_sandbox_there_is_no_socket_to_bind() {
-    let tenant = crate::TenantDescriptors {
-        tenant_procs: 3,
-        tenant_events: 4,
-    };
-    let refused = super::serve_sandboxed(tenant)
-        .err()
-        .map(|error| error.to_string());
+/// Past any descriptor this test process holds.
+const NEVER_OPENED: i32 = 1_000_000;
 
-    assert!(
-        refused
-            .as_deref()
-            .is_some_and(|text| text.contains("executor")),
-        "{refused:?}"
-    );
-}
-
-/// A descriptor the entry was named but never inherited stops it once the
-/// socket is bound and before anything is hardened: the refusal names the
-/// number, never a confinement step, and the socket is already there.
-#[test]
-fn test_an_adoption_refused_after_the_bind_stops_before_hardening() {
-    // Past any descriptor this test process holds.
-    const NEVER_OPENED: i32 = 1_000_000;
-    let dir = tempfile::tempdir().ok();
-    let socket = dir.as_ref().map(|dir| dir.path().join("executor.sock"));
-    let tenant = crate::TenantDescriptors {
-        tenant_procs: NEVER_OPENED,
-        tenant_events: NEVER_OPENED + 1,
-    };
-
-    let refused = socket.as_deref().and_then(|socket| {
-        super::serve_placed(socket, socket, |listener| {
-            Ok(listener.with_tenant(tenant.adopt()?))
-        })
+/// What an entry refused at adoption says: the descriptor's number, never a
+/// confinement step, since nothing was hardened yet.
+fn refusal(inherited: crate::Inherited) -> Option<String> {
+    super::serve_sandboxed(inherited)
         .err()
         .map(|error| error.to_string())
+}
+
+/// An entry never handed its link serves nothing and confines nothing.
+#[test]
+fn test_an_entry_without_its_link_is_refused_before_hardening() {
+    let refused = refusal(crate::Inherited {
+        tenant: crate::TenantDescriptors {
+            tenant_procs: NEVER_OPENED + 1,
+            tenant_events: NEVER_OPENED + 2,
+        },
+        executor: NEVER_OPENED,
     });
 
     assert!(
@@ -83,5 +63,30 @@ fn test_an_adoption_refused_after_the_bind_stops_before_hardening() {
             .is_some_and(|text| text.contains(&NEVER_OPENED.to_string())),
         "{refused:?}"
     );
-    assert!(socket.is_some_and(|socket| socket.exists()), "bound first");
+}
+
+/// An entry handed its link but not its tenant leaf stops at the leaf, before
+/// anything is hardened, so no process it could start runs outside the leaf.
+#[test]
+fn test_an_entry_without_its_tenant_leaf_is_refused_before_hardening() {
+    use std::os::fd::IntoRawFd as _;
+    let ends = std::os::unix::net::UnixStream::pair().ok();
+    let executor = ends.map(|(_runner, entry)| entry.into_raw_fd());
+
+    let refused = executor.and_then(|executor| {
+        refusal(crate::Inherited {
+            tenant: crate::TenantDescriptors {
+                tenant_procs: NEVER_OPENED,
+                tenant_events: NEVER_OPENED + 1,
+            },
+            executor,
+        })
+    });
+
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|text| text.contains(&NEVER_OPENED.to_string())),
+        "{refused:?}"
+    );
 }

@@ -15,7 +15,7 @@ use afr_executor::{Ending, Spawn};
 use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
 use super::support::{
     BRIEF, ENV_PROBE, ENV_PROBE_INHERITED, ENV_PROBE_REPORT, ENV_PROBE_VARIABLES, FAILER,
-    FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SLEEPER, request, serve_leases,
+    FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SANDBOXED, SLEEPER, request, serve_leases,
 };
 use crate::cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
 use crate::engine::Engine;
@@ -237,12 +237,11 @@ async fn test_warm_slots_hand_out_a_bubblewrap_sandbox_started_ahead() {
     let server = serve_leases(host.config.state_dir.clone());
     let capture = Capture::install();
     let slots = WarmSlots::start(Arc::new(host.engine()), 1, LIMITS);
-    while !host.leases().iter().any(|lease| {
-        host.lease_dir(lease)
-            .join("run")
-            .join("executor.sock")
-            .exists()
-    }) {
+    while !host
+        .leases()
+        .iter()
+        .any(|lease| host.lease_dir(lease).join(SANDBOXED).exists())
+    {
         tokio::time::sleep(POLL).await;
     }
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -293,7 +292,7 @@ async fn test_a_warm_slot_that_died_is_discarded_and_the_lease_starts_cold() {
 }
 
 /// A root runner starts bubblewrap as the sandbox's own host user, which owns
-/// the socket directory; here the "sandbox user" is this test's own, which
+/// what bubblewrap writes; here the "sandbox user" is this test's own, which
 /// is the one change of user an unprivileged process may make.
 #[tokio::test]
 async fn test_a_root_runner_starts_the_sandbox_as_its_own_user() {
@@ -309,9 +308,9 @@ async fn test_a_root_runner_starts_the_sandbox_as_its_own_user() {
     engine.owner = me;
 
     let sandbox = engine.prepare(request("lease-12")).await.unwrap();
-    let run_dir = fs::metadata(host.lease_dir("lease-12").join("run")).unwrap();
+    let note = fs::metadata(host.lease_dir("lease-12").join(SANDBOXED)).unwrap();
     let _left = sandbox.destroy().await;
     server.abort();
 
-    assert_eq!((run_dir.uid(), run_dir.mode() & 0o777), (me.0, 0o700));
+    assert_eq!(note.uid(), me.0, "bubblewrap ran as the sandbox user");
 }

@@ -3,23 +3,23 @@
 
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
+use std::io;
 use std::os::unix::fs::DirBuilderExt as _;
-use std::path::{Path, PathBuf};
+use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::error_code::{Coded as _, Logged};
 use afr_executor::{Client, Executor};
-use rustix::fs::{Gid, Uid};
 
-use crate::bubblewrap::{self, Layout, NetworkLayout, SOCKET_NAME};
+use crate::bubblewrap::{self, Layout, NetworkLayout};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup};
 use crate::egress::{self, Kernel};
 use crate::engine::{Engine, HostWorkspace, Killed, LeaseName, Limits, Sandbox, SandboxRequest};
 use crate::error::{Result, not_ready, unconfined};
 use crate::network::{Allowlist, Network};
 use crate::probe::HostProbe;
-use crate::tenant::{TenantDescriptors, TenantFiles};
+use crate::tenant::{Handover, Inherited, TenantFiles};
 use crate::toolbox::Toolbox;
 use crate::workspace_disk::{Caching, WorkspaceDisk};
 
@@ -46,13 +46,14 @@ pub const SANDBOX_HOST_IDS: (u32, u32) = (65_534, 65_534);
 /// ends a sandbox that will never answer.
 pub const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The directory each lease's executor socket is made in.
-const RUN_DIR: &str = "run";
 /// A lease's directory: others may pass through to the binds beneath it, but
 /// not list or write it.
 const LEASE_DIR_MODE: u32 = 0o711;
-/// The socket directory: its owner alone, and the owner is the sandbox.
-const RUN_DIR_MODE: u32 = 0o700;
+/// What the ready probe lists: the workspace, the executor's root.
+const READY_PROBE: &str = ".";
+/// How long a sandbox whose link closed has to exit, so the reason reported
+/// is its own.
+const EXITED_WITHIN: Duration = Duration::from_secs(1);
 /// The event a lease's sandbox start is logged under.
 const EVENT_PREPARE_STARTED: &str = "sandbox_prepare_started";
 /// The event a ready sandbox is logged under.
@@ -190,17 +191,17 @@ impl BubblewrapEngine {
         cgroup.limit_io(device, DEFAULT_IO_BYTES_PER_SECOND)?;
         let procs = cgroup.procs();
         let tenant = TenantFiles::open(&cgroup.tenant_procs(), &cgroup.tenant_events())?;
-        let run_dir = self.run_dir(parts.dir())?;
+        let (handover, link) = Handover::with_link(tenant)?;
         let names = Names::render(parts.dir(), network)?;
-        let argv = self.arguments(
-            parts,
-            &run_dir,
-            tenant.descriptors(),
-            limits,
-            names.layout(),
-        );
-        parts.spawn(&self.config.tools.bwrap, argv, &procs, tenant, self.run_as)?;
-        let client = self.ready(parts, &run_dir.join(SOCKET_NAME)).await?;
+        let argv = self.arguments(parts, handover.descriptors(), limits, names.layout());
+        parts.spawn(
+            &self.config.tools.bwrap,
+            argv,
+            &procs,
+            handover,
+            self.run_as,
+        )?;
+        let client = self.ready(parts, link).await?;
         if let Network::Allowed(allowlist) = network {
             parts.adopt_egress(join(procs, allowlist.clone()).await?);
         }
@@ -211,8 +212,7 @@ impl BubblewrapEngine {
     fn arguments(
         &self,
         parts: &Parts,
-        run_dir: &Path,
-        tenant: TenantDescriptors,
+        inherited: Inherited,
         limits: Limits,
         network: NetworkLayout<'_>,
     ) -> Vec<OsString> {
@@ -220,35 +220,36 @@ impl BubblewrapEngine {
             toolbox: self.config.toolbox.root(),
             workspace: parts.workspace(),
             tmp: parts.tmp(),
-            run_dir,
             entry: &self.config.entry,
             entry_args: &self.config.entry_args,
             log_level: self.config.log_level.as_deref(),
-            tenant,
+            inherited,
             shared_memory_bytes: limits.shared_memory_bytes(),
             network,
         })
     }
 
-    /// The socket directory, owned by the user the sandbox runs as and no one
-    /// else: the one place it binds its socket before confining itself.
-    fn run_dir(&self, lease_dir: &Path) -> Result<PathBuf> {
-        let run_dir = lease_dir.join(RUN_DIR);
-        DirBuilder::new().mode(RUN_DIR_MODE).create(&run_dir)?;
-        if self.run_as.is_some() {
-            let (uid, gid) = (Uid::from_raw(self.owner.0), Gid::from_raw(self.owner.1));
-            rustix::fs::chown(&run_dir, Some(uid), Some(gid))?;
-        }
-        Ok(run_dir)
-    }
-
-    /// Connects once the executor answers, or refuses when the sandbox exits
-    /// first or the timeout passes.
-    async fn ready(&self, parts: &mut Parts, socket: &Path) -> Result<Client> {
+    /// The executor on `link`, once it lists the workspace. Nothing polls: the
+    /// listing waits on the link until the entry serves it. A sandbox that
+    /// exits first is refused with its own reason, and one silent past the
+    /// timeout as not ready.
+    async fn ready(&self, parts: &mut Parts, link: UnixStream) -> Result<Client> {
         let waited = self.config.ready_timeout;
-        tokio::select! {
-            client = Client::connect_within(socket, waited) => client.map_err(not_ready(waited)),
-            exited = parts.exited() => Err(exited),
+        let client = Client::connected(link).map_err(not_ready(waited))?;
+        let listed = tokio::select! {
+            exited = parts.exited() => return Err(exited),
+            listed = tokio::time::timeout(waited, client.list_dir(READY_PROBE)) => listed,
+        };
+        match listed {
+            Ok(Ok(_workspace)) => Ok(client),
+            // The link closes as the entry exits, a moment before bubblewrap
+            // does, whose error stream says why.
+            Ok(Err(lost)) => Err(tokio::time::timeout(EXITED_WITHIN, parts.exited())
+                .await
+                .unwrap_or_else(|_still_running| not_ready(waited)(lost))),
+            Err(_elapsed) => Err(not_ready(waited)(
+                io::Error::from(io::ErrorKind::TimedOut).into(),
+            )),
         }
     }
 }

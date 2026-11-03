@@ -244,7 +244,11 @@ fn until_free<T>(attempt: impl FnMut() -> Result<T, Attempt>) -> io::Result<T> {
 
 /// Asks the kernel for a free loop device, opens it as `access` needs, and
 /// configures it with `config`.
-fn configure_free(control: &File, config: &LoopConfig, access: Access) -> Result<Attached, Attempt> {
+fn configure_free(
+    control: &File,
+    config: &LoopConfig,
+    access: Access,
+) -> Result<Attached, Attempt> {
     // SAFETY: LOOP_CTL_GET_FREE takes no argument; it returns a device
     // number, or -1 with errno set.
     let number = unsafe { libc::ioctl(control.as_raw_fd(), LOOP_CTL_GET_FREE) };
