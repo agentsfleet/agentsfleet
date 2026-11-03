@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Test Baseline:** base `2f8c878c0`, measured in an isolated checkout: runner unit 1382 and daemon unit 139 passed. Its unit lane stopped at the macOS `base64` test this Pull Request fixes; its integration lane stopped at 630 passed, 2 failed, both `afd_authoring` contention timeouts. Branch: unit 4911 Rust and 5289 TypeScript passed; integration 1458 passed.
 
-**Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_001-lease-waits.md`, measured on the local kernel lane at `937c8d34d`
+**Baseline evidence:** this spec's Discovery, **Measurements**
 
 **Depends on:** none. M236_001 (pending) builds its §5 restore inside this spec's background build; see Discovery.
 
@@ -113,7 +113,6 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `rustd/crates/afr_telemetry/src/{families,record}/` | EDIT | `sandbox_wait` and `sandbox_release` duration families |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner.rs` | EDIT | End-to-end proof through the daemon |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_overlap.rs` | CREATE | Dimension 2.8: a stalled engine, and the first chunk before sandbox ready |
-| `playbooks/operations/acceptance/baselines/M237_001-lease-waits.md` | CREATE | §1's baseline and the after figures |
 | `deploy/local/codex.sh` | EDIT | `base64 --decode` reads stdin, which macOS's tool needs; Discovery has why |
 | `docs/architecture/runner_execution.md` | EDIT | Walkthrough and lease order after the change |
 | `docs/v2/active/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md` | EDIT | This spec, opened at CHORE(open); moves to `done/` at close |
@@ -152,7 +151,7 @@ Before PLAN, the implementing agent records today's lease waits as Baseline evid
 Under §2's owner decision the egress bind stays ahead of the model call. Its share of `sandbox` is therefore the setup wait this spec leaves in place.
 
 - **Dimension 1.1** — `lease_completed` carries `egress_ms`, `prepare_ms` and `checkout_ms` apart → Test `test_lease_completed_splits_prepare_and_checkout` — DONE
-- **Dimension 1.2** — The baseline file exists before PLAN with the local kernel lane's figures, which Indy chose over the dev host's → Test `manual_baseline_recorded_before_plan` — DONE
+- **Dimension 1.2** — The baseline figures are recorded before PLAN (`dbe57267b`), now in Discovery, with the local kernel lane's figures, which Indy chose over the dev host's → Test `manual_baseline_recorded_before_plan` — DONE
 
 ### §2 — The sandbox builds beside the first model call
 
@@ -311,7 +310,7 @@ The `segments.rs` comment that segments tile the lease changes: `prepare` and `c
 | R1 | Model starts before the sandbox; failures keep today's refusals (§2) | `make test-unit-rustd-runner` | exit 0 | P0 | ✅ `✓ [rustd] unit: runner — 1432 passed` |
 | R2 | Through the daemon, the stream precedes sandbox ready (§2) | `make test-integration-rustd` | exit 0 | P0 | ✅ `✓ [rustd] integration suite — 1455 passed`, `test_chat_streams_before_sandbox_ready ... ok` |
 | R3 | After a settled kill, no sandbox process outlives its report (§3) | `make test-runner-kernel` | exit 0 | P0 | ✅ `test result: ok. 69 passed; 0 failed` at `c24c4b481` |
-| R4 | Baseline and after figures recorded (§1, §4) | `test -s playbooks/operations/acceptance/baselines/M237_001-lease-waits.md` | exit 0 | P1 | ✅ `exit 0` |
+| R4 | Baseline and after figures recorded (§1, §4) | `grep -c '^- \*\*Measurements\*\*' docs/v2/done/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md` | `1` | P1 | ✅ `1` |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -401,6 +400,25 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 - **orly 0.28.0** — `orly update --no-hooks` rewrote `AGENTS.md`, two skills and the spec, spec-template and shell standards, and moved the pin. `orly doctor` reads green. CI installs `orly@latest`, so no workflow pin moved. Both specs were written to the 0.27.0 spec standard, and they close under it.
 - **Changelog** — the entry is on `chore/m237-sandbox-start-changelog` in `agentsfleet/docs`, marked coming soon until M237 deploys.
 - **Test audit (Nov 03)** — three readers marked every test this branch added or changed, by the test-audit skill's bar (`~/Projects/openclaw/.agents/skills/test-audit`). The hang the owner saw came from `afd_core`'s log capture: it holds one process-wide lock for a test's whole life, so one stuck capturing test froze every capturing test in the binary. That lock now fails after ten minutes naming the wait, and every unbounded await under a capture is bounded. The fakes' `Mutex` recorders became channels; the overlap test's `ready` is a `OnceLock`. Four tests were folded into stronger ones, one that passed on the wrong guard was dropped, and assertions that could not fail went.
+- **Measurements** — measured locally through the make targets, as Indy asked on Nov 02, on the OrbStack machine `afr-kernel` (Debian 13.7, kernel `7.2.12-orbstack-00394-gbecdd6130068`), whose figures size the waits rather than predict the dev host's. The dev host's logs held three `sandbox_prepare_completed` events in the seven days before, too few for a p95. Sandbox start at `937c8d34d`, where §1 only adds timers, over 100 leases 4 at once:
+
+  | Cache | Executor ready p50 / p95 / p99 | First command p50 / p95 / p99 |
+  |---|---|---|
+  | cold | 100.8 / 321.6 / 442.7 ms | 5.2 / 12.6 / 13.8 ms |
+  | warm | 95.7 / 119.3 / 122.3 ms | 1.4 / 2.0 / 2.1 ms |
+
+  Host staging took 1.98 s cold and 2.32 s warm at p50 of three, once per toolbox, outside any lease.
+
+  The lease's path, before and after, proved with set delays on a paused clock:
+
+  | Wait | Before | After | Proof |
+  |---|---|---|---|
+  | First model request behind the prepare | the whole prepare, 100 ms warm and 322 ms cold at p95 | none | `test_first_model_call_starts_before_the_sandbox_is_ready`: with a 500 ms prepare, the model began 500 ms before the sandbox was ready |
+  | First model request behind the checkout | every checkout's token mint and copy | none | `test_an_answer_mid_checkout_holds_the_whole_sandbox` |
+  | A sandbox tool call | the build had finished | what is left of the build, logged as `sandbox_wait_ms` | `test_first_model_call_starts_before_the_sandbox_is_ready`: `sandbox_wait_ms=500` |
+  | The report behind the disk's release | unmount and image removal | none | `test_a_lease_returns_only_after_its_release`: a 3 s release left `report_ms` under 3 s |
+
+  Once deployed, `lease_completed`'s `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` give the production split.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.

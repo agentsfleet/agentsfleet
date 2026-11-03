@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Test Baseline:** base `2f8c878c0`, measured in an isolated checkout: runner unit 1382 and daemon unit 139 passed. Its unit lane stopped at the macOS `base64` test this Pull Request fixes; its integration lane stopped at 630 passed, 2 failed, both `afd_authoring` contention timeouts. Branch: unit 4911 Rust and 5289 TypeScript passed; integration 1458 passed.
 
-**Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_002-start.md`, the kernel lane's budgets at `937c8d34d` and `c24c4b481`, with `beeacb8b0` and `e7c03a27d` between
+**Baseline evidence:** this spec's Discovery, **Measurements**
 
 **Depends on:** none
 
@@ -94,7 +94,6 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 | `scripts/toolbox/measure_first_use.sh`, `scripts/toolbox/test_measure_first_use.sh` | EDIT | An attach mode: buffered `-o loop`, or a direct-I/O loop device |
 | `rustd/crates/afr_sandbox/tests/confine.rs`, `rustd/crates/afr_executor/tests/` | EDIT | Callers of the socket-path API |
 | `docs/architecture/runner_execution.md` | EDIT | Toolbox, Parts A, D and E after the change |
-| `playbooks/operations/acceptance/baselines/M237_002-start.md` | CREATE | The start figures before and after |
 | `docs/AUTH.md` | EDIT | The `env_clear()` citation follows `parts.rs` to `parts/mod.rs` |
 | `rustd/crates/afr_sandbox/src/harden/mod.rs` | EDIT | Its comment named the socket directory the pair removed |
 | `rustd/crates/afr_sandbox/src/host/tests.rs` | EDIT | `HostTools.mount` is a function, not a program path |
@@ -235,7 +234,7 @@ Wire, schema, OpenAPI and CLI: no change.
 | R1 | Buffered toolbox, socket pair and in-process disk proven on the lane (§1 to §3) | `make test-runner-kernel` | exit 0 | P0 | ✅ `test result: ok. 69 passed; 0 failed` at `c24c4b481` |
 | R2 | The same trials pass on Debian 13: the OrbStack machine `afr-kernel` stands in for the dev host (Discovery) | `make test-runner-kernel` on `afr-kernel`, `uname -r` and output in Session Notes | exit 0 | P0 | ✅ on `afr-kernel`, `7.2.12-orbstack-00394-gbecdd6130068`: `69 passed; 0 failed` |
 | R3 | The toolbox goes direct only within 10% p99 of buffered (§1); `IMAGE` is the admitted toolbox; baseline from the same command without the variable | `sudo TOOLBOX_LOOP_DIRECT_IO=on bash scripts/toolbox/measure_first_use.sh "$IMAGE" first-use-direct.json 120 first-use-buffered.json` | `0` steps marked `REGRESSION`, or the toolbox attaches buffered | P1 | ✅ 8 of 8 steps `REGRESSION`, so the toolbox attaches buffered (`Access::direct_io`) |
-| R4 | Start figures recorded (§4) | `test -s playbooks/operations/acceptance/baselines/M237_002-start.md` | exit 0 | P2 | ✅ `exit 0` |
+| R4 | Start figures recorded (§4) | `grep -c '^- \*\*Measurements\*\*' docs/v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md` | `1` | P2 | ✅ `1` |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -311,12 +310,25 @@ N/A: no files deleted.
 - **The release half of `parts.rs`** — the socket pair took `parts.rs` past 350 lines. Its release half moves to `parts/teardown.rs`, and `parts.rs` becomes `parts/mod.rs`, so `docs/AUTH.md` cites the new path.
 - **Sandbox ready under 10 ms** — a fresh build reads 42.3 ms at p50, cold; a lease that took a warm slot read 1.17 ms (`test_warm_start_beats_cold_start`, p50 of 5). Nothing times the steps inside a prepare yet. Indy chose one follow-up spec after M237 merges: time each step, wire warm slots for default-sized leases, and shorten the lease-poll wait, at least 250 ms today (`worker_pool/mod.rs:30`).
 - **Performance a durable task can watch** — every figure the follow-up cuts becomes an exported signal, so a later regression shows as a moved percentile on Grafana rather than a re-run of the kernel lane. Today the runner exports build, wait, release and model durations and the build outcome count; `runner_execution.md` lists which answers which question. Three have no signal yet: admission to lease, lease to first model request, and each prepare step. The follow-up adds them, with a baseline per release that a durable task compares against.
+- **Measurements** — the kernel lane's `test_start_budgets_with_four_leases`, 100 leases 4 at once, on the same OrbStack machine, toolbox and trial for every row. Executor ready, p50 / p95 / p99:
+
+  | Revision | What it had | Cold | Warm |
+  |---|---|---|---|
+  | `937c8d34d` | before M237 | 100.8 / 321.6 / 442.7 ms | 95.7 / 119.3 / 122.3 ms |
+  | `beeacb8b0` | the in-process disk, no socket pair | 37.7 / 49.4 / 51.8 ms | 32.2 / 41.4 / 57.9 ms |
+  | `e7c03a27d` | the socket pair and a direct-I/O toolbox | 42.1 / 57.4 / 59.4 ms | 30.8 / 39.7 / 43.3 ms |
+  | `c24c4b481` | what ships: the toolbox buffered | 42.3 / 54.5 / 107.9 ms | 30.4 / 36.3 / 60.1 ms |
+
+  The drop is the in-process disk. Each row is one run, so a p99 is one lease's figure, not a measured slow-down. The socket pair's gain is the removed poll and socket directory, not a measured speed-up. The first useful command (`git --version`) went from 5.2 / 12.6 / 13.8 ms cold to 4.9 / 6.0 / 6.6 ms, and from 1.4 / 2.0 / 2.1 ms warm to 0.9 / 1.9 / 3.1 ms.
+- **The direct-I/O sampler case's bound** — `direct_io_when_asked` runs the sampler's minimum of 20 runs past the host cache: 41 s alone on the OrbStack lane, and past the shared 90 s bound when other cases ran first. That one case now has 300 s; every other case keeps 90 s.
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
 - **Deferrals and transfers** — Dimension 1.1, with the direct-I/O toolbox it proved:
 
 > Owner (Indy, Nov 03, 2026 08:53 AM): "Revert to buffered (Recommended)" — context: Dimension 1.4 measured direct I/O failing the 10% p99 rule on all 8 first-use steps, so the toolbox loop device stays buffered and Dimension 1.1's direct-I/O trial goes.
+
+> Owner (Indy, Nov 03, 2026 12:07 PM): "300 s for that case (Recommended)" — context: the kernel lane's sampler test timed out `direct_io_when_asked` at 90 s twice; only that case's bound moves.
 
 > Owner (Indy, Nov 03, 2026 11:36 AM): "I want to monitor the observability, logging, metrics across so ensure we can do that to answer the performance questions. I wanna run Durable Task to figure out performance regression later using agentsfleet. so ensure you think in that way and record." — context: the follow-up to M237 and every later performance change.
 
