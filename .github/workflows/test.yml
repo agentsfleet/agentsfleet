@@ -12,8 +12,8 @@ on:
     types: [opened, synchronize, reopened]
   # Every other trigger here needs a Pull Request or a merge to main, so a long
   # branch cannot exercise these lanes until review time — which is exactly when
-  # a first-run failure is most expensive. `bench.yml` and `cache-prune.yml`
-  # already carry this for the same reason.
+  # a first-run failure is most expensive. `bench.yml` already carries this
+  # for the same reason.
   workflow_dispatch:
   merge_group:
 
@@ -28,8 +28,8 @@ jobs:
   test-unit-cli:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install shared acceptance tooling dependencies
@@ -43,7 +43,7 @@ jobs:
       # Written by the step above; the cli lane already emits lcov.
       - name: Upload cli coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: cli/coverage/lcov.info
@@ -54,8 +54,8 @@ jobs:
   test-unit-website:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install website dependencies
@@ -67,7 +67,7 @@ jobs:
       # Written by the step above; the website lane already emits lcov.
       - name: Upload website coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/website/coverage/lcov.info
@@ -78,8 +78,8 @@ jobs:
   test-unit-app:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install app dependencies
@@ -91,7 +91,7 @@ jobs:
       # Written by the step above; the app lane already emits lcov.
       - name: Upload app coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/app/coverage/lcov.info
@@ -102,8 +102,8 @@ jobs:
   test-unit-design-system:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install design-system dependencies
@@ -116,8 +116,8 @@ jobs:
   bundle-size-website:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install website dependencies
@@ -133,8 +133,8 @@ jobs:
   bundle-size-app:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install app dependencies

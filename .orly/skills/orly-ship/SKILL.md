@@ -19,9 +19,10 @@ This skill owns the steps from review to land. Pull Request rules live in
    Code). Then give `orly-standards-reviewer` the diff, the spec, the
    standards for the touched files and the repository's own instructions. Fix
    each finding, or record the owner's verbatim deferral quote.
-3. **Baselines.** Measure the unit and integration baselines at the spec's
-   `Baseline revision` in an isolated checkout, and record them with their
-   evidence.
+3. **Baselines.** Copy the baseline counts and run URL from CI on the base
+   commit into the Session Notes, beside the branch counts. Measure any lane CI
+   did not run on that commit at the merge base, in an isolated checkout; never
+   borrow another branch's counts.
 4. **Close (CHORE(close)).** Every Dimension is `DONE`. Move the spec to
    `done/` with `Status: DONE`. Write the changelog entry and the docs pages the
    change affects, sweep orphans, and leave `git status -uall` empty.

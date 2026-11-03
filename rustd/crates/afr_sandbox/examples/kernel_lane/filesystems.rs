@@ -6,23 +6,41 @@
 
 use std::ffi::{CStr, CString};
 use std::fs;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use afr_sandbox::{Caching, HostTools, MOUNT_PATH, ProbePaths, WorkspaceDisk, probe};
+use afd_core::test_util::trace::Capture;
+use afr_sandbox::{Caching, HostTools, ProbePaths, WorkspaceDisk, probe};
 use libtest_mimic::Failed;
 use rustix::mount::{MountFlags, UnmountFlags};
 
 use crate::admission::MOUNTINFO;
-use crate::lane::{
-    ENTRY_MODE, Lane, SANDBOX_IDS, STATE_FREE_BYTES_MIN, STATE_PREFIX, short_of_disk,
-};
+use crate::lane::{Lane, SANDBOX_IDS, STATE_FREE_BYTES_MIN, STATE_PREFIX, short_of_disk};
 use crate::run::{expect, runtime};
-use crate::trials::SMALL_DISK;
+use crate::trials::{Body, SMALL_DISK};
+
+/// What the workspace disk leaves behind and what its build starts.
+pub(crate) const TRIALS: &[(&str, Body)] = &[
+    (
+        "test_refused_mount_leaves_nothing",
+        refused_mount_leaves_nothing,
+    ),
+    (
+        "test_released_disk_leaves_no_loop_device",
+        released_disk_leaves_no_loop_device,
+    ),
+    (
+        "test_workspace_disk_starts_no_mount_program",
+        disk_starts_no_mount_program,
+    ),
+];
 
 /// A file system that makes unnamed files but refuses direct I/O: what the
 /// probe and the loop device both meet on a host whose state is not on a disk.
 const RAMFS: &str = "ramfs";
+/// The event every host program's start is logged under, and the one
+/// program a disk's build may start.
+const PROGRAM_STARTED: &str = "sandbox_host_program_started";
+const MKE2FS: &str = "mke2fs";
 /// A small memory file system, far short of what a lane run fills.
 const TMPFS: &str = "tmpfs";
 const SMALL_TMPFS_BYTES: u64 = 16 << 20;
@@ -33,11 +51,16 @@ const _: () = assert!(
     ROOMY_TMPFS_BYTES > STATE_FREE_BYTES_MIN,
     "a roomy tmpfs must clear the lane's free-space floor"
 );
-/// A mount helper that mounts as the real one does, then fails: what the
-/// workspace disk's undo meets when a helper dies after its mount.
-const MOUNTS_THEN_FAILS: &str = "mounts-then-fails";
-/// The file the helper makes once its mount succeeded, beside the lease.
-const MOUNTED_MARK: &str = "mounted-then-failed";
+/// A formatter that formats nothing, so the mount meets no file system.
+const FORMATS_NOTHING: &str = "/usr/bin/true";
+/// Where the kernel lists block devices, and the file naming a loop device's
+/// backing file.
+const SYS_BLOCK: &str = "/sys/block";
+const BACKING_FILE: &str = "loop/backing_file";
+/// How long a loop device's detach may take to finish, and how often it is
+/// looked at.
+const DETACH_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+const DETACH_POLL: std::time::Duration = std::time::Duration::from_millis(10);
 /// Where each trial's file system is mounted, under its own scratch directory.
 const MOUNTED: &str = "mounted";
 /// The lease directory a workspace disk is made in.
@@ -118,41 +141,75 @@ pub(crate) fn buffered_disk(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// A disk whose mount helper mounted it and then failed is unmounted before
-/// its files go: the build fails, and leaves nothing in its directory and
-/// nothing mounted, so no loop device stays on a deleted image.
-pub(crate) fn failed_mount_is_unmounted(lane: &Lane) -> Result<(), Failed> {
+/// Building a lease's disk starts `mke2fs` and
+/// no other host program; the loop device and the mount are made in-process.
+pub(crate) fn disk_starts_no_mount_program(lane: &Lane) -> Result<(), Failed> {
     let lease = tempfile::tempdir_in(on_disk(lane)?)?;
-    let helper = lease.path().join(MOUNTS_THEN_FAILS);
-    let mark = lease.path().join(MOUNTED_MARK);
-    fs::write(
-        &helper,
-        format!(
-            "#!/bin/sh\n{MOUNT_PATH} \"$@\" && : > '{}'\nexit 1\n",
-            mark.display()
-        ),
-    )?;
-    fs::set_permissions(&helper, fs::Permissions::from_mode(ENTRY_MODE))?;
+    let dir = lease.path().join(LEASE);
+    fs::create_dir(&dir)?;
+
+    let capture = Capture::install();
+    let built = runtime().block_on(WorkspaceDisk::create(
+        &HostTools::default(),
+        &dir,
+        SMALL_DISK,
+        SANDBOX_IDS,
+    ));
+    let started: Vec<String> = capture
+        .events()
+        .iter()
+        .filter(|event| event.field("event") == Some(PROGRAM_STARTED))
+        .filter_map(|event| event.field("program").map(str::to_owned))
+        .collect();
+    drop(capture);
+    built?.0.release()?;
+
+    expect(
+        started == [MKE2FS],
+        format!("the disk's build started only mke2fs, got {started:?}"),
+    )
+}
+
+/// A disk the kernel will not mount, an image `mke2fs` never formatted,
+/// fails the build and leaves nothing: no file in its directory, nothing
+/// mounted, and no loop device on the image.
+pub(crate) fn refused_mount_leaves_nothing(lane: &Lane) -> Result<(), Failed> {
+    let lease = tempfile::tempdir_in(on_disk(lane)?)?;
     let dir = lease.path().join(LEASE);
     fs::create_dir(&dir)?;
     let tools = HostTools {
-        mount: helper,
+        mke2fs: PathBuf::from(FORMATS_NOTHING),
         ..HostTools::default()
     };
 
     let built = runtime().block_on(WorkspaceDisk::create(&tools, &dir, SMALL_DISK, SANDBOX_IDS));
-
     let refused = match built {
-        Ok((disk, _caching)) => disk.release().map(|()| false)?,
-        Err(_failed) => true,
+        Ok((disk, _caching)) => {
+            disk.release()?;
+            None
+        }
+        Err(refused) => Some(refused),
     };
+
     let left: Vec<_> = fs::read_dir(&dir)?
         .flatten()
         .map(|entry| entry.file_name())
         .collect();
     let mounts = fs::read_to_string(MOUNTINFO).unwrap_or_default();
-    expect(mark.exists(), "the helper mounted before it failed")?;
-    expect(refused, "the helper's failure fails the build")?;
+    // The mount's own refusal, a system call's `EINVAL`: an attach that failed
+    // first is an input/output failure, and would leave no loop device to free.
+    let cause = refused
+        .as_ref()
+        .and_then(|refused| std::error::Error::source(refused))
+        .and_then(|cause| cause.downcast_ref::<rustix::io::Errno>())
+        .copied();
+    expect(
+        cause == Some(rustix::io::Errno::INVAL),
+        format!(
+            "the mount refused an image with no file system, got {:?}",
+            refused.as_ref().map(afr_sandbox::Error::told)
+        ),
+    )?;
     expect(
         left.is_empty(),
         format!("the lease's directory is left empty, got {left:?}"),
@@ -160,7 +217,62 @@ pub(crate) fn failed_mount_is_unmounted(lane: &Lane) -> Result<(), Failed> {
     expect(
         !mounts.contains(&dir.display().to_string()),
         "nothing stays mounted",
+    )?;
+    let loops = settled_loops_on(&dir)?;
+    expect(
+        loops.is_empty(),
+        format!("no loop device stays, got {loops:?}"),
     )
+}
+
+/// A disk the build made has a loop device of its own, and its release
+/// frees it: autoclear detaches the device once the unmount lets go.
+pub(crate) fn released_disk_leaves_no_loop_device(lane: &Lane) -> Result<(), Failed> {
+    let lease = tempfile::tempdir_in(on_disk(lane)?)?;
+    let dir = lease.path().join(LEASE);
+    fs::create_dir(&dir)?;
+    let tools = HostTools::default();
+
+    let (disk, _caching) =
+        runtime().block_on(WorkspaceDisk::create(&tools, &dir, SMALL_DISK, SANDBOX_IDS))?;
+    let attached = loops_on(&dir)?;
+    disk.release()?;
+    let left = settled_loops_on(&dir)?;
+
+    expect(
+        attached.len() == 1,
+        format!("the disk had one loop device, got {attached:?}"),
+    )?;
+    expect(
+        left.is_empty(),
+        format!("the release freed it, got {left:?}"),
+    )
+}
+
+/// The loop devices whose backing file lies under `dir`.
+fn loops_on(dir: &Path) -> Result<Vec<String>, Failed> {
+    let under = dir.display().to_string();
+    let mut named = Vec::new();
+    for device in fs::read_dir(SYS_BLOCK)?.flatten() {
+        let backing = fs::read_to_string(device.path().join(BACKING_FILE)).unwrap_or_default();
+        if backing.trim_end().starts_with(&under) {
+            named.push(device.file_name().to_string_lossy().into_owned());
+        }
+    }
+    Ok(named)
+}
+
+/// [`loops_on`], once the kernel has finished any detach it started: an
+/// autoclear may complete just after the last close returns.
+fn settled_loops_on(dir: &Path) -> Result<Vec<String>, Failed> {
+    let deadline = std::time::Instant::now() + DETACH_WAIT;
+    loop {
+        let loops = loops_on(dir)?;
+        if loops.is_empty() || std::time::Instant::now() >= deadline {
+            return Ok(loops);
+        }
+        std::thread::sleep(DETACH_POLL);
+    }
 }
 
 /// The probe says whether a state directory's file system takes direct I/O:

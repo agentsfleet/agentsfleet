@@ -39,7 +39,7 @@ jobs:
     outputs:
       shards: ${{ steps.shards.outputs.shards }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: shards
         run: echo "shards=$(make -s --no-print-directory rustd-coverage-shards | jq -Rc 'split(" ")')" >> "$GITHUB_OUTPUT"
 
@@ -67,7 +67,7 @@ jobs:
     # uncached runner.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # No toolchain input: rustd/rust-toolchain.toml is the single pin, and
       # rustup installs it on first use inside that directory. Naming a version
       # here would be a second source of truth that silently disagrees.
@@ -77,7 +77,7 @@ jobs:
       # Restore only. warm-cache.yml saves this key from main, so pull requests read
       # a complete registry rather than writing their own.
       - name: Cache cargo registry
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -94,11 +94,11 @@ jobs:
       # Both install the same binary, but the alias is a moving ref: it resolves
       # to whatever that tag points at when the job starts, so a third party can
       # change what executes here with no commit in this repository.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
         with:
           tool: cargo-llvm-cov
       # The catalogue seeder's integration test runs the seeder under Bun.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - name: Install the seeder's dependencies
@@ -109,7 +109,7 @@ jobs:
       - name: Measure shard ${{ matrix.shard }} against live datastores
         run: make test-coverage-rustd RUSTD_SHARD=${{ matrix.shard }}
       - name: Keep the shard's report for the merge
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rustd-lcov-${{ matrix.shard }}
           path: |
@@ -139,14 +139,14 @@ jobs:
     # A cold instrumented build, the toolbox's mmdebstrap, then the lane.
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Show the pinned toolchain
         run: rustup show && cargo --version
         working-directory: rustd
       # Restore only. warm-cache.yml saves this key from main, so pull requests read
       # a complete registry rather than writing their own.
       - name: Cache cargo registry
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -154,7 +154,7 @@ jobs:
           key: cargo-kernel-v1-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
           restore-keys: |
             cargo-kernel-v1-${{ runner.os }}-
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
         with:
           tool: cargo-llvm-cov
       - name: Install the toolbox builder and bubblewrap
@@ -180,7 +180,7 @@ jobs:
       - name: Measure the kernel lane
         run: make test-coverage-runner-kernel
       - name: Keep the kernel lane's report for the merge
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rustd-lcov-kernel
           path: |
@@ -206,11 +206,11 @@ jobs:
           exit 1
       # Depth 2: a pull request checks out GitHub's merge commit, whose first
       # parent is the base the patch floor measures from.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
       - name: Collect the shards' reports
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: rustd-lcov-*
           path: rustd
@@ -218,7 +218,7 @@ jobs:
       - name: Grade the line and patch floors over every shard
         run: make test-coverage-rustd-merge RUSTD_PATCH_BASE="${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}"
       - name: Upload Rust coverage to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: rustd/lcov.info

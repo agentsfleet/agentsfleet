@@ -1,6 +1,8 @@
 # Specs
 
-This standard covers how a milestone spec is named, filled, grounded and proven, and how its rubric is graded, deferred and transferred. An authoring agent reads it while filling [the spec template](spec-template.md); an implementing agent reads it before marking work done. Here `review` means the EGM (Elephant-Goldfish Model) review at authoring and the standards reviewer at ship, because orly's gate checks no spec structure.
+This standard covers how a milestone spec is named, filled, grounded and proven, and how its rubric is graded, deferred and transferred. An authoring agent reads it while filling [the spec template](spec-template.md); an implementing agent reads it before marking work done.
+
+Here `review` means the EGM (Elephant-Goldfish Model) review at authoring and the standards reviewer at ship. orly's gate checks one thing in a spec: a template slot left on a changed line (SPEC-FILL).
 
 ## Files and fields
 
@@ -40,15 +42,6 @@ A number already used under `done/` is never reused.
 
 A DEFERRED spec moves to `done/` as a record, and Discovery holds the reason and the conditions for reopening it.
 
-### SPEC-BASELINE — Branch and the baseline headers stay pending at authoring, and their stages fill in the full comparison commit and its measured counts.
-- **Applies to:** the Branch, Baseline revision, Test Baseline and Baseline evidence headers
-- **Checked by:** review
-- **Bad:** `**Baseline revision:** 289d226`; lane counts typed at authoring before any run
-- **Good:** the full 40- or 64-character commit at implementation start, and `**Test Baseline:** unit=812 integration=144` measured before the Pull Request
-- **Why:** a test delta means nothing without the exact revision and counts it compares against.
-
-`**Baseline evidence:**` is an existing repository path or an `https://` URL. A repository without a declared lane writes `n/a — <reason>`.
-
 ### SPEC-SIZE — A spec holds 3 to 9 Sections in at most 500 lines, and a milestone holds at most four Workstreams.
 - **Applies to:** spec scope and milestone decomposition
 - **Checked by:** review
@@ -78,13 +71,13 @@ Priority is the only sizing signal and Depends on the only sequencing signal.
 P0 blocks, P1 faces customers or operators, P2 is tooling and P3 can wait.
 
 ### SPEC-FILL — A filled spec keeps no `{{fill:` slot and no `tpl:` comment.
-- **Applies to:** a spec leaving `pending/`
-- **Checked by:** review
+- **Applies to:** a committed spec in any stage directory
+- **Checked by:** `docs.language` (DOCFILL) on changed spec lines, and review
 - **Bad:** `**Goal (testable):** {{fill:one sentence}}` left in place
 - **Good:** every slot replaced with instance content, and the authoring-rules banner as the only comment left
 - **Why:** leftover guidance reads as instruction to the implementing agent.
 
-Runtime parameters the spec defines, such as `/projects/{project_id}`, are not slots.
+Runtime parameters the spec defines, such as `/projects/{project_id}`, are not slots. A slot opener named in prose, with no closing braces, is not a slot either. An untracked draft is checked once it is added.
 
 ## Intent
 
@@ -102,12 +95,14 @@ Runtime parameters the spec defines, such as `/projects/{project_id}`, are not s
 - **Good:** "Authoring handshake: … ASSUMPTIONS I'M MAKING: 1. …", then the implementer's own restatement in the Session Notes before the first edit
 - **Why:** a divergence caught at PLAN costs one message, while one caught at review costs the branch.
 
-### SPEC-CLARITY — Product Clarity's ten questions are answered in order before any implementation Section is written.
+### SPEC-CLARITY — A spec with an API, CLI or UI Category answers Product Clarity's ten questions in order before any implementation Section is written.
 - **Applies to:** the Product Clarity section
 - **Checked by:** review
 - **Bad:** Product Clarity filled last, restating the Sections
-- **Good:** internal work answers items 1 to 7, and items 8 to 10 read "N/A: no user surface" with the reason
+- **Good:** a CLI spec answers all ten; a GOV and DOCS spec writes "N/A: no user surface."
 - **Why:** the product behaviour decides the file list, not the reverse.
+
+A refactor that trades run-to-run determinism away is wrong by default. "File a ticket" as the confused user's next step means a surface is missing from "What we build".
 
 ### SPEC-GOLDEN — The golden path names every lookup, data source and secret store, and an open `[?]` keeps the spec in `pending/`.
 - **Applies to:** the design flow and Sections of a spec leaving `pending/`
@@ -173,6 +168,15 @@ A correctness-critical requirement is stated in the spec as well as cited, becau
 - **Good:** "Reference: the nearest existing handler and the HTTP standard; divergence: none"
 - **Why:** mirroring a known-good shape avoids reinventing a solved pattern.
 
+Command-line work states which of six practices it follows:
+
+- command, handler and error layers kept apart;
+- handlers that neither print nor exit;
+- one rendering layer;
+- structured JSON errors with suggestion and retry fields;
+- tests at the handler, in-process and subprocess tiers;
+- JSON by default when stdout is not a terminal.
+
 ### SPEC-FILES — Files Changed lists every file the work creates, edits or deletes, by role, never by line number or function name.
 - **Applies to:** the Files Changed table
 - **Checked by:** review
@@ -180,7 +184,7 @@ A correctness-critical requirement is stated in the spec as well as cited, becau
 - **Good:** "`tests/support/project.rs` | EDIT | seeds the new column"
 - **Why:** the table scopes review and orphan sweeps, and line numbers drift.
 
-The table includes the spec itself, its move to `done/`, the changelog entry and any architecture page. Edits outside it need the owner's approval.
+The table includes the spec itself, its move to `done/`, the changelog entry and any architecture page. It also names real writers and readers, schema registration, grants, fixtures, deployment and secret references, and protocol docs. Edits outside it need the owner's approval.
 
 ### SPEC-BLAST — A teardown, rename or flip spec lists every word-boundary hit of its token across the repository, with production and test files apart.
 - **Applies to:** specs that delete, rename or flip a name, flag or path
@@ -232,10 +236,10 @@ Interface examples, evidence commands and referenced diagnostics are allowed.
 - **Why:** a cycle has no first slice to build.
 
 ### SPEC-DECIDE — Agent defaults, measured outputs and human decisions are recorded apart, and human acceptance is a `manual` proof with its procedure and evidence.
-- **Applies to:** Sections, the Test Specification and Discovery
+- **Applies to:** Sections, Dimensions and Discovery
 - **Checked by:** review
 - **Bad:** "Indy accepted the risk" with no quote; an agent marking a manual check passed
-- **Good:** "Implementation default: a per-project lock, because …"; a `manual` row naming the person, the steps and where the evidence lands
+- **Good:** "Implementation default: a per-project lock, because …"; a `manual` Dimension naming the person, the steps and where the evidence lands
 - **Why:** an invented sign-off is scope the owner never accepted.
 
 ### SPEC-IFACE — The Interfaces section locks every surface other code depends on, and changing one amends the spec first.
@@ -252,16 +256,25 @@ Interface examples, evidence commands and referenced diagnostics are allowed.
 - **Good:** "The `Secret` type implements no `Display`, so logging it does not compile."
 - **Why:** review discipline fails on the first busy day.
 
-An operator procedure is a prerequisite, not a runtime guard.
+An operator procedure is a prerequisite, not a runtime guard. Each invariant names its authority, its mechanism and its failure assumptions, and its test is the shortest counterexample.
 
 ## Proof
 
-### SPEC-DIM — Every Dimension names one test, and that name equals the Test cell of its Test Specification row.
-- **Applies to:** Dimension lines and the Test Specification table
+### SPEC-DIM — Every Dimension names one test, its tier and the concrete input and expected output that test asserts.
+- **Applies to:** Dimension lines
 - **Checked by:** review
 - **Bad:** `- **Dimension 2.1** — handles errors` with no test named
-- **Good:** `` - **Dimension 2.1** — expired tokens are refused → Test `should_reject_expired_token` `` with a matching row of concrete input and output
+- **Good:** `` - **Dimension 2.1** — expired tokens are refused → Test `should_reject_expired_token` (unit): an hour-old token returns 401 ``
 - **Why:** a Dimension without a test is not implemented.
+
+Each tier names what its test reaches:
+
+- `unit`: logic and boundaries;
+- `integration`: the real stack, with deterministic injection;
+- `e2e`: the real path of a user-facing Category (SPEC-E2E);
+- `manual`: human acceptance, with its procedure and evidence (SPEC-DECIDE).
+
+Each promised result names a plausible false pass its check rejects.
 
 ### SPEC-TESTS — A Dimension is `DONE` only when the test it names exists in a tracked test source and passes.
 - **Applies to:** marking a Dimension `DONE`
@@ -270,7 +283,7 @@ An operator procedure is a prerequisite, not a runtime guard.
 - **Good:** `should_reject_expired_token` passes in the Section's lane, and `DONE —` lands in the same commit as the code
 - **Why:** a name in the spec proves only that someone typed it.
 
-Formatting and lint never mark a Dimension `DONE`. A row of tier `manual` carries durable evidence in place of a test source.
+Formatting and lint never mark a Dimension `DONE`. A Dimension of tier `manual` carries durable evidence in place of a test source.
 
 ### SPEC-WIRED — A Dimension is `DONE` only when a production entry point calls the code it delivers.
 - **Applies to:** marking a Dimension `DONE`
@@ -279,14 +292,16 @@ Formatting and lint never mark a Dimension `DONE`. A row of tier `manual` carrie
 - **Good:** the route handler calls `refresh_quota()`, and a test reaches it through the route
 - **Why:** tested code that nothing calls ships nothing.
 
-### SPEC-FAIL — Every Failure Mode and error row has a negative test, and at least half the Test Specification rows test failure paths.
-- **Applies to:** Failure Modes, error tables and the Test Specification
+### SPEC-FAIL — Every Failure Mode and error row has a negative test, and at least half the Dimensions prove failure paths.
+- **Applies to:** Failure Modes, error tables and Dimensions
 - **Checked by:** review
 - **Bad:** a "dependency unavailable" Failure Mode with an empty Test cell
-- **Good:** `should_503_when_cache_down` in both the Failure Mode row and the Test Specification
+- **Good:** `should_503_when_cache_down` in both the Failure Mode row and a Dimension
 - **Why:** a failure path without a test is a promise nobody checks.
 
 Failure Modes cover timeout, malformed input, auth failure, network blip, race, replay, exceeded quota and dependency unavailable where they apply.
+
+A timeout is told apart from a rollback, and an acknowledgement from durable recovery. Partial setup or delivery states what is kept, what resumes it, and how a retry avoids a duplicate effect. A known limit with no mitigation needs an owner disposition in Discovery.
 
 ### SPEC-E2E — A spec with a user-facing Category carries at least one end-to-end scenario through the real path.
 - **Applies to:** specs whose Categories include CLI, UI or API
@@ -299,10 +314,10 @@ Failure Modes cover timeout, malformed input, auth failure, network blip, race, 
 - **Applies to:** the Metrics & Observability section
 - **Checked by:** review
 - **Bad:** an empty table; an event first found in review
-- **Good:** `project_created` with its allowed properties, privacy guard and test; or "Not applicable: no product or operator signal changes."
+- **Good:** `project_created` with its allowed properties, privacy guard and test; or "N/A: no product or operator signal changes."
 - **Why:** a missing event is an implementation gap that ships unseen.
 
-Event properties never carry raw email, passwords, tokens, one-time passwords or key material.
+Event properties never carry raw email, passwords, tokens, one-time passwords or key material. A changed funnel updates the repository's analytics playbook in the same Pull Request.
 
 ## Rubric, deferral and transfer
 

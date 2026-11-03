@@ -16,9 +16,11 @@
 //!
 //! # The two ends
 //!
-//! [`bind`] claims the socket and [`Listener::serve`] serves one connection,
-//! owning every process it starts: binding is split from serving so the
-//! sandbox can claim its socket before it drops the right to create one.
+//! [`bind`] claims a socket path and [`connected`] takes a stream already
+//! connected, the end of a socket pair a sandbox inherits; [`Server::serve`]
+//! serves that one connection, owning every process it starts. Taking the
+//! link is split from serving so the sandbox takes it before it confines
+//! itself.
 //! [`Client`] is the supervisor's end and implements [`Executor`] over the
 //! socket. Both read the other's messages as untrusted.
 
@@ -32,6 +34,7 @@ mod edges;
 mod events;
 mod protocol;
 mod server;
+mod slot;
 
 pub use self::api::{
     DirEntry, Ending, EntryKind, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId,
@@ -42,4 +45,5 @@ pub use self::edges::EDGE_BYTES;
 pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
 pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES};
-pub use self::server::{Listener, Tenant, WORKSPACE_ROOT, bind, serve};
+pub use self::server::{Server, Tenant, WORKSPACE_ROOT, bind, connected, serve};
+pub use self::slot::{ExecutorSlot, ExecutorSource, Outcome, Unavailable};

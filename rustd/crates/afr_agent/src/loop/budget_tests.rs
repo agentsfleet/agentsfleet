@@ -87,7 +87,9 @@ async fn test_meter_holds_what_the_report_sums() {
         .run(AgentRun {
             lease: &lease,
             memory: afr_memory::Seed::default(),
-            executor: None,
+            executor: &afr_executor::ExecutorSlot::unavailable(
+                afr_executor::Unavailable::NoSandbox,
+            ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,

@@ -1,0 +1,17 @@
+# A two-column label/value table for one resource is a different shape from a
+# list of entities. Three commands render one; every entity list goes through
+# printEntityTable so its columns come from one order. Subdirectories of
+# commands/ are outside the rule.
+id: cli-detail-table
+language: Tsx
+severity: error
+message: an entity list renders through printEntityTable, not its own columns
+files:
+  - cli/src/commands/*.ts
+ignores:
+  - cli/src/commands/*/**
+  - cli/src/commands/api_key.ts
+  - cli/src/commands/connector.ts
+  - cli/src/commands/tenant.ts
+rule:
+  pattern: output.printTable($$$ARGS)

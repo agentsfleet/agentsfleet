@@ -163,6 +163,49 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         code, output = lint_tree(seeded("release.yml", "./playbooks/lib/runner/deploy.sh", "./scripts/other.sh"))
         self.assertIn("release.yml:1: workflow-vault-read-approval: no step runs the runner playbook", output)
 
+    def test_a_builder_tag_is_derived_never_pasted(self) -> None:
+        def with_builder(container: str) -> dict[str, str]:
+            files = clean_tree()
+            files[f"{checker.WORKFLOWS_DIR}/build.yml"] = (
+                "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                f"    container: {container}\n    steps:\n      - run: true\n"
+            )
+            return files
+
+        derived = with_builder(checker.BUILDER_IMAGE + ":${{ env.RUST_VERSION }}-alpine${{ env.ALPINE_SERIES }}")
+        pasted = with_builder(checker.BUILDER_IMAGE + ":1.99.1-alpine3.22")
+        code, output = lint_tree(derived)
+        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+        # A literal fails even when it names today's version: that is the one
+        # that rots at the bump.
+        code, output = lint_tree(pasted)
+        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+        self.assertIn("build.yml:5: workflow-builder-literal: ", output)
+
+    def test_a_third_party_action_is_pinned_to_a_full_commit(self) -> None:
+        def using(target: str, where: str = f"{checker.WORKFLOWS_DIR}/build.yml") -> dict[str, str]:
+            files = clean_tree()
+            files[where] = (
+                "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                f"    steps:\n      - uses: {target}\n"
+            )
+            return files
+
+        commit = "actions/checkout@" + "3d3c42e5aac5ba805825da76410c181273ba90b1"
+        code, output = lint_tree(using(commit + " # v7.0.1"))
+        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+        # A tag, a branch, no ref at all, and the same in a composite action.
+        for target, where in (
+            ("actions/checkout@v7", f"{checker.WORKFLOWS_DIR}/build.yml"),
+            ("superfly/flyctl-actions/setup-flyctl@master", f"{checker.WORKFLOWS_DIR}/build.yml"),
+            ("actions/checkout", f"{checker.WORKFLOWS_DIR}/build.yml"),
+            ("actions/checkout@v7", f"{checker.ACTIONS_DIR}/build/action.yml"),
+        ):
+            with self.subTest(target=target, where=where):
+                code, output = lint_tree(using(target, where))
+                self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+                self.assertIn(f"{where}:6: workflow-action-pin: `{target}`", output)
+
     def test_an_unknown_argument_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(checker.lib.EXIT_USAGE, checker.main(["--bogus"]))

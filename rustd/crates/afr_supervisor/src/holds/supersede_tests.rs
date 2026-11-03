@@ -11,7 +11,7 @@ use afd_core::test_util::trace::Capture;
 
 use super::Release;
 use super::tests::{FLEET_A, LEASE, fleets, holds, id, key, released, releases, sandbox};
-use crate::test_support::FakeEngine;
+use crate::test_support::{FakeEngine, bounded};
 
 /// The fleet's next lease, which took the hold and parked it again.
 const NEXT_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b2";
@@ -24,11 +24,19 @@ async fn test_a_late_superseded_answer_spares_the_next_leases_hold() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    let parked = sandbox(&engine).await;
-    holds.park(key(FLEET_A), id(LEASE), parked).await.unwrap();
-    let taken = holds.take(&key(FLEET_A)).await.unwrap();
+    let first = holds.park(key(FLEET_A), id(LEASE), sandbox(&engine).await);
+    let first = bounded("the first lease's park", first).await;
+    assert!(matches!(first, crate::holds::Parked::Held(_)), "{first:?}");
+    let taken = bounded("the next lease's take", holds.take(&key(FLEET_A)))
+        .await
+        .unwrap();
     let next = id(NEXT_LEASE);
-    holds.park(key(FLEET_A), next, taken.sandbox).await.unwrap();
+    let parked = holds.park(key(FLEET_A), next, taken.sandbox);
+    let parked = bounded("the next lease's park", parked).await;
+    assert!(
+        matches!(parked, crate::holds::Parked::Held(_)),
+        "{parked:?}"
+    );
 
     holds.supersede(id(LEASE));
 
@@ -40,7 +48,7 @@ async fn test_a_late_superseded_answer_spares_the_next_leases_hold() {
     let ended = releases(&capture);
     assert!(ended.is_empty(), "{ended:?}");
     holds.supersede(id(NEXT_LEASE));
-    holds.shutdown().await;
+    bounded("the keeper's shutdown", holds.shutdown()).await;
     assert_eq!(releases(&capture), [released(FLEET_A, Release::Superseded)]);
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }

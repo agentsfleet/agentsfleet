@@ -1,0 +1,18 @@
+# Every action is pinned to a commit with its release tag beside it; Dependabot
+# reads the tag and opens one grouped pull request a week moving each pin to
+# the newest release's commit.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+    ignore:
+      # Pinned to a master commit that is ahead of its newest release.
+      - dependency-name: "superfly/flyctl-actions*"

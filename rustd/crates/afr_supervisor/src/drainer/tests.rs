@@ -192,7 +192,13 @@ async fn parked(engine: &FakeEngine) -> Holds {
     };
     let sandbox = engine.prepare(request).await.unwrap();
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    assert!(holds.park(key, lease, sandbox).await.is_some(), "parked");
+    assert!(
+        matches!(
+            holds.park(key, lease, sandbox).await,
+            crate::holds::Parked::Held(_)
+        ),
+        "parked"
+    );
     holds
 }
 

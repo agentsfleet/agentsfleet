@@ -4,12 +4,13 @@
 )]
 
 use std::fs;
+use std::io::{Read as _, Write as _};
 use std::os::fd::{IntoRawFd as _, RawFd};
 use std::path::Path;
 
 use rustix::io::FdFlags;
 
-use super::{TenantDescriptors, TenantFiles};
+use super::{Handover, Inherited, TenantDescriptors, TenantFiles};
 use crate::cgroup::{CGROUP_PROCS, MEMORY_EVENTS};
 
 /// `memory.events` as a kernel renders it for a leaf with no kills yet.
@@ -98,6 +99,79 @@ fn a_number_never_opened_is_refused() {
     let said = named.adopt().unwrap_err().to_string();
 
     assert!(said.contains(&NEVER_OPENED.to_string()), "{said}");
+}
+
+/// The pair is made close-on-exec at both ends, and only the entry's end is
+/// let through the exec: the runner's end never reaches a sandbox.
+#[test]
+fn the_engine_lets_only_the_entrys_end_of_the_link_through() {
+    let leaf = tempfile::tempdir().unwrap();
+    let (handover, runner) = Handover::with_link(opened(leaf.path())).unwrap();
+    let closes = |held: &dyn std::os::fd::AsFd| {
+        rustix::io::fcntl_getfd(held)
+            .unwrap()
+            .contains(FdFlags::CLOEXEC)
+    };
+    assert!(closes(&handover.executor) && closes(&runner));
+
+    handover.inherit().unwrap();
+
+    assert!(
+        !closes(&handover.executor),
+        "the entry's end survives the exec"
+    );
+    assert!(closes(&runner), "the runner's end never does");
+}
+
+/// The entry adopts its end of the link close-on-exec again, so no process
+/// it starts inherits it, and the runner's end reaches it.
+#[test]
+fn the_entry_adopts_its_link_close_on_exec_again() {
+    let leaf = tempfile::tempdir().unwrap();
+    fs::write(leaf.path().join("memory.events"), EVENTS).unwrap();
+    let (handover, mut runner) = Handover::with_link(opened(leaf.path())).unwrap();
+    handover.inherit().unwrap();
+    let Handover { tenant, executor } = handover;
+    let TenantFiles { procs, events } = tenant;
+    // What an exec does: the numbers stay, and nothing here owns them.
+    let named = Inherited {
+        tenant: TenantDescriptors {
+            tenant_procs: procs.into_raw_fd(),
+            tenant_events: events.into_raw_fd(),
+        },
+        executor: executor.into_raw_fd(),
+    };
+
+    let (_leaf, mut link) = named.adopt().unwrap();
+
+    assert!(
+        rustix::io::fcntl_getfd(&link)
+            .unwrap()
+            .contains(FdFlags::CLOEXEC)
+    );
+    runner.write_all(b"x").unwrap();
+    let mut heard = [0_u8; 1];
+    link.read_exact(&mut heard).unwrap();
+    assert_eq!(&heard, b"x");
+}
+
+/// A link named under a tenant file's number, or one never inherited, is
+/// refused naming it, before either tenant file is taken.
+#[test]
+fn the_entry_refuses_a_link_it_does_not_hold_alone() {
+    for (executor, tenant_procs) in [(4, 4), (NEVER_OPENED, 3)] {
+        let named = Inherited {
+            tenant: TenantDescriptors {
+                tenant_procs,
+                tenant_events: 5,
+            },
+            executor,
+        };
+
+        let said = named.adopt().unwrap_err().to_string();
+
+        assert!(said.contains(&format!("descriptor {executor} ")), "{said}");
+    }
 }
 
 /// A leaf file the engine cannot open refuses the lease naming that file, so

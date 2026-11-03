@@ -12,7 +12,7 @@
 **Baseline revision:** 2f8c878c09e9c4048da1724385ec58746d348ed4
 **Test Baseline:** Rust unit=4972 after the approved Rig upgrade; JavaScript and integration baselines pending
 **Baseline evidence:** playbooks/operations/acceptance/baselines/M236_001-autonomy.md
-**Depends on:** M235 bounded repair and M230 compaction; PR #798 must merge and be integrated before final ship gates.
+**Depends on:** M235 bounded repair and M230 compaction; merged PR #798 integrated from main at fde5859717c73ea52d02d84d2408b8f00efcae82; final ship gates remain pending.
 **Provenance:** agent-drafted from Indy's decisions; historical scenario reviews plus a fresh-context Astra design review and verified correction pass
 **Canonical architecture:** `docs/architecture/scenarios/durable-repair.md` owns the combined outcome; topic pages retain their existing mechanisms
 ## Overview

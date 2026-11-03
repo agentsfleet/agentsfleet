@@ -33,8 +33,8 @@ jobs:
             filename: agentsfleet-runner-linux-amd64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/cache@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .cargo-cache/registry
@@ -61,7 +61,7 @@ jobs:
           CANDIDATE_FILENAME: ${{ matrix.filename }}
         run: make candidate-image
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-part-${{ matrix.filename }}
           path: dist/candidate/
@@ -71,8 +71,8 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/cache@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -82,7 +82,7 @@ jobs:
           restore-keys: cargo-dist-darwin-
       - name: Compile the macOS release download
         run: make candidate-native-macos
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-part-darwin-arm64
           path: dist/candidate/
@@ -92,18 +92,18 @@ jobs:
   toolbox:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/build-toolbox
       - name: Retain vulnerability evidence on a failed scan too
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: toolbox-audit
           path: |
             dist/candidate/toolbox/*.sbom.spdx.json
             dist/candidate/toolbox/*.scan.json
           retention-days: 90
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-part-toolbox
           path: dist/candidate/
@@ -114,8 +114,8 @@ jobs:
     needs: [linux, macos, toolbox]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: candidate-part-*
           merge-multiple: true
@@ -126,7 +126,7 @@ jobs:
         run: make candidate-create
       - id: identity
         run: make candidate-identity
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-candidate-${{ steps.identity.outputs.tree }}
           path: dist/candidate/

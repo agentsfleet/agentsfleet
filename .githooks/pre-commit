@@ -12,6 +12,9 @@
 #   5. run one parallel Make graph plus the direct auth test
 #
 # Surfaces:
+#   - lint-source             (sgconfig.yml, .ast-grep/*, *.rs — the ast-grep
+#                               source rules, under a second; lint-app,
+#                               lint-design-system and lint-cli depend on it)
 #   - lint-website            (ui/packages/website/*)
 #   - lint-app                 (ui/packages/app/*, design-system/* triggers both)
 #   - lint-design-system       (ui/packages/design-system/*)
@@ -22,7 +25,7 @@
 #   - check-playbooks          (playbooks/*, deploy/* — the full gate: static
 #                               analysis + the 21 regression suites + refs)
 #   - check-playbooks-refs     (.github/workflows/*, Makefile, make/*.mk —
-#                               ref integrity + README parity only, ~1s. A
+#                               ref integrity only, ~1s. A
 #                               Makefile edit can re-point a playbooks/ path
 #                               but cannot change a playbook's behaviour.)
 #
@@ -36,7 +39,9 @@
 # No coverage is lost before anything leaves the machine, because nothing
 # reaches a remote without pre-push. The written Rust rules in
 # .orly/standards/ are applied by the orly-build skill and the
-# orly-standards-reviewer agent, not by a commit-time script.
+# orly-standards-reviewer agent. The Rust rules that are one pattern in one
+# file (no untyped row read, no integer milliseconds) are ast-grep rules, and
+# `lint-source` runs them at commit: it parses, it does not compile.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
@@ -128,6 +133,7 @@ step "gitleaks config self-test" bash scripts/checks/gitleaks-config.sh
 # triggers app (DS is consumed by app, so a DS change might break app's tsc).
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
+needs_lint_source=0
 needs_lint_website=0
 needs_lint_app=0
 needs_lint_design_system=0
@@ -147,8 +153,11 @@ while IFS= read -r f; do
       # Deliberately routes to NOTHING at commit time — an arm rather than an
       # absence, so somebody looking for the Rust lane reads why it is not here
       # instead of concluding it was forgotten. See the header note: clippy is
-      # pre-push's now.
+      # pre-push's now. The ast-grep source rules are not clippy.
+      needs_lint_source=1
       staged_rustd=1 ;;
+    sgconfig.yml|.ast-grep/*)
+      needs_lint_source=1 ;;
     ui/packages/website/*)
       needs_lint_website=1 ;;
     ui/packages/app/*)
@@ -167,7 +176,7 @@ while IFS= read -r f; do
       needs_check_documentation=1
       # A workflow / Makefile / make-fragment change can re-point or break a
       # playbooks/ REFERENCE (deploy.yml runs playbook gates at deploy time) —
-      # so the reference + README-parity checks fire. It cannot break a
+      # so the reference check fires. It cannot break a
       # playbook's BEHAVIOUR, so the shellcheck + 21-suite regression half does
       # not: that half is reachable only by editing playbooks/ itself, and
       # charging it to every one-line Makefile edit cost ~27s against the ~1s
@@ -186,19 +195,19 @@ while IFS= read -r f; do
   esac
 done <<< "$staged"
 
-any_needed=$(( needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_gh_actions + needs_check_playbooks + needs_check_playbooks_refs ))
+any_needed=$(( needs_lint_source + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_gh_actions + needs_check_playbooks + needs_check_playbooks_refs ))
 
 staged_count="$(printf '%s\n' "$staged" | grep -c . || true)"
 echo "▶ pre-commit: $staged_count staged file(s)"
 
+# Said explicitly, because a commit full of Rust that passes only the source
+# rules has not met clippy: that is the push's job.
+if [ "$staged_rustd" = 1 ]; then
+  echo "pre-commit: Rust staged — source rules run now, clippy runs at pre-push"
+fi
+
 if [ "$any_needed" -eq 0 ]; then
-  if [ "$staged_rustd" = 1 ]; then
-    # Said explicitly, because "nothing to lint" would be a lie about a commit
-    # full of Rust: clippy is the push's job.
-    echo "pre-commit: Rust staged — clippy runs at pre-push"
-  else
-    echo "pre-commit: no commit-time lint surfaces staged, skipping targeted lint"
-  fi
+  echo "pre-commit: no commit-time lint surfaces staged, skipping targeted lint"
   exit 0
 fi
 
@@ -217,6 +226,7 @@ launch() {
 }
 
 make_targets=()
+[ "$needs_lint_source"         = 1 ] && make_targets+=(lint-source)
 [ "$needs_lint_website"        = 1 ] && make_targets+=(lint-website)
 [ "$needs_lint_app"            = 1 ] && make_targets+=(lint-app)
 [ "$needs_lint_design_system"  = 1 ] && make_targets+=(lint-design-system)

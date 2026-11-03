@@ -47,6 +47,8 @@ fn renewal_lost(call: &Call) -> Option<Answer> {
     (call.verb == Verb::Renew).then(|| Answer::Fail(error::refused(Verb::Renew, 409, None)))
 }
 
+mod build;
+mod build_endings;
 mod completion;
 mod failures;
 mod renewal;

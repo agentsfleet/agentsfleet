@@ -33,6 +33,7 @@ mod refusals {
     use crate::error::ToolboxRefusal;
     use crate::toolbox::Toolbox;
     use crate::toolbox::testing::Signer;
+    use crate::workspace_disk::Caching;
 
     const IMAGE: &[u8] = b"an image";
 
@@ -70,6 +71,54 @@ mod refusals {
         assert_eq!(refusal(&pipe), Some(ToolboxRefusal::NotAFile));
         assert_eq!(refusal(&long), Some(ToolboxRefusal::Length));
         assert_eq!(refusal(&other), Some(ToolboxRefusal::Digest));
+    }
+
+    /// A path with nothing at it fails the admission as an input/output
+    /// failure, not a refusal: no image was offered to judge.
+    #[test]
+    fn should_fail_without_refusing_an_image_that_is_not_there() {
+        let dir = tempfile::tempdir().unwrap();
+        let mounts = tempfile::tempdir().unwrap();
+        let manifest = Signer::new().manifest(IMAGE);
+
+        let failed = Toolbox::admit_now(&manifest, &dir.path().join("absent"), mounts.path());
+
+        assert_eq!(failed.unwrap_err().toolbox_refusal(), None);
+    }
+
+    /// A descriptor that cannot be read fails its hash: nothing unread is
+    /// ever called hashed.
+    #[test]
+    fn should_fail_a_hash_it_cannot_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let written = fs::File::create(dir.path().join("write-only")).unwrap();
+
+        crate::toolbox::admit::sha256_of(&written).unwrap_err();
+    }
+
+    /// A buffered device admits its toolbox, and the admission names the
+    /// caching it took.
+    #[test]
+    fn test_toolbox_buffered_fallback_is_logged() {
+        let capture = afd_core::test_util::trace::Capture::install();
+        let toolbox = Toolbox::at(
+            std::path::PathBuf::from("/mounts/digest"),
+            "digest".to_owned(),
+        );
+
+        let admitted =
+            crate::toolbox::admit::logged("digest", Ok((toolbox, Some(Caching::Buffered))));
+
+        assert_eq!(
+            admitted.unwrap().root(),
+            std::path::Path::new("/mounts/digest")
+        );
+        assert_eq!(
+            capture
+                .only("sandbox_toolbox_admission_completed")
+                .field("caching"),
+            Some("buffered")
+        );
     }
 }
 

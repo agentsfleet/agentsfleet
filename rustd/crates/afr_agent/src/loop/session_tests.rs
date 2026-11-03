@@ -71,7 +71,7 @@ pub(super) async fn drive_in(
     let run = AgentRun {
         lease,
         memory: afr_memory::Seed::default(),
-        executor: Some(executor),
+        executor: &afr_executor::ExecutorSlot::ready(executor),
         mint: &CountingMint::never(),
         checkpoint: &Discard,
         context_checkpoints: &crate::testing::ContextMemory::default(),

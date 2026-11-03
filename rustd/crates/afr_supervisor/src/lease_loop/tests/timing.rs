@@ -21,6 +21,9 @@ const MODEL_MS: &str = "model_ms";
 const TOOLS_MS: &str = "tools_ms";
 const REPORT_MS: &str = "report_ms";
 const FIRST_TOKEN_MS: &str = "first_token_ms";
+/// The three parts inside the sandbox segment, which the wall does not sum.
+const PARTS: [&str; 3] = ["egress_ms", "prepare_ms", "checkout_ms"];
+const CHECKOUT_MS: &str = "checkout_ms";
 /// Six terminal fields, including five sequential time segments.
 const FIELDS: [&str; 6] = [
     MEMORY_MS,
@@ -90,6 +93,17 @@ async fn test_lease_completed_logs_its_segments() {
         millis(&line, FIRST_TOKEN_MS).unwrap() <= model,
         "the first token is inside the model's time"
     );
+    let parts: Vec<Option<u64>> = PARTS.iter().map(|part| millis(&line, part)).collect();
+    assert!(
+        parts.iter().take(2).all(Option::is_some),
+        "a fresh sandbox logs its egress and prepare: {:?}",
+        line.fields
+    );
+    assert_eq!(
+        line.field(CHECKOUT_MS),
+        None,
+        "a lease bound to no repository checks nothing out"
+    );
 }
 
 /// Each segment times its own step: a late hydrate is memory time, the agent's run is model time with no tool time,
@@ -141,8 +155,9 @@ async fn test_each_segment_times_its_own_step() {
     assert_eq!(line.field(CLASS), None, "a completion carries no class");
 }
 
-/// A sandbox the engine refuses still leaves its segment on the line: the
-/// stopwatch records on the refusal exit, and nothing after it is logged.
+/// A sandbox the engine refuses still leaves its segment and its parts on the
+/// line, and the turn it no longer holds up runs on: the model's segment is
+/// there, and no class, because the lease completed.
 #[tokio::test(start_paused = true)]
 async fn test_a_refused_sandbox_still_logs_its_segment() {
     let capture = Capture::install();
@@ -157,15 +172,17 @@ async fn test_a_refused_sandbox_still_logs_its_segment() {
 
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
 
-    let line = capture.only(EVENT_FAILED);
-    for present in [MEMORY_MS, SANDBOX_MS, REPORT_MS, CLASS] {
+    let line = capture.only(EVENT_COMPLETED);
+    for present in [
+        MEMORY_MS, SANDBOX_MS, PARTS[0], PARTS[1], MODEL_MS, REPORT_MS,
+    ] {
         assert!(
             line.field(present).is_some(),
             "{present}: {:?}",
             line.fields
         );
     }
-    for absent in [MODEL_MS, TOOLS_MS, FIRST_TOKEN_MS] {
+    for absent in [CHECKOUT_MS, CLASS] {
         assert_eq!(line.field(absent), None, "{absent}: {:?}", line.fields);
     }
 }
@@ -194,7 +211,8 @@ async fn test_unstarted_segment_is_absent() {
     );
     assert!(millis(&line, REPORT_MS).is_some(), "the report settled");
     assert!(line.field(CLASS).is_some(), "a failure names its class");
-    for absent in [SANDBOX_MS, MODEL_MS, TOOLS_MS, FIRST_TOKEN_MS] {
+    let unstarted = [SANDBOX_MS, MODEL_MS, TOOLS_MS, FIRST_TOKEN_MS];
+    for absent in unstarted.into_iter().chain(PARTS) {
         assert_eq!(
             line.field(absent),
             None,

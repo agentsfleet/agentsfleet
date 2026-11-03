@@ -1,9 +1,31 @@
 //! The egress an assignment names, for the suites that bind a lease's egress
 //! without the network; they resolve through `afr_egress`'s `FakeResolver`.
 
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use std::io;
+use std::net::IpAddr;
+use std::time::Duration;
 
+use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use afr_egress::Resolve;
+
+use super::FakeResolver;
 use crate::egress::Egress;
+
+/// A [`FakeResolver`] that answers each host only after `takes`, so a suite
+/// sees the egress bind's time on the lease's line.
+#[derive(Debug, Clone)]
+pub(crate) struct Stalled {
+    pub(crate) answers: FakeResolver,
+    pub(crate) takes: Duration,
+}
+
+#[async_trait::async_trait]
+impl Resolve for Stalled {
+    async fn resolve(&self, host: &str) -> io::Result<Vec<IpAddr>> {
+        tokio::time::sleep(self.takes).await;
+        self.answers.resolve(host).await
+    }
+}
 
 /// The egress an assignment of `policy` with `registry` as its baseline names.
 pub(crate) fn assigned(policy: NetworkPolicy, registry: &[&'static str]) -> Egress {

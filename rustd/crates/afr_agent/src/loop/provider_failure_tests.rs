@@ -70,7 +70,9 @@ async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
         .run(AgentRun {
             lease: &lease,
             memory: afr_memory::Seed::default(),
-            executor: None,
+            executor: &afr_executor::ExecutorSlot::unavailable(
+                afr_executor::Unavailable::NoSandbox,
+            ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,

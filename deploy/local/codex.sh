@@ -46,7 +46,8 @@ acceptance_toolbox() {
   signature="$LOCAL_ACCEPTANCE_STATE/toolbox-signature.der"
   awk '/-----BEGIN PUBLIC KEY-----/{p=1; sub(/^.*-----BEGIN/, "-----BEGIN")} p{print} /-----END PUBLIC KEY-----/{exit}' \
     "$DEV_ROOT/rustd/crates/afr_sandbox/src/toolbox/manifest/mod.rs" >"$public"
-  base64 --decode "$manifest.sig" >"$signature"
+  # On stdin: macOS base64 takes no positional input file.
+  base64 --decode <"$manifest.sig" >"$signature"
   openssl dgst -sha256 -verify "$public" -signature "$signature" "$manifest" >/dev/null || dev_fail 'toolbox signature differs from the compiled release key'
   python3 - "$manifest" "$DEV_ROOT/VERSION" <<'PY'
 import json, sys

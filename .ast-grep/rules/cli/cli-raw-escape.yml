@@ -1,0 +1,25 @@
+# The palette is the one place a terminal escape is spelled, because it is the
+# one place that honours NO_COLOR. Every spelling a TypeScript source allows
+# counts: \u001b, \u{1b}, \x1b in either case, the \e some editors paste, the
+# control character itself, and a 256-colour code.
+id: cli-raw-escape
+language: Tsx
+severity: error
+message: a raw terminal escape or a 256-color code belongs in cli/src/output/palette.ts, which honours NO_COLOR
+files:
+  - cli/src/**/*.ts
+  - cli/src/**/*.js
+ignores:
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/*_test.*"
+  - cli/src/output/palette.ts
+rule:
+  regex: '(?i)\\(u001b|u\{0*1b\}|x1b|e)\[|\x1b\[|38;5;\d+'
+  # A comment counts too: the old lint read raw text, so a pasted control
+  # character is caught wherever it lands.
+  any:
+    - kind: string
+    - kind: template_string
+    - kind: regex
+    - kind: comment

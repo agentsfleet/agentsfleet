@@ -2,6 +2,7 @@
 //!
 //! ```text
 //!   memory ─► sandbox ─► model + tools ─► report
+//!             egress ─► prepare ─► checkout
 //!   └── each once, absent when it never started; wall_ms is the whole lease ──┘
 //! ```
 //!
@@ -12,6 +13,14 @@
 //! drain wait. The first token is inside the model's time and is logged beside
 //! them. A segment a lease never reached is absent from the line, never zero:
 //! an operator reading `sandbox_ms=0` would take it for a held sandbox.
+//!
+//! Three parts split the sandbox segment and tile no more than it: the egress
+//! bind, the prepare that thaws a held sandbox or builds one, and the
+//! checkout. A held sandbox, or a lease bound to no repository, checks nothing
+//! out, so that part is absent. The egress bind comes before the turn; the
+//! prepare and the checkout run beside the model's segment, so the segments
+//! tile the wall only when the build ends before the turn needs it. What the
+//! build held the turn up by is `sandbox_wait_ms`, absent when nothing waited.
 
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
@@ -30,6 +39,12 @@ use crate::report::Ending;
 pub(super) enum Segment {
     Memory,
     Sandbox,
+    /// Inside `Sandbox`: the lease's egress resolved into what it may reach.
+    Egress,
+    /// Inside `Sandbox`: the fleet's held sandbox thawed, or a fresh one built.
+    Prepare,
+    /// Inside `Sandbox`: the bound repositories checked out.
+    Checkout,
     Report,
 }
 
@@ -38,6 +53,11 @@ pub(super) enum Segment {
 pub(super) struct Segments {
     memory: Option<Duration>,
     sandbox: Option<Duration>,
+    egress: Option<Duration>,
+    prepare: Option<Duration>,
+    checkout: Option<Duration>,
+    /// How long the turn's sandbox-side calls were held up by the build.
+    sandbox_wait: Option<Duration>,
     model: Option<Duration>,
     tools: Option<Duration>,
     report: Option<Duration>,
@@ -68,11 +88,20 @@ impl Timeline {
         segments.first_token = timing.first_chunk;
     }
 
+    /// How long the turn's sandbox-side calls waited for the build, when any
+    /// call did.
+    pub(super) fn waited(&self, held: Option<Duration>) {
+        self.lock().sandbox_wait = held;
+    }
+
     fn set(&self, segment: Segment, elapsed: Duration) {
         let mut segments = self.lock();
         let slot = match segment {
             Segment::Memory => &mut segments.memory,
             Segment::Sandbox => &mut segments.sandbox,
+            Segment::Egress => &mut segments.egress,
+            Segment::Prepare => &mut segments.prepare,
+            Segment::Checkout => &mut segments.checkout,
             Segment::Report => &mut segments.report,
         };
         *slot = Some(elapsed);
@@ -116,6 +145,10 @@ impl LeaseRun<'_> {
         let segments = *self.timeline.lock();
         let memory_ms = segments.memory.map(saturating_millis);
         let sandbox_ms = segments.sandbox.map(saturating_millis);
+        let egress_ms = segments.egress.map(saturating_millis);
+        let prepare_ms = segments.prepare.map(saturating_millis);
+        let checkout_ms = segments.checkout.map(saturating_millis);
+        let sandbox_wait_ms = segments.sandbox_wait.map(saturating_millis);
         let model_ms = segments.model.map(saturating_millis);
         let tools_ms = segments.tools.map(saturating_millis);
         let report_ms = segments.report.map(saturating_millis);
@@ -135,6 +168,10 @@ impl LeaseRun<'_> {
             wall_ms,
             memory_ms,
             sandbox_ms,
+            egress_ms,
+            prepare_ms,
+            checkout_ms,
+            sandbox_wait_ms,
             model_ms,
             tools_ms,
             report_ms,
