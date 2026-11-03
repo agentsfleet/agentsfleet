@@ -143,6 +143,31 @@ async fn test_a_wait_cut_short_keeps_the_error_stream() {
     assert!(said.contains("held-open-reason"), "{said}");
 }
 
+/// A wait after one that read the whole reason answers at once with the
+/// exit alone: the stream was read once and cleared.
+#[tokio::test]
+async fn test_a_second_wait_reports_the_exit_without_a_reason() {
+    let base = tempfile::tempdir().unwrap();
+    let lease = base.path().join("lease-17");
+    fs::create_dir(&lease).unwrap();
+    let script = base.path().join("complainer");
+    fs::write(&script, "#!/bin/sh\necho first-reason >&2\nexit 1\n").unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut parts = Parts::new("lease-17", lease.clone());
+    let handed = handover(&lease);
+    parts
+        .spawn(&script, Vec::new(), &lease.join("procs"), handed, None)
+        .unwrap();
+
+    let first = tokio::time::timeout(PATIENCE, parts.exited()).await;
+    let second = tokio::time::timeout(PATIENCE, parts.exited()).await;
+
+    let first = first.unwrap().to_string();
+    let second = second.unwrap().to_string();
+    assert!(first.contains("first-reason"), "{first}");
+    assert!(!second.contains("first-reason"), "{second}");
+}
+
 /// What bubblewrap's child does before its exec: it writes itself into the
 /// sandbox leaf through the descriptor the runner opened, and lets all three
 /// handed-over descriptors survive the exec.

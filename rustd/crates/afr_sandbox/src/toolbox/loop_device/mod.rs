@@ -207,26 +207,25 @@ pub(crate) fn attach(image: &File, access: Access) -> Result<Attached> {
         reserved: [0; 8],
     };
     let (direct, buffered) = (config(LO_FLAGS_DIRECT_IO), config(0));
+    let attach = |config: &LoopConfig| until_free(|| configure_free(&control, config, access));
     let attached = if access.direct_io() {
-        direct_or_buffered(
-            || until_free(|| configure_free(&control, &direct, access)),
-            || until_free(|| configure_free(&control, &buffered, access)),
-        )
+        direct_or_buffered(attach, &direct, &buffered)
     } else {
-        until_free(|| configure_free(&control, &buffered, access))
+        attach(&buffered)
     };
     Ok(attached?)
 }
 
-/// The attach `direct` makes, or `buffered`'s when the kernel refuses direct
+/// `attach` with `direct`, or with `buffered` when the kernel refuses direct
 /// I/O for this file (`EINVAL`): a buffered device, not a failure. Any other
 /// refusal is the answer.
-fn direct_or_buffered<T>(
-    direct: impl FnOnce() -> io::Result<T>,
-    buffered: impl FnOnce() -> io::Result<T>,
+fn direct_or_buffered<C, T>(
+    attach: impl Fn(&C) -> io::Result<T>,
+    direct: &C,
+    buffered: &C,
 ) -> io::Result<T> {
-    match direct() {
-        Err(refused) if refused.raw_os_error() == Some(libc::EINVAL) => buffered(),
+    match attach(direct) {
+        Err(refused) if refused.raw_os_error() == Some(libc::EINVAL) => attach(buffered),
         attached => attached,
     }
 }

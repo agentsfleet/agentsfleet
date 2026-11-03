@@ -211,6 +211,28 @@ async fn test_a_runner_taking_no_new_lease_holds_nothing() {
     }
 }
 
+/// A keeper that refuses the park, here one already shut down, hands the
+/// frozen sandbox back: the lease destroys it and reports nothing held,
+/// rather than leave it running with no owner.
+#[tokio::test(start_paused = true)]
+async fn test_a_park_the_keeper_refuses_is_destroyed_not_held() {
+    let capture = Capture::install();
+    let (mut rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    rig.lessee.holds.shutdown().await;
+
+    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
+
+    let report = reported(&rig.calls());
+    assert_eq!(report[OUTCOME], PROCESSED);
+    holds_nothing(&report);
+    assert_eq!(
+        counted.read(),
+        (1, 1, 0, 1),
+        "frozen for the park, then destroyed"
+    );
+    assert_eq!(releases(&capture), [released(FLEET_ID, Release::Shutdown)]);
+}
+
 /// A sandbox whose processes ended after its run is destroyed, never held:
 /// there is nothing in it for the fleet's next lease to continue.
 #[tokio::test(start_paused = true)]

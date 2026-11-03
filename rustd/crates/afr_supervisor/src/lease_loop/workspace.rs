@@ -124,16 +124,25 @@ impl LeaseRun<'_> {
             biased;
             () = &mut building => driving.await,
             ending = &mut driving => {
-                // Only a sandbox `keep` would hold is worth waiting for.
+                // Only a sandbox `keep` would hold is worth waiting for, and
+                // only while it still would: an interrupt, or leasing that
+                // stops mid-wait, ends the wait as surely as the deadline.
                 let waits = ending.processed()
                     && !self.interrupt.is_cancelled()
                     && !self.lessee.halt.leasing().is_cancelled();
-                if !waits || tokio::time::timeout(BUILD_AFTER_ANSWER, &mut building).await.is_err() {
-                    if waits {
+                let built = waits && tokio::select! {
+                    biased;
+                    () = &mut building => true,
+                    () = self.interrupt.cancelled() => false,
+                    () = self.lessee.halt.leasing().cancelled() => false,
+                    () = tokio::time::sleep(BUILD_AFTER_ANSWER) => {
                         let lease_id = self.ids.lease.as_str();
                         let event = EVENT_BUILD_OUTLASTED;
                         tracing::info!(lease_id, event, "the build outlasted its answered turn");
+                        false
                     }
+                };
+                if !built {
                     stop.cancel();
                     building.await;
                 }

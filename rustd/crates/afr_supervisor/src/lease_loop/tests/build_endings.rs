@@ -176,6 +176,40 @@ async fn test_a_build_that_outlasts_its_answer_is_stopped() {
     );
 }
 
+/// How far into an answered turn's build wait the runner stops leasing.
+const STOPS_LEASING_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Leasing that stops while an answered turn waits for its build ends the
+/// wait then: no lease could take the hold any more, so the build is stopped
+/// at that moment, not at the deadline.
+#[tokio::test(start_paused = true)]
+async fn test_leasing_that_stops_mid_wait_ends_the_wait() {
+    let workspace = tempfile::tempdir().unwrap();
+    let mut rig = Rig::new(
+        daemon(stalled_mint),
+        checking_out(workspace.path()),
+        FakeAgent::new(Behaviour::Talks),
+    );
+    served(&rig);
+    let lessee = Arc::clone(&rig.lessee);
+    let stopping = tokio::spawn(async move {
+        tokio::time::sleep(STOPS_LEASING_AFTER).await;
+        lessee.halt.stop_leasing();
+    });
+    let started = tokio::time::Instant::now();
+
+    let counted = builds_counted(&rig, &bound()).await;
+
+    let took = started.elapsed();
+    stopping.await.unwrap();
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+    assert_eq!(counted, [SandboxBuild::Stopped]);
+    assert!(
+        took >= STOPS_LEASING_AFTER && took < BUILD_AFTER_ANSWER,
+        "the report waited {took:?}"
+    );
+}
+
 /// A runner that takes no further lease holds no sandbox, so a turn that
 /// answered waits for no build: the build is stopped at once, and nothing
 /// is logged as outlasting the turn.
