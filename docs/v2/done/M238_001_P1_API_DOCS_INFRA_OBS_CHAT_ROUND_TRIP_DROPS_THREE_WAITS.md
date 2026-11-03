@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 03, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, every chat on dev spends 240–419 ms after its answer before `event_complete`, 83–105 ms on a second round trip before its first model call, and up to `NO_WORK_RETRY_AFTER / workers` before any runner looks at it
 
@@ -334,20 +334,20 @@ A held beat never delays the runner's or the daemon's own transitions. On the ru
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The report's memory lands before the settle, fenced and cut (§1) | `git grep -l test_superseded_report_writes_no_memory rustd/crates/afd_fleet/tests` | one path | P0 | |
-| R2 | The lease carries the window under the slot (§2) | `git grep -l test_window_follows_the_slot rustd/crates/afd_fleet/tests` | one path | P0 | |
-| R3 | A held wait answers a ring, its deadline and its cap (§3) | `git grep -l a_wait_past_the_cap_is_refused_at_once rustd/crates/afd_dragonfly/src` | one path | P0 | |
-| R4 | A woken beat polls one worker at once (§3) | `git grep -l test_woken_beat_polls_one_worker_at_once rustd/crates/afr_supervisor/src` | one path | P0 | |
-| R5 | The span covers event creation to the publish with capped segments (§4) | `git grep -l the_delivery_span_starts_at_the_events_creation rustd/crates/afd_observability/src` | one path | P1 | |
-| R6 | The playbook holds the per-fleet queries (§4) | `grep -c quantile_over_time playbooks/operations/observability/002_round_trip_percentiles.md` | `2` | P1 | |
-| R7 | The lease body and the deltas zero on drop (§5) | `git grep -l test_captured_memory_zeroizes_its_strings rustd/crates/afr_supervisor/src` | one path | P1 | |
-| R8 | The credential mint retries an edge error (§6) | `git grep -l "throws after five retryable answers" cli/test/acceptance/fixtures` | one path | P1 | |
-| R9 | The census carries the new family (§4) | `grep -c agentsfleet_runner_wake_answers_total docs/metrics.census.tsv` | `1` | P1 | |
+| R1 | The report's memory lands before the settle, fenced and cut (§1) | `git grep -l test_superseded_report_writes_no_memory rustd/crates/afd_fleet/tests` | one path | P0 || ✅ `rustd/crates/afd_fleet/tests/integration_report_memory.rs` |
+| R2 | The lease carries the window under the slot (§2) | `git grep -l test_window_follows_the_slot rustd/crates/afd_fleet/tests` | one path | P0 || ✅ `rustd/crates/afd_fleet/tests/integration_lease_gates/window.rs` |
+| R3 | A held wait answers a ring, its deadline and its cap (§3) | `git grep -l a_wait_past_the_cap_is_refused_at_once rustd/crates/afd_dragonfly/src` | one path | P0 || ✅ `rustd/crates/afd_dragonfly/src/doorbell/tests.rs` |
+| R4 | A woken beat polls one worker at once (§3) | `git grep -l test_woken_beat_polls_one_worker_at_once rustd/crates/afr_supervisor/src` | one path | P0 || ✅ `rustd/crates/afr_supervisor/src/worker_pool/tests.rs` |
+| R5 | The span covers event creation to the publish with capped segments (§4) | `git grep -l the_delivery_span_starts_at_the_events_creation rustd/crates/afd_observability/src` | one path | P1 || ✅ `rustd/crates/afd_observability/src/delivery/tests.rs` |
+| R6 | The playbook holds the per-fleet queries (§4) | `grep -c quantile_over_time playbooks/operations/observability/002_round_trip_percentiles.md` | `2` | P1 || ✅ `2` |
+| R7 | The lease body and the deltas zero on drop (§5) | `git grep -l test_captured_memory_zeroizes_its_strings rustd/crates/afr_supervisor/src` | one path | P1 || ✅ `rustd/crates/afr_supervisor/src/memory/tests.rs` |
+| R8 | The credential mint retries an edge error (§6) | `git grep -l "throws after five retryable answers" cli/test/acceptance/fixtures` | one path | P1 || ✅ `cli/test/acceptance/fixtures/workspace-hydration.test.ts` |
+| R9 | The census carries the new family (§4) | `grep -c agentsfleet_runner_wake_answers_total docs/metrics.census.tsv` | `1` | P1 || ✅ `1` |
 | S1 | Declared lint green | `make lint-all` | exit 0 | P0 | |
 | S2 | Declared unit lane green | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Declared integration lane green | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Version files agree | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| S4 | Version files agree | `make check-version` | exit 0 | P0 || ✅ `✓ all versions match 0.73.0` |
+| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 || ✅ `no leaks found` |
 | S6 | Rust patch coverage at or above 99% per touched file | `make test-coverage-rustd-merge RUSTD_PATCH_BASE=HEAD^1` (the CI coverage lane) | exit 0 | P0 | |
 | S7 | TypeScript coverage 100% | `make test-coverage-all` | exit 0 | P0 | |
 
