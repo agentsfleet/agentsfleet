@@ -21,6 +21,7 @@ pub mod cost;
 pub mod fleet;
 pub mod http;
 pub mod library;
+pub mod task;
 
 #[cfg(test)]
 mod tests;

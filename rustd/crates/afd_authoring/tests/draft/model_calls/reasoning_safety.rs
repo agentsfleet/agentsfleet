@@ -33,7 +33,7 @@ async fn invalid_native_replays_never_create_another_physical_dispatch() {
         Changed::Malformed,
         Changed::Revoked,
     ] {
-        refused(changed).await;
+        Box::pin(refused(changed)).await;
     }
 }
 

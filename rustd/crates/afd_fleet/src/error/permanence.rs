@@ -61,6 +61,7 @@ impl Error {
             | ErrorKind::SetupUnavailable => true,
             ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
             | ErrorKind::Authoring { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Billing { .. }
@@ -72,6 +73,10 @@ impl Error {
             | ErrorKind::Events { .. }
             | ErrorKind::Outbound { .. }
             | ErrorKind::Rejected { .. }
+            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskDocument { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound

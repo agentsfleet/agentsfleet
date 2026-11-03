@@ -203,6 +203,8 @@ export interface ExtraBind {
 // The policy the operator assigns to a runner — mirrors `protocol.AssignedPolicy`
 // verbatim. The host applies exactly this; it never declares its own.
 export interface AssignedPolicy {
+  /** Reviewed platform catalogue selection; omitted or null disables decisions. */
+  decision_model_id?: string | null;
   sandbox_tier: SandboxTier;
   network_policy: NetworkPolicy;
   registry_allowlist: string[];

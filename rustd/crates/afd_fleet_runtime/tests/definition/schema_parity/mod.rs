@@ -104,6 +104,51 @@ fn the_shared_complete_fixture_is_accepted_by_both() {
     assert!(components().admits(&definition_component(), &document));
 }
 
+#[test]
+fn owner_question_roles_publish_the_same_required_keys_and_text_bounds() {
+    let components = components();
+    let document = super::decision_policy::document();
+    assert!(components.admits(&definition_component(), &document));
+    Definition::parse(&document.to_string()).expect("complete reviewed policy");
+    for (pointer, replacement) in [
+        (
+            "/completion/statements/0/criteria",
+            serde_json::json!({"false":"Missing yes criterion"}),
+        ),
+        (
+            "/completion/next_action/criteria",
+            serde_json::json!({"CONTINUE":"Go","WAIT":"Wait","DONE":"Done","BLOCKED":"Blocked","PUBLISH":"Anywhere"}),
+        ),
+        (
+            "/routing/intent/criteria/conversation",
+            serde_json::json!("A".repeat(513)),
+        ),
+        (
+            "/routing/multiple_requests/criteria/true",
+            serde_json::json!(" \n\t"),
+        ),
+        (
+            "/completion/statements/0/question",
+            serde_json::json!("private\0question"),
+        ),
+    ] {
+        let mut invalid = document.clone();
+        *invalid
+            .pointer_mut(&format!("/config/x-agentsfleet/decision_policy{pointer}"))
+            .expect("question fixture field") = replacement;
+        assert!(
+            !components.admits(&definition_component(), &invalid),
+            "schema accepted {pointer}"
+        );
+        let failure = Definition::parse(&invalid.to_string())
+            .expect_err("native parser refuses the same invalid policy");
+        assert_eq!(
+            failure.code(),
+            afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
+        );
+    }
+}
+
 /// A trigger set left out or left empty is a fleet only ever talked to, and
 /// both the parser and the published schema accept it.
 #[test]

@@ -322,7 +322,7 @@ uuid = { version = "1.29.0", default-features = false, features = ["v7", "std"] 
 # `/usr/share/zoneinfo` (gcr.io/distroless/static-debian12:nonroot, verified).
 # It lets a zone name be VALIDATED against the real database instead of
 # pattern-matched — see `afd_cron::validate::timezone`.
-jiff = { version = "0.2.38", default-features = false, features = [
+jiff = { version = "0.2.39", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
   # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in
@@ -333,7 +333,7 @@ jiff = { version = "0.2.38", default-features = false, features = [
 # every crate here from implementing sqlx's traits for jiff's type, so row
 # fields decode through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]` and binds go
 # through `ToSqlx`. Postgres only; its sqlite half stays off.
-jiff-sqlx = { version = "0.2.0", default-features = false, features = ["postgres"] }
+jiff-sqlx = { version = "0.2.1", default-features = false, features = ["postgres"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
@@ -853,7 +853,7 @@ libc = { version = "0.2.191", default-features = false }
 # and netfilter packet crates share one `netlink-packet-core`.
 netlink-sys = { version = "0.9.0", default-features = false }
 netlink-packet-core = { version = "0.9.0", default-features = false }
-netlink-packet-route = { version = "0.33.0", default-features = false }
+netlink-packet-route = { version = "0.34.0", default-features = false }
 netlink-packet-netfilter = { version = "0.4.0", default-features = false }
 # The sandbox's kernel lane is an example with its own `main`, so a test
 # binary cannot run it by accident; this gives it libtest's reporting and

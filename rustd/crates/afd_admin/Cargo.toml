@@ -28,6 +28,8 @@ sqlx = { workspace = true, features = ["derive", "json"] }
 thiserror.workspace = true
 
 [dev-dependencies]
+afd_billing.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [lints]

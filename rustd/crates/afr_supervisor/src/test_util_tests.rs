@@ -22,6 +22,7 @@ use crate::test_support::{drain, json, plane};
 fn healthy() -> Healthy {
     Healthy {
         assigned: AssignedPolicy {
+            decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::DenyAllEgress,
             registry_allowlist: Vec::new(),

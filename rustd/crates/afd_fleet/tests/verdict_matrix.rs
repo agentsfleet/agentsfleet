@@ -25,6 +25,7 @@ use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxT
 /// An assignment at `tier` under `network`, with nothing else set.
 fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static> {
     AssignedPolicy {
+        decision_model_id: None,
         sandbox_tier: tier,
         network_policy: network,
         registry_allowlist: Vec::new(),

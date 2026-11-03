@@ -222,6 +222,9 @@ pub const LABEL_RUNNER_ID: &str = "runner_id";
 /// How an operation ended.
 pub const LABEL_OUTCOME: &str = "outcome";
 
+/// Which bounded native operation produced a measurement.
+pub const LABEL_OPERATION: &str = "operation";
+
 /// Which library read surface a measurement is about.
 pub const LABEL_SURFACE: &str = "surface";
 
@@ -261,6 +264,7 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_ATTRIBUTE,
     LABEL_RUNNER_ID,
     LABEL_OUTCOME,
+    LABEL_OPERATION,
     LABEL_SURFACE,
     LABEL_STAGE,
     LABEL_STATUS,

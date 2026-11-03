@@ -89,6 +89,15 @@ pub(crate) struct Runtime {
     /// Context-size settings for each run.
     #[garde(dive)]
     pub(crate) context: Option<Context>,
+    /// Owner-reviewed routing and completion questions, versioned with this setup.
+    /// Omit for ordinary fleets; an explicit null or partial policy is refused.
+    #[serde(
+        default,
+        deserialize_with = "crate::config::decision::raw::present_object"
+    )]
+    #[garde(dive)]
+    #[cfg_attr(feature = "openapi", schema(nullable = false))]
+    pub(crate) decision_policy: Option<crate::config::decision::raw::Policy>,
     /// The repositories this fleet's GitHub credentials may reach, as `owner/name`.
     /// Set together with `repository_access`.
     // Refuses an empty list: a binding that names nothing is not "every

@@ -7,11 +7,13 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod catalogue;
+mod decision_revision;
 mod error;
 mod model;
+mod model_validation;
 mod platform_key;
 mod sql;
 
 pub use error::{Error, Result};
-pub use model::{CreateModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
+pub use model::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
 pub use platform_key::{PlatformKey, PlatformKeyInput, PlatformKeys, SetPlatformKey};

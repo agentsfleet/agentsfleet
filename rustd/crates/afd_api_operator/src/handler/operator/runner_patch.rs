@@ -20,7 +20,7 @@ use crate::handler::{malformed, parse_id, refuse};
 use crate::services::Services;
 
 const EVENT: &str = "runner_patch_failed";
-const DETAIL_PATCH_BODY: &str = "PATCH body must be {\"action\":\"cordon|drain|revoke|rotate|self_test\"} alone, or an edit carrying {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[]}}, {\"labels\":[]}, or both";
+const DETAIL_PATCH_BODY: &str = "PATCH body must be {\"action\":\"cordon|drain|revoke|rotate|self_test\"} alone, or an edit carrying {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[], decision_model_id?}}, {\"labels\":[]}, or both";
 
 enum Mutation<'r, 'a> {
     Transition(RunnerAdminAction),
@@ -232,6 +232,7 @@ mod tests {
 
     fn policy() -> afd_wire::runner::AssignedPolicy<'static> {
         afd_wire::runner::AssignedPolicy {
+            decision_model_id: None,
             sandbox_tier: afd_wire::runner::SandboxTier::DevNone,
             network_policy: afd_wire::runner::NetworkPolicy::AllowAll,
             registry_allowlist: Vec::new(),

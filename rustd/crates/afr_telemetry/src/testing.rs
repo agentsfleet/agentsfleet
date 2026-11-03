@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
+use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
     TurnOutcome,
@@ -24,6 +25,8 @@ use crate::record::Recorder;
 /// One measurement, as a test reads it back.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Recorded {
+    /// [`Recorder::decision`].
+    Decision(DecisionProvider, DecisionPurpose, DecisionOutcome, Duration),
     /// [`Recorder::turn`].
     Turn(Provider, TurnOutcome, Duration),
     /// [`Recorder::retry`].
@@ -65,6 +68,16 @@ impl Tally {
 }
 
 impl Recorder for Tally {
+    fn decision(
+        &self,
+        provider: DecisionProvider,
+        purpose: DecisionPurpose,
+        outcome: DecisionOutcome,
+        elapsed: Duration,
+    ) {
+        self.send(Recorded::Decision(provider, purpose, outcome, elapsed));
+    }
+
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
         self.send(Recorded::Turn(provider, outcome, elapsed));
     }

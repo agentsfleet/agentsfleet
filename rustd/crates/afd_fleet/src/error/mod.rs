@@ -83,6 +83,29 @@ afd_core::error_shell!(
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("task continuation admission failed")]
+    Admission {
+        #[source]
+        source: afd_admission::Error,
+    },
+    #[error("a stored task document is malformed")]
+    TaskDocument {
+        #[source]
+        source: afd_core::json::Unreadable,
+    },
+    #[error("a stored task lifecycle state is unknown")]
+    TaskState {
+        #[source]
+        source: serde::de::value::Error,
+    },
+    #[error("task counter {column} cannot be represented")]
+    TaskCounter {
+        column: &'static str,
+        #[source]
+        source: std::num::TryFromIntError,
+    },
+    #[error("{reason}")]
+    TaskRefused { reason: crate::task::TaskRefusal },
     #[error("the private working context could not be accessed")]
     Context {
         #[source]

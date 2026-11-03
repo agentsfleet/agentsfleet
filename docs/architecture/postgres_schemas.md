@@ -187,17 +187,20 @@ connection or transaction; there is no generic repository trait.
  identity.workspaces ◀── fleets ──▶ revisions (head_revision_id)
  fleets ◀── revisions, schedules, sessions (1:1), activity_counters (1:1),
             events ◀── tool_calls, admissions, approval_gates ──▶ connector.integration_grants,
-            obligations
+            obligations, task_items ◀── tasks ◀── task_inputs
 ```
 
 | Table | Purpose | Columns |
 |---|---|---|
 | `fleets` | The deployed agent | `id, workspace_id, tenant_id, name, status, head_revision_id, required_tags, setup_stream_ready, initial_start, memory_reads_workspace, memory_publishes_workspace, resource_version, created_at, updated_at` |
 | `revisions` | Frozen setup history; rev 1 at Save, +1 per Apply | `id, fleet_id, revision, definition, canonical_digest, policy_semantics, runtime_model_ref, review_digest, review_context, source_candidate_id, created_at` · append-only |
+| `task_items` | Immutable interpretation receipts survive admission cleanup | `id, fleet_id, workspace_id, admission_id, ordinal, plan_digest, action, source_start, source_end, task_id, created_at` · append-only; task association closes a deferred cycle |
+| `tasks` | One durable objective, its accepted setup, cumulative limits and lifecycle | `id, fleet_id, workspace_id, tenant_id, originating_task_item_id, accepted_revision_id, title, objective, questions, goal_digest, target, status, resource_version, generation, stop_generation, input_sequence, covered_input_sequence, effect_cursor, confirmed_effect_watermark, max_model_nanos, used_model_nanos, reserved_model_nanos, max_running_nanos, used_running_nanos, max_leases, used_leases, max_publications, used_publications, max_decision_calls, used_decision_calls, max_fallback_reads, used_fallback_reads, reply_provider, reply_address, expires_at, terminal_at, created_at, updated_at` |
+| `task_inputs` | Accepted task input and its consumption order, separate from queue delivery | `id, task_id, fleet_id, workspace_id, task_item_id, sequence, accepted_text, interpretation, accepting_lease_id, accepting_fence, generation, answered_at, created_at, updated_at` |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler | `id, fleet_id, source, provider_schedule_id, cron_expression, timezone, message, once, fire_at, recipe, desired_status, sync_status, resource_version, sync_token, sync_lease_expires_at, last_error, created_at, updated_at` |
 | `sessions` | Resume bookmark `{last_event_id, last_response}` | `fleet_id (PK), context_json, created_at, updated_at` |
 | `events` | One row per delivery into the fleet | `id, fleet_id, workspace_id, event_id, actor, event_type, status, request_json, response_text, tool_calls, token_count, wall_ms, failure_reason, failure_detail, resumes_event_id, created_at, updated_at` · `UNIQUE(fleet_id, event_id)` |
-| `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | `id, sequence, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, request_json, event_created_at, reply_provider, reply_address, delivered_at, created_at, updated_at, lease_fence, parked_at, settled_at` |
+| `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | `id, sequence, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, request_json, event_created_at, reply_provider, reply_address, delivered_at, created_at, updated_at, lease_fence, parked_at, settled_at, task_id, task_item_id, input_claim_lease_id, input_claim_fence` |
 | `approval_gates` | A risky action waiting for a person | `id, fleet_id, workspace_id, event_id, active_grant_id, action_id, tool_name, action_name, gate_type, proposed_action, evidence, stated_binding, blast_radius, spend_count, spend_ceiling, expires_at, status, resolved_at, resolved_by, resolved_by_name, detail, created_at, updated_at` |
 | `obligations` | An answer owed to a destination until delivered or abandoned | `id, sequence, fleet_id, workspace_id, provider, destination, event_id, answer, receipt, delivered_at, attempt_count, abandoned_at, abandon_reason, created_at, updated_at` |
 | `tool_calls` | Full arguments and output of each tool call | `id, workspace_id, fleet_id, fleet_event_id, fencing_token, sequence, arguments, truncated_arguments, output, output_line_count, truncated, byte_count, created_at, updated_at` |
@@ -219,8 +222,8 @@ omit its model and review then resolves the tenant default.
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `runners` | An enrolled host: policy, health, self-test | `id, host_id, token_hash, sandbox_tier, status, labels, network_policy, registry_allowlist, worker_count, sandbox_config, capability_report, degraded_reason, last_seen_at, selftest_requested_at, selftest_completed_at, selftest_checks, selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, updated_at` |
-| `leases` | One fleet event handed to one runner. No foreign key to the fleet or its event: a settled lease outlives a purge as runner history; the insert proves fleet, workspace and tenant in the same statement | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at` |
+| `runners` | An enrolled host: policy, health, self-test | `id, host_id, token_hash, decision_platform_model_id, sandbox_tier, status, labels, network_policy, registry_allowlist, worker_count, sandbox_config, capability_report, degraded_reason, last_seen_at, selftest_requested_at, selftest_completed_at, selftest_checks, selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, updated_at` |
+| `leases` | One fleet event handed to one runner. No foreign key to the fleet, event or task: settled history outlives a purge; the insert proves scope in the same transaction | `id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count, task_id, created_at, updated_at` |
 | `fleet_slots` | Per-fleet claim: who may lease it, next fencing token, sticky runner, sandbox hold | `fleet_id (PK), last_runner_id, fencing_token, lease_expires_at, hold_expires_at, created_at, updated_at` |
 | `events` | Append-only runner history | `id, runner_id, event_type, metadata, last_seen_at, created_at` · unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
 | `lifetime_counters` | Per-runner tallies | `runner_id (PK), acquired_count, succeeded_count, failed_count, expired_count, created_at, updated_at` |
@@ -248,12 +251,17 @@ leaves the index once metering reaches its expiry, so the index holds only the b
 
 | Table | Purpose | Columns |
 |---|---|---|
-| `platform_models` | Curated identities with exact provider API identifiers, display names and context evidence | `id, model_name, provider, display_name, context_cap_tokens, context_source_url, context_verified_at, advanced, inference, created_at, updated_at` |
+| `platform_models` | Curated identities, context evidence and current decision selection | `id, model_name, provider, display_name, context_cap_tokens, context_source_url, context_verified_at, advanced, inference, decision_revision_id, decision_enabled, created_at, updated_at` |
 | `platform_model_prices` | Prices per prompt-size tier and effective date range, in integer nanos per million tokens; a separate table because one model has many prices | `id, platform_model_id, effective_from, effective_until, prompt_tokens_above, input_nanos_per_mtok, cached_input_nanos_per_mtok, cache_write_nanos_per_mtok, cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, output_nanos_per_mtok, source_url, verified_at, conditions, created_at, updated_at` |
+| `decision_revisions` | Immutable reviewed decision definitions; a model/revision label cannot acquire different bytes | `id, platform_model_id, revision, definition, created_at` · append-only; native model-scoped selection sets the current pointer |
+| `decision_prices` | Separate decision-protocol rates preserve coding writers and historical revision accounting | `id, platform_model_id, decision_revision_id, effective_from_at, effective_until_at, prompt_tokens_above, input_nanos_per_mtok, cached_input_nanos_per_mtok, cache_write_nanos_per_mtok, cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, output_nanos_per_mtok, source_url, verified_at, conditions, created_at, updated_at` · composite revision/model reference proves quote ownership |
 | `catalogue_version` | Singleton edit counter, bumped by every catalogue edit and read with each runtime model resolution | `id (=1), resource_version, created_at, updated_at` |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key | `provider (PK), source_workspace_id, active, platform_model_id, base_url, created_at, updated_at` |
 | `tenant_models` | A tenant's own models, each pointing at a vault key | `id, tenant_id, model_name, secret_ref, created_at, updated_at` |
 | `tenant_selections` | The tenant's default; NULL means platform default | `tenant_id (PK), tenant_model_id, created_at, updated_at` |
+
+The current decision pointer uses a deferred identity reference and an ownership constraint trigger.
+The trigger checks final rows and locks their immutable revision, without granting update access or public access to the trigger function.
 
 `model_name` is the provider's name for a model and never a foreign key. `installs.scopes` is read
 by the setup review, which blocks a connection whose granted scopes fall short.
@@ -283,7 +291,7 @@ or account therefore never deletes a charge. The slots name the export that read
 | Draft (user delete or 30-day sweep) | messages, candidates, answer receipts, draft context checkpoint | attempts, dispatches, settlements, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, settlements | `dispatches.result` and `dispatches.native_reply` of their attempts |
 | Library card | its revisions | fleets installed from it; drafts started from it (`source_library_revision_id` set NULL) | — |
-| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases | charges; settled runner leases, for their own 30-day window (fleet and event shown as deleted); drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
+| Fleet (purge) | revisions, tasks, task items/inputs, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases | charges; settled runner leases, for their own 30-day window (fleet and event shown as deleted); drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences | attempts, settlements, charges | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), settlements; slots (`last_runner_id` set NULL) | — |

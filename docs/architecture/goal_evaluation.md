@@ -14,7 +14,9 @@ Recheck endpoint capabilities, rates and resolved model identity before activati
 
 Keep decision networking in `afr_providers`, alongside existing provider connections and guarded transport.
 The agent owns when to ask and how to apply accepted answers; it does not receive provider keys.
-Reuse `afd_inference::transport`, native vault resolution, usage reporting and the current lease budget.
+
+Reuse guarded HTTP construction, final request-header validation, native vault resolution, usage reporting and the current lease budget.
+Decision responses use a 64-KiB bound; coding inference retains its existing SDK wire limit.
 
 ```text
 Existing fleet admission -> existing lease -> existing agent loop
@@ -34,11 +36,15 @@ Existing fleet admission -> existing lease -> existing agent loop
                                 same lease/report/settlement
 ```
 
-One object-safe `DecisionEvaluator` trait exposes one bounded asynchronous `evaluate` call.
+One object-safe `DecisionEvaluator` trait exposes one bounded asynchronous `evaluate` call accepting only the validated decision request.
+`DecisionClient` owns its frozen profile and credential; agent-facing calls cannot select or receive provider keys.
 Use existing boxed-future conventions; no plugin registry, provider discovery service or second agent loop is needed.
+
 `DecisionRequest` carries purpose, bounded state and reviewed questions; trusted generation/evidence bindings remain outside model-controlled answers.
 
-`DecisionResult` carries typed answers, probability origin, provider/model identity, profile revision and physical usage.
+`DecisionResult` carries typed answers, the reported model and physical usage.
+The native reservation binds these results to the frozen provider/profile revision and assessed evidence.
+
 `DecisionCapabilities` declares supported question types, distributions and refusal behavior.
 Unsupported capabilities refuse activation instead of inventing probabilities or silently dropping questions.
 
@@ -53,9 +59,33 @@ Existing Rig remains the coding-provider dependency; the decision client reuses 
 
 Extend the existing runner assignment with nullable `decision_model_id`, selecting an administrator-reviewed entry in the current model catalogue.
 Add decision transport/policy metadata beside that entry; do not create another model registry or put model policy in host environment variables.
-The existing runner edit and heartbeat carry the assignment, and lease issuance freezes its resolved `DecisionProfile`.
+Runner enrollment, edit and heartbeat carry the catalogue identity; lease-time profile freezing remains pending.
 
-The profile binds provider, model, protocol, allowed endpoint, vault reference, capability set, rates, question-policy revision and evaluated model versions.
+Decision-only entries carry their own price schedule and no fabricated coding rates.
+The current model selects an immutable reviewed revision; enabling or disabling it preserves that definition and prior call accounting.
+Catalogue reads resolve definitions and prices through one consistent database snapshot.
+
+`model.decision_prices` adds decision quotes without changing the coding-price table or its conflict key.
+Both sources share catalogue ownership, price values, validation and billing; their helpers select fixed statements.
+`billing.usage_lines` keeps opaque quote identifiers and recorded charges, without a foreign key to either price source.
+
+The curated coding-model importer changes coding schedules only.
+It retains decision definitions, decision prices and their model identities when a coding entry is removed.
+
+Pruning a retained model's coding entry clears its coding inference settings, leaving its decision configuration editable.
+Decision-only rows do not appear as repeated coding-import deletions.
+
+Upgrade catalogue writers and the coding importer before creating or enabling decision profiles.
+The additive price table preserves ordinary coding traffic while older daemons finish serving.
+
+Store thresholds as integer basis points; native evaluation compares them with returned probabilities without rounding away the approved boundaries.
+Reuse the native HTTPS endpoint proof for coding and decision settings; guarded transport still enforces DNS at dispatch.
+
+TypeSafe's [model-list API](https://docs.typesafe.ai/api/list-models.md) returns names, descriptions and release dates without context limits.
+Its [official limits](https://docs.typesafe.ai/models.md) document per-request and per-question context; decision metadata may cite that provider source.
+Coding entries retain the existing models-API source requirement.
+
+The profile binds provider, model, protocol, allowed endpoint, vault reference, capability set, rates, question-format revision and evaluated model versions.
 Credentials remain separate vault references; a profile cannot borrow another workspace's credential through a model identifier.
 Runner assignment is an operator choice; fleet chat and repository content cannot change it.
 
@@ -107,7 +137,13 @@ Start with the existing dependencies and thin typed adapters; adopt a provider c
 
 ## Version and secret boundaries
 
-The daemon resolves the selected profile's vault reference into the trusted provider plane.
+The daemon resolves decision keys from the platform-admin workspace's existing Secrets vault, selected by `PLATFORM_ADMIN_WORKSPACE_ID`.
+The platform admin stores or rotates `api_key` in the native provider bag: `typesafe`, `openai`, `perplexity` or `cloudflare`.
+
+Native API selection determines that bag; fleet messages and runner configuration cannot supply a secret name or key value.
+There is no tenant-key or runner-environment fallback for decision calls.
+Resolve current credential state after reserving each physical call; a missing or revoked key blocks dispatch with a named prerequisite.
+
 Credentials never enter sandbox tools, conversation messages, saved workspace files or R2 objects.
 No provider is silently selected when its profile is missing or unavailable.
 
@@ -137,7 +173,91 @@ The following primitives describe native probability providers; the adapters mus
 Question identifiers are response keys; question instructions must carry the actual meaning.
 
 Do not depend on identifier wording that TypeSafe does not send to the model.
-Keep question templates and threshold policy together in the reviewed decision module.
+Pin the fleet question revision and evaluated model profile together for every assessment.
+
+## Who writes and stores the questions
+
+The fleet owner controls routing and completion questions, including their wording and criteria.
+Setup chat or CLI authoring drafts `config["x-agentsfleet"].decision_policy`; business guidance stays in `instructions_md`.
+The owner reviews and applies that candidate through the existing setup flow.
+
+The setup-chat LLM proposes questions in the first draft once the job and success conditions are clear.
+It derives criteria without requiring DT or model terminology, and asks when the outcome or scope is unclear.
+The decision model evaluates accepted questions during work; it does not author the setup questions.
+
+The assistant derives questions from the owner's described outcome, scope and available evidence.
+It shows the proposed question, yes/no criteria or choice criteria, and the scope of the change.
+The owner can revise poor criteria through chat without editing source code or asking a platform administrator.
+
+An owner can supply exact wording: “Add a completion question: does the repair preserve SSO login? Yes when the login regression passes; No when it fails or is missing.”
+The authoring assistant preserves supplied wording and proposes missing criteria for review.
+
+Each Apply creates another immutable fleet revision; it never edits an older revision.
+New DTs adopt the current accepted policy and their specific objectives automatically.
+An active DT keeps its accepted version until explicit revision adoption invalidates older assessments.
+
+Native code owns typed request construction, allowed answer/action shapes, trusted state and mandatory authority/evidence checks.
+The proposed `afr_agent/src/decision/{questions,routing,goal}.rs` renders the accepted configuration without changing its meaning.
+Provider documentation and adapter verification establish which question types the selected model supports.
+
+```text
+UI setup chat / CLI -> assistant drafts instructions_md + decision_policy
+                                              |
+                                       owner Review/Apply
+                                              |
+                        R7 immutable -- new draft/Apply --> R8 immutable
+                             |                                  |
+                        DT accepts R7                      new DT accepts R8
+                             |
+                   explicit adoption of R8
+                             |
+            record acceptance; invalidate older assessments
+                             |
+   accepted questions + current evidence -> typed request -> selected model
+```
+
+Task admission saves its accepted questions in `fleet.tasks.questions`, bound to `accepted_revision_id` and `goal_digest`.
+Adoption preserves prior revisions, assessments, confirmed effects and cumulative spend.
+The model catalogue supplies supported types and evaluated model thresholds; fleet owners control the question text and criteria.
+
+The native policy parser, proposal-tool schema and UI/CLI question review are written; full runtime acceptance remains pending.
+Task adoption, accepted-policy dispatch and the runtime decision loop remain pending; the typed client and catalogue are separate implemented components.
+
+`DecisionPolicy` resolves `RoutingQuestions` and `CompletionQuestions` through the existing serde/garde parser.
+Each role requires its exact native criterion keys; all wording and criterion text are owner-editable.
+
+Statements retain stable IDs and their reviewed order. Empty, duplicate, unknown, NUL-containing and oversized policy is refused, never filled with hidden questions.
+
+Question and criterion text is at most 512 UTF-8 bytes; each complete authored question is at most 1 KiB. The actual rendered request must independently satisfy the selected provider's request bounds.
+The shared [Linkwarden policy fixture](../../tests/fixtures/fleets/goal-repair/decision-policy.json) illustrates the editable representation.
+
+## Question display in setup and task views
+
+UI review and CLI setup output show owner-editable success criteria under `What counts as done?`, separately from instruction prose.
+Show the saved setup revision, current revision, question changes and the revision each DT has accepted.
+Use the existing numeric fleet revision and history rather than creating another question-version counter.
+
+The task view shows its accepted question text, criteria, latest assessment and assessed evidence identity.
+Label Noul values as probability of yes; they are neither a separate confidence value nor a percentage of work completed.
+Preserve readable CLI output alongside the existing machine-readable representation.
+
+Keep the owner-approved `Save done vN → Open fleet` status pill and existing design-system controls. Normal setup omits routing categories, association/decomposition rules, next-action choices and model terminology; those remain in validated configuration and machine-readable output, editable through setup chat.
+
+The separate HTML mocks retain the current setup and fleet-chat layouts, composers and activity indicators.
+Setup chat authors fleet revisions and inline success criteria; fleet chat handles work requests and DT activity.
+Each fleet keeps one work conversation; DT details remain associated with it.
+
+```text
+Fleet: Linkwarden repair
+Setup revision: R8 (current)
+
+What counts as done?
+  1. Does the patch address the accepted defect?
+     Yes: current code and regression evidence demonstrate the fix.
+     No: evidence is missing, contradictory, or the defect remains.
+
+PR 101: accepted R7; R8 available; adoption requires an explicit change
+```
 
 ## Intent routing
 
@@ -156,6 +276,10 @@ conversation / status / refresh / steer / new_work / clarify
 
 Run routing within the existing lease or its safe input boundary; no second queue or classification worker is added.
 Use trusted DT options plus explicit new-work and unclear outcomes.
+
+Use compact option keys with an immutable native identity map in the state, so sixteen candidates fit the question-size bound.
+Accept associations through that recorded map; the option key itself grants no authority.
+
 A selected browser work item is a hint that native ownership checks must validate.
 
 One closed-set label must not discard independent requests within a mixed message.
@@ -172,9 +296,9 @@ The proposed thresholds below require frozen real-message evaluation before enab
 
 ## Goal evaluation
 
-The accepted `instructions_md` holds user-reviewed completion questions.
-Task admission freezes the instruction revision; typed templates render those questions without changing their meaning.
-Question changes require explicit revision adoption and invalidate stale answers.
+The accepted `decision_policy` holds user-reviewed completion questions and criteria; `instructions_md` supplies their business context.
+Task admission freezes that fleet revision and the specific objective; typed templates preserve their meaning.
+Question changes require a new immutable revision and explicit adoption before they can affect an existing DT.
 
 At a completed action group or resumed-task boundary, send bounded current task state and attributable evidence.
 Batch related semantic Noul questions with a Choice over CONTINUE, WAIT, DONE and BLOCKED.
@@ -204,6 +328,9 @@ Validate answer type, known options, finite numeric range, probability distribut
 Reject stale generation, instruction revision or evidence binding before accepting a proposed transition.
 Repository text and logs remain untrusted state and cannot replace templates, grants or native completion requirements.
 
+Detect repeated JSON object keys before their earlier values disappear.
+Ambiguous answers invalidate the assessment while retaining independently readable usage; ambiguous usage or duplicate envelopes retain unknown accounting.
+
 Use bounded timeouts and retry accounting shared with the task or pre-task admission.
 Input tokens determine TypeSafe's documented charge; output usage remains recorded even when its rate is zero.
 Resolve exact rates through reviewed configuration rather than reusing an unrelated chat model's prices.
@@ -221,9 +348,9 @@ No live provider acceptance is claimed by documentation review.
 The following numeric defaults belong to the proposed Jev profile, not every provider.
 Perplexity, Clef and OpenAI profiles require their own evaluated thresholds; self-reported probabilities cannot inherit Jev's policy.
 
-Use question revision `dt-routing-v1` for intent and `dt-goal-v1` for goal assessment.
-Render task completion statements from the accepted reviewed instructions; store their normalized digest with the DT.
-Never substitute repository-provided instructions for the question templates.
+Use format revision `dt-routing-v1` for intent and `dt-goal-v1` for goal assessment.
+Render questions from the accepted fleet policy; bind its revision and normalized digest with the DT.
+Repository text cannot replace the owner's accepted questions or native guard rules.
 
 | Question | Typed meaning and native acceptance |
 |---|---|
@@ -243,7 +370,9 @@ Before live writes, require zero unauthorized association or false completion an
 
 An unknown resolved version stays blocked until the same frozen cases meet those criteria and reviewed version policy admits it.
 Use the reviewed profile's configured model identifier and record returned identity; do not silently switch providers or model versions.
-Changes to thresholds or wording create another question revision and invalidate cached decisions.
+
+Question edits create another fleet revision; model-threshold edits create another reviewed model profile revision.
+Either change invalidates affected cached decisions when the DT adopts it.
 
 Each decomposed item must independently pass its intent and target thresholds before native acceptance.
 More than four independent requested actions produces clarification or an explicit request to split the work; no action is silently discarded.
@@ -354,3 +483,17 @@ M236 reuses the existing HTTPS certificate, platform-trust and proxy behavior wi
 Indy assigned quantum-safe transport to a separate specification.
 Do not change key-exchange preferences, add a crypto provider or claim end-to-end quantum safety under M236.
 AES-256-GCM checkpoint encryption at rest remains part of M236.
+
+### Memory and allocation boundaries
+
+The decision client owns one `SecretString`, whose `Zeroizing<String>` buffer is wiped when dropped normally.
+The configured client has no `Clone` implementation; composition can share its existing behavior trait through `Arc`.
+HTTP headers and transport buffers remain outside that owned-buffer wiping guarantee.
+
+Build the final bearer-authenticated request once before dispatch, preserving builder failures as `NotSent` outcomes.
+Deserialize response values by reference and count validation bytes through a bounded writer.
+The decision-local parser records duplicate keys during its single parse, preserving unambiguous accounting without another document copy.
+
+The object-safe evaluator uses one boxed future per call; native wire adapters use concrete enum dispatch.
+Bounded metrics and stage timing support later regression investigations.
+Production latency, allocation counts and large-repository transfer performance remain unmeasured until the declared performance scenarios run.

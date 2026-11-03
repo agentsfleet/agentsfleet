@@ -83,10 +83,10 @@ pub(super) const INTEGRATION: &[Problem] = &[
     Problem {
         code: error_code::PROVIDER_MODEL_IN_USE,
         status: 409,
-        title: "Library model is the active platform default",
-        hint: "This model is the active platform default. Point the default at another library model before deleting it.",
+        title: "Library model is in use",
+        hint: "Change the platform default or runner decision-model assignments before deleting this library model.",
         user_message: Some(
-            "This model is the active platform default — point the default at another model before deleting it.",
+            "This model is in use. Change its platform default or runner assignments before deleting it.",
         ),
     },
     Problem {

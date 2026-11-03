@@ -36,6 +36,7 @@ pub mod fleet;
 pub mod http;
 pub mod library;
 pub mod memory;
+pub mod task;
 
 #[cfg(test)]
 mod tests;
@@ -54,6 +55,7 @@ pub struct Producers {
     pub(crate) memory: self::memory::Handles,
     pub(crate) cost: self::cost::Handles,
     pub(crate) billing: self::billing::Handles,
+    pub(crate) task: self::task::Handles,
 }
 
 impl Producers {
@@ -74,6 +76,7 @@ impl Producers {
             memory: self::memory::Handles::claim(instruments)?,
             cost: self::cost::Handles::claim(instruments)?,
             billing: self::billing::Handles::claim(instruments)?,
+            task: self::task::Handles::claim(instruments)?,
         })
     }
 }

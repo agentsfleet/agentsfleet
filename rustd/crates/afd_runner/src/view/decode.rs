@@ -30,6 +30,7 @@ const COLUMN_RUNNER_ID: &str = "runner_id";
 /// The columns every runner read selects, by name.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct ItemRow {
+    decision_model_id: Option<String>,
     id: String,
     host_id: String,
     sandbox_tier: String,
@@ -83,6 +84,7 @@ impl ItemRow {
     /// The list row, its identifier, status and stored JSON proven.
     pub(super) fn parse(self) -> Result<RunnerItem> {
         let columns = AssignmentColumns {
+            decision_model_id: self.decision_model_id,
             sandbox_tier: self.sandbox_tier,
             network_policy: self.network_policy,
             registry_allowlist_json: self.registry_allowlist,
@@ -154,6 +156,9 @@ impl EventRow {
 
 fn own_policy(policy: AssignedPolicy<'_>) -> AssignedPolicy<'static> {
     AssignedPolicy {
+        decision_model_id: policy
+            .decision_model_id
+            .map(|model| Cow::Owned(model.into_owned())),
         sandbox_tier: policy.sandbox_tier,
         network_policy: policy.network_policy,
         registry_allowlist: policy

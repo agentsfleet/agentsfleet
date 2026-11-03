@@ -11,6 +11,7 @@ use afd_wire::runner::{NetworkPolicy, SandboxTier};
 #[test]
 fn test_decode_resolves_a_fully_assigned_row() {
     let columns = AssignmentColumns {
+        decision_model_id: None,
         sandbox_tier: "landlock_full".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: r#"["registry.npmjs.org","pypi.org"]"#.to_owned(),
@@ -38,6 +39,7 @@ fn test_decode_resolves_a_fully_assigned_row() {
 #[test]
 fn test_decode_refuses_every_unreadable_column() {
     let sound = AssignmentColumns {
+        decision_model_id: None,
         sandbox_tier: "landlock_full".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: "[]".to_owned(),
@@ -56,6 +58,7 @@ fn test_decode_refuses_every_unreadable_column() {
         ),
         (
             AssignmentColumns {
+                decision_model_id: None,
                 sandbox_tier: "quantum_cage".to_owned(),
                 ..sound.clone()
             },
@@ -85,6 +88,7 @@ fn test_decode_refuses_every_unreadable_column() {
 #[test]
 fn test_decode_clamps_a_row_edited_out_of_band() {
     let out_of_range = |workers: i32| AssignmentColumns {
+        decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: "[]".to_owned(),
@@ -105,6 +109,7 @@ fn test_decode_clamps_a_row_edited_out_of_band() {
 #[test]
 fn test_extra_binds_degrade_to_the_baseline() {
     let columns = AssignmentColumns {
+        decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: "[]".to_owned(),
@@ -158,6 +163,7 @@ fn test_sandbox_config_round_trips_through_its_column() {
     }
     .render();
     let columns = AssignmentColumns {
+        decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: "[]".to_owned(),
@@ -174,6 +180,7 @@ fn test_sandbox_config_round_trips_through_its_column() {
 #[test]
 fn test_a_configuration_without_binds_is_the_baseline() {
     let columns = AssignmentColumns {
+        decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: "[]".to_owned(),

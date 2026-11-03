@@ -48,6 +48,7 @@ fn details(raised: bool) -> ModelUpdate {
             conditions: "Synthetic administrator fixture; no provider request.".to_owned(),
         }],
         inference: None,
+        decision: None,
     }
 }
 

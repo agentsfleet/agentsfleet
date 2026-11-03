@@ -52,6 +52,18 @@ pub(crate) enum ErrorKind {
     #[error("the tenant's provider selection names a vault row that is not held")]
     ProviderSecretMissing,
 
+    #[error("the platform-admin decision credential is absent or empty for {api:?}")]
+    DecisionCredentialMissing {
+        api: afd_wire::decision::DecisionApi,
+    },
+
+    #[error("the platform-admin decision credential is malformed for {api:?}")]
+    DecisionCredentialInvalid {
+        api: afd_wire::decision::DecisionApi,
+        #[source]
+        source: afd_core::json::Unreadable,
+    },
+
     #[error("no active platform provider default is configured")]
     ProviderPlatformKeyMissing,
 
@@ -116,6 +128,8 @@ impl Error {
             | ErrorKind::ProviderPlatformKeyMissing
             | ErrorKind::ProviderNoWorkspace
             | ErrorKind::ProviderEndpoint { .. }
+            | ErrorKind::DecisionCredentialMissing { .. }
+            | ErrorKind::DecisionCredentialInvalid { .. }
             | ErrorKind::Vault { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_PROVIDER_UNRESOLVED,
@@ -194,6 +208,8 @@ impl Error {
                 | ErrorKind::ProviderEndpoint { .. }
                 | ErrorKind::VaultDataInvalid
                 | ErrorKind::CredentialMissing
+                | ErrorKind::DecisionCredentialMissing { .. }
+                | ErrorKind::DecisionCredentialInvalid { .. }
         )
     }
 

@@ -20,6 +20,7 @@ mod attach;
 mod binding_match;
 pub mod budget;
 mod condition;
+pub mod decision;
 mod gates;
 mod policy;
 pub(crate) mod raw;
@@ -34,6 +35,7 @@ use crate::name::{CredentialName, FleetName};
 pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::budget::{Budget, BudgetCeiling};
 pub use self::condition::Condition;
+pub use self::decision::DecisionPolicy;
 pub use self::gates::{Behavior, DEFAULT_TIMEOUT, GatePolicy, GateRule};
 pub use self::policy::http_egress::HttpEgress;
 pub use self::policy::{ContextBudget, Network};
@@ -60,10 +62,10 @@ const REASON_UNSUPPORTED_KEY: &str = "unsupported configuration key";
 ///
 /// One list, read for one purpose: naming a runtime key found at the TOP level,
 /// which is an author who forgot to indent. The accepted set itself is the
-/// [`raw::Runtime`] struct, so there is no second copy of these eleven strings
+/// [`raw::Runtime`] struct, so there is no second copy of these twelve strings
 /// to drift into disagreement with it.
 /// `every_runtime_key_is_accepted_by_the_schema` proves this list still agrees.
-const RUNTIME_KEYS: [&str; 11] = [
+const RUNTIME_KEYS: [&str; 12] = [
     TRIGGERS,
     TOOLS,
     "credentials",
@@ -75,6 +77,7 @@ const RUNTIME_KEYS: [&str; 11] = [
     "repositories",
     "repository_access",
     "repository_base",
+    "decision_policy",
 ];
 
 /// A fleet's resolved policy.
@@ -103,6 +106,8 @@ pub struct FleetConfig {
     model: Option<Box<str>>,
     /// Context-budget overrides, when it declares any.
     context: Option<ContextBudget>,
+    /// Owner-reviewed question text and criteria, when durable work is configured.
+    decision_policy: Option<DecisionPolicy>,
 }
 
 impl FleetConfig {
@@ -217,6 +222,10 @@ impl FleetConfig {
                 .filter(|value| !value.is_empty())
                 .map(Into::into),
             context: runtime.context.map(ContextBudget::try_from).transpose()?,
+            decision_policy: runtime
+                .decision_policy
+                .map(DecisionPolicy::try_from)
+                .transpose()?,
         })
     }
 
@@ -278,6 +287,12 @@ impl FleetConfig {
     #[must_use]
     pub const fn context(&self) -> Option<ContextBudget> {
         self.context
+    }
+
+    /// Reviewed questions; absence preserves ordinary fleet behavior.
+    #[must_use]
+    pub const fn decision_policy(&self) -> Option<&DecisionPolicy> {
+        self.decision_policy.as_ref()
     }
 }
 

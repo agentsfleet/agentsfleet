@@ -17986,6 +17986,35 @@
         },
         "additionalProperties": false
       },
+      "AdminDecisionModel": {
+        "type": "object",
+        "description": "Decision settings and their protocol-specific complete price schedule.",
+        "required": [
+          "enabled",
+          "profile",
+          "prices"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Activation is independent of the immutable reviewed definition."
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CataloguePrice"
+            },
+            "description": "The schedule belongs to this decision revision, independently of coding.",
+            "maxItems": 64,
+            "minItems": 1
+          },
+          "profile": {
+            "$ref": "#/components/schemas/DecisionModelSettings",
+            "description": "Responses borrow the stored definition; request decoding owns its fields."
+          }
+        },
+        "additionalProperties": false
+      },
       "AdminModelCreate": {
         "type": "object",
         "description": "`POST /v1/admin/models` input: one identity, its evidence, its complete\nprice schedule and, optionally, its inference settings.",
@@ -17996,6 +18025,17 @@
           "prices"
         ],
         "properties": {
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AdminDecisionModel",
+                "description": "Omission leaves a new model without decision capability."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "inference": {
             "oneOf": [
               {
@@ -18020,7 +18060,8 @@
             "items": {
               "$ref": "#/components/schemas/CataloguePrice"
             },
-            "description": "Every prompt tier across every date range, in integer nanos per\nmillion tokens."
+            "description": "Every prompt tier across every date range, in integer nanos per\nmillion tokens.",
+            "maxItems": 64
           },
           "provider": {
             "type": "string",
@@ -18061,6 +18102,17 @@
           "prices"
         ],
         "properties": {
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AdminDecisionModel",
+                "description": "Reviewed decision definition and independent rates, when configured."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "description": "Model record's version 7 universally unique identifier (UUID)."
@@ -18106,6 +18158,17 @@
           "prices"
         ],
         "properties": {
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AdminDecisionModel",
+                "description": "Omission preserves the saved decision definition and schedule."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "inference": {
             "oneOf": [
               {
@@ -18126,7 +18189,8 @@
             "items": {
               "$ref": "#/components/schemas/CataloguePrice"
             },
-            "description": "The whole schedule; a range absent here is removed."
+            "description": "The whole coding schedule; the saved settings determine whether it can\nbe empty. A range absent here is removed.",
+            "maxItems": 64
           }
         },
         "additionalProperties": false
@@ -18490,6 +18554,14 @@
           "extra_binds"
         ],
         "properties": {
+          "decision_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Canonical `UUIDv7` of the platform decision model; absent disables decisions."
+          },
           "extra_binds": {
             "type": "array",
             "items": {
@@ -19404,11 +19476,11 @@
           "context_cap_tokens": {
             "type": "integer",
             "format": "int32",
-            "description": "The exact served context limit, from the provider's own models API."
+            "description": "Verified request-context ceiling for this model and protocol."
           },
           "context_source_url": {
             "type": "string",
-            "description": "The provider models API response that supplied the limit."
+            "description": "Provider limit source: models API for coding, published limits for a\ndecision API whose model metadata omits context."
           },
           "context_verified_at": {
             "type": "string",
@@ -20642,6 +20714,148 @@
           }
         }
       },
+      "DecisionApi": {
+        "type": "string",
+        "description": "Native decision protocols; none is a structured-chat substitute.",
+        "enum": [
+          "typesafe",
+          "openai",
+          "perplexity",
+          "cloudflare"
+        ]
+      },
+      "DecisionCapabilities": {
+        "type": "object",
+        "description": "Capabilities reviewed with a catalogue profile; unsupported work is refused.",
+        "required": [
+          "noul",
+          "choice",
+          "score"
+        ],
+        "properties": {
+          "choice": {
+            "type": "boolean",
+            "description": "Selected option and full distribution."
+          },
+          "noul": {
+            "type": "boolean",
+            "description": "True/false probability."
+          },
+          "score": {
+            "type": "boolean",
+            "description": "Ordered rubric and full distribution."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionModelSettings": {
+        "type": "object",
+        "description": "Editable, non-secret model settings; catalogue identity is supplied natively.",
+        "required": [
+          "revision",
+          "api",
+          "endpoint",
+          "accepted_models",
+          "capabilities",
+          "input_max_bytes",
+          "intent",
+          "goal",
+          "evaluation_digest",
+          "evaluation_source_url",
+          "evaluated_at"
+        ],
+        "properties": {
+          "accepted_models": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "description": "Provider-reported names supported by this revision's evaluation evidence.",
+            "maxItems": 8,
+            "minItems": 1
+          },
+          "api": {
+            "$ref": "#/components/schemas/DecisionApi",
+            "description": "Native decision API; never inferred from a provider or model name."
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/DecisionCapabilities",
+            "description": "Question types verified against the provider API for this definition."
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Exact reviewed HTTPS endpoint, including its API path.",
+            "maxLength": 2048,
+            "minLength": 1
+          },
+          "evaluated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Recorded evaluation instant; actual activation proof remains an operator duty."
+          },
+          "evaluation_digest": {
+            "type": "string",
+            "description": "Digest of the frozen evaluation inputs and graded outcomes.",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "evaluation_source_url": {
+            "type": "string",
+            "description": "Evidence location reviewed before activation; it carries no credentials.",
+            "maxLength": 2048,
+            "minLength": 1
+          },
+          "goal": {
+            "$ref": "#/components/schemas/GoalDecisionPolicy",
+            "description": "Goal question and threshold policy."
+          },
+          "input_max_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Complete encoded-request ceiling established for the provider.",
+            "maximum": 24576,
+            "minimum": 1
+          },
+          "intent": {
+            "$ref": "#/components/schemas/IntentDecisionPolicy",
+            "description": "Intent question and threshold policy."
+          },
+          "revision": {
+            "type": "string",
+            "description": "Immutable reviewed definition revision; changing settings needs a new one.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionThreshold": {
+        "type": "object",
+        "description": "Probability and native confidence requirements, in integer basis points.",
+        "required": [
+          "probability_bps",
+          "confidence_bps"
+        ],
+        "properties": {
+          "confidence_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Required provider-native confidence; absence cannot meet this bound.",
+            "maximum": 10000,
+            "minimum": 0
+          },
+          "probability_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The selected option's required probability; 10,000 means one.",
+            "maximum": 10000,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "DefinitionAnomalyPattern": {
         "type": "string",
         "description": "A repeated-action pattern.",
@@ -20679,6 +20893,56 @@
         },
         "additionalProperties": false
       },
+      "DefinitionAssociationQuestion": {
+        "type": "object",
+        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "required": [
+          "question",
+          "criteria"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "object",
+            "required": [
+              "matching_task",
+              "new_work",
+              "unclear"
+            ],
+            "properties": {
+              "matching_task": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "new_work": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "unclear": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "question": {
+            "type": "string",
+            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+          }
+        },
+        "additionalProperties": false
+      },
       "DefinitionBudget": {
         "type": "object",
         "description": "Spending limits, each a decimal string of whole nanos.",
@@ -20699,6 +20963,60 @@
             "maxLength": 19,
             "minLength": 1,
             "pattern": "^[0-9]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DefinitionCompletionQuestions": {
+        "type": "object",
+        "description": "Semantic success conditions; native authority and evidence checks still apply.",
+        "required": [
+          "statements",
+          "next_action"
+        ],
+        "properties": {
+          "next_action": {
+            "$ref": "#/components/schemas/DefinitionNextActionQuestion",
+            "description": "Criteria keys: CONTINUE, WAIT, DONE, BLOCKED."
+          },
+          "statements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DefinitionCompletionStatement"
+            },
+            "description": "One to six required statements, with unique stable IDs.",
+            "maxItems": 6,
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "DefinitionCompletionStatement": {
+        "type": "object",
+        "description": "One required probability-of-yes question, displayed separately from instructions.",
+        "required": [
+          "id",
+          "question",
+          "criteria"
+        ],
+        "properties": {
+          "criteria": {
+            "$ref": "#/components/schemas/DefinitionNoulCriteria",
+            "description": "Both true and false criteria are required; neither is a permission grant."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable owner-authored key; changing wording creates another setup revision.",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "question": {
+            "type": "string",
+            "description": "The completion question to assess against the task's accepted objective.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           }
         },
         "additionalProperties": false
@@ -20878,6 +21196,25 @@
         ],
         "description": "A number, or `auto` to let the runner choose."
       },
+      "DefinitionDecisionPolicy": {
+        "type": "object",
+        "description": "Editable decision questions, saved inside the existing fleet setup revision.",
+        "required": [
+          "routing",
+          "completion"
+        ],
+        "properties": {
+          "completion": {
+            "$ref": "#/components/schemas/DefinitionCompletionQuestions",
+            "description": "Every required completion statement and next-action criterion."
+          },
+          "routing": {
+            "$ref": "#/components/schemas/DefinitionRoutingQuestions",
+            "description": "All message-routing questions; omission never supplies hidden defaults."
+          }
+        },
+        "additionalProperties": false
+      },
       "DefinitionGateBehavior": {
         "type": "string",
         "description": "What happens when an approval rule applies.",
@@ -21003,6 +21340,80 @@
         },
         "additionalProperties": false
       },
+      "DefinitionIntentQuestion": {
+        "type": "object",
+        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "required": [
+          "question",
+          "criteria"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "object",
+            "required": [
+              "conversation",
+              "status",
+              "refresh",
+              "steer",
+              "new_work",
+              "clarify"
+            ],
+            "properties": {
+              "clarify": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "conversation": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "new_work": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "refresh": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "status": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "steer": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "question": {
+            "type": "string",
+            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+          }
+        },
+        "additionalProperties": false
+      },
       "DefinitionNetwork": {
         "type": "object",
         "description": "Where a fleet may reach on the network.",
@@ -21064,6 +21475,130 @@
         },
         "additionalProperties": false
       },
+      "DefinitionNextActionQuestion": {
+        "type": "object",
+        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "required": [
+          "question",
+          "criteria"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "object",
+            "required": [
+              "CONTINUE",
+              "WAIT",
+              "DONE",
+              "BLOCKED"
+            ],
+            "properties": {
+              "BLOCKED": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "CONTINUE": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "DONE": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "WAIT": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "question": {
+            "type": "string",
+            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DefinitionNoulCriteria": {
+        "type": "object",
+        "required": [
+          "true",
+          "false"
+        ],
+        "properties": {
+          "false": {
+            "type": "string",
+            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+          },
+          "true": {
+            "type": "string",
+            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DefinitionNoulQuestion": {
+        "type": "object",
+        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "required": [
+          "question",
+          "criteria"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "object",
+            "required": [
+              "true",
+              "false"
+            ],
+            "properties": {
+              "false": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              },
+              "true": {
+                "type": "string",
+                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "question": {
+            "type": "string",
+            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
+          }
+        },
+        "additionalProperties": false
+      },
       "DefinitionRepositoryAccess": {
         "type": "string",
         "description": "How far a fleet's repository credentials reach.",
@@ -21071,6 +21606,30 @@
           "read",
           "write"
         ]
+      },
+      "DefinitionRoutingQuestions": {
+        "type": "object",
+        "description": "Routing questions assess the newest message against trusted task summaries.",
+        "required": [
+          "intent",
+          "association",
+          "multiple_requests"
+        ],
+        "properties": {
+          "association": {
+            "$ref": "#/components/schemas/DefinitionAssociationQuestion",
+            "description": "Criteria keys: `matching_task`, `new_work`, unclear. Candidate IDs stay native."
+          },
+          "intent": {
+            "$ref": "#/components/schemas/DefinitionIntentQuestion",
+            "description": "Criteria keys: conversation, status, refresh, steer, `new_work`, clarify."
+          },
+          "multiple_requests": {
+            "$ref": "#/components/schemas/DefinitionNoulQuestion",
+            "description": "Noul criteria keys: true and false."
+          }
+        },
+        "additionalProperties": false
       },
       "DefinitionRuntime": {
         "type": "object",
@@ -21107,6 +21666,10 @@
             },
             "description": "The workspace secrets this fleet may read, by name.",
             "maxItems": 64
+          },
+          "decision_policy": {
+            "$ref": "#/components/schemas/DefinitionDecisionPolicy",
+            "description": "Owner-reviewed routing and completion questions, versioned with this setup.\nOmit for ordinary fleets; an explicit null or partial policy is refused."
           },
           "gates": {
             "oneOf": [
@@ -22633,6 +23196,44 @@
           }
         }
       },
+      "GoalDecisionPolicy": {
+        "type": "object",
+        "description": "Reviewed goal-template revision and acceptance thresholds.",
+        "required": [
+          "questions_revision",
+          "statement_min_bps",
+          "continue_action",
+          "wait",
+          "done"
+        ],
+        "properties": {
+          "continue_action": {
+            "$ref": "#/components/schemas/DecisionThreshold",
+            "description": "Continue acceptance, subject to native remaining limits."
+          },
+          "done": {
+            "$ref": "#/components/schemas/DecisionThreshold",
+            "description": "Completion acceptance, subject to independently checked native evidence."
+          },
+          "questions_revision": {
+            "type": "string",
+            "description": "Exact native question revision implemented by this runner generation.",
+            "pattern": "^dt-goal-v1$"
+          },
+          "statement_min_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Every required completion statement must meet this Noul threshold.",
+            "maximum": 10000,
+            "minimum": 0
+          },
+          "wait": {
+            "$ref": "#/components/schemas/DecisionThreshold",
+            "description": "Wait acceptance, subject to a concrete native dependency."
+          }
+        },
+        "additionalProperties": false
+      },
       "GrantSummary": {
         "type": "object",
         "description": "One grant as the fleet's list shows it.",
@@ -22970,6 +23571,47 @@
           "gemini",
           "ollama"
         ]
+      },
+      "IntentDecisionPolicy": {
+        "type": "object",
+        "description": "Reviewed routing-template revision and acceptance thresholds.",
+        "required": [
+          "questions_revision",
+          "intent",
+          "association",
+          "single_request_max_bps",
+          "multiple_request_min_bps"
+        ],
+        "properties": {
+          "association": {
+            "$ref": "#/components/schemas/DecisionThreshold",
+            "description": "Association acceptance before input can change work."
+          },
+          "intent": {
+            "$ref": "#/components/schemas/DecisionThreshold",
+            "description": "Winning route acceptance."
+          },
+          "multiple_request_min_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "At or above this Noul value, bounded decomposition is required.",
+            "maximum": 10000,
+            "minimum": 0
+          },
+          "questions_revision": {
+            "type": "string",
+            "description": "Exact native question revision implemented by this runner generation.",
+            "pattern": "^dt-routing-v1$"
+          },
+          "single_request_max_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "At or below this Noul value, one request can be handled.",
+            "maximum": 10000,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "InviteEmailResponse": {
         "type": "object",

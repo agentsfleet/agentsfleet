@@ -5,11 +5,12 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use crate::metrics::declared::{billing, fleet, http, library};
+use crate::metrics::declared::{billing, fleet, http, library, task};
 use crate::metrics::label::billing as billing_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
+use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
 /// Each labelled family and the number of series its closed sets can produce.
@@ -20,6 +21,14 @@ use crate::metrics::registry::{Policy, Registry};
 /// itself.
 fn label_products() -> Vec<(&'static str, usize)> {
     vec![
+        (
+            task::TASK_OPERATIONS_TOTAL.wire_name(),
+            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+        ),
+        (
+            task::TASK_OPERATION_SECONDS.wire_name(),
+            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+        ),
         (
             billing::BILLING_RESERVE_TOTAL.wire_name(),
             billing_labels::WorkType::ALL.len() * billing_labels::ReserveOutcome::ALL.len(),
@@ -137,6 +146,8 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         }};
     }
     vec![
+        set!(crate::metrics::label::task::TaskOperation),
+        set!(crate::metrics::label::task::TaskOutcome),
         set!(crate::metrics::label::cost::TokenType),
         set!(crate::metrics::label::cost::ChargeClass),
         set!(crate::metrics::label::cost::ErrorType),

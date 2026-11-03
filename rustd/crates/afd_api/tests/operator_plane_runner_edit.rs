@@ -20,7 +20,7 @@ const OPERATOR: &str = "user_operator_runner_edit";
 const RUNNER_PATH: &str = "/v1/fleets/runners/019329c5-0000-7000-8000-0000000000a1";
 const LABELS_ONLY: &str = r#"{"labels":["gpu","linux","gpu"]}"#;
 const POLICY: &str = r#"{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1,"extra_binds":[]}"#;
-const DETAIL_PATCH_BODY: &str = "PATCH body must be {\"action\":\"cordon|drain|revoke|rotate|self_test\"} alone, or an edit carrying {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[]}}, {\"labels\":[]}, or both";
+const DETAIL_PATCH_BODY: &str = "PATCH body must be {\"action\":\"cordon|drain|revoke|rotate|self_test\"} alone, or an edit carrying {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[], decision_model_id?}}, {\"labels\":[]}, or both";
 
 fn operator(scopes: &[Scope]) -> axum::Router {
     Fleet::new()

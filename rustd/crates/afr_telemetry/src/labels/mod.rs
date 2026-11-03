@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 use afr_tools::catalog;
+pub mod decision;
 
 /// The label key a provider is attributed under.
 pub const LABEL_PROVIDER: &str = "provider";

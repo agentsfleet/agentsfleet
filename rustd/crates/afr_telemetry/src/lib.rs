@@ -34,6 +34,7 @@
 use tokio as _;
 
 pub mod budget;
+pub mod decision;
 pub mod endpoint;
 pub mod error;
 pub mod families;

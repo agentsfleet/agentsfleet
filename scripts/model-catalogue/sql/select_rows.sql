@@ -17,5 +17,6 @@ SELECT m.provider, m.model_name, m.display_name, m.advanced, m.inference,
        )) FILTER (WHERE p.id IS NOT NULL), '[]'::jsonb) AS prices
 FROM model.platform_models AS m
 LEFT JOIN model.platform_model_prices AS p ON p.platform_model_id = m.id
+WHERE m.decision_revision_id IS NULL OR p.id IS NOT NULL
 GROUP BY m.id
 ORDER BY m.provider, m.model_name;

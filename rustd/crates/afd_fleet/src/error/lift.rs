@@ -28,6 +28,8 @@
 use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
+    afd_core::json::Unreadable => TaskDocument,
+    afd_admission::Error => Admission,
     afd_authoring::Error => Authoring,
     afd_context::Error => Context,
     afd_db::Error => Datastore,

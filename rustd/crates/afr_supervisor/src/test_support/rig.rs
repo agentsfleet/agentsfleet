@@ -198,6 +198,7 @@ pub(crate) fn daemon(
 ) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
     let healthy = Healthy {
         assigned: AssignedPolicy {
+            decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowAll,
             registry_allowlist: Vec::new(),

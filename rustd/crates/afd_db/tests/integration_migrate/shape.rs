@@ -30,7 +30,7 @@ const LEDGER_SCHEMA: &str = "audit";
 const LEDGER_TABLE: &str = "audit._sqlx_migrations";
 
 /// How many tables the slots build.
-const TABLE_COUNT: usize = 49;
+const TABLE_COUNT: usize = 54;
 
 /// Every table the slots build, one per line as `schema.table: column, ...`,
 /// columns in any order. A line ending in `\` continues on the next.
@@ -76,6 +76,19 @@ fleet.fleets: id, workspace_id, tenant_id, name, status, head_revision_id, requi
     resource_version, created_at, updated_at
 fleet.revisions: id, fleet_id, revision, definition, canonical_digest, policy_semantics, \
     runtime_model_ref, review_digest, review_context, source_candidate_id, created_at
+fleet.task_items: id, fleet_id, workspace_id, admission_id, ordinal, plan_digest, action, \
+    source_start, source_end, task_id, created_at
+fleet.tasks: id, fleet_id, workspace_id, tenant_id, originating_task_item_id, \
+    accepted_revision_id, title, objective, questions, goal_digest, target, status, \
+    resource_version, generation, stop_generation, input_sequence, covered_input_sequence, \
+    effect_cursor, confirmed_effect_watermark, max_model_nanos, used_model_nanos, \
+    reserved_model_nanos, max_running_nanos, used_running_nanos, max_leases, used_leases, \
+    max_publications, used_publications, max_decision_calls, used_decision_calls, \
+    max_fallback_reads, used_fallback_reads, reply_provider, reply_address, expires_at, \
+    terminal_at, created_at, updated_at
+fleet.task_inputs: id, task_id, fleet_id, workspace_id, task_item_id, sequence, accepted_text, \
+    interpretation, accepting_lease_id, accepting_fence, generation, answered_at, created_at, \
+    updated_at
 fleet.schedules: id, fleet_id, source, provider_schedule_id, cron_expression, timezone, message, \
     once, fire_at, recipe, desired_status, sync_status, resource_version, sync_token, \
     sync_lease_expires_at, last_error, created_at, updated_at
@@ -86,7 +99,7 @@ fleet.events: id, fleet_id, workspace_id, event_id, actor, event_type, status, r
 fleet.admissions: id, sequence, fleet_id, workspace_id, producer, producer_key, payload_digest, \
     actor, event_type, request_json, event_created_at, reply_provider, reply_address, \
     delivered_at, created_at, updated_at, lease_fence, \
-    parked_at, settled_at
+    parked_at, settled_at, task_id, task_item_id, input_claim_lease_id, input_claim_fence
 fleet.approval_gates: id, fleet_id, workspace_id, event_id, active_grant_id, action_id, \
     tool_name, action_name, gate_type, proposed_action, evidence, stated_binding, blast_radius, \
     spend_count, spend_ceiling, expires_at, status, resolved_at, resolved_by, resolved_by_name, \
@@ -99,13 +112,13 @@ fleet.tool_calls: id, workspace_id, fleet_id, fleet_event_id, fencing_token, seq
     created_at, updated_at
 fleet.activity_counters: fleet_id, event_count, budget_used_nanos, created_at, updated_at
 runner.runners: id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
-    registry_allowlist, worker_count, sandbox_config, capability_report, degraded_reason, \
+    registry_allowlist, worker_count, sandbox_config, decision_platform_model_id, capability_report, degraded_reason, \
     last_seen_at, selftest_requested_at, selftest_completed_at, selftest_checks, \
     selftest_sandbox_tier, selftest_network_policy, lease_version, last_lease_type, created_at, \
     updated_at
 runner.leases: id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, \
     event_created_at, posture, provider, model, last_metered_at, fencing_token, \
-    lease_expires_at, status, posted_message_count, created_at, updated_at
+    lease_expires_at, status, posted_message_count, task_id, created_at, updated_at
 runner.fleet_slots: fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at, \
     created_at, updated_at
 runner.events: id, runner_id, event_type, metadata, last_seen_at, created_at
@@ -118,9 +131,15 @@ connector.channels: id, provider, external_account_id, external_channel_id, flee
 connector.integration_grants: id, fleet_id, service, status, requested_reason, approved_at, \
     revoked_at, created_at, updated_at
 model.platform_models: id, model_name, provider, display_name, context_cap_tokens, \
-    context_source_url, context_verified_at, advanced, inference, created_at, updated_at
+    context_source_url, context_verified_at, advanced, inference, decision_revision_id, \
+    decision_enabled, created_at, updated_at
 model.platform_model_prices: id, platform_model_id, effective_from, effective_until, \
     prompt_tokens_above, input_nanos_per_mtok, cached_input_nanos_per_mtok, \
+    cache_write_nanos_per_mtok, cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, \
+    output_nanos_per_mtok, source_url, verified_at, conditions, created_at, updated_at
+model.decision_revisions: id, platform_model_id, revision, definition, created_at
+model.decision_prices: id, platform_model_id, decision_revision_id, effective_from_at, \
+    effective_until_at, prompt_tokens_above, input_nanos_per_mtok, cached_input_nanos_per_mtok, \
     cache_write_nanos_per_mtok, cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, \
     output_nanos_per_mtok, source_url, verified_at, conditions, created_at, updated_at
 model.catalogue_version: id, resource_version, created_at, updated_at
