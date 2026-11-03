@@ -18,13 +18,16 @@ use afr_sandbox::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
 use super::{Cli, Command, RunArgs, answer, exited, log_filter};
 
 /// The engine starts the binary inside each sandbox by the sandbox crate's
-/// spelling of the sub-command and its tenant flags, so the two can never
-/// disagree.
+/// spelling of the sub-command and its descriptor flags, so the two can
+/// never disagree.
 #[test]
 fn the_sandbox_entry_is_the_sub_command_the_engine_starts() {
-    let tenant = afr_sandbox::TenantDescriptors {
-        tenant_procs: 5,
-        tenant_events: 6,
+    let inherited = afr_sandbox::Inherited {
+        tenant: afr_sandbox::TenantDescriptors {
+            tenant_procs: 5,
+            tenant_events: 6,
+        },
+        executor: 7,
     };
     let argv = [
         "agentsfleet-runner",
@@ -32,11 +35,11 @@ fn the_sandbox_entry_is_the_sub_command_the_engine_starts() {
     ]
     .map(std::ffi::OsString::from)
     .into_iter()
-    .chain(tenant.arguments());
+    .chain(inherited.arguments());
 
     let parsed = Cli::try_parse_from(argv);
 
-    assert_eq!(parsed.unwrap().command, Command::Sandbox(tenant));
+    assert_eq!(parsed.unwrap().command, Command::Sandbox(inherited));
 }
 
 /// A sandbox entry not told where its tenant leaf is refuses to start, so no

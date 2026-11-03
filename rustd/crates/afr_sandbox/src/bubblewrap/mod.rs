@@ -17,30 +17,21 @@ mod requirements;
 pub use self::requirements::Requirements;
 
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use afd_core::env::LOG_LEVEL_VAR;
 
 use crate::network::{SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
-use crate::tenant::TenantDescriptors;
+use crate::tenant::Inherited;
 
 /// Where the workspace disk appears inside the sandbox: the root the executor
 /// confines every path to.
 pub const SANDBOX_WORKSPACE: &str = afr_executor::WORKSPACE_ROOT;
-/// Where the executor's socket directory appears inside the sandbox.
-pub const SANDBOX_RUN_DIR: &str = "/run/agentsfleet";
-/// The socket's file name, the same on both sides of the bind.
-pub const SOCKET_NAME: &str = "executor.sock";
 /// The user a sandboxed process runs as, inside its user namespace.
 pub const SANDBOX_UID: u32 = 1000;
 /// The group a sandboxed process runs as, inside its user namespace.
 pub const SANDBOX_GID: u32 = 1000;
 
-/// The executor's socket, inside the sandbox.
-#[must_use]
-pub fn sandbox_socket() -> PathBuf {
-    Path::new(SANDBOX_RUN_DIR).join(SOCKET_NAME)
-}
 /// Where the runner binary is bound, read-only, inside the sandbox.
 pub const SANDBOX_ENTRY: &str = "/opt/agentsfleet/agentsfleet-runner";
 /// The runner's sub-command that hardens and serves inside the sandbox.
@@ -148,15 +139,13 @@ pub struct Layout<'a> {
     pub workspace: &'a Path,
     /// The workspace disk's `tmp/` directory.
     pub tmp: &'a Path,
-    /// The directory the executor's socket is made in.
-    pub run_dir: &'a Path,
     /// The binary that hardens and serves inside.
     pub entry: &'a Path,
     /// What it is told after its own name; `sandbox` for the runner.
     pub entry_args: &'a [OsString],
-    /// The tenant leaf's descriptors, named to the entry after its own
+    /// Every descriptor the entry inherits, named to it after its own
     /// arguments.
-    pub tenant: TenantDescriptors,
+    pub inherited: Inherited,
     /// What `/dev/shm` may hold, in bytes (`Limits::shared_memory_bytes`).
     pub shared_memory_bytes: u64,
     /// The log level the process inside logs at, passed through the cleared
@@ -167,7 +156,7 @@ pub struct Layout<'a> {
 }
 
 /// Bubblewrap's arguments for `layout`, ending with the entry, its own, and
-/// the tenant leaf's descriptors.
+/// the descriptors it inherits.
 #[must_use]
 pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     let mut argv: Vec<OsString> = NAMESPACES
@@ -205,14 +194,14 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
         &[END_OF_OPTIONS.as_ref(), SANDBOX_ENTRY.as_ref()],
     );
     argv.extend(layout.entry_args.iter().cloned());
-    argv.extend(layout.tenant.arguments());
+    argv.extend(layout.inherited.arguments());
     argv
 }
 
 /// Appends what the sandbox sees, in the order bubblewrap stacks it: the
 /// read-only toolbox as `/`, fresh `/proc` and `/dev`, private shared memory,
-/// the disk's `tmp/`, a private `/run`, the disk's `workspace/`, the socket
-/// directory, and the entry.
+/// the disk's `tmp/`, a private `/run`, the disk's `workspace/`, and the
+/// entry. Nothing beside `/workspace` and `/tmp` is writable.
 fn mount(argv: &mut Vec<OsString>, layout: &Layout<'_>) {
     flag(
         argv,
@@ -236,12 +225,11 @@ fn mount(argv: &mut Vec<OsString>, layout: &Layout<'_>) {
         argv,
         &[BIND.as_ref(), layout.tmp.as_os_str(), SANDBOX_TMP.as_ref()],
     );
-    // A private `/run`, so the socket directory's mount point exists whatever
-    // the image's own `/run` holds; image builders empty it.
+    // A private `/run`, whatever the image's own holds; image builders empty
+    // it.
     flag(argv, &[TMPFS_FLAG.as_ref(), RUN.as_ref()]);
     for (flag_name, host, inside) in [
         (BIND, layout.workspace, SANDBOX_WORKSPACE),
-        (BIND, layout.run_dir, SANDBOX_RUN_DIR),
         (RO_BIND, layout.entry, SANDBOX_ENTRY),
     ] {
         flag(

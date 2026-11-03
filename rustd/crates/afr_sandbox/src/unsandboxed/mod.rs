@@ -12,11 +12,13 @@ use std::time::Duration;
 use afr_executor::{Client, Executor};
 use tokio::task::JoinHandle;
 
-use crate::bubblewrap::SOCKET_NAME;
 use crate::engine::{Engine, HostWorkspace, Killed, Sandbox, SandboxRequest};
 use crate::error::{EgressRefusal, ErrorKind, Result, egress_refused, unconfined};
 use crate::network::Allowlist;
 
+/// The executor's socket in each lease's scratch directory: with no sandbox
+/// to inherit a pair, the executor listens on a path.
+pub(crate) const SOCKET_NAME: &str = "executor.sock";
 /// The workspace directory inside each lease's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
 /// How long the in-process executor may take to bind its socket.

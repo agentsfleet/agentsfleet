@@ -177,7 +177,7 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
         .unwrap();
     let dir = base.path().join("lingering");
     std::fs::create_dir(&dir).unwrap();
-    let socket = dir.join(crate::bubblewrap::SOCKET_NAME);
+    let socket = dir.join(super::SOCKET_NAME);
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
     let client = super::connect(&socket).await.unwrap();
     let (_peer, _) = listener.accept().await.unwrap();

@@ -63,6 +63,8 @@ mod kill;
 #[cfg(target_os = "linux")]
 mod lane;
 #[cfg(target_os = "linux")]
+mod link;
+#[cfg(target_os = "linux")]
 mod release;
 #[cfg(target_os = "linux")]
 mod run;

@@ -91,6 +91,17 @@ impl Client {
         Ok(Self::over(stream, CALL_DEADLINE))
     }
 
+    /// A client over `stream`, already connected to an executor: the engine's
+    /// end of the socket pair its sandbox inherited. Nothing is retried, as
+    /// nothing has to bind first.
+    ///
+    /// # Errors
+    /// The stream cannot be made non-blocking or join the runtime.
+    pub fn connected(stream: std::os::unix::net::UnixStream) -> Result<Self> {
+        stream.set_nonblocking(true)?;
+        Ok(Self::over(UnixStream::from_std(stream)?, CALL_DEADLINE))
+    }
+
     /// A client over a connected `stream` whose calls wait at most `deadline`.
     pub(crate) fn over(stream: UnixStream, deadline: Duration) -> Self {
         let (calls, queue) = mpsc::channel(CALL_BACKLOG);

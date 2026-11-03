@@ -75,7 +75,9 @@ pub use self::probe::{
     ProbePaths, REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
 };
 pub use self::serve::{serve_confined, serve_sandboxed};
-pub use self::tenant::{TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors};
+pub use self::tenant::{
+    EXECUTOR_FLAG, Inherited, TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors,
+};
 #[cfg(target_os = "linux")]
 pub use self::toolbox::KernelMounter;
 pub use self::toolbox::{
