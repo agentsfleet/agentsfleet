@@ -185,9 +185,21 @@ try:
         if case == "direct_io_when_asked":
             environment["TOOLBOX_LOOP_DIRECT_IO"] = "on"
         if publication:
-            # Hold the real JSON writer after it owns its exclusive staging file.
+            # These cases prove the clean-up when a signal lands mid-publication,
+            # not the measurement, so each sandboxed step answers at once and
+            # the disk sync is skipped: publication starts within a second, on
+            # any disk. The mount, the 20 recorded runs and the publication path
+            # are the real ones. Then hold the real JSON writer once it owns its
+            # exclusive staging file.
             hook = directory / "sitecustomize.py"
-            hook.write_text("import json, time\nfrom pathlib import Path\n"
+            hook.write_text("import json, os, subprocess, time\nfrom pathlib import Path\n"
+                            "real_run = subprocess.run\n"
+                            "def instant_step(args, *rest, **options):\n"
+                            "    if args and args[0] == 'bwrap':\n"
+                            "        return subprocess.CompletedProcess(args, 0, b'', b'')\n"
+                            "    return real_run(args, *rest, **options)\n"
+                            "subprocess.run = instant_step\n"
+                            "os.sync = lambda: None\n"
                             "def hold_report(*args, **kwargs):\n"
                             f"    Path({str(directory / 'publication-started')!r}).touch()\n"
                             "    time.sleep(120)\n"
