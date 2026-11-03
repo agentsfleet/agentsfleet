@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Test Baseline:** pending, measured before the Pull Request
 
-**Baseline evidence:** pending, set to the kernel lane's budgets and first-use reports before PLAN
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_002-start.md`, the kernel lane's budgets at `937c8d34d` and `e7c03a27d`
 
 **Depends on:** none
 
@@ -132,11 +132,11 @@ A host whose file system refuses direct I/O keeps a buffered device and logs `ca
 
 `scripts/toolbox/measure_first_use.sh` mounts with buffered `-o loop` today. It gains `TOOLBOX_LOOP_DIRECT_IO=on`, which attaches with `losetup --direct-io=on --read-only` before mounting. One image is measured both ways on the dev host, buffered as the baseline, under the §Toolbox rule of no more than a 10% p99 regression.
 
-- **Dimension 1.1** — The toolbox's loop device reports direct I/O and reading every file leaves the image under 1% cached → Test `test_toolbox_loop_reads_past_the_host_cache`
-- **Dimension 1.2** — A refused direct I/O request leaves a buffered device and logs it → Test `test_toolbox_buffered_fallback_is_logged`
-- **Dimension 1.3** — A toolbox mount from the previous runner, buffered or direct, is adopted → Test `test_direct_io_toolbox_is_adopted`
+- **Dimension 1.1** — The toolbox's loop device reports direct I/O and reading every file leaves the image under 1% cached → Test `test_toolbox_loop_reads_past_the_host_cache` — DONE
+- **Dimension 1.2** — A refused direct I/O request leaves a buffered device and logs it → Test `test_toolbox_buffered_fallback_is_logged` — DONE
+- **Dimension 1.3** — A toolbox mount from the previous runner, buffered or direct, is adopted → Test `test_direct_io_toolbox_is_adopted` — DONE
 - **Dimension 1.4** — No first-use step regresses past 10% at p99 → Test `manual_first_use_holds_after_direct_io`
-- **Dimension 1.5** — The harness attaches with direct I/O when asked and refuses a device that did not take it → Test `test_sampler_attaches_with_direct_io_when_asked`
+- **Dimension 1.5** — The harness attaches with direct I/O when asked and refuses a device that did not take it → Test `test_sampler_attaches_with_direct_io_when_asked`, the sampler test's `direct_io_when_asked` and `direct_io_refused` cases — DONE
 
 ### §2 — The executor speaks over an inherited socket pair
 
@@ -144,11 +144,11 @@ The engine makes a connected Unix socket pair with `SOCK_CLOEXEC` before it spaw
 
 The entry sets close-on-exec on its end again before hardening, so no tenant process inherits the link. The server serves a connected stream, whether inherited here or accepted from a listener as the unsandboxed engine and a future vsock engine need. The ready check is a `list_dir` of the workspace within the same ten seconds, or bubblewrap's exit with its error stream. The `run/` directory, its ownership change and its read-write bind leave the sandbox.
 
-- **Dimension 2.1** — A new sandbox answers with no socket file on the host or inside → Test `test_executor_answers_over_the_inherited_pair`
-- **Dimension 2.2** — A tenant process holds no socket descriptor → Test `test_tenant_process_holds_no_executor_socket`
-- **Dimension 2.3** — Another lease's concurrent spawn never inherits the socket → Test `test_concurrent_spawn_inherits_no_other_socket`
-- **Dimension 2.4** — An entry that exits before answering is refused with its error stream → Test `test_dead_entry_is_refused_with_its_reason`
-- **Dimension 2.5** — The sandbox holds no writable bind beside `/workspace` and `/tmp` → Test `test_sandbox_has_no_socket_directory_bind`
+- **Dimension 2.1** — A new sandbox answers with no socket file on the host or inside → Test `test_executor_answers_over_the_inherited_pair` — DONE
+- **Dimension 2.2** — A tenant process holds no socket descriptor → Test `test_tenant_process_holds_no_executor_socket` — DONE
+- **Dimension 2.3** — Another lease's concurrent spawn never inherits the socket → Test `test_concurrent_spawn_inherits_no_other_socket` — DONE
+- **Dimension 2.4** — An entry that exits before answering is refused with its error stream → Test `test_dead_entry_is_refused_with_its_reason` — DONE
+- **Dimension 2.5** — The sandbox holds no writable bind beside `/workspace` and `/tmp` → Test `test_sandbox_has_no_socket_directory_bind` — DONE
 
 ### §3 — The workspace disk is attached and mounted in-process
 
@@ -156,10 +156,10 @@ The entry sets close-on-exec on its end again before hardening, so no tenant pro
 
 Autoclear means unmounting frees the device, so the release and the boot sweep keep their order. The separate `LOOP_SET_DIRECT_IO` call goes. `mount(8)` and `MOUNT_PATH` leave `HostTools` and the crate's exports.
 
-- **Dimension 3.1** — Building a lease disk starts no `mount` program → Test `test_workspace_disk_starts_no_mount_program`
-- **Dimension 3.2** — Releasing the disk leaves no loop device attached → Test `test_released_disk_leaves_no_loop_device`
-- **Dimension 3.3** — A refused mount leaves no device and no files → Test `test_refused_mount_leaves_nothing`
-- **Dimension 3.4** — A buffered fallback is reported when the host refuses direct I/O → Test `test_disk_reports_buffered_fallback`
+- **Dimension 3.1** — Building a lease disk starts no `mount` program → Test `test_workspace_disk_starts_no_mount_program` — DONE
+- **Dimension 3.2** — Releasing the disk leaves no loop device attached → Test `test_released_disk_leaves_no_loop_device` — DONE
+- **Dimension 3.3** — A refused mount leaves no device and no files → Test `test_refused_mount_leaves_nothing` — DONE
+- **Dimension 3.4** — A buffered fallback is reported when the host refuses direct I/O → Test `test_disk_reports_buffered_fallback` — DONE
 
 ### §4 — The architecture page tells the new start
 
@@ -210,10 +210,10 @@ Wire, schema, OpenAPI and CLI: no change.
 | 1.2 | unit | `test_toolbox_buffered_fallback_is_logged` | Status without the flag → `caching: buffered` logged, admission succeeds |
 | 1.3 | unit | `test_direct_io_toolbox_is_adopted` | Backing flags read-only plus direct → adopted |
 | 1.4 | manual | `manual_first_use_holds_after_direct_io` | Buffered run, then a `TOOLBOX_LOOP_DIRECT_IO=on` run against it on the dev host → no step past 1.10 p99 ratio |
-| 1.5 | unit | `test_sampler_attaches_with_direct_io_when_asked` | Mode on, `losetup` reports `DIO 0` → sampler exits non-zero with no report |
+| 1.5 | unit | `test_sampler_attaches_with_direct_io_when_asked` | Mode on, the device reads `dio 0` → sampler exits non-zero with no report and no device; mode on with direct I/O → report says `loop: direct` |
 | 2.1 | kernel | `test_executor_answers_over_the_inherited_pair` | New sandbox → no `executor.sock` on host or inside |
 | 2.2 | kernel | `test_tenant_process_holds_no_executor_socket` | `ls -l /proc/self/fd` in `shell` → no socket entries |
-| 2.3 | kernel | `test_concurrent_spawn_inherits_no_other_socket` | Two sandboxes start at once → each entry holds one executor socket |
+| 2.3 | kernel | `test_concurrent_spawn_inherits_no_other_socket` | Two sandboxes start at once on several workers → no process of one lease holds the other's link |
 | 2.4 | kernel | `test_dead_entry_is_refused_with_its_reason` | Entry exits 1 with a line → refusal carries that line |
 | 2.5 | kernel | `test_sandbox_has_no_socket_directory_bind` | Mount table inside → no `/run/agentsfleet` |
 | 3.1 | kernel | `test_workspace_disk_starts_no_mount_program` | Program audit during prepare → no `mount` started |
@@ -292,6 +292,14 @@ N/A: no files deleted.
 - **One Pull Request (Indy, Nov 02)** — Both Workstreams ship in one Pull Request, which is the milestone's one ready Pull Request. Measurement runs locally through the make targets: the OrbStack kernel lane (Debian 13.7 on OrbStack's `7.2.12` kernel) stands in for the dev host in R2 and R3. The dev host stays on `6.12.111` until M237 ships.
 - **Same-task build (M237_001 §2)** — The build now shares a task with the model's stream. §3's in-process attach and mount therefore run on `spawn_blocking`, so a slow ioctl never stalls the stream.
 - **Codex review (Nov 02, baseline `2f8c878c0`)** — one P2 finding, fixed: §1 claimed the cache drop leaves no cache behind. `posix_fadvise` is advice, so §1 now leans on the flag readback, the resident-page test and the logged buffered fallback.
+- **Outside Files Changed** — `agentsfleet_runner/src/{main.rs,main_tests.rs}` and `tests/entries.rs` take the entry's new `Inherited` flags; they are callers of the entry API. `docs/architecture/runner_fleet.md` loses its `/run/agentsfleet` mount row, which the change made false.
+- **Probe unchanged** — `probe/mod.rs` reads the host before any toolbox is attached, so it has no device to report on. Admission's `sandbox_toolbox_admission_completed` carries `caching` instead.
+- **Read-write device opened read-only** — `LOOP_CONFIGURE` makes a device read-only when the handle configuring it cannot write. Every workspace disk came up read-only and its ext4 mount was refused, which the kernel lane caught (`55cfb02e7`).
+- **Small disks had 1 KiB blocks** — the attach gives every loop device 4096-byte sectors, and `mke2fs` picks 1 KiB blocks for a small disk. ext4 refused those mounts ("bad block size 1024"), so `mke2fs` now gets `-b 4096` (`beeacb8b0`).
+- **A cancelled mount** — the `spawn_blocking` mount runs to its end even when the start is dropped. Its output is a guard that undoes the disk unless the start took it, so a dropped start leaks no mount (`test_a_mount_nobody_heard_is_undone`).
+- **Mount seam** — `HostTools.mount` is a plain `fn`, `loop_mount` in production. The unit tests' fake host mounts nothing through it, as it once ran `/bin/true` as `mount`.
+- **Sampler test names** — Dimension 1.5 is proven by the `direct_io_when_asked` and `direct_io_refused` cases of `scripts/toolbox/test_measure_first_use.sh`.
+- **Unit tests take the link with `pidfd_getfd`** — the fake bubblewrap notes its pid and the link's number in its lease directory. The in-process executor then takes the descriptor from that child, so no production seam exists for tests.
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.

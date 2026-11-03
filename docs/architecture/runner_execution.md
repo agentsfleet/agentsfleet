@@ -297,7 +297,7 @@ This section records what the code builds, against the design above. `agentsflee
                        → the egress table and veth, when built
 ```
 
-The lease's `run/` directory holds the executor's socket; it is `0700` and owned by the sandbox user. The supervisor waits at most 10 s for the executor to answer there before it refuses the lease (`afr_sandbox/src/bubblewrap_engine/mod.rs`).
+The executor answers over one end of a socket pair the engine makes for the lease, and no path names it. The supervisor waits at most 10 s for the executor to list the workspace over it before it refuses the lease (`afr_sandbox/src/bubblewrap_engine/mod.rs`).
 
 Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/hold.rs`, `afr_sandbox/src/bubblewrap_engine/parts.rs`), except for a processed lease's sandbox, which is frozen and held (§"Workspace between leases"). Building the engine sweeps every leftover lease directory in its state directory (`afr_sandbox/src/bubblewrap_engine/sweep.rs`), and every egress table and veth a crashed run left. So a host builds one engine per state directory: an engine per worker tears down its siblings' leases. Warm slots (`afr_sandbox/src/warm_slots/mod.rs`) are sandboxes started ahead of a lease, one lease each; only the kernel lane uses them so far.
 
@@ -460,15 +460,16 @@ BubblewrapEngine::prepare ─► start ─► build         bubblewrap_engine/mo
       workspace/ 0755 and tmp/ 1777, owned by 65534
   3 LeaseCgroup::create: sandbox and tenant leaves, memory, cpu and pids limits;
     then cgroup.limit_io on the disk's loop device
-  4 TenantFiles::open: the tenant leaf's cgroup.procs and cgroup.events, opened by the runner
-  5 run/ 0700 owned by 65534, for the executor's socket
+  4 TenantFiles::open: the tenant leaf's cgroup.procs and memory.events, opened by the runner
+  5 Handover::with_link: a socket pair, both ends close-on-exec       tenant/files.rs
   6 Names::render: hosts and resolv.conf for an allow_list lease
   7 bubblewrap::arguments                           bubblewrap/mod.rs
   8 Parts::spawn                                    bubblewrap_engine/parts.rs
       Command bwrap, env cleared, uid and gid 65534
-      pre_exec: write "0" to sandbox/cgroup.procs, clear close-on-exec on tenant fds
-      spawn ─► the bwrap process exists
-  9 ready: Client::connect_within, every 10 ms for up to 10 s    afr_executor/src/client/mod.rs
+      pre_exec: write "0" to sandbox/cgroup.procs, clear close-on-exec on the
+        tenant fds and the entry's end of the pair, in this child alone
+      spawn ─► the bwrap process exists; the runner's copy of the entry's end closes
+  9 ready: list_dir(".") over the runner's end, for up to 10 s, nothing polled
     or bwrap's exit with its error stream
  10 allow_list only: veth pair and host nf_tables table
 ```
@@ -481,10 +482,10 @@ bwrap --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup 
       --ro-bind <mounts>/<digest> /            --proc /proc   --dev /dev
       --perms 1777 --size <memory/4> --tmpfs /dev/shm
       --bind <disk>/tmp /tmp     --tmpfs /run   --bind <disk>/workspace /workspace
-      --bind <lease>/run /run/agentsfleet
       --ro-bind <runner binary> /opt/agentsfleet/agentsfleet-runner
       --uid 1000 --gid 1000 --chdir /workspace
-      -- /opt/agentsfleet/agentsfleet-runner sandbox <tenant fds>
+      -- /opt/agentsfleet/agentsfleet-runner sandbox
+         --tenant-procs <fd> --tenant-events <fd> --executor <fd>
 ```
 
 ### Part E: inside the sandbox
@@ -492,10 +493,9 @@ bwrap --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup 
 ```
 bwrap ─► namespaces and the mount tree above ─► pid 1 reaper
   └─ exec /opt/agentsfleet/agentsfleet-runner sandbox     main.rs, serve/mod.rs
-       bind /run/agentsfleet/executor.sock          the host's connect now succeeds
-       adopt the tenant leaf's descriptors
+       adopt the tenant leaf's descriptors and the link, close-on-exec again
        harden: one thread only ─► no_new_privs ─► Landlock ─► seccomp ─► no capabilities
-       current-thread runtime ─► serve /workspace, one connection
+       current-thread runtime ─► serve /workspace over the link, one connection
 ```
 
 ```
@@ -515,7 +515,7 @@ model tool call ─► Router::dispatch                 afr_agent/src/router/mod
                SandboxUnavailable naming why; a wait is recorded
                shell ─► oneshot::run_to_end            afr_tools/src/sandbox/oneshot.rs
                ─► Client::spawn
-               "process/spawn" over the socket ─► executor launcher
+               "process/spawn" over the link ─► executor launcher
                pre_exec joins the tenant leaf ─► sh -c
                "process/output" chunks, then "process/exited"
   Provider   ─► HostedToolUnavailable
@@ -543,9 +543,7 @@ A cut lease is never held, because `keep` requires the run to end on its own. On
 
 ### Decided, not built
 
-The Nov 02, 2026 decision changed six steps above. Five are built: Parts C and G, A.1's toolbox caching and Part D's in-process disk. One is target, not built, until M237_002 closes:
-
-- Part D passes the executor a socket pair, so nothing polls and no socket directory is bound.
+M237_001 and M237_002 built the Nov 02, 2026 decision's six steps. They are Parts C and G, the toolbox caching in A.1, and the disk and socket pair in Part D.
 
 Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest.
 
@@ -674,4 +672,4 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 | Oct 17, 2026 | Saved model inference settings replace the embedded provider routing JSON. Workspace-owner registrations and the active platform default supply credentialed choices; model output limits come from their saved catalogue row. Both inference hosts filter private SDK content. | Indy: "Also replace the JSON routing table with persistent provider configuration"; "have the persisted model details as the source of truth." |
 | Oct 19, 2026 | The runner reports cache writes apart from input, by the lifetime the provider names, and the daemon bills each class at its own rate instead of at the input rate (M229 Dimension 8.6) | Indy (2026-10-18): cache-write tokens are reported and billed by lifetime, "Bill them now" |
 | Nov 02, 2026 | A sandbox build that fails while the run is live leaves the run going; sandbox tools answer `sandbox_unavailable` naming the failure, and egress checks stay before the model call (M237_001) | Indy chose "B: model carries on", asking whether setup and the model are independent |
-| Nov 02, 2026 | Target, not built: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O, the executor speaks over an inherited socket pair, and the workspace disk mounts in-process (§"Decided, not built") | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
+| Nov 02, 2026 | Built by M237_001 and M237_002: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O, the executor speaks over an inherited socket pair, and the workspace disk mounts in-process | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
