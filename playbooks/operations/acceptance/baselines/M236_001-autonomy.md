@@ -338,12 +338,36 @@ Controlled read fixtures supply its data; this is not full live DT acceptance.
 
 Rust patch coverage has not been measured; raising its floor is not a measured result.
 
+## Mixed-model settlement recovery
+
+The existing billing sweeper now reconstructs provider/model/posture groups under each original work identity.
+It selects the oldest bounded batch first, sorts borrowed keys in place, and moves owned headers without allocating cloned map keys.
+Recovery counters count settlement groups; their existing names and closed work-type labels remain unchanged.
+
+One isolated live scenario verifies complete headers, six unique usage lines, cumulative per-work amounts, native wallet settlement and unchanged repeated recovery.
+It uses four model/posture groups under one work and another work with the same model.
+Stored charges are synthetic inputs; the scenario does not measure provider rates.
+
+The same scenario failed against the previous implementation at its native reconstruction assertion: two groups appeared instead of five.
+The fixed source was restored before its verification batch; `/tmp/m236-billing-group-parent-red.log` records the assertion failure.
+Astra's extra-high review found no material product defect and verified the grace-period and independent sequence-ordering corrections in the test.
+
+| Component check | Result and retained output |
+|---|---|
+| `make lint-rustd` | Passed; `/tmp/m236-billing-groups-checks-lint.log`. |
+| Affected native units | 331 passed through `make test-unit-rustd-runner` for `afd_billing afd_fleet afd_observability`; `/tmp/m236-billing-groups-unit.log`. |
+| Clean native integration | 1,472 regular tests and all three exclusive tests passed; `/tmp/m236-billing-groups-integration.log`. The original Make process completed with exit zero. |
+
+The new scenario passed in that clean integration run.
+No new mutex, billing queue or metrics family was added.
+Physical decision reservations, frozen call pricing, receipt accounting and hold-release guards remain pending; Rust patch coverage remains unmeasured.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798 ancestry is retained by `28bc628aad363d18498c1a15d5c0a9d85b0a9c37`; latest fetch still reports six commits ahead, zero behind. Recheck before push and ship. |
-| Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions and task reads are foundations. Physical calls, full agent/lease integration, waits, publication and recovery remain incomplete. |
+| Integrate merged main before shipping | PR 798 ancestry is retained by `28bc628aad363d18498c1a15d5c0a9d85b0a9c37`; main remained an ancestor at the latest checkpoint push. Recheck before push and ship. |
+| Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Physical calls, full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Eight final production-component browser checks passed for typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. SDK transfer, encryption, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |

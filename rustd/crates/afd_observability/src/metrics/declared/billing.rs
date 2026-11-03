@@ -26,7 +26,7 @@ pub const BILLING_SETTLE_TOTAL: Declared<CounterKind> =
 pub const BILLING_UNPRICED_TOKENS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_billing_unpriced_tokens_total");
 
-/// Works whose unsettled lines the sweeper settled.
+/// Work/provider/model/posture groups whose unsettled lines the sweeper settled.
 ///
 /// Labels: `work_type`.
 pub const BILLING_SWEEPER_RESETTLED_TOTAL: Declared<CounterKind> =

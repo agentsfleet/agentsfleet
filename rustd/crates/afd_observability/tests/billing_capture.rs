@@ -51,10 +51,10 @@ fn should_count_unpriced_tokens_under_their_model() {
     assert_eq!(capture.sum(family, &series), UNPRICED);
 }
 
-/// A sweep's repairs count under their work type; a sweep that repaired
+/// A sweep's settlement groups count under their work type; a sweep that repaired
 /// nothing adds nothing.
 #[test]
-fn should_count_only_the_works_a_sweep_settled() {
+fn should_count_only_the_settlement_groups_a_sweep_settled() {
     let capture = Capture::install();
     let series = [(
         semconv::LABEL_WORK_TYPE,

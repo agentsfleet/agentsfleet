@@ -7,7 +7,6 @@
 //! [`Settlement`]s the work would have sent, so a retry through any biller is
 //! the original call again and `(work, seq)` keeps it from charging twice.
 
-use std::collections::BTreeMap;
 use std::time::Duration;
 
 use afd_core::id::Uuid7;
@@ -44,9 +43,9 @@ const BATCH_LIMIT: i64 = 500;
 /// What one resettling pass did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Resettled {
-    /// Works whose unsettled lines this pass settled.
+    /// Work/provider/model/posture groups this pass settled.
     pub settled: u64,
-    /// Works it could not settle; they wait for the next pass.
+    /// Settlement groups it could not settle; they wait for the next pass.
     pub failed: u64,
 }
 
@@ -132,7 +131,7 @@ pub async fn charged_so_far<'e>(executor: impl PgExecutor<'e>, work: &WorkKey) -
 }
 
 /// Up to `limit` lines logged more than `grace` ago and never settled, grouped
-/// into one [`Settlement`] per work.
+/// into one [`Settlement`] per work, provider, model and pricing posture.
 ///
 /// `grace` leaves the work's own post-commit settle its chance first; settling
 /// is idempotent either way, so the grace only spares duplicate work.
@@ -144,30 +143,35 @@ pub async fn unsettled<'e>(
     grace: Duration,
     limit: i64,
 ) -> Result<Vec<Settlement>> {
-    let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED)
+    let mut rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED)
         .bind(grace)
         .bind(limit)
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
-    let mut works: BTreeMap<(String, String), Settlement> = BTreeMap::new();
-    for row in rows {
+    // SQL selects the oldest bounded batch first. Borrowed keys then group
+    // that batch without cloning its ownership or provider/model strings.
+    rows.sort_unstable_by(|left, right| {
+        left.identity()
+            .cmp(&right.identity())
+            .then_with(|| left.seq.cmp(&right.seq))
+    });
+    let mut rows = rows.into_iter().peekable();
+    let mut settlements = Vec::new();
+    while let Some(row) = rows.next() {
         // A work type this build does not write, which no row it logged can
         // carry: skipped rather than refused, so one foreign row cannot stall
         // the sweep.
         let Some(work) = row.work() else {
             continue;
         };
-        let key = (row.work_type.clone(), row.work_id.clone());
-        let line = row.line()?;
-        if let Some(settlement) = works.get_mut(&key) {
-            settlement.lines.push(line);
-        } else {
-            let settlement = row.settlement(work, line)?;
-            works.insert(key, settlement);
+        let mut lines = vec![row.line()?];
+        while let Some(next) = rows.next_if(|next| next.identity() == row.identity()) {
+            lines.push(next.line()?);
         }
+        settlements.push(row.settlement(work, lines)?);
     }
-    Ok(works.into_values().collect())
+    Ok(settlements)
 }
 
 /// One unsettled line, by column name.
@@ -199,6 +203,18 @@ struct UnsettledRow {
 }
 
 impl UnsettledRow {
+    /// Money and attribution remain under the original work identity while
+    /// independently configured providers retain their own settlement header.
+    fn identity(&self) -> (&str, &str, &str, &str, &str) {
+        (
+            &self.work_type,
+            &self.work_id,
+            &self.provider,
+            &self.model,
+            &self.posture,
+        )
+    }
+
     /// The row's line as the work priced it.
     fn line(&self) -> Result<RatedLine> {
         let price = self
@@ -235,8 +251,8 @@ impl UnsettledRow {
         }
     }
 
-    /// A settlement for this row's `work`, opening with `line`.
-    fn settlement(self, work: fn(Uuid7) -> WorkKey, line: RatedLine) -> Result<Settlement> {
+    /// A settlement for this row's `work`, retaining its complete priced group.
+    fn settlement(self, work: fn(Uuid7) -> WorkKey, lines: Vec<RatedLine>) -> Result<Settlement> {
         let id = |text: &str, column: &'static str| {
             Uuid7::parse(text).map_err(row_malformed(TABLE_LINES, column))
         };
@@ -258,7 +274,7 @@ impl UnsettledRow {
             provider: self.provider,
             model: self.model,
             posture: Posture::parse(&self.posture).unwrap_or(Posture::Platform),
-            lines: vec![line],
+            lines,
         })
     }
 }

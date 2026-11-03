@@ -62,9 +62,9 @@ const SELECT_FINISHED_HOLDS: &str = include_str!("sql/select_finished_holds.sql"
 /// What one pass did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BillingSwept {
-    /// Works whose unsettled lines this pass settled.
+    /// Work/provider/model/posture groups this pass settled.
     pub resettled: u64,
-    /// Lines' works it could not settle; they wait for the next pass.
+    /// Settlement groups it could not settle; they wait for the next pass.
     pub settle_failures: u64,
     /// Holds of finished leases this pass released.
     pub released: u64,

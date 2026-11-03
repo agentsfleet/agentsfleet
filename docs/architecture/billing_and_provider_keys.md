@@ -247,6 +247,14 @@ The dashboard labels setup records **Setup chat**, using **Fleet setup** when no
 
 ---
 
+Delayed settlement reconstructs separate provider/model/posture groups under the original work identity.
+The sweeper selects its oldest bounded batch before grouping; sequence numbers remain unique across the whole work, including different providers.
+Its recovery counters count settlement groups, so one lease can contribute several successful settlements.
+
+`afd_billing::ledger::unsettled` sorts borrowed keys in place and moves owned headers into the resulting groups.
+This avoids cloned map keys; no measured latency or allocation result follows from that source change.
+The [decision design](goal_evaluation.md#native-billing-integration) covers remaining call reservations, frozen rates and hold release.
+
 ## 4. The run charge
 
 ### 4.0 Worked examples up front

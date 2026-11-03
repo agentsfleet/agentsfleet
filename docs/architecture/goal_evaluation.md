@@ -437,7 +437,7 @@ Runtime-line counts in `meter_lease.sql` and `bill_expired_slice.sql` must exclu
 
 Reuse `afd_billing::price::{PriceBook, Rater}` with frozen decision tiers and platform posture.
 Do not pass decision usage through the coding lease's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
-The existing billing sweeper must group those three attributes as well as work identity, so delayed settlement preserves attribution.
+The existing billing sweeper groups those three attributes with work identity; decision-call reservations and receipt integration remain pending.
 
 A hold ceiling is absolute and monotonic, so repeating a two-cent ceiling cannot reserve another physical call.
 Compute the requested ceiling from all logged charges, current coding headroom and all unresolved physical-call reservations.
