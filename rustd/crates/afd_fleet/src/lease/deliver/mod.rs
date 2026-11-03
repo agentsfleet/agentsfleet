@@ -194,6 +194,7 @@ impl Plane {
             &admitted.installed,
             policy,
             history,
+            issued.decision,
         )
         .map(|answer| Step::Go(Leased(answer)))
     }

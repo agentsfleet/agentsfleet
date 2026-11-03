@@ -131,7 +131,7 @@ pub const CONTEXT_CAP_MIN: i32 = 1;
 pub const PROVIDER_MAX_BYTES: usize = 64;
 
 /// The longest provider-native model identity the catalogue stores.
-pub const MODEL_ID_MAX_BYTES: usize = 256;
+pub const MODEL_ID_MAX_BYTES: usize = afd_wire::inference::MODEL_ID_MAX_BYTES;
 
 /// Decision settings and their protocol-specific complete price schedule.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -241,7 +241,7 @@ Review all architecture pages and all docs-repository Markdown/MDX pages, publis
 ## Durable Task acceptance
 
 The task schema and lifecycle service are partial, without completed runtime integration.
-Task APIs, lease-time decision binding, native accounting, R2 recovery and task UI behavior remain unfinished.
+Task APIs, physical decision reservations, native accounting, R2 recovery and task UI behavior remain unfinished.
 Provider activation, storage, browser, performance and combined live-scenario criteria remain ungraded.
 
 Component tests and SDK compatibility are separate from those acceptance criteria.
@@ -267,3 +267,31 @@ No source or assertion changed for that environment correction; local proxy excl
 Clean `make test-integration-rustd` passed 1,465 regular and three exclusive cases, including catalogue ownership, native secret resolution and both assignment races.
 The deferred owner check retains immutable-table privileges and satisfies schema naming and literal rules without changing their checks.
 This checkpoint does not establish completed task runtime or measured performance.
+
+## Lease decision snapshot component
+
+PR #798 merged and main was integrated in `28bc628aad363d18498c1a15d5c0a9d85b0a9c37` before the foundations checkpoint was pushed.
+`orly gate verify` and the branch history secret scan passed for that pushed checkpoint.
+
+Lease issue stores and delivers one reviewed model/profile/threshold snapshot; assembly moves its decoded strings instead of cloning them.
+An unconfigured host skips the catalogue read; a disabled selection supplies no decision profile and cannot select a substitute.
+Keys remain outside the snapshot and still require a physical-call reservation before dispatch.
+
+Astra's extra-high source review found a requested-model length mismatch and a stale expiry check after slow profile reads.
+The shared 256-byte model bound matches catalogue validation; the issue statement checks a fresh clock after acquiring the fleet slot lock.
+The new expiry test blocks the real profile read, observes database expiry and checks lease, audit and tally outcomes together.
+
+After both corrections, `make lint-rustd` and clean `make test-integration-rustd` passed: 1,469 regular and three exclusive cases.
+Three cohesive cases cover native issue/render/storage, 256-byte model names, revisions, disablement, deletion, lock ordering and expiry without issuance side effects.
+The logs are `/tmp/m236-lease-expiry-{lint,integration}.log`; no new mutex or paid provider request was involved.
+
+The affected unit check passed 655 tests through the existing Make target:
+
+```text
+make test-unit-rustd-runner _RUSTD_UNIT_RUNNER='afd_admin afd_api_wire afd_db afd_fleet afd_runner afd_wire afr_providers afr_telemetry'
+```
+
+The log is `/tmp/m236-lease-decision-affected-unit.log`; this checks eight affected packages, not the whole repository.
+The daemon regenerated OpenAPI with 107 paths and 933,655 bytes, including the lease assignment and its 256-byte requested-model bound.
+
+This component supplies a frozen selection. Physical reservation, key dispatch, task decisions and full DT acceptance remain pending.

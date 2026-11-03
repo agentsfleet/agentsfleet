@@ -52,14 +52,13 @@ One `DecisionClient` implements the trait with four small native API adapters.
 Share question/answer representations only where provider fixtures prove compatibility; translate envelopes, authentication, usage and refusal semantics explicitly.
 OpenAI's `predicate` maps to internal yes-probability semantics; its question/answer arrays differ from TypeSafe's keyed objects.
 
-No structured-chat decision implementation or extra OpenAI SDK is needed for this scope.
 Existing Rig remains the coding-provider dependency; the decision client reuses guarded HTTP and native accounting directly.
 
 ## Configuration per runner
 
-Extend the existing runner assignment with nullable `decision_model_id`, selecting an administrator-reviewed entry in the current model catalogue.
-Add decision transport/policy metadata beside that entry; do not create another model registry or put model policy in host environment variables.
-Runner enrollment, edit and heartbeat carry the catalogue identity; lease-time profile freezing remains pending.
+Nullable `decision_model_id` in the existing runner assignment selects reviewed decision metadata from the current model catalogue.
+Runner enrollment, edit and heartbeat carry the catalogue identity; lease issue freezes `DecisionAssignment` in its payload and `runner.leases.decision_snapshot`.
+Unconfigured hosts skip the catalogue read; reservations, credential dispatch and task-loop use remain pending.
 
 Decision-only entries carry their own price schedule and no fabricated coding rates.
 The current model selects an immutable reviewed revision; enabling or disabling it preserves that definition and prior call accounting.
@@ -100,6 +99,8 @@ operator PATCH existing runner -> native assignment -> heartbeat
 ```
 
 Apply assignment edits to later leases; an active call retains its recorded profile and physical call identity.
+After the slot lock, a fresh database clock rejects claims that expired during profile lookup or lock waits.
+
 Revocation still prevents new dispatch and native acceptance while preserving measured usage.
 Replacement runners may use another reviewed profile without changing the DT objective, authority, history or cumulative limits.
 

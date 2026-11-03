@@ -20724,6 +20724,35 @@
           "cloudflare"
         ]
       },
+      "DecisionAssignment": {
+        "type": "object",
+        "description": "One reviewed catalogue revision, retained unchanged for this lease.\nProvider keys are resolved separately for each reserved physical call.",
+        "required": [
+          "revision_id",
+          "profile",
+          "intent",
+          "goal"
+        ],
+        "properties": {
+          "goal": {
+            "$ref": "#/components/schemas/GoalDecisionPolicy",
+            "description": "Goal acceptance thresholds reviewed with the profile."
+          },
+          "intent": {
+            "$ref": "#/components/schemas/IntentDecisionPolicy",
+            "description": "Routing acceptance thresholds reviewed with the profile."
+          },
+          "profile": {
+            "$ref": "#/components/schemas/DecisionProfile",
+            "description": "Protocol, endpoint, model and capabilities from that same revision."
+          },
+          "revision_id": {
+            "type": "string",
+            "description": "Native immutable revision identity used to resolve rates and authority."
+          }
+        },
+        "additionalProperties": false
+      },
       "DecisionCapabilities": {
         "type": "object",
         "description": "Capabilities reviewed with a catalogue profile; unsupported work is refused.",
@@ -20827,6 +20856,62 @@
             "maxLength": 128,
             "minLength": 1,
             "pattern": "^[A-Za-z0-9_.:-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionProfile": {
+        "type": "object",
+        "description": "Non-secret catalogue metadata frozen for a lease's selected decision model.",
+        "required": [
+          "model_id",
+          "revision",
+          "api",
+          "endpoint",
+          "model",
+          "accepted_models",
+          "capabilities",
+          "input_max_bytes"
+        ],
+        "properties": {
+          "accepted_models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Reviewed reported model names; activation owns alias/version evidence."
+          },
+          "api": {
+            "$ref": "#/components/schemas/DecisionApi",
+            "description": "Native API selected by its catalogue entry."
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/DecisionCapabilities",
+            "description": "Capabilities verified for this exact profile revision."
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Exact reviewed HTTPS endpoint, including the native API path."
+          },
+          "input_max_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Conservative serialized evidence/question byte ceiling established for\nthis profile, preventing providers from silently truncating its input.",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "description": "Requested model; an alias is not evidence of a resolved serving version.",
+            "maxLength": 256,
+            "minLength": 1
+          },
+          "model_id": {
+            "type": "string",
+            "description": "Catalogue model identity; this is not another model registry."
+          },
+          "revision": {
+            "type": "string",
+            "description": "Reviewed profile revision used for acceptance and accounting."
           }
         },
         "additionalProperties": false
@@ -23778,6 +23863,17 @@
           "resume_hold"
         ],
         "properties": {
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionAssignment",
+                "description": "Reviewed runner decision selection frozen at issue; no provider key.\nAbsent on older leases or hosts without an enabled reviewed selection."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "event": {
             "$ref": "#/components/schemas/EventEnvelope",
             "description": "The event to run."

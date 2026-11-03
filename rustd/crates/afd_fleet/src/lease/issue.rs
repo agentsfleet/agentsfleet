@@ -19,6 +19,7 @@ use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::DeliveryStage;
 use afd_observability::producers;
 use afd_runner::capacity::choice;
+use afd_wire::decision::DecisionAssignment;
 use afd_wire::lease::LeaseKind;
 use jiff::Timestamp;
 use sqlx::Connection as _;
@@ -58,6 +59,8 @@ pub struct Billed<'a> {
 pub struct Issued {
     /// The lease's durable identifier, which the runner reports against.
     pub lease_id: Uuid7,
+    /// The exact non-secret selection committed with this lease.
+    pub decision: Option<Box<DecisionAssignment>>,
 }
 
 impl Leases {
@@ -97,6 +100,7 @@ impl Leases {
             return Ok(None);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
+        let decision = super::decision::freeze(&mut transaction, runner_id, capacity).await?;
         let written = sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
@@ -113,6 +117,7 @@ impl Leases {
             checked_at: capacity.now(),
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
+            decision_snapshot: decision.as_deref(),
         }
         .bind()
         .execute(&mut *transaction)
@@ -129,8 +134,8 @@ impl Leases {
         }
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
-        record_issued(&lease_id, runner_id, acquired);
-        Ok(Some(Issued { lease_id }))
+        record_issued(&lease_id, runner_id, acquired, decision.as_deref());
+        Ok(Some(Issued { lease_id, decision }))
     }
 
     /// Draw the independent lease and audit identities.
@@ -141,7 +146,12 @@ impl Leases {
     }
 }
 
-fn record_issued(lease_id: &Uuid7, runner_id: &Uuid7, acquired: &Acquired) {
+fn record_issued(
+    lease_id: &Uuid7,
+    runner_id: &Uuid7,
+    acquired: &Acquired,
+    decision: Option<&DecisionAssignment>,
+) {
     producers::fleet::delivery_stage(
         DeliveryStage::EventToLease,
         afd_core::clock::elapsed(acquired.event_created_at, afd_core::clock::now()),
@@ -155,6 +165,8 @@ fn record_issued(lease_id: &Uuid7, runner_id: &Uuid7, acquired: &Acquired) {
     let event_id = acquired.event_id.as_str();
     let fence = acquired.fence.as_i64();
     let kind = acquired.kind.as_str();
+    let decision_model_id = decision.map(|assigned| assigned.profile.model_id.as_str());
+    let decision_revision_id = decision.map(|assigned| assigned.revision_id.as_str());
     tracing::debug!(
         event = EVENT_LEASE_ISSUED,
         lease_id = lease,
@@ -163,6 +175,8 @@ fn record_issued(lease_id: &Uuid7, runner_id: &Uuid7, acquired: &Acquired) {
         agentsfleet_event_id = event_id,
         fencing_token = fence,
         kind,
+        decision_model_id,
+        decision_revision_id,
         "a runner now owns this fleet's work"
     );
 }

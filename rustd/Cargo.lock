@@ -652,6 +652,7 @@ dependencies = [
 name = "afd_fleet"
 version = "0.72.0"
 dependencies = [
+ "afd_admin",
  "afd_admission",
  "afd_api_wire",
  "afd_approval",
@@ -678,6 +679,7 @@ dependencies = [
  "async-trait",
  "const_format",
  "futures-util",
+ "garde",
  "jiff",
  "jiff-sqlx",
  "redis",

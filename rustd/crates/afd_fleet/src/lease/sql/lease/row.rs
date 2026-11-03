@@ -6,6 +6,7 @@
 //! because the `$n` order is written once, beside the text it orders.
 
 use afd_core::id::Uuid7;
+use afd_wire::decision::DecisionAssignment;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
@@ -44,7 +45,7 @@ pub const INSERT_LEASE_WITH_EVENT: &str = include_str!("insert_lease_with_event.
 
 /// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
 ///
-/// Twenty positional parameters, several of them same-typed text that a
+/// Twenty-one positional parameters, several of them same-typed text that a
 /// transposition would compile straight through, and this workspace disables
 /// sqlx's `macros` feature deliberately, so there is no compile-time query
 /// checking to catch it. Naming the fields is what replaces
@@ -85,6 +86,8 @@ pub struct LeaseRow<'a> {
     /// Whether this lease is a fresh pull or a reclaim, as its wire spelling.
     /// It reaches the audit row's metadata, where an operator reads it.
     pub kind: &'a str,
+    /// The non-secret reviewed selection delivered by this exact lease.
+    pub decision_snapshot: Option<&'a DecisionAssignment>,
 }
 
 impl<'a> LeaseRow<'a> {
@@ -111,5 +114,6 @@ impl<'a> LeaseRow<'a> {
             .bind(afd_runner::sql::meta::KIND)
             .bind(self.kind)
             .bind(self.event_created_at.to_sqlx())
+            .bind(self.decision_snapshot.map(sqlx::types::Json))
     }
 }
