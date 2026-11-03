@@ -1,16 +1,17 @@
 //! One lease, end to end.
 //!
 //! ```text
-//!   admit ─► turn ─► hydrate ─► [take hold or prepare sandbox ─► checkout] ─► run
-//!   ─► [hold frozen, or destroy] ─► memory push (fenced) ─► report spooled ─► report posted
-//!   ─► activity drained
+//!   admit ─► turn ─► hydrate ─► [size, egress, checkout plan] ─► run
+//!                                  └─► [take hold or prepare ─► checkout] ─┘ beside it
+//!   ─► [hold frozen, or kill] ─► memory push (fenced) ─► report spooled ─► report posted
+//!   ─► [release the killed sandbox's disk ∥ activity drained]
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
 //! ```
 //!
 //! The engine admits the lease first: a policy naming a tool it cannot host is
 //! refused before anything is prepared. A lease whose tools all run in the
-//! supervisor starts no sandbox; any other runs in one, and one that cannot be
-//! built ends the lease with a failed report. A sandbox that was built is held
+//! supervisor starts no sandbox; any other builds one beside its turn, and a
+//! build that fails leaves the turn going without it. A sandbox that was built is held
 //! for the fleet's next lease when the run ended processed (`crate::holds`) and
 //! destroyed exactly once otherwise — the type consumes it — and an engine that
 //! panics is caught so the teardown still runs. The report settles before the live tail
@@ -27,6 +28,7 @@ use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
 use afr_agent::Meter;
+use afr_executor::{ExecutorSlot, Unavailable};
 use afr_memory::Seed;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -41,6 +43,7 @@ use crate::renew::Renewal;
 use crate::report::Ending;
 use crate::turns::FleetTurns;
 
+mod build;
 mod checkout;
 mod drive;
 mod hold;
@@ -50,7 +53,7 @@ mod segments;
 mod settle;
 mod workspace;
 
-use self::hold::{Kept, Worked};
+use self::hold::{Fate, Kept, Worked};
 pub(crate) use self::lessee::Lessee;
 use self::refusal::failed;
 use self::segments::{Segment, Timeline};
@@ -200,9 +203,10 @@ impl LeaseRun<'_> {
             .await
     }
 
-    /// The hold and the report, with the renewal and the live tail still
-    /// polled beside them, then the wait the tail gets to drain. Timed as the
-    /// report segment up to the drain.
+    /// The hold or the kill, and the report, with the renewal and the live
+    /// tail still polled beside them; then the release of a killed sandbox's
+    /// disk beside the wait the tail gets to drain. Timed as the report
+    /// segment up to the release.
     async fn settle_and_drain(
         &self,
         kept: Option<Kept>,
@@ -212,30 +216,36 @@ impl LeaseRun<'_> {
         mut live: Live,
     ) -> Ending {
         let reporting = self.timeline.start(Segment::Report);
-        {
+        let fate: Fate = {
             let settle = async {
-                let held_until = self.keep(kept, &ending).await;
-                let superseded = self.settle(&mut ending, held_until).await;
-                if superseded && held_until.is_some() {
+                let fate = self.keep(kept, &ending).await;
+                let superseded = self.settle(&mut ending, &fate).await;
+                if superseded && fate.held_until().is_some() {
                     self.lessee.holds.supersede(self.ids.lease.clone());
                 }
+                fate
             };
             tokio::pin!(settle);
             loop {
                 tokio::select! {
                     biased;
-                    () = &mut settle => break,
+                    fate = &mut settle => break fate,
                     _class = &mut renewal, if live.renewing => live.renewing = false,
                     () = &mut pumping, if live.pumping => live.pumping = false,
                 }
             }
-        }
+        };
         reporting.stop();
-        if live.pumping
-            && tokio::time::timeout(ACTIVITY_DRAIN_WAIT, &mut pumping)
-                .await
-                .is_err()
-        {
+        // The disk goes after the report, beside the tail's drain, so neither
+        // waits on the other; the lease returns only once both are done.
+        let drained = async {
+            !live.pumping
+                || tokio::time::timeout(ACTIVITY_DRAIN_WAIT, &mut pumping)
+                    .await
+                    .is_ok()
+        };
+        let ((), drained) = tokio::join!(self.release(fate), drained);
+        if !drained {
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             let lease_id = self.ids.lease.as_str();
             let event = EVENT_DRAIN_ABANDONED;
@@ -298,7 +308,8 @@ impl LeaseRun<'_> {
         if needs.sandbox {
             self.sandboxed(seed, sink).await
         } else {
-            self.drive(seed, None, sink).await.into()
+            let none = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+            self.drive(seed, &none, sink).await.into()
         }
     }
 }

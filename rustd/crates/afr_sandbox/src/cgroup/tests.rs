@@ -258,3 +258,88 @@ fn test_the_freezer_acts_on_the_lease_cgroup_itself() {
     assert_eq!(read(&dir, "cgroup.freeze"), "1");
     assert!(freezer.is_frozen().unwrap());
 }
+
+/// The events file a tree reads as it empties, and while a process lives.
+const EMPTIED: &str = "populated 0\nfrozen 0\n";
+const LIVING: &str = "populated 1\nfrozen 0\n";
+
+/// The kind of the input/output failure beneath `error`: what tells a tree
+/// still populated from one whose events could not be read, which both name
+/// `cgroup.events`.
+fn io_kind(error: &crate::Error) -> Option<std::io::ErrorKind> {
+    std::error::Error::source(error)
+        .and_then(|cause| cause.downcast_ref::<std::io::Error>())
+        .map(std::io::Error::kind)
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_a_killed_tree_that_empties_drains() {
+    let root = tempfile::tempdir().unwrap();
+    let (cgroup, dir) = plain(root.path(), "lease-20");
+    fs::write(dir.join("cgroup.events"), EMPTIED).unwrap();
+
+    cgroup.kill_and_drain().await.unwrap();
+
+    assert_eq!(read(&dir, "cgroup.kill"), "1", "the whole tree was killed");
+}
+
+/// A process that outlives the kill past the drain bound, as one stuck in
+/// uninterruptible sleep does, fails the drain once the bound passes.
+#[tokio::test(start_paused = true)]
+async fn test_a_tree_still_populated_past_the_bound_fails_the_drain() {
+    let root = tempfile::tempdir().unwrap();
+    let (cgroup, dir) = plain(root.path(), "lease-21");
+    fs::write(dir.join("cgroup.events"), LIVING).unwrap();
+    let started = tokio::time::Instant::now();
+
+    let refused = cgroup.kill_and_drain().await.unwrap_err();
+
+    assert_eq!(
+        io_kind(&refused),
+        Some(std::io::ErrorKind::ResourceBusy),
+        "still populated, not unreadable: {}",
+        refused.told()
+    );
+    assert!(
+        started.elapsed() >= super::DRAIN_POLL * u32::try_from(super::DRAIN_TRIES).unwrap(),
+        "the whole bound was waited"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_a_kill_the_kernel_refuses_fails_the_drain_at_once() {
+    let root = tempfile::tempdir().unwrap();
+    let cgroup = LeaseCgroup {
+        dir: root.path().join("never-made"),
+    };
+
+    let refused = cgroup.kill_and_drain().await.unwrap_err();
+
+    assert!(refused.to_string().contains("cgroup.kill"), "{refused}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_a_tree_whose_events_cannot_be_read_fails_the_drain() {
+    let root = tempfile::tempdir().unwrap();
+    let (cgroup, _dir) = plain(root.path(), "lease-22");
+    let started = tokio::time::Instant::now();
+
+    let refused = cgroup.kill_and_drain().await.unwrap_err();
+
+    assert_eq!(
+        io_kind(&refused),
+        Some(std::io::ErrorKind::NotFound),
+        "unreadable, not still populated: {}",
+        refused.told()
+    );
+    assert!(
+        refused
+            .to_string()
+            .contains("the cgroup file cgroup.events could not be read"),
+        "{refused}"
+    );
+    assert!(
+        started.elapsed() < super::DRAIN_POLL,
+        "refused at once, not after the bound"
+    );
+}

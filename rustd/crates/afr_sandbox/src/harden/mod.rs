@@ -22,8 +22,8 @@ const DEV_PTS: &str = "/dev/pts";
 
 /// Trees a sandboxed process may write beneath; everything else is read-only.
 ///
-/// The executor's socket directory is not among them: the socket is bound
-/// before confinement, and the directory is a host path no tenant may fill.
+/// No socket is among them: the executor's link is a descriptor it inherited,
+/// which no path names.
 pub const WRITABLE: [&str; 4] = [SANDBOX_WORKSPACE, SANDBOX_TMP, DEV_PTS, DEV_SHM];
 /// Single devices it may also write: what shells and pseudo-terminals open.
 pub const WRITABLE_DEVICES: [&str; 5] = [

@@ -274,10 +274,14 @@ pub(crate) async fn run_with(
     let (sent, frames) = std::sync::mpsc::channel();
     let sink = move |frame| sent.send(frame).expect("the suite holds the receiver");
     let stop = CancellationToken::new();
+    let executor = executor.map_or_else(
+        || afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
+        afr_executor::ExecutorSlot::ready,
+    );
     let run = AgentRun {
         lease,
         memory: afr_memory::Seed::default(),
-        executor,
+        executor: &executor,
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,

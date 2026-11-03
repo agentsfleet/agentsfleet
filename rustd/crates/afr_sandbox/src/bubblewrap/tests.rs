@@ -7,15 +7,18 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use super::{Layout, NetworkLayout, arguments};
-use crate::tenant::TenantDescriptors;
+use crate::tenant::{Inherited, TenantDescriptors};
 
 /// What a test's `/dev/shm` may hold.
 const SHARED_MEMORY_BYTES: u64 = 512 * 1024 * 1024;
 
-/// The numbers a test's tenant leaf is named under.
-const TENANT: TenantDescriptors = TenantDescriptors {
-    tenant_procs: 7,
-    tenant_events: 9,
+/// The numbers a test's tenant leaf and executor link are named under.
+const INHERITED: Inherited = Inherited {
+    tenant: TenantDescriptors {
+        tenant_procs: 7,
+        tenant_events: 9,
+    },
+    executor: 11,
 };
 
 fn argv() -> Vec<String> {
@@ -32,11 +35,10 @@ fn with_network(level: Option<&str>, network: NetworkLayout<'_>) -> Vec<String> 
         toolbox: Path::new("/srv/toolbox/abc"),
         workspace: Path::new("/srv/leases/l1/workspace/workspace"),
         tmp: Path::new("/srv/leases/l1/workspace/tmp"),
-        run_dir: Path::new("/srv/leases/l1/run"),
         entry: Path::new("/usr/local/bin/agentsfleet-runner"),
         entry_args: &entry_args,
         log_level: level.map(OsStr::new),
-        tenant: TENANT,
+        inherited: INHERITED,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
         network,
     })
@@ -125,9 +127,9 @@ fn test_the_toolbox_is_the_read_only_root_and_the_workspace_is_writable() {
         after(&argv, "--bind", "/srv/leases/l1/workspace/workspace"),
         ["--bind", "/srv/leases/l1/workspace/workspace", "/workspace"]
     );
-    assert_eq!(
-        after(&argv, "--bind", "/srv/leases/l1/run"),
-        ["--bind", "/srv/leases/l1/run", "/run/agentsfleet"]
+    assert!(
+        !argv.iter().any(|part| part.starts_with("/run/")),
+        "nothing is bound under the private /run: {argv:?}"
     );
     assert_eq!(
         after(&argv, "--ro-bind", "/usr/local/bin/agentsfleet-runner"),
@@ -144,7 +146,7 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
     let argv = argv();
 
     assert_eq!(
-        argv[argv.len() - 7..],
+        argv[argv.len() - 9..],
         [
             "--",
             "/opt/agentsfleet/agentsfleet-runner",
@@ -152,7 +154,9 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
             "--tenant-procs",
             "7",
             "--tenant-events",
-            "9"
+            "9",
+            "--executor",
+            "11"
         ]
     );
     // The executor owns `PATH`; the only variable passed in is the log level.
@@ -181,14 +185,6 @@ fn test_the_process_inside_runs_as_an_unprivileged_user() {
     assert_eq!(after(&argv, "--gid", &gid)[..2], ["--gid", gid.as_str()]);
 }
 
-#[test]
-fn test_the_socket_lies_in_the_socket_directory() {
-    assert_eq!(
-        super::sandbox_socket(),
-        Path::new(super::SANDBOX_RUN_DIR).join(super::SOCKET_NAME)
-    );
-}
-
 /// `/tmp` is the disk's `tmp/`, bound read-write, and no tmpfs stands there:
 /// a scratch file that fills the disk answers `ENOSPC`, never the memory
 /// limit.
@@ -207,16 +203,15 @@ fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
 }
 
 #[test]
-fn test_the_entry_reads_back_the_tenant_descriptors_it_was_named() {
+fn test_the_entry_reads_back_the_descriptors_it_was_named() {
     let argv = arguments(&Layout {
         toolbox: Path::new("/t"),
         workspace: Path::new("/w"),
         tmp: Path::new("/tmp"),
-        run_dir: Path::new("/r"),
         entry: Path::new("/e"),
         entry_args: &[],
         log_level: None,
-        tenant: TENANT,
+        inherited: INHERITED,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
         network: NetworkLayout::Isolated,
     });
@@ -226,9 +221,9 @@ fn test_the_entry_reads_back_the_tenant_descriptors_it_was_named() {
         .rposition(|part| part == "/opt/agentsfleet/agentsfleet-runner")
         .unwrap_or_else(|| unreachable!("no entry in {argv:?}"));
 
-    let parsed = TenantDescriptors::parse_from(argv[entry..].iter().cloned());
+    let parsed = Inherited::parse_from(argv[entry..].iter().cloned());
 
-    assert_eq!(parsed.ok(), Some(TENANT), "the flags round-trip");
+    assert_eq!(parsed.ok(), Some(INHERITED), "the flags round-trip");
 }
 
 /// Each policy gets its namespace: `allow_all` shares the host's, and every

@@ -49,11 +49,11 @@ A coding agent reads it before writing a `*.sh` file or a multi-step command, an
 
 A `grep` that matches nothing exits 1, so one that may legitimately find nothing ends in `|| true`.
 
-### SH-HOOKINDEX — A Git hook saves `GIT_INDEX_FILE` before clearing it, and reads the staged tree through the saved path.
+### SH-HOOKINDEX — A Git hook that reads the staged tree saves `GIT_INDEX_FILE` before clearing it, and reads through the saved path.
 - **Applies to:** `.githooks/*`, `.git/hooks/*`, and scripts a hook calls
 - **Checked by:** review
 - **Bad:** `unset GIT_INDEX_FILE`
-- **Good:** `ORLY_INDEX_FILE="$GIT_INDEX_FILE"; unset GIT_INDEX_FILE`
+- **Good:** `STAGED_INDEX="$GIT_INDEX_FILE"; unset GIT_INDEX_FILE`
 - **Why:** `git commit -a` hands hooks a temporary index, so a hook that reads the default index sees nothing staged.
 
 ## Commands in zsh

@@ -18,13 +18,15 @@ use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_agent::{Completed, ExecutionResult, ResultOutcome};
-use afr_executor::{Executor, ProcessId, Spawn};
+use afr_executor::{Executor, ProcessId, Spawn, Unavailable};
 use afr_providers::{Connect as _, Connector, Usage};
 use afr_tools::Catalog;
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
+use tokio::sync::mpsc;
+use tokio::time::Instant;
 mod daemon;
 mod fixtures;
 mod git_fixture;
@@ -35,9 +37,11 @@ mod sandbox;
 pub(crate) use self::daemon::{Calls, bounded, drain, plane};
 pub(crate) use self::fixtures::lease;
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
-pub(crate) use self::resolver::assigned;
+pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
-pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, NO_REFILL};
+pub(crate) use self::sandbox::{
+    DESTROY, EXECUTOR_GONE, FakeEngine, Freezer, KILL, Kill, NO_FREEZER, NO_REFILL, STILL_RUNNING,
+};
 pub(crate) use afr_egress::testing::FakeResolver;
 
 pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
@@ -87,7 +91,7 @@ pub(crate) enum Behaviour {
     /// Answers as [`Behaviour::Answer`] does, with three calls' records and
     /// their trace.
     Calls,
-    /// Fails as an engine.
+    /// Fails as an engine, before any sandbox-side call.
     Break,
     /// Never finishes on its own.
     Hang,
@@ -98,6 +102,9 @@ pub(crate) enum Behaviour {
     Spends,
     /// Panics mid-run.
     Panic,
+    /// Answers as [`Behaviour::Answer`] does without a sandbox-side call: a
+    /// turn that never needs its sandbox.
+    Talks,
 }
 
 /// An agent engine that counts its runs and how many overlap, admitting
@@ -109,6 +116,12 @@ pub(crate) struct FakeAgent {
     pub(crate) behaviour: Behaviour,
     pub(crate) runs: Arc<AtomicUsize>,
     pub(crate) peak: Arc<AtomicUsize>,
+    /// Where each run reports when it began: its first model request, for a
+    /// suite to set beside when its sandbox was ready.
+    pub(crate) began: Option<mpsc::UnboundedSender<Instant>>,
+    /// Where each run reports what its sandbox source lent it: none for an
+    /// executor, or why there was none. [`Rig`] reads it back.
+    pub(crate) lent: Option<mpsc::UnboundedSender<Option<Unavailable>>>,
     running: AtomicUsize,
     catalog: Catalog,
     connect: Connector,
@@ -120,6 +133,8 @@ impl FakeAgent {
             behaviour,
             runs: Arc::default(),
             peak: Arc::default(),
+            began: None,
+            lent: None,
             running: AtomicUsize::new(0),
             catalog: Catalog::new(vec![
                 Stub::boxed(&FILE_READ),
@@ -144,6 +159,9 @@ impl AgentEngine for FakeAgent {
         self.runs.fetch_add(1, Ordering::SeqCst);
         let overlapping = self.running.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(overlapping, Ordering::SeqCst);
+        if let Some(began) = &self.began {
+            let _reader_gone = began.send(Instant::now());
+        }
         run.events
             .emit(ActivityFrame::FleetResponseChunk(FleetResponseChunk {
                 text: "hi".into(),
@@ -153,13 +171,20 @@ impl AgentEngine for FakeAgent {
                 stream_contiguous: false,
                 stream_seq: 0,
             }));
-        if let Some(executor) = run.executor {
-            exercise(executor).await;
+        if !matches!(self.behaviour, Behaviour::Talks | Behaviour::Break) {
+            // The turn's first sandbox-side call: it waits for the build.
+            let lent = run.executor.get().await;
+            if let Some(reader) = &self.lent {
+                let _reader_gone = reader.send(lent.err());
+            }
+            if let Ok(executor) = lent {
+                exercise(executor).await;
+            }
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
         self.running.fetch_sub(1, Ordering::SeqCst);
         match self.behaviour {
-            Behaviour::Answer => Ok(answer()),
+            Behaviour::Answer | Behaviour::Talks => Ok(answer()),
             Behaviour::Calls => Ok(with_calls(3)),
             Behaviour::Break => {
                 Err(afr_executor::Error::from(std::io::Error::other("engine broke")).into())

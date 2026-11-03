@@ -28,7 +28,7 @@ runs:
         source deploy/baremetal/toolbox.sh
         echo "digest=$(toolbox_digest_of "${images[0]}")" >> "$GITHUB_OUTPUT"
     - name: Load the toolbox release key from 1Password
-      uses: 1password/load-secrets-action@v5
+      uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
       with:
         export-env: true
       env:

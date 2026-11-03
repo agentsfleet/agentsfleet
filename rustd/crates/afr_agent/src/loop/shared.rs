@@ -11,7 +11,7 @@ use std::time::Instant;
 use afd_core::clock::SystemClock;
 use afd_wire::policy::ContextBudget;
 use afr_egress::Egress;
-use afr_executor::Executor;
+use afr_executor::ExecutorSource;
 use afr_memory::Hydrated;
 use afr_providers::Provider;
 use afr_secrets::Scrub;
@@ -44,7 +44,7 @@ pub(crate) struct Shared<'run> {
     pub(crate) context: &'run ContextBudget<'run>,
     /// Every tool the lease was offered; a child's selection narrows it.
     pub(crate) selection: &'run Selection<'run>,
-    pub(crate) executor: Option<&'run dyn Executor>,
+    pub(crate) executor: &'run dyn ExecutorSource,
     pub(crate) scrub: &'run Scrub,
     pub(crate) events: &'run dyn EventSink,
     /// What every call of the lease shares.

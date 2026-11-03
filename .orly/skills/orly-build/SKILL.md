@@ -20,8 +20,7 @@ it applies are the standards listed in `.orly/AGENTS.md`; tests follow
    gets a worktree on `feat/m{N}-<slug>`; a rules repository cuts the branch in
    its main checkout.
 3. **Record the opening.** Move the spec to `active/` and set
-   `Status: IN_PROGRESS`, `Branch:`, the full `Baseline revision:` and a pending
-   `Test Baseline:`. Commit before any code.
+   `Status: IN_PROGRESS`. Commit before any code.
 4. **Plan.** Restate the intent and list `ASSUMPTIONS I'M MAKING`. A mismatch
    with the spec's Intent stops the work. Keep the restatement for the Pull
    Request Session Notes.

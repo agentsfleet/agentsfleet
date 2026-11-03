@@ -10,9 +10,9 @@
 //! process is reached through its input queue and its stop token, and the
 //! workspace handle is read-only.
 //!
-//! Binding is split from serving. [`bind`] needs no runtime and no workspace,
-//! so the sandbox claims its socket first and then drops the right to create
-//! one before any request is read.
+//! Taking the link is split from serving. [`bind`] and [`connected`] need no
+//! runtime and no workspace, so the sandbox takes its link before it confines
+//! itself and before any request is read.
 
 mod files;
 mod launch;
@@ -24,8 +24,8 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use tokio::io::AsyncWriteExt as _;
-use tokio::net::UnixListener;
 use tokio::net::unix::OwnedWriteHalf;
+use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
 use self::files::Workspace;
@@ -49,32 +49,68 @@ const EVENT_SERVE_COMPLETED: &str = "executor_serve_completed";
 /// The executor could not serve: no workspace, or no connection.
 const EVENT_SERVE_FAILED: &str = "executor_serve_failed";
 
-/// A bound executor socket, not yet serving.
+/// Where an executor's one supervisor connection comes from.
 #[derive(Debug)]
-pub struct Listener {
-    socket: std::os::unix::net::UnixListener,
+enum Link {
+    /// A bound socket: the connection is the first one accepted.
+    Bound(std::os::unix::net::UnixListener),
+    /// A stream whose other end the supervisor already holds.
+    Connected(std::os::unix::net::UnixStream),
+}
+
+impl Link {
+    /// The supervisor's connection, waited for where the socket is bound.
+    async fn connection(self) -> Result<UnixStream> {
+        Ok(match self {
+            Self::Bound(socket) => UnixListener::from_std(socket)?.accept().await?.0,
+            Self::Connected(stream) => UnixStream::from_std(stream)?,
+        })
+    }
+}
+
+/// An executor holding its link, not yet serving.
+#[derive(Debug)]
+pub struct Server {
+    link: Link,
     /// Where every process it starts is placed: where the executor runs,
-    /// unless [`Listener::with_tenant`] names a leaf.
+    /// unless [`Server::with_tenant`] names a leaf.
     placement: Arc<dyn Placement>,
 }
 
-/// Claims `socket` for the executor.
+/// Claims `socket` for the executor, which serves the first connection.
 ///
-/// Synchronous, and needs no runtime: the sandbox binds before it hardens
+/// Synchronous, and needs no runtime: a caller binds before it hardens
 /// itself, then serves with what it kept.
 ///
 /// # Errors
 /// When `socket` exists already or cannot be created.
-pub fn bind(socket: &Path) -> Result<Listener> {
+pub fn bind(socket: &Path) -> Result<Server> {
     let socket = std::os::unix::net::UnixListener::bind(socket)?;
     socket.set_nonblocking(true)?;
-    Ok(Listener {
-        socket,
-        placement: Arc::new(Inherit),
-    })
+    Ok(Server::over(Link::Bound(socket)))
 }
 
-impl Listener {
+/// Takes `stream`, already connected to the supervisor: the end of a socket
+/// pair the sandbox inherited, which no path names and nothing else reaches.
+///
+/// Synchronous and needs no runtime, as [`bind`] does.
+///
+/// # Errors
+/// When the stream cannot be made non-blocking.
+pub fn connected(stream: std::os::unix::net::UnixStream) -> Result<Server> {
+    stream.set_nonblocking(true)?;
+    Ok(Server::over(Link::Connected(stream)))
+}
+
+impl Server {
+    /// An executor on `link` whose processes run where it does.
+    fn over(link: Link) -> Self {
+        Self {
+            link,
+            placement: Arc::new(Inherit),
+        }
+    }
+
     /// Starts every process in `tenant`'s leaf instead, refusing a spawn
     /// whose process cannot move there.
     #[must_use]
@@ -95,8 +131,8 @@ impl Listener {
     /// When `root` cannot be opened, or no connection arrives.
     pub async fn serve(self, root: &Path) -> Result<()> {
         let event = EVENT_SERVE_STARTED;
-        tracing::info!(event, "the executor is listening");
-        let served = accept(self.socket, self.placement, root).await;
+        tracing::info!(event, "the executor is waiting for its supervisor");
+        let served = accept(self.link, self.placement, root).await;
         match &served {
             Ok(()) => {
                 let event = EVENT_SERVE_COMPLETED;
@@ -113,23 +149,18 @@ impl Listener {
     }
 }
 
-/// [`bind`] then [`Listener::serve`], for a caller with nothing to do between.
+/// [`bind`] then [`Server::serve`], for a caller with nothing to do between.
 ///
 /// # Errors
-/// As [`bind`] and [`Listener::serve`].
+/// As [`bind`] and [`Server::serve`].
 pub async fn serve(socket: &Path, root: &Path) -> Result<()> {
     bind(socket)?.serve(root).await
 }
 
 /// Takes the one connection and serves it to its end.
-async fn accept(
-    socket: std::os::unix::net::UnixListener,
-    placement: Arc<dyn Placement>,
-    root: &Path,
-) -> Result<()> {
-    let listener = UnixListener::from_std(socket)?;
+async fn accept(link: Link, placement: Arc<dyn Placement>, root: &Path) -> Result<()> {
     let workspace = Arc::new(Workspace::open(root)?);
-    let (stream, _peer) = listener.accept().await?;
+    let stream = link.connection().await?;
     let (read, write) = stream.into_split();
     let (answers, answered) = mpsc::unbounded_channel();
     let (output, said) = mpsc::channel(OUTPUT_LINES_IN_FLIGHT);

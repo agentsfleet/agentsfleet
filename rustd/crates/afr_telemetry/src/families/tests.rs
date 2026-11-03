@@ -22,13 +22,13 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 use super::{
     ACTIVITY_FRAMES_DROPPED, DECISION_DURATION, DECISION_EVALUATIONS, Families,
     MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED, PROVIDER_RETRIES, PROVIDER_TURN_DURATION,
-    SANDBOX_HOLDS, SANDBOX_START_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION,
-    TOOL_OUT_OF_MEMORY, registry,
+    SANDBOX_BUILDS, SANDBOX_HOLDS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
+    SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
 };
 use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
-    TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
+    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -118,7 +118,7 @@ fn test_every_runner_census_family_has_a_producer() {
 }
 
 /// Each family, and how many series its closed sets can produce.
-fn label_products() -> [(&'static str, usize); 12] {
+fn label_products() -> [(&'static str, usize); 15] {
     [
         (
             DECISION_EVALUATIONS.wire_name(),
@@ -137,6 +137,12 @@ fn label_products() -> [(&'static str, usize); 12] {
             Provider::count() * RetryReason::ALL.len(),
         ),
         (SANDBOX_START_DURATION.wire_name(), SandboxStart::ALL.len()),
+        (SANDBOX_WAIT_DURATION.wire_name(), SandboxWait::ALL.len()),
+        (
+            SANDBOX_RELEASE_DURATION.wire_name(),
+            SandboxRelease::ALL.len(),
+        ),
+        (SANDBOX_BUILDS.wire_name(), SandboxBuild::ALL.len()),
         (ACTIVITY_FRAMES_DROPPED.wire_name(), FrameDrop::ALL.len()),
         (MEMORY_PUSH_FAILURES.wire_name(), PushFailure::ALL.len()),
         (
@@ -161,6 +167,12 @@ fn label_products() -> [(&'static str, usize); 12] {
 #[test]
 fn test_runner_ceilings_admit_their_label_product() {
     let registry = registry().expect("the runner census reads");
+    let listed: BTreeSet<&str> = label_products().iter().map(|(name, _)| *name).collect();
+    let declared: BTreeSet<&str> = registry.families().map(|family| &*family.name).collect();
+    assert_eq!(
+        listed, declared,
+        "every census family has its label product checked"
+    );
     for (name, product) in label_products() {
         let family = registry
             .family(name)
@@ -197,6 +209,9 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
     families.turn(Provider::of("anthropic"), TurnOutcome::Completed, elapsed);
     families.retry(Provider::of("anthropic"), RetryReason::RateLimited);
     families.sandbox_start(SandboxStart::Ready, elapsed);
+    families.sandbox_wait(SandboxWait::Ready, elapsed);
+    families.sandbox_release(SandboxRelease::Released, elapsed);
+    families.sandbox_build(SandboxBuild::Checkout);
     families.frames_dropped(FrameDrop::Backpressure, 3);
     families.push_failed(PushFailure::Upstream);
     families.tool_call(Tool::of("file_read"), ToolOutcome::Succeeded, elapsed);

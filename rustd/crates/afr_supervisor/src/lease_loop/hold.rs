@@ -8,19 +8,19 @@
 //! the first checkout is safe only because the host made the directory it
 //! writes into (`crate::workspace_clone`).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use afd_core::clock::saturating_millis;
-use afd_core::error_code::ErrorCode;
+use afd_core::error_code::{Coded as _, ErrorCode, Logged};
 use afd_observability::semconv::ATTR_SANDBOX_REUSED;
-use afr_sandbox::{Limits, Sandbox};
-use afr_telemetry::labels::SandboxHold;
+use afr_sandbox::{Killed, Limits, Sandbox};
+use afr_telemetry::labels::{SandboxHold, SandboxRelease};
 use afr_telemetry::record;
 use jiff::Timestamp;
 
 use super::LeaseRun;
 use crate::egress::Bound;
-use crate::holds::{BuiltUnder, HoldKey, Release, Taken};
+use crate::holds::{BuiltUnder, HoldKey, Parked, Release, Taken};
 use crate::report::Ending;
 
 /// How long a thawed sandbox's executor has to answer before the hold is
@@ -35,6 +35,9 @@ const EVENT_FREEZE_STARTED: &str = "sandbox_freeze_started";
 const EVENT_FREEZE_COMPLETED: &str = "sandbox_freeze_completed";
 const EVENT_FREEZE_FAILED: &str = "sandbox_freeze_failed";
 const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
+const EVENT_KILL_STARTED: &str = "sandbox_kill_started";
+const EVENT_KILL_COMPLETED: &str = "sandbox_kill_completed";
+const EVENT_KILL_UNSETTLED: &str = "sandbox_kill_unsettled";
 /// The workspace's own top, as the executor reads a relative path whatever
 /// its root is mounted at.
 const WORKSPACE_TOP: &str = ".";
@@ -54,6 +57,30 @@ pub(super) struct Kept {
 pub(super) struct Worked {
     pub(super) ending: Ending,
     pub(super) kept: Option<Kept>,
+}
+
+/// What becomes of a lease's sandbox at its report: held frozen until a time,
+/// or killed now and released once the report is in. Only `keep` makes one,
+/// so the report cannot be settled before the kill.
+#[derive(Debug)]
+#[must_use]
+pub(super) enum Fate {
+    /// No sandbox to hold or release.
+    Gone,
+    /// Frozen and held for the fleet's next lease, until then.
+    Held(Timestamp),
+    /// Killed, its disk, cgroup and egress waiting for the release.
+    Killed(Box<dyn Sandbox>),
+}
+
+impl Fate {
+    /// When the hold lapses, for the report to carry.
+    pub(super) const fn held_until(&self) -> Option<Timestamp> {
+        match self {
+            Self::Held(until) => Some(*until),
+            Self::Gone | Self::Killed(_) => None,
+        }
+    }
 }
 
 impl From<Ending> for Worked {
@@ -120,17 +147,18 @@ impl LeaseRun<'_> {
 
     /// Holds the lease's sandbox, frozen, for the fleet's next lease when the
     /// lease ended processed and ran to its own end, the runner still takes
-    /// leases and the sandbox still runs; destroys it otherwise. Answers when
-    /// the hold lapses, for the report to carry.
-    pub(super) async fn keep(&self, kept: Option<Kept>, ending: &Ending) -> Option<Timestamp> {
-        let Kept { mut sandbox, key } = kept?;
+    /// leases and the sandbox still runs; kills it otherwise, for its release
+    /// after the report.
+    pub(super) async fn keep(&self, kept: Option<Kept>, ending: &Ending) -> Fate {
+        let Some(Kept { mut sandbox, key }) = kept else {
+            return Fate::Gone;
+        };
         // Leasing is a child of serving, so a runner shutting down or stopped
         // counts too: it takes no lease that could take the hold.
         let leasing = !self.lessee.halt.leasing().is_cancelled();
         let ran_out = ending.processed() && !self.interrupt.is_cancelled();
         if !(ran_out && leasing && sandbox.is_running()) {
-            self.destroy(sandbox).await;
-            return None;
+            return self.kill(sandbox).await;
         }
         let lease_id = self.ids.lease.as_str();
         let event = EVENT_FREEZE_STARTED;
@@ -144,18 +172,67 @@ impl LeaseRun<'_> {
                 event,
                 "a sandbox would not freeze, so it is destroyed rather than held"
             );
-            self.destroy(sandbox).await;
-            return None;
+            return self.kill(sandbox).await;
         }
         let event = EVENT_FREEZE_COMPLETED;
         tracing::debug!(lease_id, event);
         let lease = self.ids.lease.clone();
-        self.lessee.holds.park(key, lease, sandbox).await
+        match self.lessee.holds.park(key, lease, sandbox).await {
+            Parked::Held(until) => Fate::Held(until),
+            Parked::Refused(sandbox) => self.kill(sandbox).await,
+            Parked::Gone => Fate::Gone,
+        }
     }
 
-    /// Ends every process in `sandbox` and removes it.
-    pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
-        if let Err(failure) = sandbox.destroy().await {
+    /// Kills `sandbox` now, for its release after the report. A kill that
+    /// cannot prove the tree empty still lets the report post, and warns.
+    async fn kill(&self, sandbox: Box<dyn Sandbox>) -> Fate {
+        let lease_id = self.ids.lease.as_str();
+        let event = EVENT_KILL_STARTED;
+        tracing::debug!(lease_id, event);
+        match sandbox.kill().await {
+            Killed::Settled => {
+                let event = EVENT_KILL_COMPLETED;
+                tracing::debug!(lease_id, event);
+            }
+            Killed::Unsettled(failure) => {
+                let Logged { error_code, reason } = failure.logged();
+                let event = EVENT_KILL_UNSETTLED;
+                tracing::warn!(
+                    error_code,
+                    lease_id,
+                    reason,
+                    event,
+                    "a sandbox's processes were not proved gone; the report posts anyway"
+                );
+            }
+        }
+        Fate::Killed(sandbox)
+    }
+
+    /// Releases what a killed sandbox held, after the report: its egress
+    /// rules, cgroup, mount, image and directory. Timed; a failure leaves its
+    /// directory for the boot sweep.
+    pub(super) async fn release(&self, fate: Fate) {
+        let Fate::Killed(sandbox) = fate else {
+            return;
+        };
+        let started = Instant::now();
+        let outcome = match self.destroy(sandbox).await {
+            Ok(()) => SandboxRelease::Released,
+            Err(_logged) => SandboxRelease::Failed,
+        };
+        record::sandbox_release(outcome, started.elapsed());
+    }
+
+    /// Ends every process in `sandbox` and removes it, logging a teardown
+    /// that left something behind.
+    ///
+    /// # Errors
+    /// The engine's own, once logged: what is left is the boot sweep's.
+    pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) -> afr_sandbox::Result<()> {
+        let destroyed = sandbox.destroy().await;
+        if let Err(failure) = &destroyed {
             let code = failure.code().as_str();
             let lease_id = self.ids.lease.as_str();
             let event = EVENT_DESTROY_FAILED;
@@ -166,6 +243,7 @@ impl LeaseRun<'_> {
                 "a sandbox did not tear down cleanly"
             );
         }
+        destroyed
     }
 }
 
@@ -244,3 +322,7 @@ mod reassign_tests;
 #[cfg(test)]
 #[path = "tests/holds/refill.rs"]
 mod refill_tests;
+
+#[cfg(test)]
+#[path = "tests/release.rs"]
+mod release_tests;

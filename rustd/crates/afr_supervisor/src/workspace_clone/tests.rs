@@ -92,6 +92,17 @@ impl Fixture {
         workspace: &Path,
         base: &str,
     ) -> crate::error::Result<Fetched> {
+        self.check_out_under(workspace, base, &CancellationToken::new())
+            .await
+    }
+
+    /// Checks the fixture's repository out into `workspace`, under `interrupt`.
+    pub(super) async fn check_out_under(
+        &self,
+        workspace: &Path,
+        base: &str,
+        interrupt: &CancellationToken,
+    ) -> crate::error::Result<Fetched> {
         let request = Request {
             scope: SCOPE,
             checkout: Checkout {
@@ -106,10 +117,34 @@ impl Fixture {
                 owner: self.owner,
             },
         };
-        self.mirrors
-            .check_out(request, &CancellationToken::new())
-            .await
+        self.mirrors.check_out(request, interrupt).await
     }
+}
+
+/// A checkout request printed for a log names everything but its token.
+#[test]
+fn a_request_prints_without_its_token() {
+    let root = Path::new("/workspace");
+    let request = Request {
+        scope: SCOPE,
+        checkout: Checkout {
+            repository: REPOSITORY,
+            owner: OWNER,
+            name: NAME,
+            base: BASE,
+        },
+        token: TOKEN,
+        workspace: HostWorkspace {
+            root,
+            owner: (1000, 1000),
+        },
+    };
+
+    let printed = format!("{request:?}");
+
+    assert!(!printed.contains(TOKEN), "{printed}");
+    assert!(printed.contains("[redacted]"), "{printed}");
+    assert!(printed.contains(REPOSITORY), "{printed}");
 }
 
 #[tokio::test]

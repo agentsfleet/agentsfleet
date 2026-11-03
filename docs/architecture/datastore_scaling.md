@@ -291,8 +291,7 @@ asks the cluster whether it is bootstrapped rather than trusting Fly's TCP
 check. That is not cutover scaffolding and did not retire with it.
 
 **QStash is a different product and is NOT retired.** It remains the cron
-trigger. Mentions of Upstash in the cron sections of these pages are correct and
-`scripts/check_architecture_doc.sh` requires them.
+trigger. Mentions of Upstash in the cron sections of these pages are correct.
 
 ## Shared local development
 

@@ -24,8 +24,8 @@ use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
-    TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
+    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 
 /// What every runner measurement is recorded through.
@@ -47,6 +47,10 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
     fn retry(&self, provider: Provider, reason: RetryReason);
     /// A sandbox start ended, after `elapsed`.
     fn sandbox_start(&self, outcome: SandboxStart, elapsed: Duration);
+    /// A sandbox tool call's wait for its lease's build ended, after `elapsed`.
+    fn sandbox_wait(&self, outcome: SandboxWait, elapsed: Duration);
+    /// A sandbox's disk release after its report ended, after `elapsed`.
+    fn sandbox_release(&self, outcome: SandboxRelease, elapsed: Duration);
     /// `frames` live-tail frames never left the runner.
     fn frames_dropped(&self, reason: FrameDrop, frames: u64);
     /// A memory push did not land.
@@ -57,6 +61,8 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
     fn out_of_memory(&self);
     /// A sandbox held between a fleet's leases was parked, reused or released.
     fn sandbox_hold(&self, outcome: SandboxHold);
+    /// A lease's sandbox build ended.
+    fn sandbox_build(&self, outcome: SandboxBuild);
     /// The span budget shed `spans`.
     fn spans_suppressed(&self, spans: u64);
     /// The export lost `count` entries of `signal` before the collector took
@@ -113,6 +119,16 @@ pub fn sandbox_start(outcome: SandboxStart, elapsed: Duration) {
     with(|recorder| recorder.sandbox_start(outcome, elapsed));
 }
 
+/// Records a sandbox tool call's wait for its lease's build.
+pub fn sandbox_wait(outcome: SandboxWait, elapsed: Duration) {
+    with(|recorder| recorder.sandbox_wait(outcome, elapsed));
+}
+
+/// Records a sandbox's disk release after its report.
+pub fn sandbox_release(outcome: SandboxRelease, elapsed: Duration) {
+    with(|recorder| recorder.sandbox_release(outcome, elapsed));
+}
+
 /// Records live-tail frames lost on the runner.
 pub fn frames_dropped(reason: FrameDrop, frames: u64) {
     with(|recorder| recorder.frames_dropped(reason, frames));
@@ -136,6 +152,11 @@ pub fn out_of_memory() {
 /// Records what became of a sandbox held between a fleet's leases.
 pub fn sandbox_hold(outcome: SandboxHold) {
     with(|recorder| recorder.sandbox_hold(outcome));
+}
+
+/// Records how a lease's sandbox build ended.
+pub fn sandbox_build(outcome: SandboxBuild) {
+    with(|recorder| recorder.sandbox_build(outcome));
 }
 
 /// Records spans the budget shed.

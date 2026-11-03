@@ -88,7 +88,7 @@ impl AgentEngine for ScriptedEngine {
         for (index, step) in self.steps.iter().enumerate() {
             match step {
                 Step::Run { tool, spawn } => {
-                    if let Some(executor) = run.executor {
+                    if let Ok(executor) = run.executor.get().await {
                         run_tool(executor, run.events, tool, &call_id(index), spawn).await?;
                     }
                 }

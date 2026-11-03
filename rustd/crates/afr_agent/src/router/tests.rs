@@ -6,7 +6,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
+use afr_executor::{
+    Executor, ExecutorSlot, FileContent, Listing, Process, ProcessId, Spawn, Unavailable,
+};
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::{STUB_PATH, Stub};
 use afr_tools::{
@@ -18,8 +20,8 @@ use super::Router;
 
 /// An executor that counts the calls that crossed into it.
 #[derive(Debug, Default)]
-struct Counting {
-    calls: AtomicUsize,
+pub(super) struct Counting {
+    pub(super) calls: AtomicUsize,
 }
 
 impl Counting {
@@ -68,7 +70,7 @@ impl Executor for Counting {
     }
 }
 
-fn catalog() -> Catalog {
+pub(super) fn catalog() -> Catalog {
     Catalog::new(vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)])
 }
 
@@ -77,7 +79,8 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     let catalog = catalog();
     let selection = catalog.select(&["update_plan", "file_read"]).unwrap();
     let executor = Counting::default();
-    let router = Router::new(&selection, Some(&executor));
+    let slot = ExecutorSlot::ready(&executor);
+    let router = Router::new(&selection, &slot);
 
     let supervised = router
         .dispatch("update_plan", &serde_json::json!({}), &Lease::default())
@@ -102,7 +105,8 @@ async fn a_name_the_lease_was_not_offered_is_a_tool_error() {
     let catalog = catalog();
     let selection = catalog.select(&["update_plan"]).unwrap();
     let executor = Counting::default();
-    let router = Router::new(&selection, Some(&executor));
+    let slot = ExecutorSlot::ready(&executor);
+    let router = Router::new(&selection, &slot);
 
     for name in ["shell", "file_read", "teleport"] {
         let output = router
@@ -124,7 +128,8 @@ async fn a_name_the_lease_was_not_offered_is_a_tool_error() {
 async fn a_provider_hosted_tool_reaching_the_router_names_its_code() {
     let catalog = catalog();
     let selection = catalog.select(&[WEB_SEARCH.name()]).unwrap();
-    let router = Router::new(&selection, None);
+    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let router = Router::new(&selection, &slot);
 
     let output = router
         .dispatch("web_search", &serde_json::json!({}), &Lease::default())
@@ -145,7 +150,8 @@ async fn a_provider_hosted_tool_reaching_the_router_names_its_code() {
 async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     let catalog = catalog();
     let selection = catalog.select(&["file_read"]).unwrap();
-    let router = Router::new(&selection, None);
+    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let router = Router::new(&selection, &slot);
 
     let output = router
         .dispatch("file_read", &serde_json::json!({}), &Lease::default())
@@ -196,7 +202,8 @@ async fn a_handler_claiming_the_providers_runtime_is_never_run() {
     };
     let catalog = Catalog::new(vec![Box::new(claimant)]);
     let selection = catalog.select(&[UPDATE_PLAN.name()]).unwrap();
-    let router = Router::new(&selection, None);
+    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let router = Router::new(&selection, &slot);
 
     let output = router
         .dispatch(

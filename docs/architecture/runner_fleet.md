@@ -592,7 +592,6 @@ A sandbox sees a mount namespace bubblewrap builds from a fixed set, in one orde
 | `/tmp` | the workspace disk's `tmp/` directory | read-write |
 | `/run` | a private tmpfs | read-write |
 | `/workspace` | the workspace disk's `workspace/` directory | read-write |
-| `/run/agentsfleet` | the lease's socket directory | read-write, owned by the sandbox user |
 | `/opt/agentsfleet/agentsfleet-runner` | the runner binary | read-only |
 | `/etc/hosts`, `/etc/resolv.conf` | the lease's rendered resolver files, under `allow_list_egress` only | read-only |
 | `/etc/hosts`, `/etc/resolv.conf` | the host's own files, under `allow_all` only; a file the host lacks stays the image's | read-only |

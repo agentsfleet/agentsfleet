@@ -7,7 +7,7 @@ use std::time::Duration;
 use afr_executor::{Executor, Process, ProcessId, Spawn};
 use bytes::Bytes;
 
-use crate::engine::{Engine, Sandbox, SandboxRequest};
+use crate::engine::{Engine, Killed, Sandbox, SandboxRequest};
 use crate::error::Result;
 
 /// An executor nothing calls; a warm slot is only handed out, never driven.
@@ -47,6 +47,10 @@ pub(super) struct Named {
 
 #[async_trait::async_trait]
 impl Sandbox for Named {
+    async fn kill(&self) -> Killed {
+        unreachable!("a warm slot is handed out or destroyed, never killed")
+    }
+
     fn executor(&self) -> &dyn Executor {
         &self.executor
     }

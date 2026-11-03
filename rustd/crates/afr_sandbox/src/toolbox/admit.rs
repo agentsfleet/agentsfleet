@@ -13,9 +13,11 @@ use rustix::mount::MountFlags;
 use sha2::{Digest as _, Sha256};
 
 use super::adopt;
+use super::loop_device::Access;
 use super::{Manifest, Toolbox, loop_device};
 use crate::error::{Result, ToolboxRefusal, toolbox_refused};
 use crate::probe::MECHANISM_TOOLBOX_FILESYSTEM as EROFS;
+use crate::workspace_disk::Caching;
 
 /// How much of an image one read takes while it is hashed: images run to
 /// gigabytes, and the hash reads through this buffer rather than its own.
@@ -50,24 +52,17 @@ impl Toolbox {
         let digest = manifest.sha256();
         let event = EVENT_ADMISSION_STARTED;
         tracing::info!(digest, event);
-        let admitted = Self::mount_verified(manifest, image, mounts);
-        match &admitted {
-            Ok(_) => {
-                let event = EVENT_ADMISSION_COMPLETED;
-                tracing::info!(digest, event);
-            }
-            Err(error) => {
-                let Logged { error_code, reason } = error.logged();
-                let refusal = error.toolbox_refusal().map(ToolboxRefusal::as_str);
-                let event = EVENT_ADMISSION_FAILED;
-                tracing::error!(digest, error_code, refusal, reason, event);
-            }
-        }
-        admitted
+        logged(digest, Self::mount_verified(manifest, image, mounts))
     }
 
-    /// The checks, the attach and the mount [`Self::admit_now`] logs around.
-    fn mount_verified(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
+    /// The checks, the attach and the mount [`Self::admit_now`] logs around,
+    /// and how the attached device caches the image; none for a mount the
+    /// last runner left, adopted as it is.
+    fn mount_verified(
+        manifest: &Manifest,
+        image: &Path,
+        mounts: &Path,
+    ) -> Result<(Self, Option<Caching>)> {
         let file = open_image(image)?;
         let stat = rustix::fs::fstat(&file)?;
         if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
@@ -84,13 +79,13 @@ impl Toolbox {
             digest,
         };
         if adopt::adopt(&toolbox.root, (stat.st_dev, stat.st_ino))? {
-            return Ok(toolbox);
+            return Ok((toolbox, None));
         }
         fs::create_dir_all(&toolbox.root)?;
-        let attached = loop_device::attach(&file)?;
+        let attached = loop_device::attach(&file, Access::ReadOnly)?;
         let flags = MountFlags::RDONLY | MountFlags::NOSUID | MountFlags::NODEV;
         rustix::mount::mount(&attached.node, &toolbox.root, EROFS, flags, None)?;
-        Ok(toolbox)
+        Ok((toolbox, Some(attached.caching)))
     }
 
     /// Detaches the host's mount of the image and removes its mount point;
@@ -103,6 +98,30 @@ impl Toolbox {
         crate::mounts::unmount(&self.root, false)?;
         Ok(fs::remove_dir(&self.root)?)
     }
+}
+
+/// Logs how the admission of `digest` ended, with the caching its device took
+/// or the refusal and its reason, and hands back the toolbox.
+pub(super) fn logged(
+    digest: &str,
+    admitted: Result<(Toolbox, Option<Caching>)>,
+) -> Result<Toolbox> {
+    match &admitted {
+        Ok((_toolbox, caching)) => {
+            // Absent for a mount adopted from the last runner: this one
+            // attached nothing, so it read no flags back.
+            let caching = caching.map(Caching::as_str);
+            let event = EVENT_ADMISSION_COMPLETED;
+            tracing::info!(digest, caching, event);
+        }
+        Err(error) => {
+            let Logged { error_code, reason } = error.logged();
+            let refusal = error.toolbox_refusal().map(ToolboxRefusal::as_str);
+            let event = EVENT_ADMISSION_FAILED;
+            tracing::error!(digest, error_code, refusal, reason, event);
+        }
+    }
+    admitted.map(|(toolbox, _caching)| toolbox)
 }
 
 /// `image`, opened for reading without following a link and without waiting
@@ -122,7 +141,7 @@ fn open_image(image: &Path) -> Result<File> {
 }
 
 /// The SHA-256 of everything `file` holds, read through its descriptor.
-fn sha256_of(file: &File) -> Result<String> {
+pub(super) fn sha256_of(file: &File) -> Result<String> {
     let mut hasher = IoWrapper(Sha256::new());
     io::copy(
         &mut BufReader::with_capacity(HASH_BUFFER_BYTES, file),

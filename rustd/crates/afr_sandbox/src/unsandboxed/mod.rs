@@ -12,11 +12,13 @@ use std::time::Duration;
 use afr_executor::{Client, Executor};
 use tokio::task::JoinHandle;
 
-use crate::bubblewrap::SOCKET_NAME;
-use crate::engine::{Engine, HostWorkspace, Sandbox, SandboxRequest};
+use crate::engine::{Engine, HostWorkspace, Killed, Sandbox, SandboxRequest};
 use crate::error::{EgressRefusal, ErrorKind, Result, egress_refused, unconfined};
 use crate::network::Allowlist;
 
+/// The executor's socket in each lease's scratch directory: with no sandbox
+/// to inherit a pair, the executor listens on a path.
+pub(crate) const SOCKET_NAME: &str = "executor.sock";
 /// The workspace directory inside each lease's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
 /// How long the in-process executor may take to bind its socket.
@@ -25,6 +27,8 @@ const CONNECT_WITHIN: Duration = Duration::from_secs(1);
 const SERVER_GRACE: Duration = Duration::from_secs(5);
 /// Why an unconfined sandbox is never frozen.
 const NO_FREEZER: &str = "its processes run under no cgroup to freeze";
+/// Why a kill here proves nothing.
+const NO_CGROUP_KILL: &str = "its processes run under no cgroup that a kill could prove empty";
 
 /// Builds an unconfined "sandbox" per lease under a scratch directory.
 #[derive(Debug)]
@@ -130,6 +134,12 @@ impl Sandbox for Unconfined {
     /// allowlist.
     async fn reallow(&mut self, _allowlist: &Allowlist) -> Result<()> {
         Err(egress_refused(EgressRefusal::NoScope))
+    }
+
+    /// Unsettled: its processes run on the host under no cgroup, so no kill
+    /// can prove them gone. They end with the executor's session, at destroy.
+    async fn kill(&self) -> Killed {
+        Killed::Unsettled(unconfined(NO_CGROUP_KILL))
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

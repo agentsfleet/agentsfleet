@@ -21,28 +21,29 @@
 
 use utoipa::OpenApi as _;
 
-/// The collector. Private: [`document`] is the whole of what this module offers.
-#[derive(utoipa::OpenApi)]
-#[openapi(paths(
-    crate::handler::admin::libraries::delete,
-    crate::handler::admin::libraries::list,
-    crate::handler::admin::libraries::patch,
-    crate::handler::admin::library_stage::create,
-    crate::handler::admin::models::create,
-    crate::handler::admin::models::delete,
-    crate::handler::admin::models::list,
-    crate::handler::admin::models::update,
-    crate::handler::admin::platform_keys::deactivate,
-    crate::handler::admin::platform_keys::list,
-    crate::handler::admin::platform_keys::set,
-    crate::handler::operator::events::list,
-    crate::handler::operator::leases::list,
-    crate::handler::operator::runner_delete::handle,
-    crate::handler::operator::runner_patch::handle,
-    crate::handler::operator::runners::detail,
-    crate::handler::operator::runners::list,
-))]
-struct Plane;
+afd_http::plane_collector! {
+    /// The collector. Private: [`document`] is the whole of what this module offers.
+    struct Plane;
+    paths(
+        crate::handler::admin::libraries::delete,
+        crate::handler::admin::libraries::list,
+        crate::handler::admin::libraries::patch,
+        crate::handler::admin::library_stage::create,
+        crate::handler::admin::models::create,
+        crate::handler::admin::models::delete,
+        crate::handler::admin::models::list,
+        crate::handler::admin::models::update,
+        crate::handler::admin::platform_keys::deactivate,
+        crate::handler::admin::platform_keys::list,
+        crate::handler::admin::platform_keys::set,
+        crate::handler::operator::events::list,
+        crate::handler::operator::leases::list,
+        crate::handler::operator::runner_delete::handle,
+        crate::handler::operator::runner_patch::handle,
+        crate::handler::operator::runners::detail,
+        crate::handler::operator::runners::list,
+    )
+}
 
 /// What the operator plane serves, as an `OpenAPI` document.
 ///
