@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 **Test Baseline:** pending, measured before the Pull Request
 
-**Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_002-start.md`, the kernel lane's budgets at `937c8d34d` and `e7c03a27d`
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M237_002-start.md`, the kernel lane's budgets at `937c8d34d` and `c24c4b481`, with `beeacb8b0` and `e7c03a27d` between
 
 **Depends on:** none
 
