@@ -92,4 +92,7 @@ fn test_disk_reports_buffered_fallback() {
 fn test_only_the_toolbox_is_attached_read_only() {
     assert_eq!(Access::ReadOnly.flags(), LO_FLAGS_READ_ONLY);
     assert_eq!(Access::ReadWrite.flags(), 0);
+    // The kernel makes a device read-only when its configuring handle
+    // cannot write, so only the workspace disk's device opens for writing.
+    assert!(!Access::ReadOnly.writes() && Access::ReadWrite.writes());
 }
