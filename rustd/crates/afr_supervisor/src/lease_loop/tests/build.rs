@@ -1,7 +1,7 @@
 //! The build beside the turn: the first model request never waits for the
-//! sandbox, a sandbox-side call does, a failed build leaves the turn going, a
-//! stopped build holds nothing, and checks that would fail on every lease
-//! still refuse it before any model request.
+//! sandbox, a sandbox-side call does, a failed build leaves the turn going,
+//! and checks that would fail on every lease still refuse it before any model
+//! request. How a build ends is in `build_endings.rs`.
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -26,14 +26,14 @@ const PREPARE_TAKES: Duration = Duration::from_millis(500);
 /// How long the token mint takes: past the first renewal, so a renewal the
 /// daemon refuses lands while the checkout waits on it.
 const MINT_TAKES: Duration = RENEWAL_TICK.saturating_mul(2);
-const HELD_UNTIL: &str = "held_until";
+pub(super) const HELD_UNTIL: &str = "held_until";
 const REPOSITORY: &str = "acme/widget";
 const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 /// A host a fleet may name that resolves to the cloud metadata service.
 const INSIDE: &str = "inside.example";
 const METADATA_ADDRESS: Ipv4Addr = Ipv4Addr::new(169, 254, 169, 254);
 
-fn stalled() -> FakeEngine {
+pub(super) fn stalled() -> FakeEngine {
     FakeEngine {
         prepare_takes: PREPARE_TAKES,
         ..FakeEngine::default()
@@ -41,7 +41,7 @@ fn stalled() -> FakeEngine {
 }
 
 /// An engine whose sandboxes offer `workspace` to the host for checkouts.
-fn checking_out(workspace: &Path) -> FakeEngine {
+pub(super) fn checking_out(workspace: &Path) -> FakeEngine {
     FakeEngine {
         workspace: Some(workspace.to_owned()),
         ..FakeEngine::default()
@@ -49,7 +49,7 @@ fn checking_out(workspace: &Path) -> FakeEngine {
 }
 
 /// A lease offering `git`, bound to [`REPOSITORY`] at the fixture branch.
-fn bound() -> LeasePayload<'static> {
+pub(super) fn bound() -> LeasePayload<'static> {
     let mut payload = lease(LEASE_ID, FLEET_ID);
     payload.event.workspace_id = WORKSPACE_ID.into();
     payload.policy.tools = vec![GIT.name().into()];
@@ -62,7 +62,7 @@ fn bound() -> LeasePayload<'static> {
 }
 
 /// The rig's origin for [`REPOSITORY`], made with one commit.
-fn served(rig: &Rig) {
+pub(super) fn served(rig: &Rig) {
     repository(&rig.origins().join(format!("{REPOSITORY}.git")));
 }
 
@@ -82,7 +82,7 @@ fn late_mint_and_lost_renewal(call: &Call) -> Option<Answer> {
     late_mint(call).or_else(|| renewal_lost(call))
 }
 
-fn build_failures(capture: &Capture) -> usize {
+pub(super) fn build_failures(capture: &Capture) -> usize {
     capture
         .events()
         .iter()
@@ -164,10 +164,9 @@ async fn test_build_failure_leaves_the_run_going() {
     let failed = capture.only(EVENT_BUILD_FAILED);
     assert_eq!(failed.field("class"), Some(Unavailable::Prepare.as_str()));
     assert_eq!(failed.field("lease_id"), Some(LEASE_ID));
-    assert!(
-        failed
-            .field("error_code")
-            .is_some_and(|code| code.starts_with("UZ-")),
+    assert_eq!(
+        failed.field("error_code"),
+        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
         "{:?}",
         failed.fields
     );
@@ -287,65 +286,4 @@ async fn test_memory_refusal_starts_no_build() {
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0, "no build started");
     assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
-}
-
-/// A lease cut while its memory loads reaches its build already stopped,
-/// and prepares nothing.
-#[tokio::test(start_paused = true)]
-async fn test_a_build_stopped_before_it_starts_prepares_nothing() {
-    let slow_hydrate_and_lost_renewal: Special = |call| match call.verb {
-        Verb::Hydrate => match daemon(|_call| None)(call) {
-            Answer::Reply(bytes) => Some(Answer::Late(RENEWAL_TICK.saturating_mul(2), bytes)),
-            other => Some(other),
-        },
-        _other => renewal_lost(call),
-    };
-    let mut rig = rig(
-        slow_hydrate_and_lost_renewal,
-        FakeEngine::default(),
-        Behaviour::Stops,
-    );
-
-    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-
-    assert_eq!(reported(&rig.calls())[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(rig.prepared.load(Ordering::SeqCst), 0, "nothing prepared");
-}
-
-/// A build that fails after the turn already answered keeps the turn's
-/// ending in the report, holds nothing, and logs the failure.
-#[tokio::test(start_paused = true)]
-async fn test_late_build_failure_keeps_the_run_ending() {
-    let capture = Capture::install();
-    let engine = FakeEngine {
-        refuse: true,
-        ..stalled()
-    };
-    let mut rig = rig(healthy, engine, Behaviour::Talks);
-
-    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-
-    let report = reported(&rig.calls());
-    assert_eq!(report[OUTCOME], PROCESSED, "{report}");
-    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
-    assert_eq!(build_failures(&capture), 1);
-}
-
-/// A turn that fails while its build still runs stops the build: the sandbox
-/// it finishes is destroyed once, nothing is held, and the report carries the
-/// turn's own failure.
-#[tokio::test(start_paused = true)]
-async fn test_a_failed_turn_stops_its_build_and_holds_nothing() {
-    let engine = stalled();
-    let frozen = Arc::clone(&engine.frozen);
-    let mut rig = rig(healthy, engine, Behaviour::Break);
-
-    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-
-    let report = reported(&rig.calls());
-    assert_eq!(report[FAILURE_REASON], RUNNER_CRASH, "{report}");
-    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
-    assert_eq!(rig.prepared.load(Ordering::SeqCst), 1);
-    assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1, "destroyed once");
-    assert_eq!(frozen.load(Ordering::SeqCst), 0, "never held");
 }

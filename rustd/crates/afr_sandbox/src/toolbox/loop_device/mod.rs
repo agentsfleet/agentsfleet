@@ -132,6 +132,14 @@ impl Access {
         }
     }
 
+    /// Whether the device asks for direct I/O. The workspace disk does, so
+    /// its blocks are cached once, in the sandbox's own memory. The toolbox
+    /// does not: read past the host's cache, its cold first use measured
+    /// 1.1 to 3 times slower at p99, and a host caches its one image once.
+    const fn direct_io(self) -> bool {
+        matches!(self, Self::ReadWrite)
+    }
+
     /// Whether the device itself is opened for writing. `LOOP_CONFIGURE`
     /// makes a device read-only when the handle configuring it cannot write,
     /// whatever the flags ask.
@@ -152,11 +160,12 @@ pub(crate) struct Attached {
     _device: File,
 }
 
-/// Attaches `image` to a free loop device from the descriptor itself, asking
-/// for direct I/O and page-sized blocks in the one call. The device detaches
-/// itself once its mount lets go of it. A kernel that refuses direct I/O
-/// for this file (`EINVAL`) gets the attach again without it: a buffered
-/// device, which [`Attached::caching`] says, not a failure.
+/// Attaches `image` to a free loop device from the descriptor itself, with
+/// page-sized blocks and, for a disk that writes, direct I/O, in the one
+/// call. The device detaches itself once its mount lets go of it. A kernel
+/// that refuses direct I/O for this file (`EINVAL`) gets the attach again
+/// without it: a buffered device, which [`Attached::caching`] says, not a
+/// failure.
 pub(crate) fn attach(image: &File, access: Access) -> Result<Attached> {
     let control = OpenOptions::new()
         .read(true)
@@ -173,10 +182,14 @@ pub(crate) fn attach(image: &File, access: Access) -> Result<Attached> {
         reserved: [0; 8],
     };
     let (direct, buffered) = (config(LO_FLAGS_DIRECT_IO), config(0));
-    let attached = direct_or_buffered(
-        || until_free(|| configure_free(&control, &direct, access)),
-        || until_free(|| configure_free(&control, &buffered, access)),
-    );
+    let attached = if access.direct_io() {
+        direct_or_buffered(
+            || until_free(|| configure_free(&control, &direct, access)),
+            || until_free(|| configure_free(&control, &buffered, access)),
+        )
+    } else {
+        until_free(|| configure_free(&control, &buffered, access))
+    };
     Ok(attached?)
 }
 

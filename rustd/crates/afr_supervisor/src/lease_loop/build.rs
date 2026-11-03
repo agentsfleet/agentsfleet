@@ -5,9 +5,9 @@
 //!   └── a stop is read between steps, never mid-step: a thaw always finishes ──┘
 //! ```
 //!
-//! The build owns its sandbox until it is ready. A failure or a stop destroys
-//! what it made at once, so nothing half-built is ever held, and fills the
-//! slot with why, so every waiting call answers. A ready sandbox moves into
+//! The build owns its sandbox until it is ready. A failure or a stop fills the
+//! slot with why first, so every waiting call answers, then destroys what it
+//! made, so nothing half-built is ever held. A ready sandbox moves into
 //! the lease's cell, which outlives the turn, and the slot lends the turn its
 //! executor from there. Restore, when workspace snapshots land, is one more
 //! way a repository arrives in place of its checkout.
@@ -18,7 +18,7 @@ use std::time::Instant;
 use afd_core::error_code::{Coded as _, Logged};
 use afr_executor::{ExecutorSlot, Unavailable};
 use afr_sandbox::{Limits, Sandbox, SandboxRequest};
-use afr_telemetry::labels::SandboxStart;
+use afr_telemetry::labels::{SandboxBuild, SandboxStart};
 use afr_telemetry::record;
 use tokio_util::sync::CancellationToken;
 
@@ -80,6 +80,26 @@ impl From<Ended> for Unbuilt {
     }
 }
 
+/// The label a build's end is counted under. A build fails only at its
+/// prepare or its checkout.
+fn counted(built: &Result<Box<dyn Sandbox>, Unbuilt>) -> SandboxBuild {
+    match built {
+        Ok(_sandbox) => SandboxBuild::Ready,
+        Err(Unbuilt {
+            ended: Ended::Stopped,
+            ..
+        }) => SandboxBuild::Stopped,
+        Err(Unbuilt {
+            ended: Ended::Failed(Unavailable::Checkout, _logged),
+            ..
+        }) => SandboxBuild::Checkout,
+        Err(Unbuilt {
+            ended: Ended::Failed(_prepare, _logged),
+            ..
+        }) => SandboxBuild::Prepare,
+    }
+}
+
 impl LeaseRun<'_> {
     /// Builds the lease's sandbox into `cell` and fills `slot`: with its
     /// executor once every repository is in place, or with why not.
@@ -89,7 +109,9 @@ impl LeaseRun<'_> {
         cell: &'c OnceLock<Box<dyn Sandbox>>,
         slot: &ExecutorSlot<'c>,
     ) {
-        match self.built(build).await {
+        let made = self.built(build).await;
+        record::sandbox_build(counted(&made));
+        match made {
             Ok(sandbox) => {
                 let sandbox = cell.get_or_init(|| sandbox);
                 slot.fill(Ok(sandbox.executor()));
@@ -102,7 +124,8 @@ impl LeaseRun<'_> {
                 // seconds while the cgroup drains.
                 slot.fill(Err(ended.class()));
                 if let Some(sandbox) = leftover {
-                    self.destroy(sandbox).await;
+                    // Logged where it failed; what is left is the boot sweep's.
+                    let _left_for_the_sweep = self.destroy(sandbox).await;
                 }
             }
         }

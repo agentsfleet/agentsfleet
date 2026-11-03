@@ -117,7 +117,7 @@ fn host_staging(lane: &Lane, cache: Cache) -> Result<Duration, Failed> {
 }
 
 /// Drops the kernel's clean page cache, dentries and inodes.
-pub(crate) fn drop_caches() -> Result<(), Failed> {
+fn drop_caches() -> Result<(), Failed> {
     fs::write(DROP_CACHES, DROP_ALL).map_err(|error| format!("{DROP_CACHES}: {error}").into())
 }
 

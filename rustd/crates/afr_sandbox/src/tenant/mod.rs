@@ -81,9 +81,7 @@ impl Inherited {
     ///
     /// # Errors
     /// A flag is missing or does not name a number.
-    pub fn parse_from(
-        args: impl IntoIterator<Item = OsString>,
-    ) -> std::result::Result<Self, clap::Error> {
+    pub fn parse_from(args: impl IntoIterator<Item = OsString>) -> Result<Self, clap::Error> {
         Entry::try_parse_from(args).map(|entry| entry.inherited)
     }
 

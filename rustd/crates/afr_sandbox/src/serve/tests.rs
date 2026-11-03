@@ -114,7 +114,15 @@ fn test_an_entry_handed_its_descriptors_goes_on_to_harden() {
     .unwrap();
     let (handover, _runner) = crate::tenant::Handover::with_link(tenant).unwrap();
 
-    let refused = super::serve_sandboxed(handover.into_inherited()).unwrap_err();
+    // A second thread held open for the call, so hardening refuses whatever
+    // the test harness does with its own: nothing confines this process.
+    let refused = std::thread::scope(|scope| {
+        let (hold, wait) = mpsc::channel::<()>();
+        scope.spawn(move || wait.recv());
+        let refused = super::serve_sandboxed(handover.into_inherited()).unwrap_err();
+        drop(hold);
+        refused
+    });
 
     let expected = if cfg!(target_os = "linux") {
         "second thread"

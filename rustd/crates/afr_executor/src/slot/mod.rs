@@ -95,8 +95,9 @@ impl<'a> ExecutorSlot<'a> {
         Self::default()
     }
 
-    /// A slot holding `executor` from the start, for a run whose sandbox was
-    /// ready before it began.
+    /// A slot holding `executor` from the start: what a caller passes when it
+    /// has no build to wait on, such as a suite driving a run against an
+    /// executor it already started.
     #[must_use]
     pub fn ready(executor: &'a dyn Executor) -> Self {
         Self::filled_with(Ok(executor))

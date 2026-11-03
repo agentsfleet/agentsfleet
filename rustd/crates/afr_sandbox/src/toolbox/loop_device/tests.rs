@@ -104,6 +104,8 @@ fn test_only_the_toolbox_is_attached_read_only() {
     // The kernel makes a device read-only when its configuring handle
     // cannot write, so only the workspace disk's device opens for writing.
     assert!(!Access::ReadOnly.writes() && Access::ReadWrite.writes());
+    // Only the workspace disk reads past the host's cache.
+    assert!(!Access::ReadOnly.direct_io() && Access::ReadWrite.direct_io());
 }
 
 /// Direct I/O first, and the buffered attach only when the kernel refuses

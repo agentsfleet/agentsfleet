@@ -23,8 +23,8 @@ use std::time::Duration;
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxRelease, SandboxStart,
-    SandboxWait, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
+    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 
 /// What every runner measurement is recorded through.
@@ -52,6 +52,8 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
     fn out_of_memory(&self);
     /// A sandbox held between a fleet's leases was parked, reused or released.
     fn sandbox_hold(&self, outcome: SandboxHold);
+    /// A lease's sandbox build ended.
+    fn sandbox_build(&self, outcome: SandboxBuild);
     /// The span budget shed `spans`.
     fn spans_suppressed(&self, spans: u64);
     /// The export lost `count` entries of `signal` before the collector took
@@ -131,6 +133,11 @@ pub fn out_of_memory() {
 /// Records what became of a sandbox held between a fleet's leases.
 pub fn sandbox_hold(outcome: SandboxHold) {
     with(|recorder| recorder.sandbox_hold(outcome));
+}
+
+/// Records how a lease's sandbox build ended.
+pub fn sandbox_build(outcome: SandboxBuild) {
+    with(|recorder| recorder.sandbox_build(outcome));
 }
 
 /// Records spans the budget shed.

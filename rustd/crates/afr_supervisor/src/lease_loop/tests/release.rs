@@ -9,6 +9,7 @@ use afr_telemetry::labels::SandboxRelease;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::super::EVENT_COMPLETED;
+use super::super::hold::{EVENT_DESTROY_FAILED, EVENT_KILL_UNSETTLED};
 use super::*;
 use crate::test_support::{DESTROY, KILL};
 
@@ -73,12 +74,11 @@ async fn test_unsettled_kill_still_reports() {
 
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
     assert_eq!(*steps.lock().unwrap(), [KILL, REPORT, DESTROY]);
-    let unsettled = capture.only("sandbox_kill_unsettled");
+    let unsettled = capture.only(EVENT_KILL_UNSETTLED);
     assert_eq!(unsettled.field("lease_id"), Some(LEASE_ID));
-    assert!(
-        unsettled
-            .field("error_code")
-            .is_some_and(|code| code.starts_with("UZ-")),
+    assert_eq!(
+        unsettled.field("error_code"),
+        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
         "{:?}",
         unsettled.fields
     );
@@ -110,7 +110,7 @@ async fn test_late_release_failure_leaves_work_for_the_sweep() {
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
     assert_eq!(*steps.lock().unwrap(), [KILL, REPORT, DESTROY]);
     assert_eq!(releases(&recorded), [SandboxRelease::Failed]);
-    let failed = capture.only("sandbox_destroy_failed");
+    let failed = capture.only(EVENT_DESTROY_FAILED);
     assert_eq!(failed.field("lease_id"), Some(LEASE_ID));
 }
 
@@ -118,7 +118,7 @@ async fn test_late_release_failure_leaves_work_for_the_sweep() {
 /// only once it is done, so the worker takes no lease while a disk is still
 /// held: `report_ms` leaves the release out, and the wall keeps it in.
 #[tokio::test(start_paused = true)]
-async fn test_worker_polls_after_release() {
+async fn test_a_lease_returns_only_after_its_release() {
     let capture = Capture::install();
     let engine = FakeEngine {
         teardown_takes: RELEASE_TAKES,

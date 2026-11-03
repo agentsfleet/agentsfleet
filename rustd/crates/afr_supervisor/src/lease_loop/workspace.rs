@@ -14,6 +14,7 @@
 //! holds it for the fleet's next lease or destroys it.
 
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use afd_core::error_code::{Coded as _, Logged};
 use afd_wire::lease::SandboxLimits;
@@ -33,6 +34,14 @@ use crate::egress::Bound;
 use crate::holds::Release;
 use crate::report::Ending;
 
+/// How long a turn that ended processed waits for its build, so the
+/// complete sandbox can be held: long enough for a checkout from a warm
+/// mirror, short against the fleet's next turn, which waits on this lease's
+/// report. The answer is already out; past this, the build is stopped and
+/// the report goes, rather than a stalled fetch holding the lease.
+pub(super) const BUILD_AFTER_ANSWER: Duration = Duration::from_secs(20);
+/// The event a build stopped because it outlasted its turn is logged under.
+pub(super) const EVENT_BUILD_OUTLASTED: &str = "sandbox_build_outlasted_turn";
 const DETAIL_SIZE: &str = "the lease asked for a sandbox size outside the bounds a runner builds";
 /// What a lease whose egress allowlist could not be resolved reports: a host
 /// that does not resolve, resolves to IPv6 alone, or an allowlist past its cap.
@@ -98,9 +107,10 @@ impl LeaseRun<'_> {
     }
 
     /// Runs the build and the turn together, and answers the turn's ending
-    /// once both are done. A turn that ended processed and uncut waits for
-    /// the build, so a complete sandbox can be held; any other ending stops
-    /// the build first. Either way the build runs to its end, never dropped
+    /// once both are done. A turn that ended processed and uncut waits up to
+    /// [`BUILD_AFTER_ANSWER`] for the build, so a complete sandbox can be
+    /// held; any other ending, or a build that outlasts the wait, stops the
+    /// build first. Either way the build runs to its end, never dropped
     /// mid-step.
     async fn beside(
         &self,
@@ -113,10 +123,16 @@ impl LeaseRun<'_> {
             biased;
             () = &mut building => driving.await,
             ending = &mut driving => {
-                if !ending.processed() || self.interrupt.is_cancelled() {
+                let waits = ending.processed() && !self.interrupt.is_cancelled();
+                if !waits || tokio::time::timeout(BUILD_AFTER_ANSWER, &mut building).await.is_err() {
+                    if waits {
+                        let lease_id = self.ids.lease.as_str();
+                        let event = EVENT_BUILD_OUTLASTED;
+                        tracing::info!(lease_id, event, "the build outlasted its answered turn");
+                    }
                     stop.cancel();
+                    building.await;
                 }
-                building.await;
                 ending
             }
         }

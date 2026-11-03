@@ -16,17 +16,18 @@ use crate::host::HostTools;
 
 /// A program that does nothing and succeeds: a format that made nothing.
 const SUCCEEDS: &str = "/usr/bin/true";
-/// How long a slow mount takes, against the start's far shorter wait.
-const SLOW_MOUNT: Duration = Duration::from_millis(200);
 /// How long a test waits for the blocking pool to undo a mount.
 const PATIENCE: Duration = Duration::from_secs(5);
 /// How often a test looks again while it waits.
 const POLL: Duration = Duration::from_millis(5);
 /// The size every test disk asks for.
 const DISK_BYTES: u64 = 4_096;
-/// Set by the slow mount once the blocking pool runs it, so its test drops
+/// Set by the held mount once the blocking pool runs it, so its test drops
 /// the start mid-mount and never before the mount began.
 static MOUNTING: AtomicBool = AtomicBool::new(false);
+/// Set by that test once the start is dropped, so the mount lands only
+/// after nobody can hear it.
+static DROPPED: AtomicBool = AtomicBool::new(false);
 /// Tools that cannot run, so every build stops at a known step.
 fn broken(mke2fs: &str) -> HostTools {
     HostTools {
@@ -162,7 +163,10 @@ async fn test_a_mount_nobody_heard_is_undone() {
         WorkspaceDisk::create(
             &faked(|_image, _mount_point| {
                 MOUNTING.store(true, Ordering::SeqCst);
-                std::thread::sleep(SLOW_MOUNT);
+                let deadline = std::time::Instant::now() + PATIENCE;
+                while !DROPPED.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+                    std::thread::sleep(POLL);
+                }
                 Ok(Caching::Direct)
             }),
             &path,
@@ -171,11 +175,16 @@ async fn test_a_mount_nobody_heard_is_undone() {
         )
         .await
     });
-    while !MOUNTING.load(Ordering::SeqCst) {
-        tokio::time::sleep(POLL).await;
-    }
+    tokio::time::timeout(PATIENCE, async {
+        while !MOUNTING.load(Ordering::SeqCst) {
+            tokio::time::sleep(POLL).await;
+        }
+    })
+    .await
+    .unwrap();
 
     start.abort();
+    DROPPED.store(true, Ordering::SeqCst);
 
     assert!(start.await.unwrap_err().is_cancelled(), "dropped mid-mount");
     assert!(dir.path().join(WORKSPACE_DIR).exists(), "still mounting");
