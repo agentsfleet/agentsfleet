@@ -96,8 +96,8 @@ mod refusals {
         crate::toolbox::admit::sha256_of(&written).unwrap_err();
     }
 
-    /// A device that refused direct I/O still admits its toolbox, and the
-    /// admission names the buffered caching it took.
+    /// A buffered device admits its toolbox, and the admission names the
+    /// caching it took.
     #[test]
     fn test_toolbox_buffered_fallback_is_logged() {
         let capture = afd_core::test_util::trace::Capture::install();

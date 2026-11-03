@@ -34,8 +34,10 @@ const EVENT_REFILL_FAILED: &str = "sandbox_refill_failed";
 const EVENT_FREEZE_STARTED: &str = "sandbox_freeze_started";
 const EVENT_FREEZE_COMPLETED: &str = "sandbox_freeze_completed";
 const EVENT_FREEZE_FAILED: &str = "sandbox_freeze_failed";
-const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
-const EVENT_KILL_UNSETTLED: &str = "sandbox_kill_unsettled";
+pub(super) const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
+const EVENT_KILL_STARTED: &str = "sandbox_kill_started";
+const EVENT_KILL_COMPLETED: &str = "sandbox_kill_completed";
+pub(super) const EVENT_KILL_UNSETTLED: &str = "sandbox_kill_unsettled";
 /// The workspace's own top, as the executor reads a relative path whatever
 /// its root is mounted at.
 const WORKSPACE_TOP: &str = ".";
@@ -185,17 +187,25 @@ impl LeaseRun<'_> {
     /// Kills `sandbox` now, for its release after the report. A kill that
     /// cannot prove the tree empty still lets the report post, and warns.
     async fn kill(&self, sandbox: Box<dyn Sandbox>) -> Fate {
-        if let Killed::Unsettled(failure) = sandbox.kill().await {
-            let Logged { error_code, reason } = failure.logged();
-            let lease_id = self.ids.lease.as_str();
-            let event = EVENT_KILL_UNSETTLED;
-            tracing::warn!(
-                error_code,
-                lease_id,
-                reason,
-                event,
-                "a sandbox's processes were not proved gone; the report posts anyway"
-            );
+        let lease_id = self.ids.lease.as_str();
+        let event = EVENT_KILL_STARTED;
+        tracing::debug!(lease_id, event);
+        match sandbox.kill().await {
+            Killed::Settled => {
+                let event = EVENT_KILL_COMPLETED;
+                tracing::debug!(lease_id, event);
+            }
+            Killed::Unsettled(failure) => {
+                let Logged { error_code, reason } = failure.logged();
+                let event = EVENT_KILL_UNSETTLED;
+                tracing::warn!(
+                    error_code,
+                    lease_id,
+                    reason,
+                    event,
+                    "a sandbox's processes were not proved gone; the report posts anyway"
+                );
+            }
         }
         Fate::Killed(sandbox)
     }
@@ -208,17 +218,19 @@ impl LeaseRun<'_> {
             return;
         };
         let started = Instant::now();
-        let outcome = if self.destroy(sandbox).await {
-            SandboxRelease::Released
-        } else {
-            SandboxRelease::Failed
+        let outcome = match self.destroy(sandbox).await {
+            Ok(()) => SandboxRelease::Released,
+            Err(_logged) => SandboxRelease::Failed,
         };
         record::sandbox_release(outcome, started.elapsed());
     }
 
-    /// Ends every process in `sandbox` and removes it; answers whether it all
-    /// went.
-    pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) -> bool {
+    /// Ends every process in `sandbox` and removes it, logging a teardown
+    /// that left something behind.
+    ///
+    /// # Errors
+    /// The engine's own, once logged: what is left is the boot sweep's.
+    pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) -> afr_sandbox::Result<()> {
         let destroyed = sandbox.destroy().await;
         if let Err(failure) = &destroyed {
             let code = failure.code().as_str();
@@ -231,7 +243,7 @@ impl LeaseRun<'_> {
                 "a sandbox did not tear down cleanly"
             );
         }
-        destroyed.is_ok()
+        destroyed
     }
 }
 

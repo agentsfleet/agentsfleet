@@ -14,6 +14,32 @@ use libtest_mimic::Failed;
 
 use crate::lane::{Lane, NOT_TOLD};
 use crate::run::{expect, run, runtime, shell};
+use crate::trials::Body;
+
+/// The executor's link: no socket file, no socket in a tenant process, no
+/// lease holding another's, a dead entry's reason, no socket directory.
+pub(crate) const TRIALS: &[(&str, Body)] = &[
+    (
+        "test_executor_answers_over_the_inherited_pair",
+        answers_over_the_inherited_pair,
+    ),
+    (
+        "test_tenant_process_holds_no_executor_socket",
+        tenant_holds_no_executor_socket,
+    ),
+    (
+        "test_concurrent_spawn_inherits_no_other_socket",
+        concurrent_spawn_inherits_no_other_socket,
+    ),
+    (
+        "test_dead_entry_is_refused_with_its_reason",
+        dead_entry_is_refused_with_its_reason,
+    ),
+    (
+        "test_sandbox_has_no_socket_directory_bind",
+        has_no_socket_directory_bind,
+    ),
+];
 
 /// What a socket descriptor's link reads as, before its inode.
 const SOCKET: &str = "socket:";
@@ -30,14 +56,14 @@ const WRITABLE: [&str; 2] = ["/tmp", "/workspace"];
 /// The file systems a writable bind of a host disk would show as; every
 /// other mount inside is the sandbox's own.
 const DISK_FILESYSTEMS: [&str; 4] = ["ext4", "btrfs", "xfs", "erofs"];
-/// The two leases started at once.
-const AT_ONCE: [&str; 2] = ["link-a", "link-b"];
+/// The leases started at once, each prepare on a worker of its own.
+const AT_ONCE: [&str; 4] = ["link-a", "link-b", "link-c", "link-d"];
 /// A flag the sandbox side cannot parse, so it dies before it answers.
 const UNKNOWN_FLAG: &str = "--no-such-flag";
 /// Bubblewrap's own processes, which hold the entry's end as they start it.
 const BWRAP: &str = "bwrap";
 
-/// Dimension 2.1 (`M237_002`): a new sandbox answers over its pair, and no
+/// A new sandbox answers over its pair, and no
 /// socket file is made for it on the host or inside.
 pub(crate) fn answers_over_the_inherited_pair(lane: &Lane) -> Result<(), Failed> {
     let lease_id = "link-answers";
@@ -62,7 +88,7 @@ pub(crate) fn answers_over_the_inherited_pair(lane: &Lane) -> Result<(), Failed>
     })
 }
 
-/// Dimension 2.2 (`M237_002`): a process the executor starts holds no socket.
+/// A process the executor starts holds no socket.
 pub(crate) fn tenant_holds_no_executor_socket(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let sandbox = lane
@@ -79,33 +105,57 @@ pub(crate) fn tenant_holds_no_executor_socket(lane: &Lane) -> Result<(), Failed>
     })
 }
 
-/// Dimension 2.3 (`M237_002`): two sandboxes started at once on a runtime
-/// with several workers each hold their own link, and neither's processes
-/// hold the other's.
+/// Sandboxes started at once, each prepare spawned on a worker of its own
+/// and released together, so one lease's fork can land while another holds
+/// its entry's end: no process of any lease holds another lease's link.
+/// Close-on-exec cleared in the runner rather than in the child would leak
+/// a link here.
 pub(crate) fn concurrent_spawn_inherits_no_other_socket(lane: &Lane) -> Result<(), Failed> {
-    let engine = lane.engine();
+    let engine = std::sync::Arc::new(lane.engine());
     let workers = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(AT_ONCE.len())
         .enable_all()
         .build()?;
     workers.block_on(async {
-        let [first, second] =
-            AT_ONCE.map(|lease_id| SandboxRequest::new(lease_id, Limits::default()));
-        let (first, second) = tokio::join!(engine.prepare(first), engine.prepare(second));
-        let (first, second) = (first?, second?);
-        let held = AT_ONCE.map(|lease_id| held_by(lane, lease_id));
-        first.destroy().await?;
-        second.destroy().await?;
-        let [a, b] = held;
-        let (a, b) = (a?, b?);
-        expect(
-            !a.every.contains(&b.link) && !b.every.contains(&a.link),
-            format!("a lease holds another's link: {a:?} {b:?}"),
-        )?;
-        expect(a.link != b.link, "each lease has its own link")
+        let together = std::sync::Arc::new(tokio::sync::Barrier::new(AT_ONCE.len()));
+        let starting = AT_ONCE.map(|lease_id| {
+            let (engine, together) = (
+                std::sync::Arc::clone(&engine),
+                std::sync::Arc::clone(&together),
+            );
+            tokio::spawn(async move {
+                together.wait().await;
+                engine
+                    .prepare(SandboxRequest::new(lease_id, Limits::default()))
+                    .await
+            })
+        });
+        let mut sandboxes = Vec::new();
+        for started in starting {
+            sandboxes.push(started.await??);
+        }
+        let held: Result<Vec<Held>, Failed> = AT_ONCE
+            .iter()
+            .map(|lease_id| held_by(lane, lease_id))
+            .collect();
+        for sandbox in sandboxes {
+            sandbox.destroy().await?;
+        }
+        let held = held?;
+        for (index, one) in held.iter().enumerate() {
+            for other in held.iter().skip(index + 1) {
+                expect(one.link != other.link, "each lease has its own link")?;
+                expect(
+                    !one.every.contains(&other.link) && !other.every.contains(&one.link),
+                    format!("a lease holds another's link: {one:?} {other:?}"),
+                )?;
+            }
+        }
+        Ok(())
     })
 }
 
-/// Dimension 2.4 (`M237_002`): an entry that exits before it answers is
+/// An entry that exits before it answers is
 /// refused with what it said on its error stream.
 pub(crate) fn dead_entry_is_refused_with_its_reason(lane: &Lane) -> Result<(), Failed> {
     let mut config = lane.config.clone();
@@ -125,7 +175,7 @@ pub(crate) fn dead_entry_is_refused_with_its_reason(lane: &Lane) -> Result<(), F
     )
 }
 
-/// Dimension 2.5 (`M237_002`): the sandbox's only writable mounts of a disk
+/// The sandbox's only writable mounts of a disk
 /// are `/workspace` and `/tmp`, and no socket directory is bound.
 pub(crate) fn has_no_socket_directory_bind(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {

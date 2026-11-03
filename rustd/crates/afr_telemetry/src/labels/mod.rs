@@ -133,8 +133,24 @@ afd_observability::closed_set! {
     SandboxStart {
         /// The sandbox's executor answered.
         Ready => "ready",
-        /// The host could not build it, and the lease ended at startup.
+        /// The host could not build it.
         Failed => FAILED,
+    }
+}
+
+afd_observability::closed_set! {
+    /// How a lease's sandbox build, beside its first model call, ended. A
+    /// build that fails no longer ends its lease, so this is where a host or
+    /// repository fault shows.
+    SandboxBuild {
+        /// Every repository was in place, and the executor answered.
+        Ready => "ready",
+        /// The engine could not prepare the sandbox.
+        Prepare => "prepare",
+        /// A bound repository would not check out.
+        Checkout => "checkout",
+        /// The lease ended first, and the build was stopped.
+        Stopped => "stopped",
     }
 }
 

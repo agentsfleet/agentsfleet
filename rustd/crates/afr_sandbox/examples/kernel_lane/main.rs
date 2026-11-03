@@ -28,8 +28,6 @@ mod admission;
 #[cfg(target_os = "linux")]
 mod budgets;
 #[cfg(target_os = "linux")]
-mod caching;
-#[cfg(target_os = "linux")]
 mod confinement;
 #[cfg(target_os = "linux")]
 mod delegation;

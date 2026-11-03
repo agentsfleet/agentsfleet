@@ -16,8 +16,8 @@ use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
 use crate::labels::{
-    FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxHold,
-    SandboxRelease, SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxBuild,
+    SandboxHold, SandboxRelease, SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -64,6 +64,10 @@ pub const TOOL_CALL_DURATION: Declared<HistogramKind> =
 pub const TOOL_OUT_OF_MEMORY: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_tool_out_of_memory_total");
 
+/// Lease sandbox builds, by how each ended.
+pub const SANDBOX_BUILDS: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_sandbox_builds_total");
+
 /// Sandboxes held between a fleet's leases, by what became of them.
 pub const SANDBOX_HOLDS: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_sandbox_holds_total");
@@ -93,6 +97,7 @@ pub struct Families {
     sandbox_starts: Histogram<f64>,
     sandbox_waits: Histogram<f64>,
     sandbox_releases: Histogram<f64>,
+    sandbox_builds: Counter<u64>,
     frames_dropped: Counter<u64>,
     push_failures: Counter<u64>,
     tool_calls: Histogram<f64>,
@@ -115,6 +120,7 @@ impl Families {
             sandbox_starts: instruments.histogram_f64(&SANDBOX_START_DURATION)?,
             sandbox_waits: instruments.histogram_f64(&SANDBOX_WAIT_DURATION)?,
             sandbox_releases: instruments.histogram_f64(&SANDBOX_RELEASE_DURATION)?,
+            sandbox_builds: instruments.counter_u64(&SANDBOX_BUILDS)?,
             frames_dropped: instruments.counter_u64(&ACTIVITY_FRAMES_DROPPED)?,
             push_failures: instruments.counter_u64(&MEMORY_PUSH_FAILURES)?,
             tool_calls: instruments.histogram_f64(&TOOL_CALL_DURATION)?,
@@ -194,6 +200,11 @@ impl Recorder for Families {
 
     fn sandbox_hold(&self, outcome: SandboxHold) {
         self.sandbox_holds
+            .add(1, &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())]);
+    }
+
+    fn sandbox_build(&self, outcome: SandboxBuild) {
+        self.sandbox_builds
             .add(1, &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())]);
     }
 

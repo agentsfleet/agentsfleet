@@ -55,8 +55,9 @@ impl LeaseRun<'_> {
         Ok(Some(Plan { wanted, scope }))
     }
 
-    /// Checks `plan`'s repositories out into `sandbox`'s workspace, stopping
-    /// between repositories once `stop` is cancelled.
+    /// Checks `plan`'s repositories out into `sandbox`'s workspace. A cancelled
+    /// `stop` ends the token's mint where it stands, interrupts a fetch, and
+    /// is read between repositories.
     ///
     /// # Errors
     /// [`Ended`]: the stop, or what failed: an engine that offers no host
@@ -71,9 +72,13 @@ impl LeaseRun<'_> {
         let workspace = sandbox
             .workspace()
             .ok_or_else(|| unfinished(&error::config(DETAIL_NO_HOST_WORKSPACE)))?;
-        let token = credentials::mint(&self.lessee.plane, &self.ids.lease, CREDENTIAL_GITHUB, None)
-            .await
-            .map_err(|failure| unfinished(&failure))?;
+        let minting =
+            credentials::mint(&self.lessee.plane, &self.ids.lease, CREDENTIAL_GITHUB, None);
+        // A mint dropped mid-call leaves a short-lived token unused; it lapses.
+        let token = tokio::select! {
+            minted = minting => minted.map_err(|failure| unfinished(&failure))?,
+            () = stop.cancelled() => return Err(Ended::Stopped),
+        };
         for checkout in &plan.wanted {
             if stop.is_cancelled() {
                 return Err(Ended::Stopped);

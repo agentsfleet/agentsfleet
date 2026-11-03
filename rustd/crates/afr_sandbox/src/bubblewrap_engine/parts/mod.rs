@@ -11,12 +11,11 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use afd_core::error_code::{Coded as _, Logged};
 use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
 
 use crate::cgroup::{CGROUP_PROCS, Freezer, LeaseCgroup};
-use crate::egress::{Host, Scope};
+use crate::egress::Scope;
 use crate::engine::Killed;
 use crate::error::{EgressRefusal, Error, Result, cgroup, egress_refused, program, unconfined};
 use crate::network::Allowlist;
@@ -27,6 +26,8 @@ use super::NO_CGROUP;
 use super::held::off_runtime;
 use super::names::Names;
 use super::stderr::drain;
+
+mod teardown;
 
 /// What a process writes to `cgroup.procs` to move itself.
 const SELF: &[u8] = b"0";
@@ -217,134 +218,6 @@ impl Parts {
         match cgroup.kill_and_drain().await {
             Ok(()) => Killed::Settled,
             Err(failure) => Killed::Unsettled(failure),
-        }
-    }
-
-    /// Ends every process, then releases the cgroup, the disk and the
-    /// directory, off the async runtime: removing a cgroup waits for the
-    /// kernel to reap.
-    pub(super) async fn teardown(mut self) -> Result<()> {
-        let event = EVENT_TEARDOWN_STARTED;
-        tracing::debug!(lease_id = self.lease_id.as_str(), event);
-        if let Some(drain) = self.stderr.take() {
-            drain.abort();
-        }
-        // The lease's name comes back with the outcome, so the release is
-        // logged here, where the caller's subscriber is.
-        let (released, lease_id) = tokio::task::spawn_blocking(move || {
-            (self.release(), std::mem::take(&mut self.lease_id))
-        })
-        .await?;
-        log_release(&lease_id, released.as_ref().err());
-        released
-    }
-
-    /// Moves everything still held into parts of its own, leaving these empty.
-    fn take(&mut self) -> Self {
-        Self {
-            lease_id: std::mem::take(&mut self.lease_id),
-            dir: self.dir.take(),
-            disk: self.disk.take(),
-            cgroup: self.cgroup.take(),
-            egress: self.egress.take(),
-            child: self.child.take(),
-            stderr: self.stderr.take(),
-        }
-    }
-
-    /// Releases everything still held, in the one order that works: processes
-    /// die before their cgroup goes and before their scope's rules do, so no
-    /// packet leaves after its rules, and the disk is unmounted before its
-    /// directory is removed. A disk that will not unmount keeps its directory,
-    /// image and all, for the boot sweep: an attached loop device is never
-    /// left on a file nobody can name.
-    fn release(&mut self) -> Result<()> {
-        let mut first = None;
-        let mut keep = |step: Result<()>| {
-            if let Err(error) = step {
-                first.get_or_insert(error);
-            }
-        };
-        if let Some(cgroup) = &self.cgroup {
-            keep(cgroup.kill());
-        }
-        if let Some(mut child) = self.child.take() {
-            // Usually already gone with its cgroup; a sandbox that died on its
-            // own is not a teardown failure.
-            if matches!(child.try_wait(), Ok(None)) {
-                keep(child.start_kill().map_err(Error::from));
-            }
-        }
-        if let Some(scope) = self.egress.take() {
-            keep(scope.remove(&Host));
-        }
-        if let Some(cgroup) = self.cgroup.take() {
-            keep(cgroup.remove());
-        }
-        let disk_released = self.disk.take().is_none_or(|disk| {
-            let released = disk.release();
-            let ok = released.is_ok();
-            keep(released);
-            ok
-        });
-        if let Some(dir) = self.dir.take().filter(|_| disk_released) {
-            keep(fs::remove_dir_all(dir).map_err(Error::from));
-        }
-        first.map_or(Ok(()), Err)
-    }
-}
-
-impl Drop for Parts {
-    fn drop(&mut self) {
-        // After a teardown nothing is left; after a cancelled start or a
-        // sandbox nobody destroyed, this is the only cleanup there will be.
-        let held = self.dir.is_some()
-            || self.disk.is_some()
-            || self.cgroup.is_some()
-            || self.egress.is_some()
-            || self.child.is_some();
-        if !held {
-            return;
-        }
-        let mut owned = self.take();
-        let mut release = move || {
-            let released = owned.release();
-            log_release(&owned.lease_id, released.as_ref().err());
-        };
-        // A cgroup can take seconds to empty. On a runtime of either flavor
-        // the release goes to its blocking pool, logging where this thread
-        // logs, so a drop never holds a worker; with no runtime there is no
-        // worker to hold. A release a stopping runtime never runs is left to
-        // the boot sweep.
-        match tokio::runtime::Handle::try_current() {
-            Ok(runtime) => {
-                let logs = tracing::dispatcher::get_default(Clone::clone);
-                drop(runtime.spawn_blocking(move || {
-                    tracing::dispatcher::with_default(&logs, release);
-                }));
-            }
-            Err(_no_runtime) => release(),
-        }
-    }
-}
-
-/// Logs how a release ended.
-fn log_release(lease_id: &str, failed: Option<&Error>) {
-    match failed {
-        None => {
-            let event = EVENT_TEARDOWN_COMPLETED;
-            tracing::debug!(lease_id, event);
-        }
-        Some(error) => {
-            let Logged { error_code, reason } = error.logged();
-            let event = EVENT_TEARDOWN_FAILED;
-            tracing::warn!(
-                lease_id,
-                error_code,
-                reason,
-                event,
-                "a sandbox left something behind for the boot sweep"
-            );
         }
     }
 }

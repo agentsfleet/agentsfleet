@@ -12,7 +12,7 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
   sequencing signal. A section that contradicts these rules loses; delete it.
 -->
 
-# M237_002: The host caches the toolbox once, and a sandbox starts with no polling or mount program
+# M237_002: A sandbox starts with no polling or mount program, and a direct-I/O toolbox is measured
 
 **Prototype:** v2.0.0
 
@@ -48,24 +48,24 @@ SPEC AUTHORING RULES (load-bearing; the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `test_toolbox_loop_reads_past_the_host_cache`: the admitted toolbox's loop device reports direct I/O, and reading every toolbox file leaves under 1% of the image file in the host's page cache.
+**Goal (testable):** `test_executor_answers_over_the_inherited_pair`: a new sandbox answers over the pair it inherited, with no socket file on the host or inside.
 
 **Problem:** The toolbox's loop device is buffered. Its compressed blocks are cached in the image file's page cache and again in the loop device's own cache, and admission's hash leaves the whole image in the first one. The dev host shows it: `losetup` lists the toolbox on `/dev/loop0` with `DIO 0`. Each sandbox start also polls a socket file every 10 ms and runs `mount(8)` for its workspace disk.
 
-**Solution summary:** The toolbox loop device is configured with direct I/O in the one `LOOP_CONFIGURE` call, and admission drops the hash read's cache. The executor speaks over a socket pair the engine passes into bubblewrap, so nothing polls and no socket directory is bound. The workspace disk is attached and mounted in-process with direct I/O and autoclear set, so `mount(8)` no longer starts. `mke2fs` stays.
+**Solution summary:** A direct-I/O toolbox device was built and measured against the 10% p99 rule; it failed, so the toolbox stays buffered. The executor speaks over a socket pair the engine passes into bubblewrap, so nothing polls and no socket directory is bound. The workspace disk is attached and mounted in-process with direct I/O and autoclear set, so `mount(8)` no longer starts. `mke2fs` stays.
 
 **Design flow:**
 
 ```
-toolbox   open ─► hash ─► fadvise(DONTNEED) ─► LOOP_CONFIGURE(ro, autoclear, direct, 4096) ─► mount erofs
+toolbox   open ─► hash ─► LOOP_CONFIGURE(ro, autoclear, buffered, 4096) ─► mount erofs
 executor  socketpair(CLOEXEC) ─► child end cleared in pre_exec ─► entry serves it ─► client.over(parent end)
 disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct, 4096) ─► mount(2) ext4
 ```
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** perf(sandbox): cache the toolbox once and start without polling
-- **Intent (one sentence):** A runner host keeps one cached copy of its toolbox, and a sandbox starts without polling or a mount program.
+- **PR title (eventual):** perf(sandbox): start without polling or a mount program
+- **Intent (one sentence):** A sandbox starts without polling or a mount program, and the toolbox goes direct only if its first use holds.
 - **Authoring handshake:** Indy approved fixes 3 to 5 of the Nov 02 review. ASSUMPTIONS I'M MAKING: the loop device stays; the file-backed EROFS mount waits for a later spec; per-lease `mke2fs` stays until a measurement shows its cost.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit. A restatement that differs from the Intent stops the work until the two are reconciled.
 
@@ -73,7 +73,7 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 
 1. `docs/architecture/runner_execution.md` — §"Code walkthrough" Parts A.1, D and E show each call this spec changes.
 2. `rustd/crates/afr_sandbox/src/toolbox/loop_device/mod.rs` — `attach`, `backing` and `direct_io`, the ioctls every Section reuses.
-3. `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` — the `pre_exec` hook that already passes the tenant descriptors into bubblewrap.
+3. `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts/mod.rs` — the `pre_exec` hook that already passes the tenant descriptors into bubblewrap.
 4. `rustd/crates/afr_executor/src/server/mod.rs` — the listener that accepts one connection today, and `Client::over` in `afr_executor/src/client/mod.rs`.
 5. https://third-party-mirror.googlesource.com/systemd/+/refs/heads/master/src/shared/loop-util.c — requesting direct I/O in `LOOP_CONFIGURE` and confirming it through `LOOP_GET_STATUS64`.
 
@@ -81,10 +81,10 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afr_sandbox/src/toolbox/loop_device/mod.rs` and tests | EDIT | Configure flags for direct I/O, block size and read-write attach; confirm through status |
-| `rustd/crates/afr_sandbox/src/toolbox/{admit.rs,adopt/mod.rs}` and tests | EDIT | Drop the hash read's cache; adopt a direct-I/O loop device |
+| `rustd/crates/afr_sandbox/src/toolbox/loop_device/mod.rs` and tests | EDIT | Configure flags for block size and read-write attach; direct I/O for a read-write device alone; confirm through status |
+| `rustd/crates/afr_sandbox/src/toolbox/{admit.rs,adopt/mod.rs}` and tests | EDIT | Log the caching the device took; adopt a direct-I/O loop device |
 | `rustd/crates/afr_sandbox/src/bubblewrap/mod.rs` and tests | EDIT | No socket-directory bind; the executor's descriptor joins the entry's arguments |
-| `rustd/crates/afr_sandbox/src/bubblewrap_engine/{mod,parts}.rs` and tests | EDIT | Socket pair made and passed; no `run/` directory; ready probe |
+| `rustd/crates/afr_sandbox/src/bubblewrap_engine/{mod.rs,parts/}` and tests | EDIT | Socket pair made and passed; no `run/` directory; ready probe; the release half in `parts/teardown.rs` |
 | `rustd/crates/afr_sandbox/src/{serve,tenant}/` and tests | EDIT | The entry adopts and serves the inherited socket |
 | `rustd/crates/afr_executor/src/{server,client,lib.rs}` and tests | EDIT | Server serves a connected stream, inherited or accepted |
 | `rustd/crates/afr_sandbox/src/workspace_disk/mod.rs` and tests | EDIT | In-process attach and mount; one direct-I/O path |
@@ -94,6 +94,8 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 | `scripts/toolbox/measure_first_use.sh`, `scripts/toolbox/test_measure_first_use.sh` | EDIT | An attach mode: buffered `-o loop`, or a direct-I/O loop device |
 | `rustd/crates/afr_sandbox/tests/confine.rs`, `rustd/crates/afr_executor/tests/` | EDIT | Callers of the socket-path API |
 | `docs/architecture/runner_execution.md` | EDIT | Toolbox, Parts A, D and E after the change |
+| `playbooks/operations/acceptance/baselines/M237_002-start.md` | CREATE | The start figures before and after |
+| `docs/AUTH.md` | EDIT | The `env_clear()` citation follows `parts.rs` to `parts/mod.rs` |
 | `docs/v2/active/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md` | EDIT | This spec, opened at CHORE(open); moves to `done/` at close |
 
 ## Applicable Rules
@@ -110,33 +112,31 @@ disk      sparse image ─► mke2fs ─► LOOP_CONFIGURE(rw, autoclear, direct
 |------|--------|-----------------------|
 | `make lint-all` | yes | Linux-only code is linted on Linux as well |
 | `make test-unit-all` coverage gates | yes | Kernel-only ioctls stay in the excused kernel files |
-| `make test-runner-kernel` | yes, every Section is kernel behaviour | One lane run and one run on the Debian 13 dev host, each recording `uname -r` |
-| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, `parts.rs` is near the cap | Socket-pair setup gets its own module |
+| `make test-runner-kernel` | yes, every Section is kernel behaviour | Runs on the OrbStack machine `afr-kernel`, recording `uname -r`; the dev host waits until M237 ships (Discovery) |
+| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, `parts.rs` passed the cap | The release half moves to `parts/teardown.rs` |
 | `orly gate verify` docs language | yes | Short sentences, no banned words |
 
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `rustd/crates/afr_sandbox/src/workspace_disk/mod.rs` — the workspace disk already switches its loop device to direct I/O and falls back to buffered on `EINVAL`.
 - **Reference:** systemd's `loop-util.c` — sets `LO_FLAGS_DIRECT_IO` in `LOOP_CONFIGURE` and reads the result back.
-- **Reference:** `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` and `afr_executor/src/server/launch/tenant/mod.rs` — descriptors cross into bubblewrap in `pre_exec`, and the entry sets close-on-exec again on adoption.
+- **Reference:** `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts/mod.rs` and `afr_executor/src/server/launch/tenant/mod.rs` — descriptors cross into bubblewrap in `pre_exec`, and the entry sets close-on-exec again on adoption.
 
 ## Sections (implementation slices)
 
-### §1 — The toolbox is read past the host cache
+### §1 — The toolbox's direct I/O is measured before it ships
 
-Admission hashes the image through its descriptor, then calls `posix_fadvise(DONTNEED)` on it to ask the kernel to drop the hash's cache. That call is advice, not a promise, so Dimension 1.1 measures the pages that stay resident.
+The direct-I/O toolbox was built as drafted: `LO_FLAGS_DIRECT_IO` in the one `LOOP_CONFIGURE` call, and the hash read's cache dropped with `posix_fadvise(DONTNEED)`. Dimension 1.4 then measured it. Direct I/O failed the 10% p99 rule on all 8 first-use steps, so Indy reverted it (Discovery).
 
-The attach sets `LO_FLAGS_DIRECT_IO` with `LO_FLAGS_READ_ONLY` and `LO_FLAGS_AUTOCLEAR`, and a 4096-byte block size, in the one `LOOP_CONFIGURE` call. Admission reads `LOOP_GET_STATUS64` back and logs whether direct I/O took.
-
-A host whose file system refuses direct I/O keeps a buffered device and logs `caching: buffered`, as the workspace disk does. Adoption accepts a loop device with or without the direct-I/O flag, since it checks only the read-only bit.
+The toolbox attaches buffered, with `LO_FLAGS_READ_ONLY`, `LO_FLAGS_AUTOCLEAR` and a 4096-byte block size. Admission reads `LOOP_GET_STATUS64` back and logs `caching: buffered`. Adoption accepts a loop device with or without the direct-I/O flag, since it checks only the read-only bit.
 
 `scripts/toolbox/measure_first_use.sh` mounts with buffered `-o loop` today. It gains `TOOLBOX_LOOP_DIRECT_IO=on`, which attaches with `losetup --direct-io=on --read-only` before mounting. One image is measured both ways on the dev host, buffered as the baseline, under the §Toolbox rule of no more than a 10% p99 regression.
 
-- **Dimension 1.1** — The toolbox's loop device reports direct I/O and reading every file leaves the image under 1% cached → Test `test_toolbox_loop_reads_past_the_host_cache` — DONE
-- **Dimension 1.2** — A refused direct I/O request leaves a buffered device and logs it → Test `test_toolbox_buffered_fallback_is_logged` — DONE
+- **Dimension 1.1** — The toolbox's loop device reports direct I/O and reading every file leaves the image under 1% cached → Test `test_toolbox_loop_reads_past_the_host_cache` — DROPPED with the direct-I/O toolbox; the owner's decision is in Discovery
+- **Dimension 1.2** — A buffered toolbox device admits its toolbox and logs `caching: buffered` → Test `test_toolbox_buffered_fallback_is_logged` — DONE
 - **Dimension 1.3** — A toolbox mount from the previous runner, buffered or direct, is adopted → Test `test_direct_io_toolbox_is_adopted` — DONE
-- **Dimension 1.4** — No first-use step regresses past 10% at p99 → Test `manual_first_use_holds_after_direct_io`
-- **Dimension 1.5** — The harness attaches with direct I/O when asked and refuses a device that did not take it → Test `test_sampler_attaches_with_direct_io_when_asked`, the sampler test's `direct_io_when_asked` and `direct_io_refused` cases — DONE
+- **Dimension 1.4** — The toolbox goes direct only if no first-use step regresses past 10% at p99 → Test `manual_first_use_holds_after_direct_io` — DONE: all 8 steps regressed, so the toolbox stays buffered (Discovery)
+- **Dimension 1.5** — The harness attaches with direct I/O when asked and refuses a device that did not take it → the `direct_io_when_asked` and `direct_io_refused` cases of `scripts/toolbox/test_measure_first_use.sh` — DONE
 
 ### §2 — The executor speaks over an inherited socket pair
 
@@ -181,13 +181,13 @@ Wire, schema, OpenAPI and CLI: no change.
 
 | Mode | Kind | Cause | Handling (system response + what the caller observes) | Test |
 |------|------|-------|--------------------------------------------------------|------|
-| Direct I/O refused | capacity | Backing file system rejects direct I/O | Device stays buffered; admission logs `caching: buffered` | `test_toolbox_buffered_fallback_is_logged` |
+| Direct I/O refused | capacity | Backing file system rejects direct I/O | The workspace disk stays buffered and logs `sandbox_workspace_buffered` | `test_disk_reports_buffered_fallback` |
 | Socket leaks to tenant | security | Close-on-exec left clear on the entry's end | Entry sets it before hardening; tenant listing shows no socket | `test_tenant_process_holds_no_executor_socket` |
 | Socket leaks across leases | security | Close-on-exec cleared in the parent | Cleared only in `pre_exec`; concurrent spawns see none | `test_concurrent_spawn_inherits_no_other_socket` |
 | Entry dies early | failure | Hardening refused or binary missing | Sandbox refused with its error stream within ten seconds | `test_dead_entry_is_refused_with_its_reason` |
 | Mount refused | failure | Kernel rejects the ext4 mount | Device freed by closing its descriptor, image removed, lease refused | `test_refused_mount_leaves_nothing` |
 | Device pinned after release | capacity | Autoclear missing on a read-write device | Autoclear set at configure; release check finds no device | `test_released_disk_leaves_no_loop_device` |
-| First use slower | capacity | Cold reads go to disk instead of cache | p99 measured; a step past 10% fails the row | `manual_first_use_holds_after_direct_io` |
+| First use slower | capacity | Cold reads go to disk instead of cache | p99 measured; every step regressed past 10%, so the toolbox stays buffered | `manual_first_use_holds_after_direct_io` |
 
 ## Invariants
 
@@ -199,18 +199,18 @@ Wire, schema, OpenAPI and CLI: no change.
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|----------|------------|--------------------|---------------|------------|
-| `sandbox_toolbox_admission_completed` field `caching` | operator | Toolbox mounted | digest, `direct` or `buffered` | none needed | `test_toolbox_loop_reads_past_the_host_cache` |
+| `sandbox_toolbox_admission_completed` field `caching` | operator | Toolbox mounted | digest, `direct` or `buffered` | none needed | `test_toolbox_buffered_fallback_is_logged` |
 | `sandbox_workspace_buffered` | operator | A disk stays buffered | lease id | none needed | `test_disk_reports_buffered_fallback` |
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | kernel | `test_toolbox_loop_reads_past_the_host_cache` | Drop caches, read every file → status shows direct I/O, image resident pages under 1% |
-| 1.2 | unit | `test_toolbox_buffered_fallback_is_logged` | Status without the flag → `caching: buffered` logged, admission succeeds |
+| 1.1 | kernel | `test_toolbox_loop_reads_past_the_host_cache` | DROPPED with the direct-I/O toolbox |
+| 1.2 | unit | `test_toolbox_buffered_fallback_is_logged` | A buffered device → `caching: buffered` logged, admission succeeds |
 | 1.3 | unit | `test_direct_io_toolbox_is_adopted` | Backing flags read-only plus direct → adopted |
-| 1.4 | manual | `manual_first_use_holds_after_direct_io` | Buffered run, then a `TOOLBOX_LOOP_DIRECT_IO=on` run against it on the dev host → no step past 1.10 p99 ratio |
-| 1.5 | unit | `test_sampler_attaches_with_direct_io_when_asked` | Mode on, the device reads `dio 0` → sampler exits non-zero with no report and no device; mode on with direct I/O → report says `loop: direct` |
+| 1.4 | manual | `manual_first_use_holds_after_direct_io` | Buffered run, then a `TOOLBOX_LOOP_DIRECT_IO=on` run against it on the OrbStack lane → a step past 1.10 p99 ratio keeps the toolbox buffered |
+| 1.5 | unit | `direct_io_when_asked`, `direct_io_refused` | Mode on, the device reads `dio 0` → sampler exits non-zero with no report and no device; mode on with direct I/O → report says `loop: direct` |
 | 2.1 | kernel | `test_executor_answers_over_the_inherited_pair` | New sandbox → no `executor.sock` on host or inside |
 | 2.2 | kernel | `test_tenant_process_holds_no_executor_socket` | `ls -l /proc/self/fd` in `shell` → no socket entries |
 | 2.3 | kernel | `test_concurrent_spawn_inherits_no_other_socket` | Two sandboxes start at once on several workers → no process of one lease holds the other's link |
@@ -226,9 +226,9 @@ Wire, schema, OpenAPI and CLI: no change.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Toolbox cached once, socket pair and in-process disk proven on the lane (§1 to §3) | `make test-runner-kernel` | exit 0 | P0 | |
-| R2 | The same trials pass on the Debian 13 dev host | `make test-runner-kernel` on `zombie-dev-worker-ant`, output in Session Notes | exit 0 | P0 | |
-| R3 | Direct-I/O first use within 10% p99 of buffered (§1); `IMAGE` is the admitted toolbox; baseline from the same command without the variable | `sudo TOOLBOX_LOOP_DIRECT_IO=on bash scripts/toolbox/measure_first_use.sh "$IMAGE" first-use-direct.json 120 first-use-buffered.json` | `0` steps marked `REGRESSION` | P1 | |
+| R1 | Buffered toolbox, socket pair and in-process disk proven on the lane (§1 to §3) | `make test-runner-kernel` | exit 0 | P0 | |
+| R2 | The same trials pass on Debian 13: the OrbStack machine `afr-kernel` stands in for the dev host (Discovery) | `make test-runner-kernel` on `afr-kernel`, `uname -r` and output in Session Notes | exit 0 | P0 | |
+| R3 | The toolbox goes direct only within 10% p99 of buffered (§1); `IMAGE` is the admitted toolbox; baseline from the same command without the variable | `sudo TOOLBOX_LOOP_DIRECT_IO=on bash scripts/toolbox/measure_first_use.sh "$IMAGE" first-use-direct.json 120 first-use-buffered.json` | `0` steps marked `REGRESSION`, or the toolbox attaches buffered | P1 | |
 | R4 | Start figures recorded (§4) | `test -s playbooks/operations/acceptance/baselines/M237_002-start.md` | exit 0 | P2 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -300,9 +300,14 @@ N/A: no files deleted.
 - **Mount seam** — `HostTools.mount` is a plain `fn`, `loop_mount` in production. The unit tests' fake host mounts nothing through it, as it once ran `/bin/true` as `mount`.
 - **Sampler test names** — Dimension 1.5 is proven by the `direct_io_when_asked` and `direct_io_refused` cases of `scripts/toolbox/test_measure_first_use.sh`.
 - **Unit tests take the link with `pidfd_getfd`** — the fake bubblewrap notes its pid and the link's number in its lease directory. The in-process executor then takes the descriptor from that child, so no production seam exists for tests.
+- **First use, direct against buffered (Nov 03, OrbStack lane)** — three runs of 120 a mode, pooled to 360 a step. Direct I/O was 3 to 12% faster at p50 on all 8 steps and 1.12 to 2.98 times slower at p99 on all 8. The worst were `uv` 27.3 → 81.2 ms, `git_commit` 19.2 → 48.1 ms and `jq` 13.4 → 30.5 ms; `node_test` went 278.1 → 409.5 ms. The double cache direct I/O saved is one image of at most 160 MB a host.
+- **The revert** — the toolbox attaches buffered again, and admission drops no cache. The workspace disk keeps direct I/O. The caching trial went with it: it proved only the direct-I/O toolbox, so `caching.rs` was added and removed on this branch.
+- **The release half of `parts.rs`** — the socket pair took `parts.rs` past 350 lines. Its release half moves to `parts/teardown.rs`, and `parts.rs` becomes `parts/mod.rs`, so `docs/AUTH.md` cites the new path.
 - **Open blockers** — none.
 - **Metrics review** — `caching` added to the admission event.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
-- **Deferrals and transfers** — none.
+- **Deferrals and transfers** — Dimension 1.1, with the direct-I/O toolbox it proved:
+
+> Owner (Indy, Nov 03, 2026 08:53 AM): "Revert to buffered (Recommended)" — context: Dimension 1.4 measured direct I/O failing the 10% p99 rule on all 8 first-use steps, so the toolbox loop device stays buffered and Dimension 1.1's direct-I/O trial goes.
 
 > Owner (Indy, Nov 02, 2026 10:52 PM): "coudl we do both specs in this PR, if you need to measure do it in local? in the docker compose using make targets" — context: whether M237_001 and M237_002 ship together, and where the start figures are measured.

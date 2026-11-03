@@ -6,7 +6,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use afd_core::event::status::PROCESSED;
 use afd_state::sql::LEASE_STATUS_REPORTED;
+use afd_wire::tool_trace::ToolCallStatus;
 use afr_sandbox::{Engine, Sandbox, SandboxRequest, UnsandboxedEngine};
 use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;
@@ -19,6 +21,8 @@ use crate::e2e::scenario;
 const PREPARE_TAKES: Duration = Duration::from_secs(2);
 /// The frame kind the turn's answer streams as.
 const CHUNK: &str = "chunk";
+/// The frame kind a finished tool call streams as.
+const TOOL_COMPLETED: &str = "tool_call_completed";
 
 /// The unsandboxed engine, answering each prepare only after
 /// [`PREPARE_TAKES`] and noting when the first one was ready.
@@ -53,6 +57,16 @@ fn answering_first() -> afr_agent::scripted::ScriptedEngine {
             spawn: afr_executor::Spawn::program("echo").arg("hi"),
         },
     ])
+}
+
+/// Every frame the tail carried after the first chunk, read until it falls
+/// quiet.
+async fn later_frames(tail: &mut afd_dragonfly::Subscription) -> Vec<serde_json::Value> {
+    let mut frames = Vec::new();
+    while let Some(frame) = crate::tail::next_frame(tail).await {
+        frames.push(frame);
+    }
+    frames
 }
 
 /// When the first answer chunk reached the tail, read while the runner runs.
@@ -97,7 +111,7 @@ async fn test_chat_streams_before_sandbox_ready() {
     ));
 
     let streamed = chunk_arrived(&mut tail).await.expect("the answer streamed");
-    let later = super::frame_kinds(&mut tail).await;
+    let later = later_frames(&mut tail).await;
     assert_eq!(
         settled_status(&run).await.as_deref(),
         Some(LEASE_STATUS_REPORTED)
@@ -111,16 +125,17 @@ async fn test_chat_streams_before_sandbox_ready() {
         "the first chunk streamed {:?} before the sandbox was ready",
         ready.saturating_duration_since(streamed)
     );
-    assert!(
-        later.iter().any(|kind| kind == "tool_call_completed"),
+    let completed = later
+        .iter()
+        .find(|frame| frame.get("kind").and_then(serde_json::Value::as_str) == Some(TOOL_COMPLETED))
+        .and_then(|frame| frame.get("status").cloned());
+    assert_eq!(
+        completed,
+        serde_json::to_value(ToolCallStatus::Succeeded).ok(),
         "the tool ran in the sandbox once it was ready: {later:?}"
     );
     let status = crate::reads::event_column(&run, &run.event_id, "status").await;
-    assert_eq!(
-        status.as_deref(),
-        Some("processed"),
-        "the turn was processed"
-    );
+    assert_eq!(status.as_deref(), Some(PROCESSED), "the turn was processed");
 
     shutdown.cancel();
     runner

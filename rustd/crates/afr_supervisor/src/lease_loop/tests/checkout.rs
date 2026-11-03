@@ -244,11 +244,27 @@ async fn a_repository_that_will_not_check_out_leaves_the_run_without_it() {
     let capture = Capture::install();
     let workspace = tempfile::tempdir().unwrap();
     let mut rig = rig(Some(workspace.path().to_owned()), |_| None);
+    let (tally, recorded) = afr_telemetry::testing::Tally::new();
 
-    rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
+    afr_telemetry::testing::scoped(tally, rig.run(&bound(&[GIT.name()], WORKSPACE_ID)))
+        .await
+        .unwrap();
 
     let calls = rig.calls();
     assert_ran_without_the_sandbox(&rig, &calls, &capture);
+    let counted: Vec<_> = recorded
+        .try_iter()
+        .filter(|counted| matches!(counted, afr_telemetry::testing::Recorded::SandboxBuild(_)))
+        .collect();
+    assert!(
+        matches!(
+            counted.as_slice(),
+            [afr_telemetry::testing::Recorded::SandboxBuild(
+                afr_telemetry::labels::SandboxBuild::Checkout
+            )]
+        ),
+        "{counted:?}"
+    );
     let failed = capture.only(EVENT_CHECKOUT_FAILED);
     assert_eq!(failed.field("repository"), Some(REPOSITORY));
     assert_eq!(

@@ -194,8 +194,9 @@ impl Holds {
     }
 
     /// Ends every hold and holds nothing more, for a runner that takes no new
-    /// lease: no lease could take one. A later park destroys its sandbox, and
-    /// the next list asked for is empty.
+    /// lease: no lease could take one. A later park hands its sandbox back to
+    /// its lease, which kills it and releases it, and the next list asked for
+    /// is empty.
     pub(crate) fn close(&self) {
         let _stopped = self.requests.send(Request::Close);
     }
@@ -316,3 +317,6 @@ mod tests;
 
 #[cfg(test)]
 mod supersede_tests;
+
+#[cfg(test)]
+mod shutdown_tests;

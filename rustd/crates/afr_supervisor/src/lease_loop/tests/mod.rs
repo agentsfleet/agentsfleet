@@ -48,6 +48,7 @@ fn renewal_lost(call: &Call) -> Option<Answer> {
 }
 
 mod build;
+mod build_endings;
 mod completion;
 mod failures;
 mod release;

@@ -73,11 +73,6 @@ impl Toolbox {
         }
         manifest.check_length(u64::try_from(stat.st_size).unwrap_or(0))?;
         let digest = sha256_of(&file)?;
-        // Advice, not a promise: the kernel may keep some pages, which the
-        // kernel lane measures, and a host that declines the advice admits
-        // the toolbox all the same. The hash's pages would otherwise sit in
-        // the host's cache beside the device's own.
-        let _declined = rustix::fs::fadvise(&file, 0, None, rustix::fs::Advice::DontNeed);
         manifest.check_digest(&digest)?;
         let toolbox = Self {
             root: mounts.join(&digest),

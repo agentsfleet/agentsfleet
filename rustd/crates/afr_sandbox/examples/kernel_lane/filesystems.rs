@@ -16,7 +16,23 @@ use rustix::mount::{MountFlags, UnmountFlags};
 use crate::admission::MOUNTINFO;
 use crate::lane::{Lane, SANDBOX_IDS, STATE_FREE_BYTES_MIN, STATE_PREFIX, short_of_disk};
 use crate::run::{expect, runtime};
-use crate::trials::SMALL_DISK;
+use crate::trials::{Body, SMALL_DISK};
+
+/// What the workspace disk leaves behind and what its build starts.
+pub(crate) const TRIALS: &[(&str, Body)] = &[
+    (
+        "test_refused_mount_leaves_nothing",
+        refused_mount_leaves_nothing,
+    ),
+    (
+        "test_released_disk_leaves_no_loop_device",
+        released_disk_leaves_no_loop_device,
+    ),
+    (
+        "test_workspace_disk_starts_no_mount_program",
+        disk_starts_no_mount_program,
+    ),
+];
 
 /// A file system that makes unnamed files but refuses direct I/O: what the
 /// probe and the loop device both meet on a host whose state is not on a disk.
@@ -83,7 +99,7 @@ fn tmpfs_size(bytes: u64) -> Result<CString, Failed> {
 }
 
 /// The lane's state directory, on the disk the lane runs on.
-pub(crate) fn on_disk(lane: &Lane) -> Result<&Path, Failed> {
+fn on_disk(lane: &Lane) -> Result<&Path, Failed> {
     lane.config
         .state_dir
         .parent()
@@ -125,7 +141,7 @@ pub(crate) fn buffered_disk(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// Dimension 3.1 (`M237_002`): building a lease's disk starts `mke2fs` and
+/// Building a lease's disk starts `mke2fs` and
 /// no other host program; the loop device and the mount are made in-process.
 pub(crate) fn disk_starts_no_mount_program(lane: &Lane) -> Result<(), Failed> {
     let lease = tempfile::tempdir_in(on_disk(lane)?)?;
