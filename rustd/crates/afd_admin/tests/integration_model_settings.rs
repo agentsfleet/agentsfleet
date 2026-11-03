@@ -55,6 +55,7 @@ fn rates(context: i32, rate: i64, inference: Option<&ModelInference>) -> ModelUp
             conditions: "Synthetic settings fixture; no provider request.".into(),
         }],
         inference: inference.cloned(),
+        decision: None,
     }
 }
 async fn read(models: &Models, id: &Uuid7) -> Model {

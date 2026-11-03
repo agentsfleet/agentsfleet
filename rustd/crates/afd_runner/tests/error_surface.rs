@@ -22,7 +22,7 @@ use afd_core::test_util::error_surface::{Expect, grade, grade_sentences};
 use afd_runner::error::one_of_each_kind;
 
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 3;
+const WITH_SOURCE: usize = 4;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 7;
 
@@ -40,7 +40,7 @@ fn the_error_surface_holds() {
     );
 }
 
-/// The caller-facing vocabulary: present, uncoded, and exactly 7 sentences.
+/// The caller-facing vocabulary: present, uncoded, and exactly 8 sentences.
 #[test]
 fn the_caller_facing_sentences_hold() {
     let samples = one_of_each_kind();
@@ -48,15 +48,15 @@ fn the_caller_facing_sentences_hold() {
         samples
             .iter()
             .map(|(label, error)| (*label, error.detail())),
-        7,
+        8,
     );
 }
 
 /// Each predicate answers for every kind, for exactly the measured set.
 ///
-/// Pinned by count rather than by membership so that the test DISAGREES with a
-/// change to a predicate instead of following it. A predicate that silently
-/// widened would route a refusal to a retry, or a retry to a refusal.
+/// Caller rejection names the input failures explicitly; outage and vanished
+/// classifications retain their expected counts. A widened predicate must
+/// not turn invalid operator input into a retry.
 #[test]
 fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
     let is_datastore_unavailable: Vec<&str> = one_of_each_kind()
@@ -76,9 +76,9 @@ fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
         .map(|(label, _)| *label)
         .collect();
     assert_eq!(
-        is_rejected.len(),
-        1,
-        "`is_rejected` now answers for {is_rejected:?}, not 1 kinds"
+        is_rejected,
+        ["rejected", "decision model identifier"],
+        "invalid decision selections remain caller rejections"
     );
 
     let is_runner_vanished: Vec<&str> = one_of_each_kind()

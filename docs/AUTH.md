@@ -712,6 +712,23 @@ A runner principal reaches only `/v1/runners/me/*`, and every route there requir
 
 The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
 
+### Decision-provider credentials
+
+Durable Task decisions use keys set by the platform administrator in Secrets.
+The daemon's `PLATFORM_ADMIN_WORKSPACE_ID` selects that workspace; neither a fleet nor a runner request supplies its identity.
+The configured decision API selects a fixed bag: `typesafe`, `openai`, `perplexity` or `cloudflare`, each containing `api_key`.
+
+`Providers::resolve_decision_key` reuses the credential vault reader in `rustd/crates/afd_credential/src/provider/decision.rs`.
+Each read opens that admin workspace's current envelope without a key cache, tenant fallback or environment fallback.
+Missing, empty and malformed keys refuse resolution; damaged envelopes and unavailable storage retain their causes.
+
+Recovered plaintext and parsed key allocations use `SecretBytes` and `SecretString`.
+Parsing failures keep value-free diagnostics; prompts, tools, model configuration, checkpoints and public responses must never carry these keys.
+Parser scratch/error buffers, HTTP headers and transport buffers remain outside those owned-buffer wiping guarantees.
+
+The resolver is implemented; physical-call reservation and lease-handler integration remain pending.
+The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and the proposed dispatch sequence.
+
 ### The token never enters the sandboxed child
 
 `AGENTSFLEET_RUNNER_TOKEN` lives in the **supervisor's** environment: the trusted `agentsfleet-runner` process that speaks the control protocol and runs outside every sandbox ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Process model"). A lease's tool calls run in a bubblewrap sandbox that starts with an empty environment. The `bwrap` command itself is spawned with `env_clear()` (`rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs`), the entry inside gets `--clearenv` plus only the variables set by `--setenv` (`rustd/crates/afr_sandbox/src/bubblewrap/mod.rs`), and every process the in-sandbox executor starts gets `env_clear()` plus its plan's own variables (`rustd/crates/afr_executor/src/server/launch/mod.rs`). A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/self/environ` finds nothing. Model keys and minted tokens stay in the supervisor too ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Credentials").

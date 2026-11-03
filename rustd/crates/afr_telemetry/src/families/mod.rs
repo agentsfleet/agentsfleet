@@ -15,6 +15,7 @@ use afd_observability::semconv::{LABEL_OUTCOME, LABEL_REASON, LABEL_SIGNAL};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
+use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose, LABEL_PURPOSE};
 use crate::labels::{
     FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxHold,
     SandboxStart, Tool, ToolOutcome, TurnOutcome,
@@ -80,6 +81,8 @@ pub fn registry() -> afd_observability::Result<Registry> {
 /// Every runner instrument, claimed once, recording into the export.
 #[derive(Debug)]
 pub struct Families {
+    decisions: Counter<u64>,
+    decision_duration: Histogram<f64>,
     turns: Histogram<f64>,
     retries: Counter<u64>,
     sandbox_starts: Histogram<f64>,
@@ -100,6 +103,8 @@ impl Families {
     /// number: the code and the census were edited apart.
     pub fn claim(instruments: &Instruments) -> afd_observability::Result<Self> {
         Ok(Self {
+            decisions: instruments.counter_u64(&DECISION_EVALUATIONS)?,
+            decision_duration: instruments.histogram_f64(&DECISION_DURATION)?,
             turns: instruments.histogram_f64(&PROVIDER_TURN_DURATION)?,
             retries: instruments.counter_u64(&PROVIDER_RETRIES)?,
             sandbox_starts: instruments.histogram_f64(&SANDBOX_START_DURATION)?,
@@ -114,7 +119,31 @@ impl Families {
     }
 }
 
+/// Native decision evaluations, including denied preflight and cancellation.
+pub const DECISION_EVALUATIONS: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_decision_evaluations_total");
+/// Total bounded evaluation time, independently of coding-model turns.
+pub const DECISION_DURATION: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_decision_duration_seconds");
+
 impl Recorder for Families {
+    fn decision(
+        &self,
+        provider: DecisionProvider,
+        purpose: DecisionPurpose,
+        outcome: DecisionOutcome,
+        elapsed: Duration,
+    ) {
+        let labels = [
+            KeyValue::new(LABEL_PROVIDER, provider.as_str()),
+            KeyValue::new(LABEL_PURPOSE, purpose.as_str()),
+            KeyValue::new(LABEL_OUTCOME, outcome.as_str()),
+        ];
+        self.decisions.add(1, &labels);
+        self.decision_duration
+            .record(elapsed.as_secs_f64(), &labels);
+    }
+
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
         self.turns.record(
             elapsed.as_secs_f64(),

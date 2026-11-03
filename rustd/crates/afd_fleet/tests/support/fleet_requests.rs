@@ -33,6 +33,7 @@ pub(crate) fn enrolment(
     RegisterRequest {
         host_id: Cow::Borrowed("host-01.fixture.test"),
         assigned_policy: AssignedPolicy {
+            decision_model_id: None,
             sandbox_tier: tier,
             network_policy: network,
             registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],

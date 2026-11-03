@@ -11,15 +11,24 @@ Read this when changing reusable setup, fleet setup revisions, or Definition val
 
 ## Setup authority
 
-The proposed [Durable Task lifecycle](durable_tasks.md#setup-and-request-interpretation) stores goals and completion questions in reviewed `instructions_md`.
-Setup saves a capability ceiling and fleet revision; a later authorized objective creates a Durable Task (DT).
+The proposed [Durable Task lifecycle](durable_tasks.md#setup-and-request-interpretation) keeps business instructions in `instructions_md` and editable questions/criteria in structured fleet configuration.
+Setup chat saves a capability ceiling and fleet revision; fleet chat receives authorized work and steering for Durable Tasks (DTs).
 [The runner-assigned decision model](goal_evaluation.md) routes intent; native code validates and records new work.
+
+The fleet owner drafts or changes questions through setup chat or CLI, then reviews and applies a new immutable revision.
+Review and history display success criteria and their revision separately from instruction prose; task views identify their accepted criteria.
+
+Normal setup omits routing rules and model terminology. The parser and setup display are written; task integration remains pending.
 
 A DT freezes its accepted goal revision.
 Applying fleet setup does not silently replace an unfinished objective.
 Explicit revision adoption invalidates prior goal decisions.
 
 One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
+
+Customers supply the job through chat or an editable Library copy, such as a pull-request review starter.
+Library links select an immutable revision through the existing new-fleet page; copying grants no runtime authority.
+Conversation compaction retains context separately; saved instructions and accepted questions remain the authoritative setup.
 
 ### Drafts, Library and fleets
 

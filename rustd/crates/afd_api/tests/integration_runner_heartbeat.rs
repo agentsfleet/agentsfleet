@@ -113,6 +113,7 @@ fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("heartbeat.fixture.test"),
         assigned_policy: AssignedPolicy {
+            decision_model_id: None,
             sandbox_tier: SandboxTier::DevNone,
             network_policy: NetworkPolicy::AllowAll,
             registry_allowlist: Vec::new(),

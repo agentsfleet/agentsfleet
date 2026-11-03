@@ -137,6 +137,7 @@ mod fleet;
 mod integration;
 mod invite;
 mod request;
+mod task;
 
 pub use self::auth::*;
 pub use self::authoring::*;
@@ -144,6 +145,7 @@ pub use self::fleet::*;
 pub use self::integration::*;
 pub use self::invite::*;
 pub use self::request::*;
+pub use self::task::*;
 
 /// Every code this crate declares, in declaration order.
 ///
@@ -151,6 +153,11 @@ pub use self::request::*;
 /// row here is invisible to the uniqueness and problem-entry checks, which is why
 /// `test_error_registry_unique` also asserts the count.
 pub const REGISTRY: &[ErrorCode] = &[
+    TASK_NOT_FOUND,
+    TASK_STALE_STATE,
+    TASK_REPLAY_CONFLICT,
+    TASK_INVALID_TARGET,
+    TASK_LIMIT_EXHAUSTED,
     UUIDV7_INVALID_ID_SHAPE,
     INVALID_REQUEST,
     PAYLOAD_TOO_LARGE,

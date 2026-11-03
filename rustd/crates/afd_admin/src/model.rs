@@ -6,24 +6,35 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::constraint::violates_foreign_key;
+use afd_wire::decision::DecisionConfiguration;
 use afd_wire::inference::ModelInference;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::types::Json;
-use sqlx::{Acquire as _, PgConnection};
+use sqlx::{Acquire as _, Connection as _, PgConnection};
 
-use crate::catalogue::{MetadataColumns, prices_for, replace_prices};
-use crate::error::{Result, query, row};
+use crate::catalogue::{ModelRow, PriceProtocol, prices_for, replace_schedules};
+use crate::error::{Result, query};
+use crate::model_validation::{CurrentSettings, validate};
 use crate::sql;
 
 const CONTEXT_LIST: &str = "list admin models";
 const CONTEXT_CREATE: &str = "create admin model";
 const CONTEXT_UPDATE: &str = "update admin model";
 const CONTEXT_DELETE: &str = "delete admin model";
-const MODEL_TABLE: &str = "model.platform_models";
 
 /// The foreign key a platform default holds on the model it serves.
 const PLATFORM_MODEL_FK: &str = "platform_defaults_platform_model_id_fkey";
+const RUNNER_DECISION_MODEL_FK: &str = "runners_decision_platform_model_id_fkey";
+
+/// A reviewed decision definition and its independent protocol schedule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionModel {
+    /// Activation and immutable reviewed profile metadata.
+    pub configuration: DecisionConfiguration,
+    /// Complete schedule for this decision revision, separate from coding rates.
+    pub prices: Vec<Price>,
+}
 
 /// One replacement, validated by the HTTP handler's garde input types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +46,8 @@ pub struct ModelUpdate {
     /// Non-secret transport settings. On create, absent files an unconfigured
     /// model; on update, absent keeps the saved settings.
     pub inference: Option<ModelInference>,
+    /// Absent preserves the saved decision definition and schedule on update.
+    pub decision: Option<DecisionModel>,
 }
 
 /// A model to file. `(provider, model_name)` is immutable afterward.
@@ -59,33 +72,6 @@ pub struct Model {
     pub model_name: String,
     /// Identity evidence, complete price set and inference settings.
     pub details: ModelUpdate,
-}
-
-/// A `model.platform_models` row by name, before its id is parsed. Prices are
-/// a separate read ([`prices_for`]); `inference` is the one real JSON column.
-#[derive(Debug, sqlx::FromRow)]
-struct ModelRow {
-    id: String,
-    provider: String,
-    model_name: String,
-    #[sqlx(flatten)]
-    metadata: MetadataColumns,
-    inference: Option<Json<ModelInference>>,
-}
-
-impl ModelRow {
-    fn parse(self, prices: Vec<Price>) -> Result<Model> {
-        Ok(Model {
-            id: Uuid7::parse(&self.id).map_err(row(MODEL_TABLE, "id"))?,
-            provider: self.provider,
-            model_name: self.model_name,
-            details: ModelUpdate {
-                metadata: self.metadata.into(),
-                prices,
-                inference: self.inference.map(|settings| settings.0),
-            },
-        })
-    }
 }
 
 /// Create outcome kept distinct from datastore failures.
@@ -129,18 +115,28 @@ impl Models {
     /// Reports a query or malformed-row failure.
     pub async fn list(&self) -> Result<Vec<Model>> {
         let mut connection = self.database.acquire().await?;
+        let mut transaction = connection
+            .as_mut()
+            .begin_with(sql::BEGIN_MODEL_SNAPSHOT)
+            .await
+            .map_err(query(CONTEXT_LIST))?;
         let rows: Vec<ModelRow> = sqlx::query_as(sql::LIST_PLATFORM_MODELS)
-            .fetch_all(&mut *connection)
+            .fetch_all(&mut *transaction)
             .await
             .map_err(query(CONTEXT_LIST))?;
-        let ids: Vec<String> = rows.iter().map(|model| model.id.clone()).collect();
-        let mut prices = prices_for(&mut *connection, &ids)
+        let ids: Vec<&str> = rows.iter().map(|model| model.id.as_str()).collect();
+        let mut prices = prices_for(&mut *transaction, &ids, PriceProtocol::Coding)
             .await
             .map_err(query(CONTEXT_LIST))?;
+        let mut decision_prices = prices_for(&mut *transaction, &ids, PriceProtocol::Decision)
+            .await
+            .map_err(query(CONTEXT_LIST))?;
+        transaction.commit().await.map_err(query(CONTEXT_LIST))?;
         rows.into_iter()
             .map(|model| {
                 let schedule = prices.take(&model.id);
-                model.parse(schedule)
+                let decisions = decision_prices.take(&model.id);
+                model.parse(schedule, decisions)
             })
             .collect()
     }
@@ -153,7 +149,17 @@ impl Models {
     /// Refuses inference settings that cannot route within the model's
     /// context; reports entropy, identifier, or transaction failures.
     pub async fn create(&self, input: ModelInput, now: Timestamp) -> Result<CreateModel> {
-        validate(input.details.inference.as_ref(), &input.details.metadata)?;
+        let decision = input
+            .details
+            .decision
+            .as_ref()
+            .map(|model| &model.configuration);
+        validate(
+            input.details.inference.as_ref(),
+            &input.details.metadata,
+            decision,
+            &input.details.prices,
+        )?;
         let id = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_CREATE))?;
@@ -175,12 +181,15 @@ impl Models {
         if done.rows_affected() == 0 {
             return Ok(CreateModel::Duplicate);
         }
-        let writing = PriceWrite {
-            model: &id,
-            prices: &input.details.prices,
-            context: CONTEXT_CREATE,
-        };
-        self.write_prices(&mut transaction, writing, now).await?;
+        replace_schedules(
+            &mut transaction,
+            &self.entropy,
+            &id,
+            &input.details,
+            now,
+            CONTEXT_CREATE,
+        )
+        .await?;
         transaction.commit().await.map_err(query(CONTEXT_CREATE))?;
         Ok(CreateModel::Created(Box::new(Model {
             id,
@@ -207,22 +216,15 @@ impl Models {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_UPDATE))?;
         bump(&mut transaction, CONTEXT_UPDATE).await?;
-        let current: Option<Option<Json<ModelInference>>> =
-            sqlx::query_scalar(sql::SELECT_PLATFORM_MODEL_INFERENCE)
-                .bind(id.as_str())
-                .fetch_optional(&mut *transaction)
-                .await
-                .map_err(query(CONTEXT_UPDATE))?;
+        let current: Option<CurrentSettings> = sqlx::query_as(sql::SELECT_PLATFORM_MODEL_INFERENCE)
+            .bind(id.as_str())
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_UPDATE))?;
         let Some(current) = current else {
             return Ok(false);
         };
-        validate(
-            details
-                .inference
-                .as_ref()
-                .or(current.as_ref().map(|settings| &settings.0)),
-            &details.metadata,
-        )?;
+        current.validate_replacement(&details)?;
         let done = sqlx::query(sql::UPDATE_PLATFORM_MODEL)
             .bind(id.as_str())
             .bind(&details.metadata.display_name)
@@ -237,32 +239,17 @@ impl Models {
         if done.rows_affected() == 0 {
             return Ok(false);
         }
-        let writing = PriceWrite {
-            model: id,
-            prices: &details.prices,
-            context: CONTEXT_UPDATE,
-        };
-        self.write_prices(&mut transaction, writing, now).await?;
+        replace_schedules(
+            &mut transaction,
+            &self.entropy,
+            id,
+            &details,
+            now,
+            CONTEXT_UPDATE,
+        )
+        .await?;
         transaction.commit().await.map_err(query(CONTEXT_UPDATE))?;
         Ok(true)
-    }
-
-    /// Writes a complete replacement price list, minting an id for every row
-    /// the replacement may add; a row that already exists keeps its own.
-    async fn write_prices(
-        &self,
-        connection: &mut PgConnection,
-        writing: PriceWrite<'_>,
-        now: Timestamp,
-    ) -> Result<()> {
-        let ids = writing
-            .prices
-            .iter()
-            .map(|_| self.entropy.uuid7(now).map(|id| id.as_str().to_owned()))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        replace_prices(connection, writing.model, &ids, writing.prices)
-            .await
-            .map_err(query(writing.context))
     }
 
     /// Deletes a model no platform default points at, and advances the
@@ -279,7 +266,8 @@ impl Models {
             .execute(&mut *transaction)
             .await;
         if let Err(error) = &deleted
-            && violates_foreign_key(error, PLATFORM_MODEL_FK)
+            && (violates_foreign_key(error, PLATFORM_MODEL_FK)
+                || violates_foreign_key(error, RUNNER_DECISION_MODEL_FK))
         {
             return Ok(DeleteModel::InUse);
         }
@@ -289,23 +277,6 @@ impl Models {
         transaction.commit().await.map_err(query(CONTEXT_DELETE))?;
         Ok(DeleteModel::Deleted)
     }
-}
-
-/// Proves saved settings route: a supported API, a safe HTTPS base and an output
-/// limit inside the model's context. Absent settings are an unconfigured model.
-fn validate(inference: Option<&ModelInference>, metadata: &Metadata) -> Result<()> {
-    if let Some(inference) = inference {
-        let context = u32::try_from(metadata.context_cap_tokens).unwrap_or_default();
-        afd_inference::Configured::new(inference, context)?;
-    }
-    Ok(())
-}
-
-/// One model's replacement price list and the operation it reports under.
-struct PriceWrite<'a> {
-    model: &'a Uuid7,
-    prices: &'a [Price],
-    context: &'static str,
 }
 
 /// Advances the catalogue version, taking the row lock that serializes edits.

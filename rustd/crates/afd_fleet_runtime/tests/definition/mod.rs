@@ -7,6 +7,7 @@
 )]
 
 mod corpus;
+mod decision_policy;
 mod digest;
 mod edits;
 mod fields;

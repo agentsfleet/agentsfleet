@@ -89,5 +89,13 @@ export const priceScheduleSchema = z.array(priceSchema).min(1, SCHEDULE_ERRORS.c
 export const modelSettingsSchema = z.object({
   metadata: metadataSchema, prices: priceScheduleSchema, inference: inferenceSchema.optional(),
 });
-export const adminModelSchema = modelSettingsSchema.extend({ id: z.string(), provider: z.string(), model_id: z.string() });
+// Read projection: decision-only identities have no coding prices. Writes retain their own bounds.
+export const adminModelSchema = modelSettingsSchema.extend({
+  id: z.string(), provider: z.string(), model_id: z.string(),
+  prices: z.array(priceSchema).max(CATALOGUE_LIMITS.prices),
+  decision: z.object({
+    enabled: z.boolean(),
+    profile: z.object({ revision: z.string().min(1), api: z.string().min(1) }),
+  }).optional(),
+});
 export const adminModelListSchema = z.object({ models: z.array(adminModelSchema) });

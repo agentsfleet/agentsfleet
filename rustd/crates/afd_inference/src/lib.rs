@@ -4,6 +4,7 @@ mod budget;
 mod count;
 mod credential;
 mod document;
+mod endpoint;
 mod error;
 mod header_key;
 mod json;
@@ -15,6 +16,7 @@ pub use budget::input_tokens;
 pub use count::InputCount;
 pub use credential::validate_key;
 pub use document::decode_failed_response;
+pub use endpoint::{provider_endpoint, validate_decision};
 pub use json::json_request;
 pub use logs::log_filter;
 
@@ -60,24 +62,8 @@ impl<'a> Configured<'a> {
     /// Refuses invalid settings; callers additionally enforce host and credential ownership.
     pub fn new(settings: &'a ModelInference, context_tokens: u32) -> Result<Self> {
         settings.validate()?;
-        let url = url::Url::parse(&settings.base_url)?;
+        let url = provider_endpoint(&settings.base_url)?;
         let host = url.host_str().ok_or(ErrorKind::Endpoint)?;
-        if url.scheme() != "https"
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.query().is_some()
-            || url.fragment().is_some()
-        {
-            return Err(ErrorKind::Endpoint.into());
-        }
-        let blocked = match url.host() {
-            Some(url::Host::Ipv4(address)) => afd_core::net::is_blocked(address.into()),
-            Some(url::Host::Ipv6(address)) => afd_core::net::is_blocked(address.into()),
-            _ => false,
-        };
-        if blocked {
-            return Err(ErrorKind::Endpoint.into());
-        }
         if settings.max_output_tokens > context_tokens {
             return Err(ErrorKind::OutputLimit.into());
         }

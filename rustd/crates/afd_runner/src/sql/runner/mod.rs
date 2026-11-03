@@ -25,7 +25,7 @@ const FIRST_LEASE_VERSION: i64 = 0;
 ///
 /// # Why this one gets a struct and most statements do not
 ///
-/// It takes sixteen positional parameters and `$2` and `$4` are each read
+/// It takes nineteen positional parameters and `$2` and `$4` are each read
 /// twice. A flat bind list is correct only as far as someone counts arguments
 /// against the statement text. Two same-typed arguments transposed —
 /// `host_id` and `token_hash` are both text, and one is a CREDENTIAL — compiles
@@ -38,6 +38,10 @@ const FIRST_LEASE_VERSION: i64 = 0;
 /// orders, and a caller names fields instead of counting slots.
 #[derive(Debug)]
 pub struct RegisterRow<'a> {
+    /// Complete validated sandbox configuration, including enrollment binds.
+    pub sandbox_config_json: &'a str,
+    /// Proved catalogue selection, when an operator configured decisions.
+    pub decision_model_id: Option<&'a Uuid7>,
     /// The runner's durable identifier.
     pub runner_id: &'a Uuid7,
     /// The host being enrolled.
@@ -74,7 +78,7 @@ pub struct RegisterRow<'a> {
 impl<'a> RegisterRow<'a> {
     /// Binds this row to [`INSERT_RUNNER_WITH_EVENT`], in `$n` order.
     ///
-    /// The two metadata keys (`$15`, `$16`) and the opening lease version
+    /// The metadata keys (`$15`, `$16`, `$18`) and the opening lease version
     /// (`$12`) are constants rather than caller data, so they are supplied
     /// here and no caller supplies anything positionally.
     pub fn bind(&'a self) -> Bound<'a> {
@@ -95,6 +99,9 @@ impl<'a> RegisterRow<'a> {
             .bind(self.event_type)
             .bind(super::meta::HOST_ID)
             .bind(super::meta::SANDBOX_TIER)
+            .bind(self.decision_model_id.map(Uuid7::as_str))
+            .bind(super::meta::DECISION_MODEL_ID)
+            .bind(self.sandbox_config_json)
     }
 }
 
@@ -119,6 +126,8 @@ pub const ROTATE_RUNNER_TOKEN: &str = include_str!("rotate_runner_token.sql");
 /// outstanding rides the same read: an operator's request reaches the host on
 /// the next beat without a second query or a second endpoint.
 pub const SELECT_RUNNER_ASSIGNED_POLICY: &str = include_str!("select_runner_assigned_policy.sql");
+/// Locks an enabled reviewed decision-model identity during assignment.
+pub const SELECT_DECISION_MODEL: &str = include_str!("select_decision_model.sql");
 
 /// Store a fresh capability report and the reconciled verdict in one write.
 pub const UPDATE_RUNNER_CAPABILITY_AND_VERDICT: &str =

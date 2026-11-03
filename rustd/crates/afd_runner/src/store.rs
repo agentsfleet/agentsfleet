@@ -5,8 +5,10 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_wire::runner::{AssignedPolicy, RegisterRequest};
 use jiff::Timestamp;
+use sqlx::Acquire as _;
 
 use crate::error::{Result, query};
+use crate::policy::SandboxConfig;
 use crate::reconcile::{Verdict, reconcile};
 use crate::spelling::{policy_wire, render_list, tier_wire};
 use afd_auth::credential::CredentialKind;
@@ -133,10 +135,23 @@ impl Runners {
         // does not need it is how a pool's occupancy stops matching its load.
         let labels_json = render_list(&stored.labels);
         let registry_json = render_list(&assigned.registry_allowlist);
+        let sandbox_config_json = SandboxConfig {
+            extra_binds: assigned.extra_binds.clone(),
+        }
+        .render();
 
         let (runner_id, event_id, token) = self.mint(now)?;
         let mut connection = self.database.acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_REGISTER))?;
+        crate::decision::lock(
+            &mut transaction,
+            stored.assignment.decision_model_id.as_ref(),
+        )
+        .await?
+        .allow_change_from(None)?;
         sql::runner::RegisterRow {
+            sandbox_config_json: &sandbox_config_json,
+            decision_model_id: stored.assignment.decision_model_id.as_ref(),
             runner_id: &runner_id,
             host_id,
             token_digest: token.digest().as_str(),
@@ -152,20 +167,14 @@ impl Runners {
             degraded_reason: verdict.reason(),
         }
         .bind()
-        .execute(&mut *connection)
+        .execute(&mut *transaction)
         .await
         .map_err(query(CONTEXT_REGISTER))?;
-
-        let id = runner_id.as_str();
-        let host = host_id;
-        let degraded = verdict.is_degraded();
-        tracing::debug!(
-            runner_id = id,
-            host_id = host,
-            degraded,
-            event = "runner_enrolled",
-            "runner enrolled"
-        );
+        transaction
+            .commit()
+            .await
+            .map_err(query(CONTEXT_REGISTER))?;
+        record_enrolled(&runner_id, host_id, verdict);
         Ok(Enrolled {
             runner_id,
             token,
@@ -173,4 +182,16 @@ impl Runners {
             verdict,
         })
     }
+}
+
+fn record_enrolled(runner: &Uuid7, host: &str, verdict: Verdict) {
+    let runner_id = runner.as_str();
+    let degraded = verdict.is_degraded();
+    tracing::debug!(
+        runner_id,
+        host_id = host,
+        degraded,
+        event = "runner_enrolled",
+        "runner enrolled"
+    );
 }

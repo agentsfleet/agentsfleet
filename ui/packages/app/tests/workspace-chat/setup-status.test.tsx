@@ -104,6 +104,7 @@ it("shows unresolved defaults and the exact source and fleet revisions under rev
   render(<FleetSetupDetails review={{...REVIEW, effective: {...REVIEW.effective, definition, runtime_model_ref: null, source_revision: "source-2", target_setup_revision: "3"}}} />);
   expect(screen.getByText("Account default is not resolved")).toBeTruthy();
   expect(screen.getByText("source-2")).toBeTruthy();
-  expect(screen.getByText("Fleet setup revision")).toBeTruthy();
+  expect(screen.getByText("Current saved setup revision")).toBeTruthy();
+  expect(screen.getByText("R3")).toBeTruthy();
   expect(screen.getByText("Add instructions before saving or publishing.")).toBeTruthy();
 });

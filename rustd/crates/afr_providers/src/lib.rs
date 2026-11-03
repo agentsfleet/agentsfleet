@@ -9,6 +9,7 @@
 
 #![deny(clippy::self_named_module_files)]
 
+pub mod decision;
 pub mod error;
 
 mod connect;

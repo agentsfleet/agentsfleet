@@ -58,6 +58,8 @@ url.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# Scoped channel-based logging proof avoids process-wide capture locks.
+tracing-subscriber.workspace = true
 afd_identity.workspace = true
 # Rig's scripted stream exercises unmodeled items and retained terminal failures.
 rig-core = { workspace = true, features = ["test-utils"] }
@@ -87,6 +89,6 @@ rustls.workspace = true
 tokio-rustls.workspace = true
 # The connect-refused send the retry suite classifies, and the fake provider
 # servers the wire suites stream from.
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync", "test-util"] }
 # The stop every driven run is given.
 tokio-util.workspace = true

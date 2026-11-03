@@ -1,5 +1,7 @@
 //! Typed model-facing proposals; the native validator still decides acceptance.
 
+mod decision;
+
 use super::{KEY_DESCRIPTION, KEY_TYPE, PROPOSAL_ARGUMENT};
 use afd_fleet_runtime::definition::{
     DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_EDITS,
@@ -118,6 +120,7 @@ fn configuration() -> Value {
                     "credentials":list(&json!({KEY_TYPE:TYPE_STRING})),
                     "triggers":list(&json!({KEY_TYPE:TYPE_OBJECT})),
                     "network":network(),
+                    "decision_policy":decision::policy(),
                     "gates":object(&json!({
                         "timeout_ms":{KEY_TYPE:TYPE_INTEGER},
                         "rules":list(&json!({KEY_TYPE:TYPE_OBJECT})),

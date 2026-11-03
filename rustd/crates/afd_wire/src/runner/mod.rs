@@ -111,6 +111,11 @@ pub struct ExtraBind<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct AssignedPolicy<'a> {
+    /// Canonical `UUIDv7` of the platform decision model; absent disables decisions.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    #[garde(inner(length(bytes, min = 36, max = 36)))]
+    pub decision_model_id: Option<Cow<'a, str>>,
     /// Isolation strength to apply.
     #[garde(skip)]
     pub sandbox_tier: SandboxTier,

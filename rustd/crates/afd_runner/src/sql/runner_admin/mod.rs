@@ -38,7 +38,8 @@ pub const SELECT_RUNNER_PATCH_STATE: &str = include_str!("select_runner_patch_st
 /// The caller holds this row's lock in the surrounding transaction. The
 /// distinctness guard makes an identical request write neither row nor event.
 /// `$12` is the reconciled verdict's reason and `$13` the sandbox
-/// configuration, rendered whole.
+/// configuration, rendered whole. `$14` is the optional model identity;
+/// `$15` names its audit metadata key.
 pub const PATCH_RUNNER_ASSIGNED_POLICY: &str = include_str!("patch_runner_assigned_policy.sql");
 
 /// Record one outstanding self-test ask while preserving revocation terminality.

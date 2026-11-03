@@ -8,6 +8,7 @@ use crate::egress::Egress;
 /// The egress an assignment of `policy` with `registry` as its baseline names.
 pub(crate) fn assigned(policy: NetworkPolicy, registry: &[&'static str]) -> Egress {
     Egress::assigned(&AssignedPolicy {
+        decision_model_id: None,
         sandbox_tier: SandboxTier::LandlockFull,
         network_policy: policy,
         registry_allowlist: registry.iter().copied().map(Into::into).collect(),

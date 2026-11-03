@@ -69,11 +69,15 @@ impl Models {
             .take(limit as usize)
             .map(|row| CatalogueRow::from_row(row).map_err(unreadable_row))
             .collect::<Result<Vec<_>>>()?;
-        let ids: Vec<String> = served.iter().map(|row| row.id.clone()).collect();
+        let ids: Vec<&str> = served.iter().map(|row| row.id.as_str()).collect();
         let mut connection = self.database.acquire().await?;
-        let mut prices = prices_for(connection.as_mut(), &ids)
-            .await
-            .map_err(error::library_page_unavailable)?;
+        let mut prices = prices_for(
+            connection.as_mut(),
+            &ids,
+            afd_admin::catalogue::PriceProtocol::Coding,
+        )
+        .await
+        .map_err(error::library_page_unavailable)?;
         let max_updated = served.iter().map(|row| row.updated_at).max();
         let boundary = served.last().map(|row| Boundary {
             display_key: row.display_key.clone(),

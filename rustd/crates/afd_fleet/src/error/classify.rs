@@ -93,16 +93,21 @@ impl Error {
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Authoring { ref source } => source.code(),
+            ErrorKind::Admission { ref source } => source.code(),
             ErrorKind::Context { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
             ErrorKind::Events { ref source } => source.code(),
             ErrorKind::Outbound { ref source } => source.code(),
             ErrorKind::Memory { ref source } => source.code(),
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
-                error_code::INTERNAL_DB_QUERY
-            }
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::SequenceCorrupt => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::TaskRefused { reason } => reason.code(),
             ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
@@ -118,7 +123,6 @@ impl Error {
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
             ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,
             ErrorKind::MessageLimitReached => error_code::MESSAGE_LIMIT_REACHED,
-            ErrorKind::SequenceCorrupt => error_code::INTERNAL_DB_QUERY,
             ErrorKind::IntegrationNotConnected => error_code::CRED_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => error_code::CRED_BROKER_NOT_CONFIGURED,
             ErrorKind::GithubReconnectRequired => error_code::GH_RECONNECT_REQUIRED,
@@ -150,15 +154,20 @@ impl Error {
             // decided here or by the crate it delegates to, so no handler can
             // describe one failure two ways.
             ErrorKind::Rejected { detail } => detail,
+            ErrorKind::TaskRefused { reason } => reason.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Authoring { ref source } => source.detail(),
+            ErrorKind::Admission { ref source } => source.detail(),
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
             // is told the same thing because there is nothing it can do about
             // any of them.
             ErrorKind::Context { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskDocument { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }

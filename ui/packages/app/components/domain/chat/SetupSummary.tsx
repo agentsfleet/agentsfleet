@@ -6,6 +6,7 @@ import { List, ListItem, Section } from "@agentsfleet/design-system";
 import { NANOS_PER_USD } from "@/lib/types";
 import { FleetTriggerSchema } from "@/lib/api/fleet-trigger";
 import { FleetTriggerSummary } from "@/components/domain/FleetTriggerSummary";
+import { SetupQuestions } from "./SetupQuestions";
 
 const ConfigSchema = z.object({"x-agentsfleet": z.object({triggers: z.array(FleetTriggerSchema).optional()})});
 const AmountSchema = z.string().regex(/^[1-9][0-9]*$/);
@@ -39,6 +40,7 @@ export function SetupSummary({definition, requirements}: {definition?: Definitio
         </List></>}
     </Section>
     {requirements ? <AccessSummary requirements={requirements} /> : null}
+    {definition ? <SetupQuestions definition={definition} /> : null}
   </div>;
 }
 

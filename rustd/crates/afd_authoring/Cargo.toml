@@ -37,7 +37,6 @@ afd_observability.workspace = true
 garde.workspace = true
 async-trait.workspace = true
 base64.workspace = true
-const_format.workspace = true
 hex.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
 # jiff-sqlx.
@@ -61,6 +60,7 @@ zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+const_format.workspace = true
 # One isolated allocator observer also checks the runner's public secret owner.
 afr_secrets.workspace = true
 afd_runner = { workspace = true, features = ["test-util"] }

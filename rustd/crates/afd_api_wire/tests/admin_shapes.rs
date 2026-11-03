@@ -4,10 +4,12 @@
 use std::borrow::Cow;
 
 use afd_api_wire::admin::{
-    AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
-    PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeySetResponse, PlatformKeysResponse,
+    AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelPatch, AdminModelUpdated,
+    AdminModelsResponse, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeySetResponse,
+    PlatformKeysResponse,
 };
 use afd_api_wire::catalogue::{CatalogueMetadata, CataloguePrice};
+use garde::Validate as _;
 
 /// The instant every fixture's evidence was verified at.
 const VERIFIED: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
@@ -16,6 +18,7 @@ const VERIFIED: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 fn item() -> AdminModelItem<'static> {
     AdminModelItem {
         inference: None,
+        decision: None,
         id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01"),
         provider: Cow::Borrowed("anthropic"),
         model_id: Cow::Borrowed("claude-opus-5"),
@@ -64,6 +67,32 @@ fn admin_catalogue_wire_shapes_are_metadata_only() {
         serde_json::to_value(models).expect("model response serializes"),
         serde_json::json!({"models":[item_json()],"request_id":"req-models"})
     );
+}
+
+#[test]
+fn model_patch_leaves_saved_protocol_requirements_to_native_validation() {
+    let metadata = item_json().get("metadata").expect("model metadata").clone();
+    let patch = serde_json::json!({"metadata":metadata,"prices":[]}).to_string();
+    let patch: AdminModelPatch<'_> = serde_json::from_str(&patch).expect("metadata-only patch");
+    assert!(
+        patch.validate().is_ok(),
+        "a saved decision-only model has no coding rates"
+    );
+    assert!(patch.inference.is_none());
+    assert!(
+        patch.decision.is_none(),
+        "omitted settings remain unchanged"
+    );
+
+    let create = serde_json::json!({
+        "provider":"typesafe", "model_id":"decision-fixture", "metadata":metadata, "prices":[]
+    })
+    .to_string();
+    let create: AdminModelCreate<'_> = serde_json::from_str(&create).expect("new model shape");
+    let refused = create
+        .validate()
+        .expect_err("a new model needs a protocol schedule");
+    assert!(refused.to_string().contains("prices"));
 }
 
 #[test]

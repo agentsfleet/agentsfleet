@@ -17,6 +17,15 @@ afd_core::error_shell!(
 
 #[derive(Debug, thiserror::Error)]
 enum ErrorKind {
+    #[error("changed decision settings require a new profile revision")]
+    DecisionRevision,
+    #[error("coding models require a nonempty coding price schedule")]
+    CodingPrices,
+    #[error("model decision settings are invalid")]
+    DecisionSettings {
+        #[source]
+        source: afd_inference::Error,
+    },
     #[error("model inference settings are invalid")]
     Inference {
         #[source]
@@ -52,7 +61,10 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match *self.kind() {
-            ErrorKind::Inference { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::Inference { .. }
+            | ErrorKind::DecisionSettings { .. }
+            | ErrorKind::DecisionRevision
+            | ErrorKind::CodingPrices => error_code::INVALID_REQUEST,
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } | ErrorKind::Row { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,
@@ -63,6 +75,15 @@ impl Error {
     #[must_use]
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
+            ErrorKind::DecisionRevision => {
+                "Changed decision settings require a new profile revision"
+            }
+            ErrorKind::CodingPrices => {
+                "Coding models require a nonempty coding price schedule; only decision-only models may omit it"
+            }
+            ErrorKind::DecisionSettings { .. } => {
+                "Decision settings require supported questions, safe HTTPS endpoints, complete thresholds and evaluation evidence"
+            }
             ErrorKind::Inference { .. } => {
                 "Inference settings must specify a supported API, safe HTTPS base URL and output limit within the model context"
             }
@@ -84,6 +105,18 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_crypto::error::Error => Entropy,
 );
+
+pub(super) fn decision_revision() -> Error {
+    ErrorKind::DecisionRevision.into()
+}
+
+pub(super) fn coding_prices() -> Error {
+    ErrorKind::CodingPrices.into()
+}
+
+pub(super) fn decision_settings(source: afd_inference::Error) -> Error {
+    ErrorKind::DecisionSettings { source }.into()
+}
 
 pub(super) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::from(ErrorKind::Query { context, source })

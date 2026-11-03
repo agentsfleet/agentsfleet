@@ -20,10 +20,12 @@ use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
 use super::{
-    ACTIVITY_FRAMES_DROPPED, Families, MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED,
-    PROVIDER_RETRIES, PROVIDER_TURN_DURATION, SANDBOX_HOLDS, SANDBOX_START_DURATION,
-    SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
+    ACTIVITY_FRAMES_DROPPED, DECISION_DURATION, DECISION_EVALUATIONS, Families,
+    MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED, PROVIDER_RETRIES, PROVIDER_TURN_DURATION,
+    SANDBOX_HOLDS, SANDBOX_START_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION,
+    TOOL_OUT_OF_MEMORY, registry,
 };
+use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
     TurnOutcome,
@@ -116,8 +118,16 @@ fn test_every_runner_census_family_has_a_producer() {
 }
 
 /// Each family, and how many series its closed sets can produce.
-fn label_products() -> [(&'static str, usize); 10] {
+fn label_products() -> [(&'static str, usize); 12] {
     [
+        (
+            DECISION_EVALUATIONS.wire_name(),
+            DecisionProvider::ALL.len() * DecisionPurpose::ALL.len() * DecisionOutcome::ALL.len(),
+        ),
+        (
+            DECISION_DURATION.wire_name(),
+            DecisionProvider::ALL.len() * DecisionPurpose::ALL.len() * DecisionOutcome::ALL.len(),
+        ),
         (
             PROVIDER_TURN_DURATION.wire_name(),
             Provider::count() * TurnOutcome::ALL.len(),
@@ -178,6 +188,12 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
     let families = Families::claim(&instruments).expect("the census is claimed");
     let elapsed = Duration::from_millis(5);
 
+    families.decision(
+        DecisionProvider::Typesafe,
+        DecisionPurpose::Goal,
+        DecisionOutcome::Completed,
+        elapsed,
+    );
     families.turn(Provider::of("anthropic"), TurnOutcome::Completed, elapsed);
     families.retry(Provider::of("anthropic"), RetryReason::RateLimited);
     families.sandbox_start(SandboxStart::Ready, elapsed);

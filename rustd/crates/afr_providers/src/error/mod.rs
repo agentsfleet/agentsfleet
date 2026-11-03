@@ -30,6 +30,25 @@ afd_core::error_shell!(
 /// Every way a provider fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("the decision endpoint could not be parsed")]
+    DecisionEndpoint {
+        #[source]
+        source: url::ParseError,
+    },
+    #[error("{reason}")]
+    DecisionPreflight { reason: &'static str },
+    #[error("the decision request could not be built")]
+    DecisionBuild {
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("the decision response exceeds its 64 KiB byte bound")]
+    DecisionOversize,
+    #[error("the decision provider refused the physical call with status {status}")]
+    DecisionStatus {
+        status: u16,
+        retry_after: Option<std::time::Duration>,
+    },
     /// The provider refused the turn with a status no retry changes.
     #[error("the model provider refused the turn with status {status}{}", Named(.code.as_deref()))]
     Refused {
@@ -140,6 +159,41 @@ pub(crate) enum ErrorKind {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl Error {
+    /// HTTP status from a physical decision refusal; the logical caller owns
+    /// retry eligibility and reserves every permitted attempt independently.
+    #[must_use]
+    pub fn decision_status(&self) -> Option<u16> {
+        match self.kind() {
+            ErrorKind::DecisionStatus { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+
+    /// Provider-requested wait for a decision refusal. The logical caller still
+    /// enforces its retry count, remaining time and fresh physical reservation.
+    #[must_use]
+    pub fn decision_retry_after(&self) -> Option<std::time::Duration> {
+        match self.kind() {
+            ErrorKind::DecisionStatus {
+                status: 429 | 529,
+                retry_after,
+            } => *retry_after,
+            _ => None,
+        }
+    }
+
+    /// Whether this decision failed before a physical request could be sent.
+    #[must_use]
+    pub fn decision_not_sent(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::DecisionEndpoint { .. }
+                | ErrorKind::DecisionBuild { .. }
+                | ErrorKind::DecisionPreflight { .. }
+                | ErrorKind::Configuration { .. }
+        )
+    }
+
     /// A refusal with `status`, which no retry changes.
     #[must_use]
     pub fn refused(status: u16) -> Self {
@@ -169,10 +223,15 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Unhosted { .. }
+            ErrorKind::DecisionEndpoint { .. }
+            | ErrorKind::DecisionBuild { .. }
+            | ErrorKind::DecisionPreflight { .. }
+            | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
             | ErrorKind::Configuration { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
-            ErrorKind::Refused { .. }
+            ErrorKind::DecisionOversize
+            | ErrorKind::DecisionStatus { .. }
+            | ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
             | ErrorKind::Oversize { .. }
@@ -191,7 +250,12 @@ impl Error {
     pub fn failure_class(&self) -> Option<FailureClass> {
         match self.kind() {
             ErrorKind::Lost { .. } | ErrorKind::Ended { .. } => Some(FailureClass::TransportLoss),
-            ErrorKind::Refused { .. }
+            ErrorKind::DecisionEndpoint { .. }
+            | ErrorKind::DecisionBuild { .. }
+            | ErrorKind::DecisionPreflight { .. }
+            | ErrorKind::DecisionOversize
+            | ErrorKind::DecisionStatus { .. }
+            | ErrorKind::Refused { .. }
             | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
@@ -209,7 +273,12 @@ impl Error {
     pub fn unhosted_provider(&self) -> Option<&str> {
         match self.kind() {
             ErrorKind::Unhosted { provider } => Some(provider),
-            ErrorKind::BlockedEndpoint { .. }
+            ErrorKind::DecisionEndpoint { .. }
+            | ErrorKind::DecisionBuild { .. }
+            | ErrorKind::DecisionPreflight { .. }
+            | ErrorKind::DecisionOversize
+            | ErrorKind::DecisionStatus { .. }
+            | ErrorKind::BlockedEndpoint { .. }
             | ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }

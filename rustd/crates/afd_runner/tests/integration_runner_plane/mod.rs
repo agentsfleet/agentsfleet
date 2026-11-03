@@ -10,6 +10,9 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+mod decision;
+mod decision_fixture;
+mod decision_races;
 mod faults;
 mod lifecycle;
 mod operator;
@@ -37,6 +40,7 @@ fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("host-01.plane.test"),
         assigned_policy: AssignedPolicy {
+            decision_model_id: None,
             sandbox_tier: SandboxTier::DevNone,
             network_policy: NetworkPolicy::AllowAll,
             registry_allowlist: Vec::new(),

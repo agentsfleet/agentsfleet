@@ -44,6 +44,7 @@ import {
   formFromBinds,
 } from "./policy-binds";
 import { PolicyBindsField } from "./PolicyBindsField";
+import { PolicyDecisionField } from "./PolicyDecisionField";
 
 // The ASSIGNMENT section, shared verbatim by AddRunnerDialog (enrollment) and
 // EditPolicyDialog (re-assignment) so the two surfaces can never drift on what
@@ -75,6 +76,7 @@ const WORKERS_ASSIGNMENT_DESCRIPTION = `Concurrent workers on the host (${MIN_WO
 const WORKER_COUNT_RANGE_MESSAGE = `Between ${MIN_WORKER_COUNT} and ${MAX_WORKER_COUNT} workers`;
 
 export const policyFormSchema = z.object({
+  decision_model_id: z.union([z.uuidv7(), z.literal("")]).optional(),
   sandbox_tier: z.enum(SANDBOX_TIERS),
   network_policy: z.enum(NETWORK_POLICIES),
   registry_allowlist: z.string().trim(),
@@ -129,6 +131,7 @@ export const policyFormSchema = z.object({
 export type PolicyFormValues = z.infer<typeof policyFormSchema>;
 
 export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
+  decision_model_id: "",
   sandbox_tier: DEFAULT_ASSIGNED_SANDBOX_TIER,
   network_policy: DEFAULT_ASSIGNED_NETWORK_POLICY,
   registry_allowlist: "",
@@ -145,6 +148,7 @@ export function policyFromForm(values: PolicyFormValues): {
   if (parsed.error) return { policy: null, error: parsed.error };
   return {
     policy: {
+      ...(values.decision_model_id ? {decision_model_id: values.decision_model_id} : {}),
       sandbox_tier: values.sandbox_tier,
       network_policy: values.network_policy,
       registry_allowlist: parsed.hosts,
@@ -158,6 +162,7 @@ export function policyFromForm(values: PolicyFormValues): {
 /** A stored assignment → form values, for the edit dialog's initial state. */
 export function formFromPolicy(policy: AssignedPolicy): PolicyFormValues {
   return {
+    decision_model_id: policy.decision_model_id ?? "",
     sandbox_tier: policy.sandbox_tier,
     network_policy: policy.network_policy,
     registry_allowlist: policy.registry_allowlist.join(", "),
@@ -297,6 +302,7 @@ export function PolicyFields({
         />
       </div>
       <PolicyBindsField control={c} />
+      <PolicyDecisionField control={c} />
     </>
   );
 }

@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use afd_wire::decision::DecisionModelSettings;
 use afd_wire::inference::ModelInference;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -132,6 +133,25 @@ pub const PROVIDER_MAX_BYTES: usize = 64;
 /// The longest provider-native model identity the catalogue stores.
 pub const MODEL_ID_MAX_BYTES: usize = 256;
 
+/// Decision settings and their protocol-specific complete price schedule.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct AdminDecisionModel<'a> {
+    /// Activation is independent of the immutable reviewed definition.
+    #[garde(skip)]
+    pub enabled: bool,
+    /// Responses borrow the stored definition; request decoding owns its fields.
+    #[serde(borrow)]
+    #[garde(dive)]
+    pub profile: Cow<'a, DecisionModelSettings>,
+    /// The schedule belongs to this decision revision, independently of coding.
+    #[serde(borrow)]
+    #[cfg_attr(feature = "openapi", schema(min_items = 1, max_items = 64))]
+    #[garde(length(min = 1, max = PRICES_MAX), dive, custom(price_schedule))]
+    pub prices: Vec<CataloguePrice<'a>>,
+}
+
 /// `POST /v1/admin/models` input: one identity, its evidence, its complete
 /// price schedule and, optionally, its inference settings.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -153,12 +173,17 @@ pub struct AdminModelCreate<'a> {
     /// Every prompt tier across every date range, in integer nanos per
     /// million tokens.
     #[serde(borrow)]
-    #[garde(length(min = 1, max = PRICES_MAX), dive, custom(price_schedule))]
+    #[cfg_attr(feature = "openapi", schema(max_items = 64))]
+    #[garde(length(max = PRICES_MAX), dive, custom(coding_schedule(self.inference.is_none() && self.decision.is_some())))]
     pub prices: Vec<CataloguePrice<'a>>,
     /// Explicit inference settings; omitted rows remain unavailable for inference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub inference: Option<ModelInference>,
+    /// Omission leaves a new model without decision capability.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub decision: Option<AdminDecisionModel<'a>>,
 }
 
 /// `PATCH /v1/admin/models/{id}` input: a complete replacement of the
@@ -171,14 +196,20 @@ pub struct AdminModelPatch<'a> {
     #[serde(borrow)]
     #[garde(dive)]
     pub metadata: CatalogueMetadata<'a>,
-    /// The whole schedule; a range absent here is removed.
+    /// The whole coding schedule; the saved settings determine whether it can
+    /// be empty. A range absent here is removed.
     #[serde(borrow)]
-    #[garde(length(min = 1, max = PRICES_MAX), dive, custom(price_schedule))]
+    #[cfg_attr(feature = "openapi", schema(max_items = 64))]
+    #[garde(length(max = PRICES_MAX), dive, custom(coding_schedule(true)))]
     pub prices: Vec<CataloguePrice<'a>>,
     /// Omission preserves the current inference settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub inference: Option<ModelInference>,
+    /// Omission preserves the saved decision definition and schedule.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub decision: Option<AdminDecisionModel<'a>>,
 }
 
 /// One model in the admin list.
@@ -204,6 +235,9 @@ pub struct AdminModelItem<'a> {
     /// Non-secret settings used by setup chat and runtime leases.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inference: Option<ModelInference>,
+    /// Reviewed decision definition and independent rates, when configured.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<AdminDecisionModel<'a>>,
 }
 
 /// `GET /v1/admin/models` response.
@@ -245,4 +279,16 @@ pub struct AdminModelUpdated<'a> {
     /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,
+}
+
+fn coding_schedule<C: ?Sized>(
+    decision_only: bool,
+) -> impl Fn(&[CataloguePrice<'_>], &C) -> garde::Result {
+    move |prices, context| {
+        if decision_only && prices.is_empty() {
+            Ok(())
+        } else {
+            price_schedule(prices, context)
+        }
+    }
 }

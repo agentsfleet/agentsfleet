@@ -28,6 +28,7 @@ pub mod error;
 pub mod admin;
 pub mod bounds;
 pub mod capacity;
+mod decision;
 pub mod edit;
 pub mod heartbeat;
 pub mod policy;

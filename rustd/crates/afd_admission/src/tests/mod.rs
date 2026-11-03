@@ -10,17 +10,18 @@ use super::admit::ReplyBinds;
 use super::budget::{DEPLOYMENT_BACKLOG_BUDGET, FLEET_BACKLOG_BUDGET};
 use super::{Admission, BudgetScope, Budgets, Key, Producer, Reply};
 
-/// Every producer, so a test cannot silently cover five of six.
+/// Every producer, so spelling and key ownership stay exhaustive.
 ///
 /// Written out rather than derived: a variant added without a spelling here
 /// fails to compile at the `match` in [`Producer::as_str`] and fails the
 /// count below, which is two failures naming the same omission.
-const EVERY_PRODUCER: [Producer; 6] = [
+const EVERY_PRODUCER: [Producer; 7] = [
     Producer::Steer,
     Producer::Webhook,
     Producer::WebhookApp,
     Producer::ScheduleFire,
     Producer::GateContinuation,
+    Producer::TaskContinuation,
     Producer::SlackMention,
 ];
 

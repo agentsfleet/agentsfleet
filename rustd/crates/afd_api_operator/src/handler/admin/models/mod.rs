@@ -6,12 +6,12 @@ use input::{create_request, patch_request};
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_admin::{CreateModel, DeleteModel, Model, ModelInput, ModelUpdate};
+use afd_admin::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate};
+use afd_api_wire::admin::{
+    AdminDecisionModel, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
+};
 #[cfg(feature = "openapi")]
 use afd_api_wire::admin::{AdminModelCreate, AdminModelPatch};
-use afd_api_wire::admin::{
-    AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
-};
 use afd_api_wire::catalogue::{CatalogueMetadata, CataloguePrice};
 use afd_core::error_code;
 use afd_http::services::{metadata_store, metadata_wire, price_store, price_wire};
@@ -31,7 +31,7 @@ const DETAIL_ID: &str = "id must be a canonical UUIDv7";
 const DETAIL_NOT_FOUND: &str = "No catalogue model matches this id";
 const DETAIL_DUPLICATE: &str = "A catalogue row for this provider and model already exists";
 const DETAIL_IN_USE: &str =
-    "This model is the active platform default; repoint the default before deleting it";
+    "This model is in use; change its platform default or runner assignments before deleting it";
 
 /// Lists every priced catalogue row.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -103,7 +103,12 @@ pub(crate) async fn create<D: Services>(
     let input = ModelInput {
         provider: request.provider.into_owned(),
         model_name: request.model_id.into_owned(),
-        details: details(request.metadata, request.prices, request.inference),
+        details: details(
+            request.metadata,
+            request.prices,
+            request.inference,
+            request.decision,
+        ),
     };
     match services.models().create(input, services.now()).await {
         Ok(CreateModel::Created(model)) => {
@@ -168,7 +173,12 @@ pub(crate) async fn update<D: Services>(
         .models()
         .update(
             &id,
-            details(request.metadata, request.prices, request.inference),
+            details(
+                request.metadata,
+                request.prices,
+                request.inference,
+                request.decision,
+            ),
             services.now(),
         )
         .await
@@ -242,15 +252,23 @@ fn details(
     metadata: CatalogueMetadata<'_>,
     prices: Vec<CataloguePrice<'_>>,
     inference: Option<ModelInference>,
+    decision: Option<AdminDecisionModel<'_>>,
 ) -> ModelUpdate {
     ModelUpdate {
         metadata: metadata_store(metadata),
         prices: prices.into_iter().map(price_store).collect(),
         inference,
+        decision: decision.map(|model| DecisionModel {
+            configuration: afd_wire::decision::DecisionConfiguration {
+                enabled: model.enabled,
+                profile: model.profile.into_owned(),
+            },
+            prices: model.prices.into_iter().map(price_store).collect(),
+        }),
     }
 }
 
-fn item(model: &Model) -> AdminModelItem<'static> {
+fn item(model: &Model) -> AdminModelItem<'_> {
     AdminModelItem {
         id: Cow::Owned(model.id.to_string()),
         provider: Cow::Owned(model.provider.clone()),
@@ -258,6 +276,15 @@ fn item(model: &Model) -> AdminModelItem<'static> {
         metadata: metadata_wire(&model.details.metadata),
         prices: model.details.prices.iter().map(price_wire).collect(),
         inference: model.details.inference.clone(),
+        decision: model
+            .details
+            .decision
+            .as_ref()
+            .map(|model| AdminDecisionModel {
+                enabled: model.configuration.enabled,
+                profile: Cow::Borrowed(&model.configuration.profile),
+                prices: model.prices.iter().map(price_wire).collect(),
+            }),
     }
 }
 

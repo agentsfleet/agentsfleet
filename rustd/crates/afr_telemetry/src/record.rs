@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
+use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
     TurnOutcome,
@@ -32,6 +33,14 @@ use crate::labels::{
 /// One method per family, each taking only its closed label set, so a call
 /// site cannot attribute a measurement to a label the census never declared.
 pub trait Recorder: Send + Sync + core::fmt::Debug {
+    /// One native decision evaluation ended, including refused preflight.
+    fn decision(
+        &self,
+        provider: DecisionProvider,
+        purpose: DecisionPurpose,
+        outcome: DecisionOutcome,
+        elapsed: Duration,
+    );
     /// One model turn ended, after `elapsed`.
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration);
     /// A turn's send is about to be retried.
@@ -77,6 +86,16 @@ fn with(record: impl FnOnce(&dyn Recorder)) {
     if let Some(recorder) = INSTALLED.get() {
         record(recorder.as_ref());
     }
+}
+
+/// Records one decision evaluation, independently of coding-model turns.
+pub fn decision(
+    provider: DecisionProvider,
+    purpose: DecisionPurpose,
+    outcome: DecisionOutcome,
+    elapsed: Duration,
+) {
+    with(|recorder| recorder.decision(provider, purpose, outcome, elapsed));
 }
 
 /// Records one model turn.

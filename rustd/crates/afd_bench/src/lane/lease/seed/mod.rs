@@ -253,6 +253,7 @@ pub async fn runner_with(
     let request = RegisterRequest {
         host_id: host.into(),
         assigned_policy: AssignedPolicy {
+            decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowListEgress,
             registry_allowlist: Vec::new(),

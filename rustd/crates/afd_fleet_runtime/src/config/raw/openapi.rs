@@ -106,6 +106,7 @@ pub(crate) fn published() -> Vec<Published> {
     ]
     .into_iter()
     .chain(rules())
+    .chain(super::super::decision::raw::published())
     .collect()
 }
 
