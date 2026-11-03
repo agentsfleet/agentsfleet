@@ -31,6 +31,10 @@ const STDERR_TAIL_BYTES: usize = 2_048;
 pub(crate) const EXT4: &str = "ext4";
 /// The flag `mke2fs` takes a file-system type after.
 const TYPE_FLAG: &str = "-t";
+/// The file system's block size: the sector the loop device attaches every
+/// disk with, which a block may not undercut. Left to itself, `mke2fs` picks
+/// 1 KiB for a small disk, and the kernel refuses to mount it.
+const EXT4_BLOCK_BYTES: &str = "4096";
 
 /// Where each host program lives, and the step that mounts a workspace disk.
 #[derive(Debug, Clone)]
@@ -108,6 +112,8 @@ pub(crate) fn format_arguments(image: &Path, owner: (u32, u32)) -> Vec<OsString>
     [
         "-q",
         "-F",
+        "-b",
+        EXT4_BLOCK_BYTES,
         TYPE_FLAG,
         EXT4,
         "-m",

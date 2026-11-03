@@ -88,6 +88,8 @@ fn test_format_arguments_make_a_journal_free_disk_its_owner_may_write() {
         [
             "-q",
             "-F",
+            "-b",
+            "4096",
             "-t",
             "ext4",
             "-m",
