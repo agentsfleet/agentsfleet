@@ -1,10 +1,8 @@
 //! Dimension 2.1 — migrating an empty database builds exactly the tables and
 //! columns of the signed-off layout, in the nine owned schemas and nowhere else.
 //!
-//! The expected layout is [`LAYOUT`], held here. That
-//! `docs/architecture/postgres_schemas.md` lists the same tables and columns as
-//! the registered migrations is `make check-schema-doc`'s, so the doc, the
-//! slots and this list cannot drift apart without one of them failing.
+//! The expected layout is [`LAYOUT`], held here, so a migration that adds,
+//! drops or renames a column fails this test until the list moves with it.
 
 use std::collections::BTreeMap;
 
