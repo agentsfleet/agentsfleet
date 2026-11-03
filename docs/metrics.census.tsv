@@ -39,7 +39,7 @@ agentsfleet.billing.credit.consumed	counter	u64	{nanocredit}	delta	gen_ai.reques
 agentsfleet_billing_reserve_total	counter	u64	1	cumulative	work_type,outcome	-	fixed:8	no	traffic	reservations by answer; a rising unconfirmed share is a biller outage the policy admitted, short is a tenant out of credit
 agentsfleet_billing_settle_total	counter	u64	1	cumulative	work_type,outcome	-	fixed:6	no	errors	non-ok settlements wait for the sweeper; datastore_unavailable clears on its own, defect does not
 agentsfleet_billing_unpriced_tokens_total	counter	u64	{token}	cumulative	gen_ai.provider.name,gen_ai.request.model	-	shared:cost	no	errors	tokens charged nothing because the catalogue publishes no price for them
-agentsfleet_billing_sweeper_resettled_total	counter	u64	1	cumulative	work_type	-	fixed:2	no	health	settlements the request path lost; steady growth means post-commit settles are failing
+agentsfleet_billing_sweeper_resettled_total	counter	u64	1	cumulative	work_type	-	fixed:2	no	health	work/provider/model/posture settlement groups the request path lost; steady growth means post-commit settles are failing
 agentsfleet_billing_unsettled_nanos	gauge	u64	{nanocredit}	-	work_type	-	fixed:2	no	saturation	usage logged and not yet charged, as the last sweep read it
 agentsfleet_billing_unsettled_oldest_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled line; past a few minutes means settlements are not landing
 agentsfleet_billing_held_nanos	gauge	u64	{nanocredit}	-	-	-	fixed:1	no	saturation	credit promised to running work and not yet captured

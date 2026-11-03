@@ -404,6 +404,10 @@ M236 selects Cloudflare R2 for encrypted immutable coding checkpoints.
 [Durable Tasks](durable_tasks.md) owns lifecycle and guarded manifest publication.
 Use Rust `object_store` 0.14.2 with its S3-compatible client in trusted daemon storage code.
 
+Use [`Signer::signed_url_opts`](https://docs.rs/object_store/0.14.2/object_store/signer/trait.Signer.html#method.signed_url_opts) and `SignedUrlOptions::with_signed_header` to bind mandatory transfer headers, including create-only `If-None-Match: *`.
+The SDK handles signing; native code owns object identity, scope, descriptors and authorization expiry.
+Native integration and service enforcement still require implementation and live proof.
+
 Its published dependency metadata uses reqwest 0.13, matching the workspace's transport line; build verification still checks features and crypto-provider compatibility.
 
 Capture logical repository files and Git state instead of copying a live mounted ext4 image.
