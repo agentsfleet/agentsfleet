@@ -93,6 +93,7 @@ fn rendered(resume_hold: bool) -> Value {
         &installed,
         policy(),
         Vec::new(),
+        None,
     )
     .expect("a lease renders");
     serde_json::from_str(&answer).expect("the answer is JSON")

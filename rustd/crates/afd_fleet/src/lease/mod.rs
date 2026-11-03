@@ -22,6 +22,7 @@ mod claim;
 pub mod commit;
 mod context;
 pub mod coverage;
+mod decision;
 mod deliver;
 pub mod envelope;
 pub mod event;

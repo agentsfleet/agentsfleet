@@ -1,5 +1,6 @@
 //! Bounded typed decisions; native authority and transitions remain with callers.
 
+mod assignment;
 mod config;
 mod question;
 mod result;
@@ -8,6 +9,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 pub use afd_validate::serialized_within;
+pub use assignment::DecisionAssignment;
 pub use config::{
     DecisionConfiguration, DecisionModelSettings, DecisionThreshold, GoalDecisionPolicy,
     IntentDecisionPolicy,
@@ -81,7 +83,8 @@ pub struct DecisionProfile {
     #[garde(length(bytes, min = 1, max = 2048))]
     pub endpoint: String,
     /// Requested model; an alias is not evidence of a resolved serving version.
-    #[garde(length(bytes, min = 1, max = 128))]
+    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 256))]
+    #[garde(length(bytes, min = 1, max = crate::inference::MODEL_ID_MAX_BYTES))]
     pub model: String,
     /// Reviewed reported model names; activation owns alias/version evidence.
     #[garde(length(min = 1, max = 8), inner(length(bytes, min = 1, max = 128)))]

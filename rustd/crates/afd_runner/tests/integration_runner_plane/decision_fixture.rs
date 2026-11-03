@@ -17,9 +17,14 @@ pub(super) struct DecisionModelFixture {
 impl DecisionModelFixture {
     pub(super) async fn create(database: &Db) -> Self {
         let models = Models::new(database.clone(), Entropy::new());
+        let mut model_name = format!("runner-decision-{}", mint_id());
+        model_name.extend(std::iter::repeat_n(
+            'x',
+            afd_wire::inference::MODEL_ID_MAX_BYTES - model_name.len(),
+        ));
         let input = ModelInput {
             provider: "typesafe".into(),
-            model_name: format!("runner-decision-{}", mint_id()),
+            model_name,
             details: details(),
         };
         let created = models

@@ -79,4 +79,8 @@ pub struct LeasePayload<'a> {
     /// True when the runner can reuse its latest held sandbox for a new event. Reassigned
     /// events and expired or outdated sandboxes require a fresh sandbox.
     pub resume_hold: bool,
+    /// Reviewed runner decision selection frozen at issue; no provider key.
+    /// Absent on older leases or hosts without an enabled reviewed selection.
+    #[serde(default)]
+    pub decision: Option<Box<crate::decision::DecisionAssignment>>,
 }

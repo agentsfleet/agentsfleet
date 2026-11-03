@@ -125,6 +125,9 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# Reviewed decision fixtures use the same native catalogue mutations as operators.
+afd_admin.workspace = true
+garde.workspace = true
 futures-util.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.

@@ -7,6 +7,7 @@
 
 use afd_core::id::Uuid7;
 use afd_core::timing::NO_WORK_RETRY_AFTER;
+use afd_wire::decision::DecisionAssignment;
 use afd_wire::event::{EventEnvelope, EventType};
 use afd_wire::lease::{LeasePayload, LeaseResponse, SecretDelivery, TaggedLease, Turn};
 use afd_wire::policy::ExecutionPolicy;
@@ -75,6 +76,7 @@ pub(super) fn render<'a>(
     installed: &'a Installed,
     policy: ExecutionPolicy<'a>,
     history: Vec<Turn<'a>>,
+    decision: Option<Box<DecisionAssignment>>,
 ) -> Result<String> {
     answer(Some(LeasePayload {
         lease_id: lease_id.as_str().into(),
@@ -98,6 +100,7 @@ pub(super) fn render<'a>(
         limits: None,
         history,
         resume_hold: acquired.resume_hold,
+        decision,
     }))
 }
 

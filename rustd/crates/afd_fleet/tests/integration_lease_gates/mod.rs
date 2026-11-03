@@ -38,6 +38,8 @@
 
 mod bindings;
 mod cases;
+mod decision;
+mod decision_expiry;
 mod faults;
 mod history;
 mod money;
