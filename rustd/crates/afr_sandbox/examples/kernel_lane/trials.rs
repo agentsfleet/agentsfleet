@@ -14,6 +14,7 @@ use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::admission::{MOUNTINFO, adoption, path_swap};
 use crate::budgets::start_budgets;
+use crate::caching::toolbox_reads_past_the_host_cache;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
 use crate::exhaustion::{
     disk_fill_under_memory_limit_ends_in_enospc, full_tmp_answers_enospc,
@@ -23,7 +24,10 @@ use crate::exhaustion::{
 };
 use crate::exhaustion_concurrent::writable_state_exhaustion_spares_the_sandbox;
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
-use crate::filesystems::{buffered_disk, failed_mount_is_unmounted, probe_direct_io, short_disk};
+use crate::filesystems::{
+    buffered_disk, disk_starts_no_mount_program, probe_direct_io, refused_mount_leaves_nothing,
+    released_disk_leaves_no_loop_device, short_disk,
+};
 use crate::forked_kill::forked_oom;
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
@@ -155,8 +159,20 @@ const TRIALS: &[(&str, Body)] = &[
     ("test_shell_reported_kill_reads_as_oom", forked_oom),
     ("test_disk_without_direct_io_runs_buffered", buffered_disk),
     (
-        "test_a_disk_whose_mount_helper_failed_is_unmounted",
-        failed_mount_is_unmounted,
+        "test_refused_mount_leaves_nothing",
+        refused_mount_leaves_nothing,
+    ),
+    (
+        "test_released_disk_leaves_no_loop_device",
+        released_disk_leaves_no_loop_device,
+    ),
+    (
+        "test_workspace_disk_starts_no_mount_program",
+        disk_starts_no_mount_program,
+    ),
+    (
+        "test_toolbox_loop_reads_past_the_host_cache",
+        toolbox_reads_past_the_host_cache,
     ),
     ("test_probe_reads_direct_io_per_filesystem", probe_direct_io),
     ("test_lane_refuses_a_disk_short_of_room", short_disk),

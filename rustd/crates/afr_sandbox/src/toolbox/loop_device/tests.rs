@@ -1,7 +1,10 @@
 use std::cell::Cell;
 use std::io;
 
-use super::{ATTACH_RETRIES, Attempt, until_free};
+use super::{
+    ATTACH_RETRIES, Access, Attempt, LO_FLAGS_DIRECT_IO, LO_FLAGS_READ_ONLY, caching, until_free,
+};
+use crate::workspace_disk::Caching;
 
 /// A `LOOP_CONFIGURE` refusal with `errno`.
 fn configure(errno: i32) -> Attempt {
@@ -68,4 +71,25 @@ fn should_attach_the_next_device_after_one_found_taken() {
     });
 
     assert_eq!(attached.ok(), Some(2));
+}
+
+/// A device whose status lacks the direct-I/O flag is buffered, whatever the
+/// attach asked for: the kernel may drop direct I/O without failing the call,
+/// so only the status read back says how the image is cached.
+#[test]
+fn test_disk_reports_buffered_fallback() {
+    assert_eq!(caching(LO_FLAGS_READ_ONLY), Caching::Buffered);
+    assert_eq!(caching(0), Caching::Buffered);
+    assert_eq!(caching(LO_FLAGS_DIRECT_IO), Caching::Direct);
+    assert_eq!(
+        caching(LO_FLAGS_READ_ONLY | LO_FLAGS_DIRECT_IO),
+        Caching::Direct
+    );
+}
+
+/// Only the toolbox is attached read-only; a lease's disk takes writes.
+#[test]
+fn test_only_the_toolbox_is_attached_read_only() {
+    assert_eq!(Access::ReadOnly.flags(), LO_FLAGS_READ_ONLY);
+    assert_eq!(Access::ReadWrite.flags(), 0);
 }

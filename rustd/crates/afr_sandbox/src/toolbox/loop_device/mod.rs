@@ -27,11 +27,6 @@ const LOOP_CTL_GET_FREE: libc::Ioctl = 0x4C82;
 const LOOP_CONFIGURE: libc::Ioctl = 0x4C0A;
 /// `LOOP_GET_STATUS64`: what a device is attached to.
 const LOOP_GET_STATUS64: libc::Ioctl = 0x4C05;
-/// `LOOP_SET_DIRECT_IO`: read and write the backing file past the host's page
-/// cache, switched on a bound device; its argument is the value itself.
-const LOOP_SET_DIRECT_IO: libc::Ioctl = 0x4C08;
-/// The `LOOP_SET_DIRECT_IO` argument that turns direct I/O on.
-const DIRECT_IO_ON: libc::c_ulong = 1;
 /// The block-device major number every loop device has.
 pub(crate) const LOOP_MAJOR: u32 = 7;
 /// Where the kernel publishes every block device by number, and the file
@@ -44,6 +39,11 @@ const DEVNAME: &str = "DEVNAME=";
 pub(crate) const LO_FLAGS_READ_ONLY: u32 = 1;
 /// `LO_FLAGS_AUTOCLEAR`: the device detaches itself once nothing holds it.
 const LO_FLAGS_AUTOCLEAR: u32 = 4;
+/// `LO_FLAGS_DIRECT_IO`: the device reads and writes its file past the host's
+/// page cache, so its blocks are cached once, by whoever reads the device.
+pub(crate) const LO_FLAGS_DIRECT_IO: u32 = 16;
+/// The block size every attach asks for: a page, which EROFS and ext4 use.
+const BLOCK_SIZE: u32 = 4096;
 /// `LO_NAME_SIZE` and `LO_KEY_SIZE`.
 const LO_NAME_SIZE: usize = 64;
 const LO_KEY_SIZE: usize = 32;
@@ -116,34 +116,74 @@ pub(crate) struct Backing {
     pub(crate) size_limit: u64,
 }
 
+/// Whether a loop device may write its image.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Access {
+    /// The toolbox: every lease reads it, none writes it.
+    ReadOnly,
+    /// A lease's own workspace disk.
+    ReadWrite,
+}
+
+impl Access {
+    const fn flags(self) -> u32 {
+        match self {
+            Self::ReadOnly => LO_FLAGS_READ_ONLY,
+            Self::ReadWrite => 0,
+        }
+    }
+}
+
 /// A loop device attached to an image, held open until its mount takes it:
 /// with autoclear set, closing the last handle before then would detach it.
 #[derive(Debug)]
 pub(crate) struct Attached {
     /// The device's node.
     pub(crate) node: PathBuf,
+    /// Whether direct I/O took, as the kernel reads the device back.
+    pub(crate) caching: Caching,
     /// The handle that keeps it attached.
     _device: File,
 }
 
-/// Attaches `image` read-only to a free loop device, from the descriptor
-/// itself; the device detaches itself once its mount lets go of it.
-pub(crate) fn attach(image: &File) -> Result<Attached> {
+/// Attaches `image` to a free loop device from the descriptor itself, asking
+/// for direct I/O and page-sized blocks in the one call. The device detaches
+/// itself once its mount lets go of it. A kernel that refuses direct I/O
+/// for this file (`EINVAL`) gets the attach again without it: a buffered
+/// device, which [`Attached::caching`] says, not a failure.
+pub(crate) fn attach(image: &File, access: Access) -> Result<Attached> {
     let control = OpenOptions::new()
         .read(true)
         .write(true)
         .open(LOOP_CONTROL)?;
     let fd = u32::try_from(image.as_raw_fd()).map_err(io::Error::other)?;
-    let config = LoopConfig {
+    let config = |direct| LoopConfig {
         fd,
-        block_size: 0,
+        block_size: BLOCK_SIZE,
         info: LoopInfo64 {
-            flags: LO_FLAGS_READ_ONLY | LO_FLAGS_AUTOCLEAR,
+            flags: access.flags() | LO_FLAGS_AUTOCLEAR | direct,
             ..LoopInfo64::ZERO
         },
         reserved: [0; 8],
     };
-    Ok(until_free(|| configure_free(&control, &config))?)
+    let direct = config(LO_FLAGS_DIRECT_IO);
+    let attached = match until_free(|| configure_free(&control, &direct)) {
+        Err(refused) if refused.raw_os_error() == Some(libc::EINVAL) => {
+            let buffered = config(0);
+            until_free(|| configure_free(&control, &buffered))
+        }
+        attached => attached,
+    };
+    Ok(attached?)
+}
+
+/// How a device whose flags read `flags` caches its file.
+pub(crate) const fn caching(flags: u32) -> Caching {
+    if flags & LO_FLAGS_DIRECT_IO == 0 {
+        Caching::Buffered
+    } else {
+        Caching::Direct
+    }
 }
 
 /// Why one try at attaching failed. Only a device another process configured
@@ -208,26 +248,31 @@ fn configure_free(control: &File, config: &LoopConfig) -> Result<Attached, Attem
     // SAFETY: `config` is a `struct loop_config` laid out as the kernel
     // declares it (asserted above), alive for the call and only read.
     let configured = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_CONFIGURE, &raw const *config) };
-    if configured == 0 {
-        Ok(Attached {
-            node,
-            _device: device,
-        })
-    } else {
-        Err(Attempt::configure(io::Error::last_os_error()))
+    if configured != 0 {
+        return Err(Attempt::configure(io::Error::last_os_error()));
     }
+    let flags = status(&device).map_err(Attempt::Failed)?.flags;
+    Ok(Attached {
+        node,
+        caching: caching(flags),
+        _device: device,
+    })
 }
 
 /// What the loop device at `node` is attached to.
 pub(crate) fn backing(node: &Path) -> Result<Backing> {
-    let device = File::open(node)?;
+    Ok(status(&File::open(node)?)?)
+}
+
+/// What the open loop `device` is attached to.
+fn status(device: &File) -> io::Result<Backing> {
     let mut info = LoopInfo64::ZERO;
     // SAFETY: LOOP_GET_STATUS64 writes one `struct loop_info64` through the
     // pointer, which is valid, laid out as the kernel declares it (asserted
     // above) and exclusively borrowed for the call.
-    let status = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_GET_STATUS64, &raw mut info) };
-    if status != 0 {
-        return Err(io::Error::last_os_error().into());
+    let answered = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_GET_STATUS64, &raw mut info) };
+    if answered != 0 {
+        return Err(io::Error::last_os_error());
     }
     Ok(Backing {
         file: (info.device, info.inode),
@@ -235,24 +280,6 @@ pub(crate) fn backing(node: &Path) -> Result<Backing> {
         offset: info.offset,
         size_limit: info.sizelimit,
     })
-}
-
-/// Switches the bound loop device at `node` to direct I/O, so it reads and
-/// writes its file without caching it a second time on the host. A backing
-/// file system that refuses direct I/O (`EINVAL`) leaves the device
-/// buffered: a fallback the caller is told of, not a failure.
-pub(crate) fn direct_io(node: &Path) -> Result<Caching> {
-    let device = File::open(node)?;
-    // SAFETY: LOOP_SET_DIRECT_IO takes its on/off value as the argument
-    // itself; no memory is passed.
-    let set = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_SET_DIRECT_IO, DIRECT_IO_ON) };
-    // The error is read at once, before any other call can overwrite it.
-    let refused = (set != 0).then(io::Error::last_os_error);
-    match refused {
-        None => Ok(Caching::Direct),
-        Some(error) if error.raw_os_error() == Some(libc::EINVAL) => Ok(Caching::Buffered),
-        Some(error) => Err(error.into()),
-    }
 }
 
 /// The node of loop device `major:minor`, as the kernel names it.

@@ -40,7 +40,11 @@ image = fixture / "fixture.erofs"
 subprocess.run(["mkfs.erofs", "--quiet", str(image), str(source)], check=True)
 cases = ["signal_after_mount", "mount_failed", "command_failed", "unmount_failed",
          "null_baseline", "publication_symlink", "signal_during_measurement", "missing_digest",
-         "signal_during_publication", "signal_hangup_during_publication"]
+         "signal_during_publication", "signal_hangup_during_publication",
+         "direct_io_when_asked", "direct_io_refused"]
+# Cases whose measurement runs to a published report.
+published = ("publication_symlink", "direct_io_when_asked")
+losetup = shutil.which("losetup")
 if sys.argv[2]:
     assert sys.argv[2] in cases
     cases = [sys.argv[2]]
@@ -53,6 +57,36 @@ def mounted_root(marker):
     root = Path(marker.read_text().strip())
     assert root.parent.name.startswith("toolbox-first-use.") and root.name == "root"
     return root
+
+
+def loops_on(image, patience=5):
+    """The loop devices backed by `image`, once any autoclear has finished."""
+    deadline = time.monotonic() + patience
+    while True:
+        found = subprocess.run([losetup, "--noheadings", "--output", "NAME", "--associated", str(image)],
+                               capture_output=True, text=True, check=True).stdout.split()
+        if not found or time.monotonic() >= deadline:
+            return found
+        time.sleep(0.05)
+
+
+def refused_direct_io(directory):
+    """A device that did not take direct I/O ends the run unmeasured and detached."""
+    wrapper = directory / "losetup"
+    wrapper.write_text('#!/bin/bash\nargs=()\nfor arg in "$@"; do\n'
+                       ' [ "$arg" = --direct-io=on ] || args+=("$arg")\ndone\n'
+                       f'exec {losetup} "${{args[@]}}"\n')
+    wrapper.chmod(0o700)
+    environment = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"],
+                       TOOLBOX_LOOP_DIRECT_IO="on")
+    output = directory / "report.json"
+    result = subprocess.run(["bash", str(sampler), str(image), str(output), "20"],
+                            env=environment, capture_output=True, text=True, timeout=90)
+    assert result.returncode == 1, f"direct_io_refused: exit {result.returncode}: {result.stderr}"
+    assert "did not take direct I/O" in result.stderr, result.stderr
+    assert not output.exists(), "direct_io_refused: a report was published"
+    assert not loops_on(image), "direct_io_refused: the refused device was left attached"
+    print(json.dumps(dict(case="direct_io_refused", exit=result.returncode, result="PASS")))
 
 
 def run_sampler(command, environment, marker, case):
@@ -98,6 +132,9 @@ try:
     for case in cases:
         directory = fixture / case
         directory.mkdir()
+        if case == "direct_io_refused":
+            refused_direct_io(directory)
+            continue
         marker = directory / "mounted-target"
         mount = directory / "mount"
         mount.write_text(
@@ -118,7 +155,7 @@ try:
         baseline = []
         called = directory / "command-called"
         publication = case in ("signal_during_publication", "signal_hangup_during_publication")
-        if case in ("null_baseline", "publication_symlink", "missing_digest") or publication:
+        if case in ("null_baseline", "missing_digest", *published) or publication:
             bwrap = directory / "bwrap"
             bwrap.write_text(f'#!/bin/bash\ntouch "{called}"\nexit 0\n')
             bwrap.chmod(0o700)
@@ -134,6 +171,8 @@ try:
             invalid.write_text("null\n")
             baseline = [str(invalid)]
         environment = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"])
+        if case == "direct_io_when_asked":
+            environment["TOOLBOX_LOOP_DIRECT_IO"] = "on"
         if publication:
             # Hold the real JSON writer after it owns its exclusive staging file.
             hook = directory / "sitecustomize.py"
@@ -165,14 +204,16 @@ try:
             assert marker.is_file(), f"{case}: injection did not execute"
             root = mounted_root(marker)
             mounted = subprocess.run(["/usr/bin/mountpoint", "-q", str(root)]).returncode == 0
-            if case == "publication_symlink":
-                assert result.returncode == 0, f"publication failed: {result.stderr}"
-                assert victim.read_text() == "preserve this file\n", "report overwrote a symlink target"
+            if case in published:
+                assert result.returncode == 0, f"{case} failed: {result.stderr}"
                 report = json.loads(output.read_text())
                 assert report["runs"] == 20 and len(report["steps"]) == 8
                 assert all(len(step["samples_ms"]) == 20 for step in report["steps"].values())
+                assert report["loop"] == ("direct" if case == "direct_io_when_asked" else "buffered")
             else:
                 assert not output.exists(), f"{case}: incomplete report published"
+            if case == "publication_symlink":
+                assert victim.read_text() == "preserve this file\n", "report overwrote a symlink target"
             if publication:
                 assert not list(directory.glob(f".{output.name}.*.tmp")), "cancelled publication leaked staging file"
             if case == "null_baseline":
@@ -187,9 +228,10 @@ try:
             else:
                 expected = (129 if case == "signal_hangup_during_publication"
                             else 143 if case.startswith("signal_") else 77 if case == "mount_failed"
-                            else 0 if case == "publication_symlink" else 1)
+                            else 0 if case in published else 1)
                 assert result.returncode == expected, f"{case}: exit {result.returncode}, expected {expected}"
                 assert not mounted and not root.parent.exists(), f"{case}: leaked mount or tree"
+                assert not loops_on(image), f"{case}: a loop device still holds the image"
             print(json.dumps(dict(case=case, exit=result.returncode,
                                   mounted=mounted, tree_retained=root.parent.exists(),
                                   report_published=output.exists(), result="PASS")))
