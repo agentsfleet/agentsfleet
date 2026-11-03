@@ -98,8 +98,9 @@ Terms used below: `startup_posture` is the failure class a lease reports when it
 | `.orly/` | EDIT | `orly update --no-hooks` to 0.28.0, which Indy asked to ship here |
 | `rustd/crates/afd_core/src/test_util/trace.rs` | EDIT | A log capture waits at most ten minutes for the one before it, then fails naming the wait |
 | `rustd/crates/afr_agent/Cargo.toml` | EDIT | tokio's `time` feature: the router times a sandbox wait on tokio's clock |
-| `scripts/check_architecture_doc*.sh` (six files), `scripts/check_schema_doc{.py,_test.sh}` | DELETE, RENAME | The architecture-doc shell gate goes; its schema-layout check stays as `check-schema-doc`, with a standalone self-test |
-| `make/{check-safety-gates,quality}.mk`, `.github/workflows/lint.yml` | EDIT | `check-schema-doc` replaces `check-architecture-doc` in `lint-all` and CI's lint job |
+| `scripts/check_architecture_doc*` (seven files) | DELETE | The architecture-doc gate and its schema-layout check go |
+| `make/{check-safety-gates,quality}.mk`, `.github/workflows/lint.yml` | EDIT | `check-architecture-doc` leaves `lint-all` and CI's lint job |
+| `docs/architecture/postgres_schemas.md` | EDIT | Its tables stop copying each column list from `schema/`; each table's purpose and design notes stay |
 | `docs/architecture/datastore_scaling.md`, `rustd/crates/afd_db/tests/integration_migrate/shape.rs` | EDIT | Their mentions of the deleted gate |
 | `rustd/crates/afr_supervisor/src/heartbeat/closing_tests.rs` | EDIT | A park the keeper refuses is handed back to the test, which counts only the keeper's destroys |
 | `rustd/crates/afr_supervisor/src/test_support/{mod,sandbox,resolver,rig}.rs` | EDIT | Fake engine gains a stall, a failure point and a recorded kill; a stalled resolver times the egress bind |
@@ -422,7 +423,7 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
   | The report behind the disk's release | unmount and image removal | none | `test_a_lease_returns_only_after_its_release`: a 3 s release left `report_ms` under 3 s |
 
   Once deployed, `lease_completed`'s `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` give the production split.
-- **The architecture-doc gate** — Indy asked whether `check_architecture_doc*.sh` was worth running. The repository wrote it, not orly, in M51_001, and it was slow: shell loops spawning a pipeline per markdown file. In this PR it also caught a broken link. Its schema-layout check is one fast Python process and the only proof that `postgres_schemas.md` matches the migrations, so it stays as `check-schema-doc`. The page's column lists are a hand-kept copy of `schema/*.sql`, so the follow-up generates them from the SQL, and the check then goes too.
+- **The architecture-doc gate** — Indy asked whether `check_architecture_doc*.sh` was worth running. The repository wrote it in M51_001, not orly, and it was slow: shell loops spawning a pipeline per markdown file. Its schema-layout check only kept `postgres_schemas.md`'s column lists, a hand-kept copy of `schema/*.sql`, in step with the SQL. So the gate goes, and so does the copy: the page keeps each table's purpose and design notes, and `schema/` alone holds columns. `afd_db`'s migration shape test still fails on any unplanned column change.
 - **Open blockers** — none.
 - **Metrics review** — `egress_ms`, `prepare_ms`, `checkout_ms` and `sandbox_wait_ms` added to `lease_completed`; two duration families and the `sandbox_builds_total` counter added.
 - **Skill-chain outcomes** — pending until VERIFY and REVIEW.
@@ -447,3 +448,5 @@ N/A: no symbol is removed; `AgentRun.executor` changes type in place.
 > Owner (Indy, Nov 03, 2026 11:12 AM): "Also i want you to do this review in this PR and fix them." and "In tests i notice for rust you use Mutex and get screwed royally on hangs, i suggest you candidly review and use Mutex in a lesser way." — context: the test audit above, folded into this Pull Request.
 
 > Owner (Indy, Nov 03, 2026 12:07 PM): "Nuke the scripts" — then, at 12:12 PM, on the scope: "Nuke shell, keep schema (Recommended)" — context: `check-architecture-doc`'s shell scripts go, its schema-layout check stays as `check-schema-doc`, and Indy approved the `.github/workflows/lint.yml` edit that follows.
+
+> Owner (Indy, Nov 03, 2026 12:15 PM): "this seems pointless and absurd unless we have vaule or solves problems for us" — context: the schema-layout check, which guarded only the copied column lists; both go.

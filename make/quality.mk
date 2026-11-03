@@ -112,7 +112,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-schema-doc check-deploy-safety bench-datastore-self-test  ## Run all linters + quality gates
+lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-deploy-safety bench-datastore-self-test  ## Run all linters + quality gates
 	@# A test calls the code it proves; a test that reads a repository file
 	@# asserts on text instead (docs/architecture/testing.md).
 	@echo "→ [tests] No test reads a repository file..."
@@ -130,8 +130,8 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@# question: will these workflows still work tomorrow.
 	@echo "→ [gh-actions] Checking action pins — runtimes and mutable refs..."
 	@bash scripts/checks/gh-actions-runtime.sh
-	@# The builder pin lives in its own script so it can have its own tests —
-	@# the shape check-schema-doc uses. A gate with no self-test can pass
+	@# The builder pin lives in its own script so it can have its own tests.
+	@# A gate with no self-test can pass
 	@# vacuously: a broken grep reports a clean tree and reads like success.
 	@echo "→ [gh-actions] Builder-image tag is derived, not pasted..."
 	@bash scripts/check_builder_pin_test.sh

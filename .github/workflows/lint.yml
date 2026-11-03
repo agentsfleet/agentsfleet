@@ -86,8 +86,6 @@ jobs:
           bun-version: 1.4.4
       - name: Playbooks (shellcheck + refs + vault-gate parity)
         run: make check-playbooks
-      - name: Schema doc matches the migrations
-        run: make check-schema-doc
       - name: Deploy version/lock safety
         run: make check-deploy-safety
       # A documented pre-Pull-Request gate that no job ran, so a VERSION out of
