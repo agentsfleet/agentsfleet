@@ -26,6 +26,8 @@ Start here: find the question, jump to the one §-section that answers it. The l
 
 | Question | Where |
 |---|---|
+| How do several unfinished jobs share one fleet? | [Durable Tasks](durable_tasks.md) |
+| Who routes intent and judges goal progress? | [TypeSafe Jev decisions](goal_evaluation.md) |
 | How long can a fleet run before its lease expires? | [`runner_fleet.md`](./runner_fleet.md) §"Per-lease renewal — how a long fleet keeps its lease" |
 | What happens when a runner dies mid-event? | [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model" |
 | How is a stale runner's late report rejected? | [`runner_fleet.md`](./runner_fleet.md) §"System guarantees (read this first)" |

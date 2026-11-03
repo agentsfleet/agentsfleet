@@ -11,7 +11,13 @@ Read this when changing reusable setup, fleet setup revisions, or Definition val
 
 ## Setup authority
 
-The proposed [goal-driven repair scenario](scenarios/durable-repair.md) stores user-edited goals and completion questions in reviewed `instructions_md`. Jev runtime evaluation and instruction-revision adoption for active tasks remain design work; current prose does not grant new capabilities.
+The proposed [Durable Task lifecycle](durable_tasks.md#setup-and-request-interpretation) stores goals and completion questions in reviewed `instructions_md`.
+Setup saves a capability ceiling and fleet revision; a later authorized objective creates a Durable Task (DT).
+[The runner-assigned decision model](goal_evaluation.md) routes intent; native code validates and records new work.
+
+A DT freezes its accepted goal revision.
+Applying fleet setup does not silently replace an unfinished objective.
+Explicit revision adoption invalidates prior goal decisions.
 
 One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
 

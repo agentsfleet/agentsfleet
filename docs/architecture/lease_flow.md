@@ -358,7 +358,7 @@ Each gap names what would close it.
 
 ## Original Pull Request repair: proposed follow-on
 
-The [durable repair scenario](scenarios/durable-repair.md) owns the proposed combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and Jev goal decisions.
+The [durable repair scenario](scenarios/durable-repair.md) owns the proposed combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and configured goal decisions.
 The current path creates and corrects its own event-derived draft during one request. Arbitrary existing-PR authority and durable cross-request ownership remain unimplemented.
 
 The future implementation must use the existing admission/lease path, not a second scheduler.
@@ -367,3 +367,19 @@ See the scenario for target binding, publication races, cumulative limits and co
 
 M224 proves the reduced manual-first path separately.
 A dedicated reviewed implementation spec and development autonomy proof remain outstanding.
+
+## Proposed Durable Tasks across leases
+
+A fleet receives many leases over time and retains at most one active lease.
+Several [Durable Tasks](durable_tasks.md) can remain unfinished while only one runs.
+Waiting releases the runtime slot without abandoning the accepted objective.
+
+```text
+DT A: lease A1 -> waiting for checks ----------> lease A2
+DT B:                 lease B1 -> done
+slot: [A1]            [B1]       [idle]         [A2]
+```
+
+The worker is a slot in `agentsfleet-runner`'s pool, not the conversational model or a subagent.
+A replacement worker receives a fresh lease and compatible DT state under current authority.
+M237_001's implementation must land before M236 adds recovery to its joined sandbox build.
