@@ -110,36 +110,30 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         self.assertIn(f": app-journey-listed: Playwright could not list the journeys project: {error}", output)
         self.assertNotIn("does not run", output)
 
-    def test_a_retired_formatter_named_only_in_a_comment_is_not_a_finding(self) -> None:
-        code, output = lint_tree(with_file(f"{APP}/lib/when.ts", "// formatDate was deleted.\nexport const x = 1;\n"))
-        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
-        code, output = lint_tree(with_file(f"{APP}/lib/when.ts", "export const formatDate = 1;\n"))
-        self.assertIn(f"{APP}/lib/when.ts:1: app-date-formatter: ", output)
-
 
 class CommentBlankingKeepsLiteralsWhole(unittest.TestCase):
     """A quote inside JSX text or a pattern must not hide the comments after it."""
 
     def test_a_comment_after_a_jsx_apostrophe_is_still_a_comment(self) -> None:
-        source = "export const P = () => <p>Don't panic</p>;\n// formatDate was deleted.\nexport const x = 1;\n"
+        source = "export const P = () => <p>Don't panic</p>;\n// never d.toLocaleString() here.\nexport const x = 1;\n"
         code, output = lint_tree(with_file(f"{APP}/lib/when.tsx", source))
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
 
     def test_a_comment_after_a_pattern_holding_a_quote_is_still_a_comment(self) -> None:
-        source = "export const missing = /Couldn't find \"it\"/i;\n// formatDate was deleted.\nexport const x = 1;\n"
+        source = "export const missing = /Couldn't find \"it\"/i;\n// never d.toLocaleString() here.\nexport const x = 1;\n"
         code, output = lint_tree(with_file(f"{APP}/lib/when.ts", source))
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
 
     def test_code_after_a_jsx_apostrophe_is_still_checked(self) -> None:
-        source = "export const P = () => <p>Don't panic</p>;\n// note\nexport const formatDate = 1;\n"
+        source = "export const P = () => <p>Don't panic</p>;\n// note\nexport const when = (d: Date) => d.toLocaleString();\n"
         code, output = lint_tree(with_file(f"{APP}/lib/when.tsx", source))
         self.assertIn(f"{APP}/lib/when.tsx:3: app-date-formatter: ", output)
 
     def test_slashes_inside_a_pattern_are_kept_and_a_division_still_ends_before_its_comment(self) -> None:
         pattern = "const slashes = path.replace(/\\//g, \"-\");\n"
         self.assertEqual(pattern, checker.lib.blank_js_comments(pattern))
-        division = "const half = total / 2; // formatDate\n"
-        self.assertEqual("const half = total / 2; " + " " * len("// formatDate") + "\n", checker.lib.blank_js_comments(division))
+        division = "const half = total / 2; // toLocaleString\n"
+        self.assertEqual("const half = total / 2; " + " " * len("// toLocaleString") + "\n", checker.lib.blank_js_comments(division))
 
 
 OXLINT = checker.lib.ROOT / APP / "node_modules/.bin/oxlint"

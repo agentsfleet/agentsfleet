@@ -59,7 +59,6 @@ the route is live.
 Run these steps in order for the first installation or after a wipe. Resume at
 the first step whose required evidence is missing.
 
-<!-- playbook-inventory:start -->
 - `founding/01_bootstrap` — create accounts and populate secret stores.
 - `founding/02_preflight` — prove pre-priming access and deployment inputs.
 - `founding/03_priming_infra` — create resources and capture provider outputs.
@@ -69,7 +68,6 @@ the first step whose required evidence is missing.
 - `founding/07_deploy_prod` — authorize and deploy the production control plane.
 - `founding/08_runner_bootstrap_prod` — prepare and enroll production runners.
 - `founding/09_verify_prod` — approve rollout and run production acceptance.
-<!-- playbook-inventory:end -->
 
 Production cannot start until step 06 is green. Setup is complete only when step
 09 and its listed operational gates pass.
@@ -122,14 +120,11 @@ A [region move](./operations/database_region_move/001_playbook.md) copies an exi
 
 These routes deploy an installation that already passed the rebuild sequence.
 
-<!-- playbook-inventory:start -->
 - `deploy/dev` — deploy and verify the existing development system.
 - `deploy/prod` — release and verify the existing production system.
-<!-- playbook-inventory:end -->
 
 ## On-demand operations
 
-<!-- playbook-inventory:start -->
 - `operations/acceptance` — the human visual pass over a deployed build, and the verdict file the milestone's Pull Request carries.
 - `operations/admin_bootstrap` — provision the platform administrator.
 - `operations/ci_rust_images` — build the one pinned Rust base image for Continuous Integration (CI): the musl toolchain for the static daemon build, and the components the lint and unit lanes need.
@@ -152,7 +147,6 @@ These routes deploy an installation that already passed the rebuild sequence.
 - `operations/teardown/dragonfly` — destructively empty the Dragonfly cluster.
 - `operations/teardown/user` — delete a development user and verify purge.
 - `operations/zoho_app_registration` — register the platform Zoho Desk app.
-<!-- playbook-inventory:end -->
 
 ## Script shape
 
@@ -171,7 +165,7 @@ Run the local integrity gate after any edit:
 make check-playbooks
 ```
 
-It runs ShellCheck, every shell regression test, path-reference checks, safety
-checks, and an exact README-to-disk inventory comparison.
+It runs ShellCheck, every shell regression test, path-reference checks and
+safety checks.
 
 See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for private API ingress.
