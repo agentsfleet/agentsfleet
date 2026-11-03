@@ -126,8 +126,10 @@ impl LeaseRun<'_> {
         memory: Option<&CapturedMemory>,
     ) -> bool {
         let lease_id = self.ids.lease.as_str();
+        let cause_error_code = error_code::INVALID_REQUEST.as_str();
         let event = EVENT_SHAPE_FELL_BACK;
         tracing::warn!(
+            cause_error_code,
             lease_id,
             event,
             "a daemon refused the one-post report; the memory is pushed and the report posted without it"

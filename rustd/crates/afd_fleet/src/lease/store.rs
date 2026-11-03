@@ -69,8 +69,10 @@ impl Leases {
         &self.entropy
     }
 
-    /// The doorbell every poll through this store takes rung partitions from.
-    pub(crate) const fn doorbell(&self) -> &Doorbell {
+    /// The doorbell every poll through this store takes rung partitions from,
+    /// and every held heartbeat waits on.
+    #[must_use]
+    pub const fn doorbell(&self) -> &Doorbell {
         &self.doorbell
     }
 

@@ -172,7 +172,13 @@ impl Plane {
             Committed::Fenced => Err(stale_fence()),
             Committed::AlreadySettled => {
                 Self::record_repeat(&lease, lease_id);
-                Ok(reconciled(lease, Nanos::ZERO, true, RunTokens::default()))
+                Ok(reconciled(
+                    lease,
+                    Nanos::ZERO,
+                    true,
+                    RunTokens::default(),
+                    None,
+                ))
             }
             Committed::Settled {
                 settlement,
@@ -193,9 +199,7 @@ impl Plane {
                         .await;
                 }
                 let tokens = self.leases.run_tokens(&lease_key).await;
-                let mut settled = reconciled(lease, charged, false, tokens);
-                settled.completed_at = completed_at;
-                Ok(settled)
+                Ok(reconciled(lease, charged, false, tokens, completed_at))
             }
         }
     }
@@ -279,7 +283,13 @@ fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String>
 /// Takes the lease BY VALUE: every string field moves into the answer rather
 /// than being cloned, which is why the two call sites read the lease's columns
 /// through this and not before it.
-fn reconciled(lease: Reported, charged: Nanos, repeated: bool, tokens: RunTokens) -> Reconciled {
+fn reconciled(
+    lease: Reported,
+    charged: Nanos,
+    repeated: bool,
+    tokens: RunTokens,
+    completed_at: Option<Timestamp>,
+) -> Reconciled {
     Reconciled {
         tokens,
         charged,
@@ -293,7 +303,7 @@ fn reconciled(lease: Reported, charged: Nanos, repeated: bool, tokens: RunTokens
         repeated,
         event_created_at: lease.event_created_at,
         lease_created_at: lease.lease_created_at,
-        completed_at: None,
+        completed_at,
     }
 }
 

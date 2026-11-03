@@ -22809,7 +22809,8 @@
               "boolean",
               "null"
             ],
-            "description": "Whether new work was admitted while this heartbeat was held; `false`\nfor a heartbeat that did not ask. Its presence means this daemon holds\nheartbeats."
+            "description": "Whether new work was admitted while this heartbeat was held; `false`\nfor a heartbeat that did not ask. Its presence means this daemon holds\nheartbeats. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           }
         }
       },
@@ -23197,7 +23198,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "policy": {
             "$ref": "#/components/schemas/ExecutionPolicy",

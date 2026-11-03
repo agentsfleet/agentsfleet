@@ -5,9 +5,10 @@
 //! Every other span in this daemon wraps work it is watching: the scope opens,
 //! the work happens, the scope closes. This one cannot. The work happened in a
 //! sandbox on another host, and all that reaches here is a report saying how
-//! long it took. So the span is constructed after the fact — its end is the
-//! moment the report settled, and its start is that moment less the duration
-//! the runner reported.
+//! long it took. So the span is constructed after the fact: its end is the
+//! moment the run's completion was published, and its start is the event's
+//! creation on this daemon's clock, or, where that cannot be placed, the end
+//! less the duration the runner reported.
 //!
 //! A `#[instrument]` on the report handler would be the wrong shape and a
 //! quietly wrong number: it would time the HTTP call that DELIVERED the
@@ -132,10 +133,9 @@ impl Segments {
 impl Delivery<'_> {
     /// Records this delivery as one finished span on the installed tracer.
     ///
-    /// `completed_at` is when the report settled — the span's end, and the
-    /// point its start is measured back from. Passed in rather than read from
-    /// a clock here so the caller's one reading of the wall clock is the one
-    /// every record of this delivery agrees on.
+    /// `completed_at` is when the completion was published, the span's end.
+    /// Passed in rather than read from a clock here so the caller's one
+    /// reading is the one every record of this delivery agrees on.
     ///
     /// Best-effort by construction, twice over: a deployment that configured
     /// no exporter has the API's no-op tracer installed, and this costs an

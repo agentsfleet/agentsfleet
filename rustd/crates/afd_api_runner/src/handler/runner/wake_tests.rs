@@ -81,3 +81,31 @@ async fn test_held_beats_are_capped() {
         "{refused:?}"
     );
 }
+
+/// Each held beat is counted under how it ended, at the call that answers it.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn test_held_beats_are_counted_by_how_they_ended() {
+    const FAMILY: &str = "agentsfleet_runner_wake_answers_total";
+    const REASONS: [&str; 3] = ["ring", "deadline", "capped"];
+    let metrics = afd_observability::test_util::Capture::install();
+    let read = || REASONS.map(|reason| metrics.sum(FAMILY, &[("reason", reason)]));
+    let before = read();
+
+    answer(true, Waited::Rung).await;
+    answer(true, Waited::Deadline).await;
+    answer(true, Waited::Capped).await;
+    answer(false, Waited::Rung).await;
+
+    let after = read();
+    let counted: Vec<u64> = after
+        .iter()
+        .zip(before)
+        .map(|(now, then)| now - then)
+        .collect();
+    assert_eq!(
+        counted,
+        vec![1, 1, 1],
+        "a beat that did not ask is not counted"
+    );
+}

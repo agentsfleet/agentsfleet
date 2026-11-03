@@ -35,17 +35,29 @@ export const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
   HTTP_GATEWAY_TIMEOUT,
 ]);
 /**
- * The subset that proves the request was never processed, so a call that is
- * not idempotent may repeat it: the daemon shed it (429), refused it before
- * reading it (425, 503 at acquire), or the edge never reached the daemon
- * (502). A 500, 504 or timeout may follow a write that landed.
+ * The subset a call that is not idempotent may repeat: the daemon shed it
+ * (429) or refused it before reading it (425, 503 at acquire). A 502 joins
+ * them only when the edge answered it (see `edgeAnswered`); a 502 the daemon
+ * answered, a 500, a 504 or a timeout may follow a write that landed, which
+ * is the policy `cli/src/lib/http-retry.ts` holds for every POST.
  */
 export const UNPROCESSED_STATUSES: ReadonlySet<number> = new Set([
   HTTP_TOO_EARLY,
   HTTP_TOO_MANY_REQUESTS,
-  HTTP_BAD_GATEWAY,
   HTTP_SERVICE_UNAVAILABLE,
 ]);
+
+/**
+ * Whether a 502 came from the edge rather than the daemon: the daemon answers
+ * every refusal with a JSON problem document, and the Cloudflare edge answers
+ * an origin it cannot reach with an HTML page. The edge cannot have handed
+ * the request to a daemon that was not listening. A reply lost after the
+ * daemon wrote is still possible behind the edge; that residual risk is the
+ * acceptance lane's to carry, on a fixture account, never production login's.
+ */
+export function edgeAnswered(status: number, detail: string): boolean {
+  return status === HTTP_BAD_GATEWAY && !detail.trimStart().startsWith("{");
+}
 /** Attempts in all, the first included. */
 export const MAX_ATTEMPTS = 5;
 /** How long one attempt may wait for its answer. */

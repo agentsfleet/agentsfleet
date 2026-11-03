@@ -107,8 +107,9 @@ impl Leases {
             .await;
     }
 
-    /// Announce that a run ended, carrying the row the ending wrote.
-    pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) {
+    /// Announce that a run ended, carrying the row the ending wrote. Answers
+    /// whether the announcement landed.
+    pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) -> bool {
         let frame = TailFrame::EventComplete {
             event: Box::new(TailRow::from(closed.row.summary())),
             final_reply: inline_final_reply(final_reply),
@@ -118,7 +119,7 @@ impl Leases {
         };
         self.streams()
             .publish_frame(&closed.row.fleet_id, &frame)
-            .await;
+            .await
     }
 }
 

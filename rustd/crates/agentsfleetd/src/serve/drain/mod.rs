@@ -102,6 +102,9 @@ pub struct Drain {
     /// Recorded by the accept loop before it wakes any stopped waiters.
     at_close: Arc<AtomicUsize>,
     idle: Arc<Notify>,
+    /// Closed when accepting stops, so held heartbeats end at once rather
+    /// than keep the drain waiting until their deadline.
+    doorbell: Option<afd_dragonfly::Doorbell>,
 }
 
 impl Drain {
@@ -115,7 +118,15 @@ impl Drain {
             live: Arc::new(AtomicUsize::new(0)),
             at_close: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
+            doorbell: None,
         }
+    }
+
+    /// The same drain, closing `doorbell` when it stops accepting.
+    #[must_use]
+    pub fn with_doorbell(mut self, doorbell: afd_dragonfly::Doorbell) -> Self {
+        self.doorbell = Some(doorbell);
+        self
     }
 
     /// The token the accept loop selects on. Cancelled by [`Self::settle`], and
@@ -180,6 +191,9 @@ impl Drain {
     /// answer is always the same one — carry on to the supervisor.
     pub async fn settle(&self, bound: Duration) -> Settled {
         self.accepting.cancel();
+        if let Some(doorbell) = &self.doorbell {
+            doorbell.close();
+        }
         // Cancelling only ASKS the loop to stop; it is parked in `accept()` and
         // leaves on its next poll, so a connection can still be accepted and
         // counted in between. The loop records its close count before waking

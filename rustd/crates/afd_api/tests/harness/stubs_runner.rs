@@ -78,6 +78,15 @@ impl Leasing for NoWork {
         std::future::ready(Ok(r#"{"lease":null,"retry_after_ms":1000}"#.to_owned()))
     }
 
+    /// Ends every hold at once, as a plane with no work to wake for would.
+    fn wait_for_work(
+        &self,
+        _deadline: std::time::Duration,
+        _max: usize,
+    ) -> impl Future<Output = afd_fleet::lease::Waited> + Send {
+        std::future::ready(afd_fleet::lease::Waited::Deadline)
+    }
+
     /// Accepts every report and charges nothing, which is what a plane with no
     /// work in it would do.
     ///
@@ -88,14 +97,6 @@ impl Leasing for NoWork {
     /// `afd_fleet`'s integration lane and its live Postgres. Returning an error
     /// here would put a code on the wire that no datastore decided, and a
     /// router suite asserting on it would be asserting on this stub.
-    fn wait_for_work(
-        &self,
-        _deadline: std::time::Duration,
-        _max: usize,
-    ) -> impl Future<Output = afd_fleet::lease::Waited> + Send {
-        std::future::ready(afd_fleet::lease::Waited::Deadline)
-    }
-
     fn report(
         &self,
         _runner_id: &Uuid7,

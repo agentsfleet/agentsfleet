@@ -28,6 +28,9 @@ use crate::lease::settle::Reported;
 /// The report's memory could not be written; the report still settles.
 pub(super) const EVENT_CAPTURE_FAILED: &str = "memory_capture_failed";
 
+/// The report's lease was no longer live, so its memory was not written again.
+const EVENT_CAPTURE_SKIPPED: &str = "memory_capture_skipped";
+
 impl Plane {
     /// Writes the report's memory deltas, fenced on the lease's own token.
     /// A fence refusal was logged by the fence; anything else is logged here.
@@ -54,6 +57,15 @@ impl Plane {
             return;
         };
         if failure.is_fence_refusal() {
+            return;
+        }
+        // A lease no longer live: a repeated report, whose first post already
+        // wrote this memory, or one the settle will refuse in a moment.
+        if failure.code() == afd_core::error_code::RUN_LEASE_NOT_FOUND {
+            let fleet_id = lease.fleet_id.as_str();
+            let lease_id = request.lease_id.as_ref();
+            let event = EVENT_CAPTURE_SKIPPED;
+            tracing::debug!(fleet_id, lease_id, event);
             return;
         }
         let Logged { error_code, reason } = failure.logged();

@@ -15,7 +15,7 @@ use std::{
     collections::VecDeque,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -45,6 +45,8 @@ pub struct Doorbell {
 struct Rings {
     generation: watch::Sender<u64>,
     held: AtomicUsize,
+    /// Set once the process stops accepting requests: no beat is held after.
+    closed: AtomicBool,
 }
 
 impl Default for Rings {
@@ -52,6 +54,7 @@ impl Default for Rings {
         Self {
             generation: watch::Sender::new(0),
             held: AtomicUsize::new(0),
+            closed: AtomicBool::new(false),
         }
     }
 }
@@ -118,6 +121,13 @@ impl Doorbell {
     /// are already held. The generation is taken before the wait starts, so a
     /// ring between the two is not lost.
     pub async fn wait_for_ring(&self, deadline: Duration, max: usize) -> Waited {
+        // Subscribed before the closed check: a close between the two moves
+        // the generation this receiver already watches, so no wait sleeps
+        // through it.
+        let mut generation = self.rings.generation.subscribe();
+        if self.is_closed() {
+            return Waited::Deadline;
+        }
         let reserved = self
             .rings
             .held
@@ -128,13 +138,27 @@ impl Doorbell {
             return Waited::Capped;
         }
         let _held = Held(&self.rings.held);
-        let mut generation = self.rings.generation.subscribe();
         match tokio::time::timeout(deadline, generation.changed()).await {
+            Ok(Ok(())) if self.is_closed() => Waited::Deadline,
             Ok(Ok(())) => Waited::Rung,
             // The sender lives as long as this doorbell, so a closed channel
             // cannot happen while `self` is borrowed; it reads as no ring.
             Ok(Err(_)) | Err(_) => Waited::Deadline,
         }
+    }
+
+    /// Ends every held wait at once and holds no more, for a process that has
+    /// stopped accepting requests: a held beat would otherwise keep its drain
+    /// waiting until its deadline. The waits answer as at their deadline.
+    pub fn close(&self) {
+        self.rings.closed.store(true, Ordering::Release);
+        self.rings
+            .generation
+            .send_modify(|generation| *generation = generation.wrapping_add(1));
+    }
+
+    fn is_closed(&self) -> bool {
+        self.rings.closed.load(Ordering::Acquire)
     }
 
     /// How many beats are held right now.

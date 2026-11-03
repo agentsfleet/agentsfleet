@@ -67,8 +67,18 @@ fn push_request<'a>(
 /// The entries are the fleet's memory in clear. Every string the run owns is
 /// overwritten before its allocation is freed, in the derive-less shape
 /// `afd_crypto`'s `zero_on_drop!` uses; a `'static` borrow is no run's data.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct CapturedMemory(Vec<MemoryDelta<'static>>);
+
+/// The count of entries and nothing of what they say: the entries are the
+/// fleet's memory in clear.
+impl std::fmt::Debug for CapturedMemory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CapturedMemory")
+            .field("entries", &self.0.len())
+            .finish()
+    }
+}
 
 impl CapturedMemory {
     /// Borrowed views of the entries, for one request body.
@@ -89,10 +99,12 @@ impl CapturedMemory {
     fn scrub(&mut self) {
         for delta in &mut self.0 {
             for text in [&mut delta.key, &mut delta.content, &mut delta.category] {
-                if let Cow::Owned(owned) = text {
-                    owned.zeroize();
+                match text {
+                    // Zeroed in place: the allocation stays, emptied, until
+                    // the clear frees it.
+                    Cow::Owned(owned) => owned.zeroize(),
+                    Cow::Borrowed(_) => *text = Cow::Borrowed(""),
                 }
-                *text = Cow::Borrowed("");
             }
         }
     }
