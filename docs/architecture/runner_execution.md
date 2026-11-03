@@ -125,18 +125,21 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
    ├─ admit       the policy's tools and provider; an unhosted one refuses the lease here
    ├─ turn        one run per fleet on this runner; a second lease for it waits
    ├─ hydrate     the fleet's memory window, through agentsfleetd
-   ├─ sandbox     only when a tool runs in one: the fleet's held sandbox, or a fresh one
-   │              on the assigned network; bound repositories checked out
+   ├─ admitted    only when a tool runs in a sandbox: size, egress and checkout plan
    ├─ run         the agent loop in the supervisor; tool calls cross the executor socket
-   ├─ keep        a processed lease's sandbox is frozen and held; any other is destroyed
+   │  └─ build    beside it: the fleet's held sandbox, or a fresh one on the assigned
+   │              network, bound repositories checked out; a sandbox call waits for it
+   ├─ keep        a processed lease's sandbox is frozen and held; any other is killed
    ├─ settle      full tool records, the fenced memory push, the report spooled, then posted
-   └─ drain       the live tail, for at most five seconds
+   └─ release     a killed sandbox's disk, beside the live tail's drain of at most 5 s
         renewal ticks alongside from the lease's start until the report is answered
 ```
 
 **One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy, so a worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet (`afr_supervisor/src/turns/mod.rs`). The daemon's affinity slot already admits one live lease per fleet across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane").
 
-**A refusal ends the lease with a report.** An unhosted tool or provider, unreadable memory, a size past the wire's bounds and a sandbox that cannot be built each end the lease as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Nothing runs unsandboxed in a sandbox's place.
+**A refusal ends the lease with a report.** It ends as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Refusals cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and a binding no checkout serves.
+
+A sandbox that cannot be built leaves the turn going, and its sandbox-side calls answer `sandbox_unavailable`. Nothing runs unsandboxed in a sandbox's place.
 
 **The report is the record.** The report settles before the live tail is waited on, and a report the daemon cannot take stays spooled for the drain (`afr_supervisor/src/lease_loop/settle.rs`, `afr_supervisor/src/report_spool/mod.rs`). A renewal the daemon refuses, or a runner told to stop, cuts the run; the cut keeps the tokens and memory the run handed back and reports why it ended (`afr_supervisor/src/lease_loop/mod.rs`).
 
@@ -207,9 +210,21 @@ A lease whose tools are all supervisor-side starts no sandbox. A lease offered a
 
 Fleets on shared hosts run their own programs — build scripts, test suites, package installs, Python the model writes — so the sandbox is the only thing between two tenants' processes and one kernel:
 
-- bubblewrap: a fresh user, PID, IPC, UTS and mount namespace per lease, and a fresh network namespace unless the policy is `allow_all`; `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent`, `--new-session`. `--new-session` detaches the sandbox from any terminal, which closes terminal-input injection (`TIOCSTI`). The entry runs as uid and gid 1000 in `/workspace`. It is bound read-only at `/opt/agentsfleet/agentsfleet-runner` and started by that path, never through `$PATH`. It is told only the tenant leaf's descriptors and, when one is set, the log level (`afr_sandbox/src/bubblewrap/mod.rs`).
+- bubblewrap: a fresh user, PID, IPC, UTS and mount namespace per lease. A fresh network namespace too, unless the policy is `allow_all`. It runs with `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent` and `--new-session`.
+
+  `--new-session` detaches the sandbox from any terminal, which closes terminal-input injection (`TIOCSTI`). The entry runs as uid and gid 1000 in `/workspace`. It is bound read-only at `/opt/agentsfleet/agentsfleet-runner` and started by that path, never through `$PATH`.
+
+  The entry is told the tenant leaf's descriptors and its end of the executor's socket pair. It also gets the log level, when one is set (`afr_sandbox/src/bubblewrap/mod.rs`).
 - `no_new_privs`, then Landlock, then seccomp. The seccomp filter refuses 12 calls: the three `io_uring` calls, `ptrace`, `process_vm_readv`/`writev`, `unshare`, `bpf`, `keyctl`, `add_key`, `request_key` and `perf_event_open` (`afr_sandbox/src/harden/linux.rs`). Codex's own filter leaves `unshare`, `bpf`, `keyctl` and `perf_event_open` open.
-- cgroup v2 limits on memory, processor, process count and I/O, with whole-tree kill. The lease cgroup has two leaves: `sandbox` holds bubblewrap and the executor, and `tenant` holds every process the fleet starts. bubblewrap is born in the `sandbox` leaf: its spawn writes itself into `cgroup.procs` before `exec` (`afr_sandbox/src/bubblewrap_engine/parts.rs`). Each tenant process moves itself in before `exec` through the tenant leaf's `cgroup.procs`, which the engine opened as the runner and handed in. The kernel checks that move against the opener's credentials and cgroup namespace, so no cgroup file system is mounted inside, and a move that fails refuses the spawn. The tenant leaf's memory limit sits `SANDBOX_MEMORY_RESERVE_BYTES` below the lease's, so the out-of-memory killer picks only a tenant process, and the call it ended reads `out_of_memory`. Its throttle, `tenant/memory.high`, sits an eighth below that limit, never more than 128 MiB below it, so a tenant writing past its disk is slowed while its pages are written back and reads `ENOSPC`, rather than killed first. The cap keeps the slow band narrow on a large lease: with no swap, everything inside it is throttled.
+- cgroup v2 limits on memory, processor, process count and I/O, with whole-tree kill. The lease cgroup has two leaves. `sandbox` holds bubblewrap and the executor, and `tenant` holds every process the fleet starts.
+
+  bubblewrap is born in the `sandbox` leaf: its spawn writes itself into `cgroup.procs` before `exec` (`afr_sandbox/src/bubblewrap_engine/parts/mod.rs`). Each tenant process moves itself in before `exec`. It writes the tenant leaf's `cgroup.procs`, which the engine opened as the runner and handed in.
+
+  The kernel checks that move against the opener's credentials and cgroup namespace. So no cgroup file system is mounted inside, and a move that fails refuses the spawn.
+
+  The tenant leaf's memory limit sits `SANDBOX_MEMORY_RESERVE_BYTES` below the lease's. So the out-of-memory killer picks only a tenant process, and the call it ended reads `out_of_memory`.
+
+  Its throttle, `tenant/memory.high`, sits an eighth below that limit and never more than 128 MiB below it. A tenant writing past its disk is slowed while its pages are written back, and reads `ENOSPC` rather than being killed first. The cap keeps the slow band narrow on a large lease: with no swap, everything inside it is throttled.
 - An enforced disk quota: the workspace disk is sized by the lease's `limits.disk_bytes`, or the runner's 4 GiB default, holds `/tmp` as well as `/workspace`, and answers `ENOSPC` when full. `/tmp` is never a tmpfs, because tmpfs pages stay charged to the lease's memory until the sandbox ends. The disk attaches with direct I/O, so the host does not cache its writes a second time. Its image file is `0600`, formatted ext4 with no journal, and its root is owned by the sandbox user (`afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/host/mod.rs`).
 - A lease's size: `LeasePayload.limits` names its processor share, memory and disk within declared bounds (`afd_wire::lease::SandboxLimits`), a lease naming none gets the runner's defaults, and a size past a bound refuses the lease before any sandbox exists. The process cap stays the host's. Nothing yet reserves host disk: no check holds live sandboxes' disk limits against the state disk, so leases can fill it.
 - A supervisor whose capability set is only what sandbox setup needs (mounts, cgroups, namespaces), while tenant code never holds a capability; and a kernel patch cadence for runner hosts.
@@ -250,8 +265,10 @@ Two builds of one record are byte-identical. A changed dependency is a new relea
 1. the release manifest is authenticated: architecture, length, digest, EROFS features, and the runner versions it serves;
 2. the image is staged in a private directory, verified, synced, and published with an atomic rename;
 3. the published image is opened once without following symbolic links, checked to be a regular file of the manifest's length, and that descriptor is hashed;
-4. the same descriptor is attached read-only to a loop device with `LOOP_CONFIGURE` (Linux 5.8), and the device is mounted `ro,nosuid,nodev`;
+4. the same descriptor is attached read-only to a buffered loop device with `LOOP_CONFIGURE` (Linux 5.8), then mounted `ro,nosuid,nodev`;
 5. only then does the host report ready.
+
+The toolbox device stays buffered, though direct I/O kept the host from caching the image twice: one image of at most 160 MB a host. Over 360 cold first uses a mode, direct I/O was 3 to 12% faster at p50 and 1.12 to 2.98 times slower at p99. Every first-use step regressed ([M237_002](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md) Discovery).
 
 Nothing reopens the image by path after its hash is taken, so a file substituted at that path never reaches the kernel's filesystem parser. A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the admitted file; a directory named after a digest proves nothing. Each lease holds the image it runs on; past the current and previous releases, an image nothing holds is unmounted at the next admission or retention pass, and the startup sweep removes whatever an interrupted stage left. Host root is inside the trust boundary: it controls the runner, the kernel and the mounts, and no integrity mechanism protects a tenant from it.
 
@@ -271,12 +288,12 @@ This section records what the code builds, against the design above. `agentsflee
 
 **Only a lease that needs a sandbox gets one.** A lease whose tools all run in the supervisor starts none (`afr_agent/src/engine/mod.rs`, `afr_supervisor/src/lease_loop/mod.rs`). `http_request` and the memory tools run in the supervisor, so a Pull Request reviewer built from them never builds a sandbox. Shell, git and file tools run in one (`afr_tools/src/catalog/mod.rs`).
 
-**A processed lease holds its sandbox; other outcomes destroy it before reporting.**
+**A processed lease holds its sandbox; other outcomes kill it before reporting and release its disk after.**
 
 ```
  lease start                                                 lease end
    ├─ mkdir <state>/<lease_id>          0711, never reused        │
-   ├─ sparse workspace.img 4 GiB → mke2fs ext4 → loop mount       │
+   ├─ sparse workspace.img 4 GiB → mke2fs ext4 → mount(2), loop   │
    ├─ cgroup: 2 GiB, no swap, 2 cores, 512 pids, 200 MiB/s io     │
    ├─ bwrap: new user/pid/ipc/uts/cgroup ns, cap-drop ALL         │
    │     net         the host's, its own, or its own + a veth     │
@@ -287,17 +304,40 @@ This section records what the code builds, against the design above. `agentsflee
    ├─ child: no_new_privs → Landlock → seccomp → executor         │
    ├─ allow_list_egress: host-side nf_tables table for the veth   │
    │              … the turn runs …                               ▼
-   └─ processed: frozen and held for the fleet, else destroyed
-      before the report: cgroup.kill → kill → rm cgroup
-                       → umount → rm image → rm dir
-                       → the egress table and veth, when built
+   └─ processed: frozen and held for the fleet, else killed, the report posted, then released
+      before the report: cgroup.kill, then populated 0 within 5 s
+      after the report:  the egress table and veth, when built
+                       → rm cgroup → umount → rm image → rm dir
 ```
 
-The lease's `run/` directory holds the executor's socket; it is `0700` and owned by the sandbox user. The supervisor waits at most 10 s for the executor to answer there before it refuses the lease (`afr_sandbox/src/bubblewrap_engine/mod.rs`).
+The executor answers over one end of a socket pair the engine makes for the lease, and no path names it. The supervisor waits at most 10 s for the executor to list the workspace over it before it refuses the lease (`afr_sandbox/src/bubblewrap_engine/mod.rs`).
 
-Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/hold.rs`, `afr_sandbox/src/bubblewrap_engine/parts.rs`), except for a processed lease's sandbox, which is frozen and held (§"Workspace between leases"). Building the engine sweeps every leftover lease directory in its state directory (`afr_sandbox/src/bubblewrap_engine/sweep.rs`), and every egress table and veth a crashed run left. So a host builds one engine per state directory: an engine per worker tears down its siblings' leases. Warm slots (`afr_sandbox/src/warm_slots/mod.rs`) are sandboxes started ahead of a lease, one lease each; only the kernel lane uses them so far.
+A lease's sandbox is killed before settle and torn down once the report posts (`afr_supervisor/src/lease_loop/hold.rs`, `afr_sandbox/src/bubblewrap_engine/parts/teardown.rs`). A processed lease's sandbox is frozen and held instead (§"Workspace between leases").
 
-**Cold start is milliseconds; the waits are elsewhere.** Lease accept to executor ready, median of five, debug build, measured in the kernel lane: cold 23.6 ms, from a warm slot 0.66 ms ([M210_001](../v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md) Discovery). The lane now keeps its state under `/var/tmp`, on a disk; the cold number above was measured with it under a tmpfs `/tmp`, so a disk-backed number is still to be measured. A run's first seconds go to the poll interval (up to 1 s), memory hydration and the first model call. The toolbox download never sits on a lease's path: a host fetches the image when it boots or reconciles.
+Building the engine sweeps every leftover lease directory in its state directory (`afr_sandbox/src/bubblewrap_engine/sweep.rs`), and every egress table and veth a crashed run left. So a host builds one engine per state directory: an engine per worker tears down its siblings' leases.
+
+Warm slots (`afr_sandbox/src/warm_slots/mod.rs`) are sandboxes started ahead of a lease, one lease each; only the kernel lane uses them so far.
+
+**Cold start is milliseconds; the waits are elsewhere.**
+
+In the kernel lane, a debug build went from lease accept to executor ready in 23.6 ms cold, median of five. From a warm slot it took 0.66 ms ([M210_001](../v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md) Discovery). That lane kept its state under a tmpfs `/tmp`.
+
+On a disk under `/var/tmp`, with 100 leases 4 at once, executor ready took 100.8 ms cold at p50 before M237. The in-process disk took that under 50 ms. The specs' Discovery holds every figure ([lease waits](../v2/done/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md), [start](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md)).
+
+A run's first seconds go to the poll interval (up to 1 s), loading the fleet's memory and the first model call. The toolbox download never sits on a lease's path: a host fetches the image when it boots or reconciles.
+
+**Reading the lease path's speed.** A regression should show as a moved percentile on a signal the runner exports. A fleet watching Grafana can then find it ([durable repair](scenarios/durable-repair.md)). Each question below has one:
+
+| Question | Signal |
+|---|---|
+| How long does a sandbox take to build? | `agentsfleet_runner_sandbox_start_duration_seconds`, by outcome |
+| Did a tool call wait on the build, and for how long? | `agentsfleet_runner_sandbox_wait_duration_seconds`; `sandbox_wait_ms` on `lease_completed` |
+| How often does a build fail, and at which step? | `agentsfleet_runner_sandbox_builds_total`, by outcome |
+| How long is the release after the report? | `agentsfleet_runner_sandbox_release_duration_seconds` |
+| Where did one lease's setup time go? | `egress_ms`, `prepare_ms` and `checkout_ms` on `lease_completed` |
+| How fast is the model? | `agentsfleet_runner_provider_turn_duration_seconds` |
+
+Three questions have no signal yet. Nothing times an event's wait for its lease, or a lease's wait for its first model request. Nothing times each step inside a prepare either; the follow-up to M237 adds all three.
 
 **Where the bytes live.**
 
@@ -378,8 +418,10 @@ admit_incoming                                                toolbox/incoming/m
        open_image(O_NOFOLLOW)  ─► fstat: regular file, manifest length
        sha256 over that same descriptor
        adopt an existing mount only if it is this file, read-only     toolbox/adopt/mod.rs
-       loop_device::attach(fd): LOOP_CTL_GET_FREE ─► LOOP_CONFIGURE(ro, autoclear)
+       loop_device::attach(fd, ReadOnly): LOOP_CTL_GET_FREE ─► LOOP_CONFIGURE(ro, autoclear,
+         buffered, 4096-byte blocks)
        mount /dev/loopN at <mounts>/<digest> as erofs, ro,nosuid,nodev
+       sandbox_toolbox_admission_completed names caching: buffered
   ─► Arc<Toolbox> kept by the config; every sandbox clones the Arc
 ```
 
@@ -409,7 +451,7 @@ work
   │     .needs_sandbox()                           afr_tools/src/selection.rs
   ├─ turns.claim(fleet)                            one run per fleet per runner
   ├─ memory::hydrate(fleet)
-  └─ needs.sandbox ? sandboxed(…) : drive(executor = None)
+  └─ needs.sandbox ? sandboxed(…) : drive(slot = NoSandbox)
 ```
 
 The decision reads what the policy offers, before the model runs. The model's later choices never change it.
@@ -420,22 +462,33 @@ The decision reads what the policy offers, before the model runs. The model's la
 | `Provider` | `web_search` | the model provider |
 | `Sandbox` | `shell`, `exec_command`, `write_stdin`, `git`, file tools, `apply_patch`, `image`, browser tools | the executor inside bubblewrap |
 
-### Part C: `sandboxed`, a held sandbox or a new one
+### Part C: `sandboxed`, the build beside the first model call
 
 ```
 sandboxed                                          lease_loop/workspace.rs
-  ├─ sized(lease limits, host defaults)            out of bounds ─► startup_posture
-  ├─ bind egress                                   allow_list resolves its host names
-  ├─ revive(hold key)                              lease_loop/hold.rs
-  │     resume_hold, reallow, thaw, executor answers within 2 s ─► reuse
-  ├─ else prepare ─► engine.prepare(SandboxRequest)          Part D
-  ├─ new sandbox ─► check_out                      lease_loop/checkout.rs mints the token
-  │     Mirrors::check_out                         workspace_clone/{fetch,checkout}.rs
-  │     fetch the mirror, copy objects, write the tree, chown every file
-  └─ in_sandbox ─► drive(executor = Some)          lease_loop/drive.rs; first model call
+  ├─ admitted, before any model request            refused ─► startup_posture
+  │     sized(lease limits, host defaults)
+  │     bind egress                                allow_list resolves its host names
+  │     plan: checkouts(policy), workspace id      lease_loop/checkout.rs
+  └─ beside, one task, both futures boxed
+       ├─ build                                    lease_loop/build.rs
+       │    acquire: revive(hold key) or prepare   lease_loop/hold.rs, Part D
+       │      resume_hold, reallow, thaw, executor answers within 2 s ─► reuse
+       │    check_out unless held                  mints the token, Mirrors::check_out
+       │    a stop ends the mint, a wait on the mirror and a fetch between git's steps
+       │    fill the ExecutorSlot: the executor, or Unavailable(prepare | checkout | stopped)
+       │    a failure or a stop fills the slot first, then destroys what it made
+       │    count it: sandbox_builds_total{outcome = ready | prepare | checkout | stopped}
+       └─ drive(slot)                              lease_loop/drive.rs; first model call
+            a processed, uncut turn waits up to 20 s for the build; then, or on
+            any other ending, the build is stopped
 ```
 
-Everything above the first model call runs in sequence today. The decided target below moves it beside the model call.
+The first model request waits for the size, egress and plan checks alone. A sandbox-side call waits on the slot for what is left of the build, and `lease_completed` logs that wait as `sandbox_wait_ms`. A build that fails leaves the turn going: its sandbox-side calls answer `sandbox_unavailable` naming the class, and `sandbox_build_failed` is logged.
+
+A build still running 20 s after its turn answered is stopped and logged as `sandbox_build_outlasted_turn`. A stalled token mint, a wait on another lease's mirror or a slow fetch cannot hold the lease. The report goes with nothing held.
+
+A runner that stops leasing waits for no build, since nothing would hold its sandbox.
 
 ### Part D: `prepare`, where bubblewrap is spawned
 
@@ -443,20 +496,23 @@ Everything above the first model call runs in sequence today. The decided target
 BubblewrapEngine::prepare ─► start ─► build         bubblewrap_engine/mod.rs
   1 mkdir <state>/<lease_id> 0711, never reused
   2 WorkspaceDisk::create                           workspace_disk/mod.rs
-      sparse workspace.img ─► mke2fs (host program) ─► mount -o loop (host program)
-      loop_device::direct_io (LOOP_SET_DIRECT_IO, toolbox/loop_device/mod.rs)
+      sparse workspace.img ─► mke2fs (host program)
+      on the blocking pool: loop_device::attach(ReadWrite), direct I/O asked for,
+      autoclear ─► mount(2) ext4 nosuid,nodev ─► close the device handle
+      a start dropped mid-mount: the mount lands unheard and undoes itself
       workspace/ 0755 and tmp/ 1777, owned by 65534
   3 LeaseCgroup::create: sandbox and tenant leaves, memory, cpu and pids limits;
     then cgroup.limit_io on the disk's loop device
-  4 TenantFiles::open: the tenant leaf's cgroup.procs and cgroup.events, opened by the runner
-  5 run/ 0700 owned by 65534, for the executor's socket
+  4 TenantFiles::open: the tenant leaf's cgroup.procs and memory.events, opened by the runner
+  5 Handover::with_link: a socket pair, both ends close-on-exec       tenant/files.rs
   6 Names::render: hosts and resolv.conf for an allow_list lease
   7 bubblewrap::arguments                           bubblewrap/mod.rs
-  8 Parts::spawn                                    bubblewrap_engine/parts.rs
+  8 Parts::spawn                                    bubblewrap_engine/parts/mod.rs
       Command bwrap, env cleared, uid and gid 65534
-      pre_exec: write "0" to sandbox/cgroup.procs, clear close-on-exec on tenant fds
-      spawn ─► the bwrap process exists
-  9 ready: Client::connect_within, every 10 ms for up to 10 s    afr_executor/src/client/mod.rs
+      pre_exec: write "0" to sandbox/cgroup.procs, clear close-on-exec on the
+        tenant fds and the entry's end of the pair, in this child alone
+      spawn ─► the bwrap process exists; the runner's copy of the entry's end closes
+  9 ready: list_dir(".") over the runner's end, for up to 10 s, nothing polled
     or bwrap's exit with its error stream
  10 allow_list only: veth pair and host nf_tables table
 ```
@@ -469,10 +525,10 @@ bwrap --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup 
       --ro-bind <mounts>/<digest> /            --proc /proc   --dev /dev
       --perms 1777 --size <memory/4> --tmpfs /dev/shm
       --bind <disk>/tmp /tmp     --tmpfs /run   --bind <disk>/workspace /workspace
-      --bind <lease>/run /run/agentsfleet
       --ro-bind <runner binary> /opt/agentsfleet/agentsfleet-runner
       --uid 1000 --gid 1000 --chdir /workspace
-      -- /opt/agentsfleet/agentsfleet-runner sandbox <tenant fds>
+      -- /opt/agentsfleet/agentsfleet-runner sandbox
+         --tenant-procs <fd> --tenant-events <fd> --executor <fd>
 ```
 
 ### Part E: inside the sandbox
@@ -480,10 +536,9 @@ bwrap --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup 
 ```
 bwrap ─► namespaces and the mount tree above ─► pid 1 reaper
   └─ exec /opt/agentsfleet/agentsfleet-runner sandbox     main.rs, serve/mod.rs
-       bind /run/agentsfleet/executor.sock          the host's connect now succeeds
-       adopt the tenant leaf's descriptors
+       adopt the tenant leaf's descriptors and the link, close-on-exec again
        harden: one thread only ─► no_new_privs ─► Landlock ─► seccomp ─► no capabilities
-       current-thread runtime ─► serve /workspace, one connection
+       current-thread runtime ─► serve /workspace over the link, one connection
 ```
 
 ```
@@ -499,10 +554,11 @@ agentsfleet-runner run       root           runner cgroup
 ```
 model tool call ─► Router::dispatch                 afr_agent/src/router/mod.rs
   Supervisor ─► tool.call(executor None)            http_request: egress guard, then HTTP
-  Sandbox    ─► executor Some, else SandboxUnavailable
+  Sandbox    ─► slot.get(): waits for the build, then the executor, or
+               SandboxUnavailable naming why; a wait is recorded
                shell ─► oneshot::run_to_end            afr_tools/src/sandbox/oneshot.rs
                ─► Client::spawn
-               "process/spawn" over the socket ─► executor launcher
+               "process/spawn" over the link ─► executor launcher
                pre_exec joins the tenant leaf ─► sh -c
                "process/output" chunks, then "process/exited"
   Provider   ─► HostedToolUnavailable
@@ -512,35 +568,31 @@ model tool call ─► Router::dispatch                 afr_agent/src/router/mod
 
 ```
 settle_and_drain                                    lease_loop/mod.rs
-  keep                                              lease_loop/hold.rs
+  keep ─► Fate                                      lease_loop/hold.rs
     held when: ended processed, not cut, runner still leasing, bwrap still running
-      ─► freeze ─► park for up to ten minutes; a failed freeze destroys instead
-    otherwise ─► destroy: cgroup.kill, kill bwrap, egress removed,
-                 cgroup removed, umount, image and directory removed
-  settle                                            lease_loop/settle.rs
+      ─► freeze ─► park for up to ten minutes ─► Held
+      a failed freeze, or a park the keeper refuses ─► kill
+    otherwise ─► kill: cgroup.kill, then populated 0 within 5 s ─► Killed
+                 an unsettled kill posts anyway and logs sandbox_kill_unsettled
+  settle(&Fate)                                     lease_loop/settle.rs
     tool records posted ─► memory pushed ─► usage flushed by renewal
     ─► report spooled ─► report posted
+  release, beside the live tail's drain
+    destroy: egress removed, cgroup removed, umount, image and directory removed
+    run_lease returns after it, so a worker never holds two leases' disks
 ```
 
-A cut lease is never held, because `keep` requires the run to end on its own.
+A cut lease is never held, because `keep` requires the run to end on its own. Only a kill that settles proves no sandbox process remains.
 
-### Decided, not built
+### Built by M237, and decided only
 
-The Nov 02, 2026 decision changes six steps above. Each is target, not built, until its spec closes.
+M237_001 and M237_002 built the Nov 02, 2026 decision's five steps, and four stand. They are Parts C and G, and Part D's disk and socket pair. The fifth, a direct-I/O toolbox, was measured and reverted (§Toolbox).
 
-Lease order:
+What follows is decided and not built.
 
-- Size and policy checks stay before the model call. After memory loading, Part C's egress, prepare and checkout run beside the model call in the same task.
-- The first sandbox tool call waits for the build. A build failure while the run is live ends the lease `startup_posture`.
-- Part G kills or freezes before the report and releases the disk after it.
+Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest.
 
-Engine:
-
-- A.1 attaches the toolbox with direct I/O and drops the hash read's cache, so the host caches the image once.
-- Part D passes the executor a socket pair, so nothing polls and no socket directory is bound.
-- Part D attaches and mounts the workspace disk in-process; `mke2fs` stays.
-
-Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest. A restore writes into the new lease's disk through the host's mount, inside the background build and before checkout.
+A restore writes into the new lease's disk through the host's mount, inside the background build. It takes checkout's place for each repository it restores, so checkout never overwrites restored work. A save reads the disk only after a kill that settled.
 
 An engine whose disk the host cannot mount, such as Firecracker, reports no host workspace. Its restore and checkout must run inside the guest, or write into the disk image before it attaches.
 
@@ -664,4 +716,6 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 
 | Oct 17, 2026 | Saved model inference settings replace the embedded provider routing JSON. Workspace-owner registrations and the active platform default supply credentialed choices; model output limits come from their saved catalogue row. Both inference hosts filter private SDK content. | Indy: "Also replace the JSON routing table with persistent provider configuration"; "have the persisted model details as the source of truth." |
 | Oct 19, 2026 | The runner reports cache writes apart from input, by the lifetime the provider names, and the daemon bills each class at its own rate instead of at the input rate (M229 Dimension 8.6) | Indy (2026-10-18): cache-write tokens are reported and billed by lifetime, "Bill them now" |
-| Nov 02, 2026 | Target, not built: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O, the executor speaks over an inherited socket pair, and the workspace disk mounts in-process (§"Decided, not built") | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
+| Nov 02, 2026 | A sandbox build that fails while the run is live leaves the run going; sandbox tools answer `sandbox_unavailable` naming the failure, and egress checks stay before the model call (M237_001) | Indy chose "B: model carries on", asking whether setup and the model are independent |
+| Nov 02, 2026 | Built by M237_001 and M237_002: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O (reverted Nov 03), the executor speaks over an inherited socket pair, and the workspace disk mounts in-process | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
+| Nov 03, 2026 | The toolbox loop device stays buffered, superseding Nov 02's direct I/O. A build waits at most 20 s past its answered turn. `sandbox_builds_total` counts builds by outcome | Direct I/O failed the 10% p99 rule on all 8 first-use steps. Indy chose "Revert to buffered", "Counter in this PR" and "Fold the build deadline in here" |

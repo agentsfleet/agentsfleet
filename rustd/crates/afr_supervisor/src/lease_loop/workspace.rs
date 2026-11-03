@@ -1,28 +1,50 @@
-//! The lease's sandbox and its workspace: the lease's egress is resolved, the
-//! fleet's held sandbox is taken or a fresh one built, repositories are checked
-//! out, and the turn runs with its pinned native instructions.
-//! The sandbox goes back to the lease, which holds it for the fleet's next
-//! lease or destroys it.
+//! The lease's sandbox and its workspace, built beside the turn.
+//!
+//! ```text
+//!   size ─► egress ─► checkout plan            refused here: startup_posture
+//!     ├─► build: thaw or prepare ─► check out ─► fill the slot
+//!     └─► turn:  model call ─► sandbox call waits on the slot ─► …
+//! ```
+//!
+//! Checks that would fail on every lease run before any model request, and
+//! refuse it. Then the build and the turn run in one task: the turn's
+//! first model call never waits for the sandbox, and only a sandbox-side call
+//! does. A build that fails leaves the turn going; its sandbox-side calls
+//! answer `sandbox_unavailable`. The sandbox goes back to the lease, which
+//! holds it for the fleet's next lease or destroys it.
 
-use std::time::Instant;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use afd_core::error_code::{Coded as _, Logged};
 use afd_wire::lease::SandboxLimits;
 use afd_wire::report::FailureClass;
+use afr_executor::ExecutorSlot;
 use afr_memory::Seed;
-use afr_sandbox::{Limits, Sandbox, SandboxRequest};
-use afr_telemetry::labels::SandboxStart;
-use afr_telemetry::record;
+use afr_sandbox::Limits;
+use tokio_util::sync::CancellationToken;
 
-use super::hold::{Kept, Worked, mark_reused};
-use super::segments::{Segment, Stopwatch};
+use super::build::Build;
+use super::checkout::Plan;
+use super::hold::{Kept, Worked};
+use super::segments::Segment;
 use super::{LeaseRun, failed};
 use crate::activity::ActivitySink;
 use crate::egress::Bound;
 use crate::holds::Release;
 use crate::report::Ending;
 
-const DETAIL_SANDBOX: &str = "this host could not build a sandbox for the run";
+/// How long a turn that ended processed waits for its build, so the
+/// complete sandbox can be held: long enough for a checkout from a warm
+/// mirror, short against the fleet's next turn, which waits on this lease's
+/// report. The answer is already out; past this, the build is told to stop
+/// and the report goes once its current step ends, so a stalled token mint or
+/// a wait on another lease's mirror does not hold the lease. A step that
+/// cannot hear the stop, such as a fetch stalled inside one network read,
+/// holds it until that step ends.
+pub(super) const BUILD_AFTER_ANSWER: Duration = Duration::from_secs(20);
+/// The event a build stopped because it outlasted its turn is logged under.
+pub(super) const EVENT_BUILD_OUTLASTED: &str = "sandbox_build_outlasted_turn";
 const DETAIL_SIZE: &str = "the lease asked for a sandbox size outside the bounds a runner builds";
 /// What a lease whose egress allowlist could not be resolved reports: a host
 /// that does not resolve, resolves to IPv6 alone, or an allowlist past its cap.
@@ -34,59 +56,128 @@ const DETAIL_EGRESS: &str =
 const DETAIL_EGRESS_BLOCKED: &str =
     "the fleet allows an egress host at a private or reserved address";
 const EVENT_EGRESS_REFUSED: &str = "egress_bind_refused";
-const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
 const EVENT_SIZE_REFUSED: &str = "sandbox_size_refused";
 
+/// What a lease proved before its first model request: the size its sandbox
+/// enforces, what it may reach, and what it checks out.
+struct Admitted<'l> {
+    limits: Limits,
+    bound: Bound,
+    plan: Option<Plan<'l>>,
+}
+
 impl LeaseRun<'_> {
-    /// Resolves the lease's egress, takes the fleet's held sandbox built to
-    /// reach the same, or builds one and checks the bound repositories out
-    /// into it, then runs the turn in it and hands it back. A held sandbox
-    /// keeps the repositories as its last lease left them. An egress that will
-    /// not resolve, a sandbox that cannot be built, or a repository that will
-    /// not check out, ends the lease at startup.
+    /// Admits the lease's sandbox, then runs its build and its turn together
+    /// and hands the sandbox back with the turn's ending. A held sandbox keeps
+    /// the repositories as its last lease left them.
     pub(super) async fn sandboxed(&self, memory: Seed<'_>, sink: ActivitySink) -> Worked {
-        // Timed from here to the landed workspace, whichever way it ends.
+        // Timed from here to the build's end, whichever way it ends.
         let setup = self.timeline.start(Segment::Sandbox);
-        let limits = match sized(self.lease.limits, self.lessee.limits) {
-            Ok(limits) => limits,
-            Err(failure) => {
-                self.release_hold();
-                return self
-                    .refuse(&failure, EVENT_SIZE_REFUSED, DETAIL_SIZE)
-                    .into();
-            }
+        let admitted = match self.admitted().await {
+            Ok(admitted) => admitted,
+            Err(refused) => return (*refused).into(),
         };
-        let bound = match self.bind().await {
-            Ok(bound) => bound,
-            Err(refused) => {
-                self.release_hold();
-                return (*refused).into();
-            }
+        let key = self.hold_key(admitted.limits, &admitted.bound);
+        let stop = self.interrupt.child_token();
+        let build = Build {
+            key: &key,
+            limits: admitted.limits,
+            bound: &admitted.bound,
+            plan: admitted.plan.as_ref(),
+            stop: &stop,
         };
-        let key = self.hold_key(limits, &bound);
-        let held = self.revive(&key, &bound).await;
-        let revived = held.is_some();
-        mark_reused(revived);
-        let sandbox = match held {
-            Some(sandbox) => sandbox,
-            None => match self.prepare(limits, &bound).await {
-                Ok(sandbox) => sandbox,
-                Err(refused) => return (*refused).into(),
-            },
+        // The cell outlives the build that fills it and the turn that borrows
+        // its executor through the slot; the slot's scope ends the borrow.
+        let cell = OnceLock::new();
+        let (ending, held) = {
+            let slot = ExecutorSlot::pending();
+            // Both boxed: side by side, the build's state and the turn's would
+            // sit in the lease's own future together, past the large-future
+            // bound.
+            let building = Box::pin(async {
+                self.build(&build, &cell, &slot).await;
+                setup.stop();
+            });
+            let driving = Box::pin(self.drive(memory, &slot, sink));
+            let ending = self.beside(building, driving, &stop).await;
+            (ending, slot.held())
         };
-        let checked_out = if revived {
-            Ok(())
-        } else {
-            self.check_out(sandbox.as_ref()).await
-        };
-        let ending = match checked_out {
-            Ok(()) => self.in_sandbox(memory, sandbox.as_ref(), sink, setup).await,
-            Err(refused) => *refused,
-        };
+        self.timeline.waited(held);
         Worked {
             ending,
-            kept: Some(Kept { sandbox, key }),
+            kept: cell.into_inner().map(|sandbox| Kept { sandbox, key }),
         }
+    }
+
+    /// Runs the build and the turn together, and answers the turn's ending
+    /// once both are done. A turn that ended processed and uncut waits up to
+    /// [`BUILD_AFTER_ANSWER`] for the build, so a complete sandbox can be
+    /// held; any other ending, or a build that outlasts the wait, stops the
+    /// build first. Either way the build runs to its end, never dropped
+    /// mid-step.
+    async fn beside(
+        &self,
+        building: impl Future<Output = ()>,
+        driving: impl Future<Output = Ending>,
+        stop: &CancellationToken,
+    ) -> Ending {
+        tokio::pin!(building, driving);
+        tokio::select! {
+            biased;
+            () = &mut building => driving.await,
+            ending = &mut driving => {
+                // Only a sandbox `keep` would hold is worth waiting for, and
+                // only while it still would: an interrupt, or leasing that
+                // stops mid-wait, ends the wait as surely as the deadline.
+                let waits = ending.processed()
+                    && !self.interrupt.is_cancelled()
+                    && !self.lessee.halt.leasing().is_cancelled();
+                let built = waits && tokio::select! {
+                    biased;
+                    () = &mut building => true,
+                    () = self.interrupt.cancelled() => false,
+                    () = self.lessee.halt.leasing().cancelled() => false,
+                    () = tokio::time::sleep(BUILD_AFTER_ANSWER) => {
+                        let lease_id = self.ids.lease.as_str();
+                        let event = EVENT_BUILD_OUTLASTED;
+                        tracing::info!(lease_id, event, "the build outlasted its answered turn");
+                        false
+                    }
+                };
+                if !built {
+                    stop.cancel();
+                    building.await;
+                }
+                ending
+            }
+        }
+    }
+
+    /// Every check whose failure would repeat on each lease, made before any
+    /// model request: the size, the egress and the checkout plan. A refusal
+    /// ends the lease at startup and releases the fleet's hold.
+    async fn admitted(&self) -> Result<Admitted<'_>, Box<Ending>> {
+        let refused = |ending: Box<Ending>| {
+            self.release_hold();
+            ending
+        };
+        let limits = sized(self.lease.limits, self.lessee.limits).map_err(|failure| {
+            refused(Box::new(self.refuse(
+                &failure,
+                EVENT_SIZE_REFUSED,
+                DETAIL_SIZE,
+            )))
+        })?;
+        let resolving = self.timeline.start(Segment::Egress);
+        let bound = self.bind().await;
+        resolving.stop();
+        let bound = bound.map_err(refused)?;
+        let plan = self.plan().map_err(refused)?;
+        Ok(Admitted {
+            limits,
+            bound,
+            plan,
+        })
     }
 
     /// Releases the fleet's held sandbox for a lease refused before a sandbox
@@ -129,40 +220,6 @@ impl LeaseRun<'_> {
         tracing::warn!(error_code, lease_id, reason, hosts, event, detail);
         failed(FailureClass::StartupPosture, detail)
     }
-
-    /// Builds a fresh sandbox enforcing `limits` and reaching what `bound`
-    /// admits, or the startup failure that ends the lease when the host
-    /// cannot.
-    async fn prepare(
-        &self,
-        limits: Limits,
-        bound: &Bound,
-    ) -> Result<Box<dyn Sandbox>, Box<Ending>> {
-        let request =
-            SandboxRequest::new(self.ids.lease.as_str(), limits).with_network(bound.network());
-        let started = Instant::now();
-        let prepared = self.lessee.engine.prepare(request).await;
-        let outcome = if prepared.is_ok() {
-            SandboxStart::Ready
-        } else {
-            SandboxStart::Failed
-        };
-        record::sandbox_start(outcome, started.elapsed());
-        prepared.map_err(|failure| {
-            Box::new(self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX))
-        })
-    }
-
-    async fn in_sandbox(
-        &self,
-        memory: Seed<'_>,
-        sandbox: &dyn Sandbox,
-        sink: ActivitySink,
-        setup: Stopwatch<'_>,
-    ) -> Ending {
-        setup.stop();
-        self.drive(memory, Some(sandbox.executor()), sink).await
-    }
 }
 
 /// The limits a lease's sandbox enforces: the size the lease asked for once
@@ -196,3 +253,7 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/egress.rs"]
 mod egress_tests;
+
+#[cfg(test)]
+#[path = "tests/setup_parts.rs"]
+mod parts_tests;

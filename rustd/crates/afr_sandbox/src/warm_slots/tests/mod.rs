@@ -292,3 +292,18 @@ async fn test_warm_slot_serves_only_its_own_network() {
     warm.destroy().await.unwrap();
     slots.shutdown().await;
 }
+
+/// A sandbox whose engine names no host workspace keeps the trait's answer:
+/// none, so the supervisor fills nothing before the turn.
+#[tokio::test]
+async fn test_a_sandbox_names_no_host_workspace_by_default() {
+    let engine = Counting::default();
+
+    let sandbox = engine
+        .prepare(SandboxRequest::new("lease-w", Limits::default()))
+        .await
+        .unwrap();
+
+    assert!(sandbox.workspace().is_none());
+    sandbox.destroy().await.unwrap();
+}

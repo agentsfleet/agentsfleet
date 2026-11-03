@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use afr_executor::Executor;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::network::{Allowlist, Network};
 
 /// Memory a lease's sandbox may hold before its tree is killed.
@@ -152,6 +152,18 @@ impl<'a> LeaseName<'a> {
     }
 }
 
+/// What a [`Sandbox::kill`] proves about the processes inside.
+#[derive(Debug)]
+pub enum Killed {
+    /// The process tree is empty: nothing in the sandbox runs, so nothing
+    /// writes to its disk.
+    Settled,
+    /// The kill could not prove the tree empty, and why. A process may still
+    /// run and write: the lease still reports, and nothing may save the disk
+    /// on this record's strength.
+    Unsettled(Error),
+}
+
 /// Builds one sandbox per lease.
 #[async_trait::async_trait]
 pub trait Engine: Send + Sync + fmt::Debug {
@@ -211,6 +223,11 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// its names would not render. A sandbox that refuses is destroyed, never
     /// resumed.
     async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()>;
+
+    /// Ends every process inside and waits, bounded, for the tree to empty.
+    /// The disk, the cgroup and the egress rules stay for
+    /// [`Sandbox::destroy`], so the lease can report before it releases them.
+    async fn kill(&self) -> Killed;
 
     /// Ends every process inside, then removes what it held.
     ///

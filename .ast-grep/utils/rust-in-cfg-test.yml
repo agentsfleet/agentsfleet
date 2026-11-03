@@ -1,0 +1,17 @@
+# Code only tests compile: anything inside an item whose attributes carry
+# `#[cfg(test)]`. Walks back over the item's attributes and comments only, so
+# an earlier sibling's `#[cfg(test)]` never covers the next item.
+id: rust-in-cfg-test
+language: Rust
+rule:
+  inside:
+    stopBy: end
+    follows:
+      kind: attribute_item
+      regex: ^#\[cfg\(test\)\]$
+      stopBy:
+        not:
+          any:
+            - kind: attribute_item
+            - kind: line_comment
+            - kind: block_comment

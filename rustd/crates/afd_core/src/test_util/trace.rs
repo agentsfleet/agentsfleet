@@ -26,7 +26,8 @@
 //! whichever installs first.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError, TryLockError};
+use std::time::{Duration, Instant};
 
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id, Record};
@@ -47,6 +48,54 @@ const CODE_OPENER: &str = "[UZ-";
 
 /// Held by the one live [`Capture`].
 static SERIAL: Mutex<()> = Mutex::new(());
+
+/// How long a capture waits for the one before it to end. Captures queue
+/// behind each other across a whole test binary, so this is generous; past
+/// it the waiting test fails naming the wait, rather than every capturing
+/// test in the binary hanging behind one that never returns.
+const SERIAL_PATIENCE: Duration = Duration::from_secs(600);
+
+/// How often a waiting capture looks again.
+const SERIAL_POLL: Duration = Duration::from_millis(5);
+
+/// The capture lock, once the capture before this one has ended.
+///
+/// # Panics
+///
+/// As [`serial_within`], after [`SERIAL_PATIENCE`].
+fn serial() -> MutexGuard<'static, ()> {
+    serial_within(SERIAL_PATIENCE)
+}
+
+/// The capture lock, waiting at most `patience` for the capture before.
+///
+/// A test that panicked while holding the lock proved nothing about the next
+/// one, so a poisoned lock is taken as it stands.
+///
+/// # Panics
+///
+/// When another capture still holds the lock after `patience`: a capturing
+/// test is stuck, or this thread installed a second capture.
+#[expect(
+    clippy::panic,
+    reason = "a capture that cannot start fails its test rather than hanging the binary"
+)]
+fn serial_within(patience: Duration) -> MutexGuard<'static, ()> {
+    let deadline = Instant::now() + patience;
+    loop {
+        match SERIAL.try_lock() {
+            Ok(serial) => return serial,
+            Err(TryLockError::Poisoned(poisoned)) => return poisoned.into_inner(),
+            Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
+                std::thread::sleep(SERIAL_POLL);
+            }
+            Err(TryLockError::WouldBlock) => panic!(
+                "waited {patience:?} for another test's log capture to end: \
+                 a capturing test is stuck, or this thread installed a second capture"
+            ),
+        }
+    }
+}
 
 /// Installs the process's global subscriber, once.
 static GLOBAL: Once = Once::new();
@@ -176,8 +225,10 @@ impl Capture {
     /// Starts capturing on the current thread, after any other capture in the
     /// process has ended.
     ///
-    /// A second capture on the same thread before the first drops waits
-    /// forever: install one per test.
+    /// # Panics
+    ///
+    /// When the capture before it has not ended within ten minutes, which a
+    /// second capture on the same thread never does: install one per test.
     #[must_use]
     pub fn install() -> Self {
         Self::start(None)
@@ -186,15 +237,17 @@ impl Capture {
     /// [`Self::install`], keeping only what `filter` lets through: the
     /// process's own filter, so a suite reads what an operator's journal
     /// would hold.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::install`].
     #[must_use]
     pub fn install_filtered(filter: Targets) -> Self {
         Self::start(Some(filter))
     }
 
     fn start(filter: Option<Targets>) -> Self {
-        // A test that panicked while holding the lock proved nothing about
-        // the next one, so a poisoned lock is taken as it stands.
-        let serial = SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+        let serial = serial();
         GLOBAL.call_once(|| {
             // Another suite's global subscriber, set first, keeps every
             // callsite on itself; either way none is left cached "never".
@@ -305,5 +358,41 @@ impl Visit for Text<'_> {
 
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
         self.0.insert(field.name().to_owned(), format!("{value:?}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{Capture, SERIAL, serial_within};
+
+    /// A capture after a test that panicked holding one still starts: that
+    /// panic proved nothing about this test.
+    #[test]
+    fn a_capture_starts_after_a_test_panicked_holding_one() {
+        let panicked = std::thread::spawn(|| {
+            let _capture = Capture::install();
+            std::panic::resume_unwind(Box::new("a test failed holding its capture"));
+        })
+        .join();
+
+        let capture = Capture::install();
+
+        assert!(panicked.is_err(), "the holder unwound");
+        assert!(
+            capture.events().is_empty(),
+            "the next capture started clean"
+        );
+    }
+
+    /// A capture still blocked when its patience runs out fails, naming the
+    /// wait, rather than hanging every capturing test behind it.
+    #[test]
+    #[should_panic(expected = "for another test's log capture to end")]
+    fn a_capture_that_cannot_start_fails_naming_the_wait() {
+        let _held = SERIAL.lock();
+
+        drop(serial_within(Duration::ZERO));
     }
 }

@@ -1,0 +1,24 @@
+# A second cn drifts from the design system's tailwind-merge configuration.
+# That the one cn still exists is checked by
+# scripts/check_design_system_source.py.
+id: ds-single-cn
+language: Tsx
+severity: error
+message: a second cn; import the one in ui/packages/design-system/src/utils.ts
+files:
+  - ui/packages/**/*.ts
+  - ui/packages/**/*.tsx
+ignores:
+  - ui/packages/design-system/src/utils.ts
+rule:
+  kind: export_statement
+  has:
+    field: declaration
+    any:
+      - kind: function_declaration
+        has: { field: name, regex: ^cn$ }
+      - kind: lexical_declaration
+        regex: ^const\s
+        has:
+          kind: variable_declarator
+          has: { field: name, regex: ^cn$ }

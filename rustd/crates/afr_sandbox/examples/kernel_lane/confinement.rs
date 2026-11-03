@@ -16,9 +16,9 @@ use crate::run::{expect, in_sandbox, run, runtime, shell};
 
 /// The lease the planting trial runs as.
 const PLANT: &str = "plant";
-/// Tries to leave a set-user-ID file in the socket directory, a host path,
-/// then says who it runs as and writes one file where it may.
-const PLANT_SCRIPT: &str = "(echo x > /run/agentsfleet/planted && chmod u+s /run/agentsfleet/planted) \
+/// Tries to leave a set-user-ID file in the sandbox's private `/run`, then
+/// says who it runs as and writes one file where it may.
+const PLANT_SCRIPT: &str = "(echo x > /run/planted && chmod u+s /run/planted) \
      2>/dev/null && echo planted || echo sealed; id -u; echo y > /workspace/owned";
 /// Where `/workspace/owned` lands under the lease's directory: the disk mounts
 /// at `workspace/`, and `/workspace` is its `workspace/` directory.
@@ -67,9 +67,10 @@ pub(crate) fn landlock_denies(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// Nothing the sandbox does lands on the host as host root: the socket
-/// directory takes no write at all once the sandbox is confined, and what it
-/// writes in its workspace is owned by the unprivileged user it runs as.
+/// Nothing the sandbox does lands on the host as host root: its private
+/// `/run` takes no set-user-ID file once the sandbox is confined, it runs as
+/// its own user, and what it writes in its workspace is owned on the host by
+/// the unprivileged user bubblewrap was started as.
 pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
@@ -79,23 +80,15 @@ pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
         let said = run(sandbox.executor(), shell(PLANT_SCRIPT)).await;
         let lease = lane.lease_dir(PLANT);
         let owner = fs::metadata(lease.join(OWNED_ON_HOST)).map(|meta| meta.uid());
-        let run_dir: Vec<_> = fs::read_dir(lease.join("run"))?
-            .flatten()
-            .map(|entry| entry.file_name())
-            .collect();
         sandbox.destroy().await?;
         let said = said?.output;
         expect(
             said.contains("sealed"),
-            format!("the socket directory took a write: {said:?}"),
+            format!("/run took a write: {said:?}"),
         )?;
         expect(
             said.contains(&afr_sandbox::bubblewrap::SANDBOX_UID.to_string()),
             format!("runs as its own user, got {said:?}"),
-        )?;
-        expect(
-            run_dir.len() == 1,
-            format!("only the socket is there: {run_dir:?}"),
         )?;
         expect(
             owner.as_ref().is_ok_and(|uid| *uid == SANDBOX_IDS.0),

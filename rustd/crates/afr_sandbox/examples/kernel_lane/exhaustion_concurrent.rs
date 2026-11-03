@@ -80,7 +80,8 @@ async fn fill(engine: &BubblewrapEngine, lane: &Lane, lease_id: &str) -> Result<
     };
     let sandbox = engine
         .prepare(SandboxRequest::new(lease_id, limits))
-        .await?;
+        .await
+        .map_err(|error| step(lease_id, "prepare", &error))?;
     let executor = sandbox.executor();
     let seen = async {
         let tmp = run_within(executor, shell(FILL_TMP), FILL_TIMEOUT).await?;
@@ -95,8 +96,17 @@ async fn fill(engine: &BubblewrapEngine, lane: &Lane, lease_id: &str) -> Result<
         })
     }
     .await;
-    sandbox.destroy().await?;
+    sandbox
+        .destroy()
+        .await
+        .map_err(|error| step(lease_id, "destroy", &error))?;
     seen
+}
+
+/// A failed step of `lease_id`, with its cause: four leases run at once, and
+/// a bare error code says neither which one nor why.
+fn step(lease_id: &str, name: &str, error: &afr_sandbox::Error) -> Failed {
+    format!("{lease_id} {name}: {error:?}").into()
 }
 
 /// The sandbox leaf's memory events: what the kernel killed among bubblewrap

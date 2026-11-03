@@ -105,6 +105,36 @@ fn a_socket_is_bound_with_no_runtime_and_served_once_one_runs() {
     ended.1.expect("the server ended").expect("it ran").unwrap();
 }
 
+/// The bubblewrap engine's link: one end of a socket pair each, taken with
+/// no runtime as the sandbox entry takes its end, then served once one runs.
+#[test]
+fn test_a_socket_pair_is_taken_with_no_runtime_and_served_once_one_runs() {
+    let (_scratch, _socket, root) = scratch();
+    let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
+
+    let executor = afr_executor::connected(theirs).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let ended = runtime.block_on(async {
+        let serving = tokio::spawn(async move { executor.serve(&root).await });
+        let client = afr_executor::Client::connected(ours).unwrap();
+        let echoed = finish(
+            client
+                .spawn(&Spawn::program("echo").arg("paired"))
+                .await
+                .unwrap(),
+        )
+        .await;
+        drop(client);
+        (echoed, tokio::time::timeout(PATIENCE, serving).await)
+    });
+
+    assert_eq!(ended.0.stdout, b"paired\n");
+    ended.1.expect("the server ended").expect("it ran").unwrap();
+}
+
 #[tokio::test]
 async fn a_client_waits_for_an_executor_that_binds_late() {
     let (_scratch, socket, root) = scratch();

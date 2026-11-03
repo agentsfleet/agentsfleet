@@ -1,14 +1,17 @@
-//! The engine's half: the tenant leaf's files, opened as the runner and let
-//! through bubblewrap's exec. Built where the bubblewrap engine is, Linux, and
-//! for its tests.
+//! The engine's half: the tenant leaf's files, opened as the runner, and the
+//! executor's socket pair, let through bubblewrap's exec. Built where the
+//! bubblewrap engine is, Linux, and for its tests.
 
 use std::io;
 use std::os::fd::{AsRawFd as _, OwnedFd};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 use rustix::fs::{Mode, OFlags};
 use rustix::io::FdFlags;
 
+#[cfg(target_os = "linux")]
+use super::Inherited;
 use super::TenantDescriptors;
 use crate::cgroup::{CGROUP_PROCS, MEMORY_EVENTS};
 use crate::error::{Result, cgroup, cgroup_unreadable};
@@ -53,6 +56,47 @@ impl TenantFiles {
             .into_iter()
             .try_for_each(|held| rustix::io::fcntl_setfd(held, FdFlags::empty()))
             .map_err(io::Error::from)
+    }
+}
+
+/// Everything the engine hands across bubblewrap's exec to the sandbox entry:
+/// the tenant leaf's files, and the entry's end of the executor's socket pair.
+#[derive(Debug)]
+pub(crate) struct Handover {
+    pub(super) tenant: TenantFiles,
+    pub(super) executor: OwnedFd,
+}
+
+impl Handover {
+    /// `tenant` and a fresh socket pair, both ends close-on-exec; hands back
+    /// the runner's end, which the engine's client speaks over.
+    pub(crate) fn with_link(tenant: TenantFiles) -> Result<(Self, UnixStream)> {
+        let (runner, entry) = UnixStream::pair()?;
+        Ok((
+            Self {
+                tenant,
+                executor: entry.into(),
+            },
+            runner,
+        ))
+    }
+
+    /// The numbers the sandbox entry will hold all three under; only the
+    /// bubblewrap engine, which is Linux's, names them.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn descriptors(&self) -> Inherited {
+        Inherited {
+            tenant: self.tenant.descriptors(),
+            executor: self.executor.as_raw_fd(),
+        }
+    }
+
+    /// Lets all three survive the coming exec. Runs in the child between fork
+    /// and exec, so that child alone keeps the entry's end: three `fcntl`
+    /// calls, and nothing allocated.
+    pub(crate) fn inherit(&self) -> io::Result<()> {
+        self.tenant.inherit()?;
+        rustix::io::fcntl_setfd(&self.executor, FdFlags::empty()).map_err(io::Error::from)
     }
 }
 

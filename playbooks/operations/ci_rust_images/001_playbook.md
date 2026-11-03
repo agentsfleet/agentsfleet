@@ -23,31 +23,33 @@ every build after.
 | `ghcr.io/agentsfleet/ci-rust-alpine` | amd64 + arm64 | `make/build.mk` (`_dist-daemons`), `deploy-dev-build.yml`, `release.yml` |
 
 A second image, `ci-rust-slim` (bookworm), was built here on Aug 29 for the lint
-and unit lanes and **never published** — its own inventory named `test.yml` as
-the consumer while that workflow ran on the host runner with rustup and
-referenced no container at all. Rather than publish a second base with a second
-Rust pin, this image absorbed what those lanes need: `git`, `pkgconf`,
-`ca-certificates`, and the three components `rustd/rust-toolchain.toml` names.
+and unit lanes and **never published**. Its own inventory named `test.yml` as
+the consumer, while that workflow ran on the host runner with rustup and no
+container.
 
-That keeps ONE place the Rust version is written. Two images meant two pins that
-nothing checked against each other, which is the same "second compiler nobody
-chose" that `versions.env` exists to prevent — one level up.
+Rather than publish a second base with its own Rust pin, this image took on
+what those lanes need. That is `git`, `pkgconf`, `ca-certificates`, and the
+three components `rustd/rust-toolchain.toml` names.
+
+That keeps ONE place the Rust version is written. Two images meant two pins
+nothing checked against each other. That is the "second compiler nobody chose"
+which `versions.env` exists to prevent, one level up.
 
 **The tag is DERIVED, never pasted.** `make/build.mk` computes it from
 `versions.env`, and both workflows compute it with the same `sed`.
 `check-gh-actions-valid` fails on a literal, and asserts the reachable property:
 not "does the pasted tag match" but "is there a pasted tag at all". A stale
-literal still runs — it just compiles on a toolchain the repository has moved
+literal still runs; it just compiles on a toolchain the repository has moved
 off.
 
 | Image | Arch | Consumed by |
 | --- | --- | --- |
-| `ghcr.io/agentsfleet/ci-rust-alpine` | amd64 + arm64 | `make/build.mk` (`_dist-daemons`, and therefore `build` and `build-dev`); the release lane's musl job |
+| `ghcr.io/agentsfleet/ci-rust-alpine` | amd64 + arm64 | `make/build.mk` (`_dist-daemons`, and therefore `build`); the release lane's musl job |
 
 Both architectures are published deliberately. `docker run --platform` on a
-foreign host runs the entire compile under QEMU, and that emulation costs more
-than the packages this image exists to cache — so each host must be able to pull
-a native one.
+foreign host runs the whole compile under QEMU, an emulator. That costs more
+than the packages this image caches, so each host must be able to pull a native
+one.
 
 ## What is pinned, and why
 
@@ -58,31 +60,36 @@ compiler nobody chose, and the binary it produces is not the one the tests
 graded.
 
 The Alpine floor names a patch series rather than a floating `alpine3`, so a
-major release cannot arrive unannounced. Be precise about what that does and
-does not buy: `alpine:3.24` is itself a moving tag — it resolves to 3.24.1 today
-and will resolve to 3.24.2 — so the musl, gcc and binutils layer floats by patch
-while the compiler does not. Closing that would mean pinning `alpine@sha256:`
-and paying a commit per Alpine patch. The float is accepted because the input
-that decides the shipped binary is the compiler, which is pinned exactly. The
-repository holds GitHub Actions to the stricter rule
-(`audits/gh-actions-runtime.sh`), where the cost of a digest is one line.
+major release cannot arrive unannounced. It does not pin Alpine itself:
+`alpine:3.24` is a moving tag, which resolves to 3.24.1 today and will resolve
+to 3.24.2. So the musl, gcc and binutils layer floats by patch while the
+compiler does not.
+
+Closing that would mean pinning `alpine@sha256:` and paying a commit per Alpine
+patch. The float is accepted because the compiler decides the shipped binary,
+and the compiler is pinned exactly.
+
+GitHub Actions are held to the stricter rule, since a digest there costs one
+line. Every action is pinned to a commit, `check_workflow_rules.py` refuses a
+moving ref, and Dependabot moves the pins.
 
 ## Why the base is Alpine and not `rust:*-alpine`
 
 docker-library publishes its `rust` alpine variants weeks behind a rustc
-release. 1.98.1 shipped Sep 1, 2026 and the newest `rust:*-alpine` was still
-1.98.0 four days later, so `FROM rust:${RUST_VERSION}-alpine${ALPINE_SERIES}`
-could not be built on the day the repository moved its pin. Waiting is not a
-plan, and pinning the base to the older tag while installing the newer
-toolchain into it puts two compilers in one image — the exact thing
-`versions.env` exists to prevent.
+release. Rust 1.98.1 shipped Sep 1, 2026, and the newest `rust:*-alpine` was
+still 1.98.0 four days later. So `FROM rust:${RUST_VERSION}-alpine${ALPINE_SERIES}`
+could not be built on the day the repository moved its pin.
+
+Waiting is not a plan. Pinning the base to the older tag and installing the
+newer toolchain puts two compilers in one image. `versions.env` exists to
+prevent exactly that.
 
 So the base is plain Alpine and rustup installs `RUST_VERSION` into it. That
 leaves `versions.env` the only place the compiler is named, and it decouples the
 repository's toolchain from another project's release cadence.
 
 The bootstrap is not invented here. It follows rust-lang/docker-rust's own
-`Dockerfile-alpine.template` — same archive URL shape, same `--profile minimal`,
+`Dockerfile-alpine.template`: same archive URL shape, same `--profile minimal`,
 same `--default-host`: a pinned installer plus a per-architecture SHA256.
 
 `RUSTUP_VERSION` and the two `RUSTUP_SHA256_*` values pin that installer.
@@ -93,10 +100,10 @@ truncated, cached, or tampered-in-transit body fails loudly instead of becoming
 the new pin. It is not a signature. A wholly compromised static.rust-lang.org
 would serve a matching pair, and rustup publishes nothing to check against that.
 
-Hashing our own download and calling the result a trust anchor would have been
-strictly weaker — it proves only that the file did not change after we fetched
-it, which is the one thing nobody was worried about. Do not paste a checksum by
-hand either; `fetch-shas` is the path that checks.
+Hashing our own download and calling it a trust anchor would have been
+strictly weaker. It proves only that the file did not change after we fetched
+it, which nobody doubted. Do not paste a checksum by hand either; `fetch-shas`
+is the path that checks.
 
 ## The published tag and this directory can drift
 
@@ -128,37 +135,38 @@ accept a multi-platform manifest. That is a docker limitation, not a choice.
 ## Moving the Rust version
 
 1. Move `channel` in `rustd/rust-toolchain.toml`. If your own mise config names a
-   Rust version, move it too — mise exports `RUSTUP_TOOLCHAIN`, which overrides
-   the file, and that config is not something this repository can gate.
-2. Move `rust-version` in `rustd/Cargo.toml` with them — the workspace floor is
-   equal to the pin, not trailing it, so cargo fails loudly on the wrong rustc
-   rather than compiling quietly.
+   Rust version, move it too. Its `RUSTUP_TOOLCHAIN` export overrides the file,
+   and this repository cannot gate that config.
+2. Move `rust-version` in `rustd/Cargo.toml` with them. The workspace floor
+   equals the pin rather than trailing it, so cargo fails loudly on the wrong
+   rustc.
 3. Move `RUST_VERSION` in `versions.env` to match.
-4. `./build_and_push.sh` — it refuses if steps 1, 2 and 3 disagree.
+4. Run `./build_and_push.sh`; it refuses if steps 1, 2 and 3 disagree.
 5. Move `BUILDER_IMAGE`'s default in `make/build.mk` only if the tag shape changed;
    it is derived from `versions.env`, so a version move needs no edit there. The
    same goes for the workflows, which compute the tag with the same `sed`.
-6. Update the version the README states, and the literal in
-   `scripts/check_builder_pin_test.sh` whose test is named for being *currently
-   correct* — a stale literal there leaves the test passing while no longer
-   testing what it says. Nothing else: every other mention of the number is
-   prose that rots, and belongs written as "the pin" instead.
+6. Update the version the README states. Nothing else: every other mention of
+   the number is prose that rots, and belongs written as "the pin" instead.
+   `scripts/check_workflow_rules.py` refuses any literal builder tag in a
+   workflow, current or not.
 7. Re-run `./build_and_push.sh` and confirm `docker manifest inspect` shows both
    architectures on the new tag. The image is not a build product of CI; if you
    do not push it, nothing does.
 
 Steps 1-3 are gated: `build_and_push.sh` refuses to build when `versions.env`,
 `rust-toolchain.toml`, and `Cargo.toml` do not all name the same version.
-Steps 6 and 7 are not gated — they are the ones to check by hand.
+Steps 6 and 7 are not gated; they are the ones to check by hand.
 
 `RUSTUP_VERSION` moves on its own cadence, whenever rustup itself releases.
 It is the installer, not the compiler; `fetch-shas` is the only way to move it.
 
 ## What this does NOT do
 
-It does not cache compiled crates. That is `CARGO_TARGET_DIR`'s job, and
+It does not cache compiled crates; that is `CARGO_TARGET_DIR`'s job.
 `make/build.mk` gives each architecture its own directory under
-`rustd/target/musl-<arch>/` so the two never collide — which is what the old
-recipe's `rm -rf target/dist` existed to prevent, at the cost of a cold compile
-on every single run. The image saves the package install; the per-arch target
-directory saves the compile. The second is the larger number.
+`rustd/target/musl-<arch>/`, so the two never collide. The old recipe ran
+`rm -rf target/dist` to prevent that, at the cost of a cold compile on every
+run.
+
+The image saves the package install, and the per-arch target directory saves
+the compile. The second is the larger number.

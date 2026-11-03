@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Source rules for the design system (`ui/packages/design-system`).
 
+The patterns (no arbitrary value or hex colour in a token-only component, no
+second cn) are ast-grep rules under .ast-grep/rules/design-system/, run by
+`make lint-source`. What stays here computes or counts: text contrast on every
+surface, and that the files those patterns guard still exist, because a rule
+scoped to a renamed file matches nothing and says nothing.
+
     python3 scripts/check_design_system_source.py [--root <dir>]
 
 Exit 0 clean, 1 with one line per finding, 2 on a usage error.
@@ -20,16 +26,9 @@ PACKAGES = "ui/packages"
 DS_SRC = f"{PACKAGES}/design-system/src"
 
 # --- Mapped tokens only -------------------------------------------------------
-# The components that render through mapped design-system tokens alone. Twelve
-# other sites in the package use arbitrary values on purpose (Dialog, Grid,
-# Select, Tooltip, DropdownMenu); widening this list is a design decision, not
-# a lint change.
+# The components .ast-grep/rules/design-system/ds-mapped-tokens.yml holds to
+# mapped tokens alone; it names the same two files.
 TOKEN_ONLY_COMPONENTS = (f"{DS_SRC}/design-system/OptionCard.tsx", f"{DS_SRC}/design-system/UsageBar.tsx")
-STRING = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`""")
-# An arbitrary-VALUE utility (`bg-[#fff]`, `w-[42px]`). A bracket followed by
-# `:` is an arbitrary VARIANT (`data-[state=checked]:`), which is standard.
-ARBITRARY_VALUE = re.compile(r"(?<![\w-])[a-z][\w-]*-\[[^\]\s]+\](?!:)")
-HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b")
 
 # --- Text stays readable on every surface ------------------------------------
 TOKENS_CSS = f"{DS_SRC}/tokens.css"
@@ -47,24 +46,17 @@ LUMINANCE_WEIGHTS = (0.2126, 0.7152, 0.0722)
 CONTRAST_OFFSET = 0.05
 
 # --- One cn ------------------------------------------------------------------
-# A second cn drifts from the design system's tailwind-merge configuration.
+# A second cn is ds-single-cn's to refuse; this checks the one is still here.
 CN_HOME = f"{DS_SRC}/utils.ts"
 CN_DECLARATION = re.compile(r"export (?:function|const) cn\b")
 
 
 def check_token_only_components(root: Path) -> list[lib.Finding]:
-    found = []
-    for relative_path in TOKEN_ONLY_COMPONENTS:
-        path = root / relative_path
-        if not path.is_file():
-            found.append(lib.Finding(relative_path, 1, "ds-mapped-tokens", "the component this rule guards is missing"))
-            continue
-        code = lib.blank_js_comments(path.read_text(encoding="utf-8"))
-        for literal in STRING.finditer(code):
-            for pattern, what in ((ARBITRARY_VALUE, "an arbitrary-value utility"), (HEX_COLOUR, "a hex colour")):
-                for hit in pattern.finditer(literal.group(0)):
-                    found.append(lib.Finding(relative_path, lib.line_of(code, literal.start()), "ds-mapped-tokens", f"`{hit.group(0)}` is {what}; use a mapped token"))
-    return found
+    return [
+        lib.Finding(relative_path, 1, "ds-mapped-tokens", "the component this rule guards is missing")
+        for relative_path in TOKEN_ONLY_COMPONENTS
+        if not (root / relative_path).is_file()
+    ]
 
 
 def css_block(css: str, selector: str) -> str | None:
@@ -123,17 +115,10 @@ def check_contrast(root: Path) -> list[lib.Finding]:
 
 
 def check_single_cn(root: Path) -> list[lib.Finding]:
-    declared = [
-        path for path in lib.source_files(root / PACKAGES, (".ts", ".tsx"), include_tests=True)
-        if CN_DECLARATION.search(path.read_text(encoding="utf-8"))
-    ]
-    found = [
-        lib.Finding(lib.relative(root, path), 1, "ds-single-cn", f"a second cn; import the one in {CN_HOME}")
-        for path in declared if lib.relative(root, path) != CN_HOME
-    ]
-    if not any(lib.relative(root, path) == CN_HOME for path in declared):
-        found.append(lib.Finding(CN_HOME, 1, "ds-single-cn", "the design system's cn is missing"))
-    return found
+    home = root / CN_HOME
+    if home.is_file() and CN_DECLARATION.search(home.read_text(encoding="utf-8")):
+        return []
+    return [lib.Finding(CN_HOME, 1, "ds-single-cn", "the design system's cn is missing")]
 
 
 RULES = (check_token_only_components, check_contrast, check_single_cn)

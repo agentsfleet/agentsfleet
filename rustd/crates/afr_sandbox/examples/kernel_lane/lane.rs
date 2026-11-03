@@ -31,6 +31,9 @@ const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_u
 const FORWARDING_OFF: &str = "forwarding: net.ipv4.ip_forward is not 1";
 /// Where each run's leases and toolbox mount live; short, for socket paths.
 pub(crate) const STATE_PREFIX: &str = "afr-lane-";
+/// What the sandbox side says, on its error stream, when its command line
+/// names no descriptors it can read.
+pub(crate) const NOT_TOLD: &str = "the sandbox was not told its descriptors";
 /// Where, under the lane's state, each lease's directory is made; apart from
 /// the toolbox mount, so no lease name can land on it.
 const LEASES_DIR: &str = "leases";
@@ -280,18 +283,18 @@ fn delegate() -> std::io::Result<PathBuf> {
     Ok(root)
 }
 
-/// The sandbox side: take the tenant leaf's descriptors the engine named,
-/// harden, then serve the executor until the lane hangs up.
+/// The sandbox side: take the descriptors the engine named, harden, then
+/// serve the executor until the lane hangs up.
 pub(crate) fn serve() -> ExitCode {
-    let tenant = match afr_sandbox::TenantDescriptors::parse_from(std::env::args_os().skip(1)) {
-        Ok(tenant) => tenant,
+    let inherited = match afr_sandbox::Inherited::parse_from(std::env::args_os().skip(1)) {
+        Ok(inherited) => inherited,
         Err(refused) => {
             // the sandbox side starts no subscriber; stderr is its only report
-            eprintln!("the sandbox was not told its tenant leaf: {refused}");
+            eprintln!("{NOT_TOLD}: {refused}");
             return ExitCode::FAILURE;
         }
     };
-    match afr_sandbox::serve_sandboxed(tenant) {
+    match afr_sandbox::serve_sandboxed(inherited) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("the sandbox stopped: {error}");

@@ -95,13 +95,17 @@ fn answer(
 pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
     let holds = Holds::start(Arc::new(FixedClock::at(jiff::Timestamp::UNIX_EPOCH)));
     holds.resize(workers);
-    assert!(park(&holds, engine).await, "parked");
+    let parked = park(&holds, engine).await;
+    assert!(
+        matches!(parked, crate::holds::Parked::Held(_)),
+        "parked: {parked:?}"
+    );
     holds
 }
 
-/// Parks a sandbox `engine` builds for [`FLEET`], and answers whether `holds`
-/// held it rather than destroying it.
-pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> bool {
+/// Parks a sandbox `engine` builds for [`FLEET`], and answers as `holds` did:
+/// a sandbox it refuses is still the caller's to end.
+pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> crate::holds::Parked {
     let request = SandboxRequest::new(LEASE, Limits::default());
     let key = HoldKey {
         fleet: Uuid7::parse(FLEET).unwrap(),
@@ -111,7 +115,8 @@ pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> bool {
     };
     let sandbox = engine.prepare(request).await.unwrap();
     let lease = Uuid7::parse(LEASE).unwrap();
-    holds.park(key, lease, sandbox).await.is_some()
+    let parked = holds.park(key, lease, sandbox);
+    crate::test_support::bounded("the keeper's answer to a park", parked).await
 }
 
 pub(super) fn sent(call: &Call) -> serde_json::Value {

@@ -1,0 +1,37 @@
+# A span is a `Duration` and an instant a `jiff::Timestamp` (M229 Dimension
+# 3.4). Milliseconds exist only at a protocol edge, converted there once, so an
+# integer `*_MS` constant is legal only as that conversion: its value read from
+# a `Duration` (`HEARTBEAT_INTERVAL.as_millis()`). The clock helpers that did
+# millisecond arithmetic are deleted and stay deleted. Test code, test files
+# and test-only directories are outside the rule.
+id: rust-integer-millis
+language: Rust
+severity: error
+message: "`$NAME` holds a span as integer milliseconds or is millisecond arithmetic; declare a `Duration`, convert at the edge with `.as_millis()`, and hold an instant as `jiff::Timestamp`"
+files:
+  - rustd/crates/*/src/**/*.rs
+ignores:
+  - rustd/crates/*/src/**/{tests,test_util,test_support,testing,fixture,examples,benches}/**
+  - rustd/crates/*/src/**/{test,tests,*_test,*_tests,test_util,test_support,testing,fixture}.rs
+rule:
+  not: { matches: rust-in-cfg-test }
+  any:
+    # const WAIT_MS: u64 = 30_000;
+    - kind: const_item
+      has:
+        field: name
+        regex: ^[A-Z0-9_]*_MS(_[A-Z0-9_]+)?$
+        pattern: $NAME
+      all:
+        - has: { field: type, kind: primitive_type, regex: '^[ui](8|16|32|64|128|size)$' }
+        - not: { regex: '\.as_millis\(\)' }
+    # UnixMillis, add_millis, millis_between: the retired helpers.
+    - regex: ^(UnixMillis|add_millis|millis_between)$
+      pattern: $NAME
+      any:
+        - kind: identifier
+        - kind: type_identifier
+        - kind: field_identifier
+    - kind: scoped_identifier
+      regex: (^|::)clock::from_millis$
+      pattern: $NAME

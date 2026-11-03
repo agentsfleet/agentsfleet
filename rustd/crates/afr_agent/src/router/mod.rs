@@ -1,19 +1,22 @@
 //! The router: runs each call's handler where its runtime says.
 //!
 //! A supervisor-side handler runs in-process with no executor in its context;
-//! a sandbox-side one runs with the lease's executor. A name the lease was not
+//! a sandbox-side one runs with the lease's executor, waiting for the lease's
+//! build when the sandbox is not ready yet. A name the lease was not
 //! offered is a tool error the model reads, never a failed run, so the next
 //! turn still runs (`docs/architecture/runner_execution.md` §"Tool catalog").
 
-use afr_executor::Executor;
+use tokio::time::Instant;
+
+use afr_executor::{ExecutorSource, Outcome};
+use afr_telemetry::labels::SandboxWait;
+use afr_telemetry::record;
 use afr_tools::{Lease, Runtime, Selection, ToolContext, ToolErrorCode, ToolOutput};
 
 /// What a call to a tool this run was not offered reads back.
 const NOT_OFFERED: &str = "is not one of this run's tools";
 /// What a call to a provider-hosted tool the provider did not run reads back.
 const HOSTED_ELSEWHERE: &str = "runs at the model provider, and this provider offers none";
-/// What a sandbox-side call on a run without a sandbox reads back.
-const NO_SANDBOX: &str = "runs in the sandbox, and this run has none";
 /// What a call from a turn cut at the output limit reads back.
 const CUT: &str = "was not run: the turn reached the model's output limit and its \
                    arguments may be incomplete; call it again with shorter arguments";
@@ -22,17 +25,14 @@ const CUT: &str = "was not run: the turn reached the model's output limit and it
 #[derive(Debug)]
 pub struct Router<'run> {
     selection: &'run Selection<'run>,
-    executor: Option<&'run dyn Executor>,
+    executor: &'run dyn ExecutorSource,
 }
 
 impl<'run> Router<'run> {
-    /// A router over the tools a lease was offered and, when it has one, its
-    /// sandbox's executor.
+    /// A router over the tools a lease was offered and where its sandbox's
+    /// executor comes from.
     #[must_use]
-    pub const fn new(
-        selection: &'run Selection<'run>,
-        executor: Option<&'run dyn Executor>,
-    ) -> Self {
+    pub const fn new(selection: &'run Selection<'run>, executor: &'run dyn ExecutorSource) -> Self {
         Self {
             selection,
             executor,
@@ -51,15 +51,31 @@ impl<'run> Router<'run> {
         };
         let executor = match tool.runtime() {
             Runtime::Supervisor => None,
-            Runtime::Sandbox => match self.executor {
-                Some(executor) => Some(executor),
-                None => return failed(ToolErrorCode::SandboxUnavailable, name, NO_SANDBOX),
+            Runtime::Sandbox => match self.sandbox().await {
+                Ok(executor) => Some(executor),
+                Err(why) => return failed(ToolErrorCode::SandboxUnavailable, name, why.reason()),
             },
             Runtime::Provider => {
                 return failed(ToolErrorCode::HostedToolUnavailable, name, HOSTED_ELSEWHERE);
             }
         };
         tool.call(arguments, ToolContext { executor, lease }).await
+    }
+
+    /// The sandbox's executor, or why there is none. A call that found the
+    /// build still running is recorded with how long it waited.
+    async fn sandbox(&self) -> Outcome<'run> {
+        if self.executor.is_filled() {
+            return self.executor.get().await;
+        }
+        let started = Instant::now();
+        let outcome = self.executor.get().await;
+        let waited = match outcome {
+            Ok(_) => SandboxWait::Ready,
+            Err(_) => SandboxWait::Unavailable,
+        };
+        record::sandbox_wait(waited, started.elapsed());
+        outcome
     }
 }
 
@@ -84,3 +100,6 @@ fn failed(code: ToolErrorCode, name: &str, reason: &str) -> ToolOutput {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod wait_tests;

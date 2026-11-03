@@ -2,7 +2,6 @@
 
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -22,7 +21,8 @@ pub(crate) async fn bounded<T>(operation: &str, future: impl Future<Output = T>)
 
 pub(crate) struct Calls {
     received: mpsc::UnboundedReceiver<Call>,
-    failures: Arc<Mutex<Vec<String>>>,
+    /// Each answer that panicked, as the fake daemon reports it.
+    failures: mpsc::UnboundedReceiver<String>,
 }
 
 impl Calls {
@@ -30,8 +30,8 @@ impl Calls {
         self.received.recv().await
     }
 
-    fn check(&self) {
-        let failures = self.failures.lock().unwrap().clone();
+    fn check(&mut self) {
+        let failures: Vec<String> = std::iter::from_fn(|| self.failures.try_recv().ok()).collect();
         assert!(failures.is_empty(), "fake daemon failed: {failures:?}");
     }
 }
@@ -48,7 +48,7 @@ impl Drop for Calls {
 struct FakeApi<F> {
     answer: F,
     calls: mpsc::UnboundedSender<Call>,
-    failures: Arc<Mutex<Vec<String>>>,
+    failures: mpsc::UnboundedSender<String>,
 }
 
 impl<F> fmt::Debug for FakeApi<F> {
@@ -70,10 +70,10 @@ where
                     .map(String::as_str)
                     .or_else(|| panic.downcast_ref::<&str>().copied())
                     .unwrap_or("non-string panic");
-                self.failures
-                    .lock()
-                    .unwrap()
-                    .push(format!("{} {}: {message}", call.verb, call.path));
+                drop(
+                    self.failures
+                        .send(format!("{} {}: {message}", call.verb, call.path)),
+                );
                 Answer::Fail(error::unavailable(call.verb, 500))
             });
         drop(self.calls.send(call));
@@ -103,11 +103,11 @@ where
 {
     super::fixtures::validate();
     let (calls, received) = mpsc::unbounded_channel();
-    let failures = Arc::default();
+    let (failed, failures) = mpsc::unbounded_channel();
     let api = FakeApi {
         answer,
         calls,
-        failures: Arc::clone(&failures),
+        failures: failed,
     };
     (api, Calls { received, failures })
 }

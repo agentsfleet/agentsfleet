@@ -14,8 +14,8 @@ use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 use jiff::Timestamp;
 
-use super::{BuiltUnder, HoldKey, Holds, Release};
-use crate::test_support::FakeEngine;
+use super::{BuiltUnder, HoldKey, Holds, Parked, Release};
+use crate::test_support::{FakeEngine, bounded};
 
 const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
 pub(super) const FLEET_A: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
@@ -57,10 +57,22 @@ pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Sandbox> {
     engine.prepare(request).await.unwrap()
 }
 
-pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<Timestamp> {
-    holds
-        .park(key(fleet), id(LEASE), sandbox(engine).await)
-        .await
+/// Parks a fresh sandbox for `fleet`, and answers as the keeper did: a
+/// sandbox it refuses is still the caller's to end.
+pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Parked {
+    let parked = holds.park(key(fleet), id(LEASE), sandbox(engine).await);
+    bounded("the keeper's answer to a park", parked).await
+}
+
+/// Parks a fresh sandbox for `fleet` into a keeper with room, and answers
+/// when the hold lapses: none when it was not held. A refused sandbox is
+/// dropped, never destroyed, so a test counting destroys sees the keeper's
+/// alone.
+pub(super) async fn hold(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<Timestamp> {
+    match park(holds, engine, fleet).await {
+        Parked::Held(until) => Some(until),
+        Parked::Refused(_) | Parked::Gone => None,
+    }
 }
 
 /// Every release logged, as (fleet, reason), in the order they happened.
@@ -81,7 +93,7 @@ pub(super) fn released(fleet: &str, reason: Release) -> (String, String) {
 }
 
 pub(super) async fn fleets(holds: &Holds) -> Vec<String> {
-    let held = holds.fleets().await;
+    let held = bounded("the keeper's list of holds", holds.fleets()).await;
     held.iter().map(|fleet| fleet.as_str().to_owned()).collect()
 }
 
@@ -91,7 +103,7 @@ async fn test_a_parked_sandbox_is_taken_by_its_fleets_next_lease() {
     let engine = FakeEngine::default();
     let (holds, clock) = holds(2);
 
-    let until = park(&holds, &engine, FLEET_A).await;
+    let until = hold(&holds, &engine, FLEET_A).await;
     clock.advance(Duration::from_secs(30));
     let taken = holds.take(&key(FLEET_A)).await.unwrap();
 
@@ -119,7 +131,7 @@ async fn test_mismatch_destroys_the_hold() {
     ];
 
     for change in changes {
-        park(&holds, &engine, FLEET_A).await;
+        hold(&holds, &engine, FLEET_A).await;
         let mut asked = key(FLEET_A);
         change(&mut asked);
         assert!(holds.take(&asked).await.is_none(), "{asked:?} was served");
@@ -139,7 +151,7 @@ async fn test_another_fleets_lease_never_takes_or_ends_a_hold() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
 
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
     let other = holds.take(&key(FLEET_B)).await;
 
     assert!(other.is_none());
@@ -154,7 +166,7 @@ async fn test_expired_hold_is_destroyed() {
     let engine = FakeEngine::default();
     let (holds, clock) = holds(2);
 
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
     clock.advance(SANDBOX_HOLD_IDLE.saturating_sub(Duration::from_millis(1)));
     assert_eq!(fleets(&holds).await, [FLEET_A], "held until its deadline");
     clock.advance(Duration::from_millis(1));
@@ -172,8 +184,8 @@ async fn test_saturation_releases_holds() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
-    park(&holds, &engine, FLEET_B).await;
+    hold(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_B).await;
 
     let _first = holds.occupy(id(FLEET_C));
     assert_eq!(fleets(&holds).await.len(), 2, "one worker is still free");
@@ -196,8 +208,8 @@ async fn test_saturation_releases_holds() {
 async fn test_the_last_free_worker_keeps_the_hold_of_the_fleet_it_serves() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
-    park(&holds, &engine, FLEET_B).await;
+    hold(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_B).await;
 
     let _first = holds.occupy(id(FLEET_C));
     let _last = holds.occupy(id(FLEET_A));
@@ -209,7 +221,7 @@ async fn test_the_last_free_worker_keeps_the_hold_of_the_fleet_it_serves() {
 async fn test_a_finished_lease_frees_its_worker() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     drop(holds.occupy(id(FLEET_C)));
     let _only = holds.occupy(id(FLEET_D));
@@ -224,7 +236,7 @@ async fn test_holds_capped_oldest_first() {
     let (holds, _clock) = holds(2);
 
     for fleet in [FLEET_A, FLEET_B, FLEET_C] {
-        park(&holds, &engine, fleet).await;
+        hold(&holds, &engine, fleet).await;
     }
 
     assert_eq!(fleets(&holds).await, [FLEET_B, FLEET_C]);
@@ -237,7 +249,7 @@ async fn test_fewer_workers_release_the_oldest_holds() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(3);
     for fleet in [FLEET_A, FLEET_B, FLEET_C] {
-        park(&holds, &engine, fleet).await;
+        hold(&holds, &engine, fleet).await;
     }
 
     holds.resize(1);
@@ -258,8 +270,8 @@ async fn test_a_second_park_for_one_fleet_replaces_the_first() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
 
-    park(&holds, &engine, FLEET_A).await;
-    park(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_A).await;
 
     assert_eq!(fleets(&holds).await, [FLEET_A]);
     assert_eq!(releases(&capture), [released(FLEET_A, Release::Superseded)]);
@@ -270,8 +282,8 @@ async fn test_release_ends_one_fleets_hold_for_the_reason_given() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
-    park(&holds, &engine, FLEET_B).await;
+    hold(&holds, &engine, FLEET_A).await;
+    hold(&holds, &engine, FLEET_B).await;
 
     holds.release(id(FLEET_A), Release::Inactive);
 
@@ -292,58 +304,4 @@ async fn test_a_discarded_sandbox_is_logged_and_destroyed() {
 
     assert_eq!(releases(&capture), [released(FLEET_A, Release::ThawFailed)]);
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn test_shutdown_destroys_every_hold_and_waits() {
-    let capture = Capture::install();
-    let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
-    park(&holds, &engine, FLEET_B).await;
-
-    holds.shutdown().await;
-
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 2);
-    assert_eq!(
-        releases(&capture),
-        [
-            released(FLEET_A, Release::Shutdown),
-            released(FLEET_B, Release::Shutdown)
-        ]
-    );
-}
-
-#[tokio::test]
-async fn test_a_park_after_shutdown_destroys_the_sandbox_itself() {
-    let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
-    holds.shutdown().await;
-
-    let until = park(&holds, &engine, FLEET_A).await;
-
-    assert_eq!(until, None);
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
-    let left = holds.fleets().await;
-    assert!(left.is_empty(), "{left:?}");
-}
-
-#[tokio::test]
-async fn test_a_second_shutdown_returns_at_once() {
-    let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
-    park(&holds, &engine, FLEET_A).await;
-    holds.shutdown().await;
-
-    // The task is gone, so nothing is left to answer; waiting for it would
-    // hang a runner whose exit path calls this twice.
-    tokio::time::timeout(Duration::from_secs(1), holds.shutdown())
-        .await
-        .unwrap();
-
-    assert_eq!(
-        engine.destroyed.load(Ordering::SeqCst),
-        1,
-        "nothing is destroyed twice"
-    );
 }

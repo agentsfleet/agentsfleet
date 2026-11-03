@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use afr_tools::catalog::PUBLISHED;
 
 use super::{
-    FrameDrop, OTHER, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome,
-    TurnOutcome,
+    FrameDrop, OTHER, Provider, PushFailure, RetryReason, SandboxBuild, SandboxRelease,
+    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 
 /// Persisted names cannot grow metric cardinality or expose custom endpoint names.
@@ -48,7 +48,7 @@ fn a_retry_reason_follows_the_status() {
 /// belongs to the open sets alone.
 #[test]
 fn no_closed_set_spells_two_members_alike() {
-    let sets: [(&str, Vec<&str>); 6] = [
+    let sets: [(&str, Vec<&str>); 9] = [
         (
             "TurnOutcome",
             TurnOutcome::ALL.iter().map(|m| m.as_str()).collect(),
@@ -60,6 +60,18 @@ fn no_closed_set_spells_two_members_alike() {
         (
             "SandboxStart",
             SandboxStart::ALL.iter().map(|m| m.as_str()).collect(),
+        ),
+        (
+            "SandboxWait",
+            SandboxWait::ALL.iter().map(|m| m.as_str()).collect(),
+        ),
+        (
+            "SandboxBuild",
+            SandboxBuild::ALL.iter().map(|m| m.as_str()).collect(),
+        ),
+        (
+            "SandboxRelease",
+            SandboxRelease::ALL.iter().map(|m| m.as_str()).collect(),
         ),
         (
             "FrameDrop",
