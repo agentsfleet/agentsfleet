@@ -132,6 +132,13 @@ impl Access {
             Self::ReadWrite => 0,
         }
     }
+
+    /// Whether the device itself is opened for writing. `LOOP_CONFIGURE`
+    /// makes a device read-only when the handle configuring it cannot write,
+    /// whatever the flags ask.
+    const fn writes(self) -> bool {
+        matches!(self, Self::ReadWrite)
+    }
 }
 
 /// A loop device attached to an image, held open until its mount takes it:
@@ -167,10 +174,10 @@ pub(crate) fn attach(image: &File, access: Access) -> Result<Attached> {
         reserved: [0; 8],
     };
     let direct = config(LO_FLAGS_DIRECT_IO);
-    let attached = match until_free(|| configure_free(&control, &direct)) {
+    let attached = match until_free(|| configure_free(&control, &direct, access)) {
         Err(refused) if refused.raw_os_error() == Some(libc::EINVAL) => {
             let buffered = config(0);
-            until_free(|| configure_free(&control, &buffered))
+            until_free(|| configure_free(&control, &buffered, access))
         }
         attached => attached,
     };
@@ -235,8 +242,9 @@ fn until_free<T>(attempt: impl FnMut() -> Result<T, Attempt>) -> io::Result<T> {
         .map_err(Attempt::into_error)
 }
 
-/// Asks the kernel for a free loop device and configures it with `config`.
-fn configure_free(control: &File, config: &LoopConfig) -> Result<Attached, Attempt> {
+/// Asks the kernel for a free loop device, opens it as `access` needs, and
+/// configures it with `config`.
+fn configure_free(control: &File, config: &LoopConfig, access: Access) -> Result<Attached, Attempt> {
     // SAFETY: LOOP_CTL_GET_FREE takes no argument; it returns a device
     // number, or -1 with errno set.
     let number = unsafe { libc::ioctl(control.as_raw_fd(), LOOP_CTL_GET_FREE) };
@@ -244,7 +252,11 @@ fn configure_free(control: &File, config: &LoopConfig) -> Result<Attached, Attem
         return Err(Attempt::Failed(io::Error::last_os_error()));
     }
     let node = PathBuf::from(format!("{LOOP_NODE_PREFIX}{number}"));
-    let device = File::open(&node).map_err(Attempt::Failed)?;
+    let device = OpenOptions::new()
+        .read(true)
+        .write(access.writes())
+        .open(&node)
+        .map_err(Attempt::Failed)?;
     // SAFETY: `config` is a `struct loop_config` laid out as the kernel
     // declares it (asserted above), alive for the call and only read.
     let configured = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_CONFIGURE, &raw const *config) };
