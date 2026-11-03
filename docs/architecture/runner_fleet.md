@@ -210,9 +210,17 @@ The build graph keeps datastore crates outside the runner. [Runner process model
 
 ### The held heartbeat
 
-A runner with an idle worker asks the daemon to hold its heartbeat (`wake: true`), and only after a reply carried `woken`, the proof this daemon holds beats; an older daemon reads an unknown field as no report at all. The daemon records liveness, capability and holds as for any beat, then waits for the next doorbell ring or `WAKE_HOLD_MAX`, which equals `HEARTBEAT_INTERVAL` (10 s), so a held beat returns no later than the next beat was due. A ring answers `woken: true` and the runner ends one idle worker's pause, so fresh work waits one round trip rather than the idle hint. The ring is the admission doorbell's Dragonfly sharded publish, heard by every replica's hub, so a beat held on one replica wakes for an admission committed on another (`afd_dragonfly/src/doorbell/mod.rs`, `afd_api_runner/src/handler/runner/wake.rs`).
+A runner with an idle worker asks the daemon to hold its heartbeat (`wake: true`). It asks only after a reply carried `woken`, the proof this daemon holds beats. An older daemon reads an unknown field as no report at all.
 
-One process holds at most `HELD_BEATS_MAX` (64) beats; a beat past the cap answers `woken: false` at once and is counted under `agentsfleet_runner_wake_answers_total{reason="capped"}`. A held beat keeps one in-flight permit, so the cap keeps three quarters of `DEFAULT_MAX_IN_FLIGHT` for requests, asserted at compile time. A lost ring costs only the hold: the worker still polls on the daemon's 1 s `NO_WORK_RETRY_AFTER`. This is one held request per runner host, on the heartbeat it already sends, not the per-worker long poll M225 rejected. A hold never delays a transition: the daemon's drain closes the doorbell the moment it stops accepting, ending every held beat, and the runner drops a held beat to send a holds-saturation release or its closing beat at once.
+The daemon records liveness, capability and holds as for any beat. It then waits for the next doorbell ring or `WAKE_HOLD_MAX`, which equals `HEARTBEAT_INTERVAL` (10 s). A held beat so returns no later than the next beat was due.
+
+A ring answers `woken: true`, and the runner ends one idle worker's pause. Fresh work then waits one round trip, not the idle hint. The ring is the doorbell's sharded publish, which every replica hears (`afd_dragonfly/src/doorbell/mod.rs`, `afd_api_runner/src/handler/runner/wake.rs`).
+
+One process holds at most `HELD_BEATS_MAX` (64) beats. A beat past the cap answers `woken: false` at once, counted under `agentsfleet_runner_wake_answers_total{reason="capped"}`. A held beat keeps one in-flight permit, so the cap keeps three quarters of `DEFAULT_MAX_IN_FLIGHT` for requests.
+
+A lost ring costs only the hold: the worker still polls on the 1 s `NO_WORK_RETRY_AFTER`. This is one held request per runner host, on the heartbeat it already sends. It is not the per-worker long poll M225 rejected.
+
+A hold never delays a transition. The daemon's drain closes the doorbell the moment it stops accepting, ending every held beat. The runner drops a held beat to send a holds-saturation release, or its closing beat, at once.
 
 ## Registering a runner
 
@@ -410,7 +418,11 @@ Memory is the second kind of cross-run state, under the same law as the checkpoi
 
 The memory tools run in the supervisor, so a sandbox holds **no** `agt_r` token, **no** control-plane URL, **no** Data Source Name (DSN) and no memory: a prompt-injected fleet cannot be talked into "reach your memory endpoint", because none exists inside it. The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file. Durability is the supervisor's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports. Two fencing-verified routes carry it, hydrate and capture under `/v1/runners/me/memory/{fleet_id}`, plus a capped recall (API reference › Runner plane). Capture writes under `SET ROLE memory_runtime` ([memory.md](./memory.md) §"2. Isolation — a Postgres role, not the workspace").
 
-The lease and the report carry the same memory without those two round trips. A lease's reply carries the fleet's window (`lease.memory`), read after the issue, while the lease holds the fleet's slot. A report on such a lease carries the run's deltas (`memory`), and the daemon captures them, fenced on the lease's own token, in the memory role's own transaction before it commits the settle. The settle frees the slot, so no lease for the fleet can issue between the capture and the commit, and the next lease's window holds what this run learned. A capture that fails is logged as `memory_capture_failed` and the report still settles: withholding the answer would lose it too. The two routes stay for a lease from an older daemon, which carries no window.
+The lease and the report carry the same memory without those two round trips. A lease's reply carries the fleet's window (`lease.memory`), read after the issue while the lease holds the fleet's slot.
+
+A report on such a lease carries the run's deltas (`memory`). The daemon captures them, fenced on the lease's own token, in the memory role's transaction. It does so before it commits the settle.
+
+The settle frees the slot, so no lease for the fleet can issue between the capture and the commit. A capture that fails is logged as `memory_capture_failed`, and the report still settles. The two routes stay for a lease from an older daemon, which carries no window.
 
 ```
         ┌───────────────────────────────────────────────────────────────┐

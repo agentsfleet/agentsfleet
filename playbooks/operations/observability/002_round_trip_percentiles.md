@@ -10,10 +10,11 @@ datasources.
 
 ## What is measured
 
-`agentsfleetd` records one `fleet.delivery` span per settled report. It starts
-when the event was created and ends when `event_complete` was published, both
-on the daemon's clock, so its duration is the round trip the fleet owner
-waited. `gen_ai.agent.id` is the fleet. The segments ride as attributes, in
+`agentsfleetd` records one `fleet.delivery` span per settled report. It runs
+from the event's creation to the `event_complete` publish, on the daemon's
+clock: the round trip the fleet owner waited.
+
+`gen_ai.agent.id` is the fleet. The segments ride as attributes, in
 milliseconds:
 
 | Attribute | Measured by | From → to |

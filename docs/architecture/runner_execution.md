@@ -143,9 +143,17 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
 
 A sandbox that cannot be built leaves the turn going, and its sandbox-side calls answer `sandbox_unavailable`. Nothing runs unsandboxed in a sandbox's place.
 
-**One post settles a lease that carried its window.** A daemon at this release puts the fleet's memory window on every lease, an empty one included, and only such a daemon reads a report's `memory` and `telemetry.segments`. So the runner sends them, and skips both the memory read and the memory push, exactly when the lease carried a window (`afr_supervisor/src/lease_loop/settle.rs`). During a rolling deploy a lease from a new replica can meet an old replica at report time; that daemon refuses the body's shape with 400 `UZ-REQ-001`, and the runner pushes the memory and posts the report again without the new fields, once. A report that is first kept and later re-posted by the drain does not fall back; the drain quarantines a refused body as before.
+**One post settles a lease that carried its window.** A daemon at this release puts the fleet's memory window on every lease. Only such a daemon reads a report's `memory` and `telemetry.segments`. So the runner sends them, and skips the memory read and push, exactly when the lease carried a window (`afr_supervisor/src/lease_loop/settle.rs`).
 
-**The lease reply and the run's memory zero on drop.** The reply body the run borrows its policy, memory window and earlier turns from is held in a `zeroize::Zeroizing` buffer, and the deltas a run hands back travel in `CapturedMemory`, whose drop overwrites every string the run owns (`afr_supervisor/src/client/mod.rs`, `afr_supervisor/src/memory/mod.rs`). Not covered: the bytes handed to the HTTP client for a post, which it frees unzeroed, and the report spool's copy, which `ReportSpool::hold` writes to disk in clear and keeps until delivery.
+During a rolling deploy, a lease from a new replica can meet an old replica at report time. That daemon refuses the body's shape with 400 `UZ-REQ-001`. The runner then pushes the memory and posts the report again without the new fields, once.
+
+A report first kept and later re-posted by the drain is reshaped there instead. The drain removes the memory and segments and posts it again, so the answer is kept and the memory dropped.
+
+**The lease reply and the run's memory zero on drop.** The run borrows its policy, memory window and earlier turns from the reply body. That body sits in a `zeroize::Zeroizing` buffer (`afr_supervisor/src/client/mod.rs`).
+
+The deltas a run hands back travel in `CapturedMemory`, whose drop overwrites every string the run owns (`afr_supervisor/src/memory/mod.rs`).
+
+Not covered: the bytes handed to the HTTP client, which it frees unzeroed. Nor the report spool's copy, which `ReportSpool::hold` writes to disk in clear and keeps until delivery.
 
 **The report is the record.** The report settles before the live tail is waited on, and a report the daemon cannot take stays spooled for the drain (`afr_supervisor/src/lease_loop/settle.rs`, `afr_supervisor/src/report_spool/mod.rs`). A renewal the daemon refuses, or a runner told to stop, cuts the run; the cut keeps the tokens and memory the run handed back and reports why it ended (`afr_supervisor/src/lease_loop/mod.rs`).
 
