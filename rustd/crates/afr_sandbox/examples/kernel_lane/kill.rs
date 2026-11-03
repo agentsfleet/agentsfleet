@@ -15,8 +15,13 @@ use crate::run::{expect, run as run_in, runtime, shell};
 /// The lease whose sandbox is killed.
 const LEASE: &str = "killed";
 /// A process that would outlive the lease by ten minutes, out of the
-/// command's process group, so only the cgroup's kill can end it.
-const SLEEPER: &str = "setsid sleep 600 >/dev/null 2>&1 </dev/null &";
+/// command's process group, so only the cgroup's kill can end it. The
+/// executor kills what is left in a command's group once its shell exits, so
+/// the shell waits, at most five seconds, until the sleeper leads a session of
+/// its own (its `stat` session field is its own pid) before it exits.
+const SLEEPER: &str = "setsid sleep 600 >/dev/null 2>&1 </dev/null & sleeper=$!; tries=0; \
+    until [ \"$(cut -d' ' -f6 /proc/$sleeper/stat)\" = \"$sleeper\" ] || [ \"$tries\" -ge 500 ]; \
+    do sleep 0.01; tries=$((tries + 1)); done";
 /// What the sleeper's command line holds, as `setsid` and as the `sleep` it
 /// becomes.
 const SLEEPING: &str = "sleep 600";
