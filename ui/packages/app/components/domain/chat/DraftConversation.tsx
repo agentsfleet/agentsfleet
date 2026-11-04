@@ -10,7 +10,7 @@ import Link from "next/link";
 import { BrandMark, Button, PageTitle } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { chatRecovery } from "@/lib/api/draft-recovery";
-import { CHAT_EXAMPLES } from "./chat-defaults";
+import { CHAT_STARTERS } from "./chat-defaults";
 import { ChatComposer } from "./ChatComposer";
 import { ChatThread } from "./ChatThread";
 import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
@@ -81,15 +81,9 @@ function ChatEntrance() {
   </div>;
 }
 
-const SUGGESTIONS = [
-  { title: "Review pull requests", prompt: CHAT_EXAMPLES[0] },
-  { title: "Watch for errors", prompt: CHAT_EXAMPLES[1] },
-  { title: "Morning brief", prompt: CHAT_EXAMPLES[2] },
-] as const;
-
 function ChatSuggestions({ disabled }: { disabled: boolean }) {
   return <div className="flex w-full flex-wrap gap-md pb-3xl pt-lg">
-    {SUGGESTIONS.map(({ title, prompt }) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
+    {CHAT_STARTERS.map(({ title, prompt }) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
       <Button variant="outline" size="sm" disabled={disabled} className="text-eyebrow font-normal">{title}</Button>
     </ThreadPrimitive.Suggestion>)}
   </div>;

@@ -49,6 +49,38 @@ test("conversation and composer use the shared 14px typography", async ({page, c
   await info.attach("chat-14px-fixture", {path: screenshot, contentType: "image/png"});
 });
 
+test("the pull request starter remains editable and readable before any setup request", async ({page, chatProbe}, info) => {
+  const writes: string[] = [];
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("request", request => {
+    if (!["GET", "HEAD"].includes(request.method())) writes.push(request.method());
+  });
+  await page.goto(`${chatProbe}?starters=1`);
+  await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
+  const suggestion = page.getByRole("button", {name: "Review pull requests", exact: true});
+  const input = page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+  await expect(input).toHaveValue("");
+  await suggestion.focus(); await page.keyboard.press("Enter");
+  await expect(input).toHaveValue(/Does the review cover the requested pull request at its current head\?/);
+  await expect(input).toHaveValue(/Are the findings supported by concrete code or check evidence\?/);
+  const edited = `${await input.inputValue()}\n\nOnly review the API changes; preserve session expiry.`;
+  await input.fill(edited);
+  await expect(input).toHaveValue(edited);
+  await expect(input).toHaveCSS("font-size", "14px");
+  await expect(page.getByRole("button", {name: "Send message"})).toBeEnabled();
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const composer = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();
+  expect(composer).not.toBeNull();
+  if (!composer) throw new Error("The starter must leave its editable composer visible");
+  expect(composer.y + composer.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 0) + 1);
+  const screenshot = info.outputPath("editable-pull-request-starter.png");
+  await page.screenshot({path: screenshot});
+  await info.attach("editable-pull-request-starter", {path: screenshot, contentType: "image/png"});
+});
+
 test("setup checks use enclosed icons and incoming messages have readable details", async ({page, chatProbe}, info) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   await page.goto(`${chatProbe}?setup=1`);
