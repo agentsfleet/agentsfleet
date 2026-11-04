@@ -27,6 +27,7 @@ pub(in crate::model) struct Outbound {
     pub(in crate::model) body: CompletionRequest,
     pub(in crate::model) inference: ModelInference,
     pub(in crate::model) model: Box<str>,
+    pub(in crate::model) provider: Box<str>,
     pub(in crate::model) context_tokens: u32,
     pub(in crate::model) timeout: Duration,
     pub(in crate::model) progress: Option<Preview>,
@@ -43,7 +44,31 @@ pub(in crate::model) async fn complete(
         timeout: outbound.timeout,
     }));
     let model = configured.model(&outbound.model, outbound.key.expose(), transport.clone());
+    let observed_model = outbound.model.clone();
+    let observed_provider = outbound.provider.clone();
     let control = TurnControl {
+        observer: Some(Arc::new(move |timing| {
+            use afd_inference::stream::FailureCause;
+            use afd_observability::metrics::label::models::CallOutcome;
+            let outcome = match timing.cause {
+                None => CallOutcome::Completed,
+                Some(FailureCause::Provider) => CallOutcome::Provider,
+                Some(FailureCause::Deadline) => CallOutcome::Deadline,
+                Some(FailureCause::Cancelled) => CallOutcome::Cancelled,
+            };
+            afd_observability::producers::models::call(
+                &observed_model,
+                &observed_provider,
+                outcome,
+                timing.elapsed,
+                timing.first_text,
+            );
+            afd_observability::producers::models::tokens(
+                &observed_model,
+                &observed_provider,
+                timing.tokens,
+            );
+        })),
         correlation_id: outbound.dispatch_id.into(),
         deadline: Some(Instant::now() + outbound.timeout),
         ..TurnControl::default()

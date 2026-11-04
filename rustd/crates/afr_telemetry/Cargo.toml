@@ -28,11 +28,12 @@ afd_core.workspace = true
 afd_observability.workspace = true
 # The transport the daemon builds through too: the knobs and the pipelines.
 afd_otlp.workspace = true
+# Optional provider token observations shared with daemon calls.
+afd_wire.workspace = true
 # The published tool catalog, so a tool label is a catalog name or `_other`.
 afr_tools.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
-rig-core.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 # The bridge that turns the runner's four span kinds into OTLP spans.
@@ -41,6 +42,8 @@ tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+# Independent coverage of every provider the SDK registers.
+rig-core.workspace = true
 afd_core = { workspace = true, features = ["test-util"] }
 # An exporter build failure, lifted to prove it stays a transport failure.
 opentelemetry-otlp.workspace = true

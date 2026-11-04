@@ -57,6 +57,7 @@ impl Transport for Physical {
 
 fn outbound(api: InferenceApi) -> Outbound {
     Outbound {
+        provider: "openai".into(),
         dispatch_id: "fixture-dispatch".into(),
         progress: None,
         measurement: None,

@@ -113,7 +113,27 @@ impl Turns {
         let built = request::request(self.settings.api, request)?;
         let route = afd_inference::Configured::new(&self.settings, self.model_context_tokens)
             .map_err(raise::configuration)?;
+        let observed_model = request.model.to_owned();
+        let observed_provider = ProviderLabel::of(&self.provider);
         let control = TurnControl {
+            observer: Some(std::sync::Arc::new(move |timing| {
+                use afd_inference::stream::FailureCause;
+                use afr_telemetry::labels::CallOutcome;
+                let outcome = match timing.cause {
+                    None => CallOutcome::Completed,
+                    Some(FailureCause::Provider) => CallOutcome::Provider,
+                    Some(FailureCause::Deadline) => CallOutcome::Deadline,
+                    Some(FailureCause::Cancelled) => CallOutcome::Cancelled,
+                };
+                record::model_call(
+                    &observed_model,
+                    observed_provider,
+                    outcome,
+                    timing.elapsed,
+                    timing.first_text,
+                );
+                record::model_tokens(&observed_model, observed_provider, timing.tokens);
+            })),
             correlation_id: self.lease_id.clone().into(),
             ..Default::default()
         };

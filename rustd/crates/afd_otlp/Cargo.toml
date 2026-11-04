@@ -34,6 +34,9 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# Real JSON export frames at a loopback collector boundary.
+axum = { workspace = true, features = ["json"] }
+serde_json.workspace = true
 # `MapEnv`, so the knobs resolve without touching the process environment.
 afd_core = { workspace = true, features = ["test-util"] }
 # The flush is driven on the blocking pool, as both binaries drive it.

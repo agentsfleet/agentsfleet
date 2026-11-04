@@ -211,8 +211,8 @@ impl Delivery<'_> {
     /// Everything the span says about this run.
     ///
     /// The provider is the one attribute that may be absent, and the absence
-    /// is the point: a vendor with no well-known spelling is omitted rather
-    /// than exported under a standard key it does not belong to.
+    /// is the point: a private name outside the compiled public registry is
+    /// omitted, while supported custom provider values remain attributed.
     fn attributes(&self) -> Vec<KeyValue> {
         let mut attributes = Vec::with_capacity(semconv::DELIVERY_SPAN_KEYS.len());
         attributes.push(KeyValue::new(

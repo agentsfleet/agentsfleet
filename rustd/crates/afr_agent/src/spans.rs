@@ -17,8 +17,8 @@ use afr_tools::ToolErrorCode;
 use tracing::Span;
 use tracing::field::Empty;
 
-/// The span one run is traced in. A provider OpenTelemetry has no
-/// well-known name for goes unnamed, never exported under a private word.
+/// The span one run is traced in. Provider attribution uses the shared public
+/// naming registry; private identifiers and endpoint URLs remain absent.
 pub(crate) fn invoke_agent(policy: &ExecutionPolicy<'_>) -> Span {
     let vendor = provider::normalize(&policy.provider);
     let model = policy.context.model.as_ref();
