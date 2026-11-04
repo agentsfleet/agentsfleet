@@ -34,7 +34,6 @@ _RUSTD_NEED_CARGO = command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not fo
 test-unit-rustd: test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs  ## Run the Rust workspace unit tests (cargo), shard by shard
 
 test-unit-rustd-runner:  ## Rust unit shard: the runner's crates (afr_*, agentsfleet_runner)
-	@python3 -m unittest discover -s scripts/toolbox -p 'test_*.py'
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-runner.log,[rustd] unit: runner,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_RUNNER)))
 
@@ -108,8 +107,7 @@ KERNEL_LANE_RUNNER ?= sudo -E
 KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')
 
 test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (root, bubblewrap, Landlock, cgroup v2); fails, never skips
-	@$(KERNEL_LANE_RUNNER) bash scripts/toolbox/test_finalize.sh
-	@$(KERNEL_LANE_RUNNER) bash scripts/toolbox/test_measure_first_use.sh
+	@$(KERNEL_LANE_RUNNER) bash playbooks/operations/acceptance/test_toolbox_first_use.sh
 	@image="$${AFR_TOOLBOX_IMAGE:-}"; \
 	  if [ -z "$$image" ]; then image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" || exit $$?; fi; \
 	  test -f "$$image" && image="$$(realpath "$$image")" && \

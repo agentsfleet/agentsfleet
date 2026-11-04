@@ -13,7 +13,7 @@ runs:
   steps:
     - name: Install builder tools
       shell: bash
-      run: bash scripts/toolbox/install-builder-tools.sh
+      run: bash .github/actions/build-toolbox/install-tools.sh
 
     - name: Fingerprint installed builder tools
       id: builder
@@ -56,7 +56,7 @@ runs:
 
     - uses: ./.github/actions/toolbox-tools
 
-    - name: Write the SBOM over the mounted image
+    - name: Write the SBOM over the image and its retained package records
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       env:
@@ -66,13 +66,46 @@ runs:
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"
-        mount_point="$RUNNER_TEMP/toolbox-root"
-        mkdir -p "$mount_point"
+        scratch=$(mktemp -d "$RUNNER_TEMP/toolbox-scan.XXXXXX")
+        staged="$out/.toolbox-$DIGEST.sbom.$$.json"
+        child=""
+        cleanup() {
+          local result=$?
+          trap - EXIT INT TERM
+          if [ -n "$child" ]; then
+            sudo kill -TERM "$child" 2>/dev/null || true
+            wait "$child" || true
+          fi
+          for point in "$scratch/ram/view" "$scratch/ram" "$scratch/lower"; do
+            if mountpoint -q "$point" && ! sudo umount "$point"; then
+              echo "toolbox scan: cannot unmount $point; retaining $scratch" >&2
+              exit 1
+            fi
+          done
+          sudo rm -rf "$scratch"
+          rm -f "$staged"
+          exit "$result"
+        }
+        trap cleanup EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        mkdir "$scratch/lower" "$scratch/ram"
         sudo modprobe erofs
-        sudo mount -t erofs -o loop,ro,nosuid,nodev "$out/toolbox-$DIGEST.erofs" "$mount_point"
-        trap 'sudo umount "$mount_point"' EXIT
-        sudo -E "$(command -v syft)" scan "dir:$mount_point" -o "spdx-json=$out/toolbox-$DIGEST.sbom.spdx.json"
-        sudo chown "$(id -u):$(id -g)" "$out/toolbox-$DIGEST.sbom.spdx.json"
+        sudo mount -t erofs -o loop,ro,nosuid,nodev "$out/toolbox-$DIGEST.erofs" "$scratch/lower"
+        sudo mount -t tmpfs -o size=32m,nosuid,nodev tmpfs "$scratch/ram"
+        sudo mkdir "$scratch/ram/upper" "$scratch/ram/work" "$scratch/ram/view"
+        sudo bash -euo pipefail -c 'source "$1"; toolbox_restore_scan_inventory "$2" "$3" "$4"' -- \
+          "$PWD/deploy/baremetal/toolbox.sh" "$out/toolbox-$DIGEST.erofs" "$scratch/lower" "$scratch/ram/upper"
+        sudo mount -t overlay -o "lowerdir=$scratch/lower,upperdir=$scratch/ram/upper,workdir=$scratch/ram/work" overlay "$scratch/ram/view"
+        sudo -E "$(command -v syft)" scan "dir:$scratch/ram/view" -o "spdx-json=$scratch/sbom.json" &
+        child=$!
+        wait "$child"
+        child=""
+        sudo umount "$scratch/ram/view"
+        sudo umount "$scratch/ram"
+        sudo umount "$scratch/lower"
+        sudo install -m 644 -o "$(id -u)" -g "$(id -g)" "$scratch/sbom.json" "$staged"
+        mv "$staged" "$out/toolbox-$DIGEST.sbom.spdx.json"
 
     - uses: ./.github/actions/scan-toolbox
       with:

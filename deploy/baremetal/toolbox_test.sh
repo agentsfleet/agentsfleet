@@ -134,5 +134,116 @@ test_toolbox_staging_replaces_the_previous_set
 test_toolbox_staging_refuses_an_incomplete_set
 test_toolbox_storage_home_follows_the_env_file
 
+# Exercise the public reconstruction boundary without mounting or modifying an image.
+if python3 -I - "$SCRIPT_DIR/toolbox.sh" "$WORK_DIR" <<'PYTEST'
+import base64, copy, gzip, hashlib, json, subprocess, sys
+from pathlib import Path
+library, scratch = sys.argv[1], Path(sys.argv[2])
+root = scratch / "inventory"
+root.mkdir()
+lower, upper = root / "lower", root / "upper"
+(lower / "etc").mkdir(parents=True)
+upper.mkdir()
+image_bytes = b"synthetic read-only image fixture"
+sha = hashlib.sha256(image_bytes).hexdigest()
+image = root / f"toolbox-{sha}.erofs"
+image.write_bytes(image_bytes)
+packages, blocks, info = [], [], {}
+for name in ("python3", "git"):
+    packages.append({"package": name, "architecture": "amd64", "version": "1:2.3-4",
+                     "sha256": "1" * 64,
+                     "copyright": {"path": f"/usr/share/doc/{name}/copyright", "sha256": "2" * 64}})
+    blocks.append(f"Package: {name}\nStatus: install ok installed\nArchitecture: amd64\nVersion: 1:2.3-4\nSource: {name} (2.3-4)\n")
+    info[f"{name}.list"] = f"/.\n/usr/bin/{name}\n"
+    info[f"{name}.md5sums"] = f"{'3' * 32}  usr/bin/{name}\n"
+    info[f"{name}.postinst"] = "#!/bin/sh\nprintf 'scanner data only'\n"
+metadata = {"status": "\n".join(blocks), "info": info}
+canonical = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+encode = lambda value: base64.b64encode(gzip.compress(canonical(value), mtime=0)).decode()
+release = {"sha256": sha, "length": len(image_bytes), "packages": packages,
+           "package_metadata": encode(metadata)}
+manifest = image.with_suffix(".json")
+marker = lower / "etc/toolbox-inventory.sha256"
+def write(value, commit=True):
+    manifest.write_bytes(canonical(value))
+    if commit:
+        payload = {key: value[key] for key in ("packages", "package_metadata")}
+        marker.write_text(hashlib.sha256(canonical(payload)).hexdigest() + "\n")
+def run():
+    return subprocess.run(["bash", "-euo", "pipefail", "-c",
+                           'source "$1"; toolbox_restore_scan_inventory "$2" "$3" "$4"',
+                           "--", library, str(image), str(lower), str(upper)], capture_output=True)
+def refuse(label, value, commit=True):
+    write(value, commit)
+    before = {str(p.relative_to(upper)): p.read_bytes() for p in upper.rglob("*") if p.is_file()}
+    result = run()
+    after = {str(p.relative_to(upper)): p.read_bytes() for p in upper.rglob("*") if p.is_file()}
+    assert result.returncode != 0 and result.stderr and before == after, label
+    print(f"ok   inventory refuses {label}")
+write(release)
+result = run()
+assert result.returncode == 0, result.stderr.decode()
+assert (upper / "var/lib/dpkg/status").read_text() == metadata["status"]
+assert {p.name: p.read_text() for p in (upper / "var/lib/dpkg/info").iterdir()} == info
+assert all(p.stat().st_mode & 0o777 == 0o644 for p in (upper / "var/lib/dpkg/info").iterdir())
+assert image.read_bytes() == image_bytes and not (lower / "var").exists()
+import shutil
+shutil.rmtree(upper / "var")
+print("ok   inventory reconstructs exact records without changing the image")
+for label, change in (
+    ("coherent package omission", lambda value: value["packages"].pop()),
+    ("altered source attribution", lambda value: value.update(package_metadata=encode({**metadata, "status": metadata["status"].replace("Source: git (2.3-4)", "Source: git (9.0)")}))),
+    ("altered file evidence", lambda value: value.update(package_metadata=encode({**metadata, "info": {**info, "git.list": "/usr/bin/other\n"}}))),
+):
+    write(release)
+    value = copy.deepcopy(release)
+    change(value)
+    refuse(label, value, commit=False)
+for label, change in (
+    ("duplicate package", lambda value: value["packages"].append(value["packages"][0])),
+    ("invalid package identity", lambda value: value["packages"][0].update(package="../escape")),
+    ("wrong version", lambda value: value["packages"][0].update(version="9.0")),
+    ("invalid archive digest", lambda value: value["packages"][0].update(sha256="bad")),
+    ("unsafe copyright", lambda value: value["packages"][0]["copyright"].update(path="../../escape")),
+    ("wrong image length", lambda value: value.update(length=len(image_bytes) + 1)),
+    ("invalid base64", lambda value: value.update(package_metadata="!")),
+    ("concatenated compressed records", lambda value: value.update(package_metadata=value["package_metadata"] * 2)),
+    ("expanded metadata above limit", lambda value: value.update(package_metadata=base64.b64encode(gzip.compress(b"x" * 4_194_305)).decode())),
+):
+    value = copy.deepcopy(release)
+    change(value)
+    refuse(label, value)
+for label, value in (
+    ("path traversal", {**metadata, "info": {**info, "../escape.list": "x"}}),
+    ("missing file list", {**metadata, "info": {name: text for name, text in info.items() if name != "git.list"}}),
+    ("duplicate installed record", {**metadata, "status": metadata["status"] + "\n" + blocks[0]}),
+    ("wrong install status", {**metadata, "status": metadata["status"].replace("install ok installed", "deinstall ok config-files")}),
+    ("unsafe source", {**metadata, "status": metadata["status"].replace("Source: git (2.3-4)", "Source: ../escape")}),
+):
+    refuse(label, {**release, "package_metadata": encode(value)})
+write(release)
+marker.unlink()
+marker.symlink_to(manifest)
+assert run().returncode != 0 and not any(upper.iterdir())
+marker.unlink()
+write(release)
+manifest.write_text('{"sha256":"a","sha256":"b"}')
+assert run().returncode != 0 and not any(upper.iterdir())
+manifest.write_bytes(b" " * 1_048_577)
+assert run().returncode != 0 and not any(upper.iterdir())
+write(release)
+image.write_bytes(image_bytes + b"changed")
+assert run().returncode != 0 and not any(upper.iterdir())
+image.write_bytes(image_bytes)
+(upper / "sentinel").write_text("keep")
+refuse("nonempty upper", release)
+print("ok   inventory refuses linked commitments, duplicate JSON, oversized releases and changed images")
+PYTEST
+then
+  ok "test_toolbox_scan_inventory_boundary"
+else
+  bad "test_toolbox_scan_inventory_boundary" "reconstruction or refusal changed records"
+fi
+
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

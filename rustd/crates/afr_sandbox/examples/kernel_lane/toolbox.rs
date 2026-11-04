@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::lane::Lane;
 use crate::run::expect;
-use crate::tools::{answers, shell, shell_calls};
+use crate::tools::{GIT_WORKFLOWS, answers, shell, shell_calls};
 
 /// The release manifest's extension, beside the image's `.erofs`.
 const JSON: &str = "json";
@@ -115,23 +115,13 @@ node --test 2>&1
 /// The runner's summary lines when its one test passes.
 const NODE_PASSED: &str = "# pass 1";
 const NODE_NONE_FAILED: &str = "# fail 0";
-/// Makes a repository, commits once, and prints the commit's log line.
-const GIT_COMMIT: &str = r"
-export HOME=/workspace
-mkdir -p /workspace/repo && cd /workspace/repo || exit 1
-git init -q && echo one >README && git add README \
-  && git -c user.name=agentsfleet -c user.email=noreply@agentsfleet.net commit -q -m one \
-  && git log --oneline -1
-";
-/// How the log line ends.
-const COMMITTED: &str = " one";
 /// The other pinned tools answer their versions.
 const VERSIONS: &str = "rg --version | head -n1 && jq --version && curl --version | head -n1";
 /// A word from each tool's version line.
 const VERSION_WORDS: [&str; 3] = [RIPGREP, "jq-", "curl "];
 /// Go, the Go-built GitHub client, and build-only tools stay outside the image.
 const EXCLUDED_TOOLS: &str = r#"
-for tool in go gh syft grype cosign; do
+for tool in go gh syft grype cosign perl apt apt-get dpkg dpkg-query passwd useradd chpasswd; do
   if command -v "$tool" >/dev/null 2>&1; then
     echo "$tool must not be in the toolbox" >&2
     exit 1
@@ -147,7 +137,7 @@ pub(crate) fn toolbox_carries_the_tools(lane: &Lane) -> Result<(), Failed> {
     let calls = [
         shell(UV_FROM_LOOPBACK, Some(UV_TIMEOUT_MS)),
         shell(NODE_TEST, Some(NODE_TIMEOUT_MS)),
-        shell(GIT_COMMIT, None),
+        shell(GIT_WORKFLOWS, Some(NODE_TIMEOUT_MS)),
         shell(VERSIONS, None),
         shell(EXCLUDED_TOOLS, None),
     ];
@@ -174,11 +164,8 @@ pub(crate) fn toolbox_carries_the_tools(lane: &Lane) -> Result<(), Failed> {
         format!("node's one test passed, got {:?}", node.text),
     )?;
     expect(
-        git.text
-            .lines()
-            .last()
-            .is_some_and(|line| line.ends_with(COMMITTED)),
-        format!("git committed, got {:?}", git.text),
+        git.text.contains("\"perl\": null") && git.text.contains("\"interactive staging\""),
+        format!("core Git workflows passed without Perl, got {:?}", git.text),
     )?;
     expect(
         VERSION_WORDS

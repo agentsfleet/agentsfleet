@@ -21,6 +21,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      toolbox_baseline_sha:
+        description: Optional full commit to compare against on this kernel host
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -158,7 +163,7 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - name: Install the toolbox builder and bubblewrap
-        run: bash scripts/toolbox/install-builder-tools.sh bubblewrap
+        run: bash .github/actions/build-toolbox/install-tools.sh bubblewrap
       # The host the runner playbook prepares: IPv4 forwarding on, and no
       # forward chain that drops by policy (Docker's `FORWARD` chain does, and
       # the runner's probe refuses such a host). Ubuntu's AppArmor denies
@@ -177,8 +182,61 @@ jobs:
             sudo modprobe erofs
           }
           grep -qw erofs /proc/filesystems
+      - name: Build matched toolbox images for explicit qualification
+        if: github.event_name == 'workflow_dispatch' && inputs.toolbox_baseline_sha != ''
+        env:
+          BASELINE_SHA: ${{ inputs.toolbox_baseline_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$BASELINE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          proof="$RUNNER_TEMP/toolbox-proof"
+          mkdir -p "$proof"
+          git rev-parse HEAD > "$proof/candidate-revision.txt"
+          printf '%s\n' "$BASELINE_SHA" > "$proof/baseline-revision.txt"
+          uname -a > "$proof/host.txt"
+          git fetch --no-tags origin "$BASELINE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/toolbox-baseline-source" "$BASELINE_SHA"
+          sudo make -C "$RUNNER_TEMP/toolbox-baseline-source" --no-print-directory toolbox-image TOOLBOX_DIR="$proof/baseline" 2>&1 | tee "$proof/baseline-build.log"
+          sudo make --no-print-directory toolbox-image TOOLBOX_DIR="$proof/candidate" 2>&1 | tee "$proof/candidate-build.log"
+          images=("$proof/candidate"/toolbox-*.erofs)
+          [ "${#images[@]}" = 1 ]
+          echo "AFR_TOOLBOX_IMAGE=${images[0]}" >> "$GITHUB_ENV"
       - name: Measure the kernel lane
         run: make test-coverage-runner-kernel
+      - name: Measure matched cold first use after compilation
+        if: github.event_name == 'workflow_dispatch' && inputs.toolbox_baseline_sha != ''
+        run: |
+          set -euo pipefail
+          proof="$RUNNER_TEMP/toolbox-proof"
+          baseline=("$proof/baseline"/toolbox-*.erofs)
+          sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "${baseline[0]}" "$proof/baseline-first-use.json" 120
+          sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "$AFR_TOOLBOX_IMAGE" "$proof/candidate-first-use.json" 120 "$proof/baseline-first-use.json"
+          python3 - "$proof" <<'PYPROOF'
+          import hashlib, json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          lengths = {}
+          for role in ('baseline', 'candidate'):
+              image, = (root / role).glob('*.erofs')
+              release = json.loads(image.with_suffix('.json').read_text())
+              with image.open('rb') as handle:
+                  sha = hashlib.file_digest(handle, 'sha256').hexdigest()
+              assert sha == release['sha256'] and image.stat().st_size == release['length']
+              report = json.loads((root / f'{role}-first-use.json').read_text())
+              assert report['image_sha256'] == sha and report['image_bytes'] == release['length']
+              lengths[role] = release['length']
+          assert lengths['candidate'] < lengths['baseline'], lengths
+          (root / 'historical-comparison.txt').write_text('NOT_COMPARABLE: amd64 hosted runner versus historical arm64 host\n')
+          print(lengths)
+          PYPROOF
+      - name: Retain toolbox qualification evidence including failures
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.toolbox_baseline_sha != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: toolbox-qualification
+          path: ${{ runner.temp }}/toolbox-proof
+          if-no-files-found: error
+          retention-days: 14
       - name: Keep the kernel lane's report for the merge
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
