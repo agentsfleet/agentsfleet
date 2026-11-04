@@ -71,6 +71,9 @@ CREATE INDEX idx_decision_calls_unresolved_lease
     ON runner.decision_calls (original_lease_id) WHERE accounted_at IS NULL;
 CREATE INDEX idx_decision_calls_unresolved_fleet
     ON runner.decision_calls (fleet_id, workspace_id) WHERE accounted_at IS NULL;
+CREATE INDEX idx_decision_calls_expired_unissued
+    ON runner.decision_calls (logical_expires_at, id)
+    WHERE issued_at IS NULL AND accounted_at IS NULL;
 -- Task/source bounds include reservations across replacement leases.
 CREATE INDEX idx_decision_calls_task ON runner.decision_calls (task_id, created_at);
 CREATE INDEX idx_decision_calls_source ON runner.decision_calls (source_admission_id, created_at);

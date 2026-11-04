@@ -446,6 +446,27 @@ The existing billing sweeper groups those three attributes with work identity.
 
 Native reservations and PATCH receipts retain original ownership; renew/report receipt integration remains pending.
 
+The existing thirty-second billing loop also calls the native task owner's decision maintenance.
+Its local typed cursor seeks by deadline and call UUID, advances before each attempt, and wraps after exhaustion.
+Each cycle freezes a database-time cutoff, so new arrivals cannot postpone retries of skipped work.
+
+Cancellation preserves that cursor; restarting the daemon safely begins another scan.
+
+Each pass reads at most 100 expired unissued candidates, with a ten-second deadline and the existing bounded statements.
+Maintenance takes the ordinary parent, fleet-slot, task and call locks with `NOWAIT`; contention skips the whole candidate.
+The owner rechecks issuance and accounting before releasing any reservation.
+
+Proved-unsent expiry uses the same receipt journal and task-budget update as other receipts, without adding a zero-cost usage line.
+Future reservations and issued calls with missing results retain their capacity.
+Fleet deletion cannot recreate private request data during this financial recovery.
+
+Malformed rows retain their reservations while later candidates proceed; discovery and connection outages fail the pass.
+The cursor reaches later work even when a whole earlier page remains blocked.
+
+Per-candidate expiry and deferral events use debug; the completed-pass event reports scanned, expired, deferred and failed counts plus observed overdue age.
+Completed passes with row failures use warn and the first registered error code; ordinary completed scans use info.
+The shared operation metrics add `decision_sweep`; recovery attempts and overdue age have bounded families in the [metric census](../metrics.census.tsv).
+
 ### Running task authority and source attribution
 
 A routing call can assess human input B while task A holds the fleet's active lease.

@@ -10,7 +10,7 @@ use tokio::time::{interval, timeout};
 
 use super::{
     super::fixture::{Case, GOALS, exercise},
-    fixture::{Decisions, known, request},
+    fixture::{Decisions, known, lock_slot, request},
 };
 
 #[tokio::test]
@@ -61,19 +61,6 @@ async fn ordered(case: &Case) {
     assert_eq!(fixture.counts().await, (1, 1, 1));
     next_physical_call_is_blocked(&fixture).await;
     fixture.model.finish().await;
-}
-
-async fn lock_slot(connection: &mut sqlx::PgConnection, case: &Case) -> i32 {
-    let pid = sqlx::query_scalar("SELECT pg_backend_pid()")
-        .fetch_one(&mut *connection)
-        .await
-        .expect("owned blocker identity");
-    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1::uuid FOR UPDATE")
-        .bind(&case.held.fleet)
-        .execute(connection)
-        .await
-        .expect("existing issuance lock");
-    pid
 }
 
 async fn waiting_on_slot(fixture: &Decisions<'_>, pid: i32) {

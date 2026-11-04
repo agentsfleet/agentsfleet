@@ -22,6 +22,10 @@ use crate::metrics::registry::{Policy, Registry};
 fn label_products() -> Vec<(&'static str, usize)> {
     vec![
         (
+            task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
+            task_labels::DecisionRecoveryOutcome::ALL.len(),
+        ),
+        (
             task::TASK_OPERATIONS_TOTAL.wire_name(),
             task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
         ),

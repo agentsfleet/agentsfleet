@@ -196,7 +196,7 @@ async fn blocked(case: &Case, capture: &Capture) {
     fixture.model.finish().await;
 }
 
-async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
+pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
     let case = fixture.case;
     let database = case
         .held

@@ -19,6 +19,22 @@ closed_set! {
         DecisionReserve => "decision_reserve",
         /// Record one canonical result or retained accounting uncertainty.
         DecisionRecord => "decision_record",
+        /// Release reservations natively proved unsent after their deadline.
+        DecisionSweep => "decision_sweep",
+    }
+}
+
+closed_set! {
+    /// Result of one completed recovery attempt, without task identifiers.
+    DecisionRecoveryOutcome {
+        /// Native proof released a previously unsent reservation.
+        Expired => "expired",
+        /// Another writer changed or removed the discovered candidate.
+        Obsolete => "obsolete",
+        /// Existing financial locks were busy; a later scan retries.
+        Contended => "contended",
+        /// A row-local failure retained uncertainty for operator repair.
+        Failed => "failed",
     }
 }
 

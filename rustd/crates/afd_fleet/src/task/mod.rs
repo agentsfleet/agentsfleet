@@ -31,12 +31,15 @@ use crate::{Result, lease::Leases};
 
 pub use decision::ReservedDecision;
 #[cfg(feature = "test-util")]
-pub use decision::{DECISION_BUDGET_STATEMENT, LOCKED_DECISION_CALL_STATEMENT};
+pub use decision::{
+    DECISION_BUDGET_STATEMENT, EXPIRED_DECISION_CALLS_STATEMENT, LOCKED_DECISION_CALL_STATEMENT,
+};
 pub use dependencies::TaskDependencies;
 pub use refusal::TaskRefusal;
 pub use types::{
-    PreparedPlan, PreparedTask, TaskAfter, TaskBinding, TaskBindings, TaskControl, TaskLease,
-    TaskPage, TaskScope, TaskSnapshot, TaskSummary,
+    DecisionMaintenance, DecisionMaintenanceCursor, PreparedPlan, PreparedTask, TaskAfter,
+    TaskBinding, TaskBindings, TaskControl, TaskLease, TaskPage, TaskScope, TaskSnapshot,
+    TaskSummary,
 };
 
 /// Object-safe native operation using the owning crate's error shell.
@@ -44,6 +47,11 @@ pub type TaskFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>
 
 /// Behavior of the authoritative task owner; all writes are fenced natively.
 pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
+    /// Release expired reservations only when native history proves no issuance.
+    fn maintain_decisions<'a>(
+        &'a self,
+        cursor: &'a mut DecisionMaintenanceCursor,
+    ) -> TaskFuture<'a, DecisionMaintenance>;
     /// Reserve one physical call; replays cannot issue another credential.
     fn reserve_decision<'a>(
         &'a self,
@@ -119,6 +127,26 @@ impl Tasks {
 }
 
 impl TaskLifecycle for Tasks {
+    fn maintain_decisions<'a>(
+        &'a self,
+        cursor: &'a mut DecisionMaintenanceCursor,
+    ) -> TaskFuture<'a, DecisionMaintenance> {
+        let span = tracing::info_span!("task_decision_maintenance");
+        Box::pin(
+            observe::measure(
+                TaskOperation::DecisionSweep,
+                decision::maintain(self, cursor),
+                |swept| {
+                    if swept.failed == 0 {
+                        TaskOutcome::Accepted
+                    } else {
+                        TaskOutcome::Failed
+                    }
+                },
+            )
+            .instrument(span),
+        )
+    }
     fn reserve_decision<'a>(
         &'a self,
         lease: TaskLease<'a>,

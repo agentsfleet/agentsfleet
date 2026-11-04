@@ -40,6 +40,11 @@ pub(crate) struct Fixtures {
 }
 
 impl Fixtures {
+    /// Another fixture in this owned database, without transferring cleanup.
+    pub(crate) fn shared_lane(&self) -> TestDatabase {
+        self.lane.shared_handle()
+    }
+
     /// Opens the api-role pool against the database the lane already migrated.
     ///
     /// No Dragonfly. Most suites here assert on ROWS and never read the queue, and

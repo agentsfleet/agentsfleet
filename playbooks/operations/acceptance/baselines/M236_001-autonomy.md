@@ -623,16 +623,107 @@ No R2 SDK dependency or live transfer is claimed by this component.
 Native registration, quotas, manifests, transfer, restore and the live private-bucket proof remain pending.
 No complete recovery Dimension is marked done.
 
+## Published-head coverage result
+
+The coverage run for published head `2ace1f3a1` completed all four Rust coverage shards successfully.
+The [merge job](https://github.com/agentsfleet/agentsfleet/actions/runs/41815241326/job/126531170305) failed the existing floors.
+Its merge checkout is `06156bdfe677d47d752c33a79e378b48c55ba4ae`, combining that head with main `bf3baa126`.
+
+| Measurement | Observed | Required |
+|---|---|---|
+| Workspace line coverage | 81,517 / 82,006; 99.4037%; 489 missed | 99.5% |
+| Changed Rust lines | 4,678 / 4,932; 94.8500%; 254 missed | 99.01% |
+| Touched files | 48 / 159 below the per-file floor | Every touched file at least 99% |
+
+This is the measured result for the published head, not the later local maintenance work.
+No floor, exclusion or coverage report has been changed to hide the misses.
+Missing native decision, HTTP and configuration behavior remains work before readiness.
+
+## Abandoned-decision maintenance component
+
+The same `Tasks` owner now supplies `TaskLifecycle::maintain_decisions` to the existing billing loop.
+The pass bounds candidates to 100 and total time to ten seconds; individual statements retain their existing three-second bound.
+The financial journal records proved-unsent expiry under the shared parent/slot/task/call locks, preserving issued uncertainty and original ownership.
+
+Five complete database scenarios cover released/future/unknown reservations, deletion, cancellation, delayed issuance commit and competing expirers.
+The query-plan check uses the exact static production statement and a test-local planner setting; it requires an indexed deadline range.
+Native metrics add `decision_sweep`, bringing each operation/outcome family to 88 bounded series.
+
+Astra first found a volatile-clock range scan, an unqualified text tie-breaker and missing stale-candidate race coverage.
+The query uses `statement_timestamp()` and orders the qualified source UUID.
+Initial transaction races observed blocking; corrected maintenance cases now expect contention skips.
+
+Per-item expiry logs use debug, with aggregate counts and overdue age at info.
+
+`make lint-rustd` passed after the final SQL qualification; `/tmp/m236-maintenance-lint-5.log` records formatting and workspace Clippy success.
+The scoped changed-crate unit selection passed 429 tests before that SQL qualification; `/tmp/m236-maintenance-unit.log` retains its output.
+The first integration attempt stopped during compilation for the query correction; it supplies no live test result.
+
+The second build failed before tests after exhausting disk space; `/tmp/m236-maintenance-integration-2.log` records the linker and filesystem errors.
+`cargo clean` removed 23,775 build files, recovering 19.3 GiB; the following `df` reported 19 GiB available.
+
+The clean `make test-integration-rustd` gate passed: 1,507 regular tests and three exclusive tests; exit zero.
+`/tmp/m236-maintenance-integration-3.log` retains that pre-fairness result, including all five initial recovery scenarios.
+
+A focused Astra follow-up confirmed a further liveness defect: one blocked or malformed oldest candidate can starve every later fleet.
+The correction keeps a typed keyset cursor in the existing billing loop, advances before attempts, skips contention and isolates row failures.
+Expected contention, failed rows and recovery age need separate bounded diagnostics.
+
+The starvation regression failed against the prior implementation at its one-second unrelated-recovery deadline.
+`/tmp/m236-maintenance-fairness-red.log` records that assertion failure with zero passing tests and one failing test.
+
+The corrected `make test-integration-rustd` gate passed: 1,511 regular tests and three exclusive tests; exit zero.
+`/tmp/m236-maintenance-fair-integration-2.log` records the full rerun after the fixture correction and exact SQL restoration.
+
+`orly gate verify` passed after resolving the local UI fixture path and evidence paragraph formatting.
+The changed-crate unit selection passed 430 tests, including the capturing-exporter scenario.
+
+The loop owns `DecisionMaintenanceCursor`; the `TaskLifecycle` trait borrows it mutably for each bounded pass.
+Shared `locks::Mode` retains ordinary waiting for receipts and uses `NOWAIT` for maintenance without changing lock order.
+No mutex or new worker is added; the cursor moves each candidate identity without copying it.
+
+Astra also identified indefinite postponement when new arrivals keep every continuation nonempty.
+Each scan cycle now retains its initial database-time cutoff across pages and cancellation; short or exhausted pages reset the cycle.
+Arrival-between-passes cases cover both short and full pages, without backdating new work into the earlier cycle.
+
+The aggregate failure warning retains the first registered error code, alongside its counts.
+
+Astra's correction review reported no remaining material finding in this maintenance component.
+This was source review under the requested extra-high configuration; the reviewer ran no tests.
+
+Nine recovery scenarios cover mixed financial state, erasure, deadlines, competing passes, pending issuance, a blocked earlier fleet, malformed state and cancellation.
+The backlog case creates 101 native unissued calls from distinct admitted sources; another fleet must recover beyond that entire busy page.
+The exact production query's planner check covers both initial and continuation bounds.
+
+The busy-issuer case proves contention safety; it does not independently mutation-test the fresh issuance/accounting recheck.
+
+The initial live backlog case failed because earlier fixture inputs remained unsettled and correctly blocked later claims.
+The fixture now completes each preceding claimed source; production input-receipt settlement remains pending.
+The scoped recovery selection passed all nine scenarios after this correction; `/tmp/m236-maintenance-fair-focused-2.log` records nine passed and zero failed.
+
+Astra's final fixture review found no material issue and confirmed that native FIFO guards remain unchanged.
+The seeded source-completion state proves financial recovery; it does not establish production input settlement or the runner loop.
+
+Removing the cycle cutoff made the complete backlog scenario fail at `(4, 3, 1, 0)` versus `(2, 1, 1, 0)`.
+The mutation driver restored the exact original SQL bytes; `/tmp/m236-maintenance-cutoff-proof.log` records the result and restored digest.
+`/tmp/m236-maintenance-cutoff-mutant.log` retains the assertion failure, not a compilation failure.
+
+`agentsfleet_task_decision_recovery_attempts_total` has four bounded outcomes; the overdue histogram records candidate age beyond its original deadline.
+A capturing-exporter scenario checks counts, age totals and operation latency under exact label sets.
+Structured log checks verify aggregate severity/counts, expected contention and absence of fixture credentials or question text.
+
+The component is verified locally; current-main integration and pushed-head checks remain pending.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; post-merge lint, unit and clean integration gates passed. A fresh fetch still resolves to that integrated main. Repeat the freshness check at final ship. |
+| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; post-merge lint, unit and clean integration gates passed. A fresh fetch finds PR 802/main `1920ff345`; integrate it and verify before the next push. |
 | Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Native physical-call accounting passes unit/integration gates; full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Align unfinished setup actions | `components/layout/DraftSidebarItem.tsx` uses shared grid columns: title, reachable Delete, then Resume. Desktop/mobile measurements, app lint and 100% coverage pass; the same geometry assertion fails against the previous component. Logs: `/tmp/m236-ui-polish-browser.log`, `/tmp/m236-resume-parent-red.log`. |
 | Shorten fleet chat guidance | `SteerComposer.tsx` now reads “Change fleet defaults in Edit setup.” The existing action, hint and theme remain; controlled browser cases, app lint and 100% coverage pass. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. The scoped encryption component passes 68 tests and Astra review; native storage, transfer, recovery and live bucket checks remain pending. |
-| Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |
-| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; pushed merge `d97b373` adds latest docs main `920933d`. Site validation, prose, work gate and branch secret scanning passed. The companion PR remains pending; new API pages follow the lead merge. |
-| Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. No feature PR exists; all required gates, actual-head Continuous Integration and Greptile resolution must precede the authorized merge. |
+| Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. Financial recovery retains progress across busy pages and cancellation. Exporter and structured-log scenarios check recovery attempts, age, latency and bounded labels. No benchmark result or complete DT performance trace is claimed. |
+| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; pushed merge `d97b373` adds docs main `920933d`. Site validation, prose, work gate and branch secret scanning passed. [Docs draft #241](https://github.com/agentsfleet/docs/pull/241) is open; new API pages follow the lead merge. |
+| Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. Indy requested the early review [implementation draft #803](https://github.com/agentsfleet/agentsfleet/pull/803). Native decision, crypto and bounded financial recovery have component evidence. Remaining implementation and full readiness gates stay pending; leave both PRs in draft. |

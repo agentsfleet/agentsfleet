@@ -221,6 +221,19 @@ impl<'a> Decisions<'a> {
     }
 }
 
+pub(super) async fn lock_slot(connection: &mut sqlx::PgConnection, case: &Case) -> i32 {
+    let pid = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *connection)
+        .await
+        .expect("owned blocker identity");
+    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1::uuid FOR UPDATE")
+        .bind(&case.held.fleet)
+        .execute(connection)
+        .await
+        .expect("existing issuance lock");
+    pid
+}
+
 pub(super) fn policy() -> Value {
     serde_json::from_str(include_str!(
         "../../../../../../tests/fixtures/fleets/goal-repair/decision-policy.json"

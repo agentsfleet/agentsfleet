@@ -204,12 +204,13 @@ async fn serve_plane(
     // Taken before the plane moves into the router: the drain closes it, so a
     // held heartbeat never holds a deploy open.
     let doorbell = runtime.plane.leases().leases.doorbell().clone();
+    let task_owner = runtime.plane.task_owner();
     let router = afd_api::router::build(runtime.plane, admission);
     // The sweepers read through pools that are open by now. Starting them
     // after the socket would leave a window where the plane serves while
     // nothing is noticing dead runners. They take the analytics because the
     // authoring sweeper finishes interrupted chat messages, a funnel step.
-    crate::sweepers::spawn(supervisor, &runtime.database, &analytics);
+    crate::sweepers::spawn(supervisor, &runtime.database, &analytics, task_owner);
     spawn_background(
         supervisor,
         config,

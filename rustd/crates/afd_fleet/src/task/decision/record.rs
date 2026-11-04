@@ -10,7 +10,7 @@ use super::{
     account,
     journal::{Recording, Written},
     row::{self, Call, Lookup, Payload},
-    semantic, sql,
+    semantic,
 };
 use crate::{
     Result,
@@ -41,11 +41,15 @@ async fn run(
     id: &Uuid7,
     receipt: &DecisionReceipt,
 ) -> Result<DecisionReceiptResult> {
-    let digest = afd_core::etag::sha256_hex(
-        &serde_json::to_vec(receipt).map_err(afd_core::json::Unreadable::from)?,
-    );
+    let digest = receipt_digest(receipt)?;
     let (written, payload) = commit(tasks, lease, id, receipt, &digest).await?;
     after_commit(tasks, written, payload, receipt).await
+}
+
+pub(super) fn receipt_digest(receipt: &DecisionReceipt) -> Result<String> {
+    Ok(afd_core::etag::sha256_hex(
+        &serde_json::to_vec(receipt).map_err(afd_core::json::Unreadable::from)?,
+    ))
 }
 
 async fn after_commit(
@@ -101,7 +105,9 @@ async fn commit_on(
 ) -> Result<(Written, Option<Payload>)> {
     let mut transaction = transaction::begin(connection).await?;
     // Match lifecycle lock order, including when either live parent is gone.
-    lock_parents(&mut transaction, call).await?;
+    super::locks::Mode::Wait
+        .parents(&mut transaction, call)
+        .await?;
     let call = owned(&mut transaction, lease, &Call::id(&call.id, "id")?).await?;
     let plan = account::classify(&call, receipt, digest)?;
     let written = Recording {
@@ -129,34 +135,6 @@ async fn owned(connection: &mut PgConnection, lease: TaskLease<'_>, id: &Uuid7) 
     Ok(call)
 }
 
-async fn lock_parents(connection: &mut PgConnection, call: &Call) -> Result<()> {
-    sqlx::query_scalar::<_, String>(sql::LOCK_PARENT)
-        .bind(&call.fleet_id)
-        .bind(&call.workspace_id)
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query("protect any remaining decision parent"))?;
-    // Serialize actual charges with issuance's budget check, even for intent
-    // calls without a task. Erased parents remain optional for late accounting.
-    sqlx::query_scalar::<_, String>(crate::task::sql::LOCK_SCOPE_SLOT)
-        .bind(&call.fleet_id)
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query(
-            "serialize decision accounting with physical issuance",
-        ))?;
-    if let Some(task) = &call.task_id {
-        sqlx::query_scalar::<_, String>(sql::LOCK_TASK)
-            .bind(task)
-            .bind(&call.fleet_id)
-            .bind(&call.workspace_id)
-            .fetch_optional(connection)
-            .await
-            .map_err(query("lock any remaining decision budget owner"))?;
-    }
-    Ok(())
-}
-
 async fn disposition(
     tasks: &Tasks,
     call: &Call,
@@ -171,7 +149,7 @@ async fn disposition(
     }
 }
 
-async fn changed(tasks: &Tasks, written: &Written) -> Result<()> {
+pub(super) async fn changed(tasks: &Tasks, written: &Written) -> Result<()> {
     if let Some((task, version)) = written.call.task_id.as_ref().zip(written.task_version) {
         let scope = TaskScope {
             fleet_id: Call::id(&written.call.fleet_id, "fleet_id")?,
