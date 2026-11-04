@@ -153,7 +153,9 @@ No first-use comparison or merged release is claimed here.
 ## Simplified Perl-free candidate
 
 The owner requested only `build.sh` and `manifest.txt` in `scripts/toolbox/`.
-Finalization is now a temporary program emitted by the builder; scanner reconstruction lives in the existing deployment helper and its existing test suite.
+The first consolidation emitted a temporary program from the builder. The owner rejected that design; the current builder uses named shell functions.
+
+Scanner reconstruction lives in the existing deployment helper and its existing test suite.
 The existing installer moved beside the build action, and the existing sampler and its test moved under acceptance.
 
 `sudo -E make toolbox-image TOOLBOX_DIR=/audit/perl-free` completed with 133 retained packages and an image of 135,979,008 bytes.
@@ -168,12 +170,15 @@ It did not test external network transport or the complete production lease boun
 
 The consolidated scanner reconstruction passed on the mounted Perl-free image:
 `full scan: 1187 packages, 133 Debian packages, 10719 relationships` (Syft 1.54.1).
-The 1,054 vendored Rust package detections remain present. Full original-record comparison and same-database vulnerability parity still require qualification for this final candidate.
+The 1,054 vendored Rust package detections remain present.
+
+Full original-record comparison and same-database vulnerability parity still require qualification for this final candidate.
 `bash deploy/baremetal/toolbox_test.sh` reports `5 passed, 0 failed`, including successful reconstruction and malformed/tampered/bounded-input refusal cases.
 
 The complete original-record comparison caught missing control-file attribution in the first reconstruction.
 The builder now exports retained package control files as well as lists and checksums; the scanner treats them as data.
 The corrected image remains 135,979,008 bytes, with digest `0d8ef1a73c70b21faf9173d0b3d7751a95cd8aa6180e8398882c5c4ac9cd211f`.
+
 Its release JSON is 915,521 bytes, below admission's 1,048,576-byte bound.
 
 The independent baseline extraction was purged with dpkg, retaining its original database for scanning.
