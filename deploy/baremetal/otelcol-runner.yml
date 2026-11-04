@@ -1,0 +1,53 @@
+# Host telemetry only. The paired nftables rule rejects non-root senders.
+# No logs receiver pipeline: tenant tool output remains on the host.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+    spike_limit_mib: 50
+  delta_to_cumulative:
+    max_stale: 5m
+    max_streams: 10000
+  batch:
+    timeout: 5s
+    send_batch_size: 8192
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+  basicauth/grafana:
+    client_auth:
+      username: ${env:GRAFANA_OTLP_INSTANCE_ID}
+      password: ${env:GRAFANA_OTLP_API_KEY}
+exporters:
+  otlp_http/grafana:
+    endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
+    auth:
+      authenticator: basicauth/grafana
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+service:
+  extensions: [health_check, basicauth/grafana]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/grafana]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, delta_to_cumulative, batch]
+      exporters: [otlp_http/grafana]
+  telemetry:
+    logs:
+      level: info

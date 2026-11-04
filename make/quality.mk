@@ -186,3 +186,9 @@ check-playbooks-refs:  ## playbooks/ reference integrity only (cheap; what a Mak
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] reference integrity failed"; exit 1; fi; \
 	echo "✓ [playbooks] all references resolve"
+
+.PHONY: check-runner-collector-admission
+check-deploy-safety: check-runner-collector-admission
+check-runner-collector-admission:  ## Prove the root-only receiver boundary in an isolated network namespace
+	@docker build --tag agentsfleet-runner-collector-admission-test --file scripts/fixtures/runner-collector-admission.Dockerfile scripts/fixtures
+	@docker run --rm --network=none --cap-add=NET_ADMIN --env NO_PROXY=127.0.0.1,localhost --mount "type=bind,src=$(CURDIR),dst=/repository,readonly" agentsfleet-runner-collector-admission-test
