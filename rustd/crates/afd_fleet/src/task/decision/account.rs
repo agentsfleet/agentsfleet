@@ -50,9 +50,9 @@ pub(super) fn classify(call: &Call, receipt: &DecisionReceipt, digest: &str) -> 
     match receipt {
         DecisionReceipt::Provider { result } => match result
             .usage
-            .filter(|usage| usage.uncached_input().is_some())
+            .and_then(|usage| usage.uncached_input().map(|uncached| (usage, uncached)))
         {
-            Some(usage) => known(call, usage, digest),
+            Some((usage, uncached)) => known(call, usage, uncached, digest),
             None => unknown(call, digest),
         },
         DecisionReceipt::Unknown { .. } => unknown(call, digest),
@@ -76,7 +76,7 @@ fn unknown(call: &Call, digest: &str) -> Result<Plan> {
     }
 }
 
-fn known(call: &Call, usage: DecisionUsage, digest: &str) -> Result<Plan> {
+fn known(call: &Call, usage: DecisionUsage, uncached: u32, digest: &str) -> Result<Plan> {
     let seq = u32::try_from(call.usage_sequence)
         .ok()
         .filter(|seq| *seq >= DECISION_SEQ_BASE)
@@ -84,7 +84,7 @@ fn known(call: &Call, usage: DecisionUsage, digest: &str) -> Result<Plan> {
     let line = UsageLine {
         seq,
         at: call.price_snapshot.0.at,
-        input_tokens: usage.uncached_input().ok_or(TaskRefusal::ReplayConflict)?,
+        input_tokens: uncached,
         cached_input_tokens: usage.cached_input_tokens,
         cache_write_tokens: usage.cache_write_tokens,
         cache_write_5m_tokens: 0,

@@ -841,8 +841,8 @@ Indy's merge instruction:
 
 > “PR241 - If this is green, greptile resolved in docs, merge the PR.”
 
-Implementation PR 803 remains draft and incomplete; its build and kernel coverage retries still fail during toolbox package setup.
-Do not report a passing Rust patch grade: the kernel report and combined grade are unavailable on the current pushed head.
+Implementation PR 803 remains draft and incomplete.
+The earlier `6db32ee2d` build and kernel coverage retries failed during toolbox package setup; they did not produce a passing Rust grade.
 
 The latest “995” Rust request is conservatively interpreted as above 99.5% of changed lines.
 Make and Codecov now enforce 99.51% for the patch; existing workspace/per-file floors and exclusions are unchanged.
@@ -851,7 +851,7 @@ Make and Codecov now enforce 99.51% for the patch; existing workspace/per-file f
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; merge `0e31bc918` adds PR 802/main `1920ff345`. Combined source passes final verification, unit selections and clean integration. Repeat the freshness check before each push. |
+| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; merge `0e31bc918` adds PR 802/main `1920ff345`. Local merge `e90db793e` adds PR 801/main `27deff642`; its full unit and clean storage gates pass after the corrections below. Repeat the freshness check before each push. |
 | Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Native physical-call accounting passes unit/integration gates; full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Align unfinished setup actions | `components/layout/DraftSidebarItem.tsx` uses shared grid columns: title, reachable Delete, then Resume. Desktop/mobile measurements, app lint and 100% coverage pass; the same geometry assertion fails against the previous component. Logs: `/tmp/m236-ui-polish-browser.log`, `/tmp/m236-resume-parent-red.log`. |
@@ -859,6 +859,42 @@ Make and Codecov now enforce 99.51% for the patch; existing workspace/per-file f
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. The scoped encryption component passes 68 tests and Astra review; native storage, transfer, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. Financial recovery retains progress across busy pages and cancellation. Exporter and structured-log scenarios check recovery attempts, age, latency and bounded labels. No benchmark result or complete DT performance trace is claimed. |
 | Architecture and companion docs | The prior 39-page architecture and 39-page public-documentation reviews remain attributed above. [Docs PR #241](https://github.com/agentsfleet/docs/pull/241) merged as `aa0fa1c5`, including schedule activity guides and explicit future-feature notes. All local docs gates, both CI jobs and Greptile passed; no unresolved threads remained. New API pages follow the lead merge. |
-| Runner hang and same-PR scope | Native ending guard, finite snapshots, cooperative waits and shared-link invalidation are implemented and reviewed. The final runner shard passed 1,602 tests; all Rust shards and all four 100% TypeScript gates have passing evidence. Clean integration passed 1,513 regular and three exclusive tests; final checkpoint verification passed. All changes stay in PR 803. |
-| Schedule activity and other event inventory | Backend transactions, fire snapshots, queued history, readable UI and native run details are implemented locally. All four TypeScript package coverage gates passed at 100%; 58 browser checks passed. Corrected storage passed 1,524 regular and three exclusive tests; the cold library unit gate passed 3,398. Other event types remain inventory only. |
+| Runner hang and same-PR scope | Native ending guard, finite snapshots, cooperative waits and shared-link invalidation are implemented and reviewed. The prior runner checkpoint passed 1,602 tests; all Rust shards and all four 100% TypeScript gates have passing evidence. Clean integration passed 1,513 regular and three exclusive tests; final checkpoint verification passed. All changes stay in PR 803. |
+| Schedule activity and other event inventory | Commit `69b8b8da7` publishes backend transactions, fire snapshots, queued history, readable UI and native run details. All four TypeScript package coverage gates passed at 100%; 58 browser checks passed. Corrected storage passed 1,524 regular and three exclusive tests; the cold library unit gate passed 3,398. Other event types remain inventory only. |
 | Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. [Implementation draft #803](https://github.com/agentsfleet/agentsfleet/pull/803) retains the authorized single-PR scope and remains incomplete. Docs #241 merged under Indy's explicit green-check instruction. Full implementation, Rust coverage, CI and final review conditions still gate #803. |
+
+## Main integration and decision evidence
+
+Published `69b8b8da7` includes schedule lifecycle activity, run-detail freshness and structured decision-diagnostic checks.
+Main advanced to `27deff642` through PR 801 during its checks; local merge `e90db793e` retains both telemetry implementations.
+The merge preserves bounded, repeatable-read catalogue snapshots, schedule fire descriptions and timestamps, and both metric families.
+
+Astra found a new daemon test fixture missing the required `ModelUpdate.decision`; `decision: None` closes that compile failure.
+The first merged `make test-unit-all` then exposed two daemon task histograms still declaring delta totals.
+`/tmp/m236-main801-unit-all.log` records the failed cumulative-family assertion; no test threshold changed.
+
+Both task histogram declarations now select cumulative daemon export in `docs/metrics.census.tsv`.
+Runner decision histograms retain delta totals and their existing collector conversion.
+Astra checked the selected providers, producer paths and census declarations and found no remaining inconsistency.
+
+The corrected `make test-unit-all` passed 5,159 Rust tests: runner 1,604, daemon 143 and libraries 3,412.
+All four TypeScript package coverage gates passed at 100% in `/tmp/m236-main801-unit-all-fixed.log`.
+The formerly failing cumulative-family assertion passes in that same run.
+
+A bundled native accounting scenario now covers absent cache-write prices and a valid price/token combination whose charge exceeds signed 64-bit capacity.
+It checks retained usage/reservations, canonical replay, rejected contradictory receipts and retries, frozen prices and complete durable evidence.
+Overflow diagnostics must identify the exact native call and registered error code; Astra closed the initial correlation gap.
+
+The accounting helper calculates uncached input once and passes the checked count onward.
+This removes an unreachable recomputation error without adding a new abstraction or a Mutex.
+
+Clean `make test-integration-rustd` passed 1,530 regular and three exclusive tests in `/tmp/m236-main801-integration.log`.
+The bundled unpriceable-usage scenario passes in that full storage lane.
+
+Greptile completed its review of `69b8b8da7` with one documentation finding.
+`docs/AUTH.md` and `billing_and_provider_keys.md` now distinguish the implemented reservation/receipt routes from unfinished runner integration.
+The thread has an acknowledgement; published correction and resolution remain pending the next push.
+
+All ordinary CI workflows passed on `69b8b8da7`; the kernel coverage job failed before tests during pinned toolbox package setup.
+Its single retry also failed during package setup, in job `126796864947` of run `41889908716`.
+The other three reports are diagnostic evidence only; no complete Rust grade or merge readiness is claimed.
