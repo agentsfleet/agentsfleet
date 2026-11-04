@@ -26,7 +26,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Runner telemetry | spans and families declared in `docs/metrics.runner.census.tsv`; dev collector installed and first real lease export verified Nov 04, 2026 | traces and metrics through the dedicated host collector; logs stay local; never through `otelcol-{env}` | §`agentsfleet-runner` — a collector of its own |
 | Library read series | 124 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
 | Trace budget | daemon: none yet, one span per matched request · runner: 256 per lease, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
-| OTLP loss | drop, never block; nothing retries | a full batch queue drops; OTLP carries no idempotency key, so a resent delta window would count twice | §"The Rust daemon's export path, as built" |
+| OTLP loss | drop, never block; no exporter retry | bounded queues; later cumulative metric collections can recover totals while the source process survives | §"The Rust daemon's export path, as built" |
 | PostHog events | 11 captured, 2 declared-uncaptured | `FleetCompleted` fires only on a report's first settle; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
 | Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
 | Tenant identity on metrics | never | exact per-workspace cost is a Postgres ledger query, which is exact rather than bounded | §Label registry |
@@ -680,33 +680,31 @@ client awaited there would have no driver.
   read, with an empty reload slot; boot fills the slot with two bridges, one
   for spans and one for events, over the SAME emits stderr already writes.
   Stderr stays logfmt with the exporter present, absent or failed.
-- **Metrics** ride TWO meter providers, because the SDK asks the exporter for
-  its temporality and the census declares it per family. The cost families
-  report windows (delta) and the runtime families report running totals
-  (cumulative); one provider would silently rewrite half of them. Each
-  provider's periodic reader collects every 5 s (`COLLECT_INTERVAL` in
-  `rustd/crates/afd_otlp/src/pipelines/mod.rs`). The reader posts through a counting wrapper whose number is collection CYCLES
-  the exporter failed to send. Every census family is claimed from the
-  registry at boot under its declared kind and series ceiling, and a family
-  with no producer fails the census test: a mechanism this daemon does not
-  run has no census row, so nothing is fed zeros.
+- **Metrics** use source-owned cumulative totals for every daemon counter and histogram.
+  The census routes them to the existing cumulative provider before the shared collector endpoint.
+  Collector selection cannot split a daemon's accumulation.
 
-Nothing retries: OTLP carries no idempotency key, and a resent delta window
-counts twice. A collector that is down costs dropped batches and a climbing
-counter, never latency on a request. That is the property `export/mod.rs` states
-and `an_unreachable_collector_costs_spans_and_not_requests` grades on a real
-socket. The supervised `otlp_export` task does no exporting. It samples this
-process's resident set on the metric reader's own 5 s cadence and publishes it
-into the cell the gauge callback loads — a reading taken from `/proc` inside
-that callback would run under the SDK's pipeline lock, where a stalling
-syscall takes every family silent at once. On cancellation it force-flushes
-every provider before the pools they describe are dropped, the
-`analytics_flush` ordering for the same reason. The flush runs on the blocking
-pool, because `PeriodicReader::force_flush` parks the thread that calls it and
-has no timeout at all, and a task parked in a synchronous call has no await
-point for the supervisor's join deadline to cancel at. The endpoint
-is logged as its SOURCE, the knob's name, never its value, because the header
-beside it carries a credential.
+  The common builder also retains a delta provider for runner families declared as windows.
+  Both readers collect every 5 s (`COLLECT_INTERVAL` in `rustd/crates/afd_otlp/src/pipelines/mod.rs`).
+  Their counting wrappers record failed collection cycles.
+
+  Boot claims each census family under its declared kind and series ceiling.
+  The parity test rejects families without producers.
+  Families without measurements receive no invented zero points.
+
+Exporters make one attempt; a failed batch increments its counter without blocking requests.
+Later cumulative exports include earlier measurements while the process survives.
+`an_unreachable_collector_costs_spans_and_not_requests` checks the request-path property on a real socket.
+
+The supervised `otlp_export` task samples the resident set every 5 s; the SDK readers own exporting.
+Gauge callbacks load its cell rather than reading `/proc` under the pipeline lock.
+A stalled callback would silence every family's collection.
+
+Cancellation force-flushes every provider before dropping the pools, matching the `analytics_flush` ordering.
+Flush runs on the blocking pool because the SDK call parks its thread without a timeout.
+A blocked asynchronous task has no await point for the supervisor's join deadline to cancel.
+
+Endpoint logging records only the source knob's name, never its value or the accompanying credential.
 
 ## Label registry — money stays in Postgres
 
@@ -780,14 +778,13 @@ the GenAI conventions, because each divergence was chosen, not accidental:
 - `agentsfleet.billing.credit.consumed` counts nanocredits by charge class;
   nanocredits are money, not time.
 
-Every committed debit emits once; uncommitted, stale-fenced, or replayed
-operations emit nothing. Flush coalesces the evented cost families into one
-**delta** dataPoint per (metric, labelset), converted to cumulative
-downstream; the runtime snapshot counters are natively cumulative and need no
-conversion (the metric-family registry documents the temporality split). With
-the pull endpoint retired, this push is the one metrics egress — when the pipe
-itself dies, the store-side `metrics-exporter-dead` absence rule is the
-watchdog.
+Every committed debit emits once; uncommitted, stale-fenced, or replayed operations emit nothing.
+The daemon accumulates cost counters and histograms into cumulative points per metric and label set.
+The collector forwards those totals without owning their accumulation.
+
+A process restart starts a new cumulative interval.
+The SDK carries each interval's start timestamp, and the trusted service instance identifies its source.
+The store-side `metrics-exporter-dead` absence rule watches this sole metrics export path.
 
 ## Focused operator dashboards
 

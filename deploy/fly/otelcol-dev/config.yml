@@ -1,8 +1,7 @@
-# The authenticated collector hop forwards traces and logs without transformation.
-# Grafana metrics ingest rejects delta sums and explicit histograms, so metrics
-# become cumulative here. Names, resource attributes and metric labels stay intact.
-# The processor holds bounded in-memory state; a restart starts a new cumulative
-# window. The existing queue remains in memory and does not make delivery durable.
+# The authenticated hop forwards daemon cumulative totals unchanged.
+# Accumulation belongs to the source process before this shared endpoint.
+# The bounded converter accepts older delta producers during rollout; it is
+# not the accumulator for new daemon metrics. The queue remains in memory.
 
 receivers:
   otlp:
@@ -22,7 +21,7 @@ receivers:
 
 processors:
   # Grafana metrics ingest requires cumulative sums and explicit histograms.
-  # Keep delta-window producers unchanged and convert only at this hop.
+  # New daemon metrics are already cumulative; only older delta frames need this.
   delta_to_cumulative:
     max_stale: 5m
     max_streams: 10000
