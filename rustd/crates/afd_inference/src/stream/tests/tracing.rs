@@ -61,9 +61,15 @@ async fn completed_stream_has_one_timing_pair_and_content_free_first_text() {
     let fields = format!("{:?}", captured.events());
     let calibration = captured.only("model_input_calibration");
     assert_eq!(calibration.field("actual_input_tokens"), Some("3"));
-    assert_eq!(calibration.field("method"), Some("utf8_estimate"));
+    assert_eq!(calibration.field("method"), Some("o200k_proxy_estimate"));
     assert!(calibration.field("measured_input_tokens").is_some());
     assert!(calibration.field("revision").is_some());
+    assert!(
+        calibration
+            .field("measure_us")
+            .is_some_and(|micros| micros.parse::<u64>().is_ok()),
+        "the calibration names how long the local count took"
+    );
     assert_eq!(calibration.field("route_id").map(str::len), Some(64));
     for private in ["private prompt", "private-credential", "Hi 🌿"] {
         assert!(

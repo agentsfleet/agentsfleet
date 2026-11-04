@@ -14,7 +14,7 @@ import type { EventDetail, EventRow } from "@/lib/api/events";
  *
  * Routed through a Server Action, never a browser fetch: the dashboard's
  * credential does not leave the server, and a lint enforces it
- * (`scripts/check_app_source.py`, rule app-client-credential). That is also why this hook
+ * (the ast-grep rule app-client-credential). That is also why this hook
  * takes no token and no caller threads one down.
  *
  * Returns `null` while in flight and on failure. Both render as "not recorded"

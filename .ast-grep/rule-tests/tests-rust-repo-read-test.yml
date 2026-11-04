@@ -1,0 +1,29 @@
+id: tests-rust-repo-read
+valid:
+  - |
+    let s = std::fs::read_to_string(dir.path().join("a.txt"));
+  - |
+    let s = include_str!("fixtures/a.json");
+  - |
+    let s = fs::read_to_string("/etc/hosts");
+  - |
+    let s = fs::read_to_string(path);
+  - |
+    let n = file.read_to_string(&mut buf);
+invalid:
+  - |
+    let s = include_str!("../../schema/a.sql");
+  - |
+    let s = include_str!("data.json");
+  - |
+    let s = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("x"));
+  - |
+    let f = File::open("src/lib.rs");
+  - |
+    let d = fs::read_dir(PathBuf::from("docs"));
+  - |
+    for entry in WalkDir::new("../docs") {}
+  - |
+    assert!(fs::read_to_string(env!("CARGO_MANIFEST_DIR")).is_ok());
+  - |
+    let s = read_to_string("Cargo.toml");

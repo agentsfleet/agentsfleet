@@ -1,0 +1,19 @@
+id: docs-api-sentence-length
+valid:
+  - |
+    {"description": "word word word word word word word word word word word word word word word word word word word word word word word word word."}
+  - |
+    {"description": "w w w w w w w w w w w w w w w w w w w w. w w w w w w w w w w w w w w w w w w w w."}
+  - |
+    {"description": "w w w w w w w w w w w w w w w w w w w w.\n\nw w w w w w w w w w w w w w w w w w w w."}
+  - |
+    {"description": "Matches `data.kind`. w w w w w w w w w w w w w w w w w w w w."}
+  - |
+    {"description": "UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011 UZ-AUTH-011."}
+  - |
+    {"description": "Lists.\nw w w w w w w w w w w w w w w w w w w w w w w w a\nwhitespace-free."}
+invalid:
+  - |
+    {"description": "word word word word word word word word word word word word word word word word word word word word word word word word word word."}
+  - |
+    {"summary": "v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2 v1.2"}

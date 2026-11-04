@@ -11,6 +11,11 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+
+[package.metadata.cargo-shear]
+# Named only inside `#[sqlx(try_from = "jiff_sqlx::Timestamp")]`, a string the
+# source scan does not read.
+ignored = ["jiff-sqlx"]
 [lints]
 workspace = true
 
@@ -69,5 +74,3 @@ afd_crypto = { workspace = true, features = ["test-util"] }
 # sample claims to be. A dev-dependency on a crate this one already depends
 # on, for a type only the suite names.
 sqlx.workspace = true
-# So the event macros in the code under test evaluate their fields.
-tracing-subscriber.workspace = true

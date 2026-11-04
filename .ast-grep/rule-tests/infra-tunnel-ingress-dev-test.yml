@@ -1,0 +1,34 @@
+id: infra-tunnel-ingress-dev
+valid:
+  - |
+    ingress:
+      - hostname: api-dev.agentsfleet.net
+        service: http://agentsfleetd-dev.internal:3000
+      - service: http_status:404
+  - |
+    ingress:
+      - hostname: "api-dev.agentsfleet.net"
+        service: "http://agentsfleetd-dev.internal:3000"
+      - service: "http_status:404"
+invalid:
+  - |
+    ingress:
+      - hostname: other.example.com
+        service: http://agentsfleetd-dev.internal:3000
+      - service: http_status:404
+  - |
+    ingress:
+      - hostname: api-dev.agentsfleet.net
+        service: http://elsewhere.internal:3000
+      - service: http_status:404
+  - |
+    ingress:
+      - service: http_status:404
+      - hostname: api-dev.agentsfleet.net
+        service: http://agentsfleetd-dev.internal:3000
+  - |
+    ingress:
+      - hostname: api-dev.agentsfleet.net
+        service: http://agentsfleetd-dev.internal:3000
+  - |
+    tunnel: abc

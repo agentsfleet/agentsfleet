@@ -1,0 +1,17 @@
+id: docs-api-internal-detail
+valid:
+  - |
+    {"description": "Returns the fleet and its model name."}
+invalid:
+  - |
+    {"description": "Reads core.users first."}
+  - |
+    {"summary": "Backed by Redis."}
+  - |
+    {"description": "See src/handler.rs."}
+  - |
+    {"description": "Added in M238_001."}
+  - |
+    {"description": "Enforced by RULE VLT."}
+  - |
+    {"description": "Lists.\nsrc/handler.rs holds it."}

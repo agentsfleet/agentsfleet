@@ -1,0 +1,19 @@
+id: wf-no-workspace-pointer
+valid:
+  - |
+    jobs:
+      d:
+        steps:
+          - run: echo ready
+invalid:
+  - |
+    jobs:
+      d:
+        env:
+          ADMIN: ${{ vars.PLATFORM_ADMIN_WORKSPACE_ID }}
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set PLATFORM_ADMIN_WORKSPACE_ID="$X"

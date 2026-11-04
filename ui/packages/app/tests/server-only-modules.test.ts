@@ -7,13 +7,13 @@ import { findServerOnlyModule, findStaleMarker } from "../scripts/server-only-mo
 // the sources it reads, so they are proved here without one: a chunk carrying
 // the marker is a leak, a runtime without the marker is a stale guard.
 
-const EFFECT = { name: "effect", marker: "effect/Effect/Yield", source: "node_modules/effect/dist/internal/core.js" };
+const EFFECT = { name: "effect", marker: "effect/Effect/Yield", source: "effect/dist/internal/core.js" };
 const MARKERS = [EFFECT];
 const CLEAN_CHUNK = "export const a = 1;";
 
 describe("the server-only module guard", () => {
   it("the installed Effect runtime carries the marker the guard looks for", () => {
-    const runtime = readFileSync(path.resolve(__dirname, "..", EFFECT.source), "utf8");
+    const runtime = readFileSync(path.resolve(__dirname, "../node_modules", EFFECT.source), "utf8");
     expect(findStaleMarker(new Map([[EFFECT.name, runtime]]), MARKERS)).toBeNull();
   });
 

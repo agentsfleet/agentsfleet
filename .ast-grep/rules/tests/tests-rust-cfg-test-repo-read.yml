@@ -1,0 +1,27 @@
+# A test calls the code it proves; it never reads the repository's files. See
+# tests-js-repo-read for why.
+#
+# A read is `include_str!`, `include_bytes!`, an `fs` read or walk, `File::open`
+# or `WalkDir::new` whose own arguments anchor the path in the crate:
+# `env!("CARGO_MANIFEST_DIR")`, a `../` literal, a relative `Path::new` or
+# `PathBuf::from`, or a relative path literal handed whole to the read. A path
+# through a fixture directory is the test's own input. A path reached through a
+# variable is not followed.
+#
+# This rule covers `#[cfg(test)]` code outside test files; tests-rust-repo-read
+# covers the test files themselves, whole.
+id: tests-rust-cfg-test-repo-read
+language: Rust
+severity: error
+message: a test reads a repository file; call the code, or move the check to a lint
+files:
+  - "**/*.rs"
+ignores:
+  - "**/target/**"
+  - "**/tests/**"
+  - "**/tests.rs"
+  - "**/*_tests.rs"
+rule:
+  all:
+    - matches: rust-repo-read
+    - matches: rust-in-cfg-test

@@ -1,0 +1,25 @@
+# What `--help` prints: a string in a `description` property or in a
+# `.description(...)` call. Shared by the docs-cli-* rules.
+id: cli-help-text
+language: Tsx
+rule:
+  all:
+    - any:
+        - kind: string
+        - kind: template_string
+    - any:
+        - inside:
+            kind: pair
+            has:
+              field: key
+              regex: '^description$'
+        - inside:
+            kind: arguments
+            inside:
+              kind: call_expression
+              has:
+                field: function
+                kind: member_expression
+                has:
+                  field: property
+                  regex: '^description$'

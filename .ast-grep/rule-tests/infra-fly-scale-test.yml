@@ -1,0 +1,50 @@
+id: infra-fly-scale
+valid:
+  - |
+    jobs:
+      release:
+        steps:
+          - run: |
+              DESIRED_API_MACHINES=3
+              flyctl scale count "$DESIRED_API_MACHINES" --yes
+              test "$TOTAL" -eq "$DESIRED_API_MACHINES"
+              test "$RUNNING" -eq "$DESIRED_API_MACHINES"
+invalid:
+  - |
+    jobs:
+      release:
+        steps:
+          - run: |
+              DESIRED_API_MACHINES=3
+              test "$TOTAL" -eq "$DESIRED_API_MACHINES"
+              test "$RUNNING" -eq "$DESIRED_API_MACHINES"
+  - |
+    jobs:
+      release:
+        steps:
+          - run: |
+              DESIRED_API_MACHINES=3
+              flyctl scale count "$DESIRED_API_MACHINES" --yes
+              test "$TOTAL" -eq "$DESIRED_API_MACHINES"
+
+  - |
+    jobs:
+      release:
+        steps:
+          - run: |
+              flyctl scale count "$DESIRED_API_MACHINES" --yes
+              test "$TOTAL" -eq "$DESIRED_API_MACHINES"
+              test "$RUNNING" -eq "$DESIRED_API_MACHINES"
+  - |
+    jobs:
+      release:
+        steps:
+          - run: echo none
+  - |
+    jobs:
+      release:
+        steps:
+          - run: |
+              DESIRED_API_MACHINES=3
+              flyctl scale count "$DESIRED_API_MACHINES" --yes
+              test "$RUNNING" -eq "$DESIRED_API_MACHINES"

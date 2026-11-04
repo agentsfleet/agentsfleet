@@ -1,0 +1,27 @@
+id: tests-shell-repo-read
+valid:
+  - |
+    cat "$tmp/out.txt"
+  - |
+    cat "$(dirname "${BASH_SOURCE[0]}")/run.sh" | bash
+  - |
+    cat "$ROOT/x.sh" > "$tmp/x.sh"
+  - |
+    bash < "$(git rev-parse --show-toplevel)/scripts/x.sh"
+  - |
+    grep -q needle "$ROOT/fixtures/a.txt"
+  - |
+    # cat "$ROOT/docs/x.md"
+invalid:
+  - |
+    grep -q needle "$(git rev-parse --show-toplevel)/Makefile"
+  - |
+    cat "${ROOT}/docs/x.md"
+  - |
+    sed -n 1p ../README.md
+  - |
+    jq . "$(dirname "$0")/../x.json"
+  - |
+    while read -r line; do :; done < "$REPO_ROOT/x.txt"
+  - |
+    version="$(< ../VERSION)"

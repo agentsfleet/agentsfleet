@@ -2,8 +2,8 @@
 # arbitrary-value utility (`bg-[#fff]`, `w-[42px]`) or a hex colour in a class
 # string bypasses the tokens. A bracket followed by `:` is an arbitrary variant
 # (`data-[state=checked]:`), which is standard. Widening the file list is a
-# design decision, not a lint change. That both files exist is checked by
-# scripts/check_design_system_source.py.
+# design decision, not a lint change. A renamed file leaves this rule matching
+# nothing; src/index.ts exports both, so the typecheck fails on a rename first.
 id: ds-mapped-tokens
 language: Tsx
 severity: error

@@ -145,8 +145,6 @@ afd_runner = { workspace = true, features = ["test-util"] }
 # happen (`dispatch/write_rust.md`: "Concurrency work needs a deterministic
 # contention test, not only a happy-path asynchronous test").
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
-# Inspect Dragonfly directly to prove the absence of inbound queue keys.
-redis.workspace = true
 # Installs a subscriber so `tracing` event macros evaluate their fields at all;
 # without one a diagnostic line reads as unreachable to llvm-cov.
 tracing-subscriber.workspace = true

@@ -27,19 +27,6 @@ const REPLICAS: &str = "datastore_replicas";
 const LEDGER_BACKLOG_ROWS: &str = "ledger_backlog_rows";
 const LEDGER_BACKLOG_OLDEST_AGE_MS: &str = "ledger_backlog_oldest_age_ms";
 
-/// Every key [`record`] writes, for a grader or a suite that checks the
-/// report accounts for each class separately.
-pub const MEASUREMENTS: &[&str] = &[
-    STREAMS,
-    STREAMS_WALKED,
-    RETAINED_ENTRIES,
-    PENDING_ENTRIES,
-    PRIMARIES,
-    REPLICAS,
-    LEDGER_BACKLOG_ROWS,
-    LEDGER_BACKLOG_OLDEST_AGE_MS,
-];
-
 /// Samples both stores and records every class on `report`.
 ///
 /// # Errors

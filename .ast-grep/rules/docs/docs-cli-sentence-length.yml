@@ -1,0 +1,13 @@
+# DOC-02 in command help, counted as docs-api-sentence-length counts.
+# Command help is what `--help` prints: every `description` property and
+# every `.description(...)` call under cli/src/program.
+id: docs-cli-sentence-length
+language: Tsx
+severity: error
+message: a command help sentence is longer than 25 words (DOC-02)
+files:
+  - cli/src/program/**/*.ts
+rule:
+  all:
+    - matches: cli-help-text
+    - regex: '(?:^|[^\w\\])(?:\w(?:[\w''-]*\w)?\b(?:[^\w.!?\\''-]|\\.)*[.!?]*){25,}\w'
