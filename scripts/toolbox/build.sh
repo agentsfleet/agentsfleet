@@ -180,12 +180,13 @@ build_root() {
     sources+=("deb http://snapshot.debian.org/archive/$archive_name/$snapshot $archive_suite main")
   done
   # Keep archives for provenance; finalization owns cleanup so apt cannot recreate its state.
-  SOURCE_DATE_EPOCH="$epoch" mmdebstrap --quiet --mode="$mode" --variant=minbase --skip=essential/unlink --skip=cleanup/apt \
+  # Callers capture stdout as the image path; bootstrap diagnostics belong on stderr.
+  SOURCE_DATE_EPOCH="$epoch" mmdebstrap --verbose --mode="$mode" --variant=minbase --skip=essential/unlink --skip=cleanup/apt \
     --include="$include" --aptopt='Acquire::Check-Valid-Until "false"' \
     --dpkgopt='path-exclude=/usr/share/doc/*' --dpkgopt='path-include=/usr/share/doc/*/copyright' \
     --dpkgopt='path-exclude=/usr/share/man/*' --dpkgopt='path-exclude=/usr/share/locale/*' \
     --dpkgopt='path-exclude=/usr/share/info/*' --keyring="$keyring" \
-    "${hooks[@]}" "$suite" "$work/root.tar" "${sources[@]}"
+    "${hooks[@]}" "$suite" "$work/root.tar" "${sources[@]}" >&2
 }
 
 assemble_image() {

@@ -22,7 +22,7 @@ function CurrentWork({workspaceId, fleetId, revision}: Props) {
   const {resource, retry} = useTaskRead(load, revision);
   const page = confirmed(resource);
   if (resource.kind === "ready" && resource.value.items.length === 0) return null;
-  return <section aria-label="Current work" className="mx-auto mb-sm min-h-0 max-h-[min(24rem,35dvh)] w-full max-w-chat overflow-y-auto overscroll-contain rounded-lg border border-border px-lg pt-md">
+  return <section aria-label="Current work" className="ph-no-capture ph-no-record mx-auto mb-sm min-h-0 max-h-[min(24rem,35dvh)] w-full max-w-chat overflow-y-auto overscroll-contain rounded-lg border border-border px-lg pt-md">
     <div className="flex items-center justify-between gap-sm">
       <h2 className="text-label font-medium">Current work{page ? ` · ${page.items.length}` : ""}</h2>
       <Button variant="ghost" size="sm" onClick={retry} aria-label="Refresh current work">Refresh</Button>
