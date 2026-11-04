@@ -15,13 +15,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Prototype:** v2.0.0
 **Milestone:** M233
 **Workstream:** 002
-**Date:** Oct 26, 2026
+**Date:** Nov 04, 2026
 **Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: the production daemon size (three `shared-cpu-4x` 4 GB machines at about $80 a month, or three `performance-2x` 4 GB at $198 a month; source in Discovery) is chosen without per-event evidence of where a chat's time goes
 **Categories:** API, INFRA, OBS, UI
 **Batch:** B1 — single workstream; Section prerequisites are stated in each Section
 **Branch:** chore/m238-dev-round-trip
-**Baseline revision:** d6d279cfde5f3c6ec5eb75b088fa1d2bac1af371
+**Baseline revision:** 11883fdaba2197adf8931d334396ba8b3bb9eb5b
 **Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M238_001 (merged in #799); M233_001 shipped §0.1 and §5 in #786
@@ -32,19 +32,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2–§0.3). §0.1 and §5 shipped in #786 and are historical context below, excluded from this workstream. M238_001 changed the runtime path: memory arrives in the lease and capture travels in the report. Separate hydrate/capture spans therefore describe fallback paths only. The current round-trip row reads `fleet.delivery` and its seven `agentsfleet.delivery.*_ms` attributes from M238, with fleet identity in `gen_ai.agent.id`. Per-verb and edge instrumentation remain unstarted.
+This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2–§0.3). §0.1 and §5 shipped in #786 and are excluded from this workstream; their evidence remains in M233_001. M238_001 changed the runtime path: memory arrives in the lease and capture travels in the report. Separate hydrate/capture spans therefore describe fallback paths only. The current round-trip row reads `fleet.delivery` and its seven `agentsfleet.delivery.*_ms` attributes from M238, with fleet identity in `gen_ai.agent.id`. Per-verb and edge instrumentation remain unstarted.
 
-**Goal (testable):** For N consecutive dev chat probes, (1) the steer, lease, hydrate, capture and report spans and the runner's `runner.lease` span are all found for each event; (2) in every verb span, span duration minus the sum of its stage attributes is under the larger of 10% and 5 ms; and (3) browser `af:accepted − af:send` ≥ route `auth + upstream` ≥ daemon steer span duration. Edge out (the `event_complete` frame's trip to the browser) is shown as a labelled remainder and is not checked.
+**Goal (testable):** The current §4 row returns per-fleet p95/p99 over delivery duration and reached M238 segment attributes, using the declared units and bounded sample. Missing attributes remain absent. The independent §1–§3 follow-up will add reached daemon stages, runner spans and edge timing, prove stage residuals under max(10%, 5 ms), and verify browser accepted-minus-send ≥ route auth-plus-upstream ≥ daemon steer duration. Memory-in-lease and capture-in-report are the normal M238 path; standalone hydrate/capture spans are required only when those fallback calls occur.
 
 **Problem:** An operator cannot see where a chat's 1.5–1.9 s goes. Three dev chats took 1.53–1.94 s from Send to `event_complete` on Oct 26, 2026 at 05:11 UTC. Splitting one chat into stages took debug-level SQL logs, Postgres timestamps, a browser console and a shell on the runner host. Grafana shows each daemon request as an unrelated span, nothing from the runner, and nothing from the Next.js steer route.
 
 **Solution summary:** Today the daemon's request spans carry no event identity, the runner's stage stopwatch reaches only its host's journal, and the edge reports nothing. This spec adds:
-- **Daemon:** the handlers for the five daemon calls a chat passes through (steer, lease, hydrate, capture, report) write the event or fleet identity and per-stage durations onto the request span. A span layer installed outside the reload slot carries them to the exporter. No metric family is added.
+- **Daemon:** the normal steer, lease and report handlers, plus standalone hydrate and capture handlers when those fallback calls occur, write the event or fleet identity and per-stage durations onto the request span. A span layer installed outside the reload slot carries them to the exporter. No metric family is added.
 - **Runner host:** the runner collector, whose design `observability.md` records as decided (Oct 4, 2026), is built for traces and runner metrics. An nftables rule admits only root-owned host processes, which excludes sandboxes. The runner's existing stopwatch is written to `runner.lease`.
 - **Edge:** the Next.js steer route returns `Server-Timing`, and the browser records `performance` marks.
 - **Dashboard:** the observability dashboard gains a round-trip row read from Tempo.
 
-§0 carries owner-requested dev changes (sizing, log level, Dragonfly downsizing, a rule edit) that are not part of the stage-timing design.
+§0 carries the remaining owner-requested sizing and throttle checks. Log-level configuration and its rule shipped in M233_001 §0.1.
 
 **Risks and limits:**
 - **Collector key:** the key sits on a multi-tenant host whose sandboxes share one kernel (D1, Discovery).
@@ -55,15 +55,15 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 
 ## PR Intent & comprehension handshake
 
-- **PR title (current scope):** Keep saved fleet setup and activity in chat
+- **PR title (current scope):** Add fleet round-trip percentile panels from delivery spans
 - **Intent (one sentence):** Indy (project owner) can open one dashboard, pick a fleet and a chat event, and see where the time between Send and the reply went, so optimisations and production sizing are chosen from evidence.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — This pull request implements §4 using the M238 delivery span already exported on dev. Assumptions: §1–§3 remain unstarted; no fleet identity enters a metric; absent segments are not zero; the dashboard assets are prepared for review, with no claim of live application.
 
 ## Implementing agent — read these first
 
 1. `docs/architecture/observability.md` — §Traces (leases are separate root spans joined by attribute; the daemon has no span budget, only `SPAN_QUEUE`), §"`agentsfleet-runner` — a collector of its own", and §"Signal routing" (the fail-closed rules for runner logs, which this spec leaves out).
 2. `rustd/crates/agentsfleetd/src/logs.rs` — the subscriber layout; the OpenTelemetry span bridge sits in a `reload` slot that refuses downcasts, which is why §1 moves the span layer out of it.
-3. `rustd/crates/afr_supervisor/src/lease_loop/segments.rs` and `rustd/crates/afd_observability/src/metrics/label/fleet.rs` — the existing stage names: the runner's `Segments` and the daemon's four `DeliveryStage` members. They are reused, not duplicated.
+3. `rustd/crates/afr_supervisor/src/lease_loop/segments.rs` and `rustd/crates/afd_observability/src/metrics/label/fleet.rs` — the existing stage names: the runner's `Segments` and the daemon's seven `DeliveryStage` members. They are reused, not duplicated.
 4. `rustd/crates/afr_sandbox/src/bubblewrap_engine/mod.rs` — sandboxes run under `sandbox_ids` when the runner is root, which the collector's admission rule depends on.
 5. `deploy/baremetal/agentsfleet-runner.service` and `deploy/fly/otelcol-dev/config.yml` — the runner unit the collector sits beside, and the collector configuration to copy, minus its public binds and logs pipeline.
 
@@ -73,9 +73,6 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 |------|--------|-----|
 | `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT | §0: dev daemon `shared-cpu-2x` 1 GB |
 | `deploy/fly/dragonfly-dev/fly.toml` | EDIT | §0: dev Dragonfly `shared-cpu-1x` 1 GB |
-| `.github/workflows/deploy-dev-fly.yml` | EDIT | §0: dev deploys set `AGENTSFLEET_LOG_LEVEL="info"` |
-| `scripts/check_workflow_rules.py` | EDIT | §0: rule `workflow-daemon-log-level` pins `info` (owner-approved gate edit) |
-| `scripts/check_workflow_rules_test.py` | EDIT | §0: fixture and seeded violation follow the pinned value |
 | `docs/architecture/scaling.md` | EDIT | §0: dev cluster size; dev database region once verified |
 | `rustd/crates/agentsfleetd/src/logs.rs` | EDIT | §1: install the `tracing_opentelemetry` span layer permanently, over a global-provider tracer, outside the reload slot |
 | `rustd/crates/agentsfleetd/src/telemetry/mod.rs` | EDIT | §1: `attach` installs the global tracer provider |
@@ -104,44 +101,21 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 | `playbooks/lib/runner/common.sh` | EDIT | §2: read the collector credential from the vault at deploy |
 | `playbooks/lib/runner/deploy.sh` | EDIT | §2: write the credential to the host's root-only environment file |
 | `playbooks/lib/runner/runner_test.sh` | EDIT | §2: the credential is written without being printed |
-| `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages/route.ts` | EDIT | §3: time credential and upstream; answer `Server-Timing`. §5: forward authenticated history reads through the existing JSON proxy |
+| `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages/route.ts` | EDIT | §3: time credential and upstream; answer `Server-Timing` |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts` | EDIT | §3: `performance` marks for send and accepted |
 | `ui/packages/app/lib/streaming/fleet-stream-reply-registry.ts` | EDIT | §3: `performance` marks for first frame and completion |
 | `ui/packages/app/tests/steer-route-timing.test.ts` | CREATE | §3: route timing header tests |
 | `playbooks/operations/observability/assets/dashboard.json` | EDIT | §4: round-trip row (Tempo panels via a datasource variable) |
 | `playbooks/operations/observability/01_assets_check.sh` | EDIT | §4: accept the Tempo datasource variable beside the Prometheus UID |
-| `playbooks/operations/observability/002_round_trip_playbook.md` | CREATE | §4: how to read one event's round trip, with the tiling script fallback |
-| `playbooks/README.md` | EDIT | §4: inventory row for the new playbook |
+| `playbooks/operations/observability/002_round_trip_percentiles.md` | EDIT | §4: extend M238's query page with the row, units and bounded-sample limits |
 | `docs/architecture/observability.md` | EDIT | §1–§4: span layer placement, runner collector built for traces and metrics (logs not yet), stage attributes, edge `Server-Timing` |
-| `ui/packages/app/components/domain/chat/{WorkspaceChat,FleetSetupWorkspace,DraftChatHeading,DraftConversation,DraftMessage,ChatComposer,DraftSaveBar,DefinitionEditor,FleetSetup,FleetSetupActions,SetupProgress,SetupChecks,SetupInstructions,SetupAccess}.tsx`, `ui/packages/app/components/domain/chat/chat-defaults.ts` | EDIT / CREATE / REMOVE | §5: one authoring page, slim readiness, secure access and simplified manual editing; remove replaced embedded editors and unused placeholder |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetHeader,FleetRecovery,FleetRecoveryContent,ChatView,FleetPendingChat}.tsx` | EDIT / CREATE | §5: inline readiness and setup conversation while execution waits for access |
-| `ui/packages/app/components/domain/chat/{FleetModelSelect.tsx,FleetModelSelect.test.tsx,useFleetModel.test.tsx}` | EDIT | §5: preserve the merged model picker with full-page authoring and prove safe retry after a failed confirmation read |
-| `ui/packages/app/tests/helpers/fleet-model-fixture.ts` | EDIT | §5: model saves advance the fixture’s persisted setup revision |
-| `ui/packages/app/components/domain/{FleetThread,FleetThreadViewport}.tsx` | EDIT | §5: render readiness once at its saved activity in the conversation |
-| `ui/packages/app/components/domain/FleetThreadViewport.test.tsx` | EDIT | §5: readiness ordering and no duplicated saved notice |
-| `ui/packages/app/components/domain/FleetReplyBody.tsx` | EDIT | §5: separate recorded tool entries with individual input and output |
-| `ui/packages/app/components/domain/{FleetToolCalls,FleetToolCallBody,FleetPayloadDisclosure}.tsx` | EDIT | §5: separate input and output for each recorded tool call; remove grouped progress |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/{EditSecretDialog.tsx,EditSecretDialog.test.tsx}` | EDIT | §5: reuse secure field entry for replacement; remove the raw JSON editor |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/{components/{AddSecretDialog,SecretValueNotice,secret-row-cells,SecretsList,SecretsList.test}.tsx,lib/secret-data.ts}` | EDIT / CREATE | §5: shared encryption explanation; Copy only beside names |
-| `ui/packages/app/{app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog*,components/domain/island-dynamic/RenameSecretDialogDynamic.tsx,tests/secret-data.test.ts}` | REMOVE | §5: remove the unused Rename dialog, loader and parser tests |
-| `ui/packages/app/tests/island-dynamic.test.ts` | EDIT | §5: remove the unused Rename loader case |
-| `ui/packages/app/tests/secrets-{components,list}.test.ts` | EDIT | §5: shared replacement form and existing dismissal behavior |
-| `ui/packages/app/tests/fleet-tool-*.tsx` | EDIT / CREATE | §5: progress state transitions and retained technical detail behavior |
-| `ui/packages/app/tests/fleet-thread/{role-reasoning,role-reply-parts,context-progress}.test.ts` | EDIT | §5: individual tool entries preserve reply ordering and context preparation |
-| `ui/packages/app/components/domain/{FleetExplored*,tool-call-explore*}` | REMOVE | §5: remove the replaced read-call fold and its tests; each recorded call has its own entry |
-| `ui/packages/design-system/src/{index.ts,design-system/{index.ts,Button.tsx,Button.test.tsx,Switch.tsx,Switch.test.tsx}}` | EDIT | §5: shared compact icon size and visible menu switches |
-| `ui/packages/app/lib/api/{drafts,draft-state,draft-continuation,draft-ready-setup,draft-thread-messages,draft-triggers}.ts` | EDIT / CREATE / REMOVE | §5: creator-scoped history, bounded background restoration and current-revision continuation; remove the unused advanced-form trigger validator |
-| `rustd/crates/{afr_supervisor/src/authoring/{turn.rs,tests/{confirmation,context,corrections,execution}.rs},afd_authoring/src/model/provider/prompt.rs}` | EDIT | §5: retain genuine authoring replies; stop forcing review reminders; bound tool-only follow-up calls and refuse truncated finalization |
-| `ui/packages/app/{lib/api/draft-chat-save.ts,tests/draft-chat-save.test.ts}` | CREATE | §5: explicit chat saves reuse fresh validation and idempotent writes; never execute historical or failed-turn requests |
-| `ui/packages/app/tests/{draft-continuation.test.ts,clerk-admin-fixture.test.ts,fleet-pending-chat.test.tsx,fleet-thread/surface.test.ts,helpers/draft-client-fixture.ts,workspace-chat/*.tsx,e2e/acceptance/{fixtures/{clerk-admin,install-ui,private-chat,continuity-journey,continuity-setup}.ts,{fleet-execution,workspace-private-chat,fleet-composer,fleet-model,chat-single-fetch,fleet-console,design-coherence,secrets-lifecycle,header-alignment,fleet-reply-parts,fleet-thread,fleet-thread-anchor,logs-detail,template-onboarding,multi-fleet-grant-journey,login-install-lifecycle,signup-lifecycle,operator-journey}.spec.ts}}` | EDIT / CREATE | §5: save, navigation and full-page editing checks; preserve meaningful acceptance checks after approved surface changes; revoke acceptance sessions when token minting fails |
-| `docs/{DESIGN_SYSTEM.md,development.md,architecture/fleet_definitions.md,architecture/shared_chat_verification.md,architecture/web_app.md}` | EDIT | §5: approved authoring flow and single-command local acceptance |
-| `.gitignore`, `deploy/local/{acceptance.sh,bootstrap*},make/test-unit.mk`, `cli/test/acceptance/logs-events-live.spec.ts`, `{package.json,bun.lock}`, `cli/{package.json,bun.lock}`, `ui/packages/*/package.json`, `patches/@assistant-ui%2F*.patch` | EDIT / CREATE | §5.7: local fixtures, refusal, retry, reuse and timestamps; repair fold and resize following; pin requested `tsrs` `0.20.0-ts7.1.0-beta` and rerun compiler checks |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/{fleets/[id]/page.tsx,integrations/connector-actions.ts,secrets/components/AddSecretForm.tsx}` | EDIT | §5: remove the embedded editor and reuse existing secure access actions from authoring |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation,FleetTabLink,FleetActivity,MemoryPanel,MemoryMenu,KillSwitch,view-data}*` | EDIT / CREATE / DELETE | §5: remove obsolete tabs; retain memory management through the fleet menu |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | EDIT | §5: load saved memories on demand from the existing authenticated API |
-| `ui/packages/app/{lib/api/draft-activity.ts,lib/events/{event-summary,fleet-activity}.ts,lib/streaming/fleet-stream-row.ts,components/domain/fleetMessageRenderers.tsx,tests/*setup*.ts*,tests/draft-client*.ts,tests/draft-readiness-recovery.test.ts,tests/draft-thread-messages.test.ts,tests/fleet-stream-provider.test.tsx,lib/events/event-summary.body.test.ts,lib/streaming/fleet-stream-frames.figures.test.ts,tests/draft-summary-lifecycle.test.ts,tests/fleets-routes/*.ts*}` | EDIT / CREATE | §5: chronological saved occurrences, persistent receipts and changed-flow regression checks |
-| `rustd/crates/{afd_events/src/sql/*activity*,afd_events/src/sql/mod.rs,afd_vault/{Cargo.toml,src/write.rs,tests/*activity*},afd_authoring/src/creation/{reserve.rs,activate.rs,revision/{persist,activity}.rs}}` | EDIT / CREATE | §5: access and setup receipts share the successful mutation's database transaction; model-change receipts bind typed JSON |
-| `rustd/{Cargo.lock,crates/{afd_core/src/event.rs,afd_api/tests/authoring/saving/{fixture.rs,mod.rs,activity/**,revisions/model_changes.rs},afd_events/{Cargo.toml,src/lib.rs,src/activity.rs},afd_authoring/Cargo.toml,afd_memory/{Cargo.toml,src/access.rs,src/sql/lock_access.sql},afd_vault/tests/vault_suite.rs}}` | EDIT / CREATE | §5: typed non-running activity records and atomic memory grant receipts |
+| `playbooks/operations/observability/04_verify.sh` | EDIT | §4: compare queries, datasource identity, reducers and variables |
+| `playbooks/operations/observability/observability_assets_test.sh` | CREATE | §4: refuse foreign datasources, unscoped queries and unowned metrics |
+| `playbooks/operations/observability/observability_verify_test.sh` | EDIT | §4: detect query, reducer and variable drift |
+| `playbooks/operations/acceptance/baselines/M238_001-20261104/` | CREATE | §4: measured dev sample, raw datasource responses and stated manual limits |
+| `docs/v2/done/M225_001_P1_API_OBS_LEASE_PICKUP_WAKE_HINT.md` | EDIT | Record the same chats' daemon pickup values and retrieval limitation |
+| `docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` | EDIT | Record Dimension 4.4's evidence and remaining manual witness |
+| `docs/v2/{done/M233_001,active/M233_002}_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md` | MOVE / CREATE / EDIT | Close predecessor shipped scope and track every remaining timing requirement |
 
 ## Applicable Rules
 - **`.orly/docs/greptile-learnings/RULES.md`**, applied as follows:
@@ -164,7 +138,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 |------|--------|-----------------------|
 | UFS GATE | yes — stage names, attribute keys, the collector port | Named constants in `semconv` and the stage clock; the port is one variable in `service.sh` |
 | LOGGING GATE | yes — handlers and `logs.rs` on the logging path | No new log lines; the span layer moves, the log layers do not |
-| UI GATE / DESIGN TOKEN GATE | yes — §5 changes rendered chat, menus and secret forms | Existing design tokens; component tests; final Brave walkthrough pending |
+| UI GATE / DESIGN TOKEN GATE | yes — §4 changes the rendered Grafana row | Grafana datasource fields checked; rendered-row screenshot pending; no application design tokens changed |
 | SCHEMA GUARD | no — no schema change | Identity joins by attribute and time window |
 | Architecture consult | yes — new attribute keys; span layer placement; collector status | Recorded in Discovery; `observability.md` updated in the same PR |
 | File & Function Length (≤350/≤50/≤70) | yes — `pull/mod.rs` and `report/mod.rs` are near the cap | The clock is passed in; each call site adds one mark |
@@ -181,27 +155,28 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 
 ### §0 — Dev runs where latency is measurable — IN_PROGRESS
 
-Every measurement this spec enables is meaningless on a machine frozen in 80 ms slices. A shared vCPU's baseline is 5 ms per 80 ms; the dev daemon rests at about 7–8% of a core, so on `shared-cpu-1x` its burst balance stayed empty and every request was throttled. Dev moves to `shared-cpu-2x` 1 GB (12.5% baseline) and logs at `info`. The Dragonfly downsizing and the rule edit are owner-requested cost and hygiene changes. An earlier Oct 26 session reported resizing the live machines, but the later live recheck above found the daemon on one shared CPU and 512 MB. The desired deploy configuration remains unchanged; live agreement must be proved again.
+Every measurement this spec enables is meaningless on a machine frozen in 80 ms slices. A shared vCPU's baseline is 5 ms per 80 ms; the dev daemon rests at about 7–8% of a core, so on `shared-cpu-1x` its burst balance stayed empty and every request was throttled. Dev moves to `shared-cpu-2x` 1 GB (12.5% baseline) and logs at `info`. The Dragonfly downsizing is an owner-requested cost change; the log-level rule edit already shipped in #786. M233_001 records an Oct 26 resize report followed by a recheck that found the daemon on one shared CPU and 512 MB. The desired deploy configuration remains unchanged; live agreement must be proved again.
 
-- **Dimension 0.1** — DONE — Dev deploys set `AGENTSFLEET_LOG_LEVEL="info"`, the rule pins it, and the dead `LOG_LEVEL` spelling stays refused → Test `test_moved_rules_reject_seeded_violations`
-- **Dimension 0.2** — IN_PROGRESS — Both dev `fly.toml` sizes match the live machines; the later daemon recheck fails this condition → Test `manual_dev_sizes_match_live`
+- **Dimension 0.2** — IN_PROGRESS — Both dev `fly.toml` sizes match the live machines; the predecessor recheck failed this condition and the successor must reverify it → Test `manual_dev_sizes_match_live`
 - **Dimension 0.3** — After an hour at rest, neither `agentsfleetd-dev` nor `dragonfly-dev` shows throttle time, and both keep a burst balance above zero → Test `manual_dev_machines_unthrottled_at_rest`
 
 ### §1 — The daemon names every stage a chat crosses
 
 **Prerequisite:** none.
 
-The chat's five daemon calls are steer (`POST …/fleets/{fleet_id}/messages`), lease (`POST /v1/runners/me/leases`), hydrate and capture (`/v1/runners/me/memory/{fleet_id}`), and report (`POST /v1/runners/me/reports`). Renew, activity, tool-call, credential-mint and recall calls stay uninstrumented; their time falls inside gaps B and C (§4). Each handler creates a stage clock, passes it into the domain call, and writes the reached stages to the current request span as `agentsfleet.<verb>.<stage>_ms`.
-- **Identity:** steer, lease and report carry `agentsfleet.event.id`; all five carry `gen_ai.agent.id` (the fleet). Hydrate and capture carry no lease or event (`afd_api_runner/src/handler/runner/memory.rs`). They join an event as the fleet's hydrate and capture spans between that event's lease span end and its report span start. The tiled capture is the last one before the report; earlier mid-run captures are drill-downs inside gap B.
+The daemon call families are steer (`POST …/fleets/{fleet_id}/messages`), lease (`POST /v1/runners/me/leases`), hydrate and capture (`/v1/runners/me/memory/{fleet_id}`), and report (`POST /v1/runners/me/reports`). Renew, activity, tool-call, credential-mint and recall calls stay uninstrumented; their time remains inside the parent run and is not separately attributed by the current delivery row. Each handler creates a stage clock, passes it into the domain call, and writes the reached stages to the current request span as `agentsfleet.<verb>.<stage>_ms`.
+- **Identity:** steer, lease and report carry `agentsfleet.event.id`; all five carry `gen_ai.agent.id` (the fleet). Hydrate and capture carry no lease or event (`afd_api_runner/src/handler/runner/memory.rs`). When fallback calls occur, they join an event by fleet identity and the time window between that event's lease end and report start. The last capture before the report is the completion-path capture; earlier mid-run captures remain drill-downs. A normal M238 memory window and inline report capture require neither standalone span.
 - **Stages:** steer `auth, admit, announce`; lease `claim, record, provider, gates, issue, billing_hold, thread`; hydrate `fence, memory_read`; capture `fence, memory_write`; report `load, settle, billing_capture, billing_release, announce`. Each stage's exact code boundaries are fixed at Stage 9.
 
 **Implementation default:** `logs.rs` installs the `tracing_opentelemetry` span layer permanently, outside the reload slot, over a tracer obtained from the OpenTelemetry global provider. `attach` sets that provider instead of filling the slot with the span bridge; the log bridge stays in the slot. Reason: `set_attribute` locates the bridge by downcasting the subscriber, and the `reload` layer refuses every downcast (`tracing-subscriber-0.3.23/src/reload.rs:188-204`), so attributes set through it are dropped. **Fallback**, if the PLAN check below fails: declare a fixed set of `Empty` fields from `semconv` on the request span in `trace.rs`, and fill them with `Span::record`. **PLAN check:** an attribute set inside a handler reaches an in-memory exporter through `logs::install` plus `attach` (the real subscriber).
 
 - **Dimension 1.1** — Each verb writes each stage it reached exactly once, and nothing for stages it did not reach → Test `stage_clock_writes_each_reached_stage_once`
 - **Dimension 1.2** — A refused or empty lease poll writes `claim` only and no event identity → Test `empty_poll_writes_claim_without_identity`
-- **Dimension 1.3** — A real chat cycle against live Postgres yields steer, lease and report spans with one `agentsfleet.event.id`, and hydrate and capture spans joinable by fleet and time window → Test `event_identity_joins_the_five_verb_spans`
+- **Dimension 1.3** — A real normal-path chat cycle against live Postgres yields steer, lease and report spans with one `agentsfleet.event.id`; a separate fallback cycle yields standalone hydrate and capture spans joinable by fleet and time window → Test `event_identity_joins_the_five_verb_spans`
 - **Dimension 1.4** — `trace.rs`'s span still carries the route template, never a raw path → Test `request_span_carries_template_not_path`
 - **Dimension 1.5** — An attribute set inside a handler reaches the exporter through the production subscriber → Test `handler_attribute_reaches_exporter_through_real_subscriber`
+
+- **Dimension 1.6** — For each reached daemon verb span, duration minus the sum of its reached stage attributes is under the larger of 10% and 5 ms; unreached stages and unused fallback spans are not fabricated → Test `verb_stage_attributes_account_for_the_span` (future integration coverage, transferred from M233_001 Dimension 4.2).
 
 ### §2 — The runner's spans reach Grafana, and only root-owned host processes can send them
 
@@ -234,56 +209,23 @@ In the throttled measurement, 584 ms passed between the browser's Send and the d
 - **Dimension 3.2** — A refused or failed upstream still answers with `auth` timing and an unchanged status and body → Test `server_timing_never_changes_the_answer`
 - **Dimension 3.3** — The browser leaves the four marks for one send → Test `delivery_marks_send_accepted_first_frame_complete`
 
-### §4 — One timeline, one row, one procedure
+- **Dimension 3.4** — N consecutive dev probes find steer, lease, report and runner spans for every event, plus standalone memory spans only when fallback calls occur; browser `af:accepted − af:send` ≥ route `auth + upstream` ≥ steer duration → Test `manual_probes_satisfy_coverage_and_edge_ordering` (manual, transferred from M233_001 Dimension 4.3).
 
-**Prerequisite:** §1–§3 emitting data, and the PLAN spike below passing.
+### §4 — Round-trip percentiles from settled delivery spans
 
-| Segment (in order) | Source | Clock | In the sum? |
-|---|---|---|---|
-| Edge in | `af:accepted − af:send` (browser) and `auth + upstream` (`Server-Timing`) | browser; route | Checked by Goal (3), not summed |
-| Steer | steer span duration | daemon | yes |
-| Queue | lease span start − steer span end | daemon | yes |
-| Lease | lease span duration | daemon | yes |
-| Gap A | hydrate span start − lease span end | daemon | yes |
-| Hydrate | hydrate span duration | daemon | yes |
-| Gap B | tiled capture span start − hydrate span end | daemon | yes |
-| Capture | tiled capture span duration | daemon | yes |
-| Gap C | report span start − capture span end | daemon | yes |
-| Report | report span duration | daemon | yes |
-| Edge out | `af:complete` − everything above | browser | remainder, not checked |
-| Drill-downs | `agentsfleet.<verb>.<stage>_ms`; `agentsfleet.runner.<segment>_ms` inside gaps A–C | per span | excluded |
+**Prerequisite:** M238_001 deployed and its `fleet.delivery` search query answering. §1–§3 are independent future drill-down work and do not block this row.
 
-The dashboard's round-trip row reads Tempo through a datasource variable (`tempo`), so no new vault field is needed. Each span shows its `service.instance.id`. Fleets are picked by ID (`gen_ai.agent.id`). The existing `DeliveryStage` panel shows no data in dev today (see Discovery), so the row stands on its own.
+The dashboard has a Tempo datasource variable (`tempo`, restricted to that datasource type) and a fleet-ID textbox. Eight panels read `fleet.delivery` filtered by `gen_ai.agent.id`: whole duration, queue wait, memory, model, tools, sandbox wait, settle and completion. The seven segment attributes use M238's `agentsfleet.delivery.<segment>_ms` keys. Duration is in nanoseconds in the Grafana datasource frame; segment values are milliseconds.
 
-**PLAN spike, pass/fail:** one panel that, given an event ID, lists the spans with start offsets and computed gaps. If it fails, `002_round_trip_playbook.md` ships the TraceQL plus a small script that prints the tiled line, and the row shows the span list only.
+Each panel requests a span table with at most 1,000 matches, keeps its numeric field and reduces it with p95 and p99. Percentiles describe the returned sample; the panel description discloses truncation. Missing attributes have no samples; they are not zero. Segments overlap and are not summed. Plain search works without metrics-generator local blocks. Future per-verb timelines remain in §1–§3; this row does not imply those spans exist.
 
-- **Dimension 4.1** — The asset check accepts the Tempo datasource variable and still refuses any other datasource → Test `assets_check_accepts_tempo_variable_only`
-- **Dimension 4.2** — For each verb span, duration minus the sum of its stage attributes is under the larger of 10% and 5 ms → Test `verb_stage_attributes_account_for_the_span`
-- **Dimension 4.3** — On dev, for N consecutive probes, every span in the table is found, and `af:accepted − af:send` ≥ `auth + upstream` ≥ steer span → Test `manual_probes_satisfy_coverage_and_edge_ordering`
+- **Dimension 4.1** — The asset check accepts only the declared Tempo variable beside the pinned Prometheus datasource and refuses foreign datasources or unscoped fleet queries → Test `observability_assets_test.sh`.
+- **Dimension 4.2** — The drift check compares Tempo queries, datasource identity, reducers and variable definitions → Test `test_should_reject_each_resource_drift` in `observability_verify_test.sh`.
+- **Dimension 4.3** — PARTIAL — Grafana's datasource API returns ten delivery spans with numeric segment fields; the Explore screenshot and rendered-row witness remain unavailable. Evidence: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` and `grafana-datasource-frames.json` beside it. No deployment of the dashboard asset is claimed.
 
-### §5 — One authoring page — IN_PROGRESS
+### Shipped predecessor scope
 
-Owner-approved addition: keep setup creation and Edit setup on the full authoring page. Save acknowledges `Save done vN` inline in white, followed by compact readiness marks; the composer remains usable. Open fleet is explicit. Edit setup returns from runtime to authoring using the latest saved revision and only the signed-in person's retained conversation. A saved or closed draft continues through a new draft based on the latest fleet setup; existing runs keep their pinned revision.
-
-- **Dimension 5.1** — DONE. Save stays in authoring; `saving.test.tsx` proves no redirect and a usable composer. → Test `workspace-chat/saving.test.tsx`
-- **Dimension 5.2** — DONE. Edit setup links to full authoring; `fleet-editor.test.tsx` proves navigation without an embedded setup panel. → Test `workspace-chat/fleet-editor.test.tsx`
-- **Dimension 5.3** — DONE. Continued chat uses the current saved setup and creator-owned history; `draft-continuation.test.ts` proves revision refresh, scoped lookup, bounded restoration after reopening, stale-read isolation, concurrent history merges, retry and access loss. → Test `draft-continuation.test.ts`
-- **Dimension 5.4** — DONE. One slim saved acknowledgement and readiness entry in conversation; no Installing or Active badge or duplicate saved notice. `setup-status.test.tsx` and `FleetThreadViewport.test.tsx` prove readiness and chronological placement. → Test `workspace-chat/setup-status.test.tsx`
-- **Dimension 5.5** — DONE. Instructions has a tall editor, explicit save/cancel and no Review action; publication lives in the chat menu. `editor.test.tsx` and `setup-menu.test.tsx` prove removed controls, preserved policy, conflict handling and explicit publication. → Test `workspace-chat/editor.test.tsx`
-- **Dimension 5.6** — IN_PROGRESS. Missing access uses secure credential entry with an explicit destination host, or existing provider authorization. Installing fleets retain setup conversation on their fleet page. `setup-access.test.tsx` and `fleet-pending-chat.test.tsx` prove safe storage, readiness refresh and chat without execution admission. → Test `setup-access.test.tsx`
-- **Dimension 5.7** — IN_PROGRESS. `make test-unit-all` passes: 448 app files and 4,423 tests, with statements, branches, functions and lines at required 100%; every other package coverage gate passes. Full lint passes before the final acceptance-only correction; app lint and type checks pass afterward. The owner cancelled full `make acceptance-local` with exit 130: 125 browser checks passed, 1 failed, 1 skipped and 1 did not run; command-line acceptance did not start. Continuity expected 50 total rows but returned 50 processed messages and two recorded setup receipts. The corrected assertions check exact runtime history and receipt pairs per revision, including fleet and workspace; continuity was not rerun by owner direction. Folding retains its one-pixel before-paint red/green proof. Bootstrap passes 13 refusal, retry and reuse tests. Acceptance override: Indy approved publishing with the cancelled acceptance result and no continuity rerun. Browser walkthrough override: “Indy will review this upon deployment.” Database proofs pass seven focused tests plus three existing revision tests; neither override claims a passing acceptance or browser check. → Test `manual_local_brave_setup_walkthrough`
-- **Dimension 5.8** — DONE. Fleet chat is chronological for setup saves, access changes and connector deliveries. Receipts must survive reload without secret values entering history or model context. Activity and Memory tabs are removed; workspace memory sharing uses visible on/off indicators below a menu separator, followed by Saved memories opening a viewer. `setup-activity.test.ts` and `memory-menu.test.tsx` prove rendering with HTTP fixtures; seven live-database tests in `afd_api/tests/authoring/saving/activity/` pass, including parallel fixture execution; three revision receipt tests also pass. They prove reload, recipient isolation, runtime-context exclusion, no admitted/billable/delivery work, and rollback with retry for setup, activation, secret create/replace and memory grants. → Test `setup-activity.test.ts`
-- **Dimension 5.9** — IN_PROGRESS. Each tool call has its own updating entry, status, timing and input/output disclosures. Tool identity comes from recorded run data; no invented purpose labels. Failed, interrupted and unknown outcomes never claim success. Saved memories has one title and a desktop description on one line. `fleet-tool-progress.test.tsx` and `memory-menu.test.tsx` prove disclosure and outcome behavior; local Brave review checks layout. → Test `fleet-tool-progress.test.tsx`
-- **Dimension 5.10** — DONE. Edit secret reuses Create's field builder, with a locked name and masked replacement values. Saving replaces all fields through the existing update action. `EditSecretDialog.test.tsx` proves field validation, safe replacement, retry and dismissal guards. Create and Edit share the encryption explanation and help link. Secret names have Copy only; the unused Rename dialog and its parser are removed. Live replacement remains unverified under §5.7. → Test `EditSecretDialog.test.tsx`
-- **Dimension 5.11** — IN_PROGRESS. Ordinary authoring continues back and forth without a review reminder. An explicit “Save” shows “Saving setup...” while the model finalizes instructions from the working conversation and current setup, then the application saves the candidate pinned by that completed turn and confirms “Save done vN” without another review or Save click. Newly initialized and changed candidates are eligible; a different head after finalization, questions, quotes, cancelled work and historical messages never save. `authoring::tests::confirmation`, `draft-chat-save.test.ts` and `workspace-chat/save-command.test.tsx` prove replies, progress, finalized content, failure handling and idempotency. The long authoring wait remains a separate investigation; live saving is untested. → Test `workspace-chat/save-command.test.tsx`
-
-Verification: `make lint-app`, `make test-unit-app`, then the visible local browser walkthrough. Full repository gates remain due at the Pull Request boundary. Public documentation updates require the separate docs-repository approval before shipping. No OpenAPI, command-line, schema or retention-policy change is planned for this addition.
-
-Earlier local authoring regression checks: `make test-unit-app` reports 444 files and 4,342 tests passed; `make test-unit-rustd-runner` reports 1,329 passed. `make lint-app`, `make lint-rustd` and `make check-documentation-rules` pass. The focused provider adapter run reports 27 passed; this exercises codecs with a transport fixture and proves no live model behavior. The finalization client and UI checks report 26 passed (`tests/draft-chat-save.test.ts` and `tests/workspace-chat/save-command.test.tsx`); these use HTTP-boundary fixtures, not a deployed model or database. Development deployment and live save verification remain pending.
-
-The authoring delay remains unresolved. The correct log target is `agentsfleetd-dev`; the earlier attempt used the wrong app name. Read-only logs work, but the retained 100 entries covered roughly one second of SQL and runner polling, missing the slow turn. At 18:51:02.782 UTC on Oct 26, a normal browser question requesting no setup changes returned a conversational answer: admission took 1,764 ms, the stream lasted 5,734 ms and closed 7,518 ms after Send. This differs from the earlier 44-second setup-edit observation; neither stream lifetime alone isolates model inference. Correlate a slow turn's admission, runner start and model dispatch before claiming a latency fix. Standalone save commands still await their authoring turn; the reply fix does not establish faster saving.
-
-Live sizing recheck on Oct 26: `fly machine list -a agentsfleetd-dev --json` reports machine `48ee32df500958` running one shared CPU and 512 MB, contradicting Dimension 0.2's earlier completion claim. Read-only SFTP samples of `/proc/stat` at 19:01:30.972 and 19:01:50.007 UTC show 125 active ticks and 158 steal ticks out of 2,006 total ticks: 6.23% active and 7.88% steal. [Fly's CPU documentation](https://fly.io/docs/machines/cpu-performance/) gives a 6.25% baseline for one shared CPU. This supports investigating CPU scheduling but does not distinguish quota throttling from host contention or explain the entire authoring wait. No resize, deployment, secret change or live save was performed during this recheck.
+M233_001 Dimension 0.1 and §5 shipped in #786. Their implementation and test history remains in the closed predecessor; neither is active scope here.
 
 ## Interfaces
 
@@ -348,14 +290,14 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 0.1 | unit | `test_moved_rules_reject_seeded_violations` | Fixture with `export AGENTSFLEET_LOG_LEVEL="info"` passes; `LOG_LEVEL="info"` fails rule `workflow-daemon-log-level` |
 | 0.2 | manual | `manual_dev_sizes_match_live` | `fly scale show` reads `shared` 2 CPUs 1024 MB for `agentsfleetd-dev` and 1 CPU 1024 MB for `dragonfly-dev`, matching both `fly.toml` files |
 | 0.3 | manual | `manual_dev_machines_unthrottled_at_rest` | One hour after resize, `rate(fly_instance_cpu_throttle[30m])` = 0 and `fly_instance_cpu_balance` > 0 for both apps; values in Session Notes |
 | 1.1 | unit | `stage_clock_writes_each_reached_stage_once` | A report that settles → each of five report stages written once; a report refused at `load` → only `load` written |
 | 1.2 | unit | `empty_poll_writes_claim_without_identity` | Poll with no unsettled admission → only `agentsfleet.lease.claim_ms`; no `agentsfleet.event.id` |
-| 1.3 | integration | `event_identity_joins_the_five_verb_spans` | Live Postgres chat cycle → steer, lease and report share one event id; one hydrate and the last capture fall between lease end and report start for the same fleet |
+| 1.3 | integration | `event_identity_joins_the_five_verb_spans` | Normal live Postgres chat cycle → steer, lease and report share one event id with no required standalone memory calls; separate fallback cycle → reached hydrate and capture spans join by fleet and time window |
 | 1.4 | unit | `request_span_carries_template_not_path` | Request with real identifiers → route attribute is the template; no identifier in any attribute but `agentsfleet.event.id` and `gen_ai.agent.id` |
 | 1.5 | integration | `handler_attribute_reaches_exporter_through_real_subscriber` | `logs::install` + `attach` with an in-memory exporter; a handler sets `agentsfleet.steer.admit_ms` → the exported span carries it |
+| 1.6 | integration | `verb_stage_attributes_account_for_the_span` | Verb duration 100 ms with reached stages summing 96 ms passes; sum 80 ms fails; omitted fallback calls require no fabricated spans |
 | 2.1 | unit | `runner_unit_targets_loopback_collector` | Unit file → endpoint `http://127.0.0.1:4318`; no `GRAFANA_` variable; collector env file 0600 root |
 | 2.2 | unit | `collector_rule_admits_only_root_sockets` | Rule file matches `meta skuid 0` for dport 4318 on loopback and drops the rest; `service.sh` with a failing `nft` load → exit non-zero, collector not started |
 | 2.3 | manual | `manual_sandbox_cannot_post_to_collector` | On the dev host, a lease under `allow_all` runs `curl -m 2 http://127.0.0.1:4318/v1/traces` → refused or timed out; output in Session Notes |
@@ -366,32 +308,24 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 | 3.1 | unit | `steer_route_answers_server_timing` | Stubbed credential 12 ms, upstream 40 ms → header names `auth` and `upstream` with durations ≥ those |
 | 3.2 | unit | `server_timing_never_changes_the_answer` | Upstream refuses 409 or is unreachable → same status and body as without timing; `auth` present |
 | 3.3 | unit | `delivery_marks_send_accepted_first_frame_complete` | Simulated send → four marks for one send |
-| 4.1 | unit | `assets_check_accepts_tempo_variable_only` | Panel with `${tempo}` passes; panel with any other datasource UID fails naming it |
-| 4.2 | unit | `verb_stage_attributes_account_for_the_span` | Fixture spans: verb duration 100 ms with stages summing 96 ms → pass; summing 80 ms → fail |
-| 4.3 | manual | `manual_probes_satisfy_coverage_and_edge_ordering` | N consecutive dev probes: every table span found; edge ordering holds; numbers in Session Notes |
-| 5.1 | unit | `workspace-chat/saving.test.tsx` | Save retains the authoring page and an enabled composer without redirecting |
-| 5.2 | unit | `workspace-chat/fleet-editor.test.tsx` | Edit setup returns to the full authoring page using the current saved revision |
-| 5.3 | unit | `draft-continuation.test.ts` | Continued drafts retain history, refresh the revision and preserve access-loss and retry behavior |
-| 5.4 | unit | `workspace-chat/setup-status.test.tsx` | One saved acknowledgement appears with readiness in conversation, without status badges or a duplicate notice |
-| 5.5 | unit | `workspace-chat/editor.test.tsx` | The editor preserves policy and handles conflicts; Review controls are absent and publication is explicit |
-| 5.6 | unit | `setup-access.test.tsx` | Access opens the appropriate secure form or provider authorization; missing access remains conversational |
-| 5.7 | manual | `manual_local_brave_setup_walkthrough` | Indy inspects creation, saved acknowledgement, continued chat, runtime navigation and Edit setup on localhost against the development backend |
-| 5.8 | unit / integration | `setup-activity.test.ts` | Safe rendering; `authoring::saving::activity::` adds seven real-database proofs for reload, isolation, execution exclusion and mutation/receipt rollback with retry |
-| 5.9 | unit | `fleet-tool-progress.test.tsx` | Each recorded call has its own progress entry and disclosure; failure and interruption never display success |
-| 5.10 | unit | `EditSecretDialog.test.tsx` | Create and Edit reuse field entry and explanation; replacement validation, retry and dismissal preserve unsaved values |
-| 5.11 | unit | `workspace-chat/save-command.test.tsx` | Save waits for the completed report, persists its pinned candidate once and announces success only after acknowledgement; failed admission keeps chat usable, failed finalization or writes preserve the conversation, retry retains its operation identity, and historical Save text never writes |
+| 3.4 | manual | `manual_probes_satisfy_coverage_and_edge_ordering` | N dev probes find all reached normal and fallback spans, with browser accepted-minus-send ≥ route auth-plus-upstream ≥ steer duration |
+| 4.1 | unit | `observability_assets_test.sh` | Panel with `${tempo}` passes; panel with any other datasource UID fails naming it |
+| 4.2 | unit | `test_should_reject_each_resource_drift` | Matching Tempo queries, reducers and variables pass; mutations to each fail closed |
+| 4.3 | manual | `manual_round_trip_row_renders` | Ten dev delivery spans yield p95/p99 with the declared units; absent segments remain empty rather than zero; screenshot retained |
+
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R0 | Dev unthrottled at rest and deploying at `info` (§0) | `make check-gh-actions-valid` | exit 0 | P0 | |
+| R0 | Remaining dev sizing and throttle checks (§0.2–§0.3), transferred from M233_001 R0 | `manual_dev_sizes_match_live` and `manual_dev_machines_unthrottled_at_rest` | both pass | P0 | |
 | R1 | Daemon verbs write their reached stages and identity through the real subscriber (§1) | `cargo test -p afd_observability stage_clock` | exit 0 | P0 | |
 | R2 | Only root-owned host processes can deliver to the collector (§2) | `bash deploy/baremetal/service_test.sh` | exit 0 | P0 | |
 | R3 | Runner spans reach Tempo from the dev host, across a restart (§2) | `manual: TraceQL { span.agentsfleet.event.id = "<probe id>" } in Grafana Tempo` | ≥1 `runner.lease` span | P0 | |
 | R4 | Edge cost reaches the browser on one clock (§3) | `cd ui/packages/app && bun run test steer-route-timing` | exit 0 | P0 | |
-| R5 | Dashboard asset valid; verb stages account for their spans (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | |
+| R5 | Dashboard asset valid; row queries and reducers are checked (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R7 | Reached verb stages account for their spans; transferred from M233_001 R5 and Dimension 4.2 (§1.6) | `verb_stage_attributes_account_for_the_span` | residual under max(10%, 5 ms); 100/96 ms passes and 100/80 ms fails | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
@@ -407,7 +341,7 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 
 ## Dead Code Sweep
 
-Remove the replaced embedded editor, duplicate save controls and runtime tab routing; keep workspace connector authorization and secret management.
+No dead code is removed by the delivery-row change. Shipped authoring cleanup remains recorded in M233_001 §5.
 
 ## Out of Scope
 
@@ -415,20 +349,20 @@ Remove the replaced embedded editor, duplicate save controls and runtime tab rou
 - **Per-request SQL statement counts.** A `tracing` layer cannot see `sqlx::query` events at `info`, because the level filter in `rustd/crates/agentsfleetd/src/logs.rs` is global. Statement questions use PlanetScale Insights and the `afd_bench` lanes. Future work if needed.
 - **New metric families for stages.** Per-event questions are answered by spans. Future work once a production aggregate need exists.
 - **The idle cost of lease polling.** It is a CPU question, measured as daemon process CPU ÷ `rate(agentsfleet_lease_polls_total)`, both already exported. Future work.
-- **Making the round trip faster.** These optimisations wait for this spec's measurements: fewer transactions per event, hydrate folded into the lease, capture skipped when memory is unchanged, and the three report transactions merged. Future work.
+- **Making the round trip faster.** Further transaction reductions wait for measurements. Memory-in-lease and capture-in-report already shipped in M238; this spec does not claim them as future optimisations.
 - **The missing `DeliveryStage` series.** The declared histogram reaches no Prometheus series in dev (Discovery). Future work; the round-trip row does not depend on it.
 - **Browser telemetry export.** Pending decision D2; this spec ships DevTools marks only.
 - **W3C `traceparent` across the runner protocol.** `observability.md` §Traces keeps leases as separate root spans joined by attribute. Future work only if that decision changes.
 - **Non-chat events.** Webhook, cron and continuation events have no browser Send; their daemon spans still carry stage attributes, but the round-trip row covers chats. Future work.
 - **Production runner collector.** Dev host only; production follows the same systemd units once a production runner exists. Future work.
-- §5 includes the owner-approved compact access-readiness experience; unrelated workspace settings remain outside this addition.
+- Shipped authoring and access-readiness work remains in M233_001 §5; this successor changes no application chat or settings surface.
 
 ---
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — Indy picks the dev acceptance fleet by ID and its last chat, and reads (illustrative values) "lease 210 ms: billing_hold 40 ms; gap B 640 ms: model 560 ms" without opening a terminal.
-2. **Preserved user behaviour** — Chat send, reply and retry are unchanged. API response envelopes stay unchanged; the steer route adds one `Server-Timing` header. §5 simplifies authoring and puts fleet activity in chat.
+1. **Successful user moment** — Indy selects a fleet ID and time range, reads whole-trip and reached-segment p95/p99, and sees no timing value for absent segments without opening a terminal. Future verb-stage detail remains §1–§3 work.
+2. **Preserved user behaviour** — Chat send, reply and retry are unchanged. API response envelopes stay unchanged; the steer route adds one `Server-Timing` header. Shipped authoring behavior remains unchanged by this successor.
 3. **Optimal-way check** — The most direct design is one distributed trace per event. `observability.md` §Traces keeps each lease as a separate root span, so this spec joins spans by `agentsfleet.event.id` and a fleet time window. That gives the same data, not one trace view.
 4. **Rebuild-vs-iterate** — Iterate for §1, §3 and §4: attributes on existing spans and existing stopwatches recorded. §2 is new infrastructure, a collector whose design is already approved.
 5. **What we build** — Daemon stage attributes through a span layer outside the reload slot, the runner collector admitting only root-owned sockets, runner segment attributes, edge `Server-Timing` and marks, one dashboard row, one playbook.
@@ -436,11 +370,11 @@ Remove the replaced embedded editor, duplicate save controls and runtime tab rou
 7. **Fit with existing features** — Builds on `fleet.delivery`, `DeliveryStage` and the runner's `Segments`. Adds no spans to the runner's budget (`MAX_LEASE_SPANS`, `RUNNER_SPANS_PER_SECOND`) and leaves `trace.rs` unchanged.
 8. **Surface order** — Grafana only; no CLI surface, because the data lives in Grafana and the playbook names the queries.
 9. **Dashboard restraint** — No percentile alert and no target line until a timing capture from production-sized hardware exists (`observability.md`: "nothing gates on a percentile").
-10. **Confused-user next step** — `002_round_trip_playbook.md` names the row, the variables, the TraceQL and the fallback script.
+10. **Confused-user next step** — `002_round_trip_percentiles.md` names the row, variables, TraceQL and sample limits.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** one Section per process boundary (daemon, runner host, edge), plus one for the dashboard. §1 and §3 can merge and be tested on their own; §2 also waits on D1; §4 needs §1–§3 emitting data. §0 carries owner-requested dev changes that are not part of the stage-timing design.
+- **Chosen shape:** one Section per process boundary (daemon, runner host, edge), plus one for the dashboard. §1 and §3 can merge and be tested on their own; §2 also waits on D1; §4 uses M238 delivery spans and is independent of §1–§3. §0 carries owner-requested dev changes that are not part of the stage-timing design.
 - **Alternatives considered (rejected):**
   - **Child spans per stage:** on the daemon, about 19 extra spans per event would enter a 2,048-span queue that drops overflow without counting it, and add new span names; on the runner, they would spend the 256-per-lease budget.
   - **Stage metric families:** duplicate the attributes; the goal is per event.
@@ -459,7 +393,9 @@ Remove the replaced embedded editor, duplicate save controls and runtime tab rou
 
 ## Discovery (consult log)
 
-- **Scope transfer, Nov 04, 2026:** Indy selected "Recommended: close M233_001 and move §1–§4 to M233_002". M233_001 Dimensions 1.1–1.5, 2.1–2.7, 3.1–3.3 and 4.1–4.3 transfer here under the same numbers; rubric R1–R5 follows. Remaining §0.2–§0.3 stays tracked here so closing the predecessor loses no sizing check. §4 is rebased on the M238 delivery attributes; it does not wait for future per-verb spans.
+- **Row implementation, Nov 04, 2026:** §4 uses the successful plain-search query and numeric span fields from M238 evidence. The metrics query returns no series; local-blocks enablement cannot be established through the exposed Grafana proxy routes. Two segments are legitimately absent in the tool-free, memory-window sample. Fleet-wide metrics are blocked by Grafana rejecting delta metrics at ingest; the export repair belongs to a separate pull request. No rendered-row or Explore screenshot is claimed. §1–§3 remain unstarted, and §0.1/§5 remains predecessor history, excluded from active files and tests.
+
+- **Scope transfer, Nov 04, 2026:** Indy selected "Recommended: close M233_001 and move §1–§4 to M233_002". M233_001 Dimensions 1.1–1.5, 2.1–2.7 and 3.1–3.3 keep their numbers. The old asset requirement 4.1 becomes the rebased row check 4.1. Old verb accounting Dimension 4.2 moves to §1.6 and P0 rubric R7, preserving the accounting part of predecessor R5; its asset-validity part stays R5. Old coverage and edge-ordering Dimension 4.3 moves to §3.4. Current §4.2–§4.3 add row drift checks and the rendered-row witness. Rubric R0–R4 retains the predecessor mapping. Remaining §0.2–§0.3 stays tracked here so closing the predecessor loses no sizing check. §4 is rebased on the M238 delivery attributes; it does not wait for future per-verb spans.
 - **Save finalization approved, Oct 27, 2026:** Indy: "The when i say save" and "You feed to the model wait for the model reply and `Saving setup...` and i see `Save done v3`", followed by "Yes correct lets go, signed off approved." The completed report's pinned candidate, including changes from this turn, is saved without another Save click; a cut response fails without saving. The existing fleet's conflicting app-selection guidance remains unsaved. > Indy (2026-10-27): "Okay whatz up, if we cant verify then lets move it up?" / "to a PR" / "undraft the PR, since i would like to merge and test" — context: publish current chat changes as a ready Pull Request with missing live proof disclosed; M233 stays active and unfinished timing work remains open.
 - **Review deferred by owner:** "And i think for now remove the `Review Setup`" followed by "we will deal with it later". Remove the action from this change.
 - **Incomplete fleet conversation:** Indy: "how do we make it better to even un configured fleets can receive chat". Reuse existing setup admission while required access is missing; do not admit a runtime job that cannot execute. Static credentials remain bound to an explicitly selected host.

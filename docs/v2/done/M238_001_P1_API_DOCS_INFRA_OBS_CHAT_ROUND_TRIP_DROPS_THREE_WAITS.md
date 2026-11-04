@@ -264,7 +264,7 @@ A held beat never delays the runner's or the daemon's own transitions. On the ru
 - **Dimension 4.1** — DONE — The span runs from event creation to the publish and carries both clocks' segments → Tests `the_delivery_span_starts_at_the_events_creation`, `an_unplaceable_creation_falls_back_to_the_reported_duration`, `segments_are_exported_in_milliseconds_and_absent_ones_omitted` (unit, `afd_observability`) and `test_span_joins_daemon_and_runner_segments` (unit, `afd_api_runner`).
 - **Dimension 4.2** — DONE — A runner-supplied segment past `MAX_RUN` is capped → Test `an_implausible_segment_is_capped` (unit).
 - **Dimension 4.3** — DONE — A published completion records each new stage once → Test `test_completion_records_three_stages` (unit): 900, 660 and 200 ms; nothing for a report that published nothing.
-- **Dimension 4.4** — The per-fleet queries answer on dev → Test `test_round_trip_queries_answer_on_dev` (manual, after deploy): ten chats, the queries from `002_round_trip_percentiles.md` in Grafana Explore, the answering query and a screenshot path recorded here. Disposition in Discovery.
+- **Dimension 4.4** — PARTIAL — Plain search returned ten delivery traces; metrics queries returned no series; Explore screenshot and two segment samples remain unavailable. Evidence: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md`. The per-fleet queries answer on dev → Test `test_round_trip_queries_answer_on_dev` (manual, after deploy): ten chats, the queries from `002_round_trip_percentiles.md` in Grafana Explore, the answering query and a screenshot path recorded here. Disposition in Discovery.
 
 ### §5 — The runner's lease reply body and captured memory deltas zero on drop
 
@@ -392,6 +392,8 @@ N/A: no files deleted. The `memory/{fleet_id}` read and push verbs stay for a le
 - **Patch-vs-refactor verdict:** a **patch** because every mechanism extends a verb, span or constant that exists.
 
 ## Discovery (consult log)
+
+- **Dev Dimension 4.4, Nov 04, 2026:** `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` records the answering plain-search query, all eight p95/p99 dispositions, identical-release-tree proof, ten events, screenshot limitation, wake counters and collector HTTP 400 defect. No Explore screenshot exists; the manual Dimension remains partial. Grafana reducer p95 / p99 (ms): whole 3061 / 3061; queue 223 / 223; memory unavailable / unavailable (0 samples); model 2661 / 2661; tools 0 / 0; sandbox wait unavailable / unavailable (0 samples); settle 0 / 0; complete 169 / 169. Answering query: `{ name = "fleet.delivery" && span."gen_ai.agent.id" = "01a1a42f-f181-7e1b-9f20-481730f1b7cd" }`; the quantile query returned no series. Screenshot path: unavailable (no browser-control tool).
 
 - **Consults** —
   - *Where the time goes* (Nov 03, 2026, `fde585971`): dev runner `lease_completed`, five chats: `wall_ms` 883–1,025; `memory_ms` 83–105 (one 282); `model_ms` 380–555; `first_token_ms` 346–702; `report_ms` 240–419; `tools_ms` 0; no sandbox segment, and `sandbox_prepare_completed` appears 0 times in three days of journal. Dev runner has 16 workers (`worker=15` highest), so the idle-poll pickup wait is at most 62 ms there. Daemon-side verb times are known only from M233's throttled run (lease 1.67 s over 36 statements, report 1.60 s over 28).

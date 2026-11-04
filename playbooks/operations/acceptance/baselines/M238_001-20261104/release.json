@@ -1,0 +1,12 @@
+{
+  "healthz": {
+    "service": "agentsfleetd",
+    "version": "0.73.0",
+    "commit": "370a86f"
+  },
+  "tested_candidate": "370a86f6fcba621e32a244efc69bf08215f20648",
+  "pr_799_merge": "11883fdaba2197adf8931d334396ba8b3bb9eb5b",
+  "both_source_trees": "758e6d2c313b194f1f0565c1552b5500ba4f8e34",
+  "deploy_run": "https://github.com/agentsfleet/agentsfleet/actions/runs/41751074343",
+  "screenshot_path": null
+}

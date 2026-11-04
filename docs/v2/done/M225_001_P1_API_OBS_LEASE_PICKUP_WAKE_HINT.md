@@ -171,7 +171,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §4 — Measured on dev
 
-- **Dimension 4.1** — DEFERRED to Indy: ten steers on dev after deploy, pickup p50 ≤250 ms and max ≤1,000 ms, read from `queue_wait_ms` on the daemon's `runner_lease_issued` lines (`flyctl logs`), never from the runner journal → Test `test_dev_pickup_p50_under_250ms` — unverified; see Discovery closure decision
+- **Dimension 4.1** — PARTIAL — Nov 04 dev sample p50 242.5 ms and max 272 ms meet both limits; original daemon records were retrieved from Loki after the Fly log buffer advanced (Discovery). Requested Fly witness remains unavailable. Original procedure: ten steers on dev after deploy, pickup p50 ≤250 ms and max ≤1,000 ms, read from `queue_wait_ms` on the daemon's `runner_lease_issued` lines (`flyctl logs`), never from the runner journal → Test `test_dev_pickup_p50_under_250ms` — unverified; see Discovery closure decision
 - **Dimension 4.2** — DEFERRED to Indy: two `github-pr-reviewer` fleets in two workspaces, one `pull_request` delivery each within the same second, both `runner_lease_issued` lines carry `queue_wait_ms` ≤1,000 and name different runner workers → Test `test_dev_two_fleets_pick_up_in_parallel` — unverified; see Discovery closure decision
 
 ## Interfaces
@@ -244,7 +244,7 @@ Constants: worker offset = n × NO_WORK_RETRY_AFTER / N; READY_WAKE_DEADLINE = 1
 | R3 | A busy rung partition cannot starve the rotation (§1) | `make test-integration-rustd` | `test_a_busy_rung_partition_does_not_starve_rotation` passed | P0 | |
 | R4 | Each terminal lease line logs its segments (§2) | `make test-unit-all` | `test_lease_completed_logs_its_segments` passed | P0 | |
 | R5 | The first frame of a lease posts at once (§3) | `make test-unit-all` | `test_first_frame_posts_without_waiting` passed | P0 | |
-| R6 | Dev pickup p50 ≤250 ms (§4) | manual — ten `queue_wait_ms` values in Session Notes | p50 ≤250, max ≤1,000 | P0 | DEFERRED to Indy; no measurements recorded; Discovery closure decision |
+| R6 | Dev pickup p50 ≤250 ms (§4) | manual — ten `queue_wait_ms` values in Session Notes | p50 ≤250, max ≤1,000 | P0 | PARTIAL: p50 242.5 ms; max 272 ms; ten daemon records in Loki; Fly retrieval witness unavailable (Nov 04 Discovery) |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -289,6 +289,8 @@ N/A — no files deleted.
 - **Patch-vs-refactor verdict:** this is a **patch** because the readiness index and the poll keep their shape and gain one channel per partition. The larger refactor, one work queue in Postgres, is specced on its own as M226_001.
 
 ## Discovery (consult log)
+
+- **Dev pickup, Nov 04, 2026:** Same ten M238 chats: daemon `runner_lease_issued` queue waits, in event order, 260, 253, 272, 215, 180, 261, 232, 196, 213, 265 ms. p50 242.5 ms ≤250 ms; max 272 ms ≤1,000 ms. Both Dimension 4.1 numerical limits pass. Retrieved from original daemon records in Loki after the Fly log buffer advanced; the requested Fly witness is unavailable. Event identities and raw records: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` and `daemon-lease-lines-loki.json` beside it.
 
 - **Consults** — Measured on dev, Oct 12, 2026, during M213_001's close-out: four steers picked up in 1.9 s, 2.2 s, 2.95 s and 3.8 s; four workers poll about once a second each (`runner_lease_no_work` bursts in `flyctl logs`); the dev host reaches the API in about 60 ms, so the network is not the wait. `READY_PARTITIONS` is 16 (`afd_dragonfly/src/ready/partition/mod.rs:31`) and `NO_WORK_RETRY_AFTER` is 1 s (`afd_core/src/timing.rs:74`).
   > Indy (2026-10-12): "How do we make this performant? and reduce 1.2s to may be 500ms? What is causign the 1.2s, can we add logging tracing to the code to see what happens?" — context: the request this spec answers.

@@ -54,8 +54,29 @@ check_dashboard_shape() {
       (.panels | length) >= $minimum and
       ([.panels[].id] | length == (unique | length)) and
       ([.panels[] | has("targets")] | all) and
-      ([.panels[].targets[].expr] | all(contains("agentsfleet_") or contains("gen_ai_") or test("^vector\\([0-9_A-Z]+\\)$"))) and
-      ([.panels[].datasource.uid] | all(. == "__PROMETHEUS_UID__"))
+      ([.templating.list[] | select(.name == "tempo" and .type == "datasource" and .query == "tempo" and .multi == false and .includeAll == false)] | length == 1) and
+      ([.templating.list[] | select(.name == "fleet_id" and .type == "textbox")] | length == 1) and
+      ([.templating.list[].name] | length == (unique | length)) and
+      ([.panels[] | select(.datasource.uid == "${tempo}") | .transformations[0].options.include.names[0]] | sort) ==
+        (["duration", "agentsfleet.delivery.queue_wait_ms", "agentsfleet.delivery.memory_ms", "agentsfleet.delivery.model_ms", "agentsfleet.delivery.tools_ms", "agentsfleet.delivery.sandbox_wait_ms", "agentsfleet.delivery.settle_ms", "agentsfleet.delivery.complete_ms"] | sort) and
+      all(.panels[] | select(.datasource.uid == "${tempo}");
+        (.transformations | length == 2) and
+        .transformations[0].id == "filterFieldsByName" and
+        .transformations[1] == {id:"reduce",options:{reducers:["p95","p99"],mode:"reduceFields"}} and
+        .fieldConfig.defaults.displayName == "${__field.labels.reducer}" and
+        (if .transformations[0].options.include.names == ["duration"]
+         then .fieldConfig.defaults.unit == "ns" else .fieldConfig.defaults.unit == "ms" end)) and
+      ([.panels[] |
+        if .datasource.uid == "__PROMETHEUS_UID__" then
+          all(.targets[]; (.expr | contains("agentsfleet_") or contains("gen_ai_") or test("^vector\\([0-9_A-Z]+\\)$")))
+        else
+          .datasource == {type:"tempo",uid:"${tempo}"} and
+          (.targets | length == 1) and
+          all(.targets[];
+            .datasource == {type:"tempo",uid:"${tempo}"} and
+            .queryType == "traceql" and .tableType == "spans" and .limit == 1000 and .spss == 1 and
+            (.query | startswith("{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" }")))
+        end] | all)
     ' "$DASHBOARD" >/dev/null ||
     fail "dashboard panels drifted: count, ids, targets, or datasource"
 }
