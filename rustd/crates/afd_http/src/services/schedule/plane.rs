@@ -110,6 +110,7 @@ impl FleetSchedules for SchedulePlane {
         fleet: &Uuid7,
         schedule: &Uuid7,
         now: Timestamp,
+        attempts: afd_cron::Attempts,
     ) -> CronResult<Option<Reconciled>> {
         if !self.store().holds_fleet(workspace, fleet).await? {
             return Ok(None);
@@ -118,7 +119,9 @@ impl FleetSchedules for SchedulePlane {
         let Some(held) = self.store().claim_current(fleet, schedule, &token).await? else {
             return Ok(None);
         };
-        Ok(Some(self.service.reconcile(&held, &token).await?))
+        Ok(Some(
+            self.service.reconcile_with(&held, &token, attempts).await?,
+        ))
     }
 
     fn fire_target(

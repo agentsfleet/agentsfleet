@@ -12,6 +12,7 @@
 #[path = "support/stub_scheduler.rs"]
 mod stub_scheduler;
 
+use afd_cron::Attempts;
 use afd_cron::error::detail::UPSTREAM_UNAVAILABLE;
 
 use self::stub_scheduler::StubScheduler;
@@ -28,7 +29,7 @@ async fn a_scheduler_refusing_the_removal_is_an_error_that_waits_for_sync() {
 
     let refused = scheduler
         .client()
-        .remove(REGISTERED)
+        .remove(REGISTERED, Attempts::Retried)
         .await
         .expect_err("a refused removal leaves the schedule registered");
 
@@ -50,7 +51,7 @@ async fn a_scheduler_without_the_schedule_has_already_removed_it() {
 
     scheduler
         .client()
-        .remove(REGISTERED)
+        .remove(REGISTERED, Attempts::Retried)
         .await
         .expect("a schedule already gone has met the caller's goal");
 }

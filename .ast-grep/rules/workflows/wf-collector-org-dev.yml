@@ -10,17 +10,7 @@ files:
 rule:
   kind: block_mapping
   has:
-    kind: block_mapping_pair
-    all:
-      - has:
-          field: key
-          regex: '^run$'
-      - has:
-          field: value
-          all:
-            - regex: 'flyctl secrets set'
-            - regex: 'GRAFANA'
-            - regex: 'OTLP_COLLECTOR_APP'
+    matches: wf-collector-standup
   not:
     has:
       kind: block_mapping_pair

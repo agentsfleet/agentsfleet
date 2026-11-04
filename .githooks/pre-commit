@@ -13,7 +13,8 @@
 #
 # Surfaces:
 #   - lint-source             (sgconfig.yml, .ast-grep/*, *.rs, tests/fixtures/*, scripts/*.py,
-#                               .github/workflows/*, playbooks/*, deploy/* — the ast-grep
+#                               scripts/*.sh, .github/*, Makefile, make/*.mk, playbooks/*,
+#                               deploy/*, public/*, src/* — the ast-grep
 #                               source rules, under a second; lint-app,
 #                               lint-design-system and lint-cli depend on it)
 #   - lint-website            (ui/packages/website/*)
@@ -167,6 +168,12 @@ while IFS= read -r f; do
       needs_lint_app=1 ;;
     cli/*)
       needs_lint_cli=1 ;;
+    .github/actions/*)
+      # wf-action-pin and wf-notify-default read the composite actions.
+      needs_lint_source=1 ;;
+    public/*|src/*)
+      # The docs-* rules read the published document and public sources.
+      needs_lint_source=1 ;;
     .github/workflows/*.yml|.github/workflows/*.yaml|Makefile|make/*.mk)
       needs_check_gh_actions=1
       # The workflow rules are ast-grep's.

@@ -1,0 +1,47 @@
+id: infra-tailnet-no-wildcard
+valid:
+  - |
+    {
+    	"grants": [
+    		{
+    			"src": ["autogroup:member", "tag:ci"],
+    			"dst": ["tag:worker"],
+    			"ip":  ["tcp:22"],
+    		},
+    	],
+    }
+  - |
+    {
+    	"ssh": [{"src": ["*"], "dst": ["tag:worker"]}],
+    }
+invalid:
+  - |
+    {
+    	"grants": [
+    		{
+    			"src": ["autogroup:member", "tag:ci"],
+    			"dst": ["*"],
+    			"ip":  ["tcp:22"],
+    		},
+    	],
+    }
+  - |
+    {
+    	"grants": [
+    		{
+    			"src": ["autogroup:member", "tag:ci"],
+    			"dst": ["tag:worker"],
+    			"ip":  ["*"],
+    		},
+    	],
+    }
+  - |
+    {
+    	"grants": [
+    		{
+    			"src": ["*"],
+    			"dst": ["tag:worker"],
+    			"ip":  ["tcp:22"],
+    		},
+    	],
+    }

@@ -92,7 +92,9 @@ base64.workspace = true
 jsonwebtoken.workspace = true
 serde.workspace = true
 sha2.workspace = true
-tokio.workspace = true
+# `net` for the retry suite's hung-scheduler listener; `test-util` for its
+# paused clock.
+tokio = { workspace = true, features = ["net", "test-util"] }
 # The `tracing` capture `integration_fire.rs` reads the fire's log line back
 # through.
 afd_core = { workspace = true, features = ["test-util"] }

@@ -2,22 +2,13 @@
 
 use super::*;
 
-/// What an unknown model is estimated at: the `o200k_base` count `gpt-4o`
-/// resolves to, raised by a quarter and rounded up.
-fn proxied(text: &str) -> usize {
-    (crate::input_tokens("gpt-4o", text) * 5).div_ceil(4)
-}
-
 #[test]
 fn known_tokenizers_count_exactly_and_unknown_models_add_a_quarter_to_o200k() {
     assert_eq!(crate::input_tokens("gpt-4o", "hello world"), 2);
     // Two `o200k_base` tokens plus a quarter, rounded up: 2.5 → 3.
     assert_eq!(crate::input_tokens("unknown-tokenizer", "hello world"), 3);
     assert_eq!(crate::input_tokens("unknown-tokenizer", ""), 0);
-    assert_eq!(
-        crate::input_tokens("unknown-tokenizer", "🌿"),
-        proxied("🌿")
-    );
+    assert_eq!(crate::input_tokens("unknown-tokenizer", "🌿"), 3);
 }
 
 // Value: protects=changing providers never bypasses the shared input reservation;
@@ -32,8 +23,19 @@ fn providers_without_a_library_tokenizer_share_the_o200k_estimate() {
         "deepseek/model-next",
         "kimi/model-next",
     ] {
-        for text in ["", "hello world", "🌿", "Cafe\u{301}", "<tool_call>"] {
-            assert_eq!(crate::input_tokens(model, text), proxied(text), "{model}");
+        // The `o200k_base` counts are 0, 2, 2, 2 and 4; a quarter more, rounded up.
+        for (text, estimate) in [
+            ("", 0),
+            ("hello world", 3),
+            ("🌿", 3),
+            ("Cafe\u{301}", 3),
+            ("<tool_call>", 5),
+        ] {
+            assert_eq!(
+                crate::input_tokens(model, text),
+                estimate,
+                "{model}: {text:?}"
+            );
         }
     }
 }

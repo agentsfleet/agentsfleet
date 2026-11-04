@@ -3,7 +3,8 @@
 // exports it, so the name belongs in one place where that break is visible in
 // a single diff. The ast-grep rule `cli-env-read`
 // (.ast-grep/rules/cli/cli-env-read.yml, in `make lint-source`) fails on a
-// named `process.env` or `Bun.env` read anywhere else under `src/`.
+// named `process.env` or `Bun.env` read anywhere else under `src/`. Reads on
+// an injected env object are not covered.
 //
 // Four names are deliberately absent because they are only ever read as dotted
 // properties, never spelled as a string: `AGENTSFLEET_TELEMETRY_DISABLED` and

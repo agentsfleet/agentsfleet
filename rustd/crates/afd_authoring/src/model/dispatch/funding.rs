@@ -171,7 +171,8 @@ async fn counting_key(
     prepared: &prepare::Prepared,
 ) -> Result<Option<SecretString>> {
     let route = afd_inference::Configured::new(&prepared.inference, prepared.context_tokens)?;
-    if !route.needs_native_count(&attempt.model_snapshot.model, &prepared.body)? {
+    // `prepared.input_tokens` measured this exact body when it was prepared.
+    if !route.needs_native_count(prepared.input_tokens, &prepared.body) {
         return Ok(None);
     }
     let key = providers

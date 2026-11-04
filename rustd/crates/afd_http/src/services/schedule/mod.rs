@@ -123,7 +123,8 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         guard: &dyn Precondition,
     ) -> impl Future<Output = CronResult<Result<Option<Reconciled>, Refused>>> + Send;
 
-    /// Pushes what the row already says, changing nothing.
+    /// Pushes what the row already says, changing nothing, sending each
+    /// scheduler call `attempts` times at most.
     ///
     /// `Ok(None)` for a fleet outside `workspace`, as for [`Self::change`].
     ///
@@ -135,6 +136,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         fleet: &Uuid7,
         schedule: &Uuid7,
         now: Timestamp,
+        attempts: afd_cron::Attempts,
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
 
     /// What a signed fire resolves to.
