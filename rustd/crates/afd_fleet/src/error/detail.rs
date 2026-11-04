@@ -18,9 +18,6 @@ pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be 
 /// The refusal when the token authenticated and the runner row is gone.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
-/// The refusal when a terminal runner cannot collect a self-test ask.
-pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
-
 /// The database-outage detail every crate shares through `afd_core::error`.
 pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
 

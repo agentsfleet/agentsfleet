@@ -26,9 +26,8 @@ afd_observability.workspace = true
 base64.workspace = true
 # The catalogue cursor is base64url of CANONICAL JSON — a struct with a fixed
 # key order, re-encoded on decode so anything non-canonical is refused. serde
-# derives the struct; serde_json is the one spelling of that JSON.
+# derives the struct; the encoding is afd_core::paging::struct_cursor's.
 serde.workspace = true
-serde_json.workspace = true
 # The registry codes, identifiers, the clock, and the paging vocabulary every
 # list verb here parses its query string with.
 afd_core.workspace = true

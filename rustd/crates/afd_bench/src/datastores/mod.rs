@@ -31,8 +31,6 @@ use crate::error::{ErrorKind, Result};
 /// and each module that needs one imports it from here rather than spelling
 /// its own copy.
 pub mod command {
-    /// The server's own statistics.
-    pub const INFO: &str = "INFO";
     /// The `INFO` section carrying per-command tallies.
     pub const COMMANDSTATS: &str = "commandstats";
     /// The `INFO` section carrying memory.
@@ -41,14 +39,10 @@ pub mod command {
     pub const XRANGE: &str = "XRANGE";
     /// Delete named entries from a stream.
     pub const XDEL: &str = "XDEL";
-    /// Delete whole keys.
-    pub const DEL: &str = "DEL";
     /// The smallest stream id, so a range reads from the beginning.
     pub const RANGE_START: &str = "-";
     /// The largest stream id, so a range reads to the end.
     pub const RANGE_END: &str = "+";
-    /// Cap a range read.
-    pub const COUNT: &str = "COUNT";
 }
 
 /// Where a lane reads its Postgres from.

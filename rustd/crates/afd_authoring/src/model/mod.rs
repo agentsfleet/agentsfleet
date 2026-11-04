@@ -94,12 +94,9 @@ pub(crate) fn configured<'a>(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn configured_models_without_a_known_tokenizer_keep_a_conservative_bound() {
+    fn configured_models_without_a_known_tokenizer_add_a_quarter_to_o200k() {
         let text = "語 and plain text";
-        assert_eq!(
-            super::input_tokens("workspace/model-next", text),
-            text.len()
-        );
+        assert_eq!(super::input_tokens("workspace/model-next", text), 5);
         assert_eq!(super::input_tokens("gpt-4.1", "hello"), 1);
     }
 }

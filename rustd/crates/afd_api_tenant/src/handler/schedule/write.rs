@@ -285,7 +285,13 @@ pub(crate) async fn sync<D: Services>(
 
     let synced = services
         .schedules()
-        .sync(&owned.workspace, &fleet, &schedule, services.now())
+        .sync(
+            &owned.workspace,
+            &fleet,
+            &schedule,
+            services.now(),
+            afd_cron::Attempts::Retried,
+        )
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 

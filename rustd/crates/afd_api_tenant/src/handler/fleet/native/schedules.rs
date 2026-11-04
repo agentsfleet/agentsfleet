@@ -33,7 +33,15 @@ pub(super) async fn after_activation<D: Services>(
         }) {
             services
                 .schedules()
-                .sync(workspace, fleet, &schedule.schedule_id, services.now())
+                // One attempt each: the sweep shares one deadline across every
+                // schedule, and repeating one would leave the rest unsynced.
+                .sync(
+                    workspace,
+                    fleet,
+                    &schedule.schedule_id,
+                    services.now(),
+                    afd_cron::Attempts::Once,
+                )
                 .await?;
         }
         Ok::<_, afd_cron::Error>(())

@@ -72,8 +72,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT | §0: dev daemon `shared-cpu-2x` 1 GB |
 | `deploy/fly/dragonfly-dev/fly.toml` | EDIT | §0: dev Dragonfly `shared-cpu-1x` 1 GB |
 | `.github/workflows/deploy-dev-fly.yml` | EDIT | §0: dev deploys set `AGENTSFLEET_LOG_LEVEL="info"` |
-| `scripts/check_workflow_rules.py` | EDIT | §0: rule `workflow-daemon-log-level` pins `info` (owner-approved gate edit) |
-| `scripts/check_workflow_rules_test.py` | EDIT | §0: fixture and seeded violation follow the pinned value |
+| `.ast-grep/rules/workflows/wf-daemon-log-level.yml` | EDIT | §0: rule `wf-daemon-log-level` pins `info` (owner-approved gate edit) |
+| `.ast-grep/rule-tests/wf-daemon-log-level-test.yml` | EDIT | §0: fixture and seeded violation follow the pinned value |
 | `docs/architecture/scaling.md` | EDIT | §0: dev cluster size; dev database region once verified |
 | `rustd/crates/agentsfleetd/src/logs.rs` | EDIT | §1: install the `tracing_opentelemetry` span layer permanently, over a global-provider tracer, outside the reload slot |
 | `rustd/crates/agentsfleetd/src/telemetry/mod.rs` | EDIT | §1: `attach` installs the global tracer provider |
@@ -166,7 +166,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | SCHEMA GUARD | no — no schema change | Identity joins by attribute and time window |
 | Architecture consult | yes — new attribute keys; span layer placement; collector status | Recorded in Discovery; `observability.md` updated in the same PR |
 | File & Function Length (≤350/≤50/≤70) | yes — `pull/mod.rs` and `report/mod.rs` are near the cap | The clock is passed in; each call site adds one mark |
-| Harness edit (`check_workflow_rules.py`) | yes — §0 changes the value the rule pins | Owner approval recorded in Discovery; the dead-`LOG_LEVEL` ban is unchanged |
+| Harness edit (`wf-daemon-log-level.yml`) | yes — §0 changes the value the rule pins | Owner approval recorded in Discovery; the dead-`LOG_LEVEL` ban is unchanged |
 
 ## Prior-Art / Reference Implementations
 

@@ -1,0 +1,17 @@
+# Each environment's host bootstrap joins its host to the tailnet, so one
+# playbook losing its `tailscale up` cannot hide behind the other. A presence
+# rule scoped to two files: it goes silent if either playbook is renamed.
+id: infra-bootstrap-joins
+language: Markdown
+severity: error
+message: this bootstrap never joins its host with `tailscale up` in a code fence; the playbook moved or lost the step
+files:
+  - playbooks/founding/05_runner_bootstrap_dev/001_playbook.md
+  - playbooks/founding/08_runner_bootstrap_prod/001_playbook.md
+rule:
+  kind: document
+  not:
+    has:
+      stopBy: end
+      kind: code_fence_content
+      regex: 'tailscale up\b'

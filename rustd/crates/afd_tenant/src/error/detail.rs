@@ -132,14 +132,6 @@ pub const DETAIL_WORKSPACE_TENANT_VANISHED: &str = "Tenant on session does not e
 /// generic internal one.
 pub const DETAIL_LIBRARY_PAGE_UNAVAILABLE: &str = "Failed to build the catalogue page";
 
-/// The billing surface's report of a wallet row that is not there.
-///
-/// The row is written in the tenant-create transaction, so its absence is a
-/// bootstrap invariant broken by surgery or a defect, and the em-dash sentence
-/// says whose problem that is.
-pub const DETAIL_BILLING_WALLET_MISSING: &str =
-    "Tenant billing row missing — bootstrap invariant violated";
-
 /// Its refusal for a charges cursor it never issued.
 ///
 /// Lower-case and terse where the keyset cursor's refusals are sentences,

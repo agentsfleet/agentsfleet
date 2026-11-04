@@ -1,0 +1,17 @@
+# The step that stands up the telemetry collector: a `run` whose script sets
+# the collector's Grafana secrets with `flyctl secrets set`. Shared by the
+# wf-collector-* rules, so one regex edit lands once.
+id: wf-collector-standup
+language: Yaml
+rule:
+  kind: block_mapping_pair
+  all:
+    - has:
+        field: key
+        regex: '^run$'
+    - has:
+        field: value
+        all:
+          - regex: 'flyctl secrets set'
+          - regex: 'GRAFANA'
+          - regex: 'OTLP_COLLECTOR_APP'
