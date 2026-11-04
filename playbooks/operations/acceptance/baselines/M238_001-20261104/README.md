@@ -45,9 +45,9 @@ Missing attributes are excluded, never replaced by zero.
 
 Memory is absent because the lease carries its memory window: `afr_supervisor/src/lease_loop/mod.rs` starts `Segment::Memory` only for fallback memory reads. Sandbox wait is absent because these tool-free chats never wait for preparation (`segments.rs`). Neither is a measured zero.
 
-Screenshot path: **unavailable**. No connected browser-control tool is exposed.
+Screenshot path: `playbooks/operations/acceptance/baselines/M238_001-20261104/grafana-explore-search.png`. Grafana's authenticated `/render/explore` endpoint returned this image; it shows the exact per-fleet query and ten matching span rows.
 
-Explore and its Reduce transformation were not visually exercised. Dimension 4.4 stays incomplete for that witness and the two absent segment samples.
+Explore search is visually witnessed. The dashboard Reduce transformation and rendered row remain unverified, and two optional segment attributes have no samples. Dimension 4.4 retains those limitations.
 
 ## Fleet-wide result and export defect
 
@@ -110,8 +110,11 @@ edits also await owner approval. No pull request or live apply is claimed.
 
 Review: gstack and repository standards review found zero remaining actionable
 issues after the reducer labels and variable-state drift repairs. Review receipt
-`4c125fe4-e860-439a-83ad-8e9214f0ef1b` remains incomplete for the manual witnesses
-and alert-count blocker. Native adversarial receipt
+`4c125fe4-e860-439a-83ad-8e9214f0ef1b` initially retained the manual witnesses
+and alert-count blocker.
+
+The alert correction is approved below, and the Explore
+query screenshot is now recorded; rendered-row validation remains open. Native adversarial receipt
 `74460351-c444-4c32-8e72-95fba3a9f355` completed cleanly.
 
 The full `orly gate verify` passed documentation checks, source-rule tests,
