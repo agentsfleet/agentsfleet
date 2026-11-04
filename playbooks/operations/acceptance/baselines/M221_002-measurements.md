@@ -184,4 +184,31 @@ Its release JSON is 915,521 bytes, below admission's 1,048,576-byte bound.
 The independent baseline extraction was purged with dpkg, retaining its original database for scanning.
 Its complete Syft package records exactly match the reconstructed final image: `1187 packages; 10829 relationships`.
 Only the scan-directory source identifier and relationship ordering were normalized.
+
 Grype 0.120.1 with the same cached database and `--only-fixed` reports identical match records: `8 matches; 0 Critical`.
+
+## Native shell builder
+
+The owner rejected embedding the finalizer in `build.sh`. The builder now consists of named shell functions and reads its inputs from `manifest.txt`.
+It uses dpkg for removal, GNU tar for payload comparison and jq for the existing release JSON.
+
+`sudo -E make toolbox-image TOOLBOX_DIR=/audit/shell-candidate` completed successfully.
+The image is 135,979,008 bytes with digest `acfe072d46762caae77c6dbe897c20206f3300add6c85704f3b2f68704b5bd0f`.
+The adjacent release JSON is 923,937 bytes and contains 133 package entries.
+
+Syft 1.54.1 over the reconstructed mounted image reports `1187 packages, 133 Debian packages, 10829 relationships`.
+The compressed metadata is now a deterministic tar archive containing status, package info records and the retained package list.
+The image commits to the compressed archive hash; the scanner requires its package list to equal the release list.
+
+Hosted qualification for source `0e0de728350471a68217501dc86f16b6e6df17ed` was dispatched as run `41779197114`.
+The final review and all required proof remain pending. Indy requested: "once done, let me check"; leave PR #800 unmerged for inspection.
+
+## Owner-requested scanner cleanup
+
+Indy requested: "also delete the toolbox_test.sh as well, and i still see your old python crap in toolbox.sh why".
+The added Python scanner functions are removed from `deploy/baremetal/toolbox.sh`, restoring its original staging-only contents.
+`deploy/baremetal/toolbox_test.sh` is deleted, including its four original staging tests and the added reconstruction case.
+
+The deployment test runner discovers files by glob; there is no explicit invocation to remove.
+The existing build action restores records using GNU tar, coreutils and jq, with bounded decoding, image commitment, entry validation and package-list agreement.
+No replacement helper or test file is introduced.

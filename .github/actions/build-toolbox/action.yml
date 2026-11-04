@@ -68,14 +68,13 @@ runs:
         out="$PWD/$OUTPUT_DIR"
         scratch=$(mktemp -d "$RUNNER_TEMP/toolbox-scan.XXXXXX")
         staged="$out/.toolbox-$DIGEST.sbom.$$.json"
-        child=""
         cleanup() {
-          local result=$?
+          local result=$? child
           trap - EXIT INT TERM
-          if [ -n "$child" ]; then
+          for child in $(jobs -pr); do
             sudo kill -TERM "$child" 2>/dev/null || true
             wait "$child" || true
-          fi
+          done
           for point in "$scratch/ram/view" "$scratch/ram" "$scratch/lower"; do
             if mountpoint -q "$point" && ! sudo umount "$point"; then
               echo "toolbox scan: cannot unmount $point; retaining $scratch" >&2
@@ -94,13 +93,38 @@ runs:
         sudo mount -t erofs -o loop,ro,nosuid,nodev "$out/toolbox-$DIGEST.erofs" "$scratch/lower"
         sudo mount -t tmpfs -o size=32m,nosuid,nodev tmpfs "$scratch/ram"
         sudo mkdir "$scratch/ram/upper" "$scratch/ram/work" "$scratch/ram/view"
-        sudo bash -euo pipefail -c 'source "$1"; toolbox_restore_scan_inventory "$2" "$3" "$4"' -- \
-          "$PWD/deploy/baremetal/toolbox.sh" "$out/toolbox-$DIGEST.erofs" "$scratch/lower" "$scratch/ram/upper"
+        release="$out/toolbox-$DIGEST.json"
+        [ "$(stat -c %s "$release")" -le 1048576 ]
+        jq -e --arg sha "$DIGEST" --argjson length "$(stat -c %s "$out/toolbox-$DIGEST.erofs")" \
+          '.sha256==$sha and .length==$length' "$release" >/dev/null
+        jq -er '.package_metadata|select(type=="string")' "$release" | base64 --decode > "$scratch/metadata.gz"
+        marker="$scratch/lower/etc/toolbox-inventory.sha256"
+        [ -f "$marker" ] && [ ! -L "$marker" ] && [ "$(stat -c %s "$marker")" = 65 ]
+        [ "$(sha256sum "$scratch/metadata.gz" | cut -d' ' -f1)" = "$(cat "$marker")" ]
+        gzip -dc "$scratch/metadata.gz" | head -c 4194305 > "$scratch/metadata.tar"
+        [ "$(stat -c %s "$scratch/metadata.tar")" -le 4194304 ]
+        tar -tf "$scratch/metadata.tar" > "$scratch/entries"
+        [ "$(wc -l < "$scratch/entries")" -le 1027 ]
+        [ "$(sort -u "$scratch/entries" | wc -l)" = "$(wc -l < "$scratch/entries")" ]
+        grep -Fx status "$scratch/entries"
+        grep -Fx packages.json "$scratch/entries"
+        awk '!/^(status|packages[.]json|info\/|info\/[a-z0-9][a-z0-9+.-]+(:[a-z0-9][a-z0-9-]*)?[.](list|md5sums|conffiles|postinst|postrm|prerm|preinst|templates|triggers|config|shlibs|symbols))$/ {exit 1}' "$scratch/entries"
+        LC_ALL=C tar -tvf "$scratch/metadata.tar" | awk '$1 ~ /^d/ && $NF=="info/" {next} $1 !~ /^-/ {exit 1}'
+        tar -xOf "$scratch/metadata.tar" packages.json > "$scratch/packages.json"
+        jq -e --slurpfile packages "$scratch/packages.json" \
+          '.packages==$packages[0] and (.packages|type=="array" and length>0 and length<=512)' "$release" >/dev/null
+        database="$scratch/ram/upper/var/lib/dpkg"
+        sudo mkdir -p "$database/info"
+        while IFS= read -r name; do
+          case "$name" in status|info/*.*) ;;
+            *) continue ;;
+          esac
+          tar -xOf "$scratch/metadata.tar" -- "$name" > "$scratch/record"
+          sudo install -m 644 "$scratch/record" "$database/$name"
+        done < "$scratch/entries"
         sudo mount -t overlay -o "lowerdir=$scratch/lower,upperdir=$scratch/ram/upper,workdir=$scratch/ram/work" overlay "$scratch/ram/view"
         sudo -E "$(command -v syft)" scan "dir:$scratch/ram/view" -o "spdx-json=$scratch/sbom.json" &
-        child=$!
-        wait "$child"
-        child=""
+        wait "$!"
         sudo umount "$scratch/ram/view"
         sudo umount "$scratch/ram"
         sudo umount "$scratch/lower"

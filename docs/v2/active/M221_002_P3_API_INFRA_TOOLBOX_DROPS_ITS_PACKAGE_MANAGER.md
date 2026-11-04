@@ -65,7 +65,7 @@ The scanner reads a temporary filesystem view containing the remaining package r
 | This spec under `active/`, then `done/` | EDIT, MOVE | Record current scope and proof |
 | `scripts/toolbox/build.sh` | EDIT | Finalize the disposable root and publish retained inventory |
 | `scripts/toolbox/manifest.txt` | EDIT | Name the exact eleven-package removal set |
-| `deploy/baremetal/toolbox.sh`, `toolbox_test.sh` | EDIT | Reconstruct bounded scanner records and test refusals |
+| `deploy/baremetal/toolbox_test.sh` | DELETE | Owner explicitly requested deletion; remove its discovery entry automatically |
 | `.github/actions/build-toolbox/action.yml` | EDIT | Scan a temporary overlay, preserving the read-only image |
 | `scripts/toolbox/install-builder-tools.sh` → `.github/actions/build-toolbox/install-tools.sh` | MOVE | Keep the existing builder setup beside its action |
 | `scripts/toolbox/measure_first_use.sh` → `playbooks/operations/acceptance/measure_toolbox_first_use.sh` | MOVE | Keep the existing sampler with acceptance evidence |
@@ -107,7 +107,7 @@ The admission implementation needs no new filesystem feature or signature format
 ## Prior-Art / Reference Implementations
 
 - `scripts/toolbox/build.sh` remains the only image builder; keep its snapshot, timestamps, compression and atomic publication.
-- Debian dpkg performs package removal. Python's standard-library parsers read its records; no new dependency solver or file-ownership deletion algorithm.
+- Debian dpkg performs package removal. Native packaging tools read its records; no new dependency solver or file-ownership deletion algorithm.
 - Syft 1.54.1's Debian cataloger reads package status, source versions and optional file metadata. Reuse it instead of writing a software bill of materials serializer.
 - Linux OverlayFS gives the scanner a temporary view over the read-only image. Cleanup removes only paths this invocation created.
 - `deploy/local/codex-runner.sh` supplies the repository's existing container delegation and kernel-device setup pattern.
@@ -157,8 +157,8 @@ Compare the unchanged and finalized trees: their Debian identities differ by exa
 Compare the finalized tree with original records against its reconstructed view: all package records, file evidence and relationships agree.
 Normalize only the scan-directory source identifier and relationship ordering; with one Grype database, vulnerability identities, severities, package identities and fixed versions must match.
 
-The existing `deploy/baremetal/toolbox_test.sh` tests the public reconstruction boundary without privileges.
-The explicit hosted qualification run uses the real baseline and candidate for scanner equivalence, with the same pinned scanner-install action.
+The existing build action reconstructs scanner records with GNU tar, coreutils and jq. No scanner program is added to the image and no new scanner helper is introduced.
+Image comparison uses the real baseline and candidate with the existing pinned scanners. The existing build action remains the release scanning path.
 Scanner tests require Linux root, EROFS, OverlayFS, tmpfs, Syft and Grype; missing prerequisites fail explicitly.
 
 Reuse the sampler's signal-forwarding and child-reaping pattern. After success or interruption, unmount the view, temporary filesystem and image before deleting invocation-owned paths.
@@ -222,7 +222,7 @@ Require exact package/version/architecture agreement with `packages[]`, unique i
 
 The tar archive fixes entry ordering, timestamps and numeric ownership. Gzip uses timestamp zero and no filename.
 The encoded release stays at most 1,048,576 bytes; decoded metadata stays at most 4,194,304 bytes, 512 packages and 1,024 info entries.
-Reject overflow while decompressing, duplicate keys/records, invalid text, unsupported names or paths before creating files.
+Reject decoded overflow, duplicate archive entries, unsupported entry types and unsafe paths before creating scanner records.
 
 Info keys must be retained package basenames, optionally architecture-qualified, ending in `.list`, `.md5sums`, `.conffiles`, `.postinst`, `.postrm`, `.prerm`, `.preinst`, `.templates`, `.triggers`, `.config`, `.shlibs` or `.symbols`; reject separators and parent traversal.
 Materialize only `var/lib/dpkg/status` and `var/lib/dpkg/info/<validated basename>` in a new empty upper directory.
@@ -324,6 +324,7 @@ Repeat repository-wide word-boundary searches for apt, dpkg, useradd and chpassw
 - **Database rationale:** M221 rejected deleting installed files while retaining records naming them. This work removes the manager and database together, retaining remaining-package records beside the image.
 - **Initial Perl decision:** Indy: "Qualify a smaller Perl runtime for Git; allow reduced general Perl support (Recommended)".
 - **Superseding Perl direction:** Indy: "since i donot see a point to use perl, as its only for git", then supplied Git's official `NO_PERL=YesPlease` build documentation. Qualify the packaged Git executable without Perl before considering a custom build.
+- **Scanner simplification:** Indy: "also delete the toolbox_test.sh as well, and i still see your old python crap in toolbox.sh why". Delete the existing test file and remove all added scanner functions from the deployment helper. Keep the existing release scan in its action using native tools; do not create a replacement helper.
 - **Builder shape:** Indy: "well build.sh simple have bunch of function that gets called, and assembles the image. manifest.txt is the feeder to it?", followed by "nothing else" and "Donot  complicate other". Use named shell functions and declarative manifest data.
 - **File scope:** Indy: "I feel manifest.txt and build.sh in toolbox/ folder are sufficient" and "I dont want those gazillion scripts/toolbox/*.py? what can we do better here?". Keep that folder to those two files and reuse existing proof locations.
 - **Delivery:** Indy: "Yes update and push the PR"; update existing PR #800 with code and keep it in draft until qualification finishes.
