@@ -393,7 +393,7 @@ The following acceptance work remains visible after closure:
 
 The latest local integration gate passed on `1bb7e7fcf` in 16 minutes, 23 seconds.
 The focused provider run passed 195 tests.
-Three coverage reports measure all 38 changed Rust files above 99%; the missing kernel report prevents a final coverage claim.
+Three coverage reports put all 38 measured changed Rust files above 99%; the missing kernel report prevents a final coverage claim.
 
 At this checkpoint, the kernel reproducibility and toolbox checks failed.
 These results remain incomplete; this documentation move does not waive either gate.
