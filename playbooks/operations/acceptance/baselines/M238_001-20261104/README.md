@@ -87,3 +87,29 @@ This is a different retrieval source from the requested Fly witness.
 | `01a1a430-cd5a-7dc3-8752-58c9e18ecd80` | 265 |
 
 p50 242.5 ms ≤250 ms; max 272 ms ≤1,000 ms. Both numerical limits pass. Delivery-span queue values differ from the later lease-issue log readings and must not replace these ten values.
+
+## Local verification
+
+`observability_verify_test.sh`: 3 passed, 0 failed, including acceptance of saved
+variable values and reordered objects, and rejection of changed queries,
+reducers or variable definitions. `shellcheck --severity=error -x` passed for
+all four changed observability scripts.
+
+`make check-version`: all versions match `0.73.0`. `orly gate work
+--accept-dirty` passed. Gitleaks found no leaks in the staged changes or the
+50 KB evidence directory.
+
+`make check-playbooks` fails in the new source-assets regression because the
+existing gate expects five alerts while `origin/main` has four. The alert set
+is unchanged here.
+
+Correcting `EXPECTED_ALERTS` in `01_assets_check.sh` awaits
+owner approval under the repository's gate-edit rule. A separate collector
+patch and local conversion proof exist outside this branch; deployment-config
+edits also await owner approval. No pull request or live apply is claimed.
+
+Review: gstack and repository standards review found zero remaining actionable
+issues after the reducer labels and variable-state drift repairs. Review receipt
+`4c125fe4-e860-439a-83ad-8e9214f0ef1b` remains incomplete for the manual witnesses
+and alert-count blocker. Native adversarial receipt
+`74460351-c444-4c32-8e72-95fba3a9f355` completed cleanly.

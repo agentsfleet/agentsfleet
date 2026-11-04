@@ -69,7 +69,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Runs that finished cleanly, over runs the PLATFORM was accountable for. A failure caused by the workload — policy_deny, landlock_deny, oom_kill, resource_kill, budget_breach, timeout_kill — is excluded from the denominator entirely: it is neither a success nor a breach, because the platform delivered and what it ran did not. That keeps one tenant's bad code from spending everybody's error budget, and stops a noisy tenant diluting the ratio and hiding real platform failures behind volume. An unclassified failure counts as ours. Target 95%, UNPROVEN — set against 10 executions, of which all 3 failures were platform-caused, so this split does not move today's number. 'How runs are ending' below breaks the failures out by reason.",
+      "description": "Runs that finished cleanly, over runs the PLATFORM was accountable for. A failure caused by the workload \u2014 policy_deny, landlock_deny, oom_kill, resource_kill, budget_breach, timeout_kill \u2014 is excluded from the denominator entirely: it is neither a success nor a breach, because the platform delivered and what it ran did not. That keeps one tenant's bad code from spending everybody's error budget, and stops a noisy tenant diluting the ratio and hiding real platform failures behind volume. An unclassified failure counts as ours. Target 95%, UNPROVEN \u2014 set against 10 executions, of which all 3 failures were platform-caused, so this split does not move today's number. 'How runs are ending' below breaks the failures out by reason.",
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -126,7 +126,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Age of the freshest heartbeat from the runner that is furthest behind. Per-runner tables are in-process and never evicted, so this takes min-by-runner first, then the worst of those — either half alone pages for a healthy fleet. Above the offline threshold, that runner is gone.",
+      "description": "Age of the freshest heartbeat from the runner that is furthest behind. Per-runner tables are in-process and never evicted, so this takes min-by-runner first, then the worst of those \u2014 either half alone pages for a healthy fleet. Above the offline threshold, that runner is gone.",
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -238,7 +238,7 @@
       "id": 37,
       "type": "stat",
       "title": "All-cause run success (not an objective)",
-      "description": "The same ratio WITHOUT the blame split: every failure counted, including the ones the workload caused. This is what a customer feels — 'did my run work' is a fair question with a real answer. It carries no target and nothing alerts on it, because an objective has to be a promise about something this platform controls. Read it beside the objective to its left: a wide gap between them is tenants shipping code that fails, not a platform regression.",
+      "description": "The same ratio WITHOUT the blame split: every failure counted, including the ones the workload caused. This is what a customer feels \u2014 'did my run work' is a fair question with a real answer. It carries no target and nothing alerts on it, because an objective has to be a promise about something this platform controls. Read it beside the objective to its left: a wide gap between them is tenants shipping code that fails, not a platform regression.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -294,7 +294,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Current count per lifecycle status, and a GAP when the census could not be read. The producer withdraws all five readings together when its query fails (`a_withdrawn_census_publishes_no_reading_at_all`), so absence here means the census, the exporter or the daemon is down — not that the fleet is empty. These queries carry no `or vector(0)` for exactly that reason: a zero would render an outage as five healthy zeroes. Not a rate; this is the standing population.",
+      "description": "Current count per lifecycle status, and a GAP when the census could not be read. The producer withdraws all five readings together when its query fails (`a_withdrawn_census_publishes_no_reading_at_all`), so absence here means the census, the exporter or the daemon is down \u2014 not that the fleet is empty. These queries carry no `or vector(0)` for exactly that reason: a zero would render an outage as five healthy zeroes. Not a rate; this is the standing population.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -401,7 +401,7 @@
           "refId": "A"
         }
       ],
-      "title": "Runs starting — fresh or resumed",
+      "title": "Runs starting \u2014 fresh or resumed",
       "type": "timeseries"
     },
     {
@@ -409,7 +409,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Error budget burn at four windows against a 1% budget. The target underneath it is UNPROVEN — set against 14 admission events. Burn rate 1 means the observed error ratio equals the allowed ratio, so the budget would be spent exactly over the full compliance window, not over the query window. ALWAYS READ IT BESIDE THE VALID-EVENT COUNT: a burn of 100 from one failure in one event is arithmetically correct and operationally meaningless. Ships as a panel, never a rule, because paging on an unproven target is how alerting gets muted.",
+      "description": "Error budget burn at four windows against a 1% budget. The target underneath it is UNPROVEN \u2014 set against 14 admission events. Burn rate 1 means the observed error ratio equals the allowed ratio, so the budget would be spent exactly over the full compliance window, not over the query window. ALWAYS READ IT BESIDE THE VALID-EVENT COUNT: a burn of 100 from one failure in one event is arithmetically correct and operationally meaningless. Ships as a panel, never a rule, because paging on an unproven target is how alerting gets muted.",
       "fieldConfig": {
         "defaults": {
           "unit": "short"
@@ -467,7 +467,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "The same four windows against the 5% runner-success budget, counting PLATFORM faults only so it burns on the same events the objective measures, equally UNPROVEN — set against 10 executions. Same warning: read it beside execution volume, since a burn rate computed over a handful of events says nothing. Both climbing together is an infrastructure problem, runner alone is a workload problem.",
+      "description": "The same four windows against the 5% runner-success budget, counting PLATFORM faults only so it burns on the same events the objective measures, equally UNPROVEN \u2014 set against 10 executions. Same warning: read it beside execution volume, since a burn rate computed over a handful of events says nothing. Both climbing together is an infrastructure problem, runner alone is a workload problem.",
       "fieldConfig": {
         "defaults": {
           "unit": "short"
@@ -604,7 +604,7 @@
       ],
       "title": "Requests we turned away",
       "type": "stat",
-      "description": "Backpressure rejections. Non-zero means the daemon protected itself by shedding load — the caller got an error. Sustained non-zero means capacity, not a blip."
+      "description": "Backpressure rejections. Non-zero means the daemon protected itself by shedding load \u2014 the caller got an error. Sustained non-zero means capacity, not a blip."
     },
     {
       "datasource": {
@@ -695,7 +695,7 @@
       ],
       "title": "What each lease poll costs",
       "type": "timeseries",
-      "description": "Candidates scanned and database round trips, both per poll. Rising cost per poll at flat throughput is the scan growing — the lease query is walking more rows to find the same work."
+      "description": "Candidates scanned and database round trips, both per poll. Rising cost per poll at flat throughput is the scan growing \u2014 the lease query is walking more rows to find the same work."
     },
     {
       "datasource": {
@@ -834,7 +834,7 @@
       ],
       "title": "Telemetry we dropped before it left the daemon",
       "type": "timeseries",
-      "description": "Entries discarded by signal and reason, plus attributes omitted. Non-zero means the dashboard above is drawn on incomplete data — read this before trusting a suspiciously quiet panel."
+      "description": "Entries discarded by signal and reason, plus attributes omitted. Non-zero means the dashboard above is drawn on incomplete data \u2014 read this before trusting a suspiciously quiet panel."
     },
     {
       "datasource": {
@@ -1073,7 +1073,7 @@
     },
     {
       "id": 39,
-      "title": "Chat round trip — per fleet, p95 / p99 over returned samples",
+      "title": "Chat round trip \u2014 per fleet, p95 / p99 over returned samples",
       "type": "row",
       "collapsed": false,
       "gridPos": {
@@ -1091,7 +1091,7 @@
     },
     {
       "id": 40,
-      "title": "Whole round trip — p95 / p99",
+      "title": "Whole round trip \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1163,7 +1163,7 @@
     },
     {
       "id": 41,
-      "title": "Queue wait — p95 / p99",
+      "title": "Queue wait \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1235,7 +1235,7 @@
     },
     {
       "id": 42,
-      "title": "Memory — p95 / p99",
+      "title": "Memory \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1307,7 +1307,7 @@
     },
     {
       "id": 43,
-      "title": "Model — p95 / p99",
+      "title": "Model \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1379,7 +1379,7 @@
     },
     {
       "id": 44,
-      "title": "Tools — p95 / p99",
+      "title": "Tools \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1451,7 +1451,7 @@
     },
     {
       "id": 45,
-      "title": "Sandbox wait — p95 / p99",
+      "title": "Sandbox wait \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1523,7 +1523,7 @@
     },
     {
       "id": 46,
-      "title": "Settle — p95 / p99",
+      "title": "Settle \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1595,7 +1595,7 @@
     },
     {
       "id": 47,
-      "title": "Complete — p95 / p99",
+      "title": "Complete \u2014 p95 / p99",
       "type": "stat",
       "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
       "gridPos": {
@@ -1702,7 +1702,7 @@
     "to": "now"
   },
   "timezone": "browser",
-  "title": "agentsfleet — is the fleet healthy? · __ENVIRONMENT__",
+  "title": "agentsfleet \u2014 is the fleet healthy? \u00b7 __ENVIRONMENT__",
   "uid": "__DASHBOARD_UID__",
   "version": 2
 }
