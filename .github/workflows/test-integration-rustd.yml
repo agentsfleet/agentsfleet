@@ -208,27 +208,25 @@ jobs:
         run: |
           set -euo pipefail
           proof="$RUNNER_TEMP/toolbox-proof"
+          trap 'sudo chown -R "$(id -u):$(id -g)" "$proof"' EXIT
           baseline=("$proof/baseline"/toolbox-*.erofs)
           sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "${baseline[0]}" "$proof/baseline-first-use.json" 120
           sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "$AFR_TOOLBOX_IMAGE" "$proof/candidate-first-use.json" 120 "$proof/baseline-first-use.json"
-          python3 - "$proof" <<'PYPROOF'
-          import hashlib, json, sys
-          from pathlib import Path
-          root = Path(sys.argv[1])
-          lengths = {}
-          for role in ('baseline', 'candidate'):
-              image, = (root / role).glob('*.erofs')
-              release = json.loads(image.with_suffix('.json').read_text())
-              with image.open('rb') as handle:
-                  sha = hashlib.file_digest(handle, 'sha256').hexdigest()
-              assert sha == release['sha256'] and image.stat().st_size == release['length']
-              report = json.loads((root / f'{role}-first-use.json').read_text())
-              assert report['image_sha256'] == sha and report['image_bytes'] == release['length']
-              lengths[role] = release['length']
-          assert lengths['candidate'] < lengths['baseline'], lengths
-          (root / 'historical-comparison.txt').write_text('NOT_COMPARABLE: amd64 hosted runner versus historical arm64 host\n')
-          print(lengths)
-          PYPROOF
+          lengths=()
+          for role in baseline candidate; do
+            images=("$proof/$role"/toolbox-*.erofs)
+            [ "${#images[@]}" = 1 ]
+            image="${images[0]}"
+            sha="$(sha256sum "$image" | cut -d' ' -f1)"
+            length="$(stat -c %s "$image")"
+            jq -e --arg sha "$sha" --argjson length "$length" \
+              '.sha256==$sha and .length==$length' "${image%.erofs}.json" >/dev/null
+            sudo jq -e --arg sha "$sha" --argjson length "$length" \
+              '.image_sha256==$sha and .image_bytes==$length' "$proof/$role-first-use.json" >/dev/null
+            lengths+=("$length")
+          done
+          [ "${lengths[1]}" -lt "${lengths[0]}" ]
+          printf 'NOT_COMPARABLE: amd64 hosted runner versus historical arm64 host\n' > "$proof/historical-comparison.txt"
       - name: Retain toolbox qualification evidence including failures
         if: always() && github.event_name == 'workflow_dispatch' && inputs.toolbox_baseline_sha != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

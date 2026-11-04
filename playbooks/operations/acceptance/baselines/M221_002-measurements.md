@@ -212,3 +212,39 @@ The added Python scanner functions are removed from `deploy/baremetal/toolbox.sh
 The deployment test runner discovers files by glob; there is no explicit invocation to remove.
 The existing build action restores records using GNU tar, coreutils and jq, with bounded decoding, image commitment, entry validation and package-list agreement.
 No replacement helper or test file is introduced.
+
+## Scoped builder state and cleanup proof
+
+The owner requested smaller functions, local variables and local environment values.
+Build state now belongs to `main`; package queries and SHA-256 calculation each have one implementation.
+The build epoch is scoped to mmdebstrap and mkfs.erofs, preserving the previously measured image bytes.
+
+`sudo -E make toolbox-image TOOLBOX_DIR=/audit/local-state-final` completed successfully.
+The image still has digest `acfe072d46762caae77c6dbe897c20206f3300add6c85704f3b2f68704b5bd0f` and 135,979,008 bytes.
+The assembler must receive the epoch too; removing it changes image bytes even when package metadata agrees.
+
+Thirteen transient probes exercised the actual scanner action body, without adding a repository helper or test file.
+The valid case used pinned Syft and real EROFS, OverlayFS and tmpfs mounts. Malformed archive cases injected a marker-only lower directory.
+
+| Probe group | Cases | Result |
+|-------------|------:|--------|
+| Complete real scan | 1 | Exit 0; published bill of materials; no mount left |
+| Missing, changed, oversized, duplicate, unsafe or linked records; package omission | 7 | Nonzero; scanner never called; no output or mounts left |
+| Signal after lower mount, overlay mount or scanner start | 3 | Exit 143; scanner child reaped; no output, mounts or loops left |
+| Scanner error | 1 | Exit 42; no published output or mounts left |
+| Busy unmount | 1 | Exit 1; diagnostic and three retained mounts; no completed output |
+
+The module-preload fixture checked the actual positive EROFS entry in `/proc/filesystems`, because this cloud host has no matching module directory.
+Cancellation/error cases used controlled scanner stubs; the valid scan used the real pinned scanner.
+After recording the busy-mount result, the transient fixture explicitly unmounted its own retained tree.
+
+The first cancellation probe exposed an orphaned child behind sudo. The action now enters one privileged shell and launches Syft in its own session.
+Cleanup kills that owned process group and waits for it; the repeated cancellation probe passed.
+
+Hosted run `41779197114` passed the full kernel target and all eight 120-sample comparisons (`regressions: []`).
+Its later identity check and artifact upload failed because the reports belonged to root with mode 0600.
+The caller now reads them with root privileges and transfers evidence ownership on exit, including failed sampling attempts; qualification must rerun.
+
+PR unit run `41780094139` failed while compiling daemon libraries with `No space left on device`.
+The local repository gate passed lint, unit and version commands; integration stopped because its QStash container exited 127 before tests started.
+Neither infrastructure failure is recorded as an integration pass.

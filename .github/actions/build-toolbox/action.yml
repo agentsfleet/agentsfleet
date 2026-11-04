@@ -64,7 +64,9 @@ runs:
         DIGEST: ${{ steps.identity.outputs.digest }}
         SYFT_CACHE_DIR: ${{ runner.temp }}/toolbox-syft-cache
       run: |
+        sudo -E env "PATH=$PATH" bash -euo pipefail -s -- "$(command -v syft)" "$(id -u)" "$(id -g)" <<'SCAN'
         set -euo pipefail
+        scanner="$1" owner_uid="$2" owner_gid="$3"
         out="$PWD/$OUTPUT_DIR"
         scratch=$(mktemp -d "$RUNNER_TEMP/toolbox-scan.XXXXXX")
         staged="$out/.toolbox-$DIGEST.sbom.$$.json"
@@ -72,16 +74,16 @@ runs:
           local result=$? child
           trap - EXIT INT TERM
           for child in $(jobs -pr); do
-            sudo kill -TERM "$child" 2>/dev/null || true
+            kill -TERM -- "-$child" 2>/dev/null || true
             wait "$child" || true
           done
           for point in "$scratch/ram/view" "$scratch/ram" "$scratch/lower"; do
-            if mountpoint -q "$point" && ! sudo umount "$point"; then
+            if mountpoint -q "$point" && ! umount "$point"; then
               echo "toolbox scan: cannot unmount $point; retaining $scratch" >&2
               exit 1
             fi
           done
-          sudo rm -rf "$scratch"
+          rm -rf "$scratch"
           rm -f "$staged"
           exit "$result"
         }
@@ -89,10 +91,10 @@ runs:
         trap 'exit 130' INT
         trap 'exit 143' TERM
         mkdir "$scratch/lower" "$scratch/ram"
-        sudo modprobe erofs
-        sudo mount -t erofs -o loop,ro,nosuid,nodev "$out/toolbox-$DIGEST.erofs" "$scratch/lower"
-        sudo mount -t tmpfs -o size=32m,nosuid,nodev tmpfs "$scratch/ram"
-        sudo mkdir "$scratch/ram/upper" "$scratch/ram/work" "$scratch/ram/view"
+        modprobe erofs
+        mount -t erofs -o loop,ro,nosuid,nodev "$out/toolbox-$DIGEST.erofs" "$scratch/lower"
+        mount -t tmpfs -o size=32m,nosuid,nodev tmpfs "$scratch/ram"
+        mkdir "$scratch/ram/upper" "$scratch/ram/work" "$scratch/ram/view"
         release="$out/toolbox-$DIGEST.json"
         [ "$(stat -c %s "$release")" -le 1048576 ]
         jq -e --arg sha "$DIGEST" --argjson length "$(stat -c %s "$out/toolbox-$DIGEST.erofs")" \
@@ -114,22 +116,23 @@ runs:
         jq -e --slurpfile packages "$scratch/packages.json" \
           '.packages==$packages[0] and (.packages|type=="array" and length>0 and length<=512)' "$release" >/dev/null
         database="$scratch/ram/upper/var/lib/dpkg"
-        sudo mkdir -p "$database/info"
+        mkdir -p "$database/info"
         while IFS= read -r name; do
           case "$name" in status|info/*.*) ;;
             *) continue ;;
           esac
           tar -xOf "$scratch/metadata.tar" -- "$name" > "$scratch/record"
-          sudo install -m 644 "$scratch/record" "$database/$name"
+          install -m 644 "$scratch/record" "$database/$name"
         done < "$scratch/entries"
-        sudo mount -t overlay -o "lowerdir=$scratch/lower,upperdir=$scratch/ram/upper,workdir=$scratch/ram/work" overlay "$scratch/ram/view"
-        sudo -E "$(command -v syft)" scan "dir:$scratch/ram/view" -o "spdx-json=$scratch/sbom.json" &
+        mount -t overlay -o "lowerdir=$scratch/lower,upperdir=$scratch/ram/upper,workdir=$scratch/ram/work" overlay "$scratch/ram/view"
+        setsid "$scanner" scan "dir:$scratch/ram/view" -o "spdx-json=$scratch/sbom.json" &
         wait "$!"
-        sudo umount "$scratch/ram/view"
-        sudo umount "$scratch/ram"
-        sudo umount "$scratch/lower"
-        sudo install -m 644 -o "$(id -u)" -g "$(id -g)" "$scratch/sbom.json" "$staged"
+        umount "$scratch/ram/view"
+        umount "$scratch/ram"
+        umount "$scratch/lower"
+        install -m 644 -o "$owner_uid" -g "$owner_gid" "$scratch/sbom.json" "$staged"
         mv "$staged" "$out/toolbox-$DIGEST.sbom.spdx.json"
+        SCAN
 
     - uses: ./.github/actions/scan-toolbox
       with:
