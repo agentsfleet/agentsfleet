@@ -483,8 +483,49 @@ The companion documentation branch also integrates its latest main in `9a70538` 
 Its work gate passed 25 checks; full documentation verification and the branch secret scan passed.
 The logs are `/tmp/m236-docs-main-work.log`, `/tmp/m236-docs-main-verify.log` and `/tmp/m236-docs-main-secrets.log`.
 
-Fresh Rust patch coverage against integrated main remains pending.
+Current-main Rust coverage remains below the required patch floor; the next section records the complete measurement.
 Physical decision reservations, runtime integration and R2 recovery remain unfinished.
+
+## Current-main native coverage
+
+The [four-shard measurement at `37c177bb8`](https://github.com/agentsfleet/agentsfleet/actions/runs/41761357273) passed every shard and the workspace floor.
+All four downloaded report archives, checksums and revision stamps matched that exact commit.
+Manual dispatch left the patch base empty; its green result did not grade changed lines.
+
+The unchanged merge command ran in a clean checkout with explicit base `11883fdab`.
+It measured 99.6178% workspace coverage, covering 79,498 of 79,803 lines.
+Patch coverage was 97.3743%, covering 2,633 of 2,704 changed lines; 26 of 114 touched files missed their separate 99% floor.
+
+`make test-coverage-rustd-merge RUSTD_PATCH_BASE=11883fdab` therefore failed the required patch/file checks.
+The log is `/tmp/m236-coverage-37c177bb8-vs-11883fdab.log`; no floor, report counter or exclusion changed.
+
+## Editable pull-request starter
+
+Indy clarified that New fleet's Review pull requests button must load the full customer-editable starter, including proposed completion questions.
+The canonical public JSON supplies all three existing buttons through the existing suggestion component with `send={false}`.
+It adds no loader, request route or dependency.
+
+The review starter asks for repository, timing and destination instead of assuming them.
+It includes two completion questions with yes/no criteria; owner edits travel in the ordinary setup message.
+Selection makes no write or save request, and submitting sends exactly one edited message.
+
+The Rust source audit found no production PR-review canned reply to delete.
+Authoring response text comes from the model response; accepted revisions supply customer instructions and questions.
+Generic authoring guidance remains separate; the earlier claim that a PR-review canned reply remained in Rust was incorrect.
+
+The replacement regression failed on the parent UI's one-line starter at its completion-question assertion.
+The log is `/tmp/m236-starter-parent-red.log`; the fixed flow passes in the full app suite.
+Astra's source review found no material issue and ran no builds or tests.
+
+`make lint-app` passed, including type checking and source rules.
+`make test-coverage-all` passed all four 100% coverage checks: app 4,653, website 133, CLI 1,997 and design system 522 tests.
+Sixteen CLI live tests remained explicitly skipped; `/tmp/m236-starter-coverage.log` records the complete results.
+
+The production-component browser suite passed ten desktop/mobile cases, including keyboard selection, retained edits, zero writes, 14px text and usable composer geometry.
+The log is `/tmp/m236-starter-browser.log`; the batch recorded exit zero.
+This controlled browser proof does not establish live model authoring or full DT acceptance.
+
+The companion setup guide is pushed in `0b2bc39`, after its work gate, complete site validation and secret scans passed.
 
 ## Owner work-item status
 
@@ -492,8 +533,8 @@ Physical decision reservations, runtime integration and R2 recovery remain unfin
 |---|---|
 | Integrate merged main before shipping | PR 798 ancestry is retained; merge `205addaa2` also integrates PR 799/main `11883fdab`. Integrated provider-component gates passed; recheck before the next push and final ship. |
 | Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Physical calls, full agent/lease integration, waits, publication and recovery remain incomplete. |
-| Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Eight final production-component browser checks passed for typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
+| Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. SDK transfer, encryption, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |
-| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning architecture corrections are applied; docs commit `6d595a5` adds setup-criteria and Current work guides; pushed merge `9a70538` integrates latest main and passes full validation. The companion PR remains pending; new API pages follow the lead merge. |
+| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; pushed merge `9a70538` integrates latest main, followed by validated starter guide `0b2bc39`. The companion PR remains pending; new API pages follow the lead merge. |
 | Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. No feature PR exists; all required gates, actual-head Continuous Integration and Greptile resolution must precede the authorized merge. |

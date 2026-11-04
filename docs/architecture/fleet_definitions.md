@@ -27,6 +27,11 @@ Explicit revision adoption invalidates prior goal decisions.
 One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
 
 Customers supply the job through chat or an editable Library copy, such as a pull-request review starter.
+
+The New fleet suggestion buttons load editable user-message text from `ui/packages/app/public/fleet-starters.json`.
+Review pull requests includes suggested completion questions and yes/no criteria; selecting it sends nothing and creates no fleet.
+The owner edits and submits that text through ordinary setup chat; Rust supplies no PR-review canned reply or default completion question.
+
 Library links select an immutable revision through the existing new-fleet page; copying grants no runtime authority.
 Conversation compaction retains context separately; saved instructions and accepted questions remain the authoritative setup.
 
