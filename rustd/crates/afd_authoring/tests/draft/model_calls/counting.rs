@@ -13,8 +13,11 @@ use std::sync::{
 };
 use tokio::sync::Semaphore;
 
-// Keep the selected summary near capacity after geometric source reduction.
-const NATIVE_WINDOW: i32 = 36_000;
+// Keep the selected summary near capacity after geometric source reduction:
+// the 180 exchanges halve to a 64-exchange summary of about 20,000 estimated
+// tokens, which with its 2,048 output lands near 87 percent of this window,
+// between the 80 percent native-count line and the 95 percent ceiling.
+const NATIVE_WINDOW: i32 = 25_000;
 const PRIOR_EXCHANGES: i64 = 180;
 
 #[derive(Debug)]
