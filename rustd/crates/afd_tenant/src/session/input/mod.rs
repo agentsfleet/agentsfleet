@@ -25,8 +25,8 @@
 use afd_validate::{PathTable, ascii_digits, charset};
 use garde::{Unvalidated, Valid, Validate};
 
+use crate::Result;
 use crate::error::{self, SessionField};
-use crate::{Error, Result};
 
 /// The longest command-line public key this daemon will hold.
 ///
@@ -252,12 +252,6 @@ impl<'a> Code<'a> {
 const fn is_label_char(character: char) -> bool {
     character.is_ascii_graphic() || character == ' '
 }
-
-/// The refusal a caller reads when a field will not parse.
-///
-/// Re-exported so a caller can name the type without reaching into the error
-/// module for it.
-pub type ParseError = Error;
 
 #[cfg(test)]
 mod tests;
