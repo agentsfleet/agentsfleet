@@ -14,7 +14,7 @@ categories.workspace = true
 [package.metadata.cargo-shear]
 # Used by `tests/support/`, which the provider suite includes through
 # `#[path = "../support/mod.rs"]`, a module path the source scan does not follow.
-ignored = ["afr_memory", "rcgen", "rustls", "tokio-rustls"]
+ignored = ["afr_memory", "rcgen", "rustls"]
 
 [lints]
 workspace = true

@@ -124,8 +124,13 @@ The first corrected tools selection passed 261 tests, before the later snapshot 
 The cooperative-budget regression failed before budgeting: 118 executor tests passed and one failed at `(129, 128)` versus `(128, 128)`.
 Source review found and closed indefinite draining and unbudgeted notification loops.
 Astra found no remaining material production issue in the final native-link changes.
+
 Its test-proof correction now checks subsequent-call refusal in one poll.
-Fresh branch gates remain pending; no kernel signal-isolation proof is claimed.
+The final runner shard passed 1,602 tests after the logging-field cleanup.
+Clean integration passed 1,513 regular and three exclusive tests on the integrated source.
+
+Final checkpoint verification passed workspace Clippy, formatting, dependency checks, prose and version synchronization.
+No kernel signal-isolation proof is claimed.
 
 ## Discovery
 

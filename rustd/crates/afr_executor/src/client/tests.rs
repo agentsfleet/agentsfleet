@@ -36,7 +36,7 @@ fn silent() -> (Client, UnixStream) {
 }
 
 /// The next call the client sent `executor`.
-async fn next_call(executor: &mut BufReader<UnixStream>) -> Value {
+pub(super) async fn next_call(executor: &mut BufReader<UnixStream>) -> Value {
     let mut request = String::new();
     executor.read_line(&mut request).await.unwrap();
     serde_json::from_str(&request).unwrap()
@@ -60,7 +60,7 @@ async fn answer(executor: &mut BufReader<UnixStream>, result: Value) -> Value {
 }
 
 /// Answers the next call on `executor` as a spawn of process `process`.
-async fn answer_spawn(executor: &mut BufReader<UnixStream>, process: u64) {
+pub(super) async fn answer_spawn(executor: &mut BufReader<UnixStream>, process: u64) {
     answer(executor, json!({ "process_id": process })).await;
 }
 
@@ -70,7 +70,7 @@ fn nothing_listed() -> Value {
 }
 
 /// A client whose calls wait [`PATIENCE`], and a process it started.
-async fn started() -> (Client, BufReader<UnixStream>, crate::api::Process) {
+pub(super) async fn started() -> (Client, BufReader<UnixStream>, crate::api::Process) {
     let (ours, theirs) = UnixStream::pair().unwrap();
     let client = Client::over(ours, PATIENCE);
     let mut executor = BufReader::new(theirs);

@@ -38,7 +38,7 @@ All implementation remains in existing PR #803; companion pages remain in docs P
 3. `afd_http/src/services/schedule/` — manual and runner paths; `service.rs` also serves background reconciliation.
 4. `afd_memory/src/access.rs`, `afd_authoring/src/creation/{reserve,activate}.rs`, `afd_vault/src/write.rs` — actual receipt callers.
 5. `afd_api_wire/src/schedule/view.rs` — description, message, status, sync, last error, run state and next time already exist.
-6. App `lib/events/{fleet-activity,event-summary}.ts`, `components/domain/{fleetMessageRenderers,FleetTriggerSummary}.tsx`, `chat/ScheduleSync.tsx` — current rendering and the saved-state bug.
+6. App `lib/events/{fleet-activity,event-summary}.ts`, `components/domain/{fleetMessageRenderers,FleetTriggerSummary}.tsx`, `components/domain/chat/ScheduleSync.tsx` — current rendering and the saved-state bug.
 
 Rust crate paths share `rustd/crates/`; app paths share `ui/packages/app/`.
 The receipt enum on inspected main has SetupSaved, SetupReady, AccessSaved and MemorySharingChanged only.
@@ -54,7 +54,7 @@ The vault already records generic access-saved history for writes; deletion and 
 | `afd_cron/src/{service.rs,fire/mod.rs,store/input.rs,store/target.rs}`; owning SQL and tests | Record confirmed sync outcomes under the existing fence; retain description/message snapshot on the accepted cron event. |
 | `afd_events/src/history/` and its queued-admission statements; existing catch-up/notice owners | Include accepted schedule fires in queued chat history before a runner claims them, preserving the same admission identity through promotion. |
 | `afd_http/src/services/schedule/`; `agentsfleetd` schedule composition; authoring schedule setup owners | Thread the existing receipt/live-stream capability through every current writer; preserve one scheduling path. |
-| App `lib/events/`, `components/domain/{fleetMessageRenderers,FleetTriggerSummary,EventsList,EventDetailsDialog}.tsx`, `chat/{ScheduleSync,ChatThread}.tsx` and callers | Plain activity rows, visible fire message, saved-state summary, native run-details action and existing retry action. |
+| App `lib/events/`, `components/domain/{fleetMessageRenderers,FleetTriggerSummary,EventsList,EventDetailsDialog}.tsx`, `components/domain/chat/{ScheduleSync,ChatThread}.tsx` and callers | Plain activity rows, visible fire message, saved-state summary, native run-details action and existing retry action. |
 | Native storage/HTTP tests and app Playwright owners | Exercise atomic history, stream catch-up, privacy, duplicates, failure/recovery and rendered rows. |
 | Architecture owners, this specification, acceptance baseline and generated OpenAPI when affected | Record actual behavior and evidence; public API changes require the existing docs-repository branch. |
 | Docs repository `fleets/{running,tools,authoring}.mdx`, `changelog.mdx`, affected generated API pages | Explain visible schedule activity; new API reference follows the owning lead-repository merge. |
