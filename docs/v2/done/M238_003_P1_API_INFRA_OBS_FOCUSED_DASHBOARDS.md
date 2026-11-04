@@ -425,4 +425,5 @@ Its header now states the remaining work explicitly.
 
 Indy requested: "push it in PR801 and close 804."
 Keep the closeout, wording fixes and requested fixture cleanup in #801.
-Close #804 without merging it; its commits are preserved in #801’s branch history.
+GitHub marked #804 merged when its commits landed in its base branch, the branch for #801.
+The main branch was not merged; #801 remains the single open implementation PR.
