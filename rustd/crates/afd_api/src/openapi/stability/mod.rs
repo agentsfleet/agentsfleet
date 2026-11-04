@@ -50,6 +50,10 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // fire. `source` grew a third value with the fleet as an author, and both
     // are read by that same new runner.
     ("View", &["source", "once"]),
+    // The held heartbeat and the memory window on the lease are new, and so
+    // is the runner release that reads them.
+    ("HeartbeatResponse", &["woken"]),
+    ("LeasePayload", &["memory"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.

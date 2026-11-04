@@ -27,6 +27,7 @@ use std::time::Duration;
 
 use afd_core::clock::saturating_millis;
 use afd_core::spelling::to_spelling;
+use afd_wire::report::RunSegments;
 use tokio::time::Instant;
 
 use super::{EVENT_COMPLETED, EVENT_FAILED, LeaseRun};
@@ -88,6 +89,19 @@ impl Timeline {
         segments.first_token = timing.first_chunk;
     }
 
+    /// The segments a report carries to the daemon, with `settle` as the
+    /// settle's time so far: the daemon's span cannot see the runner's clock.
+    pub(super) fn reported(&self, settle: Duration) -> RunSegments {
+        let segments = self.lock();
+        RunSegments {
+            memory_ms: segments.memory.map(saturating_millis),
+            model_ms: segments.model.map(saturating_millis),
+            tools_ms: segments.tools.map(saturating_millis),
+            sandbox_wait_ms: segments.sandbox_wait.map(saturating_millis),
+            settle_ms: Some(saturating_millis(settle)),
+        }
+    }
+
     /// How long the turn's sandbox-side calls waited for the build, when any
     /// call did.
     pub(super) fn waited(&self, held: Option<Duration>) {
@@ -125,6 +139,11 @@ pub(super) struct Stopwatch<'a> {
 }
 
 impl Stopwatch<'_> {
+    /// How long this segment has run so far.
+    pub(super) fn elapsed(&self) -> Duration {
+        self.started.elapsed()
+    }
+
     /// The segment ends here.
     pub(super) fn stop(self) {
         drop(self);

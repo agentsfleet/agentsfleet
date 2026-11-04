@@ -41,6 +41,9 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# A lease's two post-issue reads, the thread's turns and the memory window,
+# run overlapped (`future::join`).
+futures-util.workspace = true
 afd_context = { workspace = true, features = ["postgres"] }
 # The shared poll admits private setup through its production-domain owner.
 afd_authoring.workspace = true
@@ -130,7 +133,6 @@ tokio = { workspace = true, features = ["time"] }
 # Reviewed decision fixtures use the same native catalogue mutations as operators.
 afd_admin.workspace = true
 garde.workspace = true
-futures-util.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }

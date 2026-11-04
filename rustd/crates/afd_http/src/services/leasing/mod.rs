@@ -2,8 +2,8 @@
 
 use afd_core::id::Uuid7;
 use afd_credential::credential::Minted;
-use afd_fleet::lease::Standing;
 use afd_fleet::lease::report::Reconciled;
+use afd_fleet::lease::{Standing, Waited};
 use afd_memory::Captured;
 use afd_outbound::Interim;
 use afd_wire::activity::ActivityFrame;
@@ -61,6 +61,14 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         request: &ReportRequest<'_>,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send;
+
+    /// Hold a runner's heartbeat until fresh work is admitted, `deadline`
+    /// passes, or `max` beats are already held, and say which.
+    fn wait_for_work(
+        &self,
+        deadline: std::time::Duration,
+        max: usize,
+    ) -> impl Future<Output = Waited> + Send;
 
     /// Extend one live lease's deadline, metering the slice since the last.
     ///

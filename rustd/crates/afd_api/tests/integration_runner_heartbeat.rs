@@ -123,3 +123,48 @@ fn enrolment() -> RegisterRequest<'static> {
         labels: vec![Cow::Borrowed("heartbeat")],
     }
 }
+
+/// A beat that asks to be held is answered with `woken`, its liveness already
+/// recorded: the hold comes after the beat's own writes, so a held runner
+/// never reads as silent.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_beat_asking_to_be_held_answers_woken_after_its_liveness() {
+    let lane = TestDatabase::shared();
+    let database = lane.open(DbRole::Api, &[]).await;
+    let enrolled = Runners::new(database.clone(), Entropy::new())
+        .register(&enrolment(), NOW)
+        .await
+        .expect("the runner enrols");
+    let token = enrolled.token.expose().to_owned();
+    let router = Fleet::live(database.clone(), SUBJECT, ScopeSet::from_scopes(&[])).router();
+
+    let beat = send(
+        &router,
+        Method::POST,
+        afd_wire::paths::RUNNER_HEARTBEATS,
+        Some(&token),
+        r#"{"holds":[],"closing":false,"wake":true}"#,
+    )
+    .await;
+    let status = beat.status();
+    let reply = json_body(beat).await;
+    let migrator = lane.open(DbRole::Migrator, &[]).await;
+    let seen_after_enrolment: bool = sqlx::query_scalar(
+        "SELECT last_seen_at > $2::timestamptz FROM runner.runners WHERE id = $1::uuid",
+    )
+    .bind(enrolled.runner_id.as_str())
+    .bind(NOW.to_string())
+    .fetch_one(&mut *migrator.acquire().await.expect("a reading connection"))
+    .await
+    .expect("the enrolled runner has a row");
+
+    assert_eq!(
+        (status, reply.get("woken").cloned(), seen_after_enrolment),
+        (StatusCode::OK, Some(serde_json::Value::Bool(false)), true),
+        "{reply}"
+    );
+    drop(migrator);
+    drop(database);
+    lane.cleanup().await;
+}

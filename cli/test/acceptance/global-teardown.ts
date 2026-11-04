@@ -1,7 +1,7 @@
 import { afterAll, setDefaultTimeout } from "bun:test";
 
 import { revokeMintedSessions } from "./fixtures/clerk-admin.ts";
-import { REVOKE_WORST_CASE_MS } from "./fixtures/cli-credential-revoke.ts";
+import { WORST_CASE_MS } from "./fixtures/retryable.ts";
 import { revokeHydratedCliCredentials } from "./fixtures/workspace-hydration.ts";
 import { resolveAcceptanceEnv } from "./global-setup.ts";
 import { BUN_TEST_TIMEOUT_MS } from "./run-lane.ts";
@@ -17,7 +17,7 @@ const CLERK_REVOKE_BUDGET_MS = 20_000;
  * because a by-hand `bun test --preload` would otherwise get bun's 5s hook
  * default and cut the loop mid-retry; the lane's `--timeout` is larger.
  */
-const TEARDOWN_TIMEOUT_MS = REVOKE_WORST_CASE_MS + CLERK_REVOKE_BUDGET_MS;
+const TEARDOWN_TIMEOUT_MS = WORST_CASE_MS + CLERK_REVOKE_BUDGET_MS;
 
 afterAll(async () => {
   const failures: unknown[] = [];

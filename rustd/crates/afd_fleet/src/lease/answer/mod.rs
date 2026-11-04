@@ -10,6 +10,7 @@ use afd_core::timing::NO_WORK_RETRY_AFTER;
 use afd_wire::decision::DecisionAssignment;
 use afd_wire::event::{EventEnvelope, EventType};
 use afd_wire::lease::{LeasePayload, LeaseResponse, SecretDelivery, TaggedLease, Turn};
+use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::policy::ExecutionPolicy;
 
 use crate::error::{DETAIL_EVENT_MALFORMED, Result, rejected};
@@ -65,6 +66,15 @@ pub(super) fn answer(lease: Option<LeasePayload<'_>>) -> Result<String> {
     .map_err(|_shape| rejected(DETAIL_EVENT_MALFORMED))
 }
 
+/// What a lease carries about the fleet beyond its event: the thread's earlier
+/// turns and the memory window, both read after the issue.
+#[derive(Debug, Default)]
+pub(super) struct Context<'a> {
+    pub(super) history: Vec<Turn<'a>>,
+    pub(super) memory: Option<MemoryHydrateResponse<'a>>,
+    pub(super) decision: Option<Box<DecisionAssignment>>,
+}
+
 /// The issued lease, as the bytes a runner executes from.
 ///
 /// # Errors
@@ -75,8 +85,7 @@ pub(super) fn render<'a>(
     event_type: EventType,
     installed: &'a Installed,
     policy: ExecutionPolicy<'a>,
-    history: Vec<Turn<'a>>,
-    decision: Option<Box<DecisionAssignment>>,
+    context: Context<'a>,
 ) -> Result<String> {
     answer(Some(LeasePayload {
         lease_id: lease_id.as_str().into(),
@@ -98,9 +107,10 @@ pub(super) fn render<'a>(
         instructions: installed.instructions.as_str().into(),
         // No fleet carries a size yet, so every runner builds its defaults.
         limits: None,
-        history,
+        history: context.history,
         resume_hold: acquired.resume_hold,
-        decision,
+        decision: context.decision,
+        memory: context.memory,
     }))
 }
 

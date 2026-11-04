@@ -38,6 +38,7 @@
 
 mod bindings;
 mod cases;
+mod chat;
 mod decision;
 mod decision_expiry;
 mod faults;
@@ -47,6 +48,7 @@ mod seed;
 mod slack;
 mod stops;
 mod tenant;
+mod window;
 
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Acquired;

@@ -274,6 +274,7 @@ pub async fn runner_with(
         selftest: None,
         holds: HeldFleets(Vec::new()),
         closing: false,
+        wake: false,
     };
     let held = prove(beat.holds.clone());
     runners

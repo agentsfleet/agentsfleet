@@ -35,6 +35,14 @@ impl Leasing for Plane {
         Self::report(self, runner_id, request, now)
     }
 
+    fn wait_for_work(
+        &self,
+        deadline: std::time::Duration,
+        max: usize,
+    ) -> impl Future<Output = afd_fleet::lease::Waited> + Send {
+        self.leases.wait_for_work(deadline, max)
+    }
+
     // `async fn`, where the two methods above are `-> impl Future`: this is the
     // one implementation that has work to do AFTER the await — dropping the
     // charge — so it cannot just forward the plane's future. The charge is

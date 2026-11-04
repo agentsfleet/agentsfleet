@@ -128,7 +128,8 @@ impl FleetStatusLabel {
 }
 
 closed_set! {
-    /// One measured boundary from event creation to the first streamed chunk.
+    /// One measured boundary between event creation, the lease, the first
+    /// streamed chunk, the report and the event's completion.
     DeliveryStage {
         /// Producer event timestamp to durable lease issue.
         EventToLease => "event_to_lease",
@@ -138,6 +139,24 @@ closed_set! {
         EventToFirstChunk => "event_to_first_chunk",
         /// Execution invocation to its first safe stream chunk, as the runner measured it.
         ZombieToFirstChunk => "zombie_to_first_chunk",
+        /// Producer event timestamp to the `event_complete` publish: the whole round trip.
+        EventToComplete => "event_to_complete",
+        /// Lease issue to the report's arrival at the daemon.
+        LeaseToReport => "lease_to_report",
+        /// The report's arrival to the `event_complete` publish.
+        ReportToComplete => "report_to_complete",
+    }
+}
+
+closed_set! {
+    /// How a held heartbeat ended.
+    WakeAnswer {
+        /// Fresh work was admitted while the beat was held.
+        Ring => "ring",
+        /// The hold reached its deadline with no ring.
+        Deadline => "deadline",
+        /// The process held its cap of beats, so this one was not held.
+        Capped => "capped",
     }
 }
 

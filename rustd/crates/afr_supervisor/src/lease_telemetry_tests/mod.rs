@@ -170,6 +170,7 @@ fn scripted_lessee(home: &StorageHome) -> Lessee {
         halt: Halt::new(CancellationToken::new()),
         held: Notify::new(),
         whoami: Whoami::default(),
+        wake: crate::worker_pool::Wake::default(),
     }
 }
 

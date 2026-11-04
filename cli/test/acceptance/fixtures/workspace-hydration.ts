@@ -31,8 +31,16 @@ import {
   type MintedCliCredential,
   REVOKE_LABEL,
   revokeCliCredential,
-  type RevokeOptions,
 } from "./cli-credential-revoke.ts";
+import {
+  ATTEMPT_TIMEOUT_MS,
+  type RetryFault,
+  type RetryOptions,
+  edgeAnswered,
+  retryAfterMs,
+  UNPROCESSED_STATUSES,
+  withRetries,
+} from "./retryable.ts";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 const MACHINE_NAME_PREFIX = "acceptance-";
@@ -87,24 +95,67 @@ function machineNameFor(stateDir: string): string {
     .slice(0, MAX_MACHINE_NAME_LEN);
 }
 
+/** One mint attempt that did not answer a credential; never thrown by the attempt. */
+interface MintFault extends RetryFault {
+  readonly message: string;
+}
+
+/** One POST. Answers the response, or the fault the retry loop decides on. */
+async function mintOnce(
+  apiUrl: string,
+  sessionToken: string,
+  machineName: string,
+): Promise<{ readonly ok: Response } | { readonly fault: MintFault }> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}${CLI_CREDENTIALS_PATH}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ machine_name: machineName }),
+      signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+    });
+  } catch (cause: unknown) {
+    // A connection that never opened says nothing landed; a timeout may
+    // follow a mint that did, and a second mint would leave the first live.
+    const message = `CLI credential mint never reached the API: ${String(cause)}`;
+    return { fault: { message, retryable: cause instanceof TypeError, retryAfterMs: null } };
+  }
+  if (response.ok) return { ok: response };
+  const detail = await response.text().catch(() => "");
+  const message = `CLI credential mint ${response.status}: ${detail.slice(0, ERROR_DETAIL_MAX_CHARS)}`;
+  return {
+    fault: {
+      message,
+      retryable: UNPROCESSED_STATUSES.has(response.status) || edgeAnswered(response.status, detail),
+      retryAfterMs: retryAfterMs(response),
+    },
+  };
+}
+
+/**
+ * Mints a durable CLI credential for `machineName`, retrying only the answers
+ * that prove nothing was minted (`UNPROCESSED_STATUSES`, and a 502 the edge
+ * answered), so a retry does not leave a second live credential behind the
+ * first.
+ */
 export async function mintCliCredential(
   apiUrl: string,
   sessionToken: string,
   machineName: string,
+  options: RetryOptions = {},
 ): Promise<MintedCliCredential> {
-  const response = await fetch(`${apiUrl}${CLI_CREDENTIALS_PATH}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${sessionToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ machine_name: machineName }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`CLI credential mint ${response.status}: ${detail.slice(0, ERROR_DETAIL_MAX_CHARS)}`);
+  const retried = await withRetries(() => mintOnce(apiUrl, sessionToken, machineName), options);
+  if (!("ok" in retried)) {
+    const { last, faults } = retried;
+    if (faults.length === 1) throw new Error(last.message);
+    throw new Error(`${last.message} (gave up after ${faults.length} attempts)`, {
+      cause: new AggregateError(faults.map((fault) => new Error(fault.message))),
+    });
   }
-  const body = await response.json() as { id?: unknown; credential?: unknown };
+  const body = await retried.ok.json() as { id?: unknown; credential?: unknown };
   if (
     typeof body.id !== "string" ||
     typeof body.credential !== "string" ||
@@ -124,7 +175,7 @@ export async function mintCliCredential(
  */
 export async function revokeHydratedCliCredentials(
   apiUrl: string,
-  options: RevokeOptions = {},
+  options: RetryOptions = {},
 ): Promise<void> {
   const credentials = [...liveCredentials.entries()];
   const failures: unknown[] = [];

@@ -22,6 +22,7 @@ use afd_wire::runner::{HeartbeatRequest, HeldFleets};
 use backon::{ExponentialBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::error::{self, Result};
 
@@ -69,11 +70,17 @@ pub(crate) trait RunnerApi: Send + Sync + fmt::Debug {
     async fn send(&self, call: Call) -> Result<Bytes>;
 }
 
-/// A successful reply, decoded on demand.
+/// A successful reply, decoded on demand, and zeroed when dropped.
+///
+/// A lease reply holds the run's policy, the fleet's memory window and its
+/// earlier turns in clear, and the run borrows all three from these bytes for
+/// as long as the lease lasts; zeroing them on drop means the copy the runner
+/// owns does not outlive the lease in freed memory. The transport's own
+/// buffer, handed over here, is the client's and is not covered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Body {
     verb: Verb,
-    bytes: Bytes,
+    bytes: Zeroizing<Vec<u8>>,
 }
 
 impl Body {
@@ -222,7 +229,12 @@ impl ControlPlane {
             Ok(bytes) => {
                 let event = EVENT_COMPLETED;
                 tracing::debug!(verb = verb_name, event);
-                Ok(Body { verb, bytes })
+                // `Vec::from` takes the buffer without a copy when the reply
+                // owns it alone, so no second clear copy is left to free.
+                Ok(Body {
+                    verb,
+                    bytes: Zeroizing::new(Vec::from(bytes)),
+                })
             }
             Err(failure) => {
                 let code = failure.code().as_str();

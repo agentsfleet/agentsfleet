@@ -70,6 +70,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
         selftest: None,
         holds: afd_wire::runner::HeldFleets::default(),
         closing: false,
+        wake: false,
     };
     let first = fixtures
         .runners()
@@ -195,6 +196,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
         selftest: None,
         holds: afd_wire::runner::HeldFleets::default(),
         closing: false,
+        wake: false,
     };
 
     let answered = fixtures
@@ -256,6 +258,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
         }),
         holds: afd_wire::runner::HeldFleets::default(),
         closing: false,
+        wake: false,
     };
     let beat_at = fixtures.after(ONE_BEAT);
 
