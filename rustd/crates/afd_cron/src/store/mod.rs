@@ -28,12 +28,14 @@ use jiff::Timestamp;
 use crate::error::Result;
 
 mod admit;
+mod complete;
 mod create;
 mod decode;
 mod edit;
 mod fence;
 mod fire_at;
 mod guarded;
+pub(crate) mod history;
 mod input;
 mod owner;
 mod read;
@@ -71,13 +73,26 @@ pub struct Schedules {
     /// one: the source is chosen by the binary, and a suite drives the mocked
     /// one so a created row's identifier is a fact a test can name.
     entropy: Entropy,
+    /// Existing live tails, notified only after durable history commits.
+    streams: Option<afd_dragonfly::FleetStreams>,
 }
 
 impl Schedules {
     /// Binds the store to an already-connected pool.
     #[must_use]
     pub const fn new(database: Db, entropy: Entropy) -> Self {
-        Self { database, entropy }
+        Self {
+            database,
+            entropy,
+            streams: None,
+        }
+    }
+
+    /// Shares the existing history publisher with ordinary schedule mutations.
+    #[must_use]
+    pub fn with_activity_streams(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+        self.streams = Some(streams);
+        self
     }
 
     /// A new schedule's identifier, ordered by the instant it was minted.

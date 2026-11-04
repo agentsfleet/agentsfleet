@@ -3,6 +3,7 @@
 mod accounting;
 mod budgets;
 mod concurrency;
+mod diagnostics;
 mod fixture;
 mod maintenance;
 mod maintenance_backlog;

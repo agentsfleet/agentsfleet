@@ -8,6 +8,18 @@ export function scheduleOwed(schedule: Schedule): boolean {
   return schedule.sync !== SCHEDULE_SYNC.synced;
 }
 
+/** Describe stored intent separately from confirmed scheduler registration. */
+export function scheduleStateText(schedule: Pick<Schedule, "status" | "sync">): string {
+  switch (schedule.status) {
+    case "active": return schedule.sync === SCHEDULE_SYNC.synced ? "Active" : "Registration pending";
+    case "paused": return schedule.sync === SCHEDULE_SYNC.synced ? "Paused" : "Pause requested; scheduler sync pending";
+    case "deleting": return "Removal requested";
+    case "removed": return "Removed";
+    case "expired": return "Expired without firing";
+    default: return "Status unavailable";
+  }
+}
+
 /** Saved setup and first-run recovery use the same lifecycle rules everywhere. */
 export function setupRecovery(fleet: Fleet): {pending: boolean; canFinish: boolean; retryStart: boolean} {
   const installing = fleet.status === AGENTSFLEET_STATUS.INSTALLING;

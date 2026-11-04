@@ -155,7 +155,8 @@ pub(super) fn schedule_plane(
 ) -> afd_api::SchedulePlane {
     afd_api::SchedulePlane::new(
         afd_cron::ScheduleService::new(
-            afd_cron::Schedules::new(database.clone(), Entropy::new()),
+            afd_cron::Schedules::new(database.clone(), Entropy::new())
+                .with_activity_streams(admissions.streams()),
             afd_cron::QStash::new(
                 schedule.client,
                 schedule.token,

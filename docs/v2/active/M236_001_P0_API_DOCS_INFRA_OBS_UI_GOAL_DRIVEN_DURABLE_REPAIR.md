@@ -85,7 +85,7 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | `package.json`, `bun.lock`, `ui/packages/{app,design-system,website}/package.json`; `ui/packages/app/components/domain/chat/{TaskPanel,TaskDetail,TaskControls,SetupQuestions,ChatThread,ChatComposerFrame,DraftConversation,UnfinishedSetups}.tsx`, `{use-task-read,chat-defaults}.ts`; `ui/packages/app/public/fleet-starters.json`; `ui/packages/app/components/{domain/SteerComposer,layout/{DraftChatList,DraftSidebarItem}}.tsx`; existing fleet thread, setup/review/history, streaming, `app/live/` and `lib/api/{tasks,decision-policy,fleet-paths,live-json-proxy}.ts`; related tests | CREATE / EDIT | retain setup/chat layout, spinner, theming/save flow; editable customer-selected starters, aligned Resume action, concise fleet-chat guidance, compact work summaries, criteria/revisions and recovery; omit routing rules from setup display |
 | `docs/architecture/` owning topics; `docs/AUTH.md`; this spec and eventual done destination; `docs/DESIGN_SYSTEM.md` | EDIT / MOVE | architecture, credential custody and actual final evidence without duplicate owners |
 | `rustd/crates/afd_outbound/src/` | REUSE | no default edits; DT records correlate existing obligations and Slack markers |
-| `tests/fixtures/fleets/goal-repair/{cases,decision-policy}.json`; `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`; `make/test-integration-rustd.mk`, `codecov.yml`, `.github/workflows/test-integration-rustd.yml` | CREATE / EDIT | shared editable questions, attributed evidence, the 99.01% Rust patch floor and approved coverage-worker resource bounds |
+| `tests/fixtures/fleets/goal-repair/{cases,decision-policy}.json`; `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`; `make/test-integration-rustd.mk`, `codecov.yml`, `.github/workflows/test-integration-rustd.yml` | CREATE / EDIT | shared editable questions, attributed evidence, the 99.51% Rust patch floor and approved coverage-worker resource bounds |
 | `docs/architecture/scenarios/durable-repair.md`; scenario index | EDIT | acceptance results and current/proposed distinction |
 | `docs/architecture/{durable_tasks,goal_evaluation}.md` | CREATE | lifecycle and decision-provider owners |
 | `docs/architecture/{README,data_flow,lease_flow,fleet_definitions,context_lifecycle,sandbox_evaluation}.md` | EDIT | owning mechanisms and explicit cross-lease handoff |
@@ -357,7 +357,7 @@ Retain call inventory and stage timings across compaction. Record baseline/candi
 
 ## Test Specification (tiered)
 
-Use modular scenarios through production owners with independent expected outcomes and several assertions per invariant; measured against latest main, changed executable TS/TSX lines require 100% coverage and Rust lines strictly above 99% (Indy, Nov 03, 2026).
+Use modular production scenarios with independent expected outcomes and several assertions per invariant. Changed executable TS/TSX lines require 100% coverage; Rust patch coverage must exceed 99.5% (Indy, Nov 04, 2026; stricter interpretation). Existing native decision scenarios also check complete wire data and credential-safe diagnostics.
 Avoid test-only production seams, coverage-padding field tests and duplicated proof; broader test cleanup belongs to Indy's other agent.
 Complete one crate slice before running its focused gates; repeat only for concrete failures. Concurrency proofs use isolated fixtures and bounded channels/barriers; justify mutexes.
 

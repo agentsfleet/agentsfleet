@@ -150,10 +150,7 @@ impl<'a> Decisions<'a> {
             .expect("native reservation");
         assert!(!format!("{response:?}").contains("native-decision-fixture-"));
         let (issued, body) = response.into_parts();
-        (
-            issued,
-            serde_json::from_str(&body).expect("typed reservation JSON"),
-        )
+        (issued, super::diagnostics::reservation(&body))
     }
 
     pub(super) async fn record(

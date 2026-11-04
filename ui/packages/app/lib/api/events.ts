@@ -31,6 +31,9 @@ export type EventStatusValue = EventStatus | (string & {});
 
 export type EventTypeValue = EventType | (string & {});
 
+/** One native event address; the server checks both workspace and fleet ownership. */
+export type EventLocator = Pick<EventRow, "workspace_id" | "fleet_id" | "event_id">;
+
 /**
  * One event with everything recorded about it — the list row plus the two
  * bodies the list read omits. Fetched when a row is expanded, never for a page:

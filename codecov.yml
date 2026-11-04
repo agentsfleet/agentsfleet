@@ -9,15 +9,15 @@ coverage:
         threshold: 0%
         informational: false
     # Grade changed lines per language using the same floors as local lanes.
-    # TypeScript requires 100%; Rust must be strictly above 99% (Indy, Nov 03,
-    # 2026), enforced as 99.01% here and by RUSTD_PATCH_FLOOR in
+    # TypeScript requires 100%; Rust must exceed 99.5% (Indy, Nov 04,
+    # 2026), enforced as 99.51% here and by RUSTD_PATCH_FLOOR in
     # make/test-integration-rustd.mk. Whole-workspace and per-file floors remain
     # separate checks. No rounding margin or exclusions are introduced.
     patch:
       rust-afd:
         flags:
           - rust-afd
-        target: 99.01%
+        target: 99.51%
         threshold: 0%
         informational: false
 

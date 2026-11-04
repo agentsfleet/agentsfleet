@@ -49,12 +49,13 @@ The vault already records generic access-saved history for writes; deletion and 
 | Folder → files | Planned change |
 |---|---|
 | `afd_api_wire/src/activity/`; `afd_events/src/activity.rs`; existing receipt callers | One shared tenant-history wire definition, preserving existing receipt bytes, borrowed text and declared bounds; runner activity frames retain their existing owner. |
-| `afd_cron/src/store/{create,guarded,fence}.rs`, `edit/`, corresponding statements, `model.rs`, manifest and tests | Store schedule mutation and its receipt in one transaction; register the existing live publisher in production composition. |
+| `afd_cron/src/store/{create,guarded,fence,complete}.rs`, `edit/`, `history/`, corresponding statements, `model.rs`, manifest and tests | Store schedule mutation and its receipt in one transaction; register the existing live publisher in production composition. |
 | `afd_cron/src/recipe/{replace,write,retire}.rs`; authoring transaction owners | Record setup-owned schedule changes on their existing transaction and append announcements to the existing authoring commit. |
 | `afd_cron/src/{service.rs,fire/mod.rs,store/input.rs,store/target.rs}`; owning SQL and tests | Record confirmed sync outcomes under the existing fence; retain description/message snapshot on the accepted cron event. |
 | `afd_events/src/history/` and its queued-admission statements; existing catch-up/notice owners | Include accepted schedule fires in queued chat history before a runner claims them, preserving the same admission identity through promotion. |
+| `afd_events/src/sql/mod.rs`; `afd_approval/src/inbox/resolve/mod.rs`; shared event-insert fixtures | Bind one consistent JSONB type to the cached narrative insert; typed receipts must coexist with approval continuations and schedule-run history on reused connections. |
 | `afd_http/src/services/schedule/`; `agentsfleetd` schedule composition; authoring schedule setup owners | Thread the existing receipt/live-stream capability through every current writer; preserve one scheduling path. |
-| App `lib/events/`, `components/domain/{fleetMessageRenderers,FleetTriggerSummary,EventsList,EventDetailsDialog}.tsx`, `components/domain/chat/{ScheduleSync,ChatThread}.tsx` and callers | Plain activity rows, visible fire message, saved-state summary, native run-details action and existing retry action. |
+| App `lib/events/`, `lib/api/{draft-types,fleet-detail,schedule-status,events}.ts`, `components/domain/{fleetMessageRenderers,FleetMessageRow,FleetTriggerSummary,EventsList,EventDetailsDialog,FleetRunDetails}.tsx`, `use-event-detail.ts`, `components/domain/chat/{ScheduleSync,SetupSummary}.tsx` and callers | Plain activity rows on shared 14px typography, visible fire message, saved-state summary, native run-details action and existing retry action. |
 | Native storage/HTTP tests and app Playwright owners | Exercise atomic history, stream catch-up, privacy, duplicates, failure/recovery and rendered rows. |
 | Architecture owners, this specification, acceptance baseline and generated OpenAPI when affected | Record actual behavior and evidence; public API changes require the existing docs-repository branch. |
 | Docs repository `fleets/{running,tools,authoring}.mdx`, `changelog.mdx`, affected generated API pages | Explain visible schedule activity; new API reference follows the owning lead-repository merge. |
@@ -127,7 +128,8 @@ A missed one-off records confirmed expiry/removal without claiming that it was r
 
 - **Dimension 2.1** — Failure explains the stored cause and later recovery once → `failed_schedule_sync_history_recovers_without_duplicate_success`.
 - **Dimension 2.2** — Superseded sync cannot announce another revision's success → `superseded_schedule_sync_emits_no_successful_activity`.
-- **Dimension 2.3** — Requested removal, confirmed deletion and missed one-offs retain truthful history → `schedule_removal_and_expiry_commit_confirmed_history`.
+- **Dimension 2.3** — Requested removal, confirmed deletion and missed one-offs retain truthful history → `schedule_removal_commits_confirmed_history_once` and `missed_one_off_expiry_keeps_its_message_without_a_run`.
+- **Dimension 2.4** — History waits preserve session foreign-key progress → `schedule_history_wait_allows_a_first_session_to_commit`.
 
 ### §3 — Show a fire and the run it actually started
 
@@ -158,7 +160,8 @@ This inherited boundary needs separately reviewed correction; activity must not 
 ### §4 — Render readable rows through reconnects
 
 Reuse current flat activity rows, typography and the native run-details dialog/read seam.
-Saved fleet summaries use current schedule state; “Save the fleet to activate it” applies only to an unsaved setup.
+Saved summaries describe the declared schedule and direct registration checks to fleet chat.
+Current schedule controls read stored state; saved summaries no longer ask the owner to save again.
 Historical rows describe their recorded snapshot, while current controls use the current schedule version.
 
 Current chat payload links read external `url`/`run_url` fields; they are not native run identity.
@@ -170,7 +173,12 @@ Unknown payloads cannot become arbitrary markup, instructions, secret values or 
 Reload and live catch-up converge on the same stable event identities.
 
 - **Dimension 4.1** — Lifecycle, retry reason, fire and outcome are visible → `fleet_schedule_activity_rows_show_confirmed_facts` in Playwright.
-- **Dimension 4.2** — Saved summaries and reconnects remain truthful → `saved_schedule_summaries_and_activity_survive_reconnect` in Playwright.
+- **Dimension 4.2** — Saved summaries and reloads remain truthful → `saved_schedule_summaries_and_activity_survive_reload` in Playwright; native stream catch-up remains separately measured.
+
+The browser fixture extends the existing chat build and renders production rows, grouping, controls and native-details components.
+Its Next Server Action read uses a declared HTTP stub; this proves rendering and selected run identity, not server credentials, scheduler execution or stream delivery.
+Real storage scenarios cover accepted queued history and a seeded event promotion; daemon tests exercise native leasing separately.
+Do not label these separate results as a live scheduler or end-to-end reconnect observation.
 
 ## Interfaces
 
@@ -214,6 +222,23 @@ This inventory grants no new credential, approval, runner, admission or outbound
 
 All listed main facts were checked against `1920ff345`; the renderer path is `components/domain/fleetMessageRenderers.tsx`, outside its `chat/` directory.
 Implementation evidence, actual gates and review findings must be added before completion.
+
+Astra's UI review found raw payload disclosure in grouped receipts and stale already-open run details after settlement.
+Grouped recorded facts now suppress raw payloads, and existing status/update changes refresh the selected native record once.
+The inherited runner-guard regression test also caught missing-parent lookup returning before an unheld guard; the same transaction now retains that check.
+
+The once-run history scenario exposed mixed text/JSONB bindings sharing one cached statement; all callers now use SQLx's native JSON wrapper.
+The corrected storage gate passed 1,524 regular and three exclusive tests; the affected library unit gate passed 3,398.
+
+Astra also found that the new parent `FOR UPDATE` lock could block a session's foreign-key check while waiting on its lease.
+Use `FOR NO KEY UPDATE` for the history scope; it preserves serialization and deletion exclusion while permitting `KEY SHARE`.
+Prove that compatibility through native finalization, a separately observed row wait and the first real session insert under a bounded lock timeout.
+
+This regression measures parent-lock compatibility, without claiming execution of the terminal-report/runner-guard composition.
+The old strength produced Postgres `40P01` at native finalization; the corrected strength passes the same real-row scenario.
+
+All four TypeScript package coverage gates passed at 100%; the app passed 4,669 unit tests and 58 desktop/mobile browser checks.
+Evidence is retained in the [M236 acceptance baseline](../../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md#schedule-implementation-and-documentation-publication).
 
 ## Out of scope
 

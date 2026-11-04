@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { SOURCE_KIND, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
+import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
-import { DRAFT_ID, FLEET_ID, REVIEW, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { DRAFT_ID, FAILED_SCHEDULE, FLEET_ID, REVIEW, SCHEDULE, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const source = {kind: SOURCE_KIND.definition, definition: REVIEW.effective.definition};
@@ -49,8 +49,8 @@ it("refuses a readiness refresh without instructions and leaves setup unsaved", 
 
 it("retries a refused schedule registration before the saved fleet is loaded", async () => {
   const client = await fixture.ready();
-  const schedule = {schedule_id: "pending-registration", fleet_id: FLEET_ID, sync: SCHEDULE_SYNC.failed};
-  const registered = {...schedule, sync: SCHEDULE_SYNC.synced};
+  const schedule = {...FAILED_SCHEDULE, schedule_id: "pending-registration"};
+  const registered = {...SCHEDULE, schedule_id: schedule.schedule_id};
   const refused = "Scheduler unavailable";
   let attempts = 0;
   fixture.override = () => ++attempts === 1 ? response({user_message: refused}, 503) : response(registered);

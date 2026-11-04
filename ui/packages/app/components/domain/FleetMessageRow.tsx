@@ -117,7 +117,7 @@ export function FleetActivityRow({
     >
       <div className="flex min-w-0 items-start gap-md px-lg py-md">
         <div className="min-w-0 flex-1 font-sans leading-body-sm">
-          <div className="flex min-w-0 flex-wrap items-center gap-sm text-label">
+          <div className="flex min-w-0 flex-wrap items-center gap-sm text-conversation">
             <span className="shrink-0 text-muted-foreground">{sender}</span>
             {annotation}
             <span aria-hidden="true" className="text-muted-foreground">
@@ -207,7 +207,7 @@ export function FleetGroupRow({
         onValueChange={onToggle}
       >
         <AccordionItem value={GROUP_VALUE} className="border-0">
-          <AccordionTrigger className="px-lg py-md font-sans text-label leading-mono text-muted-foreground hover:no-underline">
+          <AccordionTrigger className="px-lg py-md font-sans text-conversation leading-mono text-muted-foreground hover:no-underline">
             <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-sm text-left">
               <Badge
                 variant={failed ? "destructive" : "default"}
