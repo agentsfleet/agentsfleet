@@ -2,17 +2,28 @@
 
 use super::*;
 
+/// What an unknown model is estimated at: the `o200k_base` count `gpt-4o`
+/// resolves to, raised by a quarter and rounded up.
+fn proxied(text: &str) -> usize {
+    (crate::input_tokens("gpt-4o", text) * 5).div_ceil(4)
+}
+
 #[test]
-fn known_tokenizers_count_tokens_and_unknown_models_reserve_utf8_bytes() {
+fn known_tokenizers_count_exactly_and_unknown_models_add_a_quarter_to_o200k() {
     assert_eq!(crate::input_tokens("gpt-4o", "hello world"), 2);
-    assert_eq!(crate::input_tokens("unknown-tokenizer", "hello world"), 11);
-    assert_eq!(crate::input_tokens("unknown-tokenizer", "🌿"), 4);
+    // Two `o200k_base` tokens plus a quarter, rounded up: 2.5 → 3.
+    assert_eq!(crate::input_tokens("unknown-tokenizer", "hello world"), 3);
+    assert_eq!(crate::input_tokens("unknown-tokenizer", ""), 0);
+    assert_eq!(
+        crate::input_tokens("unknown-tokenizer", "🌿"),
+        proxied("🌿")
+    );
 }
 
 // Value: protects=changing providers never bypasses the shared input reservation;
 // seam=the public counter used by both setup and runtime admission.
 #[test]
-fn providers_without_a_library_tokenizer_share_the_utf8_reservation() {
+fn providers_without_a_library_tokenizer_share_the_o200k_estimate() {
     for model in [
         "accounts/fireworks/models/minimax-m3p1-flash",
         "minimax/minimax-m3.1-flash:free",
@@ -22,7 +33,7 @@ fn providers_without_a_library_tokenizer_share_the_utf8_reservation() {
         "kimi/model-next",
     ] {
         for text in ["", "hello world", "🌿", "Cafe\u{301}", "<tool_call>"] {
-            assert_eq!(crate::input_tokens(model, text), text.len(), "{model}");
+            assert_eq!(crate::input_tokens(model, text), proxied(text), "{model}");
         }
     }
 }
@@ -83,7 +94,7 @@ fn context_admission_reserves_complete_input_before_output() {
     assert!(refusal.to_string().contains("context"));
 }
 
-// Value: protects=the byte reservation still clamps output and rejects exhausted
+// Value: protects=the input estimate still clamps output and rejects exhausted
 // context after switching providers; seam=the real streaming request encoder.
 #[test]
 fn unrecognized_providers_reserve_input_before_the_remaining_output() {
@@ -97,7 +108,8 @@ fn unrecognized_providers_reserve_input_before_the_remaining_output() {
         let route = Configured::new(&value, 128_000).unwrap();
         let encoded = route.encode_stream(model, request.clone()).unwrap();
         let body = json_request(encoded.request).unwrap();
-        let input = u32::try_from(body.body().len() + 32).unwrap();
+        let text = std::str::from_utf8(body.body()).unwrap();
+        let input = u32::try_from(crate::input_tokens(model, text) + 32).unwrap();
         let route = Configured::new(&value, input + 7).unwrap();
         let bounded = route.bound_output(model, request.clone()).unwrap();
         assert_eq!(bounded.max_tokens, Some(7));

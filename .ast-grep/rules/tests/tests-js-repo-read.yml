@@ -1,0 +1,68 @@
+# A test calls the code it proves; it never reads the repository's files. A
+# test that reads source, configuration or a document asserts on text: it turns
+# red when the file is reflowed and stays green when the behaviour breaks.
+#
+# A read is a file-reading call, a directory walk, a spawned reader or a `?raw`
+# import whose own arguments anchor the path in the repository: the test's
+# location (`__dirname`, `import.meta.url`, `process.cwd()`) or a relative path.
+# A path through a fixture directory is the test's own input, one through
+# node_modules/ is an installed package rather than a repository file, and a read handed
+# to `Bun.write` copies a file for running. A path reached through a variable or
+# a helper is not followed.
+id: tests-js-repo-read
+language: Tsx
+severity: error
+message: a test reads a repository file; call the code, or move the check to a lint
+files:
+  - "**/*.{test,spec}.{ts,tsx,js}"
+  - "**/{test,tests,__tests__}/**/*.{ts,tsx,js}"
+ignores:
+  - "**/node_modules/**"
+  - "**/.next/**"
+  - "**/dist/**"
+  - "**/coverage/**"
+  - "**/target/**"
+utils:
+  anchored:
+    regex: '__dirname|__filename|import\.meta\.(url|dir|dirname|filename)|process\.cwd\(\)|["''`](\.\.?/|/?(src|cli|ui|docs|rustd|schema|scripts|playbooks|deploy|make|public|\.github|bench|test|tests|app|components|lib)/)'
+  fixture:
+    regex: '(^|[/"''`\s(,])(fixtures|testdata|__fixtures__|__snapshots__|golden|node_modules)([/"''`\s),]|$)'
+  copied:
+    inside:
+      stopBy: end
+      kind: call_expression
+      has: { field: function, regex: '^Bun\.write$' }
+rule:
+  not: { matches: copied }
+  any:
+    # readFileSync(join(__dirname, "x")), Bun.file("../x"), import.meta.glob("./x/*")
+    - kind: call_expression
+      all:
+        - has:
+            field: function
+            regex: '(^|\.)(readFileSync|readFile|readdirSync|readdir|existsSync|statSync|createReadStream|opendirSync)$|^Bun\.file$|^import\.meta\.glob$'
+        - has: { field: arguments, matches: anchored }
+        - not: { has: { field: arguments, matches: fixture } }
+    # new Glob("*.md").scan(__dirname): the receiver can carry the anchor.
+    - kind: call_expression
+      all:
+        - has: { field: function, regex: '\.scan$' }
+        - matches: anchored
+        - not: { matches: fixture }
+    # spawnSync("grep", [..., join(__dirname, "x")]) or Bun.spawnSync(["sed", ...])
+    - kind: call_expression
+      all:
+        - has: { field: function, regex: '(^|\.)(execSync|execFile|execFileSync|spawn|spawnSync)$|^exec$' }
+        - has:
+            field: arguments
+            regex: '^\(\s*\[?\s*["''`](grep|egrep|fgrep|rg|cat|find|sed|awk|head|tail|jq|cut|sort|diff)\b'
+        - has: { field: arguments, matches: anchored }
+        - not: { has: { field: arguments, matches: fixture } }
+    # import text from "../README.md?raw"
+    - kind: import_statement
+      has:
+        field: source
+        all:
+          - regex: '\?raw["'']$'
+          - matches: anchored
+          - not: { matches: fixture }

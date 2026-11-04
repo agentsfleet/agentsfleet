@@ -1,0 +1,7 @@
+id: docs-removed-command-json
+valid:
+  - |
+    {"description": "Run agentsfleet secret create."}
+invalid:
+  - |
+    {"description": "Run agentsfleet secret add."}

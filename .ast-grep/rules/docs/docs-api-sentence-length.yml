@@ -1,0 +1,23 @@
+# DOC-02: a sentence is at most 25 words. A word is a run of word characters;
+# `.`, `!` or `?` continues a sentence only when a word follows at once
+# (`data.kind`). The document is read raw, so a `\n` escape is whitespace.
+# A word ends on a word character and may hold `-` or `'` (`UZ-AUTH-011`,
+# `fleet's`), and never starts inside an escape such as the `n` of `\n`.
+# Published API prose lives in the generated document, so the fix lands in the
+# Rust annotation that emits it. Only `summary` and `description` values count.
+id: docs-api-sentence-length
+language: Json
+severity: error
+message: a published API sentence is longer than 25 words (DOC-02)
+files:
+  - public/openapi.json
+rule:
+  kind: pair
+  all:
+    - has:
+        field: key
+        regex: '^"(summary|description)"$'
+    - has:
+        field: value
+        kind: string
+        regex: '(?:^|[^\w\\])(?:\w(?:[\w''-]*\w)?\b(?:[^\w.!?\\''-]|\\.)*[.!?]*){25,}\w'

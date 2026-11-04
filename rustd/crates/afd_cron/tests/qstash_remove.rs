@@ -21,8 +21,10 @@ const REGISTERED: &str = "fleet-schedule-019329c5-0000-7000-8000-0000000000de";
 
 #[tokio::test]
 async fn a_scheduler_refusing_the_removal_is_an_error_that_waits_for_sync() {
+    // A refusal that repeating cannot heal: a 5xx is asked again first, which
+    // `qstash_retry.rs` covers.
     let mut scheduler = StubScheduler::start();
-    scheduler.answer(503);
+    scheduler.answer(401);
 
     let refused = scheduler
         .client()

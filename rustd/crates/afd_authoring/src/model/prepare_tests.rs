@@ -9,6 +9,8 @@ use serde_json::json;
 const QUESTION: &str = "A customer reports an intermittent error. What evidence should we collect first? Explain in at most thirty words without changing the setup.";
 const ANSWER: &str = "Collect exact error text, timestamps and timezone, trace or request identifiers, environment and version, and the failing input shape. Correlate one timestamp across logs before assuming a cause. Distinguish observed evidence from inference.";
 const OUTPUT_LIMIT: u32 = 1_024;
+/// A log identifier as a reply quotes one: 43 bytes, 23 `o200k_base` tokens.
+const TRACE: &str = "trace=01a18bc1-d47c-7003-98b2-fba3847cc642 ";
 
 fn model(identifier: &str) -> Result<RegisteredModel> {
     serde_json::from_value(json!({
@@ -93,7 +95,12 @@ fn fifty_longer_replies_use_the_selected_model_window_beyond_thirty_two_k() -> R
     let mut call = fifty_turns();
     for message in &mut call.request.messages {
         if let ModelMessage::Assistant { text, .. } = message {
-            *text = format!("{ANSWER} {ANSWER}");
+            // Sized in estimator tokens under the 131,072-byte request cap.
+            // Prose packs about five bytes per `o200k_base` token, so no prose
+            // conversation that fits the cap passes 32,768. Trace identifiers
+            // pack under two: 49 replies of 24 come to about 36,500 estimated
+            // tokens in about 62,000 bytes.
+            *text = format!("{ANSWER} {}", TRACE.repeat(24));
         }
     }
     let call = request(call)?;

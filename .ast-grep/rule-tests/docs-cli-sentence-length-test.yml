@@ -1,0 +1,9 @@
+id: docs-cli-sentence-length
+valid:
+  - |
+    cmd.description("List fleets.");
+invalid:
+  - |
+    cmd.description("word word word word word word word word word word word word word word word word word word word word word word word word word word.");
+  - |
+    const s = { description: "word word word word word word word word word word word word word word word word word word word word word word word word word word" };

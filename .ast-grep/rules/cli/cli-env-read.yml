@@ -1,0 +1,23 @@
+# Every environment variable the CLI reads by name is read in
+# cli/src/constants/env.ts, so renaming one is a single visible diff. Passing
+# the whole `process.env` object along (a default for an injectable env) is
+# not a read by name and is left alone.
+id: cli-env-read
+language: Tsx
+severity: error
+message: read an environment variable by name only in cli/src/constants/env.ts
+files:
+  - cli/src/**/*.ts
+  - cli/src/**/*.js
+ignores:
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/*_test.*"
+  - cli/src/constants/env.ts
+rule:
+  any:
+    - pattern: process.env.$NAME
+    - pattern: process.env?.$NAME
+    - pattern: process.env[$KEY]
+    - pattern: Bun.env.$NAME
+    - pattern: Bun.env[$KEY]

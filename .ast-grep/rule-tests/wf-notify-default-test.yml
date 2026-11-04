@@ -1,0 +1,27 @@
+id: wf-notify-default
+valid:
+  - |
+    inputs:
+      webhook-item:
+        default: discord-ci-webhook
+    runs:
+      steps:
+        - env:
+            DISCORD_WEBHOOK: op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential
+invalid:
+  - |
+    inputs:
+      webhook-item:
+        default: discord-release-webhook
+    runs:
+      steps:
+        - env:
+            DISCORD_WEBHOOK: op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential
+  - |
+    inputs:
+      webhook-item:
+        default: discord-ci-webhook
+    runs:
+      steps:
+        - env:
+            DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}

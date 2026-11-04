@@ -326,7 +326,7 @@ A proposal result is untrusted until `/activity` commits it. No separate model-c
 6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
 
 Input reservation uses the shared tokenizer library, with no bundled model-specific tokenizer assets.
-Unrecognized models reserve one token per UTF-8 byte and can be refused earlier than their provider's tokenizer would require.
+Unrecognized models are estimated as their `o200k_base` count plus a quarter, so a request can be refused earlier than the provider's tokenizer would require.
 Provider-reported usage determines settlement.
 
 Setup and runtime use `afd_inference::stream::StreamTurn` and Rig's native provider decoding.

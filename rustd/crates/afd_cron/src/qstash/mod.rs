@@ -15,8 +15,11 @@
 //! a vendor that could not be reached is retryable and `:sync` repairs it on
 //! its own, while a vendor that answered 400 will answer 400 again forever and
 //! retrying is an outbound load with no end. [`crate::Error`] keeps them apart.
+//! Before either reaches the row, a failure that can heal is sent again a few
+//! times on a short schedule; see [`retry`].
 
 use afd_core::id::Uuid7;
+use backon::Retryable as _;
 use url::Url;
 
 use crate::error::{self, Result};
@@ -157,7 +160,8 @@ impl QStash {
     /// # Errors
     /// Reports a scheduler that could not be reached, and one that answered and
     /// refused — see the module note on why those are two failures. An answer
-    /// naming any id but the one sent is refused too; see [`confirmed`].
+    /// naming any id but the one sent is refused too; see [`confirmed`]. A
+    /// failure that can heal is reported only after [`retry`]'s last attempt.
     pub async fn upsert(
         &self,
         schedule: &Uuid7,
@@ -166,14 +170,30 @@ impl QStash {
         message: &str,
     ) -> Result<Registered> {
         let id = upstream_id(schedule);
+        (|| self.upsert_once(&id, cron, timezone, message))
+            .retry(retry::schedule())
+            .when(retry::heals)
+            .notify(retry::log)
+            .await
+    }
+
+    /// One push of the schedule filed under `id`.
+    async fn upsert_once(
+        &self,
+        id: &str,
+        cron: &str,
+        timezone: &str,
+        message: &str,
+    ) -> Result<Registered> {
         let answer = self
             .client
             .post(format!(
                 "{}{SCHEDULES_PATH}{}",
                 self.api_base, self.destination
             ))
+            .timeout(retry::ATTEMPT_TIMEOUT)
             .bearer_auth(self.token.expose())
-            .header(HEADER_SCHEDULE_ID, id.as_str())
+            .header(HEADER_SCHEDULE_ID, id)
             .header(HEADER_CRON, cron)
             .header(HEADER_TIMEZONE, timezone)
             .header(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON)
@@ -191,7 +211,7 @@ impl QStash {
         // turning one on for one call site would put `serde_json` inside every
         // other crate's HTTP client too.
         let body = answer.text().await?;
-        confirmed(id, &body)
+        confirmed(id.to_owned(), &body)
     }
 
     /// Removes a schedule upstream.
@@ -204,12 +224,22 @@ impl QStash {
     /// # Errors
     /// As [`Self::upsert`].
     pub async fn remove(&self, provider_schedule_id: &str) -> Result<()> {
+        (|| self.remove_once(provider_schedule_id))
+            .retry(retry::schedule())
+            .when(retry::heals)
+            .notify(retry::log)
+            .await
+    }
+
+    /// One removal of the schedule filed under `provider_schedule_id`.
+    async fn remove_once(&self, provider_schedule_id: &str) -> Result<()> {
         let answer = self
             .client
             .delete(format!(
                 "{}{SCHEDULES_PATH}{provider_schedule_id}",
                 self.api_base
             ))
+            .timeout(retry::ATTEMPT_TIMEOUT)
             .bearer_auth(self.token.expose())
             .send()
             .await?;
@@ -246,6 +276,8 @@ fn confirmed(sent: String, body: &str) -> Result<Registered> {
     }
     Ok(Registered { schedule_id: sent })
 }
+
+mod retry;
 
 #[cfg(test)]
 mod tests;

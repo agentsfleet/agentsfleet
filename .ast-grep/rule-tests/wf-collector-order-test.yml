@@ -1,0 +1,23 @@
+id: wf-collector-order
+valid:
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              bash scripts/ensure_fly_app.sh --create-only "$APP"
+              flyctl secrets set GRAFANA_TOKEN="$T" --app "$OTLP_COLLECTOR_APP"
+invalid:
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set GRAFANA_TOKEN="$T" --app "$OTLP_COLLECTOR_APP"
+              bash scripts/ensure_fly_app.sh --create-only "$APP"
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set TUNNEL_TOKEN="$T"

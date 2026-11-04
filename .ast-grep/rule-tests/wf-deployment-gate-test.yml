@@ -1,0 +1,19 @@
+id: wf-deployment-gate
+valid:
+  - |
+    jobs:
+      gate:
+        steps:
+          - run: ENV=dev STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
+invalid:
+  - |
+    jobs:
+      gate:
+        steps:
+          - run: ENV=dev STAGE=bootstrap ./playbooks/founding/02_preflight/00_gate.sh
+  - |
+    jobs:
+      gate:
+        steps:
+          - name: STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
+            run: echo skipped

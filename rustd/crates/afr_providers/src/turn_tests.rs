@@ -8,6 +8,10 @@ use rig_core::http_client::{self as rig_http, StreamingResponse};
 use std::sync::{Arc, Mutex};
 
 const CONTEXT_TOKENS: u32 = 1024;
+/// Repetitions that put a short phrase past the native-count threshold: about
+/// two `o200k_base` tokens each, plus the proxy's quarter, is well over 80
+/// percent of [`CONTEXT_TOKENS`]. Native counting fires only near capacity.
+const NEAR_CAPACITY: usize = 512;
 const KEY: &str = "private-runtime-key";
 const MODEL: &str = "model-next";
 const PROVIDER: &str = "openai";
@@ -113,7 +117,7 @@ async fn runtime_confirms_each_current_request_and_calibrates_authoritative_usag
     ));
     let (turns, physical) = turns(200)?;
     for text in ["private first source ", "private second source "] {
-        let messages = [crate::provider::Message::User(text.repeat(64))];
+        let messages = [crate::provider::Message::User(text.repeat(NEAR_CAPACITY))];
         let chunks: Vec<_> = turns.stream(request(&messages)).collect().await;
         assert!(chunks.iter().all(Result::is_ok));
         assert!(
@@ -158,7 +162,9 @@ async fn refused_native_counts_never_open_a_paid_runtime_attempt()
 -> Result<(), Box<dyn std::error::Error>> {
     for status in [400, 401, 429, 500] {
         let (turns, physical) = turns(status)?;
-        let messages = [crate::provider::Message::User("private source ".repeat(96))];
+        let messages = [crate::provider::Message::User(
+            "private source ".repeat(NEAR_CAPACITY),
+        )];
         let chunks: Vec<_> = turns.stream(request(&messages)).collect().await;
         assert_eq!(chunks.len(), 1);
         assert!(chunks.first().is_some_and(Result::is_err));

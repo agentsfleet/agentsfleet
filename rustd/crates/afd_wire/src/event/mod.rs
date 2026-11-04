@@ -77,7 +77,7 @@ mod steer;
 
 pub use self::message::{MESSAGE, message_of};
 
-pub use self::entry::{ENTRY_FIELD_COUNT, Entry, QUEUED_FIELD_COUNT};
+pub use self::entry::{ENTRY_FIELD_COUNT, Entry};
 
 pub use self::steer::{
     OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerRequest,

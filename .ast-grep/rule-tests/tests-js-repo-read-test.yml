@@ -1,0 +1,42 @@
+id: tests-js-repo-read
+valid:
+  - |
+    import { readFileSync } from "node:fs";
+    const runtime = readFileSync(path.resolve(__dirname, "../node_modules", pkg), "utf8");
+  - |
+    const out = readFileSync(join(tmp, "out.json"), "utf8");
+  - |
+    const input = readFileSync(join(__dirname, "fixtures", "a.json"), "utf8");
+  - |
+    await Bun.write(dest, Bun.file(join(__dirname, "../run.sh")));
+  - |
+    const sample = "readFileSync(join(__dirname, '../x'))";
+  - |
+    // readFileSync(join(__dirname, "../x"))
+  - |
+    spawnSync("bun", ["run", join(__dirname, "../x.ts")]);
+  - |
+    import data from "some-package/notes.md?raw";
+  - |
+    const found = /x/.exec(join(__dirname, "../y"));
+invalid:
+  - |
+    const src = readFileSync(join(__dirname, "../src/a.ts"), "utf8");
+  - |
+    const doc = await fs.readFile(new URL("../x.json", import.meta.url));
+  - |
+    const text = await Bun.file("../README.md").text();
+  - |
+    expect(existsSync(path.resolve(process.cwd(), "docs/x.md"))).toBe(true);
+  - |
+    const names = readdirSync("./src");
+  - |
+    const pages = import.meta.glob("./pages/*.tsx");
+  - |
+    for (const f of new Glob("*.md").scan(__dirname)) {}
+  - |
+    spawnSync("grep", ["-r", "needle", join(__dirname, "..")]);
+  - |
+    Bun.spawnSync(["sed", "-n", "1p", join(import.meta.dir, "../x")]);
+  - |
+    import readme from "../README.md?raw";
