@@ -87,6 +87,6 @@ rustls.workspace = true
 tokio-rustls.workspace = true
 # The connect-refused send the retry suite classifies, and the fake provider
 # servers the wire suites stream from.
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync", "test-util"] }
 # The stop every driven run is given.
 tokio-util.workspace = true

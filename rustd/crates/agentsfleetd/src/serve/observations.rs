@@ -7,18 +7,30 @@ use std::time::Duration;
 
 const BUDGET: Duration = Duration::from_secs(2);
 
+struct Snapshot {
+    catalogue: Option<(Vec<models::ModelInfo>, bool)>,
+    schedules: Option<[u64; 7]>,
+}
+
 pub(super) async fn refresh(database: &Db) {
+    let snapshot = sample(database).await;
+    models::catalogue(snapshot.catalogue);
+    scheduler::counts(snapshot.schedules);
+}
+
+async fn sample(database: &Db) -> Snapshot {
     let catalogue = Models::new(database.clone(), Entropy::new());
     let sampled = tokio::time::timeout(BUDGET, catalogue.bounded(models::MAX_MODELS)).await;
-    let observed = sampled
+    let catalogue = sampled
         .ok()
         .and_then(Result::ok)
         .map(|(rows, clipped)| (rows.into_iter().filter_map(model_info).collect(), clipped));
-    models::catalogue(observed);
-
     let schedules = afd_cron::Schedules::new(database.clone(), Entropy::new());
     let sampled = tokio::time::timeout(BUDGET, schedules.health(jiff::Timestamp::now())).await;
-    scheduler::counts(sampled.ok().and_then(Result::ok));
+    Snapshot {
+        catalogue,
+        schedules: sampled.ok().and_then(Result::ok),
+    }
 }
 
 fn model_info(model: afd_admin::Model) -> Option<models::ModelInfo> {
@@ -96,5 +108,51 @@ mod tests {
         assert_eq!(reading.output_tokens, Some(4096));
         assert!(reading.tools.is_some());
         assert!(reading.image_transport.is_some());
+    }
+}
+
+#[cfg(all(test, feature = "test-util"))]
+#[expect(clippy::expect_used, reason = "real catalogue fixture")]
+mod sampling_tests {
+    use super::*;
+    use afd_db::config::DbRole;
+    use afd_db::test_util::{ModelSeed, TestDatabase, mint_id};
+
+    #[tokio::test]
+    #[ignore = "needs live Postgres: make test-coverage-rustd"]
+    async fn snapshots_read_the_catalogue_and_clear_on_database_failure() {
+        let lane = TestDatabase::shared();
+        let db = lane.open(DbRole::Api, &[]).await;
+        let id = mint_id();
+        let name = format!("observability-{id}");
+        let mut connection = db.acquire().await.expect("fixture connection");
+        ModelSeed::new(&id, "openai", &name, 128_000)
+            .insert(&mut *connection)
+            .await
+            .expect("owned model");
+        drop(connection);
+        let snapshot = sample(&db).await;
+        let (models, clipped) = snapshot.catalogue.expect("successful catalogue snapshot");
+        assert!(!clipped);
+        let row = models
+            .iter()
+            .find(|row| row.model == name)
+            .expect("actual catalogue row");
+        assert_eq!(row.context_tokens, 128_000);
+        assert_eq!(row.output_tokens, Some(1024));
+        assert!(snapshot.schedules.is_some());
+        refresh(&db).await;
+        let mut connection = db.acquire().await.expect("cleanup connection");
+        ModelSeed::remove(&mut *connection, &id)
+            .await
+            .expect("owned cleanup");
+        drop(connection);
+        db.close().await;
+        let failed = sample(&db).await;
+        assert!(failed.catalogue.is_none());
+        assert!(failed.schedules.is_none());
+        refresh(&db).await;
+        drop(db);
+        lane.cleanup().await;
     }
 }

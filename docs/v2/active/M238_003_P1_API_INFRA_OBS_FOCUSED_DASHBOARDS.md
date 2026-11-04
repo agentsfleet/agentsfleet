@@ -141,7 +141,7 @@ blocker until an editable non-streaming connection is available.
 
 ## Invariants
 
-The runner collector uses memory_limiter 200 MiB, MemoryMax 256 MiB, an in-memory queue of 1,000 batches and retry at most 300 seconds. It has no disk queue or off-host log retention; trace admission keeps the runner's 256-per-lease and 128-per-second limits. Host credential deployment waits on the explicit M233_002 D1 choice between the existing grafana-dev key and a dedicated write-only key.
+The runner collector uses memory_limiter 200 MiB, MemoryMax 256 MiB, an in-memory queue of 1,000 batches and retry at most 300 seconds. It has no disk queue or off-host log retention; trace admission keeps the runner's 256-per-lease and 128-per-second limits. Dev D1 is resolved to the existing grafana-dev key by the installation reported by Indy; production deployment remains outside this work.
 
 Collector failure never blocks a run. Database callbacks load snapshots only.
 The daemon exports verb facts; the runner exports facts no verb carries.
@@ -162,6 +162,18 @@ proofs cover replay and stale/dependency paths. Model proofs cover first text,
 completion, failure and drop. Runner collector proofs cover unauthenticated
 sandbox submissions and allowlist rejection. Asset checks exercise the real
 apply/verify scripts, including negative mutations.
+
+Named proofs for the new mechanisms:
+
+- Pool callback ownership: `pool_callback_reads_actual_capacity_and_withdraws_a_closed_pool`.
+- Pool occupancy/cancellation: `test_pool_snapshot_tracks_use_and_cancelled_waiters`.
+- Scheduler states and failed dependencies: `health_tracks_real_states_and_refuses_a_closed_database`.
+- Schedule callback outcomes: `should_export_schedule_decisions_and_matched_http_requests`.
+- Provider timeout/cancellation: `silent_provider_respects_the_deadline_and_caller_cancellation`
+  and `a_silent_runtime_call_records_deadline_and_cancellation_once`.
+- Metadata privacy/expiry: `catalogue_metadata_expires_without_inventing_zero`.
+- Real sampler reads and withdrawal: `snapshots_read_the_catalogue_and_clear_on_database_failure`.
+- Collector admission: `test_root_passes_nonroot_is_dropped_and_reload_keeps_the_boundary`.
 
 ## Acceptance Rubric
 
@@ -273,3 +285,18 @@ runner exhausted disk (`System.IO.IOException: No space left on device`),
 not because of a reported test assertion. Indy: "just do cargo clean".
 Add a clean-target step after cache restore in that job, preserving downloaded
 registry sources and keeping test selections and coverage thresholds intact.
+
+Runner-host update from Indy: the other session installed #801's collector
+assets from `9b12fe0d8` using `ZMB_CD_DEV/grafana-dev` and restarted the runner
+without active leases. Real data now reaches Tempo and Prometheus. Independent
+Grafana checks confirm one provider-turn count, 0.687962662 seconds in its sum,
+and a runner.lease result. No sandbox or tool ran, so their missing series are
+expected inactivity. The actual-sandbox admission witness stays pending as
+Indy accepted. This resolves dev D1 and the earlier unknown runner-export
+status; it does not claim the new #801 runner binary is deployed.
+
+Coverage follow-up targets the eight files named by CI: verified callback
+failures, caller/deadline stream outcomes, schedule health and reconciliation
+errors, snapshot Debug privacy, daemon pool callbacks and sampler snapshots.
+The latest global line floor passed (99.6040%), but patch/per-file floors did
+not. No completion or >99% changed-file claim is made yet.

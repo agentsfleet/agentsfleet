@@ -102,7 +102,7 @@ remain in the Git revision linked by the receipt.
 
 Six focused dashboards are applied to dev; `04_verify.sh` confirms live
 resource agreement. Ten asset cases and three drift suites pass. These prove
-asset behavior, not complete telemetry: the later audit ran 62 metric queries,
+asset behavior, not complete telemetry: the pre-install audit ran 62 metric queries,
 14 returned finite values and 48 were empty, with no query errors. Tempo found
 daemon delivery spans but no runner.lease, chat or execute_tool spans over the
 preceding 24 hours. This does not prove the runner host lacks a collector.
@@ -117,3 +117,14 @@ PR #801 remains draft. The collector conversion, new instrumentation and
 coverage requirements need final gates and deployment before live acceptance.
 Merging remains Indy's. The parallel runner-host investigation supplies its
 current export configuration; this VM cannot directly inspect that host.
+
+## Runner arrival after installation
+
+The other session installed the runner collector from #801's `9b12fe0d8`,
+with the dev key chosen by Indy. The first lease reached Tempo and Prometheus
+at 09:18 UTC. This session independently confirmed a runner.lease result and
+the provider-turn histogram: count 1, sum 0.687962662 seconds. Thus the
+pre-install empty runner queries are historical, not the current export state.
+No sandbox or tool ran in that lease. Their series remain absent through
+inactivity. The exact host witness and independent checks are in `receipt.json`.
+The new model-specific call instrumentation still requires the #801 binary.

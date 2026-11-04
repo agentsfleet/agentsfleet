@@ -417,12 +417,12 @@ No dead code is removed by the delivery-row change. Shipped authoring cleanup re
   - **`DeliveryStage` export gap:** Prometheus has no series matching `*delivery*` (05:45 UTC), although `docs/metrics.census.tsv` declares `agentsfleet_fleet_delivery_stage_seconds` as a delta histogram.
   - **Pricing:** `https://docs.fly.io/about/pricing`, Oct 26, 2026, `iad`: `performance-2x` 4 GB $66 a month; `shared-cpu-4x` 4 GB about $26.76, derived from $6 per GB and the shared-vCPU rate; three machines each.
 - **Required human decisions — pending**
-  - **D1, blocks §2:**
+  - **D1, resolved for dev on Nov 04, 2026:**
     - **Previous choice:** Indy, Oct 26, 2026: "Reuse grafana-dev".
     - **Corrected risk:** bubblewrap sandboxes share one kernel (`runner_execution.md` §Sandbox engines). Any code-running tenant with a kernel exploit, or anyone with root on the runner host, could read the collector's key. That key can also write the daemon's telemetry, because dev and prod share one Grafana tenant. The key's scopes are to be read in Grafana.
     - **Option A:** keep `grafana-dev`.
     - **Option B:** a dedicated write-only token in `ZMB_CD_DEV`.
-    - Re-confirmation pending.
+    - Indy reported installation from #801 commit `9b12fe0d8` using `ZMB_CD_DEV/grafana-dev`, and confirmed: "i think we are good, the sandbox wont reach yet". The key choice is resolved for this dev installation; production is not included.
   - **D2, does not block:** browser telemetry export, or DevTools marks only (the agent recommends marks only).
 - **Decisions made (Oct 26, 2026)**
   - "I am okay with the bottleneck in dev, but i need you to confirm the reason, so i can focus on that in production".
@@ -438,3 +438,16 @@ No dead code is removed by the delivery-row change. Shipped authoring cleanup re
 - **Deferrals**
   - > Indy (2026-10-26 05:09): "Okay do that" — context: Stage 5 finding 9 recommended shipping traces and runner metrics only and leaving journald log forwarding to a follow-up.
   - > Indy (2026-10-26 05:47): "Auto accept" — context: Stage 7 Issue 9 proposed recording that deferral; runner log forwarding through the collector is future work.
+
+- **Runner collector installation, Nov 04, 2026 (Indy forwarding the host session):**
+  contrib 0.164.0 active since 09:06:30 UTC as `otelcol-runner`, no restarts,
+  loopback listeners only, 40 MiB under MemoryMax 256 MiB. Credential file
+  `/etc/agentsfleet/otelcol-runner.env` is root:root mode 0600. Runner restarted
+  at 09:07:51 UTC with no active leases and logged `telemetry_export_started`.
+  Root received HTTP 200; uid 65534 and the deploy user were dropped, IPv6
+  loopback was refused. First lease data at 09:18:27 UTC: 3 spans and 1 metric
+  point accepted/exported, zero refused, warnings or errors. At 09:18:52 UTC
+  the host session found a 995 ms `runner.lease` trace and the provider-turn
+  histogram in Grafana. This session independently confirmed target_info,
+  provider-turn count/sum and a runner.lease result. Real-sandbox admission
+  remains pending; matching the sandbox uid is not the same witness.
