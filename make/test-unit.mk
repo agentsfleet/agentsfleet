@@ -107,7 +107,7 @@ KERNEL_LANE_RUNNER ?= sudo -E
 KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')
 
 test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (root, bubblewrap, Landlock, cgroup v2); fails, never skips
-	@$(KERNEL_LANE_RUNNER) bash scripts/toolbox/test_measure_first_use.sh
+	@$(KERNEL_LANE_RUNNER) bash playbooks/operations/acceptance/test_toolbox_first_use.sh
 	@image="$${AFR_TOOLBOX_IMAGE:-}"; \
 	  if [ -z "$$image" ]; then image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" || exit $$?; fi; \
 	  test -f "$$image" && image="$$(realpath "$$image")" && \

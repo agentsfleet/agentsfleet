@@ -382,7 +382,7 @@ The service integration lane checks daemon storage and Slack delivery.
 3. Install the builder's shared package list and the kernel lane's host tools.
 
    ```bash
-   orb -m "$kernel_machine" bash scripts/toolbox/install-builder-tools.sh \
+   orb -m "$kernel_machine" bash .github/actions/build-toolbox/install-tools.sh \
      bubblewrap build-essential pkg-config git nftables iproute2 e2fsprogs cryptsetup kmod
    ```
 
