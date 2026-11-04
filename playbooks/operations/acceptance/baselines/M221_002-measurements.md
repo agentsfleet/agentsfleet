@@ -248,3 +248,13 @@ The caller now reads them with root privileges and transfers evidence ownership 
 PR unit run `41780094139` failed while compiling daemon libraries with `No space left on device`.
 The local repository gate passed lint, unit and version commands; integration stopped because its QStash container exited 127 before tests started.
 Neither infrastructure failure is recorded as an integration pass.
+
+## Retained 120-sample regression
+
+Hosted run `41783236290` retained both images, manifests and raw reports in artifact `13300618106`.
+The full kernel lane passed; Git-commit p99 was 47.694296 ms for baseline and 56.361242 ms for candidate (ratio 1.1817187).
+The other seven step comparisons passed. This run does not qualify the image.
+
+Before another run, declare one 600-sample-per-command confirmation using the unchanged sampler and 1.10 limit.
+Preserve this failed 120-sample evidence alongside the confirmatory result; do not trim samples or select another attempt if the confirmation fails.
+No timing threshold, command or percentile calculation changes.
