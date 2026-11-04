@@ -41,8 +41,21 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
         outcome: DecisionOutcome,
         elapsed: Duration,
     );
+    /// A lease chose its inline memory or a separate hydration request.
+    fn memory_source(&self, source: crate::labels::MemorySource);
     /// One model turn ended, after `elapsed`.
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration);
+    /// One provider stream request ended, with an optional first-text measurement.
+    fn model_call(
+        &self,
+        model: &str,
+        provider: Provider,
+        outcome: crate::labels::CallOutcome,
+        elapsed: Duration,
+        first_text: Option<Duration>,
+    );
+    /// Provider-reported usage from one request, including known partial usage.
+    fn model_tokens(&self, model: &str, provider: Provider, usage: afd_wire::usage::ObservedTokens);
     /// A turn's send is about to be retried.
     fn retry(&self, provider: Provider, reason: RetryReason);
     /// A sandbox start ended, after `elapsed`.
@@ -107,6 +120,22 @@ pub fn decision(
 /// Records one model turn.
 pub fn turn(provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
     with(|recorder| recorder.turn(provider, outcome, elapsed));
+}
+
+/// Records a single provider request, separate from an agent turn's retries and tools.
+pub fn model_call(
+    model: &str,
+    provider: Provider,
+    outcome: crate::labels::CallOutcome,
+    elapsed: Duration,
+    first_text: Option<Duration>,
+) {
+    with(|recorder| recorder.model_call(model, provider, outcome, elapsed, first_text));
+}
+
+/// Records provider usage once after response recovery; unknown values stay absent.
+pub fn model_tokens(model: &str, provider: Provider, usage: afd_wire::usage::ObservedTokens) {
+    with(|recorder| recorder.model_tokens(model, provider, usage));
 }
 
 /// Records a turn's send about to be retried.
@@ -265,4 +294,9 @@ mod tests {
             )]
         );
     }
+}
+
+/// Records the memory path once, before any fallback request can fail or cancel.
+pub fn memory_source(source: crate::labels::MemorySource) {
+    with(|recorder| recorder.memory_source(source));
 }

@@ -2,17 +2,66 @@
   "annotations": {
     "list": []
   },
-  "description": "Service Level Objectives, control-plane, queue, runner and telemetry health from agentsfleetd. Panels 20-25 are the SLO view; everything below panel 4 is the operator view.",
+  "description": "Live measurements. Missing telemetry stays absent; measured zero stays zero. Aggregate metrics cover the selected datasource; fleet selection applies only to trace panels.",
   "editable": true,
   "graphTooltip": 1,
-  "links": [],
+  "links": [
+    {
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Chat latency",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-chat",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "API & Database",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-api-db",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Scheduler",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-scheduler",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Models",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-models",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Sandbox",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-sandbox",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    }
+  ],
   "panels": [
     {
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Share of valid admission attempts accepted or replayed over the dashboard range. Target 99%, unproven. Compare failures with the valid-event count.",
+      "description": "Share of valid attempts accepted or replayed; excludes over-budget refusals. The 99% target is not yet proven.",
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -34,10 +83,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 6,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 12,
+        "h": 8
       },
       "id": 20,
       "options": {
@@ -61,200 +110,30 @@
           "refId": "A"
         }
       ],
-      "title": "Are we accepting work?",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "Runs that finished cleanly, over runs the PLATFORM was accountable for. A failure caused by the workload \u2014 policy_deny, landlock_deny, oom_kill, resource_kill, budget_breach, timeout_kill \u2014 is excluded from the denominator entirely: it is neither a success nor a breach, because the platform delivered and what it ran did not. That keeps one tenant's bad code from spending everybody's error budget, and stops a noisy tenant diluting the ratio and hiding real platform failures behind volume. An unclassified failure counts as ours. Target 95%, UNPROVEN \u2014 set against 10 executions, of which all 3 failures were platform-caused, so this split does not move today's number. 'How runs are ending' below breaks the failures out by reason.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "decimals": 4,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 0.95
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 0
-      },
-      "id": 21,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum(increase(agentsfleet_runner_executions_total{outcome=\"processed\"}[$__range])) / sum(increase(agentsfleet_runner_executions_total{fault!=\"workload\"}[$__range]))",
-          "legendFormat": "success",
-          "refId": "A"
-        }
-      ],
-      "title": "Are runs finishing cleanly? (platform faults only)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "Age of the freshest heartbeat from the runner that is furthest behind. Per-runner tables are in-process and never evicted, so this takes min-by-runner first, then the worst of those \u2014 either half alone pages for a healthy fleet. Above the offline threshold, that runner is gone.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": "__RUNNER_OFFLINE_SECONDS_NUM__"
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 0
-      },
-      "id": 23,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "max(min by (runner_id) (time() - agentsfleet_runner_last_seen_seconds))",
-          "legendFormat": "worst age",
-          "refId": "A"
-        }
-      ],
-      "title": "Has any runner gone quiet?",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "Fresh lease starts divided by new accepted admissions. The windows can contain different events, so this ratio is approximate and can exceed 100%.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "decimals": 4,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 0.99
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 0,
-        "y": 4
-      },
-      "id": 34,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum(increase(agentsfleet_fleet_runs_started_total{kind=\"fresh\"}[$__range])) / sum(increase(agentsfleet_admissions_total{outcome=\"accepted\"}[$__range]))",
-          "legendFormat": "started / admitted",
-          "refId": "A"
-        }
-      ],
-      "title": "Approximate starts over admissions (not an objective)",
+      "title": "Request acceptance",
       "type": "stat"
     },
     {
       "id": 37,
       "type": "stat",
-      "title": "All-cause run success (not an objective)",
-      "description": "The same ratio WITHOUT the blame split: every failure counted, including the ones the workload caused. This is what a customer feels \u2014 'did my run work' is a fair question with a real answer. It carries no target and nothing alerts on it, because an objective has to be a promise about something this platform controls. Read it beside the objective to its left: a wide gap between them is tenants shipping code that fails, not a platform regression.",
+      "title": "Run success rate",
+      "description": "Successfully processed executions divided by all recorded completed executions; includes platform and workload failures.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
       "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 4
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
       },
       "targets": [
         {
           "refId": "A",
           "editorMode": "code",
           "instant": false,
-          "legendFormat": "all-cause success",
+          "legendFormat": "success",
           "expr": "sum(increase(agentsfleet_runner_executions_total{outcome=\"processed\"}[$__range])) / sum(increase(agentsfleet_runner_executions_total[$__range]))"
         }
       ],
@@ -294,7 +173,196 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Current count per lifecycle status, and a GAP when the census could not be read. The producer withdraws all five readings together when its query fails (`a_withdrawn_census_publishes_no_reading_at_all`), so absence here means the census, the exporter or the daemon is down \u2014 not that the fleet is empty. These queries carry no `or vector(0)` for exactly that reason: a zero would render an outage as five healthy zeroes. Not a rate; this is the standing population.",
+      "description": "Age of the oldest accepted request still waiting, running or parked.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds)",
+          "legendFormat": "oldest unfinished request",
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest unfinished request",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(agentsfleet_runner_executions_total[$__rate_interval]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (reason) (rate(agentsfleet_runner_failures_total[$__rate_interval]))",
+          "legendFormat": "failure: {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Run results",
+      "type": "timeseries",
+      "description": "Execution outcomes and recorded failure reasons per second."
+    },
+    {
+      "id": 101,
+      "title": "Chat response p95 / p99",
+      "type": "timeseries",
+      "description": "Fleet-wide event-to-completion time at p95 and p99; excludes browser rendering.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(.95, sum by (le) (rate(agentsfleet_fleet_delivery_stage_seconds_bucket{stage=\"event_to_complete\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(.99, sum by (le) (rate(agentsfleet_fleet_delivery_stage_seconds_bucket{stage=\"event_to_complete\"}[$__rate_interval])))",
+          "legendFormat": "p99",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "max(agentsfleet_admission_backlog)",
+          "legendFormat": "unfinished requests",
+          "refId": "A"
+        }
+      ],
+      "title": "Unfinished requests",
+      "type": "stat",
+      "description": "Accepted requests still waiting, running or parked."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "description": "Current fleet counts by lifecycle state.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -311,10 +379,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 4
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
       },
       "id": 35,
       "options": {
@@ -358,7 +426,7 @@
           "refId": "E"
         }
       ],
-      "title": "Fleets right now, by status",
+      "title": "Fleet status",
       "type": "stat"
     },
     {
@@ -366,307 +434,32 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Run starts per second, split by kind. Fresh is new work; the other kinds are recovery. A fleet that is only ever resuming is a fleet that is failing and retrying.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 4
-      },
-      "id": 36,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (kind) (rate(agentsfleet_fleet_runs_started_total[$__rate_interval]))",
-          "legendFormat": "{{kind}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Runs starting \u2014 fresh or resumed",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "Error budget burn at four windows against a 1% budget. The target underneath it is UNPROVEN \u2014 set against 14 admission events. Burn rate 1 means the observed error ratio equals the allowed ratio, so the budget would be spent exactly over the full compliance window, not over the query window. ALWAYS READ IT BESIDE THE VALID-EVENT COUNT: a burn of 100 from one failure in one event is arithmetically correct and operationally meaningless. Ships as a panel, never a rule, because paging on an unproven target is how alerting gets muted.",
       "fieldConfig": {
         "defaults": {
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "attribute omitted: gen_ai.provider.name/unmapped_provider"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Provider name omitted"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 9
-      },
-      "id": 24,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "(sum(rate(agentsfleet_admissions_total{outcome=\"refused\"}[1h])) / sum(rate(agentsfleet_admissions_total{outcome!=\"over_budget\"}[1h]))) / 0.01",
-          "legendFormat": "1h burn",
-          "refId": "A"
-        },
-        {
-          "expr": "(sum(rate(agentsfleet_admissions_total{outcome=\"refused\"}[5m])) / sum(rate(agentsfleet_admissions_total{outcome!=\"over_budget\"}[5m]))) / 0.01",
-          "legendFormat": "5m burn",
-          "refId": "B"
-        },
-        {
-          "expr": "(sum(rate(agentsfleet_admissions_total{outcome=\"refused\"}[6h])) / sum(rate(agentsfleet_admissions_total{outcome!=\"over_budget\"}[6h]))) / 0.01",
-          "legendFormat": "6h burn",
-          "refId": "C"
-        },
-        {
-          "expr": "(sum(rate(agentsfleet_admissions_total{outcome=\"refused\"}[30m])) / sum(rate(agentsfleet_admissions_total{outcome!=\"over_budget\"}[30m]))) / 0.01",
-          "legendFormat": "30m burn",
-          "refId": "D"
-        }
-      ],
-      "title": "How fast we are burning the admission budget (target unproven)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "The same four windows against the 5% runner-success budget, counting PLATFORM faults only so it burns on the same events the objective measures, equally UNPROVEN \u2014 set against 10 executions. Same warning: read it beside execution volume, since a burn rate computed over a handful of events says nothing. Both climbing together is an infrastructure problem, runner alone is a workload problem.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
         "x": 12,
-        "y": 9
-      },
-      "id": 25,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "(sum(rate(agentsfleet_runner_executions_total{outcome=\"fleet_error\", fault=\"platform\"}[1h])) / sum(rate(agentsfleet_runner_executions_total{fault!=\"workload\"}[1h]))) / 0.05",
-          "legendFormat": "1h burn",
-          "refId": "A"
-        },
-        {
-          "expr": "(sum(rate(agentsfleet_runner_executions_total{outcome=\"fleet_error\", fault=\"platform\"}[5m])) / sum(rate(agentsfleet_runner_executions_total{fault!=\"workload\"}[5m]))) / 0.05",
-          "legendFormat": "5m burn",
-          "refId": "B"
-        },
-        {
-          "expr": "(sum(rate(agentsfleet_runner_executions_total{outcome=\"fleet_error\", fault=\"platform\"}[6h])) / sum(rate(agentsfleet_runner_executions_total{fault!=\"workload\"}[6h]))) / 0.05",
-          "legendFormat": "6h burn",
-          "refId": "C"
-        },
-        {
-          "expr": "(sum(rate(agentsfleet_runner_executions_total{outcome=\"fleet_error\", fault=\"platform\"}[30m])) / sum(rate(agentsfleet_runner_executions_total{fault!=\"workload\"}[30m]))) / 0.05",
-          "legendFormat": "30m burn",
-          "refId": "D"
-        }
-      ],
-      "title": "How fast we are burning the runner budget (target unproven)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 16
-      },
-      "id": 1,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum(agentsfleet_api_in_flight_requests)",
-          "legendFormat": "in flight",
-          "refId": "A"
-        }
-      ],
-      "title": "API requests in flight",
-      "type": "stat",
-      "description": "Concurrent requests the daemon is holding right now. This is the number backpressure is defending; watch it against the rejection panel beside it."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 16
-      },
-      "id": 2,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum(increase(agentsfleet_api_backpressure_rejections_total[$__rate_interval]))",
-          "legendFormat": "rejected",
-          "refId": "A"
-        }
-      ],
-      "title": "Requests we turned away",
-      "type": "stat",
-      "description": "Backpressure rejections. Non-zero means the daemon protected itself by shedding load \u2014 the caller got an error. Sustained non-zero means capacity, not a blip."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 16
-      },
-      "id": 3,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "max(agentsfleet_admission_backlog)",
-          "legendFormat": "unsettled admissions",
-          "refId": "A"
-        }
-      ],
-      "title": "Unsettled admissions",
-      "type": "stat",
-      "description": "Committed admissions awaiting settlement, including active and parked work. A sustained rise with flat lease starts calls for a placement or approval check."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
+        "y": 24,
         "w": 12,
-        "x": 0,
-        "y": 20
+        "h": 8
       },
-      "id": 5,
+      "id": 8,
       "options": {
         "legend": {
           "calcs": [
@@ -683,19 +476,57 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(agentsfleet_lease_poll_candidates_scanned_total[$__rate_interval])) / clamp_min(sum(rate(agentsfleet_lease_polls_total[$__rate_interval])), 1e-9)",
-          "legendFormat": "candidates per poll",
-          "refId": "A"
-        },
-        {
-          "expr": "sum(rate(agentsfleet_lease_poll_db_roundtrips_total[$__rate_interval])) / clamp_min(sum(rate(agentsfleet_lease_polls_total[$__rate_interval])), 1e-9)",
-          "legendFormat": "database round trips per poll",
+          "expr": "sum by (attribute, reason) (increase(agentsfleet_otel_attribute_omitted_total[$__rate_interval]))",
+          "legendFormat": "attribute omitted: {{attribute}}/{{reason}}",
           "refId": "B"
         }
       ],
-      "title": "What each lease poll costs",
+      "title": "Missing telemetry labels",
       "type": "timeseries",
-      "description": "Candidates scanned and database round trips, both per poll. Rising cost per poll at flat throughput is the scan growing \u2014 the lease query is walking more rows to find the same work."
+      "description": "Provider name omitted means telemetry could not attribute the provider. This is an instrumentation gap; the model call and the remaining telemetry may still succeed."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "id": 106,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (signal, reason) (increase(agentsfleet_otlp_entries_discarded_total[$__rate_interval]))",
+          "legendFormat": "discarded: {{signal}}/{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped daemon telemetry",
+      "type": "timeseries",
+      "description": "Entries discarded by the daemon exporter before its collector accepts them; excludes downstream collector loss."
     },
     {
       "datasource": {
@@ -709,10 +540,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 12,
-        "y": 20
+        "y": 32,
+        "w": 12,
+        "h": 8
       },
       "id": 6,
       "options": {
@@ -736,340 +567,9 @@
           "refId": "A"
         }
       ],
-      "title": "Heartbeat age, per runner",
+      "title": "Runner check-in age",
       "type": "timeseries",
-      "description": "One line per runner, each showing its freshest reading across daemon replicas. A line climbing steadily is a runner that stopped reporting; a line that resets is a runner that came back."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 28
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (outcome) (rate(agentsfleet_runner_executions_total[$__rate_interval]))",
-          "legendFormat": "{{outcome}}",
-          "refId": "A"
-        },
-        {
-          "expr": "sum by (reason) (rate(agentsfleet_runner_failures_total[$__rate_interval]))",
-          "legendFormat": "failure: {{reason}}",
-          "refId": "B"
-        }
-      ],
-      "title": "How runs are ending",
-      "type": "timeseries",
-      "description": "Execution outcomes per second, with failures broken out by reason underneath. This is where the runner success indicator at the top gets its explanation."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 28
-      },
-      "id": 8,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (signal, reason) (increase(agentsfleet_otlp_entries_discarded_total[$__rate_interval]))",
-          "legendFormat": "discarded: {{signal}}/{{reason}}",
-          "refId": "A"
-        },
-        {
-          "expr": "sum by (attribute, reason) (increase(agentsfleet_otel_attribute_omitted_total[$__rate_interval]))",
-          "legendFormat": "attribute omitted: {{attribute}}/{{reason}}",
-          "refId": "B"
-        }
-      ],
-      "title": "Telemetry we dropped before it left the daemon",
-      "type": "timeseries",
-      "description": "Entries discarded by signal and reason, plus attributes omitted. Non-zero means the dashboard above is drawn on incomplete data \u2014 read this before trusting a suspiciously quiet panel."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "Outbound repair retries and stream reconnects. A sustained rise calls for checking the failed destination or datastore connection.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 36
-      },
-      "id": 26,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum(rate(agentsfleet_repair_dispatch_retried_total[$__rate_interval]))",
-          "legendFormat": "repair dispatch retried",
-          "refId": "B"
-        },
-        {
-          "expr": "sum(rate(agentsfleet_sse_hub_reconnects_total[$__rate_interval]))",
-          "legendFormat": "hub reconnects",
-          "refId": "C"
-        }
-      ],
-      "title": "Work being retried or replayed",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 36
-      },
-      "id": 10,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum(agentsfleet_process_resident_memory_bytes)",
-          "legendFormat": "resident memory",
-          "refId": "A"
-        }
-      ],
-      "title": "Daemon memory",
-      "type": "timeseries",
-      "description": "Resident set across daemon processes. Flat is expected. A staircase that never comes down is the per-runner tables growing, which are in-process and never evicted."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "Requests in flight, streams in flight and unsettled admissions. Each series has different units; compare each with its own history.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 44
-      },
-      "id": 27,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum(agentsfleet_api_in_flight_requests)",
-          "legendFormat": "API in flight",
-          "refId": "A"
-        },
-        {
-          "expr": "sum(agentsfleet_sse_in_flight_streams)",
-          "legendFormat": "streams in flight",
-          "refId": "B"
-        },
-        {
-          "expr": "max(agentsfleet_admission_backlog)",
-          "legendFormat": "admission backlog",
-          "refId": "D"
-        }
-      ],
-      "title": "Queue and concurrency depths (not comparable to each other)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "description": "Age of the oldest unsettled admission and the oldest due verifier intent. These ages have different causes and no shared deadline.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 44
-      },
-      "id": 28,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds)",
-          "legendFormat": "oldest unsettled admission",
-          "refId": "A"
-        },
-        {
-          "expr": "max(agentsfleet_repair_dispatch_oldest_age_seconds)",
-          "legendFormat": "oldest due verifier intent",
-          "refId": "B"
-        }
-      ],
-      "title": "Oldest thing still waiting",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 52
-      },
-      "id": 38,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate({__name__=~\"agentsfleet_fleet_delivery_stage_seconds.*\",le!=\"\"}[$__rate_interval])))",
-          "legendFormat": "{{stage}} p95",
-          "refId": "A"
-        }
-      ],
-      "title": "Time to first runner chunk at daemon by stage",
-      "type": "timeseries",
-      "description": "P95 seconds for each fixed stage, ending when the daemon receives the first intact runner chunk. Event stages begin at the producer event timestamp; lease stage begins when the lease row is written; zombie begins immediately before invoking the fleet execution engine. First chunk may contain reasoning or tool syntax. This is not browser first paint. A missing series means no completed stage was observed."
+      "description": "Time since each runner was last heard from."
     }
   ],
   "refresh": "30s",
@@ -1079,14 +579,38 @@
     "__ENVIRONMENT__"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "tempo",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "hide": 2
+      },
+      {
+        "name": "fleet_id",
+        "label": "Fleet (traces)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 2
+      }
+    ]
   },
   "time": {
     "from": "now-6h",
     "to": "now"
   },
   "timezone": "browser",
-  "title": "agentsfleet \u2014 is the fleet healthy? \u00b7 __ENVIRONMENT__",
+  "title": "Overview \u00b7 __ENVIRONMENT__",
   "uid": "__DASHBOARD_UID__",
   "version": 2
 }

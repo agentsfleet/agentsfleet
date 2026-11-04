@@ -23,8 +23,11 @@
 
 pub mod billing;
 pub mod cost;
+pub mod database;
 pub mod fleet;
 pub mod http;
 pub mod library;
 pub mod memory;
+pub mod models;
+pub mod scheduler;
 pub mod task;

@@ -3,10 +3,10 @@
 //! # Why two meter providers
 //!
 //! The SDK asks the EXPORTER which temporality it wants and aggregates to
-//! match. A census declares temporality per family — cost families report
-//! windows, runtime families report running totals — so one provider would
-//! silently rewrite half of them. Two providers, and the instrument set routes
-//! each family by what it declares.
+//! match. Daemon families declare running totals before the shared collector
+//! endpoint; runner histograms can declare windows for their isolated host
+//! collector. Two providers let the instrument set preserve each census's
+//! declared temporality without rewriting another family's aggregation.
 //!
 //! # The signal path is appended here, and that is not optional
 //!

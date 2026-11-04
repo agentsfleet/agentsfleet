@@ -35,6 +35,7 @@ mod edit;
 mod fence;
 mod fire_at;
 mod guarded;
+mod health;
 pub(crate) mod history;
 mod input;
 mod owner;

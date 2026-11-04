@@ -214,3 +214,38 @@ async fn concurrent_rate_and_inference_updates_keep_a_valid_saved_pair() {
     drop(db);
     lane.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn bounded_catalogue_preserves_order_and_reports_clipping() {
+    let lane = TestDatabase::shared();
+    let db = lane.open(DbRole::Api, &[]).await;
+    let models = Models::new(db.clone(), Entropy::new());
+    let owned = create(&models, InferenceApi::Chat, 4096).await;
+    let all = models.list().await.expect("canonical catalogue reads");
+    assert!(all.iter().any(|row| row.id == owned.id));
+    let (none, clipped) = models
+        .bounded(0)
+        .await
+        .expect("zero bound reads one sentinel");
+    assert_eq!(none.len(), 0);
+    assert!(clipped);
+    let (one, _clipped) = models.bounded(1).await.expect("bounded catalogue reads");
+    assert_eq!(one.len(), 1);
+    let (complete, clipped) = models
+        .bounded(u32::MAX)
+        .await
+        .expect("large bound cannot overflow");
+    assert!(!clipped);
+    assert!(complete.iter().any(|row| row.id == owned.id));
+    assert!(complete.windows(2).all(|pair| {
+        let [before, after] = pair else {
+            return false;
+        };
+        (&before.provider, &before.model_name) <= (&after.provider, &after.model_name)
+    }));
+    models.delete(&owned.id).await.expect("owned cleanup");
+    drop(models);
+    drop(db);
+    lane.cleanup().await;
+}

@@ -28,6 +28,7 @@ afd_events.workspace = true
 afd_dragonfly.workspace = true
 # Identifiers, the instant a row is stamped with, and the registry codes.
 afd_core.workspace = true
+afd_observability.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # Where a new schedule's identifier comes from — see `store::Schedules::mint`.

@@ -139,6 +139,13 @@ impl Fire {
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression and coverage instrumentation scores
         // the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
+        afd_observability::producers::scheduler::fired(admitted.replayed);
+        if !admitted.replayed {
+            afd_observability::producers::scheduler::dispatched(
+                target.scheduled_at,
+                admitted.stored.created_at,
+            );
+        }
         let event_id = admitted.stored.id.as_str();
         let replayed = admitted.replayed;
         let schedule_id = schedule.as_str();
