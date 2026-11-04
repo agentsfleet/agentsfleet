@@ -19,6 +19,12 @@ use afd_ingress::Ingress;
 use super::*;
 
 impl Fleet {
+    /// Runs lease decision routes over a fully configured native task owner.
+    pub(crate) fn with_tasks(mut self, tasks: afd_fleet::task::Tasks) -> Self {
+        self.tasks = tasks;
+        self
+    }
+
     /// Uses the same wall-clock era as live database expiry checks.
     pub(crate) const fn at(mut self, now: jiff::Timestamp) -> Self {
         self.now = now;
