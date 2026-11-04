@@ -56,7 +56,7 @@ impl super::ownership::NativeContext {
     async fn prepare(
         self,
         connection: &mut PgConnection,
-        input: &DecisionReservationInput,
+        input: &garde::Valid<DecisionReservationInput>,
         call: &Uuid7,
     ) -> Result<(Prepared, FrozenQuote)> {
         let assignment = self

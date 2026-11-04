@@ -924,3 +924,45 @@ No package, signature, image policy, retry or gate threshold changes for this di
 GitHub cancelled macOS job `126826581967` before assigning a runner, with no steps recorded.
 Its annotation reports hosted-runner acquisition failure and macOS capacity constraints.
 The other three Rust coverage shards passed; the absent kernel report still prevents a complete coverage grade.
+
+## Native assessment recovery and source compilation
+
+The concurrency scenario now runs both shared-operation retries and independent operation identifiers through separate owned fixtures.
+Each race has 100 callers, one credential response and one original-owner charge.
+Every losing response must equal the complete credential-free saved-response envelope.
+
+The funding-outage scenario checks distinct operations before issuance, contradictory evidence, premature receipts and unchanged complete call/payload records.
+Recovery retains the original call, resolves the rotated platform key and refuses a second credential response.
+The completed first checkpoint passed 1,530 regular and three exclusive storage tests in `/tmp/m236-independent-decisions-integration.log`.
+
+Native request compilation now retains `garde::Valid` instead of discarding its nonnegative-offset proof.
+Standard unsigned conversion and a compile-time width assertion replace unreachable conversion errors; checked slicing still rejects actual range and UTF-8 violations.
+The separate unproved plan-range conversions remain fallible.
+
+The new Unicode scenario requires four refused ranges to leave the complete admitted source and claim unchanged, with no call, payload or charge.
+It then checks the exact selected text, complete source, native questions, settlement and saved replay.
+It uses native admissions and storage; it makes no live provider or full-task acceptance claim.
+
+New credit scenarios use the actual ledger biller, native coding estimates and an existing hold before creating insufficient-credit or closed-work conditions.
+Independent retries must retain one call and unchanged complete wallet/hold records.
+A top-up must recover the same call and debit its original payer exactly once.
+
+Astra found an initial fixture with no hold to close, incomplete losing-response assertions and oversized helpers.
+All were corrected before the final gates, without a new suppression or Mutex.
+Related timeout, outage and credit scenarios now occupy separate modules; their shared native snapshot query has one owner.
+
+`make lint-rustd` passed on the final batch, including workspace Clippy and the unchanged lint configuration.
+`make test-unit-rustd-daemon-libs` passed 3,412 tests in `/tmp/m236-decision-native-final-unit.log`.
+
+Clean `make test-integration-rustd` passed 1,532 regular and three exclusive tests in `/tmp/m236-decision-native-final-integration.log`.
+Both new native scenarios and the expanded replay/outage scenarios pass in that complete storage lane.
+
+Published `543c6f2e0` passed Greptile review with no new blocking finding; both earlier review threads are answered and resolved.
+Its first kernel job exposed Debian Snapshot HTTP 503/504 failures before testing.
+The bounded retry, job `126855474806`, again failed downloading pinned packages with HTTP 503/504 responses.
+
+GitHub also cancelled macOS job `126845858048` without assigning a runner or running steps.
+Its annotation names hosted-runner acquisition failure and macOS capacity constraints.
+Neither upstream failure establishes a complete Rust coverage grade; all existing coverage floors remain unchanged.
+
+Subsequent local bounded downloads retrieved both failing packages; the next GitHub job must still confirm availability from its host.

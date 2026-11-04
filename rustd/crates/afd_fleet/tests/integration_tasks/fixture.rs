@@ -135,8 +135,18 @@ impl Case {
     }
 
     pub(super) async fn source(&self, producer: Producer, actor: &str) -> Uuid7 {
+        self.source_message(producer, actor, &GOALS.join("; "))
+            .await
+    }
+
+    pub(super) async fn source_message(
+        &self,
+        producer: Producer,
+        actor: &str,
+        message: &str,
+    ) -> Uuid7 {
         let key = afd_db::test_util::mint_id();
-        let request = json!({"message": GOALS.join("; ")}).to_string();
+        let request = json!({"message": message}).to_string();
         let admission = self
             .admissions
             .admit(Admission {

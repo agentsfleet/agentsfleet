@@ -219,6 +219,13 @@ impl<'a> Decisions<'a> {
             .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("financial counts"))
             .await.expect("retained financial and private row counts")
     }
+
+    pub(super) async fn call_snapshot(&self) -> (Value, Value) {
+        sqlx::query_as("SELECT to_jsonb(c), to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1::uuid")
+            .bind(self.case.lease().lease_id.as_str())
+            .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("retained assessment observer"))
+            .await.expect("complete call and private payload")
+    }
 }
 
 pub(super) async fn lock_slot(connection: &mut sqlx::PgConnection, case: &Case) -> i32 {

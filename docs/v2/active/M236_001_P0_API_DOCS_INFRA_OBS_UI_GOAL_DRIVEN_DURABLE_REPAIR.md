@@ -184,7 +184,7 @@ Heartbeat delivers assignment changes; active calls retain their recorded profil
 
 One `DecisionEvaluator` trait lives in `afr_providers`; `afr_agent` owns decision timing and application policy.
 One `DecisionClient` maps Jev, Perplexity Decisions, Cloudflare Clef and OpenAI Decisions through four small native wire adapters.
-Native transport, secret custody, call accounting and the admission/lease path remain shared.
+Native transport, secrets, accounting and validated inputs remain shared; native slicing checks the admitted source's bounds and UTF-8.
 
 Provider capabilities declare supported native question types, distributions, usage and refusal semantics.
 Jev's proposed thresholds belong to its profile; other providers require evaluated policies and cannot inherit calibration by API similarity.
