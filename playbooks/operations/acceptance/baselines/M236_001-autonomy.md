@@ -712,13 +712,13 @@ The mutation driver restored the exact original SQL bytes; `/tmp/m236-maintenanc
 A capturing-exporter scenario checks counts, age totals and operation latency under exact label sets.
 Structured log checks verify aggregate severity/counts, expected contention and absence of fixture credentials or question text.
 
-The component is verified locally; current-main integration and pushed-head checks remain pending.
+The component is verified locally; combined-main verification and pushed-head checks remain pending.
 
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; post-merge lint, unit and clean integration gates passed. A fresh fetch finds PR 802/main `1920ff345`; integrate it and verify before the next push. |
+| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`. The next merge integrates PR 802/main `1920ff345`, retaining the URL parser and tracing dependency required by decision providers. Verify the combined branch before pushing and repeat the freshness check at final ship. |
 | Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Native physical-call accounting passes unit/integration gates; full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Align unfinished setup actions | `components/layout/DraftSidebarItem.tsx` uses shared grid columns: title, reachable Delete, then Resume. Desktop/mobile measurements, app lint and 100% coverage pass; the same geometry assertion fails against the previous component. Logs: `/tmp/m236-ui-polish-browser.log`, `/tmp/m236-resume-parent-red.log`. |

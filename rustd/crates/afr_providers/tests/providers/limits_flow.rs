@@ -17,6 +17,18 @@ use super::support::{
 };
 
 const OPERATING: u32 = 8192;
+/// Lines in the tool result. Each is 4 `o200k_base` tokens and 5 with the
+/// proxy's quarter, so one read (9,000) passes the operating cap's 90 percent
+/// (7,373) and two reads (18,000) pass the larger cap's (14,400), while one
+/// read stays under it.
+const LINES: usize = 1800;
+/// The lease's model, which `tiktoken-rs` does not know.
+const MODEL: &str = "model-1";
+
+/// What the runtime estimates a sent body at.
+fn estimated(raw: &[u8]) -> u64 {
+    afd_inference::input_tokens(MODEL, std::str::from_utf8(raw).unwrap()) as u64
+}
 const PHYSICAL: u32 = 32_768;
 const FILE: &str = "context.txt";
 const SHOT: &str = "shot.png";
@@ -45,7 +57,7 @@ async fn workspace() -> (tempfile::TempDir, afr_executor::Client, String) {
     let socket = scratch.path().join("executor.sock");
     let root = scratch.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
-    let text = "bounded tool result\n".repeat(700);
+    let text = "bounded tool result\n".repeat(LINES);
     std::fs::write(root.join(FILE), &text).unwrap();
     std::fs::write(root.join(SHOT), b"\x89PNG\r\n\x1a\n").unwrap();
     tokio::spawn(async move { afr_executor::serve(&socket, &root).await });
@@ -128,11 +140,11 @@ fn assert_requests(fake: &mut Fake, wire: Wire) {
             .contains("Read context.txt, then answer.")
     );
     assert!(!seen[2].body.to_string().contains("bounded tool result"));
-    assert!(seen[1].raw.len() > OPERATING as usize);
+    assert!(estimated(&seen[1].raw) > u64::from(OPERATING));
     for request in &seen {
         let output_cap = request.body["max_tokens"].as_u64().unwrap();
         assert!(output_cap > 0 && output_cap <= 4096);
-        assert!(output_cap + request.raw.len() as u64 <= u64::from(PHYSICAL));
+        assert!(output_cap + estimated(&request.raw) <= u64::from(PHYSICAL));
     }
 }
 
@@ -222,7 +234,7 @@ async fn compaction_clears_old_signed_replay_but_keeps_the_retained_tool_exchang
     .await;
     let prompt = "Read context.txt twice, then inspect shot.png.";
     let mut leased = configured_lease(&fake, &[read, image], prompt);
-    leased.policy.context.context_cap_tokens = 30_000;
+    leased.policy.context.context_cap_tokens = 16_000;
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = engine_hosting(&fake, Catalog::hosted(Arc::new(transport)));
 

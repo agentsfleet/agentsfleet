@@ -1,0 +1,47 @@
+id: infra-worker-tag
+valid:
+  - |
+    Join with:
+
+    ```bash
+    sudo tailscale up \
+      --advertise-tags=tag:worker \
+      --ssh
+    ```
+  - |
+    Join with:
+
+    ```bash
+    sudo tailscale up --advertise-tags tag:worker
+    ```
+  - |
+    Join with:
+
+    ```bash
+    tailscale status
+    ```
+invalid:
+  - |
+    Join with:
+
+    ```bash
+    sudo tailscale up --advertise-tags=tag:ci
+    ```
+  - |
+    Join with:
+
+    ```bash
+    sudo tailscale up --advertise-tags=tag:worker,tag:ci
+    ```
+  - |
+    Join with:
+
+    ```bash
+    sudo tailscale up --ssh
+    ```
+  - |
+    Join with:
+
+    ```bash
+    sudo tailscale up --advertise-tags=tag:worker --advertise-tags=tag:ci
+    ```

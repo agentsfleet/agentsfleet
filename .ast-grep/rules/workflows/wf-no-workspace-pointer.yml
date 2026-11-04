@@ -1,0 +1,17 @@
+# PLATFORM_ADMIN_WORKSPACE_ID is written after the first signup, so a deploy that
+# needs it can never run on a fresh environment.
+id: wf-no-workspace-pointer
+language: Yaml
+severity: error
+message: PLATFORM_ADMIN_WORKSPACE_ID is a post-signup value no deploy may require
+files:
+  - .github/workflows/deploy-dev.yml
+  - .github/workflows/deploy-dev-fly.yml
+  - .github/workflows/release.yml
+rule:
+  regex: 'PLATFORM_ADMIN_WORKSPACE_ID'
+  any:
+    - kind: string_scalar
+    - kind: double_quote_scalar
+    - kind: single_quote_scalar
+    - kind: block_scalar

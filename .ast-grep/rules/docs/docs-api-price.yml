@@ -1,0 +1,19 @@
+# DOC-23: no price in prose; prices change and live in the pricing data.
+# Published API prose lives in the generated document, so the fix lands in the
+# Rust annotation that emits it. Only `summary` and `description` values count.
+id: docs-api-price
+language: Json
+severity: error
+message: published API prose quotes a price (DOC-23)
+files:
+  - public/openapi.json
+rule:
+  kind: pair
+  all:
+    - has:
+        field: key
+        regex: '^"(summary|description)"$'
+    - has:
+        field: value
+        kind: string
+        regex: '\$[0-9]'

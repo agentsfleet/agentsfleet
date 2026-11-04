@@ -1,0 +1,20 @@
+# DOC-01: a `concat!` piece wrapped at a hyphen leaves a code span such as
+# `UZ- RUN-018` that nobody can search for.
+# Published API prose lives in the generated document, so the fix lands in the
+# Rust annotation that emits it. Only `summary` and `description` values count.
+id: docs-api-split-code-span
+language: Json
+severity: error
+message: a code span is split by a wrapped hyphen (DOC-01)
+files:
+  - public/openapi.json
+rule:
+  kind: pair
+  all:
+    - has:
+        field: key
+        regex: '^"(summary|description)"$'
+    - has:
+        field: value
+        kind: string
+        regex: '`[^`\s\\]*- [^`]*`'

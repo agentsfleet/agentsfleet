@@ -1,0 +1,27 @@
+id: tests-rust-cfg-test-repo-read
+valid:
+  - |
+    fn load() -> String {
+        std::fs::read_to_string("config.toml").unwrap()
+    }
+  - |
+    #[cfg(test)]
+    mod tests {
+        fn t() {
+            let _ = std::fs::read_to_string(tmp.join("a"));
+        }
+    }
+invalid:
+  - |
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn t() {
+            let _ = include_str!("../docs/a.md");
+        }
+    }
+  - |
+    #[cfg(test)]
+    fn helper() {
+        let _ = std::fs::read_to_string(Path::new("docs/x.md"));
+    }

@@ -15,9 +15,13 @@
 //! a vendor that could not be reached is retryable and `:sync` repairs it on
 //! its own, while a vendor that answered 400 will answer 400 again forever and
 //! retrying is an outbound load with no end. [`crate::Error`] keeps them apart.
+//! Before either reaches the row, a failure that can heal is sent again a few
+//! times on a short schedule; see [`retry`].
 
 use afd_core::id::Uuid7;
 use url::Url;
+
+pub use self::retry::Attempts;
 
 use crate::error::{self, Result};
 use crate::upstream::{HEADER_SCHEDULE_ID, upstream_id};
@@ -157,23 +161,40 @@ impl QStash {
     /// # Errors
     /// Reports a scheduler that could not be reached, and one that answered and
     /// refused — see the module note on why those are two failures. An answer
-    /// naming any id but the one sent is refused too; see [`confirmed`].
+    /// naming any id but the one sent is refused too; see [`confirmed`]. A
+    /// failure that can heal is reported only after the last of `attempts`.
     pub async fn upsert(
         &self,
         schedule: &Uuid7,
         cron: &str,
         timezone: &str,
         message: &str,
+        attempts: Attempts,
     ) -> Result<Registered> {
         let id = upstream_id(schedule);
+        retry::send(attempts, &id, || {
+            self.upsert_once(&id, cron, timezone, message)
+        })
+        .await
+    }
+
+    /// One push of the schedule filed under `id`.
+    async fn upsert_once(
+        &self,
+        id: &str,
+        cron: &str,
+        timezone: &str,
+        message: &str,
+    ) -> Result<Registered> {
         let answer = self
             .client
             .post(format!(
                 "{}{SCHEDULES_PATH}{}",
                 self.api_base, self.destination
             ))
+            .timeout(retry::ATTEMPT_TIMEOUT)
             .bearer_auth(self.token.expose())
-            .header(HEADER_SCHEDULE_ID, id.as_str())
+            .header(HEADER_SCHEDULE_ID, id)
             .header(HEADER_CRON, cron)
             .header(HEADER_TIMEZONE, timezone)
             .header(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON)
@@ -191,7 +212,7 @@ impl QStash {
         // turning one on for one call site would put `serde_json` inside every
         // other crate's HTTP client too.
         let body = answer.text().await?;
-        confirmed(id, &body)
+        confirmed(id.to_owned(), &body)
     }
 
     /// Removes a schedule upstream.
@@ -203,13 +224,22 @@ impl QStash {
     ///
     /// # Errors
     /// As [`Self::upsert`].
-    pub async fn remove(&self, provider_schedule_id: &str) -> Result<()> {
+    pub async fn remove(&self, provider_schedule_id: &str, attempts: Attempts) -> Result<()> {
+        retry::send(attempts, provider_schedule_id, || {
+            self.remove_once(provider_schedule_id)
+        })
+        .await
+    }
+
+    /// One removal of the schedule filed under `provider_schedule_id`.
+    async fn remove_once(&self, provider_schedule_id: &str) -> Result<()> {
         let answer = self
             .client
             .delete(format!(
                 "{}{SCHEDULES_PATH}{provider_schedule_id}",
                 self.api_base
             ))
+            .timeout(retry::ATTEMPT_TIMEOUT)
             .bearer_auth(self.token.expose())
             .send()
             .await?;
@@ -245,6 +275,16 @@ fn confirmed(sent: String, body: &str) -> Result<Registered> {
         return Err(error::upstream_unreadable());
     }
     Ok(Registered { schedule_id: sent })
+}
+
+mod retry;
+
+/// The retry schedule's floor, bound for the retry suite so the least wait it
+/// asserts follows the schedule instead of a copied number.
+#[cfg(feature = "test-util")]
+pub mod retry_schedule {
+    /// The first wait between attempts; the second doubles from it.
+    pub const FIRST_DELAY: std::time::Duration = super::retry::FIRST_DELAY;
 }
 
 #[cfg(test)]

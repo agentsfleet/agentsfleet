@@ -117,6 +117,14 @@ pub(super) async fn history(f: &Fixture, attempt: &Attempt, prior: i64) {
     history_for(f, &attempt.draft.id, &attempt.id, prior).await;
 }
 
+/// A log identifier as an exchange quotes one: 43 bytes, 24 `o200k_base`
+/// tokens. Exchanges carry these rather than prose because the windows below
+/// are sized in estimator tokens, and repeated prose packs about 7.6 bytes
+/// into each one. The content of 180 exchanges is then about 43,000
+/// `o200k_base` tokens, 54,000 with the proxy's quarter, past the compaction
+/// and native-count thresholds the suites rely on.
+const TRACE: &str = "trace=01a18bc1-d47c-7003-98b2-fba3847cc642 ";
+
 pub(in crate::draft) async fn history_for(
     f: &Fixture,
     draft: &afd_core::id::Uuid7,
@@ -145,8 +153,8 @@ pub(in crate::draft) async fn history_for(
     for sequence in 1..=prior {
         sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3,$1::uuid,'completed',$4,$5,now(),now())")
             .bind(mint().as_str()).bind(draft.as_str()).bind(sequence)
-            .bind(format!("initial-reference investigation step {sequence}: {}", "details ".repeat(20)))
-            .bind("completed evidence ".repeat(10)).execute(&mut *connection).await.expect("owned complete exchange");
+            .bind(format!("initial-reference investigation step {sequence}: {}", TRACE.repeat(8)))
+            .bind(format!("completed evidence {}", TRACE.repeat(2))).execute(&mut *connection).await.expect("owned complete exchange");
     }
 }
 

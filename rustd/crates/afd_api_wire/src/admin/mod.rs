@@ -142,16 +142,6 @@ pub enum RunnerEventType {
     RunnerPolicyAssigned,
 }
 
-/// The per-work tags: one acquired and one released per lease.
-///
-/// They dominate the table by construction and restate what the lease row
-/// already carries, so retention prunes these and only these. One definition, so
-/// a new per-work tag cannot be added without deciding which side it lands on.
-pub const PER_LEASE_EVENT_TYPES: [RunnerEventType; 2] = [
-    RunnerEventType::LeaseAcquired,
-    RunnerEventType::LeaseReleased,
-];
-
 /// One row of runner history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

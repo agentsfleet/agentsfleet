@@ -1,0 +1,17 @@
+id: infra-bootstrap-joins
+valid:
+  - |
+    Join with:
+
+    ```bash
+    sudo tailscale up --advertise-tags=tag:worker
+    ```
+invalid:
+  - |
+    Install Tailscale and join the tailnet.
+  - |
+    Join with:
+
+    ```bash
+    tailscale status
+    ```

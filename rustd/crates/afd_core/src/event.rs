@@ -81,9 +81,6 @@ pub mod label {
     /// refused at issue or stopped in flight.
     pub const BUDGET_BREACH: &str = "budget_breach";
 
-    /// A declared credential has no vault row.
-    pub const SECRET_MISSING: &str = "secret_missing";
-
     /// A human refused the action.
     pub const APPROVAL_DENIED: &str = "approval_denied";
 
@@ -121,7 +118,7 @@ pub mod label {
     /// Also new, and also a fleet author's mistake rather than an operational
     /// fault: no repair branch was authorised, no base was named, or the
     /// binding covers more than the one repository the locked rules bound.
-    /// Distinct from [`SECRET_MISSING`] because nothing is missing from the
-    /// vault — the fleet's own configuration cannot be enforced.
+    /// Nothing is missing from the vault: the fleet's own configuration cannot
+    /// be enforced.
     pub const BINDING_UNENFORCEABLE: &str = "binding_unenforceable";
 }
