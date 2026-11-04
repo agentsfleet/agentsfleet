@@ -87,7 +87,7 @@ case "$url" in
       spec="$(jq '(.panels[].targets[] | .editorMode) = "code" | walk(if type == "object" then to_entries | reverse | from_entries else . end)' <<<"$spec")"
     fi
     if [ "${MOCK_DRIFT:-}" = selected_variables ]; then
-      spec="$(jq '(.templating.list[] | select(.name == "tempo")) |= (.current={text:"Dev traces",value:"tempo-selected"} | .options=[{text:"Dev traces",value:"tempo-selected",selected:true}]) | (.templating.list[] | select(.name == "fleet_id") | .current) = {text:"fleet-selected",value:"fleet-selected"}' <<<"$spec")"
+      spec="$(jq '(.templating.list[] | select(.name == "tempo")) |= (.current={text:"Dev traces",value:"tempo-selected"} | .options=[{text:"Dev traces",value:"tempo-selected",selected:true}]) | (.templating.list[] | select(.name == "fleet_id")) |= (.query="fleet-selected" | .current={text:"fleet-selected",value:"fleet-selected"}) | .templating.list[] |= (.regex="" | .multi=(.multi // false) | .includeAll=(.includeAll // false))' <<<"$spec")"
     fi
     if [ "${MOCK_DRIFT:-}" = tempo_variable_type ]; then
       spec="$(jq '(.templating.list[] | select(.name == "tempo") | .type) = "textbox"' <<<"$spec")"

@@ -62,8 +62,12 @@ if ! cmp -s "$expected_queries" "$actual_queries"; then
   exit 1
 fi
 
+# A textbox query is its saved value; datasource queries define the allowed type.
 if ! jq -e --slurpfile expected "$expected_dashboard" \
-  'def definitions: .list | map({name,type,query,regex,multi,includeAll}) | sort_by(.name);
+  'def definitions: .list | map(
+     {name,type,regex:(.regex // ""),multi:(.multi // false),includeAll:(.includeAll // false)} +
+     (if .type == "textbox" then {} else {query:(.query // "")} end)
+   ) | sort_by(.name);
    (.spec.templating | definitions) == ($expected[0].templating | definitions)' <<<"$dashboard" >/dev/null; then
   echo "ERROR: Grafana dashboard variables drifted" >&2
   exit 1
