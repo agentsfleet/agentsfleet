@@ -3,10 +3,12 @@
 > Two decisions drive this file. **`agentsfleetd` owns backend-bound
 > telemetry**: product analytics, cost, and every fact a runner reports over
 > `/v1/runners`; its collectors, `otelcol-{dev,prod}`, serve the daemon only.
+
 > **The dev runner has its own OpenTelemetry collector on the bare-metal host**
-> (installed 2026-11-04): it exports runner spans and metric families over
-> OpenTelemetry Protocol (OTLP). Logs remain on the host; a separate allowlist
-> is required before forwarding them. The collector holds the backend key;
+> (installed 2026-11-04). It exports runner spans and metric families over
+> OpenTelemetry Protocol (OTLP). Logs remain on the host; forwarding requires a separate allowlist.
+
+> The collector holds the backend key;
 > the runner holds no analytics or observability credential.
 
 Siblings: [`runner_fleet.md`](./runner_fleet.md) (plane structure),
@@ -296,17 +298,18 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   exports themselves are counted (below).
 - **Eight metric families of its own**, declared in
   `docs/metrics.runner.census.tsv` and graded both ways against their
-  producers: provider turn duration and retries (by provider and outcome or
-  reason), sandbox start duration, live-tail frames dropped (backpressure, a
-  failed post, or abandoned when a lease stopped waiting for a slow daemon),
-  failed memory pushes, tool call duration (by tool and outcome), tenant
-  processes killed for memory inside a sandbox, and sandboxes held between a
-  fleet's leases. A
-  provider label uses the shared, bounded public naming registry: compiled
+  producers. Provider metrics cover turn duration and retries, by provider and outcome or reason.
+  Sandbox metrics cover start duration, processes killed for memory, and sandboxes held between a fleet's leases.
+
+  Other families cover failed memory pushes, tool-call duration by tool and outcome, and dropped live-tail frames.
+  Frames drop through backpressure, a failed post, or abandonment when a lease stops waiting for a slow daemon.
+
+  A provider label uses the shared, bounded public naming registry: compiled
   model-catalogue providers, SDK providers and OpenTelemetry names, with aliases
   deduplicated. Other configured names use `_other`
   (`afd_observability/src/semconv/provider.rs`, `afr_telemetry/src/labels/mod.rs`).
   These labels describe telemetry only; saved model settings choose the route.
+
   The `invoke_agent` span uses the same canonical `gen_ai.provider.name`. A tool
   label is a published catalog name or `_other`; every outcome and reason is a
   closed enum.
@@ -322,10 +325,11 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   prompts, replies, tool output, credentials, and no tenant, fleet, lease or
   event identifier on a metric.
 
-**Decided 2026-10-04; traces and metrics installed in dev 2026-11-04.** Indy: "we will run an
-otel collector and collect the observability log, trace, metrics"; "we will
-have a new collector for the runner later on in the baremetal host"; and the
-current collectors "are for the agentsfleetd daemon only".
+**Decided 2026-10-04; traces and metrics installed in dev 2026-11-04.**
+
+Indy: "we will run an otel collector and collect the observability log, trace, metrics".
+He added: "we will have a new collector for the runner later on in the baremetal host".
+The current collectors "are for the agentsfleetd daemon only".
 
 - A new OpenTelemetry collector on the bare-metal host serves runners. It is
   separate from `otelcol-{dev,prod}` (§The export path), which stay the
@@ -439,21 +443,26 @@ The segments are not a partition: the sandbox wait runs beside the model's time.
 
 Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `lease_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
 
-**`fleet.delivery` is a custom control-plane span.** It is a root of its own,
-so it never claims to be half of a runner trace
+**`fleet.delivery` is a custom control-plane span.** It has its own root
 (`rustd/crates/afd_observability/src/delivery/mod.rs`). `DELIVERY_SPAN_KEYS` in
-`rustd/crates/afd_observability/src/semconv/mod.rs` declares its attributes. The
+`rustd/crates/afd_observability/src/semconv/mod.rs` declares its attributes.
+
+The
 Generative Artificial Intelligence (GenAI) keys appear where the source fact
 matches: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id` (the fleet),
 `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`
 and `gen_ai.usage.output_tokens`. Product-namespaced keys carry the rest:
 `agentsfleet.execution.posture` and the correlation identifiers
 `agentsfleet.event.id`, `agentsfleet.workspace.id` and
-`agentsfleet.tenant.id`. Public providers without a well-known spelling keep their own canonical
+`agentsfleet.tenant.id`.
+
+Public providers without a well-known spelling keep their own canonical
 name, as the pinned OpenTelemetry reference permits. A private identifier
-outside the compiled registry omits its key and counts the omission. Correlation identity is allowed on a span because it is
-not allowed on a metric: a span is a bounded per-event record, and a metric
-label creates a series that outlives the process. Prompt and response content
+outside the compiled registry omits its key and counts the omission.
+
+Correlation identity is allowed on a span because each span is a bounded per-event record.
+A metric label creates a series that outlives the process, so metrics exclude correlation identity.
+Prompt and response content
 never becomes a span attribute.
 
 **Route policy.** None yet. The daemon traces every matched request: it has no
@@ -726,21 +735,26 @@ The cost families copy the run's model name into `gen_ai.request.model`
 (`rustd/crates/afd_observability/src/producers/cost.rs`). Runtime dispatch resolves
 the saved model reference through `model.platform_models` for both owner and
 platform models (`rustd/crates/afd_credential/src/provider/registered/sql/mod.rs`).
-Catalogue updates can add model identities over time. The families declare no
-ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
-only bound is the SDK's default of 2,000 series per stream: past it, new
-`(model, …)` combinations are folded into one `otel.metric.overflow` series, and
-their spend is no longer told apart in the export. Exact per-model cost stays a
-Postgres query against `billing.usage_lines`. A provider outside the compiled public
-naming registry **omits the attribute and keeps the measurement** on the
-`fleet.delivery` span, and the omission increments
+Catalogue updates can add model identities over time.
+
+The families declare no ceiling (`shared:cost` in `docs/metrics.census.tsv`).
+The SDK's default limits each stream to 2,000 series.
+Past that limit, new `(model, …)` combinations fold into one `otel.metric.overflow` series, losing their separate exported spend.
+
+Exact per-model cost stays a Postgres query against `billing.usage_lines`.
+A provider outside the compiled public naming registry **omits its attribute and keeps the measurement** on the `fleet.delivery` span.
+The omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`
-(`rustd/crates/afd_observability/src/delivery/mod.rs`). The pinned
+(`rustd/crates/afd_observability/src/delivery/mod.rs`).
+
+The pinned
 [OpenTelemetry provider reference](https://github.com/open-telemetry/semantic-conventions-genai/blob/2e994c6d59a93bb4fc1752c5378eedb9b8e14d6b/docs/registry/attributes/gen-ai.md#gen-ai-provider-name)
 permits custom values when no well-known value applies. The shared registry
 therefore retains Fireworks, OpenRouter, MiniMax and other compiled public
 providers. A Fireworks-hosted MiniMax model keeps Fireworks as its serving
-provider and the exact MiniMax model identifier. No model-name or protocol
+provider and the exact MiniMax model identifier.
+
+No model-name or protocol
 heuristic chooses a provider. Historical `_other` or omitted attributes cannot
 be reconstructed; corrected attribution starts after deploying the new binaries.
 The `budget_exhausted` and
@@ -780,14 +794,20 @@ watchdog.
 The six native definitions in `playbooks/operations/observability/assets/`
 cover Overview, Chat latency, API & Database, Scheduler, Models and Sandbox.
 Apply and drift verification cover the whole suite. Attribute omissions are
-separate from exporter loss. Empty series mean unavailable samples, not zero.
+separate from exporter loss.
+
+Empty series mean unavailable samples, not zero.
 The dev runner collector accepted its first real lease on Nov 04, 2026;
 Tempo and Prometheus both received it. Sandbox/tool metrics need actual
 activity, and per-model call and database/scheduler additions require their
-new producers to be deployed. Fleet identifiers stay on spans.
+new producers to be deployed.
+
+Fleet identifiers stay on spans.
 
 Pool gauges read the real boot-owned pool through a callback without I/O.
 Catalogue and schedule snapshots are sampled outside collection locks, with
-query budgets; failed reads withdraw data. Model metadata is limited to 256
+query budgets; failed reads withdraw data.
+
+Model metadata is limited to 256
 rows and expires after 120 seconds. Tools and image transport describe the
 configured route, not measured model quality or inferred reasoning ability.
