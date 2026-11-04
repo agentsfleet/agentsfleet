@@ -18,17 +18,22 @@ lost on tab close, so the backend is authoritative for them.
 
 Single-sourced in `ui/packages/app/lib/analytics/events.ts` (`EVENTS`,
 `EventProps`, and the `EVENT_PROP_KEYS` runtime mirror). Naming: snake_case,
-object-first past tense (`fleet_created`, `api_key_minted`). Props carry IDs,
-names, and enum values only — never a token, raw API key, credential payload,
-or free-text from a sensitive field. Call sites import `EVENTS` +
-`captureProductEvent`, whose event parameter is typed `EventName`
+object-first past tense (`fleet_created`, `api_key_minted`).
+
+Props carry IDs, names, and enum values only, never a token, raw API key,
+credential payload, or free-text from a sensitive field. Call sites import
+`EVENTS` + `captureProductEvent`, whose event parameter is typed `EventName`
 (`ui/packages/app/lib/analytics/posthog.ts`), so a misspelt event name fails
-the typecheck. Catalog captures bypass the legacy `sanitizeProps` allowlist (its
-closed key set would silently drop event-specific keys) — the `EventProps`
-types are the compile-time guard, and the emit path allowlists every payload
-against the `EVENT_PROP_KEYS` runtime mirror, so a spread or widened argument
-cannot smuggle extra fields. Capture is exception-contained: analytics can
-never break the product flow it instruments.
+the typecheck.
+
+Catalog captures bypass the legacy `sanitizeProps` allowlist, whose closed key
+set would silently drop event-specific keys. The `EventProps` types are the
+compile-time guard instead. The emit path also allowlists every payload against
+the `EVENT_PROP_KEYS` runtime mirror, so a spread or widened argument cannot
+smuggle extra fields.
+
+Capture is exception-contained: analytics can never break the product flow it
+instruments.
 
 `EVENTS` is the list. It carries two dozen entries across fleets, runners,
 keys, secrets, models, approvals, the library and onboarding, and it grows with the dashboard — so
