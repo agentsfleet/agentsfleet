@@ -6,7 +6,9 @@
 
 > **Proposed.** Only §0 runs today. The spec owns the proofs; this page owns the shape.
 
-**Outcome under test:** a fleet holding the `fleet_steer` tool puts work on another fleet in its workspace by fleet id. The work takes the path a person's message already takes. A fleet holding the `fleet_activity` tool reads which fleets exist, their status and their recent answers, with no API key. The person reads the result in the fleet's own chat.
+**Outcome under test:** a fleet holding the `fleet_steer` tool puts work on another fleet in its workspace by fleet id. The work takes the path a person's message already takes.
+
+A fleet holding the `fleet_activity` tool reads which fleets exist, their status and their recent answers, with no API key. The person reads the result in the sending fleet's chat.
 
 ## 0. Today: a person is the wire
 
@@ -43,10 +45,10 @@ One fleet the owner talks to. It reads every fleet and may steer any of them.
          next turn: fleet_activity(<repairer id>) ──► "opened draft PR #413"
 
 10:13  owner: "is docs-bot awake?"
-         fleet_activity(<docs-bot id>) ──► status, budget, last run.  docs-bot is not woken.
+         fleet_activity(<docs-bot id>) ──► status, last run.  docs-bot is not woken.
 ```
 
-"Awake" is a daemon fact: status, budget left, last run (`rustd/crates/afd_fleet_lifecycle/src/lib.rs`, `FleetStatus`). Asking it costs no model call on the fleet asked. A digest agent is this fleet on a schedule.
+"Awake" is a daemon fact: status and last run (`rustd/crates/afd_fleet_lifecycle/src/lib.rs`, `FleetStatus`). Reading that fact costs no model call on the fleet asked. A digest agent is this fleet on a schedule.
 
 ## 2. Incident crew in `#ci-dev`
 
@@ -66,21 +68,21 @@ The repairer answers where the responder was asked because the steer copies the 
 | Piece | Reuses | New |
 |---|---|---|
 | `fleet_steer` tool | `message` verb shape: `LeaseVerbs`, a lease-proven runner route, refusal codes the model reads (`rustd/crates/afr_tools/src/verbs/`) | the tool, `POST /v1/runners/me/leases/{lease_id}/steers` |
-| Admission | `Producer::Steer`, key `<fleet_id>:<operation_id>`, `afd_events::Steer::append` | actor `fleet:<sender_fleet_id>`, hop count in the request body |
-| Reply in the sender's thread | `Reply::Inherit` | the destination statement reads by workspace and event id, not by fleet |
-| `fleet_activity` tool | the fleet list and history reads the tenant routes use (`rustd/crates/afd_events/src/history/mod.rs`) | `GET /v1/runners/me/leases/{lease_id}/fleets`, `GET .../fleets/{fleet_id}/events` |
-| Chat label | the actor-to-summary map (`ui/packages/app/lib/events/event-summary.ts`) | an arm for `fleet:` that names the sender |
+| Admission | `Producer::Steer`, key `<fleet_id>:<operation_id>` | `Steer::append_from_fleet`, actor `fleet:<sender_fleet_id>`, hop and sender name in the stored body |
+| Reply in the sender's thread | `Reply::Inherit` | `insert_admission.sql` joins the inherited row by workspace, not by fleet |
+| `fleet_activity` tool | lease proof by fencing token, as the schedules `GET` does | two statements (fleets with last event; events with an answer excerpt), `GET /v1/runners/me/leases/{lease_id}/fleets` and `.../fleets/{fleet_id}/events` |
+| Chat label | the actor-to-summary map (`ui/packages/app/lib/events/event-summary.ts`) | a `fleet:` arm reading `sender_fleet_name` from the stored body |
 | Owner consent | the fleet's `tools` list in its reviewed revision | none: no allowlist, no subscription, no rule |
 
 ## 4. The rules that bound it
 
 - The target is in the sender's workspace and active. Anything else is the refusal a person would get.
 - Authority never widens. The target runs under its own pinned revision, grants, gates and budget. A steer carries text, never policy.
-- A chain stops at hop 2: A→B→C runs, C's steer to D is refused.
-- A run sends at most 8 steers, the cap `message` already has.
-- A retried call admits once: the key is `<sender_event_id>:<n>`.
+- A chain stops at hop 2: A→B→C runs, and the daemon refuses C's steer to D.
+- A lease sends at most 8 steers, counted apart from its 8 `message` posts.
+- A resent steer admits once: the key is the sender's event and a hash of the words.
 - The actor is `fleet:<fleet_id>`. Readers of `steer:%`, onboarding's "first steer" and the history filter, never count a fleet's steer as a person's.
-- Injection is accepted and stated: a fleet that reads other fleets' answers and may steer them is the widest target in the workspace. Its blast radius is each receiver's own gates.
+- The spec accepts the prompt-injection risk and states it. A fleet that reads other fleets' answers and may steer them is the widest target in the workspace. Its blast radius is each receiver's own gates.
 
 ## 5. Current versus required
 
@@ -89,7 +91,7 @@ The repairer answers where the responder was asked because the steer copies the 
 | Steer by fleet id | a person, through the tenant route | a fleet, through a runner route | M239_001 §2 |
 | Read another fleet's status and answers | the dashboard and CLI, with a session or API key | a tool over the lease plane, no key | M239_001 §1 |
 | Reply lands in the sender's thread | same fleet only | any fleet in the workspace | M239_001 §2 |
-| A fleet-sent event is labelled in the chat | — | "asked by <fleet name>" | M239_001 §4 |
+| The chat labels a fleet-sent event | — | "asked by <fleet name>" | M239_001 §4 |
 
 ## 6. Not this feature
 

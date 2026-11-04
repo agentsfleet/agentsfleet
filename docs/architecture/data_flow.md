@@ -474,7 +474,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
    FLEET      proposed (scenarios/fleet-to-fleet.md): a fleet's run calls
    STEER        fleet_steer → POST /v1/runners/me/leases/{lease_id}/steers
                → the same INSERT: actor=fleet:<sender_fleet_id>  type=chat
-                 key <target_fleet_id>:<sender_event_id>:<n>
+                 key <target_fleet_id>:<sender_event_id>:<text digest>
                  reply copied from the sender's event; hop ≤ 2
 
    GITHUB    App posts pull_request or workflow_run
