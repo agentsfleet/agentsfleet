@@ -7,10 +7,11 @@ This runbook installs one environment-scoped folder, six focused dashboards,
 and four Grafana-managed alerts. It never guesses a Grafana Cloud namespace or
 Prometheus datasource.
 
-**Read before applying to production.** The two environments resolve to the
-same Grafana stack, namespace, datasource and ingest credential, and no series
-carries a `deployment.environment` attribute. Applying to production today
-produces a second dashboard reading the same mixed series as the first. Confirm active producers before interpreting environment-specific pages. See
+**Read before applying to production.** Both environments use the same Grafana stack, namespace, datasource and ingest credential.
+No series carries a `deployment.environment` attribute.
+
+Applying to production today produces a second dashboard reading the same mixed series as the first.
+Confirm active producers before interpreting environment-specific pages. See
 `docs/architecture/observability.md` §Service Level Objectives.
 
 ## 🤠 Indy handoff
@@ -99,7 +100,9 @@ with no activity can have no series; verify a real lease before diagnosing it.
 
 Six `dashboard*.json` definitions and `alerts.json` are the reproducible source
 for apply, review and drift checks. Grafana stores the applied copies. Changes
-made in its editor must be reconciled back into these assets. Diagnostic raw
+made in its editor must be reconciled back into these assets.
+
+Diagnostic raw
 responses are separate: the M238 acceptance evidence keeps a compact receipt,
 screenshot and rejection log rather than one JSON file per empty query.
 
