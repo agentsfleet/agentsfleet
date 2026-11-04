@@ -1,4 +1,4 @@
-"""Exercise both declared collector metrics pipelines with structured OTLP fixtures."""
+"""Exercise every declared collector metrics pipelines with structured OTLP fixtures."""
 
 import argparse
 import contextlib
@@ -56,9 +56,15 @@ def window(index):
     return {"resourceMetrics": [{"scopeMetrics": [{"metrics": metrics}]}]}
 
 
+def config_path(environment):
+    if environment == "runner":
+        return CONFIG_ROOT / "deploy" / "baremetal" / "otelcol-runner.yml"
+    return CONFIG_ROOT / "deploy" / "fly" / ("otelcol-" + environment) / "config.yml"
+
+
 @contextlib.contextmanager
 def collector_once(environment):
-    path = CONFIG_ROOT / "deploy" / "fly" / ("otelcol-" + environment) / "config.yml"
+    path = config_path(environment)
     config = json.loads(subprocess.check_output([BINARY, "print-config", "--format=json", "--config=" + str(path)],
         env={**os.environ, **FIXTURES}, text=True))
     with http.server.ThreadingHTTPServer(("127.0.0.1", 0), Receiver) as sink:
@@ -150,7 +156,7 @@ def exported_windows(environment):
 class CollectorTemporality(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.observed = {environment: exported_windows(environment) for environment in ("dev", "prod")}
+        cls.observed = {environment: exported_windows(environment) for environment in ("dev", "prod", "runner")}
 
     def test_delta_windows_accumulate(self):
         for environment, (windows, _rejection) in self.observed.items():
@@ -180,9 +186,9 @@ class CollectorTemporality(unittest.TestCase):
                           "agentsfleet_runner_wake_answers_total", "agentsfleet_api_in_flight_requests"}, 2, 7 + index * 2, 11 + index * 2))
 
     def test_full_configurations_validate(self):
-        for environment in ("dev", "prod"):
+        for environment in ("dev", "prod", "runner"):
             with self.subTest(environment=environment):
-                path = CONFIG_ROOT / "deploy" / "fly" / ("otelcol-" + environment) / "config.yml"
+                path = config_path(environment)
                 result = subprocess.run([BINARY, "validate", "--config=" + str(path)],
                     env={**os.environ, **FIXTURES}, capture_output=True, text=True, check=False)
                 self.assertEqual(result.returncode, 0, result.stderr)

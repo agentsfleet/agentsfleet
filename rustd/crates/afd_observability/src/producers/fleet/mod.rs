@@ -70,6 +70,7 @@ pub struct Handles {
     delivery_stage: Histogram<f64>,
     ready_wake_failures: Counter<u64>,
     wake_answers: Counter<u64>,
+    report_answers: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
     admissions: Counter<u64>,
@@ -115,6 +116,7 @@ impl Handles {
             ready_wake_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,
             wake_answers: instruments.counter_u64(&declared::RUNNER_WAKE_ANSWERS_TOTAL)?,
+            report_answers: instruments.counter_u64(&declared::RUNNER_REPORT_ANSWERS_TOTAL)?,
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
                 .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
@@ -269,5 +271,15 @@ pub fn retention_swept(rows: u64) {
 pub fn retention_failed() {
     if let Some(producers) = installed() {
         producers.fleet.retention_failures.add(1, &[]);
+    }
+}
+
+/// Counts every successful report answer without recounting the settled run.
+pub fn report_answered(answer: crate::metrics::label::fleet::ReportAnswer) {
+    if let Some(producers) = installed() {
+        producers
+            .fleet
+            .report_answers
+            .add(1, &[KeyValue::new(semconv::LABEL_OUTCOME, answer.as_str())]);
     }
 }

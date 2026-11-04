@@ -27,12 +27,14 @@ if ! jq -e \
   exit 1
 fi
 
+for dashboard_asset in "$SCRIPT_DIR"/assets/dashboard*.json; do
+expected_dashboard="$work_dir/dashboard.json"
+obs_render_dashboard "$expected_dashboard" "$SCRIPT_DIR" "$dashboard_asset"
+dashboard_name="$(jq -r .uid "$expected_dashboard")"
 dashboard="$(
   obs_get_json \
-    "/apis/dashboard.grafana.app/v1/namespaces/$OBS_NAMESPACE/dashboards/$OBS_DASHBOARD_NAME"
+    "/apis/dashboard.grafana.app/v1/namespaces/$OBS_NAMESPACE/dashboards/$dashboard_name"
 )"
-expected_dashboard="$work_dir/dashboard.json"
-obs_render_dashboard "$expected_dashboard" "$SCRIPT_DIR"
 
 expected_queries="$work_dir/expected-queries"
 actual_queries="$work_dir/actual-queries"
@@ -40,13 +42,13 @@ actual_queries="$work_dir/actual-queries"
 # text panel — carries an empty array in the asset, and Grafana drops the field
 # entirely on the way back. Iterating the absent field is what turned a
 # faithfully applied dashboard into "queries drifted".
-jq -S '[.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss}], transformations:(.transformations // [])}] | sort_by(.id)' \
+jq -S '[.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
   "$expected_dashboard" >"$expected_queries"
-jq -S '[.spec.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss}], transformations:(.transformations // [])}] | sort_by(.id)' \
+jq -S '[.spec.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
   <<<"$dashboard" >"$actual_queries"
 
 if ! jq -e \
-  --arg uid "$OBS_DASHBOARD_NAME" \
+  --arg uid "$dashboard_name" \
   --arg folder "$OBS_FOLDER_NAME" \
   --arg datasource "$OBS_PROMETHEUS_UID" \
   '
@@ -72,6 +74,8 @@ if ! jq -e --slurpfile expected "$expected_dashboard" \
   echo "ERROR: Grafana dashboard variables drifted" >&2
   exit 1
 fi
+
+done
 
 alerts="$work_dir/alerts.json"
 obs_render_alerts "$alerts" "$SCRIPT_DIR"

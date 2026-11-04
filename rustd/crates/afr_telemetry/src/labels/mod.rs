@@ -254,3 +254,16 @@ afd_observability::closed_set! {
 
 #[cfg(test)]
 mod tests;
+
+/// Terminal outcome of an individual provider stream request.
+pub use afd_observability::metrics::label::models::CallOutcome;
+
+afd_observability::closed_set! {
+    /// Where a lease obtains its memory window, regardless of the run's outcome.
+    MemorySource {
+        /// The daemon attached the window to the lease.
+        Inline => "inline",
+        /// The runner must perform a separate hydration request.
+        Fallback => "fallback"
+    }
+}

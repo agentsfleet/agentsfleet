@@ -1,0 +1,910 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Live measurements. Missing telemetry stays absent; measured zero stays zero. Aggregate metrics cover the selected datasource; fleet selection applies only to trace panels.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Chat latency",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-chat",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "API & Database",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-api-db",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Scheduler",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-scheduler",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Models",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-models",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Sandbox",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-sandbox",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 40,
+      "title": "Round trip",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" }",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "duration"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 41,
+      "title": "Queue",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.queue_wait_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.queue_wait_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 42,
+      "title": "Memory",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.memory_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.memory_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 43,
+      "title": "Model",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.model_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.model_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 44,
+      "title": "Tools",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.tools_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.tools_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 45,
+      "title": "Sandbox wait",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.sandbox_wait_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.sandbox_wait_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 46,
+      "title": "Settle",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.settle_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.settle_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 47,
+      "title": "Complete",
+      "type": "stat",
+      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.complete_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.complete_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "id": 38,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate({__name__=~\"agentsfleet_fleet_delivery_stage_seconds.*\",le!=\"\"}[$__rate_interval])))",
+          "legendFormat": "{{stage}} p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Delivery stages",
+      "type": "timeseries",
+      "description": "P95 seconds for each fixed stage, ending when the daemon receives the first intact runner chunk. Event stages begin at the producer event timestamp; lease stage begins when the lease row is written; zombie begins immediately before invoking the fleet execution engine. First chunk may contain reasoning or tool syntax. This is not browser first paint. A missing series means no completed stage was observed."
+    },
+    {
+      "id": 102,
+      "title": "Runner wakeups",
+      "type": "timeseries",
+      "description": "Ring is a wake for fresh work; capped means the held-heartbeat limit was reached.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(agentsfleet_runner_wake_answers_total[$__rate_interval]))",
+          "legendFormat": "{{reason}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 103,
+      "title": "Memory delivery failures",
+      "type": "timeseries",
+      "description": "Failure signals; they do not count successful inline or fallback reads.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(agentsfleet_runner_memory_push_failures_total[$__rate_interval]))",
+          "legendFormat": "Runner \u00b7 {{reason}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (reason) (rate(agentsfleet_memory_push_failures_total[$__rate_interval]))",
+          "legendFormat": "Daemon",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 104,
+      "title": "Memory source",
+      "type": "timeseries",
+      "description": "One memory path choice per working lease. Fallback includes attempts that later failed or were cancelled.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (rate(agentsfleet_runner_memory_sources_total[$__rate_interval]))",
+          "legendFormat": "{{source}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 105,
+      "title": "Report answers",
+      "type": "timeseries",
+      "description": "Successful first settlements versus repeated acknowledgements. Repeated answers do not count another completed run.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(agentsfleet_runner_report_answers_total[$__rate_interval]))",
+          "legendFormat": "{{outcome}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "agentsfleet",
+    "__ENVIRONMENT__"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "tempo",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "fleet_id",
+        "label": "Fleet (traces)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Chat latency \u00b7 __ENVIRONMENT__",
+  "uid": "__DASHBOARD_UID__-chat",
+  "version": 2
+}

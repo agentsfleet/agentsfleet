@@ -28,6 +28,8 @@ afd_core.workspace = true
 afd_observability.workspace = true
 # The transport the daemon builds through too: the knobs and the pipelines.
 afd_otlp.workspace = true
+# Optional provider token observations shared with daemon calls.
+afd_wire.workspace = true
 # The published tool catalog, so a tool label is a catalog name or `_other`.
 afr_tools.workspace = true
 opentelemetry.workspace = true

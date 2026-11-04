@@ -206,10 +206,16 @@ check-playbooks-refs:  ## playbooks/ reference integrity only (cheap; what a Mak
 
 .PHONY: check-collector-temporality
 COLLECTOR_BINARY ?=
-check-collector-temporality:  ## Exercise both metrics pipelines with loopback collector fixtures
+check-collector-temporality:  ## Exercise daemon and runner metrics pipelines with loopback collector fixtures
 	@if [ -n "$(COLLECTOR_BINARY)" ]; then \
 	  PYTHONDONTWRITEBYTECODE=1 python3 scripts/collector_temporality_test.py --collector "$(COLLECTOR_BINARY)"; \
 	else \
 	  docker build --tag agentsfleet-collector-temporality-test --file scripts/fixtures/collector-temporality.Dockerfile scripts/fixtures && \
 	  docker run --rm --network=none --mount "type=bind,src=$(CURDIR),dst=/repository,readonly" agentsfleet-collector-temporality-test; \
 	fi
+
+.PHONY: check-runner-collector-admission
+check-deploy-safety: check-runner-collector-admission
+check-runner-collector-admission:  ## Prove the root-only receiver boundary in an isolated network namespace
+	@docker build --tag agentsfleet-runner-collector-admission-test --file scripts/fixtures/runner-collector-admission.Dockerfile scripts/fixtures
+	@docker run --rm --network=none --cap-add=NET_ADMIN --env NO_PROXY=127.0.0.1,localhost --mount "type=bind,src=$(CURDIR),dst=/repository,readonly" agentsfleet-runner-collector-admission-test

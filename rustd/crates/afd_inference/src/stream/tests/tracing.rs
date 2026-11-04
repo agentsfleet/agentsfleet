@@ -133,7 +133,7 @@ async fn dropping_an_unfinished_turn_emits_one_cancelled_terminal() {
 #[tokio::test(start_paused = true)]
 async fn empty_and_later_chunks_cannot_duplicate_the_first_text_measurement() {
     let captured = Capture::install_filtered(crate::logs::log_filter(LevelFilter::TRACE));
-    let mut trace = super::super::trace::TurnTrace::start(Arc::from(CORRELATION));
+    let mut trace = super::super::trace::TurnTrace::start(Arc::from(CORRELATION), None);
     trace.text(0);
     assert!(
         !captured
@@ -155,4 +155,121 @@ async fn empty_and_later_chunks_cannot_duplicate_the_first_text_measurement() {
         captured.only("model_turn_completed").field("text_bytes"),
         Some("7")
     );
+}
+
+fn observed() -> (Arc<Mutex<Vec<TurnObservation>>>, TurnObserver) {
+    let values = Arc::new(Mutex::new(Vec::new()));
+    let stored = Arc::clone(&values);
+    (
+        values,
+        Arc::new(move |value| stored.lock().unwrap().push(value)),
+    )
+}
+
+#[tokio::test(start_paused = true)]
+async fn observer_excludes_recovery_and_preserves_the_provider_terminal() {
+    let (values, observer) = observed();
+    let mut trace = super::super::trace::TurnTrace::start(Arc::from(CORRELATION), Some(observer));
+    trace.text(0);
+    tokio::time::advance(Duration::from_millis(25)).await;
+    trace.text(1);
+    tokio::time::advance(Duration::from_millis(25)).await;
+    trace.terminal(Some(FailureCause::Provider));
+    tokio::time::advance(Duration::from_secs(5)).await;
+    trace.end(Some(FailureCause::Provider));
+    drop(trace);
+    assert_eq!(
+        *values.lock().unwrap(),
+        vec![TurnObservation {
+            tokens: afd_wire::usage::ObservedTokens::default(),
+            elapsed: Duration::from_millis(50),
+            first_text: Some(Duration::from_millis(25)),
+            cause: Some(FailureCause::Provider),
+        }]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn dropping_a_failed_stream_keeps_its_original_outcome() {
+    let (values, observer) = observed();
+    let body = stream::once(async {
+        Err(rig_http::Error::instance(std::io::Error::other(
+            "fixture transport interruption",
+        )))
+    });
+    let (mut turn, _) = open(
+        Box::pin(body),
+        TurnControl {
+            observer: Some(observer),
+            ..control()
+        },
+    );
+    assert!(matches!(
+        turn.next().await,
+        Some(Err(FailureCause::Provider))
+    ));
+    tokio::time::advance(Duration::from_secs(5)).await;
+    drop(turn);
+    let values = values.lock().unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values.first().unwrap().cause, Some(FailureCause::Provider));
+    assert_eq!(values.first().unwrap().elapsed, Duration::ZERO);
+    assert_eq!(values.first().unwrap().first_text, None);
+}
+
+#[tokio::test]
+async fn a_call_without_text_has_no_first_token_sample() {
+    let (values, observer) = observed();
+    let wire = format!("{USAGE}{STOP}");
+    let (turn, _) = open(
+        Box::pin(stream::once(async move { Ok(Bytes::from(wire)) })),
+        TurnControl {
+            observer: Some(observer),
+            ..control()
+        },
+    );
+    assert!(turn.finish().await.failure.is_none());
+    let values = values.lock().unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values.first().unwrap().cause, None);
+    assert_eq!(values.first().unwrap().first_text, None);
+}
+
+#[tokio::test]
+async fn dropping_a_pending_call_notifies_cancellation_once() {
+    let (values, observer) = observed();
+    let (turn, _) = open(
+        Box::pin(stream::pending()),
+        TurnControl {
+            observer: Some(observer),
+            ..control()
+        },
+    );
+    assert!(format!("{:?}", control()).contains("TurnControl"));
+    drop(turn);
+    let values = values.lock().unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values.first().unwrap().cause, Some(FailureCause::Cancelled));
+}
+
+#[tokio::test(start_paused = true)]
+async fn dropping_after_eof_preserves_the_completed_terminal() {
+    let (values, observer) = observed();
+    let wire = format!("{TEXT}{USAGE}{STOP}");
+    let (mut turn, _) = open(
+        Box::pin(stream::once(async move { Ok(Bytes::from(wire)) })),
+        TurnControl {
+            observer: Some(observer),
+            ..control()
+        },
+    );
+    while turn.next().await.is_some() {}
+    tokio::time::advance(Duration::from_secs(2)).await;
+    drop(turn);
+    let values = values.lock().unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values.first().unwrap().cause, None);
+    assert_eq!(values.first().unwrap().elapsed, Duration::ZERO);
+    assert_eq!(values.first().unwrap().tokens.input, Some(3));
+    assert_eq!(values.first().unwrap().tokens.output, Some(2));
 }

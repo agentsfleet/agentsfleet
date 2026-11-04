@@ -132,3 +132,7 @@ pub const RUNNER_LAST_SEEN_SECONDS: Declared<GaugeKind> =
 /// Labels: `runner_id`.
 pub const RUNNER_ACTIVE_LEASES: Declared<GaugeKind> =
     Declared::new("agentsfleet_runner_active_leases");
+
+/// Successful report answers, including idempotent retries.
+pub const RUNNER_REPORT_ANSWERS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_report_answers_total");

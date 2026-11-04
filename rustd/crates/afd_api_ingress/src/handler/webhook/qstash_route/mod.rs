@@ -23,6 +23,7 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_cron::{FireTarget, VerifiedFire, verifier};
 use afd_fleet_lifecycle::FleetStatus;
+use afd_observability::metrics::label::scheduler::FireOutcome;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
@@ -111,11 +112,13 @@ pub(crate) async fn receive<D: Services>(
 ) -> Result<Response, Refusal> {
     webhook::within_cap(&body)?;
     let proven = prove(services.as_ref(), &headers, &body)?;
+    let mut observed = afd_observability::producers::scheduler::Callback::begin();
 
     // The schedule that fell due, by the id this daemon registered it under:
     // a schedule the scheduler filed under an id of its own resolves to none.
     let named = text(&headers, afd_cron::HEADER_SCHEDULE_ID);
     let Some(schedule) = named.and_then(afd_cron::schedule_of) else {
+        observed.answered(FireOutcome::Stale);
         return Ok(unnamed(named));
     };
 
@@ -123,11 +126,21 @@ pub(crate) async fn receive<D: Services>(
         .schedules()
         .fire_target(&schedule)
         .await
-        .map_err(Refusal::at(EVENT_DROPPED))?
+        .map_err(|error| {
+            observed.answered(FireOutcome::Failed);
+            Refusal::at(EVENT_DROPPED)(error)
+        })?
     else {
+        observed.answered(FireOutcome::Stale);
         return Ok(no_such_schedule(&schedule));
     };
-    if let Some(dropped) = held(services.as_ref(), &schedule, &target).await? {
+    if let Some(dropped) = held(services.as_ref(), &schedule, &target)
+        .await
+        .inspect_err(|_error| {
+            observed.answered(FireOutcome::Failed);
+        })?
+    {
+        observed.answered(FireOutcome::Skipped);
         return Ok(dropped);
     }
 
@@ -135,8 +148,16 @@ pub(crate) async fn receive<D: Services>(
         .schedules()
         .fire(&schedule, &target, &proven.message_id, services.now())
         .await
-        .map_err(Refusal::at(EVENT_APPEND))?;
+        .map_err(|error| {
+            observed.answered(FireOutcome::Failed);
+            Refusal::at(EVENT_APPEND)(error)
+        })?;
 
+    observed.answered(if fired.replayed {
+        FireOutcome::Replayed
+    } else {
+        FireOutcome::Accepted
+    });
     Ok((
         StatusCode::ACCEPTED,
         Json(Fired {
