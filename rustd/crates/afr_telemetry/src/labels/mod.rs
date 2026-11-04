@@ -1,14 +1,11 @@
 //! The values a runner family's labels may take, and nothing else.
 //!
 //! Every label is a closed set, by construction rather than by review: a
-//! provider is a bounded SDK vendor name or `_other`, a tool is a
+//! provider is a bounded public vendor name or `_other`, a tool is a
 //! published catalog name or `_other`, and every outcome and reason is an enum.
 //! A label written from a string the model or the lease chose would be one
 //! more series than the census ceiling admits, and the SDK would fold live
 //! data into its overflow marker.
-
-use std::collections::BTreeSet;
-use std::sync::LazyLock;
 
 use afr_tools::catalog;
 
@@ -31,29 +28,22 @@ const TRANSPORT: &str = "transport";
 /// reads both.
 pub const OTHER: &str = afd_observability::runner::OVERFLOW_RUNNER;
 
-/// Bounded metric labels follow the SDK vocabulary, independently of persisted routes.
-static NAMES: LazyLock<BTreeSet<&'static str>> = LazyLock::new(|| {
-    rig_core::providers::registry::ProviderId::all()
-        .map(|id| id.vendor())
-        .collect()
-});
-
-/// A bounded SDK vendor name, or [`OTHER`] for a workspace's own provider name.
+/// A canonical public vendor name, or [`OTHER`] for a workspace's own provider name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Provider(&'static str);
 
 impl Provider {
-    /// How many values this label can take: every registered provider, and
+    /// How many values this label can take: every canonical public provider, and
     /// [`OTHER`].
     #[must_use]
     pub fn count() -> usize {
-        NAMES.len() + 1
+        afd_observability::semconv::provider::count() + 1
     }
 
     /// The label for the provider a lease configured.
     #[must_use]
     pub fn of(configured: &str) -> Self {
-        Self(NAMES.get(configured).copied().unwrap_or(OTHER))
+        Self(afd_observability::semconv::provider::normalize(configured).unwrap_or(OTHER))
     }
 
     /// The label value, byte-exact.
@@ -254,3 +244,19 @@ afd_observability::closed_set! {
 
 #[cfg(test)]
 mod tests;
+
+/// Terminal outcome of an individual provider stream request.
+pub use afd_observability::metrics::label::models::CallOutcome;
+
+afd_observability::closed_set! {
+    /// Where a lease obtains its memory window, regardless of the run's outcome.
+    MemorySource {
+        /// The daemon attached the window to the lease.
+        Inline => "inline",
+        /// The runner must perform a separate hydration request.
+        Fallback => "fallback"
+    }
+}
+
+/// The bounded origin of a lease memory window.
+pub const LABEL_MEMORY_SOURCE: &str = "source";

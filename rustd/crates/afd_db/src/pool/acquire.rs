@@ -44,7 +44,8 @@ impl Db {
     /// error when Postgres itself refused. Three different incidents; see
     /// [`crate::error`].
     pub async fn acquire(&self) -> Result<PoolConnection<Postgres>> {
-        match self.acquire_once().await {
+        let mut observed = super::observed::Acquisition::begin(self);
+        let result = match self.acquire_once().await {
             Err(error) if error.is_acquire_stalled() => {
                 // Hoisted: see the `tracing` note in the workspace Cargo.toml.
                 let code = error_code::INTERNAL_DB_UNAVAILABLE.as_str();
@@ -63,7 +64,9 @@ impl Db {
                 self.acquire_once().await
             }
             first => first,
-        }
+        };
+        observed.answered(&result);
+        result
     }
 
     /// One attempt, classified by the pool's own census.

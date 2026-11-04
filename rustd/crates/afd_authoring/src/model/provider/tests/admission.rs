@@ -32,3 +32,44 @@ async fn changed_body_after_measurement_is_refused_before_the_physical_send() {
     );
     assert!(physical.requests.lock().expect("physical sends").is_empty());
 }
+
+#[derive(Debug)]
+struct Silent;
+#[async_trait::async_trait]
+impl super::Transport for Silent {
+    async fn send(
+        &self,
+        _request: super::ProviderRequest,
+    ) -> super::Result<super::ProviderResponse> {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+        Ok(super::ProviderResponse {
+            status: 200,
+            headers,
+            body: Box::pin(futures_util::stream::pending()),
+        })
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn silent_provider_respects_the_deadline_and_caller_cancellation() {
+    let mut bounded = outbound(InferenceApi::Responses);
+    bounded.timeout = std::time::Duration::from_millis(10);
+    let (status, _partial, cause) = complete(bounded, Arc::new(Silent))
+        .await
+        .expect("partial failure is retained");
+    assert_eq!(status, 502);
+    assert_eq!(
+        cause.map(crate::types::FailureCause::as_str),
+        Some("deadline")
+    );
+    let cancelled = tokio::time::timeout(
+        std::time::Duration::from_millis(5),
+        complete(outbound(InferenceApi::Responses), Arc::new(Silent)),
+    )
+    .await;
+    cancelled.expect_err("caller cancellation must stop the physical response");
+}

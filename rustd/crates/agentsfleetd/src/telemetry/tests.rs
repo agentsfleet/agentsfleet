@@ -83,6 +83,7 @@ async fn boot_supervises_the_export_under_its_inventoried_name() {
         attach_exports(&config).expect("the endpoint builds a transport"),
         &mut supervisor,
         &GaugeSources::silent(),
+        &afd_db::test_util::unreachable_db(),
     )
     .expect("an endpoint the exporter can parse builds a transport");
 
@@ -113,6 +114,7 @@ async fn no_endpoint_supervises_nothing_and_is_not_a_failure() {
         attach_exports(&config).expect("the endpoint builds a transport"),
         &mut supervisor,
         &GaugeSources::silent(),
+        &afd_db::test_util::unreachable_db(),
     )
     .expect("a deployment that exports nothing still boots");
 
@@ -139,6 +141,7 @@ async fn the_json_protocol_builds_a_transport() {
         attach_exports(&config).expect("the endpoint builds a transport"),
         &mut supervisor,
         &GaugeSources::silent(),
+        &afd_db::test_util::unreachable_db(),
     )
     .expect("http/json is one of the two encodings this build carries");
     let _report = supervisor.shutdown().await;

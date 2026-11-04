@@ -170,6 +170,15 @@ impl Capture {
     /// through.
     #[must_use]
     pub fn install() -> Self {
+        Self::install_with_sources(&GaugeSources::silent())
+    }
+
+    /// Installs a capturing provider with live gauge inputs.
+    ///
+    /// # Panics
+    /// Panics if the census or SDK instrument set cannot be built.
+    #[must_use]
+    pub fn install_with_sources(sources: &GaugeSources) -> Self {
         if let Some(installed) = INSTALLED.get() {
             return installed.clone();
         }
@@ -179,7 +188,7 @@ impl Capture {
         if let Some(installed) = INSTALLED.get() {
             return installed.clone();
         }
-        let built = Self::build();
+        let built = Self::build(sources);
         let _ = INSTALLED.set(built);
         INSTALLED
             .get()
@@ -188,7 +197,7 @@ impl Capture {
     }
 
     /// Build the provider and bind the producers to it.
-    fn build() -> Self {
+    fn build(sources: &GaugeSources) -> Self {
         let captured = Arc::new(Captured::default());
         let reader = PeriodicReader::builder(CapturingExporter {
             sink: Arc::clone(&captured),
@@ -202,7 +211,7 @@ impl Capture {
         );
         // `false` means a sibling already installed, which is harmless: what
         // matters is that `installed()` answers `Some` afterwards.
-        let _ = producers::install(&instruments, &GaugeSources::silent())
+        let _ = producers::install(&instruments, sources)
             .expect("every producer names a family the census declares");
         Self { captured, provider }
     }

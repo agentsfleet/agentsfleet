@@ -285,8 +285,10 @@ impl LeaseRun<'_> {
         let read;
         let decoded;
         let memory = if let Some(window) = self.lease.memory.as_ref() {
+            afr_telemetry::record::memory_source(afr_telemetry::labels::MemorySource::Inline);
             window
         } else {
+            afr_telemetry::record::memory_source(afr_telemetry::labels::MemorySource::Fallback);
             let hydrating = self.timeline.start(Segment::Memory);
             read = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
                 Ok(read) => read,

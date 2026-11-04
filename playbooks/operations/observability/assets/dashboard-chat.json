@@ -1,0 +1,910 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Live measurements. Missing telemetry stays absent; measured zero stays zero. Aggregate metrics cover the selected datasource; fleet selection applies only to trace panels.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Chat latency",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-chat",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "API & Database",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-api-db",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Scheduler",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-scheduler",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Models",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-models",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Sandbox",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-sandbox",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 40,
+      "title": "Chat round trip",
+      "type": "stat",
+      "description": "Selected fleet event-to-completion p95/p99 from returned delivery traces; up to 1,000 spans. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" }",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "duration"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 41,
+      "title": "Wait for runner",
+      "type": "stat",
+      "description": "Event creation to lease issue for the selected fleet. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.queue_wait_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.queue_wait_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 42,
+      "title": "Memory fetch time",
+      "type": "stat",
+      "description": "Runner memory-read duration when memory was not supplied inline. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.memory_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.memory_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 43,
+      "title": "Model time",
+      "type": "stat",
+      "description": "Time spent in model turns during the selected fleet run. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.model_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.model_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 44,
+      "title": "Tool time",
+      "type": "stat",
+      "description": "Time spent in tool calls during the selected fleet run. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.tools_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.tools_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 45,
+      "title": "Wait for sandbox",
+      "type": "stat",
+      "description": "Time sandbox tool calls waited for the sandbox build. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.sandbox_wait_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.sandbox_wait_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 46,
+      "title": "Runner cleanup time",
+      "type": "stat",
+      "description": "Runner work after execution and before preparing its report: sandbox hold-or-destroy, tool-record posts, any fallback memory capture and pending usage flush. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.settle_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.settle_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 47,
+      "title": "Completion publish time",
+      "type": "stat",
+      "description": "Daemon receipt of the runner report to publishing event completion. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"fleet.delivery\" && span.\"gen_ai.agent.id\" = \"$fleet_id\" } | select(span.\"agentsfleet.delivery.complete_ms\")",
+          "tableType": "spans",
+          "limit": 1000,
+          "spss": 1
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "agentsfleet.delivery.complete_ms"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "p95",
+              "p99"
+            ],
+            "mode": "reduceFields"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No samples",
+          "decimals": 2,
+          "displayName": "${__field.labels.reducer}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "id": 38,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate({__name__=~\"agentsfleet_fleet_delivery_stage_seconds.*\",le!=\"\"}[$__rate_interval])))",
+          "legendFormat": "{{stage}} p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Delivery stage p95",
+      "type": "timeseries",
+      "description": "Fleet-wide p95 delivery stages through the first intact runner chunk and through completion. The first chunk can contain reasoning or tool syntax. These measurements exclude browser rendering; missing series have no observed samples."
+    },
+    {
+      "id": 102,
+      "title": "Runner wake reasons",
+      "type": "timeseries",
+      "description": "Why held runner heartbeats answered, grouped by reason. Ring means fresh work; capped means the held-heartbeat limit was reached.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(agentsfleet_runner_wake_answers_total[$__rate_interval]))",
+          "legendFormat": "{{reason}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 103,
+      "title": "Memory delivery errors",
+      "type": "timeseries",
+      "description": "Reported memory-push failures on the daemon and runner.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(agentsfleet_runner_memory_push_failures_total[$__rate_interval]))",
+          "legendFormat": "Runner \u00b7 {{reason}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (reason) (rate(agentsfleet_memory_push_failures_total[$__rate_interval]))",
+          "legendFormat": "Daemon",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 104,
+      "title": "Memory delivery path",
+      "type": "timeseries",
+      "description": "Inline-memory versus fallback choices; fallback attempts may later fail.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (rate(agentsfleet_runner_memory_sources_total[$__rate_interval]))",
+          "legendFormat": "{{source}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 105,
+      "title": "Completion report results",
+      "type": "timeseries",
+      "description": "First successful settlements versus acknowledgements of repeated reports.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(agentsfleet_runner_report_answers_total[$__rate_interval]))",
+          "legendFormat": "{{outcome}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "agentsfleet",
+    "__ENVIRONMENT__"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "tempo",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "fleet_id",
+        "label": "Fleet (traces)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Chat latency \u00b7 __ENVIRONMENT__",
+  "uid": "__DASHBOARD_UID__-chat",
+  "version": 2
+}

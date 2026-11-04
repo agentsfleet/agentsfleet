@@ -61,6 +61,7 @@ impl Intent {
             .try_into()
             .unwrap_or(Duration::ZERO);
         let outbound = provider::Outbound {
+            provider: attempt.model_snapshot.provider.clone(),
             dispatch_id: dispatch_id.into(),
             key,
             body: prepared.body,

@@ -13,7 +13,7 @@
 )]
 
 use crate::support::Fixtures;
-use afd_db::test_util::ModelSeed;
+use afd_db::test_util::{ModelSeed, mint_id};
 
 /// The fixture model routes through Anthropic Messages.
 const MESSAGES_INFERENCE: &str =
@@ -25,15 +25,6 @@ INSERT INTO billing.wallets (tenant_id, balance_nanos, exhausted_at, created_at,
 VALUES ($1::uuid, $2, NULL, now(), now())
 ON CONFLICT (tenant_id) DO UPDATE
   SET balance_nanos = EXCLUDED.balance_nanos, updated_at = now()";
-
-/// The catalogue row a seeded rate is written under.
-///
-/// Fixed and SHARED. These suites price exactly one `(provider, model)` pair,
-/// so the `ON CONFLICT (provider, model_name)` arm always resolves to THIS
-/// row: Postgres tests the arbiter index before attempting the insert, so the
-/// primary key never enters into it and one shared database is safe. A suite
-/// that prices a SECOND pair needs a second constant.
-const FIXTURE_MODEL_ROW: &str = "0195b4ba-8d3a-7f01-8abc-000000000001";
 
 /// Per-million-token rates a seeded catalogue row carries.
 ///
@@ -74,21 +65,19 @@ impl Fixtures {
     /// test naming the credits refusal seeds past it.
     pub(crate) async fn seed_model_rate(&self, provider: &str, model: &str) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        ModelSeed::new(
-            FIXTURE_MODEL_ROW,
-            provider,
-            model,
-            FIXTURE_CONTEXT_CAP_TOKENS,
-        )
-        .rates(
-            FIXTURE_INPUT_NANOS_PER_MTOK,
-            FIXTURE_CACHED_INPUT_NANOS_PER_MTOK,
-            FIXTURE_OUTPUT_NANOS_PER_MTOK,
-        )
-        .inference(MESSAGES_INFERENCE)
-        .insert(&mut *connection)
-        .await
-        .expect("the catalogue seed must run");
+        // Concurrent inserts may check the primary key before resolving the
+        // provider/model conflict. Each attempt needs its own proposed key.
+        let row = mint_id();
+        ModelSeed::new(&row, provider, model, FIXTURE_CONTEXT_CAP_TOKENS)
+            .rates(
+                FIXTURE_INPUT_NANOS_PER_MTOK,
+                FIXTURE_CACHED_INPUT_NANOS_PER_MTOK,
+                FIXTURE_OUTPUT_NANOS_PER_MTOK,
+            )
+            .inference(MESSAGES_INFERENCE)
+            .insert(&mut *connection)
+            .await
+            .expect("the catalogue seed must run");
     }
 
     /// A tenant's current balance, or `None` when it has no wallet row.
@@ -144,4 +133,35 @@ impl Fixtures {
         .await
         .expect("the event write must run");
     }
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn model_rate_seeds_keep_distinct_models_and_concurrent_retries() {
+    let fixtures = Fixtures::create_isolated().await;
+    let first = "fixture-priced-first";
+    let second = "fixture-priced-second";
+    tokio::join!(
+        fixtures.seed_model_rate("anthropic", first),
+        fixtures.seed_model_rate("anthropic", first),
+        fixtures.seed_model_rate("anthropic", second),
+    );
+    let mut connection = fixtures.database.acquire().await.expect("fixture read");
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT m.model_name, p.input_nanos_per_mtok, p.cached_input_nanos_per_mtok, \
+         p.output_nanos_per_mtok FROM model.platform_models m \
+         JOIN model.platform_model_prices p ON p.platform_model_id = m.id \
+         WHERE m.provider = $1 ORDER BY m.model_name",
+    )
+    .bind("anthropic")
+    .fetch_all(&mut *connection)
+    .await
+    .expect("priced rows");
+    assert_eq!(
+        rows,
+        vec![
+            (first.into(), 3_000_000_000, 300_000_000, 15_000_000_000),
+            (second.into(), 3_000_000_000, 300_000_000, 15_000_000_000),
+        ]
+    );
 }

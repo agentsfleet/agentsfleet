@@ -275,7 +275,7 @@ fn the_delivery_span_is_a_root() {
     );
 }
 
-/// A vendor with no well-known spelling is omitted, and the rest still lands.
+/// A private provider stays unnamed, and the rest of the span still lands.
 #[test]
 fn an_unmapped_provider_is_omitted_rather_than_exported() {
     let delivery = Delivery {
@@ -287,14 +287,38 @@ fn an_unmapped_provider_is_omitted_rather_than_exported() {
     assert_eq!(
         attribute(&span, semconv::ATTR_PROVIDER_NAME),
         None,
-        "a private spelling under a standard key would tell every consumer the \
-         standard vocabulary contains a word it does not"
+        "arbitrary private names are outside the compiled public provider set"
     );
     assert_eq!(
         attribute(&span, semconv::ATTR_REQUEST_MODEL).as_deref(),
         Some(delivery.model),
         "the omission costs one attribute, not the span"
     );
+}
+
+#[test]
+fn hosted_models_keep_the_serving_provider_separate_from_the_model() {
+    for (configured, provider) in [
+        ("Fireworks", "fireworks"),
+        ("openrouter", "openrouter"),
+        ("minimax", "minimax"),
+        ("gemini", "gcp.gemini"),
+    ] {
+        let delivery = Delivery {
+            provider: configured,
+            model: "accounts/fireworks/models/minimax-m3p1-flash",
+            ..delivery()
+        };
+        let span = only_span(recorded(&delivery, settled_at()));
+        assert_eq!(
+            attribute(&span, semconv::ATTR_PROVIDER_NAME).as_deref(),
+            Some(provider)
+        );
+        assert_eq!(
+            attribute(&span, semconv::ATTR_REQUEST_MODEL).as_deref(),
+            Some("accounts/fireworks/models/minimax-m3p1-flash")
+        );
+    }
 }
 
 /// Every attribute carries the field it is named for.
