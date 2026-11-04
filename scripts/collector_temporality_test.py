@@ -79,8 +79,7 @@ def collector_once(environment):
         config.pop("extensions", None)
         with tempfile.TemporaryDirectory(prefix="collector-temporality-") as directory:
             candidate = pathlib.Path(directory) / "config.json"
-            with candidate.open("w", encoding="utf-8") as output:
-                json.dump(config, output)
+            candidate.write_text(json.dumps(config), encoding="utf-8")
             with tempfile.TemporaryFile(mode="w+") as logs:
                 process = subprocess.Popen([BINARY, "--config=" + str(candidate)], stdout=logs, stderr=logs)
                 try:
