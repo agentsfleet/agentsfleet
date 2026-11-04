@@ -89,8 +89,8 @@ pub struct Instruments {
     ///
     /// A second provider and not a setting, because the SDK asks the EXPORTER
     /// which temporality it wants and aggregates to match — one provider would
-    /// silently rewrite the cost families' temporality to whatever the runtime
-    /// families use.
+    /// silently rewrite a family's declared temporality. Daemon families keep
+    /// source-owned totals; runner histograms can use their isolated collector.
     delta: Meter,
     registry: Registry,
     claimed: Mutex<BTreeSet<&'static str>>,

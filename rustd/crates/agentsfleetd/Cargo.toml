@@ -231,3 +231,9 @@ path = "tests/daemon_suite.rs"
 name = "schedule_proxy"
 path = "tests/schedule_proxy.rs"
 required-features = ["test-util"]
+
+# Owns the global tracing subscriber, like a real daemon boot.
+[[test]]
+name = "telemetry_boot"
+path = "tests/telemetry_boot.rs"
+required-features = ["test-util"]

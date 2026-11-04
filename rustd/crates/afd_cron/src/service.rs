@@ -108,6 +108,28 @@ impl Schedules {
         token: &Uuid7,
         attempts: Attempts,
     ) -> Result<Reconciled> {
+        use afd_observability::metrics::label::scheduler::SyncOutcome;
+        let result = self.reconcile_inner(held, token, attempts).await;
+        let outcome = match &result {
+            Ok(Reconciled::Synced(_)) => SyncOutcome::Synced,
+            Ok(Reconciled::Failed(_)) => SyncOutcome::Failed,
+            Ok(Reconciled::Superseded) => SyncOutcome::Superseded,
+            Ok(Reconciled::Removed) if held.desired_status == DesiredStatus::Active => {
+                SyncOutcome::Expired
+            }
+            Ok(Reconciled::Removed) => SyncOutcome::Removed,
+            Err(_) => SyncOutcome::Error,
+        };
+        afd_observability::producers::scheduler::synced(outcome);
+        result
+    }
+
+    async fn reconcile_inner(
+        &self,
+        held: &Schedule,
+        token: &Uuid7,
+        attempts: Attempts,
+    ) -> Result<Reconciled> {
         // As late as the row can be read; see the module note on a lost fence.
         if !self.store.holds_fence(held, token).await? {
             log_overtaken(held);

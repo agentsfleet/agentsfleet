@@ -34,6 +34,7 @@ mod edit;
 mod fence;
 mod fire_at;
 mod guarded;
+mod health;
 mod input;
 mod owner;
 mod read;

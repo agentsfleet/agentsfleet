@@ -25,6 +25,7 @@ mod clients;
 pub mod drain;
 mod exporting;
 mod listen;
+mod observations;
 mod optional;
 mod runtime;
 #[cfg(feature = "test-util")]
@@ -182,8 +183,8 @@ async fn open(
     // Before the router takes them: both are the state a gauge reads, and the
     // clones are handles onto the same semaphore and the same ceiling rather
     // than second copies that could disagree with what admission decides.
-    let sources = gauge_sources(&admission, &runtime.live);
-    open_telemetry(prepared, supervisor, &sources)?;
+    let sources = gauge_sources(&admission, &runtime.live, &runtime.database);
+    open_telemetry(prepared, supervisor, &sources, &runtime.database)?;
     serve_plane(runtime, &admission, &config, analytics, port, supervisor).await
 }
 

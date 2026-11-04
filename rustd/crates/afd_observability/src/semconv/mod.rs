@@ -79,10 +79,9 @@ pub const ATTR_OPERATION_NAME: &str = "gen_ai.operation.name";
 /// nothing here carries a second identifier for the same fact.
 pub const ATTR_AGENT_ID: &str = "gen_ai.agent.id";
 
-/// The model vendor, in OpenTelemetry's own well-known spelling.
+/// The serving provider, using its standard spelling or a compiled public identity.
 ///
-/// Never a configured spelling — see [`provider::normalize`] for why a vendor
-/// this daemon cannot map is omitted rather than exported as though standard.
+/// [`provider::normalize`] rejects arbitrary names and private endpoint URLs.
 pub const ATTR_PROVIDER_NAME: &str = "gen_ai.provider.name";
 
 /// The model a run was issued against, exactly as the catalogue spells it.
@@ -283,6 +282,14 @@ pub const LABEL_WORK_TYPE: &str = "work_type";
 /// to be written by hand, and a constant with no column is a key nothing
 /// exports.
 pub const CENSUS_LABEL_KEYS: &[&str] = &[
+    ATTR_TOKEN_TYPE,
+    ATTR_HTTP_ROUTE,
+    ATTR_HTTP_REQUEST_METHOD,
+    LABEL_ROLE,
+    LABEL_STATE,
+    LABEL_LIMIT,
+    LABEL_CAPABILITY,
+    LABEL_STATUS_CLASS,
     ATTR_REQUEST_MODEL,
     LABEL_REASON,
     LABEL_SIGNAL,
@@ -297,3 +304,14 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_WORK_TYPE,
     ATTR_PROVIDER_NAME,
 ];
+
+/// Role of a database connection pool.
+pub const LABEL_ROLE: &str = "role";
+/// A closed inventory or connection state.
+pub const LABEL_STATE: &str = "state";
+/// A model's configured limit kind.
+pub const LABEL_LIMIT: &str = "limit";
+/// A configured model-route capability.
+pub const LABEL_CAPABILITY: &str = "capability";
+/// Bounded response class, including cancelled requests.
+pub const LABEL_STATUS_CLASS: &str = "status_class";

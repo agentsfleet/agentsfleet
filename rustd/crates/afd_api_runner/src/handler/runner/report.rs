@@ -127,8 +127,16 @@ pub(crate) async fn handle<D: Services>(
         // so firing it again would count one run as two. The charge is already
         // zero on this arm; the counters are not, and they are the reason this
         // is a branch rather than arithmetic.
-        Ok(settled) if settled.repeated => Json(ReportResponse { ok: true }).into_response(),
+        Ok(settled) if settled.repeated => {
+            afd_observability::producers::fleet::report_answered(
+                afd_observability::metrics::label::fleet::ReportAnswer::Repeated,
+            );
+            Json(ReportResponse { ok: true }).into_response()
+        }
         Ok(settled) => {
+            afd_observability::producers::fleet::report_answered(
+                afd_observability::metrics::label::fleet::ReportAnswer::Settled,
+            );
             // Attributed to the WORKSPACE, as the daemon this ports attributes
             // it: a run has no person behind it — a cron, a webhook and a steer
             // all end here — and the workspace is the unit the funnels count.

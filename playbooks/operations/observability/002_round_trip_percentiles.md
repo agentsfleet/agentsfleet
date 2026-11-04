@@ -75,3 +75,31 @@ histogram_quantile(0.99, sum by (le, stage) (rate(agentsfleet_fleet_delivery_sta
 
 If neither answers, check that the daemon's OTLP export is configured
 (`001_playbook.md`, step 1) and that a report settled after the deploy.
+
+## Dashboard row
+
+The runtime dashboard has a Tempo selector and a fleet-ID textbox. Its eight
+round-trip panels use plain search with `select` for segment attributes, span
+table output and Reduce p95/p99. The whole-duration field is `duration` in
+nanoseconds; each `agentsfleet.delivery.*_ms` field is in milliseconds.
+
+Missing attributes have no samples; they are not zero.
+Memory timing exists
+only on fallback memory read when the lease has no memory window, and sandbox
+wait exists only when preparation delayed the run.
+
+Each panel reads at most 1,000 matching spans in the dashboard time range.
+The percentiles describe those returned samples.
+
+Narrow the range if the
+search reaches the limit. These segments overlap; do not sum their percentiles.
+
+On Nov 04, 2026, plain search returned all ten dev probes while metrics queries
+returned no series.
+
+Generator local-blocks enablement could not be read through
+the Grafana proxy. Fleet-wide histogram queries were separately blocked by
+Grafana rejecting delta metrics from the collector.
+
+The Discovery in `docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` records the measured values and export diagnosis.
+It also links the Explore screenshot in Git history. Rendered-row verification remains open.

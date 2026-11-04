@@ -41,6 +41,7 @@ const MESSAGE: &str = "run the nightly repair";
 /// What one fire resolves to, for a lane's fleet.
 fn target(lane: &CronLane) -> FireTarget {
     FireTarget {
+        scheduled_at: None,
         fleet: lane.fleet_id(),
         workspace: lane.workspace_id(),
         message: MESSAGE.to_owned(),

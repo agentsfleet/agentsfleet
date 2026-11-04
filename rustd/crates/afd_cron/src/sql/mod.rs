@@ -159,3 +159,6 @@ pub const FIRE_TARGET: &str = include_str!("fire_target.sql");
 
 #[cfg(test)]
 mod tests;
+
+/// Counts the stored schedule states for export sampling.
+pub const HEALTH: &str = include_str!("health.sql");

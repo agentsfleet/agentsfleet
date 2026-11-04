@@ -32,10 +32,13 @@
 
 pub mod billing;
 pub mod cost;
+pub mod database;
 pub mod fleet;
 pub mod http;
 pub mod library;
 pub mod memory;
+pub mod models;
+pub mod scheduler;
 
 #[cfg(test)]
 mod tests;
@@ -48,6 +51,9 @@ use crate::metrics::instrument::Instruments;
 /// Everything this process records through, claimed once.
 #[derive(Debug)]
 pub struct Producers {
+    pub(crate) scheduler: self::scheduler::Handles,
+    pub(crate) models: self::models::Handles,
+    pub(crate) database: self::database::Handles,
     pub(crate) http: self::http::Handles,
     pub(crate) fleet: self::fleet::Handles,
     pub(crate) library: self::library::Handles,
@@ -68,6 +74,9 @@ impl Producers {
     /// Whatever [`Instruments`] refuses — see [`install`].
     pub fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
         Ok(Self {
+            scheduler: self::scheduler::Handles::claim(instruments)?,
+            models: self::models::Handles::claim(instruments)?,
+            database: self::database::Handles::claim(instruments, sources)?,
             http: self::http::Handles::claim(instruments, sources)?,
             fleet: self::fleet::Handles::claim(instruments)?,
             library: self::library::Handles::claim(instruments)?,
@@ -105,6 +114,8 @@ pub type Reader = Arc<dyn Fn() -> Option<u64> + Send + Sync>;
 pub struct GaugeSources {
     /// Requests in flight against the admission ceiling.
     pub requests_in_flight: Reader,
+    /// Lock-free role-pool readings supplied by boot.
+    pub database_pools: Arc<dyn Fn() -> Vec<crate::metrics::instrument::Reading> + Send + Sync>,
     /// Event streams this instance is carrying.
     pub streams_in_flight: Reader,
 }
@@ -120,6 +131,7 @@ impl GaugeSources {
     pub fn silent() -> Self {
         Self {
             requests_in_flight: Arc::new(|| None),
+            database_pools: Arc::new(Vec::new),
             streams_in_flight: Arc::new(|| None),
         }
     }
