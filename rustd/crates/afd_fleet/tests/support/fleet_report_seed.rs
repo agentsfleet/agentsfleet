@@ -32,7 +32,7 @@ use afd_memory::Memories;
 use jiff::Timestamp;
 
 use crate::rows::Row;
-use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
+use crate::seed::{ACTOR, MODEL, POSTURE, PROVIDER, REQUEST_JSON, Seeded, seeded_for};
 use crate::support::Fixtures;
 
 /// A pool deep enough that nothing under test clamps against it.
@@ -94,12 +94,17 @@ pub(crate) async fn held() -> Held {
 /// [`held`], over `fixtures`: a private database for a test that breaks a
 /// table every other test reads.
 pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
+    held_admission(fixtures, ACTOR, REQUEST_JSON).await
+}
+
+/// One funded native lease over this scenario's admitted request and actor.
+pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json: &str) -> Held {
     let Seeded {
         runners: [runner, spare],
         fleet,
         tenant,
         ..
-    } = seeded::<2>(&fixtures).await;
+    } = seeded_for::<2>(&fixtures, actor, request_json).await;
     let leases = fixtures.leases();
     let now = fixtures.enrolled_at();
     fixtures.seed_wallet(&tenant, DEEP_POOL).await;

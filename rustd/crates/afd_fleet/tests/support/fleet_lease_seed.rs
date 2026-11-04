@@ -74,14 +74,23 @@ pub(crate) struct Seeded<const N: usize> {
 
 /// A fleet with one admission and `N` enrolled runners.
 pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
+    seeded_for(fixtures, ACTOR, REQUEST_JSON).await
+}
+
+/// A fleet admission with the actor and complete request this scenario owns.
+pub(crate) async fn seeded_for<const N: usize>(
+    fixtures: &Fixtures,
+    actor: &str,
+    request_json: &str,
+) -> Seeded<N> {
     let (fleet, workspace, tenant, runners) = seeded_parts::<N>(fixtures).await;
     let event_id = crate::queue::enqueue(
         &fixtures.database,
         &fleet,
         &workspace,
-        ACTOR,
+        actor,
         EVENT_TYPE,
-        REQUEST_JSON,
+        request_json,
         fixtures.enrolled_at(),
     )
     .await;

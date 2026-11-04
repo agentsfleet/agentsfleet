@@ -392,6 +392,45 @@ The log is `/tmp/m236-usage-ranges-integration-final.log`; the complete Rust pat
 `orly gate work` and `orly gate verify` passed, including `make lint-all` and version agreement at 0.72.0.
 The verification log is `/tmp/m236-usage-ranges-verify.log`; these checkpoint checks do not close the full milestone.
 
+## Complete native coverage measurement
+
+The [next remote measurement](https://github.com/agentsfleet/agentsfleet/actions/runs/41732479873) tested `6c5392015`.
+Runner, daemon and kernel reports completed; the substrate worker exhausted disk before uploading its report.
+The failed check annotation identifies `System.IO.IOException: No space left on device`.
+
+Indy approved the three-line resource proposal on Nov 04, 2026: "Approve the resource settings".
+The shard worker now disables development/test debug information and limits Cargo to two jobs, matching the local measurement settings.
+No coverage floor, source exclusion, test selection or required check changed.
+
+A clean verification checkout at exactly `6c5392015` completed `make test-coverage-rustd RUSTD_SHARD=substrate` with the documented cloud Cargo settings.
+Its deciding output was 5,108 regular tests and three exclusive tests passed.
+The log is `/tmp/m236-coverage-6c5392015-substrate-local.log`.
+
+The original remote reports and all four original revision stamps were retained.
+Only the local report's workspace `SF:` prefix was aligned with the remote reports; a byte comparison verified every non-path counter record remained unchanged.
+
+The unchanged `make test-coverage-rustd-merge` gate then measured 99.0137% whole-workspace coverage and 79.6834% patch coverage: 2,114 of 2,653 changed executable lines.
+Thirty-eight of 111 touched files were below the separate 99% file floor.
+The log is `/tmp/m236-coverage-6c5392015-merged-canonical.log`.
+
+This fails the required floors; no coverage requirement or exclusion was relaxed.
+The largest gap is the native task binding owner, followed by negative paths in decision adapters and reviewed configuration.
+
+The next component adds cohesive scenarios through `TaskLifecycle` for concurrent whole-plan acceptance/replay, source/revision qualification, capacity rollback, cumulative limits, controls and unreadable saved state.
+A real blocked Postgres query tests the client deadline and pool-permit recovery; it does not prove literal packet loss.
+The fixture retains database cleanup ownership outside guarded setup and checks.
+
+Astra's extra-high review identified and checked the revision, wall-duration and connection-lifetime corrections, then closed the guarded-setup cleanup finding with no remaining material finding.
+`make lint-rustd` passed after two empty-page assertions were changed to retain the returned values in failure diagnostics.
+The log is `/tmp/m236-task-lifecycle-lint-final.log`.
+
+The first integration run found invalid fixture names; all three definitions now use valid slugs and include the required budget.
+After a clean schema reset, the scoped `cargo test --all-features -p afd_fleet --test fleet_suite integration_tasks:: -- --ignored` batch passed all ten scenarios.
+The log is `/tmp/m236-task-lifecycle-focus.log`; this scoped pass does not replace the repository gate.
+
+The clean `make test-integration-rustd` rerun then passed 1,483 regular tests and all three exclusive tests.
+The log is `/tmp/m236-task-lifecycle-integration-final.log`; its recorded exit status is zero.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |

@@ -53,7 +53,11 @@ impl Fixtures {
 
     /// Migrate a private database before injecting corruption visible to global reads.
     pub(crate) async fn create_isolated() -> Self {
-        let lane = TestDatabase::create().await;
+        Self::create_in(TestDatabase::create().await).await
+    }
+
+    /// Prepare an existing database while its caller retains cleanup ownership.
+    pub(crate) async fn create_in(lane: TestDatabase) -> Self {
         let migrator = lane.open(DbRole::Migrator, &[]).await;
         afd_db::Migrator::new()
             .run(&migrator)
@@ -107,7 +111,12 @@ impl Fixtures {
     /// asserts on. Dragonfly stays shared, which is harmless — its keys are
     /// namespaced by the fleet ids this test mints.
     pub(crate) async fn create_isolated_with_queue() -> Self {
-        let mut fixtures = Self::create_isolated().await;
+        Self::create_in_with_queue(TestDatabase::create().await).await
+    }
+
+    /// The ordinary isolated fixture, using an explicitly supplied lane handle.
+    pub(crate) async fn create_in_with_queue(lane: TestDatabase) -> Self {
+        let mut fixtures = Self::create_in(lane).await;
         fixtures.queue = Some(crate::queue::connect().await);
         fixtures
     }
@@ -126,7 +135,12 @@ impl Fixtures {
     /// A further pool for `role` on this fixture's database — the shared lane's
     /// or this test's private one — as a second daemon replica would hold.
     pub(crate) async fn open(&self, role: DbRole) -> Db {
-        self.lane.open(role, &[]).await
+        self.open_with(role, &[]).await
+    }
+
+    /// An owned replica pool with explicit production sizing knobs.
+    pub(crate) async fn open_with(&self, role: DbRole, knobs: &[(&str, &str)]) -> Db {
+        self.lane.open(role, knobs).await
     }
 
     /// The store under test.

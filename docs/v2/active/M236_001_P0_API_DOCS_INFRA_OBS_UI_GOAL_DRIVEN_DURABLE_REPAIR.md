@@ -72,8 +72,8 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 
 | Files | Action | Role |
 | --- | --- | --- |
-| `schema/{2190_fleet_task_items,2200_fleet_tasks,2210_fleet_task_inputs,2220_fleet_task_bindings,2260_runner_decision_model,2270_runner_lease_decisions}.sql`; `rustd/crates/afd_db/src/migration.rs`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection and explicit migration/schema/role inventories; wait/effect/checkpoint slots follow |
-| `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,context,decision,coverage,billing_sweep}.rs`, `lease/{report,renew,usage}/`, `lease/sql/{meter.rs,meter_lease.sql,bill_expired_slice.sql}`; tests | CREATE / EDIT | guarded DT ownership, bounded reads, typed errors/plans/controls, effect reconciliation, snapshots and settlement integration |
+| `schema/{2190_fleet_task_items,2200_fleet_tasks,2210_fleet_task_inputs,2220_fleet_task_bindings,2260_runner_decision_model,2270_runner_lease_decisions}.sql`; `rustd/crates/afd_db/src/{migration.rs,test_util/}`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection, retained test cleanup ownership and explicit migration/schema/role inventories; wait/effect/checkpoint slots follow |
+| `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,context,decision,coverage,billing_sweep}.rs`, `lease/{report,renew,usage}/`, `lease/sql/{meter.rs,meter_lease.sql,bill_expired_slice.sql}`; tests | CREATE / EDIT | guarded DT ownership, lifecycle scenarios with gated accepted-plan fixtures, bounded reads, effects, snapshots and settlement integration |
 | `rustd/crates/afd_wire/src/{lease,policy,report}/`; matching wire tests | EDIT | explicit task generation, goal revision and decision/evidence boundaries |
 | `rustd/crates/afr_agent/src/{prompt,loop}/`; matching agent tests | EDIT | current intent, consumed human input and goal-aware action/decision loop |
 | `rustd/crates/afr_agent/src/decision/{mod,questions,routing,goal}.rs`; `afr_providers/src/{decision/,lib.rs,error/,retry/}`; `afd_fleet_runtime/src/{config/,definition/}`; `afd_authoring/src/model/provider/{prompt.rs,prompt/*.md}`; existing authoring review/Apply owners and tests | CREATE / EDIT | one typed decision trait/client; customer-owned instructions/questions; Markdown authoring guidance; linkable starters reuse immutable Library copies and existing setup chat |
@@ -84,7 +84,7 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | `package.json`, `bun.lock`, `ui/packages/{app,design-system,website}/package.json`; `ui/packages/app/components/domain/chat/{TaskPanel,TaskDetail,TaskControls,SetupQuestions,ChatThread,ChatComposerFrame}.tsx`, `use-task-read.ts`; existing fleet thread, setup/review/history, streaming, `app/live/` and `lib/api/{tasks,decision-policy,fleet-paths,live-json-proxy}.ts`; related tests | CREATE / EDIT | retain setup/chat layout, spinner, theming/save flow; compact work summaries, criteria/revisions and recovery; omit routing rules from setup display |
 | `docs/architecture/` owning topics; `docs/AUTH.md`; this spec and eventual done destination; `docs/DESIGN_SYSTEM.md` | EDIT / MOVE | architecture, credential custody and actual final evidence without duplicate owners |
 | `rustd/crates/afd_outbound/src/` | REUSE | no default edits; DT records correlate existing obligations and Slack markers |
-| `tests/fixtures/fleets/goal-repair/{cases,decision-policy}.json`; `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`; `make/test-integration-rustd.mk`, `codecov.yml` | CREATE / EDIT | pin shared editable questions and attributed evidence; strengthen the existing Rust patch floor to 99.01% without a new checker |
+| `tests/fixtures/fleets/goal-repair/{cases,decision-policy}.json`; `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`; `make/test-integration-rustd.mk`, `codecov.yml`, `.github/workflows/test-integration-rustd.yml` | CREATE / EDIT | shared editable questions, attributed evidence, the 99.01% Rust patch floor and approved coverage-worker resource bounds |
 | `docs/architecture/scenarios/durable-repair.md`; scenario index | EDIT | acceptance results and current/proposed distinction |
 | `docs/architecture/{durable_tasks,goal_evaluation}.md` | CREATE | lifecycle and decision-provider owners |
 | `docs/architecture/{README,data_flow,lease_flow,fleet_definitions,context_lifecycle,sandbox_evaluation}.md` | EDIT | owning mechanisms and explicit cross-lease handoff |
@@ -270,7 +270,7 @@ A new Firecracker backend remains separate from proving these task outcomes on t
 
 ### §6 — Present progress and prove the Grafana/scheduler outcome
 
-Add a compact Work panel beside fleet conversation with DT title, state, next dependency and confirmed result links.
+Add compact Current work above the shared fleet-chat composer with DT title, state, next dependency and confirmed result links.
 Expand local/published files, checks, attempts, subagents and evidence; subagents remain helpers within work.
 Preserve composer access, selected reading position and confirmed progress across recovery.
 Show the selected provider/model during routing and goal activity and transfer preparation/upload/verification stages in both CLI and browser, with bounded native progress events.
