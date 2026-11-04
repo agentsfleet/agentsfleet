@@ -172,7 +172,7 @@ while IFS= read -r alert; do
         noDataState:$alert.noDataState,
         execErrState:$alert.execErrState,
         panelRef:{
-          dashboardUID:$dashboard,
+          dashboardUID:($dashboard + ($alert.dashboardSuffix // "")),
           panelID:$alert.panelId
         },
         expressions:{

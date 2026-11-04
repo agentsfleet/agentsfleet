@@ -58,9 +58,9 @@
   "panels": [
     {
       "id": 150,
-      "title": "Build outcomes",
+      "title": "Sandbox preparation results",
       "type": "timeseries",
-      "description": "",
+      "description": "Background build outcomes: ready, preparation failure, checkout failure or stopped.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -110,9 +110,9 @@
     },
     {
       "id": 151,
-      "title": "Start p95",
+      "title": "Fresh sandbox start p95",
       "type": "timeseries",
-      "description": "",
+      "description": "Time to prepare a fresh sandbox, grouped by outcome.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -162,9 +162,9 @@
     },
     {
       "id": 152,
-      "title": "Wait p95",
+      "title": "Tool wait for sandbox p95",
       "type": "timeseries",
-      "description": "",
+      "description": "Time a tool call waited for the sandbox build; not general queue wait.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -214,9 +214,9 @@
     },
     {
       "id": 153,
-      "title": "Release p95",
+      "title": "Sandbox cleanup p95",
       "type": "timeseries",
-      "description": "",
+      "description": "Time to release sandbox resources after the report, grouped by outcome.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -266,9 +266,9 @@
     },
     {
       "id": 154,
-      "title": "Reuse outcomes",
+      "title": "Sandbox reuse results",
       "type": "timeseries",
-      "description": "Actual hold lifecycle: parked, reused and expiry outcomes.",
+      "description": "Held sandbox lifecycle, including parked, reused and reasons for release.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -318,9 +318,9 @@
     },
     {
       "id": 155,
-      "title": "Tool p95",
+      "title": "Tool duration p95",
       "type": "timeseries",
-      "description": "",
+      "description": "Tool-call duration by tool.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -370,9 +370,9 @@
     },
     {
       "id": 156,
-      "title": "Tool results",
+      "title": "Tool call results",
       "type": "timeseries",
-      "description": "",
+      "description": "Tool calls per second by tool and outcome.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -422,9 +422,9 @@
     },
     {
       "id": 157,
-      "title": "Memory kills (window)",
+      "title": "Out-of-memory kills",
       "type": "timeseries",
-      "description": "Actual kernel out-of-memory kills. CPU and memory usage are not currently measured. Rolling count over the selected dashboard window.",
+      "description": "Kernel memory kills counted over the selected window; not memory usage.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"

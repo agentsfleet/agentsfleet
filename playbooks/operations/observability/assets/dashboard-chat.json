@@ -58,9 +58,9 @@
   "panels": [
     {
       "id": 40,
-      "title": "Round trip",
+      "title": "Chat round trip",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Selected fleet event-to-completion p95/p99 from returned delivery traces; up to 1,000 spans. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -130,9 +130,9 @@
     },
     {
       "id": 41,
-      "title": "Queue",
+      "title": "Wait for runner",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Event creation to lease issue for the selected fleet. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 12,
         "y": 0,
@@ -202,9 +202,9 @@
     },
     {
       "id": 42,
-      "title": "Memory",
+      "title": "Memory fetch time",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Runner memory-read duration when memory was not supplied inline. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 0,
         "y": 8,
@@ -274,9 +274,9 @@
     },
     {
       "id": 43,
-      "title": "Model",
+      "title": "Model time",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Time spent in model turns during the selected fleet run. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 12,
         "y": 8,
@@ -346,9 +346,9 @@
     },
     {
       "id": 44,
-      "title": "Tools",
+      "title": "Tool time",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Time spent in tool calls during the selected fleet run. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 0,
         "y": 16,
@@ -418,9 +418,9 @@
     },
     {
       "id": 45,
-      "title": "Sandbox wait",
+      "title": "Wait for sandbox",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Time sandbox tool calls waited for the sandbox build. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 12,
         "y": 16,
@@ -490,9 +490,9 @@
     },
     {
       "id": 46,
-      "title": "Settle",
+      "title": "Runner cleanup time",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Runner work after execution and before preparing its report: sandbox hold-or-destroy, tool-record posts, any fallback memory capture and pending usage flush. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 0,
         "y": 24,
@@ -562,9 +562,9 @@
     },
     {
       "id": 47,
-      "title": "Complete",
+      "title": "Completion publish time",
       "type": "stat",
-      "description": "Select a Tempo datasource and a fleet ID. Percentiles cover up to 1,000 returned delivery spans in the dashboard time range, not every trace if the result is truncated. Missing segments have no samples; they are not zero. Segments overlap and must not be summed.",
+      "description": "Daemon receipt of the runner report to publishing event completion. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 12,
         "y": 24,
@@ -671,15 +671,15 @@
           "refId": "A"
         }
       ],
-      "title": "Delivery stages",
+      "title": "Delivery stage p95",
       "type": "timeseries",
-      "description": "P95 seconds for each fixed stage, ending when the daemon receives the first intact runner chunk. Event stages begin at the producer event timestamp; lease stage begins when the lease row is written; zombie begins immediately before invoking the fleet execution engine. First chunk may contain reasoning or tool syntax. This is not browser first paint. A missing series means no completed stage was observed."
+      "description": "Fleet-wide p95 delivery stages through the first intact runner chunk and through completion. The first chunk can contain reasoning or tool syntax. These measurements exclude browser rendering; missing series have no observed samples."
     },
     {
       "id": 102,
-      "title": "Runner wakeups",
+      "title": "Runner wake reasons",
       "type": "timeseries",
-      "description": "Ring is a wake for fresh work; capped means the held-heartbeat limit was reached.",
+      "description": "Why held runner heartbeats answered, grouped by reason. Ring means fresh work; capped means the held-heartbeat limit was reached.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -722,9 +722,9 @@
     },
     {
       "id": 103,
-      "title": "Memory delivery failures",
+      "title": "Memory delivery errors",
       "type": "timeseries",
-      "description": "Failure signals; they do not count successful inline or fallback reads.",
+      "description": "Reported memory-push failures on the daemon and runner.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -777,9 +777,9 @@
     },
     {
       "id": 104,
-      "title": "Memory source",
+      "title": "Memory delivery path",
       "type": "timeseries",
-      "description": "One memory path choice per working lease. Fallback includes attempts that later failed or were cancelled.",
+      "description": "Inline-memory versus fallback choices; fallback attempts may later fail.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -822,9 +822,9 @@
     },
     {
       "id": 105,
-      "title": "Report answers",
+      "title": "Completion report results",
       "type": "timeseries",
-      "description": "Successful first settlements versus repeated acknowledgements. Repeated answers do not count another completed run.",
+      "description": "First successful settlements versus acknowledgements of repeated reports.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"

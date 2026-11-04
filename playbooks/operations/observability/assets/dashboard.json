@@ -61,7 +61,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Share of valid admission attempts accepted or replayed over the dashboard range. Target 99%, unproven. Compare failures with the valid-event count.",
+      "description": "Share of valid attempts accepted or replayed; excludes over-budget refusals. The 99% target is not yet proven.",
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -110,14 +110,14 @@
           "refId": "A"
         }
       ],
-      "title": "Admission success",
+      "title": "Request acceptance",
       "type": "stat"
     },
     {
       "id": 37,
       "type": "stat",
-      "title": "Run success",
-      "description": "The same ratio WITHOUT the blame split: every failure counted, including the ones the workload caused. This is what a customer feels \u2014 'did my run work' is a fair question with a real answer. It carries no target and nothing alerts on it, because an objective has to be a promise about something this platform controls. Read it beside the objective to its left: a wide gap between them is tenants shipping code that fails, not a platform regression.",
+      "title": "Run success rate",
+      "description": "Successfully processed executions divided by all recorded completed executions; includes platform and workload failures.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -133,7 +133,7 @@
           "refId": "A",
           "editorMode": "code",
           "instant": false,
-          "legendFormat": "all-cause success",
+          "legendFormat": "success",
           "expr": "sum(increase(agentsfleet_runner_executions_total{outcome=\"processed\"}[$__range])) / sum(increase(agentsfleet_runner_executions_total[$__range]))"
         }
       ],
@@ -173,7 +173,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Age of the oldest unsettled admission.",
+      "description": "Age of the oldest accepted request still waiting, running or parked.",
       "fieldConfig": {
         "defaults": {
           "unit": "s"
@@ -204,11 +204,11 @@
       "targets": [
         {
           "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds)",
-          "legendFormat": "oldest unsettled admission",
+          "legendFormat": "oldest unfinished request",
           "refId": "A"
         }
       ],
-      "title": "Oldest work",
+      "title": "Oldest unfinished request",
       "type": "timeseries"
     },
     {
@@ -255,15 +255,15 @@
           "refId": "B"
         }
       ],
-      "title": "Run outcomes",
+      "title": "Run results",
       "type": "timeseries",
-      "description": "Execution outcomes per second, with failures broken out by reason underneath. This is where the runner success indicator at the top gets its explanation."
+      "description": "Execution outcomes and recorded failure reasons per second."
     },
     {
       "id": 101,
-      "title": "Chat p95 / p99",
+      "title": "Chat response p95 / p99",
       "type": "timeseries",
-      "description": "Fleet-wide event-to-complete latency; histogram estimates, continuously updated.",
+      "description": "Fleet-wide event-to-completion time at p95 and p99; excludes browser rendering.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -349,20 +349,20 @@
       "targets": [
         {
           "expr": "max(agentsfleet_admission_backlog)",
-          "legendFormat": "unsettled admissions",
+          "legendFormat": "unfinished requests",
           "refId": "A"
         }
       ],
-      "title": "Queued work",
+      "title": "Unfinished requests",
       "type": "stat",
-      "description": "Committed admissions awaiting settlement, including active and parked work. A sustained rise with flat lease starts calls for a placement or approval check."
+      "description": "Accepted requests still waiting, running or parked."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Current count per lifecycle status, and a GAP when the census could not be read. The producer withdraws all five readings together when its query fails (`a_withdrawn_census_publishes_no_reading_at_all`), so absence here means the census, the exporter or the daemon is down \u2014 not that the fleet is empty. These queries carry no `or vector(0)` for exactly that reason: a zero would render an outage as five healthy zeroes. Not a rate; this is the standing population.",
+      "description": "Current fleet counts by lifecycle state.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -426,7 +426,7 @@
           "refId": "E"
         }
       ],
-      "title": "Fleets",
+      "title": "Fleet status",
       "type": "stat"
     },
     {
@@ -468,9 +468,9 @@
           "refId": "B"
         }
       ],
-      "title": "Attribute omissions",
+      "title": "Missing telemetry labels",
       "type": "timeseries",
-      "description": "Attributes omitted by semantic normalization. An unmapped provider removes the provider-name attribute, not the whole span or metric. This is separate from failed exports."
+      "description": "Attributes omitted during normalization; not whole spans or failed exports."
     },
     {
       "datasource": {
@@ -511,9 +511,52 @@
           "refId": "A"
         }
       ],
-      "title": "Export loss",
+      "title": "Dropped daemon telemetry",
       "type": "timeseries",
-      "description": "Entries the daemon SDK discarded before its collector accepted them. Missing series do not mean zero loss. Downstream collector-to-Grafana failures are separate and require collector health checks."
+      "description": "Entries discarded by the daemon exporter before its collector accepts them; excludes downstream collector loss."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "min by (runner_id) (time() - agentsfleet_runner_last_seen_seconds)",
+          "legendFormat": "{{runner_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Runner check-in age",
+      "type": "timeseries",
+      "description": "Time since each runner was last heard from."
     }
   ],
   "refresh": "30s",

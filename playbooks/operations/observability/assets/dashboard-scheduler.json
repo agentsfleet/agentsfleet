@@ -58,9 +58,9 @@
   "panels": [
     {
       "id": 120,
-      "title": "Schedules",
+      "title": "Schedule status",
       "type": "timeseries",
-      "description": "Desired states, sync states and overdue one-shots overlap; do not add these series.",
+      "description": "Schedule intent, synchronization and overdue one-shot counts; categories overlap.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -103,9 +103,9 @@
     },
     {
       "id": 121,
-      "title": "Admitted fires",
+      "title": "Trigger acceptance",
       "type": "timeseries",
-      "description": "Durable accepted or replayed admissions.",
+      "description": "Scheduled-fire admissions per second, separated into accepted and replayed.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -148,9 +148,9 @@
     },
     {
       "id": 122,
-      "title": "Callback outcomes",
+      "title": "Trigger callback results",
       "type": "timeseries",
-      "description": "Verified callbacks, including skipped, stale, failed and cancelled attempts.",
+      "description": "Verified callbacks by outcome, including skipped, stale, failed and cancelled.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -193,9 +193,9 @@
     },
     {
       "id": 123,
-      "title": "One-shot delay p95",
+      "title": "One-time trigger delay p95",
       "type": "timeseries",
-      "description": "Actual newly admitted one-shots only, measured against their stored fire instant. Recurring trigger instants are unavailable.",
+      "description": "Delay from a stored one-shot fire time to its new admission; recurring delay is unavailable.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -210,7 +210,7 @@
         {
           "refId": "A",
           "expr": "histogram_quantile(.95, sum by (le) (rate(agentsfleet_schedule_dispatch_lag_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "One-shot delay p95",
+          "legendFormat": "One-time trigger delay p95",
           "range": true,
           "datasource": {
             "type": "prometheus",
@@ -238,9 +238,9 @@
     },
     {
       "id": 124,
-      "title": "Sync outcomes",
+      "title": "Schedule sync results",
       "type": "timeseries",
-      "description": "",
+      "description": "Reconciliation outcomes per second.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -283,9 +283,9 @@
     },
     {
       "id": 126,
-      "title": "Callback p95",
+      "title": "Trigger callback time p95",
       "type": "timeseries",
-      "description": "",
+      "description": "Time spent handling verified callbacks, grouped by outcome.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"

@@ -58,9 +58,9 @@
   "panels": [
     {
       "id": 110,
-      "title": "Requests",
+      "title": "Request rate",
       "type": "timeseries",
-      "description": "Matched route templates; no raw request paths.",
+      "description": "Requests per second by matched API route.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -103,9 +103,9 @@
     },
     {
       "id": 111,
-      "title": "Responses",
+      "title": "Response status",
       "type": "timeseries",
-      "description": "Headers returned by status class; cancelled includes requests dropped before a response.",
+      "description": "Response rate by status class, including cancellations before response headers.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -148,9 +148,9 @@
     },
     {
       "id": 112,
-      "title": "Request p95",
+      "title": "Response time p95",
       "type": "timeseries",
-      "description": "Time to response headers, including streaming routes; not the full stream lifetime.",
+      "description": "Request-to-response-header latency by route; excludes full streaming lifetime.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -230,15 +230,15 @@
           "refId": "A"
         }
       ],
-      "title": "In flight",
+      "title": "Active requests",
       "type": "stat",
-      "description": "Concurrent requests the daemon is holding right now. This is the number backpressure is defending; watch it against the rejection panel beside it."
+      "description": "Requests currently held by the daemon."
     },
     {
       "id": 113,
-      "title": "Pool connections",
+      "title": "Database connections",
       "type": "timeseries",
-      "description": "Actual pool readings per daemon instance and role. Requires the real service.instance.id resource attribute; absent roles stay absent.",
+      "description": "Open, idle, used, capacity and waiting readings by pool role and daemon instance.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -281,9 +281,9 @@
     },
     {
       "id": 114,
-      "title": "Pool wait p95",
+      "title": "Connection wait p95",
       "type": "timeseries",
-      "description": "Whole acquisition, including the internal retry.",
+      "description": "Time to acquire a database connection, including the internal retry.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -326,9 +326,9 @@
     },
     {
       "id": 115,
-      "title": "Pool outcomes",
+      "title": "Connection results",
       "type": "timeseries",
-      "description": "",
+      "description": "Connection-acquisition rate by role and outcome, including failures and cancellations.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -408,9 +408,9 @@
           "refId": "A"
         }
       ],
-      "title": "Backpressure",
+      "title": "Requests rejected at capacity",
       "type": "stat",
-      "description": "Backpressure rejections. Non-zero means the daemon protected itself by shedding load \u2014 the caller got an error. Sustained non-zero means capacity, not a blip."
+      "description": "Backpressure refusals over the panel rate interval."
     }
   ],
   "refresh": "30s",

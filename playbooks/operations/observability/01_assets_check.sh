@@ -9,7 +9,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # WRITES to Grafana reads this variable, so a wrong value can only make the
 # check look at the wrong file, never make an apply push one.
 OBS_ASSETS_DIR="${OBS_ASSETS_DIR:-$SCRIPT_DIR/assets}"
-DASHBOARD="$OBS_ASSETS_DIR/dashboard.json"
 DASHBOARDS=("$OBS_ASSETS_DIR"/dashboard*.json)
 ALERTS="$OBS_ASSETS_DIR/alerts.json"
 
@@ -49,7 +48,7 @@ check_dashboard_shape() {
   [ "$(jq -r .uid "${DASHBOARDS[@]}" | sort -u | wc -l)" -eq 6 ] || fail "dashboard UIDs must be unique"
   for dashboard in "${DASHBOARDS[@]}"; do
     case "${dashboard##*/}" in
-      dashboard.json) expected='[3,7,8,20,28,35,37,101,106]' ;;
+      dashboard.json) expected='[3,6,7,8,20,28,35,37,101,106]' ;;
       dashboard-chat.json) expected='[38,40,41,42,43,44,45,46,47,102,103,104,105]' ;;
       dashboard-api-db.json) expected='[1,2,110,111,112,113,114,115]' ;;
       dashboard-scheduler.json) expected='[120,121,122,123,124,126]' ;;
@@ -97,11 +96,25 @@ check_alert_shape() {
     --argjson expected "$EXPECTED_ALERTS" \
     '
       length == $expected and
+      all(.[]; (.dashboardSuffix | type) == "string" and (.panelId | type) == "number") and
       ([.[].name] | length == (unique | length)) and
       ([.[].expr] | all(contains("agentsfleet_"))) and
       ([.[] | select(.name == "runner-silent")] | length == 1)
     ' "$ALERTS" >/dev/null ||
     fail "alert rules drifted: count, names, expressions, or runner-silent"
+}
+
+check_alert_links() {
+  local name panel asset
+  while IFS=$'\t' read -r name panel; do
+    case "$name" in
+      dashboard.json | dashboard-chat.json | dashboard-api-db.json | dashboard-scheduler.json | dashboard-models.json | dashboard-sandbox.json) ;;
+      *) fail "alert links an unknown dashboard" ;;
+    esac
+    asset="$OBS_ASSETS_DIR/$name"
+    jq -e --argjson panel "$panel" 'any(.panels[]; .id == $panel)' "$asset" >/dev/null ||
+      fail "alert links a missing panel: $asset / $panel"
+  done < <(jq -r '.[] | [("dashboard" + (.dashboardSuffix // "") + ".json"), .panelId] | @tsv' "$ALERTS")
 }
 
 # An epoch compared against a threshold is true forever; an epoch plotted as a
@@ -187,6 +200,7 @@ check_metrics_are_source_owned() {
 check_parses
 check_dashboard_shape
 check_alert_shape
+check_alert_links
 check_epoch_readers_subtract
 check_thresholds_are_derived
 check_metrics_are_source_owned
