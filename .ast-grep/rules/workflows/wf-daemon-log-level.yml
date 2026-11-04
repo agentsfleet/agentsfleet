@@ -1,0 +1,31 @@
+# The daemon reads AGENTSFLEET_LOG_LEVEL; a bare LOG_LEVEL is read by nothing and
+# leaves the deployed daemon at its default. The presence half is scoped to one
+# file: renaming the workflow leaves it matching nothing, silently.
+id: wf-daemon-log-level
+language: Yaml
+severity: error
+message: set AGENTSFLEET_LOG_LEVEL="info", never the bare LOG_LEVEL nothing reads
+files:
+  - .github/workflows/deploy-dev-fly.yml
+rule:
+  any:
+    - kind: stream
+      not:
+        has:
+          stopBy: end
+          kind: block_mapping_pair
+          all:
+            - has:
+                field: key
+                regex: '^run$'
+            - has:
+                field: value
+                regex: 'AGENTSFLEET_LOG_LEVEL="info"'
+    - kind: block_mapping_pair
+      all:
+        - has:
+            field: key
+            regex: '^run$'
+        - has:
+            field: value
+            regex: '(?m)^\s*LOG_LEVEL='

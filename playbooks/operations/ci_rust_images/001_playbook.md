@@ -70,8 +70,8 @@ patch. The float is accepted because the compiler decides the shipped binary,
 and the compiler is pinned exactly.
 
 GitHub Actions are held to the stricter rule, since a digest there costs one
-line. Every action is pinned to a commit, `check_workflow_rules.py` refuses a
-moving ref, and Dependabot moves the pins.
+line. Every action is pinned to a commit, the ast-grep rule `wf-action-pin`
+refuses a moving ref, and Dependabot moves the pins.
 
 ## Why the base is Alpine and not `rust:*-alpine`
 
@@ -147,7 +147,7 @@ accept a multi-platform manifest. That is a docker limitation, not a choice.
    same goes for the workflows, which compute the tag with the same `sed`.
 6. Update the version the README states. Nothing else: every other mention of
    the number is prose that rots, and belongs written as "the pin" instead.
-   `scripts/check_workflow_rules.py` refuses any literal builder tag in a
+   The ast-grep rule `wf-builder-literal` refuses any literal builder tag in a
    workflow, current or not.
 7. Re-run `./build_and_push.sh` and confirm `docker manifest inspect` shows both
    architectures on the new tag. The image is not a build product of CI; if you

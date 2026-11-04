@@ -313,7 +313,7 @@ Two indexes serve the read. `idx_leases_runner_id_created_at_id` answers the pag
 
 **History is bounded, not integral.** The retention sweeper (`afd_runner`'s retention sweep, started with the other sweepers in `rustd/crates/agentsfleetd/src/sweepers/mod.rs`) deletes terminal-status leases in bounded batches once 30 days pass from settlement. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
 
-Only the per-lease event tags are eligible — `PER_LEASE_EVENT_TYPES`, meaning `lease_acquired` and `lease_released`. The lifecycle tags are the Activity feed's entire content and are kept at any age.
+Only the per-lease event tags are eligible: `PER_WORK_EVENTS` in `afd_runner/src/sweep/retention/mod.rs`, meaning `lease_acquired` and `lease_released`. The lifecycle tags are the Activity feed's entire content and are kept at any age.
 
 Live rows can never age into the sweep. The predicate excludes them, and a compile-time assertion keeps `MAX_RUNTIME` below the window (`afd_runner/src/sweep/retention/tests.rs`). Every renewal stamps `updated_at`, so a lease anything still holds is at most twelve hours stale against a thirty-day cutoff.
 
@@ -804,7 +804,7 @@ Before each physical send, the daemon funds the complete measured request and kn
 
 The shared window planner reserves output and framing headroom. The turn's remaining output allowance and selected model's physical window still bound every request (`afd_context/src/window.rs`).
 
-The byte fallback can refuse input that a provider-specific tokenizer would fit. Provider-reported usage remains authoritative for settlement, including charged reasoning tokens.
+The `o200k_base` estimate for an unrecognized model carries a quarter of headroom, so it can refuse input that the provider's tokenizer would fit. Provider-reported usage remains authoritative for settlement, including charged reasoning tokens.
 
 Every physical dispatch spends the call allowance; automatic transport retries are disabled. Uncertain usage ends the attempt before another dispatch can spend an unknown output remainder. [Proposal correction](runner_execution.md#proposal-correction-and-failure) describes bounded retries after rejected edits.
 

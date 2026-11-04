@@ -36,7 +36,7 @@ use afd_core::id::Uuid7;
 
 use crate::error::Result;
 use crate::model::{DesiredStatus, Schedule};
-use crate::qstash::QStash;
+use crate::qstash::{Attempts, QStash};
 use crate::store::Schedules as Store;
 use crate::upstream::upstream_id;
 
@@ -93,8 +93,23 @@ impl Schedules {
     /// read. A scheduler that refused is NOT an error here: it is recorded on
     /// the row and answered as [`Reconciled::Failed`] — see the module note.
     pub async fn reconcile(&self, held: &Schedule, token: &Uuid7) -> Result<Reconciled> {
+        self.reconcile_with(held, token, Attempts::Retried).await
+    }
+
+    /// As [`Self::reconcile`], sending each scheduler call `attempts` times at
+    /// most: [`Attempts::Once`] for a caller syncing many schedules under one
+    /// deadline.
+    ///
+    /// # Errors
+    /// As [`Self::reconcile`].
+    pub async fn reconcile_with(
+        &self,
+        held: &Schedule,
+        token: &Uuid7,
+        attempts: Attempts,
+    ) -> Result<Reconciled> {
         use afd_observability::metrics::label::scheduler::SyncOutcome;
-        let result = self.reconcile_inner(held, token).await;
+        let result = self.reconcile_inner(held, token, attempts).await;
         let outcome = match &result {
             Ok(Reconciled::Synced(_)) => SyncOutcome::Synced,
             Ok(Reconciled::Failed(_)) => SyncOutcome::Failed,
@@ -109,7 +124,12 @@ impl Schedules {
         result
     }
 
-    async fn reconcile_inner(&self, held: &Schedule, token: &Uuid7) -> Result<Reconciled> {
+    async fn reconcile_inner(
+        &self,
+        held: &Schedule,
+        token: &Uuid7,
+        attempts: Attempts,
+    ) -> Result<Reconciled> {
         // As late as the row can be read; see the module note on a lost fence.
         if !self.store.holds_fence(held, token).await? {
             log_overtaken(held);
@@ -121,14 +141,20 @@ impl Schedules {
             // and ignored here. Leaving it would keep the scheduler calling a
             // fire this daemon then drops — real traffic, real cost, no effect.
             DesiredStatus::Paused | DesiredStatus::Deleting => {
-                self.unregister(held).await.map(|()| None)
+                self.unregister(held, attempts).await.map(|()| None)
             }
             // A one-off past its moment is removed rather than registered a
             // year late; see `missed`.
-            DesiredStatus::Active if missed => self.unregister(held).await.map(|()| None),
+            DesiredStatus::Active if missed => self.unregister(held, attempts).await.map(|()| None),
             DesiredStatus::Active => self
                 .upstream
-                .upsert(&held.schedule_id, &held.cron, &held.timezone, &held.message)
+                .upsert(
+                    &held.schedule_id,
+                    &held.cron,
+                    &held.timezone,
+                    &held.message,
+                    attempts,
+                )
                 .await
                 .map(Some),
         };
@@ -181,8 +207,10 @@ impl Schedules {
     /// the row kept the placeholder its create stored. A placeholder is never
     /// registered, so removing it answers 404 — success by design — while the
     /// real registration keeps firing.
-    async fn unregister(&self, held: &Schedule) -> Result<()> {
-        self.upstream.remove(&upstream_id(&held.schedule_id)).await
+    async fn unregister(&self, held: &Schedule, attempts: Attempts) -> Result<()> {
+        self.upstream
+            .remove(&upstream_id(&held.schedule_id), attempts)
+            .await
     }
 }
 

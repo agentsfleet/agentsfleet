@@ -18,7 +18,6 @@ test-util = [
   # afd_events. Without this forward the lib test does not COMPILE, which the
   # unit lane reads as a code fault rather than as a missing feature edge.
   "afd_events/test-util",
-  "afd_fleet/test-util",
   "afd_fleet_lifecycle/test-util",
   "afd_tenant/test-util",
   "afd_vault/test-util",
@@ -30,8 +29,6 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "afd_wire/o
 
 [dependencies]
 jiff.workspace = true
-afd_webhook.workspace = true
-afd_ingress.workspace = true
 afd_crypto.workspace = true
 afd_cron.workspace = true
 afd_connector.workspace = true
@@ -48,7 +45,6 @@ afd_validate.workspace = true
 const_format.workspace = true
 garde.workspace = true
 afd_events.workspace = true
-afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_runtime.workspace = true
 afd_http.workspace = true
@@ -65,9 +61,6 @@ afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_api_wire.workspace = true
 afd_wire.workspace = true
-# The invite link is built by path segment from the dashboard base, the way
-# the connector's own dashboard URLs are, never by string formatting.
-url.workspace = true
 # The document generator, reachable only under `openapi`. Optional at every
 # member that names it, so the default resolve is unchanged.
 utoipa = { workspace = true, optional = true }

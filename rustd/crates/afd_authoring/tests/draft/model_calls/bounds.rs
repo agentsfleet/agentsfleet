@@ -41,7 +41,9 @@ async fn a_physical_completion_uses_the_context_left_after_the_assembled_input()
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn the_complete_request_including_system_instructions_is_bounded_before_dispatch() {
-    for context in [64, 2048] {
+    // Windows the system instructions alone do not fit, under the estimate the
+    // request is bounded by: it measures between about 1,460 and 1,945 tokens.
+    for context in [64, 1024] {
         let f = Fixture::create().await;
         set_context(&f, context).await;
         let attempt = Attempt::start(&f, f.access(), Source::Blank).await;

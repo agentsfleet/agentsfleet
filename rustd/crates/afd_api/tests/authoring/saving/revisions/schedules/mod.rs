@@ -1,5 +1,6 @@
 //! Recipe inheritance, conditional overlays and Restore through the served API.
 
+mod activation;
 mod fixture;
 mod refusals;
 mod restore;

@@ -12,7 +12,9 @@
 //! first is retryable and `:sync` will repair it on its own; the second is a
 //! request this daemon composed that the external scheduler will refuse again
 //! however many times it is sent, and retrying it forever would turn one bad
-//! cron expression into a permanent outbound load.
+//! cron expression into a permanent outbound load. A 429 or a 5xx is the one
+//! refusal sent again, and only a few times inline (`qstash::retry`), before it
+//! lands here.
 //!
 //! Conditional edits preserve their refusal data in this type so callers can
 //! render the current tag or state without another read that could race.

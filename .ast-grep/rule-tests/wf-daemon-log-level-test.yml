@@ -1,0 +1,25 @@
+id: wf-daemon-log-level
+valid:
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set \
+                AGENTSFLEET_LOG_LEVEL="info"
+invalid:
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set \
+                LOG_LEVEL="info"
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set AGENTSFLEET_LOG_LEVEL="info"
+          - run: |
+              LOG_LEVEL=debug ./start.sh

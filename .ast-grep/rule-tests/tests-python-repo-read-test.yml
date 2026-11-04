@@ -1,0 +1,21 @@
+id: tests-python-repo-read
+valid:
+  - |
+    text = open(tmp / "out.txt").read()
+  - |
+    data = (ROOT / "fixtures" / "a.json").read_text()
+  - |
+    SAMPLE = "open(__file__)"
+  - |
+    line = handle.read()
+invalid:
+  - |
+    doc = (ROOT / "docs" / "x.md").read_text()
+  - |
+    raw = open(Path(__file__).parent / "x.json").read()
+  - |
+    files = list(REPO_ROOT.rglob("*.py"))
+  - |
+    for entry in os.walk(os.path.join(os.path.dirname(__file__), "..")): pass
+  - |
+    schema = Path("../schema/x.sql").read_bytes()

@@ -1,0 +1,15 @@
+id: docs-removed-command
+valid:
+  - |
+    const hint = "agentsfleet secret create";
+  - |
+    // agentsfleet chat --publish x
+invalid:
+  - |
+    const hint = "agentsfleet secret add";
+  - |
+    // run agentsfleet install first
+  - |
+    const a = <p>Run agentsfleet workspace add</p>;
+  - |
+    const t = `agentsfleet fleet update ${id}`;

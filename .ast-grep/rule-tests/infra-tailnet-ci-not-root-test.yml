@@ -1,0 +1,43 @@
+id: infra-tailnet-ci-not-root
+valid:
+  - |
+    {
+    	"ssh": [
+    		{
+    			"action": "accept",
+    			"src":    ["autogroup:member"],
+    			"dst":    ["tag:worker"],
+    			"users":  ["autogroup:nonroot", "root"],
+    		},
+    		{
+    			"action": "accept",
+    			"src":    ["tag:ci"],
+    			"dst":    ["tag:worker"],
+    			"users":  ["autogroup:nonroot"],
+    		},
+    	],
+    }
+  - |
+    {
+    	"sshTests": [{"src": "tag:ci", "deny": ["root"]}],
+    }
+invalid:
+  - |
+    {
+    	"ssh": [
+    		{
+    			"action": "accept",
+    			"src":    ["autogroup:member"],
+    			"dst":    ["tag:worker"],
+    			"users":  ["autogroup:nonroot", "root"],
+    		},
+    		{
+    			"action": "accept",
+    			"src":    ["tag:ci"],
+    			"dst":    ["tag:worker"],
+    			"users":  ["autogroup:nonroot", "root"],
+    		},
+    	],
+    }
+  - |
+    {"ssh": [{"src": ["autogroup:member", "tag:ci"], "dst": ["tag:worker"], "users": ["root"]}]}

@@ -1,0 +1,9 @@
+id: docs-api-price
+valid:
+  - |
+    {"description": "Costs depend on the model."}
+  - |
+    {"summary": "$ref is a key"}
+invalid:
+  - |
+    {"description": "Costs $5 a month."}

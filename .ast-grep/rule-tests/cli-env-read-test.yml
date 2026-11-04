@@ -1,0 +1,19 @@
+id: cli-env-read
+valid:
+  - |
+    const env = io.env ?? process.env;
+  - |
+    export const run = (env = process.env) => env;
+  - |
+    const url = env.AGENTSFLEET_API_URL;
+invalid:
+  - |
+    const url = process.env.AGENTSFLEET_API_URL;
+  - |
+    const url = process.env["AGENTSFLEET_API_URL"];
+  - |
+    const url = process.env?.AGENTSFLEET_API_URL;
+  - |
+    const url = Bun.env.AGENTSFLEET_API_URL;
+  - |
+    const url = Bun.env[name];

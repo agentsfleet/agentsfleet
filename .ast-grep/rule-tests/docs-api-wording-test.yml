@@ -1,0 +1,15 @@
+id: docs-api-wording
+valid:
+  - |
+    {"summary": "List the fleets you can reach."}
+  - |
+    {"title": "Leverage the key"}
+invalid:
+  - |
+    {"summary": "Leverage the key."}
+  - |
+    {"description": "A seamless list."}
+  - |
+    {"description": "Persisted for a day."}
+  - |
+    {"description": "Lists.\nLeverage the key."}

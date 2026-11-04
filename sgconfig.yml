@@ -2,8 +2,8 @@
 # `make lint-source` runs `ast-grep test` (each rule refuses the regression it
 # was written for) and then `ast-grep scan` (the tree is clean).
 #
-# Rules that compare two files, count across the tree, run a tool or compute a
-# value stay in the Python lints under scripts/.
+# Rules that compare two files, count across the tree, run a tool or compute
+# a value are not written.
 ruleDirs:
   - .ast-grep/rules
 utilDirs:
@@ -15,3 +15,6 @@ testConfigs:
 # reports the same parse errors on `.ts` files as the TypeScript grammar does.
 languageGlobs:
   tsx: ["*.ts", "*.js"]
+  # The Tailscale policy is HuJSON: JSON with comments and trailing commas,
+  # which the Json grammar parses around.
+  json: ["*.hujson"]
