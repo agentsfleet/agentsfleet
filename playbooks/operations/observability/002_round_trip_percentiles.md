@@ -103,4 +103,5 @@ Grafana rejecting delta metrics from the collector.
 
 See
 `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` for the
-measured values, export diagnosis and missing screenshot witness.
+measured values, export diagnosis and Explore screenshot. Rendered-row
+verification remains open.
