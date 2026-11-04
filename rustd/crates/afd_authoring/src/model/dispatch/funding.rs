@@ -6,6 +6,7 @@ use crate::{
     lease::guard,
 };
 use afd_core::id::Uuid7;
+use afd_credential::provider::RegisteredModel;
 use afd_crypto::secret::SecretString;
 use sha2::{Digest as _, Sha256};
 use sqlx::{Connection as _, PgConnection};
@@ -120,16 +121,7 @@ impl Funding {
 
     fn ceiling(&self, attempt: &guard::Attempt) -> Result<i64> {
         let model = &attempt.model_snapshot;
-        let input = if model.platform_managed {
-            budget::cost(
-                model,
-                i64::try_from(self.prepared.input_tokens)
-                    .map_err(|_overflow| ErrorKind::Balance)?,
-                0,
-            )?
-        } else {
-            0
-        };
+        let input = input_hold(model, self.prepared.input_tokens)?;
         Ok(budget::bound(model)?
             .checked_add(self.spent)
             .and_then(|value| value.checked_add(input))
@@ -144,13 +136,7 @@ impl Funding {
         request: &garde::Valid<ModelCallInput>,
         key: &SecretString,
     ) -> Result<prepare::Prepared> {
-        if self.counting_key.as_ref().is_some_and(|counted| {
-            let counted = Sha256::digest(counted.expose().as_bytes());
-            let current = Sha256::digest(key.expose().as_bytes());
-            !bool::from(counted.ct_eq(&current))
-        }) {
-            return Err(ErrorKind::Fence.into());
-        }
+        same_counting_key(self.counting_key.as_ref(), key)?;
         self.snapshot.verify(connection, guarded, request).await?;
         sqlx::query(include_str!("fund.sql"))
             .bind(guarded.attempt.id.as_str())
@@ -163,6 +149,30 @@ impl Funding {
 }
 
 use std::sync::Arc;
+
+/// The hold's input term: the measured input at the model's price when the
+/// platform pays the provider, and nothing when the tenant's own key does.
+fn input_hold(model: &RegisteredModel, tokens: u64) -> Result<i64> {
+    if !model.platform_managed {
+        return Ok(0);
+    }
+    let tokens = i64::try_from(tokens).map_err(|_overflow| ErrorKind::Balance)?;
+    budget::cost(model, tokens, 0)
+}
+
+/// Refuses a send under any credential but the one the native count ran under,
+/// comparing digests in constant time. No count means nothing to match.
+fn same_counting_key(counted: Option<&SecretString>, key: &SecretString) -> Result<()> {
+    let rotated = counted.is_some_and(|counted| {
+        let counted = Sha256::digest(counted.expose().as_bytes());
+        let current = Sha256::digest(key.expose().as_bytes());
+        !bool::from(counted.ct_eq(&current))
+    });
+    if rotated {
+        return Err(ErrorKind::Fence.into());
+    }
+    Ok(())
+}
 
 async fn counting_key(
     providers: &afd_credential::provider::Providers,
@@ -182,3 +192,7 @@ async fn counting_key(
     super::provider::validate_key(prepared.inference.api, &key)?;
     Ok(Some(key))
 }
+
+#[cfg(test)]
+#[path = "funding_tests.rs"]
+mod tests;
