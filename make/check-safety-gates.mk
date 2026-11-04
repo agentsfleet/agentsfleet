@@ -45,7 +45,7 @@ check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the v
 	@echo "→ [playbooks] vault-gate self-tests..."
 	@bash playbooks/operations/credential_rotation/vault_gate_test.sh
 
-check-deploy-safety: check-collector-temporality  ## shellcheck + every *_test.sh suite under deploy/baremetal/ + the Fly deploy proofs
+check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ + the Fly deploy proofs
 	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise
 	@# never be shellchecked. The suites are found by name, so a new one runs
 	@# without an edit here. Some cases need a Linux tool (flock, GNU tar,

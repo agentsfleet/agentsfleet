@@ -101,7 +101,5 @@ Generator local-blocks enablement could not be read through
 the Grafana proxy. Fleet-wide histogram queries were separately blocked by
 Grafana rejecting delta metrics from the collector.
 
-See
-`playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` for the
-measured values, export diagnosis and Explore screenshot. Rendered-row
-verification remains open.
+The Discovery in `docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` records the measured values and export diagnosis.
+It also links the Explore screenshot in Git history. Rendered-row verification remains open.

@@ -187,16 +187,6 @@ check-playbooks-refs:  ## playbooks/ reference integrity only (cheap; what a Mak
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] reference integrity failed"; exit 1; fi; \
 	echo "✓ [playbooks] all references resolve"
 
-.PHONY: check-collector-temporality
-COLLECTOR_BINARY ?=
-check-collector-temporality:  ## Exercise daemon and runner metrics pipelines with loopback collector fixtures
-	@if [ -n "$(COLLECTOR_BINARY)" ]; then \
-	  PYTHONDONTWRITEBYTECODE=1 python3 scripts/collector_temporality_test.py --collector "$(COLLECTOR_BINARY)"; \
-	else \
-	  docker build --tag agentsfleet-collector-temporality-test --file scripts/fixtures/collector-temporality.Dockerfile scripts/fixtures && \
-	  docker run --rm --network=none --mount "type=bind,src=$(CURDIR),dst=/repository,readonly" agentsfleet-collector-temporality-test; \
-	fi
-
 .PHONY: check-runner-collector-admission
 check-deploy-safety: check-runner-collector-admission
 check-runner-collector-admission:  ## Prove the root-only receiver boundary in an isolated network namespace

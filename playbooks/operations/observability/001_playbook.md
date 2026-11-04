@@ -102,10 +102,6 @@ Six `dashboard*.json` definitions and `alerts.json` are the reproducible source
 for apply, review and drift checks. Grafana stores the applied copies. Changes
 made in its editor must be reconciled back into these assets.
 
-Diagnostic raw
-responses are separate: the M238 acceptance evidence keeps a compact receipt,
-screenshot and rejection log rather than one JSON file per empty query.
-
 ## Collector metric conversion
 
 Both Fly collectors convert delta sums and explicit histograms to cumulative
@@ -116,18 +112,6 @@ The processor retains at most 10,000 streams and expires idle state after five
 minutes. A restart or expired stream starts a new cumulative window. This state
 is in memory; the existing exporter queue is also in memory.
 
-The existing `check-deploy-safety` lane runs these proofs automatically in an
-isolated Docker fixture. For a local Collector contrib binary matching the
-deployed release, run:
-
-```bash
-make check-collector-temporality COLLECTOR_BINARY=/path/to/otelcol-contrib
-```
-
-The test uses loopback transports and the actual configured processor chain.
-It checks two delta windows, existing cumulative counters and gauges in both
-environments without using vault credentials or contacting Grafana.
-
 After deployment, read the delivery histogram in Prometheus and check the
-collector logs for metrics-ingest refusals. Local conversion tests do not prove
-that the remote backend accepted an export.
+collector logs for metrics-ingest refusals. Configuration validation does not
+prove that the remote backend accepted an export.
