@@ -55,6 +55,7 @@ views; new measurements begin when their producers are deployed.
 | `scripts/collector_temporality_test.py` | EDIT | Exercise all three real metrics pipelines |
 | `scripts/runner_collector_admission_test.py` | CREATE | Prove the nftables rule rejects a non-root sandbox identity |
 | `scripts/fixtures/` | CREATE | Isolated collector admission test image |
+| `.github/workflows/test-unit-rustd.yml` | EDIT | Indy requested `cargo clean` after a hosted-runner disk exhaustion |
 | `make/quality.mk` | EDIT | Run the new infrastructure proof automatically |
 | `deploy/baremetal/` | CREATE/EDIT | Dedicated runner collector, bounded export and host admission rules |
 | `docs/architecture/observability.md` | EDIT | Current producer ownership, collector wiring and metric contracts |
@@ -266,3 +267,9 @@ The code fixes are pushed in `783b4cef0`; the earlier checkpoint gate was
 stopped for these changes and will rerun. Consolidated duplicate evidence
 responses into one receipt while retaining all ten segment observations and
 original queue-log values. No runner host or Fly collector deployment performed.
+
+CI follow-up: the daemon-library job on `ee62c737d` failed because the hosted
+runner exhausted disk (`System.IO.IOException: No space left on device`),
+not because of a reported test assertion. Indy: "just do cargo clean".
+Add a clean-target step after cache restore in that job, preserving downloaded
+registry sources and keeping test selections and coverage thresholds intact.

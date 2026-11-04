@@ -110,6 +110,10 @@ jobs:
           workspaces: rustd
           shared-key: rustd-unit
           save-if: false
+      # Restored build artifacts can fill the runner when the dependency graph changes.
+      # Keep downloaded registry sources, then build this shard from a clean target.
+      - name: Clear restored Rust build artifacts
+        run: cargo clean --manifest-path rustd/Cargo.toml
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
