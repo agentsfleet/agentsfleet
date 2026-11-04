@@ -253,8 +253,28 @@ Neither infrastructure failure is recorded as an integration pass.
 
 Hosted run `41783236290` retained both images, manifests and raw reports in artifact `13300618106`.
 The full kernel lane passed; Git-commit p99 was 47.694296 ms for baseline and 56.361242 ms for candidate (ratio 1.1817187).
-The other seven step comparisons passed. This run does not qualify the image.
+The other seven step comparisons passed.
+
+This run does not qualify the image.
 
 Before another run, declare one 600-sample-per-command confirmation using the unchanged sampler and 1.10 limit.
 Preserve this failed 120-sample evidence alongside the confirmatory result; do not trim samples or select another attempt if the confirmation fails.
 No timing threshold, command or percentile calculation changes.
+
+## Hosted 600-sample confirmation
+
+Run `41789146887` at `692513ac3c2b8abdeefb8150ddb7d8cfbf4d3150` passed full kernel qualification, all coverage shards and the merged coverage floor.
+Its unchanged sampler measured 600 cold samples per command for each image; all eight comparisons passed the 1.10 p99 limit.
+Raw reports and the failed 120-sample attempt are preserved in `M221_002-first-use-amd64.json`.
+
+Artifact `13304575444` has ZIP digest `b0291430e71436b0bb0edfd5830578aba6db59dfab6240286e3ad772db36300a`.
+Both actual image entries were stream-hashed after download and matched their report identities and byte lengths.
+Baseline: 162,066,432 bytes, `e9ec4038e304b5cabc6baf000d760355dea24a88cad5f916647ef474928d13c2`; candidate: 136,028,160 bytes, `61571fdd560be615f77374a21c507924ab75f6659cd230bd773996835169bef3`.
+
+The reduction is 26,038,272 bytes (16.1%).
+Git-commit p99 ratio is 0.9868013; the largest ratio is Python-import at 1.0247379.
+The historical arm64 comparison remains explicitly NOT_COMPARABLE.
+
+The regular PR unit run `41789152765` failed because its hosted runner ran out of disk space, as recorded in the daemon-library job annotation.
+Only failed jobs were rerun; no source, test selection or coverage floor changed for that retry.
+Companion public documentation is [docs PR #240](https://github.com/agentsfleet/docs/pull/240); its complete `orly gate pr` passed.
