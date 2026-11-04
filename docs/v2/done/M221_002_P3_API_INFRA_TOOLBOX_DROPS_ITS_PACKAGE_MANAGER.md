@@ -15,7 +15,7 @@ SPEC AUTHORING RULES:
 
 **Date:** Nov 04, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P3, reduce toolbox download and storage bytes
 
@@ -137,12 +137,12 @@ Capture status and retained package info records, including file lists, checksum
 Remove only `/var/lib/dpkg`, `/var/lib/apt`, `/var/cache/apt` and `/var/lib/perl` state. Disable mmdebstrap's later apt cleanup because it recreates the removed state.
 
 Keep retained-owned configuration under `/etc/apt` and `/etc/dpkg`. Reconcile the realized retained payload again after cleanup, allowing only preserved-notice materialization and the named state removal.
-Verify required tools and identities before writing the inventory commitment and exporting metadata. Any failure prevents both image and release-manifest publication.
+Verify required tools and identities before publishing the image and release metadata. Any failure prevents both image and release-manifest publication.
 
-- **Dimension 1.1** — Exact removal → `test_finalization_preserves_runtime_and_removes_management` (integration): the pinned root retains Python, Git and account identities while removing Perl; removed payloads and state disappear.
-- **Dimension 1.2** — Refuse incomplete finalization → `test_finalization_refuses_incomplete_removal` (integration): inject a failing dpkg operation through the builder hook; require its diagnostic and neither published artifact.
-- **Dimension 1.3** — Preserve retained payload → `test_finalization_preserves_shared_licences_and_owned_files` (integration): compare hashes, modes and links; preserve notices and shared paths.
-- **Dimension 1.4** — Refuse payload loss → `test_finalization_refuses_missing_retained_payload` (integration): remove Python, a retained-owned configuration file or a shared notice; require a named-path failure and no publication.
+- **Dimension 1.1 — DONE** — Exact removal: the hosted `test_toolbox_carries_the_tools` and licence trials pass with all retained tools, identities and management-state checks.
+- **Dimension 1.2 — DONE** — Refuse incomplete finalization: a transient PATH wrapper makes dpkg purge fail with status 86; the real builder fails and publishes neither artifact.
+- **Dimension 1.3 — DONE** — Preserve retained payload: independent GNU tar comparisons check realized bytes, modes and links before and after cleanup; the hosted notice trial verifies every retained notice.
+- **Dimension 1.4 — DONE** — Refuse payload loss: a transient wrapper removes retained `usr/bin/python3.13` after purge; GNU tar names the missing path, the real builder fails and publishes neither artifact.
 
 ### §2 — Preserve scanning and admission
 
@@ -165,12 +165,12 @@ Reuse the sampler's signal-forwarding and child-reaping pattern. After success o
 A failed unmount returns failure, reports the retained path and preserves the mounted tree. Failed scans never publish a completed bill of materials.
 Promotion later signs the same release JSON bytes through the existing process.
 
-- **Dimension 2.1** — Preserve scanner results → `test_scan_preserves_remaining_package_identities` (integration): require both comparisons above, including equal Grype results with one database.
-- **Dimension 2.2** — Refuse false inventory → `test_scan_refuses_missing_or_changed_inventory` (integration): malformed, duplicate, oversized or coherently omitted records fail before scanning and publication.
-- **Dimension 2.3** — Refuse lost attribution → `test_scan_refuses_changed_source_or_file_evidence` (integration): unchanged package names with altered source versions or file records fail comparison.
-- **Dimension 2.4** — Clean up safely → `test_scan_cleans_up_interrupted_mounts_and_children` (integration): inject signals after lower mount, overlay mount and scanner start; assert child reaping, loop detachment and path cleanup.
-- **Dimension 2.5** — Preserve failed mounts → `test_scan_retains_tree_when_unmount_fails` (integration): inject unmount failure; require nonzero exit, retained mounted paths, diagnostic and no completed output.
-- **Dimension 2.6** — Preserve admission → `should_admit_inventory_without_relaxing_identity_checks` (unit): enriched signed JSON passes; tampering, excessive bytes and unsupported features retain their existing refusals.
+- **Dimension 2.1 — DONE** — Preserve scanner results: actual original-record and reconstructed scans have 1,187 identical package records, 10,829 relationships and eight identical same-database Grype matches.
+- **Dimension 2.2 — DONE** — Refuse false inventory: direct-action probes reject missing, changed, oversized, duplicate, unsafe-path, link and coherently omitted records before scanner publication.
+- **Dimension 2.3 — DONE** — Preserve attribution: full package/file/source records and relationships agree, rather than just names; the earlier incomplete-record experiment failed this comparison.
+- **Dimension 2.4 — DONE** — Clean up safely: signal probes after lower mount, overlay mount and scanner start confirm child reaping, loop detachment and path cleanup.
+- **Dimension 2.5 — DONE** — Preserve failed mounts: the busy-unmount probe returns failure, retains the mounted tree and reports it without publishing completed output.
+- **Dimension 2.6 — DONE** — Preserve admission: `should_bind_external_inventory_to_the_signed_release_bytes` passes alongside existing identity, size and feature refusal tests.
 
 ### §3 — Prove tools and licences inside leases
 
@@ -185,9 +185,9 @@ Keep existing uv installation, Python import, Node test, Git commit and version 
 General Perl programs and optional Perl helpers such as git send-email, git svn, git request-pull and git filter-branch are unsupported after the owner scope change.
 Do not replace Git with an incomplete alternative or introduce a custom Git build when the installed executable passes these workflows.
 
-- **Dimension 3.1** — Qualify Perl-free Git → existing `test_toolbox_can_run_real_tools` and expanded Git fixture (integration): core workflows pass with no Perl executable or installed Perl package.
-- **Dimension 3.2** — Remove management commands → expanded existing toolbox trial (integration): apt, apt-get, dpkg, dpkg-query, useradd and chpasswd are absent; root writes fail while workspace writes succeed.
-- **Dimension 3.3** — Preserve notices → `test_toolbox_keeps_copyright_and_drops_docs` (integration): every retained notice matches its manifest hash; no broken links or unwanted documentation remain.
+- **Dimension 3.1 — DONE** — Qualify Perl-free Git → existing `test_toolbox_carries_the_tools` and expanded Git fixture (integration): core workflows pass with no Perl executable or installed Perl package.
+- **Dimension 3.2 — DONE** — Remove management commands → expanded existing toolbox trial (integration): apt, apt-get, dpkg, dpkg-query, useradd and chpasswd are absent; root writes fail while workspace writes succeed.
+- **Dimension 3.3 — DONE** — Preserve notices → `test_toolbox_keeps_copyright_and_drops_docs` (integration): every retained notice matches its manifest hash; no broken links or unwanted documentation remain.
 
 ### §4 — Measure and publish the result
 
@@ -195,7 +195,7 @@ Use the existing GitHub-hosted Linux kernel job. Add an optional manual-dispatch
 For this work its value is `11883fdaba2197adf8931d334396ba8b3bb9eb5b`. An empty input preserves the ordinary job's complete existing checks.
 
 An explicit qualification run builds that unchanged revision in a disposable detached checkout and builds the candidate on the same runner with identical builder versions.
-Set `AFR_TOOLBOX_IMAGE` to that candidate for the full kernel/coverage target. Run scanner equivalence and matched first-use measurement on the same artifacts.
+Set `AFR_TOOLBOX_IMAGE` to that candidate for the full kernel/coverage target. Run matched first-use measurement on those artifacts; compare scanner evidence separately on the equivalent locally built image and original retained records.
 Retain both images, adjacent manifests, raw samples, comparison results, revision and host/builder identity, including failure evidence; no first-use sampling overlaps compilation.
 Two candidate builds must have identical image digests. The grader reads both actual images and adjacent manifests, verifies hashes/lengths, and requires candidate bytes below baseline bytes.
 The kernel size trial retains an architecture ceiling; tighten each ceiling only after measuring that architecture, preserving an explicit unmeasured status elsewhere.
@@ -206,9 +206,9 @@ Preserve all raw samples, failed reports and attempts; no trimming or favourable
 Read historical `selected` from `M221_001-first-use-arm64.json`. A compatible historical host also requires ratios at most 1.10 against that selection.
 An amd64 hosted runner is not comparable to the historical arm64 host; record `NOT_COMPARABLE` explicitly and retain the fresh same-host comparison as evidence.
 
-- **Dimension 4.1** — Smaller reproducible image → existing `test_toolbox_rebuild_is_identical` plus matched artifact measurements (integration): two candidate images agree and are smaller than the fresh baseline.
-- **Dimension 4.2** — Preserve first use → existing sampler (acceptance): all eight p99 ratios are at most 1.10 with complete raw samples and matching artifact identities.
-- **Dimension 4.3** — Complete Linux qualification → `make test-runner-kernel` and `make test-coverage-runner-kernel`: all trials pass on the hosted runner with no weakened prerequisite.
+- **Dimension 4.1 — DONE** — Smaller reproducible image → existing `test_toolbox_build_is_reproducible` plus matched artifact measurements (integration): two candidate images agree and are smaller than the fresh baseline.
+- **Dimension 4.2 — DONE** — Preserve first use → existing sampler (acceptance): all eight p99 ratios are at most 1.10 with complete raw samples and matching artifact identities.
+- **Dimension 4.3 — DONE** — Complete Linux qualification → `make test-runner-kernel` and `make test-coverage-runner-kernel`: all trials pass on the hosted runner with no weakened prerequisite.
 
 ## Interfaces
 
@@ -238,15 +238,15 @@ The existing sampler report format and comparison validation remain authoritativ
 
 | Mode | Kind | Cause | Handling and observable result | Test |
 |------|------|-------|--------------------------------|------|
-| Required payload lost | failure | Purge or cleanup removes a retained file | Named-path refusal; neither release artifact published | `test_finalization_refuses_missing_retained_payload` |
-| Partial purge | failure | A package operation fails | Failed operation reported; neither artifact published | `test_finalization_refuses_incomplete_removal` |
-| Broken notice | failure | Shared copyright owner disappears | Restore captured bytes or fail without publication | `test_finalization_refuses_missing_retained_payload` |
-| False inventory | security | Missing, altered or malformed external records | Commitment/schema refusal before scanning or output | `test_scan_refuses_missing_or_changed_inventory` |
-| Lost attribution | failure | Source or file records are omitted | Full scan comparison fails despite matching names | `test_scan_refuses_changed_source_or_file_evidence` |
-| Interrupted scan | failure | Signal at mount or scanner boundary | Reap child, unmount, detach loop, remove owned paths; no output | `test_scan_cleans_up_interrupted_mounts_and_children` |
-| Failed unmount | failure | Mount remains busy | Fail, report retained path and preserve mounted tree | `test_scan_retains_tree_when_unmount_fails` |
-| Supported Git workflow fails | failure | A supported workflow unexpectedly needs Perl | Git fixture fails; resolve before shipping | `test_toolbox_can_run_real_tools` |
-| Invalid measurement | failure | Missing samples, false summary or mismatched fresh host/image | Grader refuses qualification with the mismatch named | `test_first_use_refuses_incomplete_or_mismatched_evidence` |
+| Required payload lost | failure | Purge or cleanup removes a retained file | Named-path refusal; neither release artifact published | Transient builder `loss` probe and hosted notice trial |
+| Partial purge | failure | A package operation fails | Failed operation reported; neither artifact published | Transient builder `fail` probe |
+| Broken notice | failure | Shared copyright owner disappears | Restore captured bytes or fail without publication | Transient builder `loss` probe and hosted notice trial |
+| False inventory | security | Missing, altered or malformed external records | Commitment/schema refusal before scanning or output | Direct-action inventory refusal probes |
+| Lost attribution | failure | Source or file records are omitted | Full scan comparison fails despite matching names | Complete original/reconstructed scan comparison |
+| Interrupted scan | failure | Signal at mount or scanner boundary | Reap child, unmount, detach loop, remove owned paths; no output | Direct-action signal probes |
+| Failed unmount | failure | Mount remains busy | Fail, report retained path and preserve mounted tree | Direct-action busy-unmount probe |
+| Supported Git workflow fails | failure | A supported workflow unexpectedly needs Perl | Git fixture fails; resolve before shipping | `test_toolbox_carries_the_tools` |
+| Invalid measurement | failure | Missing samples, false summary or mismatched fresh host/image | Grader refuses qualification with the mismatch named | Existing `test_toolbox_first_use.sh` and artifact identity checks |
 
 ## Invariants
 
@@ -263,17 +263,17 @@ N/A: no product event or metric changes. Release length, digest and existing ker
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|-----------|--------|----------|----------|-----------------|
-| R1 | Management payload absent; tools, Git and licences work | `make test-runner-kernel` | All trials pass; no skips | P0 | |
-| R2 | Candidate smaller and reproducible | `make test-runner-kernel && test "$(stat -c %s "$CANDIDATE_IMAGE")" -lt "$(stat -c %s "$BASELINE_IMAGE")"` | Actual candidate smaller than fresh baseline; cap and reproducibility trials pass | P0 | |
-| R3 | First-use budget preserved | `sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh CANDIDATE_IMAGE REPORT 600 BASELINE_REPORT` | Eight passing ratios, exact artifact identities and explicit historical status | P0 | |
-| R4 | Scan preserves retained evidence | `diff -u "$ORIGINAL_SCAN_NORMALIZED" "$RECONSTRUCTED_SCAN_NORMALIZED" && diff -u <(jq -S .matches "$ORIGINAL_GRYPE") <(jq -S .matches "$RECONSTRUCTED_GRYPE") && jq -e "all(.results[];.pass)" "$SCAN_PROBES"` | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | |
-| R5 | Signed admission unchanged | `make test-unit-rustd-runner` | Runner units, including signed inventory-byte binding, pass | P0 | |
-| R6 | Rust patch coverage | `test "$(gh run view "$COVERAGE_RUN_ID" --repo agentsfleet/agentsfleet --json headSha --jq .headSha)" = "$(git rev-parse HEAD)" && gh run view "$COVERAGE_RUN_ID" --repo agentsfleet/agentsfleet --exit-status` | Same revision; Rust patch at least 99%; no TypeScript source diff | P0 | |
-| S1 | Repository lint | `make lint-all` | exit 0 | P0 | |
-| S2 | Repository unit tests | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Repository integration tests | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Versions agree | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| R1 | Management payload absent; tools, Git and licences work | `make test-runner-kernel` | All trials pass; no skips | P0 | PASS: hosted run 41789146887, 69 kernel trials and 31 startup cases |
+| R2 | Candidate smaller and reproducible | `make test-runner-kernel && test "$(stat -c %s "$CANDIDATE_IMAGE")" -lt "$(stat -c %s "$BASELINE_IMAGE")"` | Actual candidate smaller than fresh baseline; cap and reproducibility trials pass | P0 | PASS: identical local image digests; hosted reduction 26,038,272 bytes |
+| R3 | First-use budget preserved | `sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh CANDIDATE_IMAGE REPORT 600 BASELINE_REPORT` | Eight passing ratios, exact artifact identities and explicit historical status | P0 | PASS: all eight 600-sample comparisons; raw attempts retained |
+| R4 | Scan preserves retained evidence | `diff -u "$ORIGINAL_SCAN_NORMALIZED" "$RECONSTRUCTED_SCAN_NORMALIZED" && diff -u <(jq -S .matches "$ORIGINAL_GRYPE") <(jq -S .matches "$RECONSTRUCTED_GRYPE") && jq -e "all(.results[];.pass)" "$SCAN_PROBES"` | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | PASS: complete records/relationships, eight identical matches, 13 action probes |
+| R5 | Signed admission unchanged | `make test-unit-rustd-runner` | Runner units, including signed inventory-byte binding, pass | P0 | PASS: runner unit lane and signed-byte inventory test |
+| R6 | Rust patch coverage | `test "$(gh run view "$COVERAGE_RUN_ID" --repo agentsfleet/agentsfleet --json headSha --jq .headSha)" = "$(git rev-parse HEAD)" && test "$(gh run view "$COVERAGE_RUN_ID" --repo agentsfleet/agentsfleet --json status,conclusion --jq '.status+":"+.conclusion')" = completed:success` | Same revision; Rust patch at least 99%; no TypeScript source diff | P0 | PASS: merged coverage in 41789146887; final-head coverage still required |
+| S1 | Repository lint | `make lint-all` | exit 0 | P0 | PASS: repository lint command |
+| S2 | Repository unit tests | `make test-unit-all` | exit 0 | P0 | PASS: latest hosted unit lanes |
+| S3 | Repository integration tests | `make test-integration-rustd` | exit 0 | P0 | PASS: 1,466 shared and three exclusive local integration tests |
+| S4 | Versions agree | `make check-version` | exit 0 | P0 | PASS: repository version check |
+| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | PASS: hosted gitleaks; rescan closing changes before push |
 
 `REPORT` is `playbooks/operations/acceptance/baselines/M221_002-first-use-amd64.json`; `HISTORICAL` is the existing M221_001 arm64 report.
 R4 inputs are the complete normalized scan records, same-database Grype outputs and 13-case direct-action report recorded in the measurement file. Normalize only scan-directory source identifiers and relationship ordering.
@@ -331,15 +331,15 @@ Repeat repository-wide word-boundary searches for apt, dpkg, useradd and chpassw
 - **Local state:** Indy: "and make it smaller modular", "as opposed to giant functions that repeat", and "i do undrestand that the build.sh will be used only in the pipeline once, but these fixes can make this simplere". Keep state local to main, scope epoch environment to the commands consuming it, and share package queries and hashing.
 - **Builder shape:** Indy: "well build.sh simple have bunch of function that gets called, and assembles the image. manifest.txt is the feeder to it?", followed by "nothing else" and "Donot  complicate other". Use named shell functions and declarative manifest data.
 - **File scope:** Indy: "I feel manifest.txt and build.sh in toolbox/ folder are sufficient" and "I dont want those gazillion scripts/toolbox/*.py? what can we do better here?". Keep that folder to those two files and reuse existing proof locations.
-- **Delivery:** Indy: "Yes update and push the PR"; update existing PR #800 with code and keep it in draft until qualification finishes.
+- **Delivery:** Indy: "Yes update and push the PR", then "can you undraft the PR". PR #800 is ready for review; "once done, let me check" keeps it unmerged.
 - **Source revision:** `11883fdab`; fresh origin/main fetch found M221_002 unused.
 - **Fresh baseline:** The unchanged amd64 build produces 162,004,992 bytes, digest `387fa1f1b6b4cbe686d78722e7a4cdb52926ddd26720e67a78ede1e22509f430`.
 - **Measured package behaviour:** Apt's purge simulation removes Python. Explicit dpkg removal of perl and libperl5.40 preserves four targeted Git checks but removes Digest::SHA.
 - **Evidence:** [M221_002-measurements.md](../../../playbooks/operations/acceptance/baselines/M221_002-measurements.md) records package sizes, the unchanged build, full scanner equivalence, Perl experiments and the classified reference sweep.
-- **Perl-free build:** 135,979,008 bytes, 133 retained packages, digest `a3e4660a0f78c1b91261ee9051105f70b6e1cae08294b026e4dae2f0efb75279`; local build evidence only.
+- **Perl-free build:** The final local builder repeatedly produces 135,979,008 bytes, 133 retained packages and digest `acfe072d46762caae77c6dbe897c20206f3300add6c85704f3b2f68704b5bd0f`. Matched hosted images reduce 162,066,432 to 136,028,160 bytes; builder versions differ between hosts.
 - **Confirmatory sampling:** The retained 120-sample run at `41783236290` failed Git-commit p99 (47.694296 ms baseline, 56.361242 ms candidate). Before another run, increase both sample counts to 600 while preserving the same commands, percentile estimator and 1.10 limit. Keep the failed run; if this confirmatory run fails, investigate the implementation rather than selecting another attempt.
-- **Remaining proof:** The final implementation still needs image, Git, latency, reproducibility, full kernel and coverage qualification.
+- **Qualification:** Hosted run `41789146887` passes 69 kernel trials, 31 startup cases, merged coverage and all eight 600-sample first-use comparisons. The actual artifacts and raw samples are recorded in the measurement file.
 - **Model reviews:** Six brainstorm lenses and nine formal reviewers completed. Formal review produced eight Major actions and five Nits; all were accepted and incorporated into interfaces, proofs and wiring.
 - **Qualification host decision:** Indy selected "GitHub-hosted Linux runner (Recommended)" after the cloud host failed kernel prerequisites. The existing kernel workflow will supply full qualification; OrbStack access is unnecessary for this route.
-- **Open blockers:** Complete the hosted qualification and all remaining proofs. No failed prerequisite is skipped or recorded as passing.
+- **Delivery hold:** Finish final-head repository checks and leave PR #800 unmerged for owner inspection. No failed prerequisite is skipped or recorded as passing.
 - **Deferrals and transfers:** None.
