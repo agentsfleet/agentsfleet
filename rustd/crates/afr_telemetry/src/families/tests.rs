@@ -34,12 +34,12 @@ use crate::record::Recorder;
 /// The instrumentation scope this suite records under.
 const SCOPE: &str = "a-test";
 
-/// One family as an export carried it: its name, and the label keys its data
-/// points were written with.
-type Exported = (String, BTreeSet<String>);
+/// One family as an export carried it, with its actual attribute pairs.
+type Attributes = BTreeSet<(String, String)>;
+type Exported = (String, Attributes);
 
 /// An exporter that hands back every family an export carried, with the label
-/// keys its producer actually wrote.
+/// attributes its producer actually wrote.
 #[derive(Debug)]
 struct Names(Sender<Exported>);
 
@@ -47,7 +47,9 @@ impl PushMetricExporter for Names {
     fn export(&self, metrics: &ResourceMetrics) -> impl Future<Output = OTelSdkResult> + Send {
         for scope in metrics.scope_metrics() {
             for metric in scope.metrics() {
-                let _unread = self.0.send((metric.name().to_owned(), keys_of(metric)));
+                let _unread = self
+                    .0
+                    .send((metric.name().to_owned(), attributes_of(metric)));
             }
         }
         std::future::ready(Ok(()))
@@ -66,17 +68,25 @@ impl PushMetricExporter for Names {
     }
 }
 
-/// The label keys `metric`'s data points carry. The runner's families are
+/// The label attributes `metric`'s data points carry. The runner's families are
 /// `f64` histograms and `u64` counters; any other shape carries none here.
-fn keys_of(metric: &Metric) -> BTreeSet<String> {
-    let keys: Vec<String> = match metric.data() {
+fn attributes_of(metric: &Metric) -> Attributes {
+    let keys: Vec<(String, String)> = match metric.data() {
         AggregatedMetrics::F64(MetricData::Histogram(histogram)) => histogram
             .data_points()
-            .flat_map(|point| point.attributes().map(|pair| pair.key.to_string()))
+            .flat_map(|point| {
+                point
+                    .attributes()
+                    .map(|pair| (pair.key.to_string(), pair.value.to_string()))
+            })
             .collect(),
         AggregatedMetrics::U64(MetricData::Sum(sum)) => sum
             .data_points()
-            .flat_map(|point| point.attributes().map(|pair| pair.key.to_string()))
+            .flat_map(|point| {
+                point
+                    .attributes()
+                    .map(|pair| (pair.key.to_string(), pair.value.to_string()))
+            })
             .collect(),
         _other_shape => Vec::new(),
     };
@@ -197,21 +207,45 @@ fn test_runner_ceilings_admit_their_label_product() {
 fn every_producer_writes_the_keys_its_census_row_declares() {
     let (instruments, provider, exported) = instruments();
     let families = Families::claim(&instruments).expect("the census is claimed");
+    record_every_family(&families);
+    provider.force_flush().expect("the reader collects");
+
+    let exported: BTreeMap<String, Attributes> = exported.try_iter().collect();
+    assert_serving_provider(&exported);
+    let registry = registry().expect("the runner census reads");
+    for family in registry.families() {
+        let name = family.name.as_ref();
+        let written = exported
+            .get(name)
+            .unwrap_or_else(|| unreachable!("`{name}` was never exported: {exported:?}"));
+        let declared: BTreeSet<String> = registry
+            .family(name)
+            .expect("declared")
+            .labels
+            .iter()
+            .map(|key| key.as_ref().to_owned())
+            .collect();
+        let keys: BTreeSet<String> = written.iter().map(|(key, _)| key.clone()).collect();
+        assert_eq!(keys, declared, "`{name}` writes the keys its row declares");
+    }
+}
+
+fn record_every_family(families: &Families) {
     let elapsed = Duration::from_millis(5);
 
     families.memory_source(crate::labels::MemorySource::Inline);
     families.memory_source(crate::labels::MemorySource::Fallback);
-    families.turn(Provider::of("anthropic"), TurnOutcome::Completed, elapsed);
+    families.turn(Provider::of("fireworks"), TurnOutcome::Completed, elapsed);
     families.model_call(
-        "claude-fixture",
-        Provider::of("anthropic"),
+        "accounts/fireworks/models/minimax-m3p1-flash",
+        Provider::of("fireworks"),
         crate::labels::CallOutcome::Completed,
         elapsed,
         Some(elapsed),
     );
     families.model_tokens(
-        "claude-fixture",
-        Provider::of("anthropic"),
+        "accounts/fireworks/models/minimax-m3p1-flash",
+        Provider::of("fireworks"),
         afd_wire::usage::ObservedTokens {
             input: Some(10),
             output: Some(3),
@@ -231,25 +265,32 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
     families.sandbox_hold(SandboxHold::Parked);
     families.spans_suppressed(2);
     families.export_discarded(Signal::Traces, DiscardReason::ExportRejected, 4);
-    provider.force_flush().expect("the reader collects");
+}
 
-    let exported: BTreeMap<String, BTreeSet<String>> = exported.try_iter().collect();
-    let registry = registry().expect("the runner census reads");
-    for family in registry.families() {
-        let name = family.name.as_ref();
-        let written = exported
-            .get(name)
-            .unwrap_or_else(|| unreachable!("`{name}` was never exported: {exported:?}"));
-        let declared: BTreeSet<String> = registry
-            .family(name)
-            .expect("declared")
-            .labels
-            .iter()
-            .map(|key| key.as_ref().to_owned())
-            .collect();
-        assert_eq!(
-            written, &declared,
-            "`{name}` writes the keys its row declares"
+fn assert_serving_provider(exported: &BTreeMap<String, Attributes>) {
+    for (family, key) in [
+        (
+            "agentsfleet_runner_provider_turn_duration_seconds",
+            "provider",
+        ),
+        (
+            "agentsfleet_runner_model_call_duration_seconds",
+            "gen_ai.provider.name",
+        ),
+        (
+            "agentsfleet_runner_model_first_token_duration_seconds",
+            "gen_ai.provider.name",
+        ),
+        (
+            "agentsfleet_runner_model_tokens_total",
+            "gen_ai.provider.name",
+        ),
+    ] {
+        assert!(
+            exported
+                .get(family)
+                .is_some_and(|attributes| attributes.contains(&(key.into(), "fireworks".into()))),
+            "{family} must retain the actual serving provider"
         );
     }
 }

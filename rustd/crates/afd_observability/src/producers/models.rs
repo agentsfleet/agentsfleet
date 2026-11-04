@@ -21,7 +21,7 @@ const MAX_AGE: Duration = Duration::from_secs(120);
 pub struct ModelInfo {
     /// Vendor model identifier, never a row UUID or display label.
     pub model: String,
-    /// Canonical provider; unknown providers are omitted from exported attributes.
+    /// Public provider identity; private names are omitted from exported attributes.
     pub provider: String,
     /// The catalogue's verified context limit.
     pub context_tokens: u64,

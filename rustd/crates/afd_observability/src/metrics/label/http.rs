@@ -54,7 +54,7 @@ closed_set! {
 closed_set! {
     /// Why an attribute was omitted rather than written.
     OmissionReason {
-        /// The configured provider maps to no well-known name.
+        /// The configured provider is outside the compiled public naming registry.
         UnmappedProvider => "unmapped_provider",
         /// Attributing this pair would push the window past its series budget.
         BudgetExhausted => "budget_exhausted",

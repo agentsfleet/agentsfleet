@@ -29,6 +29,14 @@ fn should_export_calls_and_explicit_catalogue_values_without_stale_models() {
         captured.gauge("agentsfleet_model_catalog_snapshot_age_seconds", &[]),
         None
     );
+    assert_call_outcomes(&captured);
+    assert_token_observations(&captured);
+    assert_hosted_provider(&captured);
+    assert_catalogue_replacement(&captured);
+    assert_catalogue_withdrawal(&captured);
+}
+
+fn assert_call_outcomes(captured: &Capture) {
     for outcome in CallOutcome::ALL {
         let labels = [
             ("gen_ai.request.model", "gpt-fixture"),
@@ -51,7 +59,36 @@ fn should_export_calls_and_explicit_catalogue_values_without_stale_models() {
             u64::from(*outcome == CallOutcome::Completed)
         );
     }
-    assert_token_observations(&captured);
+}
+
+fn assert_hosted_provider(captured: &Capture) {
+    let served_model = "accounts/fireworks/models/minimax-m3p1-flash";
+    let served_labels = [
+        ("gen_ai.request.model", served_model),
+        ("gen_ai.provider.name", "fireworks"),
+        ("outcome", "completed"),
+    ];
+    models::call(
+        served_model,
+        "Fireworks",
+        CallOutcome::Completed,
+        Duration::from_millis(20),
+        Some(Duration::from_millis(5)),
+    );
+    assert_eq!(
+        captured.histogram_count("agentsfleet_model_call_duration_seconds", &served_labels),
+        1
+    );
+    assert_eq!(
+        captured.histogram_count(
+            "agentsfleet_model_first_token_duration_seconds",
+            &served_labels
+        ),
+        1
+    );
+}
+
+fn assert_catalogue_replacement(captured: &Capture) {
     let labels = [
         ("gen_ai.request.model", "gpt-fixture"),
         ("gen_ai.provider.name", "openai"),
@@ -81,6 +118,9 @@ fn should_export_calls_and_explicit_catalogue_values_without_stale_models() {
         captured.gauge("agentsfleet_model_route_capability", &labels),
         None
     );
+}
+
+fn assert_catalogue_withdrawal(captured: &Capture) {
     let many = (0..=models::MAX_MODELS)
         .map(|n| model(&format!("model-{n}")))
         .collect();
@@ -119,46 +159,31 @@ fn assert_token_observations(captured: &Capture) {
         "openai",
         afd_wire::usage::ObservedTokens::default(),
     );
-    assert_eq!(
-        captured.sum(
-            "agentsfleet_model_tokens_total",
-            &[
-                ("gen_ai.request.model", "gpt-fixture"),
-                ("gen_ai.provider.name", "openai"),
-                ("gen_ai.token.type", "input")
-            ]
-        ),
-        10
-    );
-    assert_eq!(
-        captured.sum(
-            "agentsfleet_model_tokens_total",
-            &[
-                ("gen_ai.request.model", "gpt-fixture"),
-                ("gen_ai.provider.name", "openai"),
-                ("gen_ai.token.type", "output")
-            ]
-        ),
-        3
-    );
-    assert_eq!(
-        captured.sum(
+    let base = [
+        ("gen_ai.request.model", "gpt-fixture"),
+        ("gen_ai.provider.name", "openai"),
+    ];
+    let [model_label, provider_label] = base;
+    let input = [model_label, provider_label, ("gen_ai.token.type", "input")];
+    let output = [model_label, provider_label, ("gen_ai.token.type", "output")];
+    for (family, labels, expected) in [
+        ("agentsfleet_model_tokens_total", input.as_slice(), 10),
+        ("agentsfleet_model_tokens_total", output.as_slice(), 3),
+        (
             "agentsfleet_model_cache_read_tokens_total",
-            &[
-                ("gen_ai.request.model", "gpt-fixture"),
-                ("gen_ai.provider.name", "openai")
-            ]
+            base.as_slice(),
+            4,
         ),
-        4
-    );
-    assert_eq!(
-        captured.sum(
+        (
             "agentsfleet_model_cache_write_tokens_total",
-            &[
-                ("gen_ai.request.model", "gpt-fixture"),
-                ("gen_ai.provider.name", "openai")
-            ]
+            base.as_slice(),
+            2,
         ),
-        2
-    );
+    ] {
+        assert_eq!(
+            captured.sum(family, labels),
+            expected,
+            "{family} {labels:?}"
+        );
+    }
 }

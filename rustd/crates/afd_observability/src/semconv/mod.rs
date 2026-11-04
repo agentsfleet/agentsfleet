@@ -79,10 +79,9 @@ pub const ATTR_OPERATION_NAME: &str = "gen_ai.operation.name";
 /// nothing here carries a second identifier for the same fact.
 pub const ATTR_AGENT_ID: &str = "gen_ai.agent.id";
 
-/// The model vendor, in OpenTelemetry's own well-known spelling.
+/// The serving provider, using its standard spelling or a compiled public identity.
 ///
-/// Never a configured spelling — see [`provider::normalize`] for why a vendor
-/// this daemon cannot map is omitted rather than exported as though standard.
+/// [`provider::normalize`] rejects arbitrary names and private endpoint URLs.
 pub const ATTR_PROVIDER_NAME: &str = "gen_ai.provider.name";
 
 /// The model a run was issued against, exactly as the catalogue spells it.

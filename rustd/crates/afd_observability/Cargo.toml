@@ -40,6 +40,8 @@ dashmap.workspace = true
 # names the API directly rather than reaching it through the SDK's re-exports.
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
+# Public provider identities; wire format does not determine provider attribution.
+rig-core.workspace = true
 # The OFFICIAL PostHog Rust client. `default-features = false` drops its error
 # tracking, which is `tracing`'s job here and would otherwise ship a second
 # stack-trace path; `async-client` is the batching, background-flushing

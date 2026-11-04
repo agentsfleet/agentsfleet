@@ -302,10 +302,12 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   failed memory pushes, tool call duration (by tool and outcome), tenant
   processes killed for memory inside a sandbox, and sandboxes held between a
   fleet's leases. A
-  provider label is a vendor name from rig's bounded provider list, or `_other`
-  for any other configured name (`afr_telemetry/src/labels/mod.rs`).
+  provider label uses the shared, bounded public naming registry: compiled
+  model-catalogue providers, SDK providers and OpenTelemetry names, with aliases
+  deduplicated. Other configured names use `_other`
+  (`afd_observability/src/semconv/provider.rs`, `afr_telemetry/src/labels/mod.rs`).
   These labels describe telemetry only; saved model settings choose the route.
-  The `invoke_agent` span keeps the well-known `gen_ai.provider.name`. A tool
+  The `invoke_agent` span uses the same canonical `gen_ai.provider.name`. A tool
   label is a published catalog name or `_other`; every outcome and reason is a
   closed enum.
 - **Its own losses:** spans suppressed by the budget, and
@@ -447,8 +449,9 @@ matches: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id` (the fleet),
 and `gen_ai.usage.output_tokens`. Product-namespaced keys carry the rest:
 `agentsfleet.execution.posture` and the correlation identifiers
 `agentsfleet.event.id`, `agentsfleet.workspace.id` and
-`agentsfleet.tenant.id`. A provider with no well-known name omits its key and
-counts the omission. Correlation identity is allowed on a span because it is
+`agentsfleet.tenant.id`. Public providers without a well-known spelling keep their own canonical
+name, as the pinned OpenTelemetry reference permits. A private identifier
+outside the compiled registry omits its key and counts the omission. Correlation identity is allowed on a span because it is
 not allowed on a metric: a span is a bounded per-event record, and a metric
 label creates a series that outlives the process. Prompt and response content
 never becomes a span attribute.
@@ -707,7 +710,7 @@ Labels are bounded at the source:
 | `gen_ai.token.type` | `input`, `output` | closed set; no overflow value |
 | `agentsfleet.execution.posture` | `platform`, `self_managed` | closed set; no overflow value |
 | `agentsfleet.billing.charge.type` | `receive`, `renewal`, `settle` | closed set; no overflow value |
-| `gen_ai.provider.name` | exact OpenTelemetry well-known names only | unmapped provider omits the attribute and counts the omission |
+| `gen_ai.provider.name` | canonical standard names plus public provider identities from the compiled catalogue and SDK; aliases share one emitted value | private/unrecognized names omit the attribute and count the omission |
 | `gen_ai.request.model` | the saved runtime model's catalogue identity carried by the lease; catalogue updates can add identities, and the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
 | `surface` (library) | `tenant_models`, `global_models`, `fleet_summary`, `workspace_entries` | closed enum; no overflow value — a fifth surface is a code change, not a label |
 | `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
@@ -728,11 +731,19 @@ ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
 only bound is the SDK's default of 2,000 series per stream: past it, new
 `(model, …)` combinations are folded into one `otel.metric.overflow` series, and
 their spend is no longer told apart in the export. Exact per-model cost stays a
-Postgres query against `billing.usage_lines`. A provider with no
-well-known name **omits the attribute and keeps the measurement** on the
+Postgres query against `billing.usage_lines`. A provider outside the compiled public
+naming registry **omits the attribute and keeps the measurement** on the
 `fleet.delivery` span, and the omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`
-(`rustd/crates/afd_observability/src/delivery/mod.rs`). The `budget_exhausted` and
+(`rustd/crates/afd_observability/src/delivery/mod.rs`). The pinned
+[OpenTelemetry provider reference](https://github.com/open-telemetry/semantic-conventions-genai/blob/2e994c6d59a93bb4fc1752c5378eedb9b8e14d6b/docs/registry/attributes/gen-ai.md#gen-ai-provider-name)
+permits custom values when no well-known value applies. The shared registry
+therefore retains Fireworks, OpenRouter, MiniMax and other compiled public
+providers. A Fireworks-hosted MiniMax model keeps Fireworks as its serving
+provider and the exact MiniMax model identifier. No model-name or protocol
+heuristic chooses a provider. Historical `_other` or omitted attributes cannot
+be reconstructed; corrected attribution starts after deploying the new binaries.
+The `budget_exhausted` and
 `value_too_long` reasons are declared and have no producer yet.
 
 All three OTLP signals share one resource (`service.name`,
