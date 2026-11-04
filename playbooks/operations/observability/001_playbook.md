@@ -4,7 +4,7 @@
 **Applies to:** development and production independently
 
 This runbook installs one environment-scoped folder, one runtime dashboard,
-and five Grafana-managed alerts. It never guesses a Grafana Cloud namespace or
+and four Grafana-managed alerts. It never guesses a Grafana Cloud namespace or
 Prometheus datasource.
 
 **Read before applying to production.** The two environments resolve to the
@@ -73,7 +73,7 @@ only `grafana`.
 
 - The environment folder and `agentsfleet-runtime-<env>` dashboard exist.
 - Every panel uses the pinned Prometheus datasource.
-- All five alert rules match the repository expressions.
+- All four alert rules match the repository expressions.
 - `agentsfleet_api_in_flight_requests` returns at least one series.
 - The Grafana token never appears in process arguments or logs.
 - The four Service Level Indicator panels render: admission availability,
