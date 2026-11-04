@@ -203,3 +203,13 @@ check-playbooks-refs:  ## playbooks/ reference integrity only (cheap; what a Mak
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] reference integrity failed"; exit 1; fi; \
 	echo "✓ [playbooks] all references resolve"
+
+.PHONY: check-collector-temporality
+COLLECTOR_BINARY ?=
+check-collector-temporality:  ## Exercise both metrics pipelines with loopback collector fixtures
+	@if [ -n "$(COLLECTOR_BINARY)" ]; then \
+	  PYTHONDONTWRITEBYTECODE=1 python3 scripts/collector_temporality_test.py --collector "$(COLLECTOR_BINARY)"; \
+	else \
+	  docker build --tag agentsfleet-collector-temporality-test --file scripts/fixtures/collector-temporality.Dockerfile scripts/fixtures && \
+	  docker run --rm --network=none --mount "type=bind,src=$(CURDIR),dst=/repository,readonly" agentsfleet-collector-temporality-test; \
+	fi

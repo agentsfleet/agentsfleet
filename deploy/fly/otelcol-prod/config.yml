@@ -1,13 +1,8 @@
-# The collector hop. It receives what the daemon already exports and forwards
-# it unchanged to the same Grafana Cloud endpoint the daemon used to post to
-# directly.
-#
-# NOTHING IN THIS FILE MAY RENAME, DROP OR DECORATE A SERIES. Continuity across
-# the binary swap is graded through this path, so a collector that adds an
-# attribute or rewrites a family makes a dashboard gap indistinguishable from a
-# daemon regression — which is the exact attribution loss standing the
-# collectors up early exists to prevent. No attributes processor, no filter, no
-# transform: receive, batch, forward.
+# The authenticated collector hop forwards traces and logs without transformation.
+# Grafana metrics ingest rejects delta sums and explicit histograms, so metrics
+# become cumulative here. Names, resource attributes and metric labels stay intact.
+# The processor holds bounded in-memory state; a restart starts a new cumulative
+# window. The existing queue remains in memory and does not make delivery durable.
 
 receivers:
   otlp:
@@ -26,6 +21,11 @@ receivers:
           authenticator: basicauth/ingest
 
 processors:
+  # Grafana metrics ingest requires cumulative sums and explicit histograms.
+  # Keep delta-window producers unchanged and convert only at this hop.
+  delta_to_cumulative:
+    max_stale: 5m
+    max_streams: 10000
   # memory_limiter must be FIRST in every pipeline: it sheds at admission, and
   # a limiter placed after the batcher is a limiter that has already let the
   # batch be built. Sized against the 512mb in fly.toml.
@@ -95,7 +95,7 @@ service:
       exporters: [otlphttp/grafana]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, delta_to_cumulative, batch]
       exporters: [otlphttp/grafana]
     logs:
       receivers: [otlp]

@@ -1,6 +1,6 @@
 # M238_002: Grafana accepts the daemon's delta metrics
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1
 **Branch:** fix/m238-delta-metrics-export
 **Baseline revision:** 11883fdaba2197adf8931d334396ba8b3bb9eb5b
@@ -14,7 +14,7 @@ collector boundary, keeping producer names, labels and measurements intact.
 
 ## PR Intent & comprehension handshake
 
-Add the existing OpenTelemetry Collector `deltatocumulative` processor to both
+Add the existing OpenTelemetry Collector `delta_to_cumulative` processor to both
 environments' metrics pipelines. Assumptions: conversion happens after memory
 admission and before batching; traces and logs retain their current pipelines;
 the daemon keeps its delta producers. No live deployment or merge is requested.
@@ -27,6 +27,8 @@ the daemon keeps its delta producers. No live deployment or merge is requested.
 | `deploy/fly/otelcol-prod/config.yml` | EDIT | Apply the same conversion boundary |
 | `scripts/collector_temporality_test.py` | CREATE | Exercise the declared pipelines with real collector input/output |
 | `make/quality.mk` | EDIT | Provide the focused collector verification command |
+| `make/check-safety-gates.mk` | EDIT | Run conversion proofs in the existing deployment-safety lane |
+| `scripts/fixtures/collector-temporality.Dockerfile` | CREATE | Supply a portable isolated test runtime |
 | `playbooks/operations/observability/001_playbook.md` | EDIT | Explain conversion, state bounds and verification |
 
 ## Applicable Rules
@@ -40,16 +42,16 @@ collector test. Full verification receipts belong in pull-request Session Notes.
 
 ## Prior-Art / Reference Implementations
 
-Use contrib's existing `deltatocumulative` processor, verified with the running
+Use contrib's existing `delta_to_cumulative` processor, verified with the running
 collector release 0.164.0. No conversion logic is implemented in the daemon.
 
 ## Sections
 
 ### §1 — Convert at the existing collector hop
 
-- **Dimension 1.1** — Delta histogram and monotonic sum windows accumulate from 2 to 5, with original labels and names preserved → `test_delta_windows_accumulate` (integration).
-- **Dimension 1.2** — An already cumulative counter stays 7 then 9; a gauge stays 11 then 13 → `test_cumulative_and_gauge_are_unchanged` (integration).
-- **Dimension 1.3** — The same proofs hold for development and production configurations → both tests execute both declared pipelines.
+- **Dimension 1.1** — DONE — Delta histogram and monotonic sum windows accumulate from 2 to 5, with original labels and names preserved → `test_delta_windows_accumulate` (integration).
+- **Dimension 1.2** — DONE — An already cumulative counter stays 7 then 9; a gauge stays 11 then 13 → `test_cumulative_and_gauge_are_unchanged` (integration).
+- **Dimension 1.3** — DONE — The same proofs hold for development and production configurations → both tests execute both declared pipelines.
 
 ## Interfaces
 
@@ -85,8 +87,8 @@ names, attributes, counts, sums, buckets, cumulative readings and gauges.
 
 | ID | Criterion | Verify | Expected | Priority | Graded |
 |---|---|---|---|---|---|
-| R1 | Both collector configurations convert delta windows and preserve cumulative metrics | `make check-collector-temporality COLLECTOR_BINARY=/tmp/otelcol-contrib-0.164.0` | 2 tests pass across both environments | P0 | |
-| R2 | Deployment configurations remain valid | Collector `validate` with fixture credentials | exit 0 for both | P0 | |
+| R1 | Both collector configurations convert delta windows and preserve cumulative metrics | `make check-collector-temporality COLLECTOR_BINARY=/tmp/otelcol-contrib-0.164.0` | 4 tests pass across both environments | P0 | ✅ `Ran 4 tests; OK` |
+| R2 | Deployment configurations remain valid | `make check-collector-temporality COLLECTOR_BINARY=/tmp/otelcol-contrib-0.164.0` | exit 0 for both | P0 | ✅ both `validate` invocations exit 0 |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -114,6 +116,12 @@ semantics. The existing contrib processor handles sums and histograms together.
 
 ## Discovery
 
+Regression proof: the test against `origin/main` collector configurations fails four delta-window assertions; the corrected configurations pass all three tests across both environments. Existing cumulative values and gauges are preserved, and malformed input returns HTTP 400 / OpenTelemetry error code 3 without reaching the exporter. Both full collector configurations pass Collector 0.164.0 `validate` with fixture credentials.
+
 Indy approved deployment-config edits on Nov 04, 2026: "2. Yes go". The original
 request requires a real defect to receive its own fix pull request through
 `orly-build` and `orly-ship`. Merging remains Indy's.
+
+The canonical `delta_to_cumulative` name is used; Collector 0.164.0 warns that the older `deltatocumulative` alias is deprecated. The final parent-config run reports 4 tests with four failing delta-window subtests; the corrected configuration reports 4 tests passing.
+
+The existing deployment-safety lane invokes the collector test automatically. Its default Docker fixture has no network access at runtime; a local collector binary can be selected for development. The test uses the collector itself to parse YAML, without another parser dependency.
