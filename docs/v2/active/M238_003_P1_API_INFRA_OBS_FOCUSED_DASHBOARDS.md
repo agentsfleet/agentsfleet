@@ -322,3 +322,16 @@ Keep sampling limits, overlapping chat segments, metadata expiry and missing-dat
 meaning in the tooltips. Queries, reducers, units and alert conditions retain
 their measured meaning. Asset checks and live drift verification cover the
 presentation as well as the linked dashboard and panel for each alert.
+
+The approved naming update is live on dev: 57 panels across six dashboards,
+with title and description drift verification passing and six native renders
+returning HTTP 200. Fourteen asset cases and three drift suites pass. Review
+corrected two tooltips: delivery stages include completion, and runner cleanup
+includes tool-record posts, fallback memory capture and pending usage flush.
+
+The exporter lifecycle witness passes against real datastores and a collector:
+live memory, catalogue and schedule snapshots arrive, shutdown joins, and a
+queue failure after the database opens flushes its buffered pool record before
+boot returns. The isolated model-seed regression reproduces the old primary-key
+collision and passes with fresh proposed keys. These are focused checks;
+repository integration and exact-revision coverage remain pending.
