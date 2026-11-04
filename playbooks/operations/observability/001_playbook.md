@@ -104,9 +104,13 @@ made in its editor must be reconciled back into these assets.
 
 ## Collector metric conversion
 
-Both Fly collectors convert delta sums and explicit histograms to cumulative
-metrics before Grafana ingest. The metrics pipeline runs memory admission,
-`delta_to_cumulative`, then batching. Traces and logs retain their pipelines.
+Daemon counters and histograms accumulate in the source process before reaching the shared Fly collector endpoint.
+Each collector forwards these cumulative totals unchanged.
+Changing collectors therefore cannot split one daemon's running total.
+
+The metrics pipeline retains memory admission, `delta_to_cumulative`, then batching for older producers during rollout.
+The runner's isolated host collector still converts its delta histograms.
+Traces and logs retain their pipelines.
 
 The processor retains at most 10,000 streams and expires idle state after five
 minutes. A restart or expired stream starts a new cumulative window. This state

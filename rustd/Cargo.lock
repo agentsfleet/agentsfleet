@@ -942,10 +942,12 @@ version = "0.73.0"
 dependencies = [
  "afd_core",
  "afd_observability",
+ "axum",
  "http",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",

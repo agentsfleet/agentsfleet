@@ -1,6 +1,6 @@
 # M238_003: Focused live dashboards
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1
 **Branch:** chore/m238-dev-round-trip
 **Pull request:** #801
@@ -45,6 +45,8 @@ views; new measurements begin when their producers are deployed.
 | `rustd/crates/afr_providers/` | EDIT | Attribute actual runner model calls |
 | `rustd/crates/afd_wire/` | EDIT | Internal optional token observations, without serialized API changes |
 | `rustd/crates/afd_observability/` | EDIT | Typed instruments, observations, metadata and export proofs |
+| `rustd/crates/afd_otlp/`, `rustd/Cargo.lock` | EDIT | Native cumulative wire regression and test-only HTTP receiver dependencies |
+| `deploy/fly/otelcol-{dev,prod}/config.yml` | EDIT | Explain source-owned totals and conversion for older producers |
 | `rustd/crates/afd_db/` | EDIT | Actual pool occupancy, capacity, acquisition wait and outcomes |
 | `rustd/crates/afd_cron/` | EDIT | Accepted/replayed fires, dispatch lag and failed/stale targets |
 | `rustd/crates/afd_inference/` | EDIT | First-token and terminal timing for individual provider attempts |
@@ -433,11 +435,26 @@ The main branch was not merged; #801 remains the single open implementation PR.
 
 The merge waits for both review findings to be fixed and verified.
 
-- **Dimension 5.1** — IN_PROGRESS — Daemon counters and histograms accumulate in the source process before the shared collector endpoint.
-  Real exported frames keep cumulative counts and one start time when requests reach different collector receivers.
-- **Dimension 5.2** — IN_PROGRESS — Dashboard drift checks compare panel display options, including percentile reducer settings.
+- **Dimension 5.1** — DONE — Daemon counters and histograms accumulate in the source process before the shared collector endpoint.
+  Real exported frames keep cumulative counts and one start time across three collection windows, before any shared collector.
+- **Dimension 5.2** — DONE — Dashboard drift checks compare panel display options, including percentile reducer settings.
   Matching resources pass; changing reducer values or calculations fails.
 
 Additional review scope: `docs/metrics.census.tsv`, the OTLP pipeline documentation and native-export regression in `rustd/crates/afd_otlp/`, and collector comments.
 The existing census-to-provider routing supplies cumulative export without a new setting or a second accumulation layer.
 Runner delta histograms keep their isolated host collector.
+
+
+Review repair evidence: the original daemon census emitted aggregation temporality 1 where native cumulative export requires 2.
+The real SDK export regression fails on that census and passes after routing all 12 daemon delta families to the existing cumulative provider.
+Its counter totals are 2, 5 and 9; histogram counts are 1, 2 and 3 with sums 0.25, 0.75 and 1.5.
+
+The prior drift script accepted both changed reducer settings.
+After comparing panel options, matching resources pass while changed `values` or `calcs` fail as dashboard content drift.
+Live dev verification also passes through `02_credentials.sh` and Indy’s vault; no token was printed.
+
+
+Review repairs pass 175 focused producer/pipeline tests and Rust lint.
+The native-export regression fails against the old census at delta temporality 1 versus required cumulative temporality 2.
+The standalone drift proof has one matching case and two rejected reducer mutations; live dev resource verification passes.
+Final repository, coverage and Greptile checks still gate the merge on the pushed revision.
