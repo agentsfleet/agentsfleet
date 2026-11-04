@@ -242,7 +242,7 @@ The first cancellation probe exposed an orphaned child behind sudo. The action n
 Cleanup kills that owned process group and waits for it; the repeated cancellation probe passed.
 
 Hosted run `41779197114` passed the full kernel target and all eight 120-sample comparisons (`regressions: []`).
-Its later identity check and artifact upload failed because the reports belonged to root with mode 0600.
+Its later identity check and evidence upload failed because the reports belonged to root with mode 0600.
 The caller now reads them with root privileges and transfers evidence ownership on exit, including failed sampling attempts; qualification must rerun.
 
 PR unit run `41780094139` failed while compiling daemon libraries with `No space left on device`.
@@ -251,7 +251,7 @@ Neither infrastructure failure is recorded as an integration pass.
 
 ## Retained 120-sample regression
 
-Hosted run `41783236290` retained both images, manifests and raw reports in artifact `13300618106`.
+Hosted run `41783236290` retained both images, manifests and raw reports in GitHub Actions archive `13300618106`.
 The full kernel lane passed; Git-commit p99 was 47.694296 ms for baseline and 56.361242 ms for candidate (ratio 1.1817187).
 The other seven step comparisons passed.
 
@@ -267,7 +267,7 @@ Run `41789146887` at `692513ac3c2b8abdeefb8150ddb7d8cfbf4d3150` passed full kern
 Its unchanged sampler measured 600 cold samples per command for each image; all eight comparisons passed the 1.10 p99 limit.
 Raw reports and the failed 120-sample attempt are preserved in `M221_002-first-use-amd64.json`.
 
-Artifact `13304575444` has ZIP digest `b0291430e71436b0bb0edfd5830578aba6db59dfab6240286e3ad772db36300a`.
+GitHub Actions archive `13304575444` has ZIP digest `b0291430e71436b0bb0edfd5830578aba6db59dfab6240286e3ad772db36300a`.
 Both actual image entries were stream-hashed after download and matched their report identities and byte lengths.
 Baseline: 162,066,432 bytes, `e9ec4038e304b5cabc6baf000d760355dea24a88cad5f916647ef474928d13c2`; candidate: 136,028,160 bytes, `61571fdd560be615f77374a21c507924ab75f6659cd230bd773996835169bef3`.
 
@@ -278,3 +278,19 @@ The historical arm64 comparison remains explicitly NOT_COMPARABLE.
 The regular PR unit run `41789152765` failed because its hosted runner ran out of disk space, as recorded in the daemon-library job annotation.
 Only failed jobs were rerun; no source, test selection or coverage floor changed for that retry.
 Companion public documentation is [docs PR #240](https://github.com/agentsfleet/docs/pull/240); its complete `orly gate pr` passed.
+
+## Final failure and scanner probes
+
+Transient PATH wrappers exercised the real unmodified builder in its owned Linux container.
+The `fail` wrapper returned 86 at dpkg purge; `make toolbox-image` failed with the injected diagnostic and published neither image nor manifest.
+
+The `loss` wrapper removed retained `usr/bin/python3.13` after the last purge.
+GNU tar named that missing path; the build failed and published neither image nor manifest.
+
+Logs: `/tmp/m221-audit/finalizer-probes/fail/build.log` and `/tmp/m221-audit/finalizer-probes/loss/build.log`.
+The wrappers and disposable roots are task fixtures, with no new repository helper or test script.
+Re-running pinned Grype against the native reconstructed scan with the existing database yielded eight complete matches identical to the original-record scan, with zero Critical findings.
+
+Final kernel evidence in run `41789146887`: 69 passed, zero failed or ignored; systemd startup: 31 passed, zero skipped.
+The local live-datastore integration run passed 1,466 shared tests and three exclusive tests after correcting only task-local CA trust and local-address proxy bypass.
+Greptile passed on PR #800 with zero review threads; final-head repository checks remain the release boundary.
