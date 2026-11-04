@@ -52,11 +52,17 @@ impl Aad {
         Self(bytes)
     }
 
+    /// The checkpoint owner supplies its separate, versioned domain format.
+    /// The public vault constructors retain their original stored bytes.
+    pub(crate) const fn checkpoint(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+
     /// Builds associated data from arbitrary bytes, for standard test vectors.
     ///
-    /// Behind `test-util` (`M-TEST-UTIL`) because the canonical format IS this
-    /// type's invariant: production has exactly two ways to build one, and both
-    /// produce the daemon's format. Published AES-GCM vectors carry their own
+    /// Behind `test-util` (`M-TEST-UTIL`) because the public vault API has two
+    /// constructors, both preserving its stored format. The private checkpoint
+    /// owner supplies its separate domain. Published AES-GCM vectors carry their own
     /// associated data — often empty — which no canonical constructor can
     /// produce, so proving the primitive against them needs this door and
     /// nothing else does.

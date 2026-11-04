@@ -27,6 +27,7 @@
 use aes_gcm::aead::inout::InOutBuf;
 use aes_gcm::aead::{AeadInOut, Nonce, Tag};
 use aes_gcm::{Aes256Gcm, KeyInit};
+use zeroize::Zeroizing;
 
 use crate::aad::Aad;
 use crate::entropy::Source;
@@ -94,9 +95,9 @@ impl Sealer {
     /// Returns an entropy error when the nonce or key source fails, and an
     /// open-failed error if the AEAD refuses to encrypt.
     pub fn seal(&self, kek: &Kek, aad: &Aad, plaintext: &[u8]) -> Result<Envelope> {
-        let mut dek_bytes = [0_u8; KEY_LEN];
-        self.entropy.fill(&mut dek_bytes)?;
-        let dek = Dek::from_bytes(dek_bytes);
+        let mut dek_bytes = Zeroizing::new([0_u8; KEY_LEN]);
+        self.entropy.fill(dek_bytes.as_mut_slice())?;
+        let dek = Dek::from_slice(dek_bytes.as_slice())?;
 
         let wrapped = self.encrypt(kek.expose(), aad, dek.expose().as_slice())?;
         let payload = self.encrypt(dek.expose(), aad, plaintext)?;

@@ -537,7 +537,26 @@ The trusted supervisor receives only the scoped temporary data key and its assig
 Encrypt each object with AES-256-GCM, its native fresh 96-bit nonce and the ownership/format binding.
 Save only ciphertext, nonce, authentication tag, wrapped key envelope and ciphertext digest; zero plaintext keys when buffers leave scope.
 
-Use a new `afd_crypto::checkpoint` module for the domain-separated byte format; preserve vault envelope compatibility unchanged.
+`afd_crypto::checkpoint` now defines scoped key wrapping and object encryption; vault envelope bytes remain compatible.
+Native registration, R2 transfer, manifests and restore remain pending.
+
+The key wrapper also binds the registered nonce and wrapping-key version.
+Object encryption excludes the wrapping version, allowing later authorized key rewrapping without changing ciphertext.
+The byte format starts with a zero-byte (NUL) domain prefix and ends each field with NUL:
+
+```text
+NUL agentsfleet.checkpoint.v1 NUL
+purpose NUL workspace_uuid NUL hex(repository_utf8) NUL object_uuid NUL
+format_decimal NUL wrapping_version_or_empty NUL nonce_hex_or_empty NUL
+```
+
+Key wrapping uses purpose `key`, its wrapping version and registered nonce; object bytes use purpose `data` with both final fields empty.
+Hex encoding protects repository field boundaries; native UUIDs and decimal numbers contain no NUL.
+
+The cipher consumes guarded key/plaintext buffers and keeps the object allocation through encryption and decryption.
+It wipes spare capacity before releasing ciphertext, since reused capture buffers can retain earlier plaintext beyond their current length.
+The AES-GCM dependency clears AES and authentication state on drop; the envelope's entropy destination also has a wiping guard.
+
 Deduplication reuses a registered encrypted object and its existing envelope within the same authorized scope.
 It does not use convergent encryption or share content identities across workspaces.
 
