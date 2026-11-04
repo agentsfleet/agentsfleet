@@ -115,18 +115,9 @@ impl Link {
         let lost = self.lost.clone();
         loop {
             let open = tokio::select! {
-                call = self.calls.recv() => match call {
-                    Some(call) => self.send_unless_lost(call, &lost).await,
-                    None => false,
-                },
-                frame = self.lines.next() => match frame {
-                    Some(Ok(frame)) => match self.receive(&frame).and_then(|orphan| self.abandon(orphan)) {
-                        Some(kill) => self.send_unless_lost(kill, &lost).await,
-                        None => true,
-                    },
-                    Some(Err(_)) | None => false,
-                },
+                biased;
                 () = lost.cancelled() => false,
+                open = self.next(&lost) => open,
             };
             if !open {
                 break;
@@ -135,13 +126,31 @@ impl Link {
         self.interrupt();
     }
 
+    /// Keep requests and responses fair while the outer wait prioritizes loss.
+    async fn next(&mut self, lost: &CancellationToken) -> bool {
+        tokio::select! {
+            call = self.calls.recv() => match call {
+                Some(call) => self.send_unless_lost(call, lost).await,
+                None => false,
+            },
+            frame = self.lines.next() => match frame {
+                Some(Ok(frame)) => match self.receive(&frame).and_then(|orphan| self.abandon(orphan)) {
+                    Some(kill) => self.send_unless_lost(kill, lost).await,
+                    None => true,
+                },
+                Some(Err(_)) | None => false,
+            },
+        }
+    }
+
     /// Sends one call, unless the link is given up first: a stopped executor
     /// stops reading, and a send into a full socket would wait forever.
     async fn send_unless_lost(&mut self, call: Call, lost: &CancellationToken) -> bool {
         self.pending.insert(call.id, call.reply);
         tokio::select! {
-            sent = self.write.write_all(&call.line) => sent.is_ok(),
+            biased;
             () = lost.cancelled() => false,
+            sent = self.write.write_all(&call.line) => sent.is_ok(),
         }
     }
 
@@ -198,6 +207,7 @@ impl Link {
         let started: SpawnResult = decoded(raw)?;
         let id = ProcessId::new(started.process_id);
         let (feed, mut events) = Events::channel();
+        events.on_connection(self.lost.clone());
         let ids = Arc::clone(&self.ids);
         events.on_abandon(call::kill_on_abandon(self.outbox.clone(), ids, id));
         self.processes.insert(id, feed);

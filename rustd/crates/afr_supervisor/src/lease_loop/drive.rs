@@ -2,9 +2,9 @@
 //! has one, and reaches the sandbox's executor through the build's slot.
 
 use std::panic::AssertUnwindSafe;
-use std::time::Duration;
 
 use afd_core::error_code;
+use afd_core::timing::ENGINE_STOP_GRACE;
 use afd_wire::report::FailureClass;
 use afr_agent::AgentRun;
 use afr_executor::ExecutorSource;
@@ -19,10 +19,6 @@ use crate::report::Ending;
 use crate::verbs::FencedVerbs;
 
 const DETAIL_ENGINE: &str = "the agent engine stopped before the turn ended";
-/// How long a stopped engine has to close its open calls and hand back what
-/// it has. The run's tokens and memory ride that output, so dropping the
-/// engine the moment the lease ends would bill and keep nothing.
-const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
 const DETAIL_PANIC: &str = "the agent engine panicked";
 const EVENT_ENGINE_FAILED: &str = "engine_run_failed";
 const EVENT_ENGINE_PANICKED: &str = "engine_panicked";

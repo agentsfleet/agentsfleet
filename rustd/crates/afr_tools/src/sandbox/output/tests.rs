@@ -36,7 +36,10 @@ async fn read(output: &[&str], ending: Option<Ending>) -> (Collected, Ending) {
         None => drop(feed),
     }
     let mut collected = Collected::default();
-    let ending = collected.read_to_end(&mut process).await;
+    let ending = collected
+        .until(&mut process, Instant::now() + Duration::from_secs(1))
+        .await
+        .unwrap_or(Ending::Interrupted);
     (collected, ending)
 }
 

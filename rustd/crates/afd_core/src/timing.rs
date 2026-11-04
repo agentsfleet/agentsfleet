@@ -44,6 +44,9 @@ pub const RENEWAL_TICK: Duration = Duration::from_secs(5);
 /// that keeps emitting progress still terminates.
 pub const MAX_RUNTIME: Duration = Duration::from_hours(12);
 
+/// How long a stopped engine may close calls and return measured work.
+pub const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
+
 /// Silence after which a runner is DERIVED offline by a fleet read.
 ///
 /// Three lease TTLs: an idle host

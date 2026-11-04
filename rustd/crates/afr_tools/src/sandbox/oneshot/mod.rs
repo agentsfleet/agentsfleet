@@ -1,14 +1,16 @@
 //! A command run to its end under a timeout, as `shell` and `git` both run
 //! theirs.
 //!
-//! The executor kills the process group when the timeout elapses, TERM then
-//! KILL, and reports `timed_out`, so no timer runs here. The exit status rides
-//! the output, and the ledger marks a non-zero one failed.
+//! The executor enforces the process timeout with TERM then KILL. The runner
+//! separately bounds its wait for that ending: an executor can stay connected
+//! while its process driver stops answering. Missing endings remain unknown.
 
 use std::time::Duration;
 
 use afd_core::clock::saturating_millis;
-use afr_executor::{Ending, Executor, Spawn};
+use afr_executor::timing::{CALL_DEADLINE, DRAIN_GRACE, KILL_GRACE};
+use afr_executor::{Ending, Executor, Process, Spawn};
+use tokio::time::Instant;
 
 use super::files::failed;
 use super::output::{self, Collected};
@@ -19,6 +21,25 @@ use crate::runtime::{ToolErrorCode, ToolOutput};
 pub(super) const TIMEOUT_DEFAULT: Duration = Duration::from_secs(10);
 /// The longest a command runs, whatever the model asks: ten minutes.
 pub(super) const TIMEOUT_MAX: Duration = Duration::from_mins(10);
+/// Allow local reply delivery beyond the native cleanup and drain bounds.
+const REPLY_SLACK: Duration = Duration::from_secs(1);
+const ENDING_GRACE: Duration = KILL_GRACE
+    .saturating_add(DRAIN_GRACE)
+    .saturating_add(REPLY_SLACK);
+const _: () = assert!(
+    TIMEOUT_DEFAULT.saturating_add(ENDING_GRACE).as_nanos()
+        < afd_core::timing::LEASE_TTL.as_nanos()
+);
+const _: () = assert!(
+    CALL_DEADLINE
+        .saturating_add(TIMEOUT_MAX)
+        .saturating_add(ENDING_GRACE)
+        .as_nanos()
+        < afd_core::timing::MAX_RUNTIME.as_nanos()
+);
+const _: () = assert!(ENDING_GRACE.as_nanos() <= afd_core::timing::ENGINE_STOP_GRACE.as_nanos());
+/// Missing endings differ from confirmed process timeouts.
+const EVENT_ENDING_DEADLINE: &str = "process_ending_deadline_exceeded";
 /// The event a command killed at its timeout logs under.
 pub(super) const EVENT_TIMED_OUT: &str = "process_timed_out";
 /// The event a command the kernel killed for memory logs under.
@@ -49,7 +70,11 @@ pub(super) async fn run_to_end(
         Err(failure) => return failed(&failure),
     };
     let mut collected = Collected::default();
-    let ending = collected.read_to_end(&mut process).await;
+    let runner_wait = timeout.saturating_add(ENDING_GRACE);
+    let ending = collected
+        .until(&mut process, Instant::now() + runner_wait)
+        .await
+        .unwrap_or_else(|| missing_ending(&mut process, lease_id, timeout, runner_wait));
     let text = collected.text(output::budget(None));
     let text = match ending {
         Ending::Exited(0) => text,
@@ -74,6 +99,28 @@ pub(super) async fn run_to_end(
     }
 }
 
+fn missing_ending(
+    process: &mut Process,
+    lease_id: &str,
+    timeout: Duration,
+    runner_wait: Duration,
+) -> Ending {
+    process.events.disconnect();
+    let error_code = ToolErrorCode::Interrupted.as_str();
+    let process_id = process.id.get();
+    let timeout_ms = saturating_millis(timeout);
+    let runner_wait_ms = saturating_millis(runner_wait);
+    tracing::warn!(
+        event = EVENT_ENDING_DEADLINE,
+        lease_id,
+        error_code,
+        process_id,
+        timeout_ms,
+        runner_wait_ms
+    );
+    Ending::Interrupted
+}
+
 /// Logs a command the kernel killed because the sandbox's tenant processes
 /// ran out of memory: the model reads the code, the operator the lease. No
 /// command text, which is the tenant's.
@@ -91,3 +138,6 @@ fn timed_out(lease_id: &str, timeout: Duration) {
     let event = EVENT_TIMED_OUT;
     tracing::warn!(lease_id, error_code, timeout_ms, event);
 }
+
+#[cfg(test)]
+mod tests;

@@ -110,11 +110,14 @@ impl<'a> Decisions<'a> {
         "https://example.test/reviewed-overage-prices".clone_into(&mut price.source_url);
         price.verified_at = clock::now();
         assert!(
-            self.model
-                .models
-                .update(&self.model.model.id, details, clock::now())
-                .await
-                .expect("native reviewed price update")
+            afd_admin::Models::update(
+                &self.model.models,
+                &self.model.model.id,
+                details,
+                clock::now(),
+            )
+            .await
+            .expect("native reviewed price update")
         );
     }
 

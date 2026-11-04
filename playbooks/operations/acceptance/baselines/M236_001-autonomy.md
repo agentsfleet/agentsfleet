@@ -714,16 +714,84 @@ Structured log checks verify aggregate severity/counts, expected contention and 
 
 The component is verified locally; combined-main verification and pushed-head checks remain pending.
 
+## Runner ending deadline and additional activity scope
+
+Merge `0e31bc918` integrates main `1920ff345` and PR 802 without rewriting the feature branch.
+The merge retains both provider dependencies and restores the tenant plane's required native task dependency.
+The latest freshness check found main unchanged.
+
+Shell and Git now bound their ending wait by command time plus shared kill/drain grace and named reply slack.
+Compile-time assertions compare the default wait, maximum command and ending allowance with the existing lease/runtime/shutdown bounds.
+Spawn retains its separate native reply deadline; no independent whole-turn deadline is claimed.
+
+Missing endings retain partial output and return `interrupted`, with no exit code or claim of remote death.
+Expiry cancels the existing executor link, interrupts pending calls and processes, and refuses later calls immediately.
+Confirmed endings and ordinary caller cancellation preserve connection reuse.
+
+Owned output snapshots make each read finite without copying buffered bytes or holding the channel lock during consumption.
+Ready notifications consume Tokio cooperative budget; empty frames add no buffer entries.
+The existing `Executor` trait and admission/lease path remain unchanged.
+
+The warning `process_ending_deadline_exceeded` records safe identities and timeout durations.
+Computed fields are bound before logging; existing tool-duration accounting records the returned failure.
+No command, output, credential or unbounded metric label is added.
+
+Astra's extra-high source review found indefinite draining and notification-loop starvation; both were corrected.
+Its final native-link review found no material production issue and requested a one-poll test for immediate refusal.
+That proof now uses `now_or_never`; source review ran no tests or kernel probes.
+
+The initial silence regression failed before the guard; the cooperative-budget regression also failed at its expected assertion before budgeting.
+Final native scenarios cover shell/Git silence, retained output, confirmed cleanup endings, cancellation, sibling processes, pending RPCs and post-loss refusal.
+Snapshot scenarios cover concurrent later writes, missing endings, empty frames and retained terminal output.
+
+`orly gate verify` passed again on the final runner checkpoint: formatting, workspace Clippy, dependency checks, prose and version synchronization.
+Its final log is `/tmp/m236-runner-checkpoint-verify.log`; the earlier component log is `/tmp/m236-runner-native-verify.log`.
+
+The three Rust shards passed 1,602 runner, 141 daemon and 3,400 library tests, totaling 5,143.
+`/tmp/m236-runner-native-unit-all-3.log` records those results before the logging-field cleanup.
+The aggregate command then failed on 29 analytics tests because the inherited environment disabled analytics.
+
+`make test-coverage-all` then passed after unsetting only that inherited switch; no test or application source changed for this correction.
+App 4,653, website 133, CLI 1,997 and design system 522 passed; the CLI retains 16 explicit live skips.
+All four coverage gates reported 100%; `/tmp/m236-runner-native-ts-coverage.log` retains the result.
+
+The final logging-field cleanup also passed the complete runner shard: 1,602 tests, exit zero.
+`/tmp/m236-runner-final-unit.log` records that fresh result.
+
+The clean `make test-integration-rustd` gate passed 1,513 regular and three exclusive tests; exit zero.
+`/tmp/m236-runner-final-integration.log` records fresh schema/cluster reset, migration and both passing selections on the integrated source.
+
+Disk pressure during integration was relieved with `cargo clean` in the separate, inactive coverage checkout.
+It removed 3,658 cached build files and recovered 1.2 GiB; the active target and saved coverage reports were preserved.
+
+Earlier attempts identified container preconditions: PID 1 left killed children unreaped, and the shell inherited a restrictive file-creation mask.
+The unchanged process-group tests passed with `docker-init -s`; the complete Rust rerun used that reaper and `umask 022`.
+No assertion, timeout, coverage floor or production sandbox policy was weakened.
+
+Indy superseded the separate-PR request with “I want all this in this PR” and “no new PR”.
+The runner correction and schedule activity remain in implementation PR 803; public pages remain in existing docs PR 241.
+The separate signal-isolation audit remains pending, with no measured exploit or reviewed runtime mechanism.
+
+The schedule activity specification records atomic ordinary/setup mutations, sync outcomes, queued fires, native run details and replay limits.
+Astra found and closed missing recipe writes, deletion/expiry distinctions, offline visibility and run-link assumptions in the design.
+It reported no remaining material specification finding; schedule implementation and its storage/browser proof remain pending.
+
+The existing unsigned schedule-header boundary remains unresolved and separate from activity.
+Architecture now states acceptance-time database provenance without claiming signed schedule/revision identity.
+Other missing activity types remain inventory only, as Indy requested.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`. The next merge integrates PR 802/main `1920ff345`, retaining the URL parser and tracing dependency required by decision providers. Verify the combined branch before pushing and repeat the freshness check at final ship. |
+| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; merge `0e31bc918` adds PR 802/main `1920ff345`. Combined source passes final verification, unit selections and clean integration. Repeat the freshness check before each push. |
 | Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Native physical-call accounting passes unit/integration gates; full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Align unfinished setup actions | `components/layout/DraftSidebarItem.tsx` uses shared grid columns: title, reachable Delete, then Resume. Desktop/mobile measurements, app lint and 100% coverage pass; the same geometry assertion fails against the previous component. Logs: `/tmp/m236-ui-polish-browser.log`, `/tmp/m236-resume-parent-red.log`. |
 | Shorten fleet chat guidance | `SteerComposer.tsx` now reads “Change fleet defaults in Edit setup.” The existing action, hint and theme remain; controlled browser cases, app lint and 100% coverage pass. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. The scoped encryption component passes 68 tests and Astra review; native storage, transfer, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. Financial recovery retains progress across busy pages and cancellation. Exporter and structured-log scenarios check recovery attempts, age, latency and bounded labels. No benchmark result or complete DT performance trace is claimed. |
-| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; pushed merge `d97b373` adds docs main `920933d`. Site validation, prose, work gate and branch secret scanning passed. [Docs draft #241](https://github.com/agentsfleet/docs/pull/241) is open; new API pages follow the lead merge. |
+| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; merge `d97b373` adds docs main `920933d`. Command-recovery guides are pushed as `ed1e1ea`; local validation and both published CI workflows passed. [Docs draft #241](https://github.com/agentsfleet/docs/pull/241) stays open; new API pages follow the lead merge. |
+| Runner hang and same-PR scope | Native ending guard, finite snapshots, cooperative waits and shared-link invalidation are implemented and reviewed. The final runner shard passed 1,602 tests; all Rust shards and all four 100% TypeScript gates have passing evidence. Clean integration passed 1,513 regular and three exclusive tests; final checkpoint verification passed. All changes stay in PR 803. |
+| Schedule activity and other event inventory | The reviewed M236 workstream 003 covers readable changes/sync/fire/outcome rows and the saved-summary bug. Runtime implementation and storage/browser checks remain pending. Other event types are inventoried without implementation. |
 | Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. Indy requested the early review [implementation draft #803](https://github.com/agentsfleet/agentsfleet/pull/803). Native decision, crypto and bounded financial recovery have component evidence. Remaining implementation and full readiness gates stay pending; leave both PRs in draft. |

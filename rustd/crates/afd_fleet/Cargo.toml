@@ -135,9 +135,9 @@ garde.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-afd_vault.workspace = true
-# Reviewed decision fixtures use the same native catalogue mutations as operators.
+# Price-change scenarios and their shared fixtures use the native catalogue owner.
 afd_admin.workspace = true
+afd_vault.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
