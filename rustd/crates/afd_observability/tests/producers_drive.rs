@@ -33,7 +33,9 @@ use core::time::Duration;
 
 use afd_observability::metrics::instrument::Instruments;
 use afd_observability::metrics::label::cost::{ChargeClass, ErrorType};
-use afd_observability::metrics::label::fleet::{AdmissionOutcome, ReadyWake, SignupFailure};
+use afd_observability::metrics::label::fleet::{
+    AdmissionOutcome, DeliveryStage, ReadyWake, SignupFailure, WakeAnswer,
+};
 use afd_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
 };
@@ -87,6 +89,12 @@ fn test_every_fleet_producer_runs_its_body() {
     }
     producers::fleet::retention_swept(9);
     producers::fleet::retention_failed();
+    for answer in WakeAnswer::ALL {
+        producers::fleet::wake_answered(*answer);
+    }
+    for stage in DeliveryStage::ALL {
+        producers::fleet::delivery_stage(*stage, Duration::from_millis(40));
+    }
 
     // Both admission counters, over every arm of their closed sets. The label
     // is the only thing separating a queue outage from a deployment spending

@@ -12,7 +12,7 @@ use opentelemetry::trace::{SpanId, TracerProvider as _};
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, SpanExporter};
 
-use super::{Delivery, MAX_RUN};
+use super::{Delivery, MAX_RUN, Segments};
 use crate::semconv;
 
 /// A collector that keeps what it is handed.
@@ -80,7 +80,38 @@ fn delivery() -> Delivery<'static> {
         input_tokens: 4_096,
         output_tokens: 512,
         wall: Duration::from_secs(90),
+        opened_at: None,
+        segments: every_segment(),
     }
+}
+
+/// Every segment present, each a distinct number of milliseconds.
+const fn every_segment() -> Segments {
+    Segments {
+        queue_wait: Some(Duration::from_millis(40)),
+        memory: Some(Duration::from_millis(85)),
+        model: Some(Duration::from_millis(500)),
+        tools: Some(Duration::from_millis(0)),
+        sandbox_wait: Some(Duration::from_millis(12)),
+        settle: Some(Duration::from_millis(30)),
+        complete: Some(Duration::from_millis(120)),
+    }
+}
+
+/// Every segment attribute on `span`, by key, rendered.
+fn segment_attributes(span: &SpanData) -> Vec<(&'static str, Option<String>)> {
+    [
+        semconv::ATTR_DELIVERY_QUEUE_WAIT_MS,
+        semconv::ATTR_DELIVERY_MEMORY_MS,
+        semconv::ATTR_DELIVERY_MODEL_MS,
+        semconv::ATTR_DELIVERY_TOOLS_MS,
+        semconv::ATTR_DELIVERY_SANDBOX_WAIT_MS,
+        semconv::ATTR_DELIVERY_SETTLE_MS,
+        semconv::ATTR_DELIVERY_COMPLETE_MS,
+    ]
+    .into_iter()
+    .map(|key| (key, attribute(span, key)))
+    .collect()
 }
 
 /// Records `delivery` through a real provider and answers what was exported.
@@ -309,5 +340,91 @@ fn a_count_past_the_signed_range_saturates_rather_than_wrapping() {
         attribute(&span, semconv::ATTR_USAGE_INPUT_TOKENS).as_deref(),
         Some(i64::MAX.to_string().as_str()),
         "an absurd count is capped at the largest attribute value, never wrapped"
+    );
+}
+
+/// With the event's creation known, the span is the whole round trip: it
+/// starts when the event was created and ends when its completion published.
+#[test]
+fn the_delivery_span_starts_at_the_events_creation() {
+    let completed_at = settled_at();
+    let opened_at = completed_at - Duration::from_millis(900);
+    let delivery = Delivery {
+        opened_at: Some(opened_at),
+        ..delivery()
+    };
+    let span = only_span(recorded(&delivery, completed_at));
+
+    assert_eq!(
+        (span.start_time, span.end_time),
+        (opened_at, completed_at),
+        "the round trip, not the runner's wall time"
+    );
+}
+
+/// A creation instant the span cannot start at, after the end or further back
+/// than any run this daemon describes, falls back to the reported duration.
+#[test]
+fn an_unplaceable_creation_falls_back_to_the_reported_duration() {
+    let completed_at = settled_at();
+    for opened_at in [completed_at + A_SECOND, completed_at - MAX_RUN - A_SECOND] {
+        let delivery = Delivery {
+            opened_at: Some(opened_at),
+            ..delivery()
+        };
+        let span = only_span(recorded(&delivery, completed_at));
+        assert_eq!(
+            (span.start_time, span.end_time),
+            (completed_at - delivery.wall, completed_at),
+            "opened at {opened_at:?}"
+        );
+    }
+}
+
+/// Each present segment is an attribute in whole milliseconds; an absent one
+/// is no attribute at all, never zero.
+#[test]
+fn segments_are_exported_in_milliseconds_and_absent_ones_omitted() {
+    let delivery = Delivery {
+        segments: Segments {
+            memory: None,
+            sandbox_wait: None,
+            ..every_segment()
+        },
+        ..delivery()
+    };
+    let span = only_span(recorded(&delivery, settled_at()));
+
+    assert_eq!(
+        segment_attributes(&span),
+        vec![
+            (semconv::ATTR_DELIVERY_QUEUE_WAIT_MS, Some("40".to_owned())),
+            (semconv::ATTR_DELIVERY_MEMORY_MS, None),
+            (semconv::ATTR_DELIVERY_MODEL_MS, Some("500".to_owned())),
+            (semconv::ATTR_DELIVERY_TOOLS_MS, Some("0".to_owned())),
+            (semconv::ATTR_DELIVERY_SANDBOX_WAIT_MS, None),
+            (semconv::ATTR_DELIVERY_SETTLE_MS, Some("30".to_owned())),
+            (semconv::ATTR_DELIVERY_COMPLETE_MS, Some("120".to_owned())),
+        ]
+    );
+}
+
+/// A runner-supplied segment past any run this daemon describes is capped.
+#[test]
+fn an_implausible_segment_is_capped() {
+    let cap = MAX_RUN.as_millis().to_string();
+    let delivery = Delivery {
+        segments: Segments {
+            model: Some(Duration::MAX),
+            ..Segments::default()
+        },
+        ..delivery()
+    };
+    let span = only_span(recorded(&delivery, settled_at()));
+
+    assert_eq!(
+        attribute(&span, semconv::ATTR_DELIVERY_MODEL_MS),
+        Some(cap),
+        "capped at the longest run, not exported as years"
     );
 }

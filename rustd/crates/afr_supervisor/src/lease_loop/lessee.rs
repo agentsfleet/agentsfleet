@@ -45,4 +45,6 @@ pub(crate) struct Lessee {
     pub(crate) held: Notify,
     /// Which runner this is, for every lease's span.
     pub(crate) whoami: Whoami,
+    /// The pool's idle workers, which a held heartbeat wakes for fresh work.
+    pub(crate) wake: crate::worker_pool::Wake,
 }

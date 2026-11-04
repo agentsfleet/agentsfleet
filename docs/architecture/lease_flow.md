@@ -119,18 +119,20 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
  engine boot sweep: leftover <home>/sandboxes/*, afegress* tables, afv* links
  tokio::join!( heartbeat , spool drainer , worker pool )
 
- HEARTBEAT every 10 s ──► POST /v1/runners/me/heartbeats {capability_report, holds}
+ HEARTBEAT every 10 s ──► POST /v1/runners/me/heartbeats {capability_report, holds, wake}
                       ◄── {status: ok, assigned_policy{worker_count, tier,
-                           network_policy, registry_allowlist}, interval}
+                           network_policy, registry_allowlist}, interval, woken}
                            worker_count clamped 1..=64; workers spawn to that count
+                           wake: held ≤10 s until a doorbell ring; woken ⇒ one idle worker polls now
 
- WORKER n ────────────► POST /v1/runners/me/leases {holds}   (sleep retry_after_ms ≥250 ms if null)
-                      ◄── { lease }
+ WORKER n ────────────► POST /v1/runners/me/leases {holds}   (sleep retry_after_ms ≥250 ms if null,
+                      ◄── { lease, memory window }               or until a woken beat ends the pause)
  ┌─ lease task ────────────────────────────────────────────────────────────────────────┐
  │ 1 admit(policy)        unhosted tool or provider ⇒ refuse at startup                │
  │                        needs_sandbox = any tool with Runtime::Sandbox               │
  │ 2 turns.claim(fleet)   one run per fleet per runner                                 │
- │ 3 hydrate ───────────► GET /v1/runners/me/memory/{fleet_id}                         │
+ │ 3 memory               the lease's window; only without one:                        │
+ │                        GET /v1/runners/me/memory/{fleet_id}                         │
  │ 4 [sandbox]            held sandbox for this fleet and key, else engine.prepare:    │
  │                        dir, workspace.img, cgroup, bwrap on the assigned network,   │
  │                        executor; check_out the bound repositories                   │
@@ -142,13 +144,17 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
  │   ║                  ◄── {lease_expires_at}   4xx ⇒ interrupt run (5 s grace)       │
  │ 6 [sandbox] keep       processed ⇒ freeze and hold; else destroy                    │
  │ 7 settle               POST .../tool-calls (full records, ≤256 KiB per post)        │
- │                        POST .../memory/{fleet_id} {lease_id, fence, deltas}         │
+ │                        without a window: POST .../memory/{fleet_id} {deltas}        │
  │                        spool <home>/spool/<lease>.json (fsync + rename)             │
- │                        POST /v1/runners/me/reports  {lease_id, fence, outcome, ...} │
+ │                        POST /v1/runners/me/reports  {lease_id, fence, outcome, ...  │
+ │                          with a window: memory, telemetry.segments}                 │
+ │                        a shape refusal (UZ-REQ-001) of that body: push, re-post once│
  │                        kept on 5xx/401/403/408/413 → drainer retries forever        │
  │ 8 wait ≤5 s for activity to drain                                                   │
  └─────────────────────────────────────────────────────────────────────────────────────┘
-                                               daemon report: ONE transaction
+                                               daemon report: memory captured first
+                                               (own transaction, memory role, fenced)
+                                               then ONE transaction
                                                METER_LEASE (current fences, active→reported, measured usage)
                                                → fleet.events processed/fleet_error + tool_calls
                                                → fleet.sessions checkpoint → admission settled → affinity released
@@ -158,9 +164,15 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 **Boot and composition.** `afr_supervisor::boot` reads three variables and opens `<home>/{sandboxes,spool,git,toolbox}` (`afr_supervisor/src/config/mod.rs`, `afr_supervisor/src/storage_home/mod.rs`). The binary then builds the host's engine, refusing to start on a host that lacks a mechanism every sandbox needs, and runs `afr_supervisor::run` with it (`agentsfleet_runner/src/main.rs`). Building the engine sweeps what a crashed run left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
 
-**Heartbeat → assignment.** The heartbeat posts the capability report and the fleets the runner holds, and reads back the assigned policy; the worker count is clamped to `1..=64` (`afr_supervisor/src/heartbeat/mod.rs`, `afd_core/src/limits.rs`). The daemon serves the 10 s cadence and reconciles the report against the assignment into a `degraded` verdict ([Runner Fleet](./runner_fleet.md) §"Assigned policy and reconciliation (M148)"). The reply's `status` is always `ok` from this daemon, so a running lease learns nothing of a kill from the heartbeat ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause").
+**Heartbeat → assignment.** The heartbeat posts the capability report and the fleets the runner holds, and reads back the assigned policy. The worker count is clamped to `1..=64` (`afr_supervisor/src/heartbeat/mod.rs`, `afd_core/src/limits.rs`).
 
-**Worker pool.** Workers grow to the assigned count and are never killed. A worker polls while the assignment says to take work, sleeps the daemon's `retry_after_ms` (floored at 250 ms) on no work, and runs a lease to its report before polling again (`afr_supervisor/src/worker_pool/mod.rs`).
+The daemon serves the 10 s cadence. It reconciles the report against the assignment into a `degraded` verdict ([Runner Fleet](./runner_fleet.md) §"Assigned policy and reconciliation (M148)"). The reply's `status` is always `ok`, so a running lease learns nothing of a kill from it ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause").
+
+While a worker is idle, the beat asks to be held (`wake`). The daemon holds it until the doorbell rings or the interval passes. A `woken` reply ends one idle worker's pause ([Runner Fleet](./runner_fleet.md) §"The held heartbeat").
+
+**Worker pool.** Workers grow to the assigned count and are never killed. A worker polls while the assignment says to take work, and runs a lease to its report before polling again. On no work it sleeps the daemon's `retry_after_ms`, floored at 250 ms (`afr_supervisor/src/worker_pool/mod.rs`).
+
+A woken beat ends one idle worker's sleep, so fresh work waits one round trip, not a hint. The other workers keep their staggered pauses.
 
 **One lease.** The steps and their refusals are in [Runner execution](./runner_execution.md) §"One lease, end to end". The renewal ticks every 5 s with the provider requests the daemon has not recorded, one line each, moves the runner's own deadline to the reply's `lease_expires_at` less 2 s, keeps the lease on a 5xx and ends it on a 4xx ([Runner Fleet](./runner_fleet.md) §"Per-lease renewal — how a long fleet keeps its lease"). An interrupted engine gets 5 s to hand back its tokens and memory (`afr_supervisor/src/lease_loop/drive.rs`).
 
@@ -170,7 +182,11 @@ Each call is numbered, announced, routed and closed once (`afr_agent/src/ledger/
 Shared preparation compacts older groups while retaining instructions, tools and complete tool groups (`afr_agent/src/loop/context/mod.rs`).
 See [context lifecycle](context_lifecycle.md); output, time, cancellation and money bounds still stop the run.
 
-**Settle and report.** Full tool records post first, then the fenced memory capture, then the report is spooled and posted; the daemon settles it in one transaction ([Runner Fleet](./runner_fleet.md) §"Running one event"). A stale fence, a lease not found or a lease lost settles the spooled entry for good; 5xx, 401, 403, 408 and 413 keep it for the drainer (`afr_supervisor/src/report_spool/mod.rs`, `afr_supervisor/src/drainer/mod.rs`).
+**Settle and report.** Full tool records post first. A lease that carried its memory window settles in one post, which carries the run's memory and its segments. The daemon captures the memory, fenced on the lease's token, before it commits the settle, so the fleet's next lease reads it.
+
+A lease without a window pushes memory first, as an older daemon expects. The daemon settles the report in one transaction ([Runner Fleet](./runner_fleet.md) §"Running one event").
+
+A stale fence, a lease not found or a lease lost settles the spooled entry for good. A 5xx, 401, 403, 408 or 413 keeps it for the drainer (`afr_supervisor/src/report_spool/mod.rs`, `afr_supervisor/src/drainer/mod.rs`).
 
 ---
 

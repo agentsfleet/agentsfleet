@@ -360,3 +360,61 @@ async fn an_authoring_lease_is_authored_rather_than_run() {
     );
     assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no fleet turn ran");
 }
+
+/// Every poll's offset from `started`, in milliseconds, in order.
+fn offsets(
+    polled_at: &Mutex<Vec<tokio::time::Instant>>,
+    started: tokio::time::Instant,
+) -> Vec<u128> {
+    let mut offsets: Vec<u128> = polled_at
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|at| at.duration_since(started).as_millis())
+        .collect();
+    offsets.sort_unstable();
+    offsets
+}
+
+/// A woken beat ends exactly one idle worker's pause: it polls at once and
+/// the other three keep their staggered pauses.
+#[tokio::test(start_paused = true)]
+async fn test_woken_beat_polls_one_worker_at_once() {
+    let polled_at = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&polled_at);
+    let rig = polling(move |_polled| {
+        seen.lock().unwrap().push(tokio::time::Instant::now());
+        idle(Some(10_000))
+    });
+    let started = tokio::time::Instant::now();
+    let (_published, watching) = watch::channel(assigned(4));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    rig.lessee.wake.one();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(offsets(&polled_at, started), [0, 250, 500, 750, 900]);
+}
+
+/// With no wake, an idle worker polls on the daemon's hint and nothing sooner.
+#[tokio::test(start_paused = true)]
+async fn test_lost_ring_falls_back_to_the_hint() {
+    let polled_at = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&polled_at);
+    let rig = polling(move |_polled| {
+        seen.lock().unwrap().push(tokio::time::Instant::now());
+        idle(Some(1_000))
+    });
+    let started = tokio::time::Instant::now();
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(Duration::from_millis(2_500)).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(offsets(&polled_at, started), [0, 1_000, 2_000]);
+}

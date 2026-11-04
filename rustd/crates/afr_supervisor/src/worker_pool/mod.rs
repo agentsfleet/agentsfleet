@@ -9,6 +9,7 @@
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afd_core::error_code;
@@ -16,7 +17,7 @@ use afd_core::timing::NO_WORK_RETRY_AFTER;
 use afd_wire::lease::{LeaseResponse, TaggedLease};
 use backon::ExponentialBackoff;
 use futures_util::FutureExt as _;
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -33,6 +34,61 @@ const EVENT_STOPPED: &str = "worker_stopped";
 const EVENT_PANICKED: &str = "worker_panicked";
 const EVENT_POLL_FAILED: &str = "lease_read_failed";
 const EVENT_LEASE_ERROR: &str = "lease_write_failed";
+
+/// The pool's idle workers, and the signal a woken heartbeat sends one of
+/// them.
+///
+/// `notify_one` stores a permit when no worker is waiting, so a worker that
+/// enters its pause just after the wake still takes it and polls at once. One
+/// worker per wake, so the others keep their staggered polls.
+#[derive(Debug, Default)]
+pub(crate) struct Wake {
+    idle: AtomicUsize,
+    poll_now: Notify,
+}
+
+impl Wake {
+    /// Whether any worker is in an idle pause, with something to be woken for.
+    pub(crate) fn any_idle(&self) -> bool {
+        self.idle.load(Ordering::Acquire) > 0
+    }
+
+    /// Ends one idle worker's pause.
+    pub(crate) fn one(&self) {
+        self.poll_now.notify_one();
+    }
+
+    /// Counts one worker idle until the guard drops.
+    pub(crate) fn idle(&self) -> Idle<'_> {
+        Idle::enter(&self.idle)
+    }
+
+    /// Pauses for `pause`, or until a wake ends it first, counted idle while
+    /// it lasts.
+    pub(crate) async fn pause(&self, pause: Duration) {
+        let _idle = self.idle();
+        tokio::select! {
+            () = tokio::time::sleep(pause) => {}
+            () = self.poll_now.notified() => {}
+        }
+    }
+}
+
+/// One worker counted idle until it is dropped, a cancelled pause included.
+pub(crate) struct Idle<'a>(&'a AtomicUsize);
+
+impl<'a> Idle<'a> {
+    fn enter(idle: &'a AtomicUsize) -> Self {
+        idle.fetch_add(1, Ordering::AcqRel);
+        Self(idle)
+    }
+}
+
+impl Drop for Idle<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// Runs workers to the assigned count until leasing stops, then waits for every
 /// lease in flight.
@@ -116,14 +172,21 @@ impl Worker {
     /// quarter second at most for the next poll rather than the whole second.
     async fn serve(&mut self, leasing: &CancellationToken) {
         let offset = first_poll_offset(self.number, self.assignment.borrow().workers);
+        // A clone of the lessee's handle, so the pause borrows it rather than
+        // `self`, which each poll borrows mutably.
+        let lessee = Arc::clone(&self.lessee);
+        let wake = &lessee.wake;
         tokio::select! {
             () = leasing.cancelled() => return,
-            () = tokio::time::sleep(offset) => {}
+            () = wake.pause(offset) => {}
         }
         while let Some(pause) = self.next().await {
+            if pause.is_zero() {
+                continue;
+            }
             tokio::select! {
                 () = leasing.cancelled() => break,
-                () = tokio::time::sleep(pause) => {}
+                () = wake.pause(pause) => {}
             }
         }
     }

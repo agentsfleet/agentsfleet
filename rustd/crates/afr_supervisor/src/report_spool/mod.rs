@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use afd_core::error_code::{
-    ErrorCode, RUN_LEASE_LOST, RUN_LEASE_NOT_FOUND, RUN_STALE_FENCING_TOKEN,
+    self, ErrorCode, RUN_LEASE_LOST, RUN_LEASE_NOT_FOUND, RUN_STALE_FENCING_TOKEN,
 };
 use afd_core::id::Uuid7;
 use bytes::Bytes;
@@ -45,6 +45,10 @@ const KEPT_ON: [u16; 4] = [
     StatusCode::REQUEST_TIMEOUT.as_u16(),
     StatusCode::PAYLOAD_TOO_LARGE.as_u16(),
 ];
+/// The one-post fields an older daemon refuses, by their wire names.
+const FIELD_MEMORY: &str = "memory";
+const FIELD_TELEMETRY: &str = "telemetry";
+const FIELD_SEGMENTS: &str = "segments";
 const EVENT_DELIVERED: &str = "report_spool_delivered";
 const EVENT_SUPERSEDED: &str = "report_spool_superseded";
 const EVENT_QUARANTINED: &str = "report_spool_quarantined";
@@ -74,8 +78,9 @@ pub(crate) enum Delivery {
     /// The answer could change on a later attempt; the entry stays.
     Kept(Error),
     /// The daemon cannot read this report and never will; the entry is moved
-    /// aside for an operator rather than retried forever.
-    Rejected,
+    /// aside for an operator rather than retried forever. Carries the refusal,
+    /// so a settle that sent a shape an older daemon refuses can fall back.
+    Rejected(Error),
 }
 
 impl ReportSpool {
@@ -95,6 +100,16 @@ impl ReportSpool {
             Ok(Spooled { path, bytes })
         })
         .await?
+    }
+
+    /// Removes the copy of `lease_id`'s report a refusal moved aside, once a
+    /// report the daemon can read has been spooled in its place.
+    pub(crate) async fn forget_rejected(&self, lease_id: &Uuid7) -> Result<()> {
+        let path = self.dir.join(lease_id.as_str()).with_extension(REJECTED);
+        match tokio::fs::remove_file(&path).await {
+            Err(failure) if failure.kind() != io::ErrorKind::NotFound => Err(failure.into()),
+            _gone => Ok(()),
+        }
     }
 
     /// Every report still waiting for an answer that settles it.
@@ -164,7 +179,7 @@ impl Spooled {
                     "the daemon cannot read this report; it is kept aside"
                 );
                 tokio::fs::rename(&self.path, self.path.with_extension(REJECTED)).await?;
-                return Ok(Delivery::Rejected);
+                return Ok(Delivery::Rejected(refusal));
             }
         };
         // Another delivery of the same entry may have removed it first.
@@ -177,6 +192,11 @@ impl Spooled {
         Ok(delivery)
     }
 
+    /// The body this entry posts.
+    pub(crate) fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
     /// The lease the report settles, as its file is named; read here rather
     /// than kept, so the drain names a report a dead process left too.
     pub(crate) fn lease_id(&self) -> &str {
@@ -185,6 +205,25 @@ impl Spooled {
             .and_then(OsStr::to_str)
             .unwrap_or_default()
     }
+}
+
+/// A one-post report an older daemon refused for its shape (`UZ-REQ-001`), as
+/// the body that daemon reads: the run's memory and segments removed. `None`
+/// for any other refusal, or a body that carried neither, which is refused for
+/// a reason no reshaping changes.
+pub(crate) fn reshaped(refusal: &Error, bytes: &[u8]) -> Option<Bytes> {
+    if refusal.code() != error_code::INVALID_REQUEST {
+        return None;
+    }
+    let mut report: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let fields = report.as_object_mut()?;
+    let memory = fields.remove(FIELD_MEMORY).is_some();
+    let segments = fields
+        .get_mut(FIELD_TELEMETRY)
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|telemetry| telemetry.remove(FIELD_SEGMENTS))
+        .is_some();
+    (memory || segments).then(|| Bytes::from(serde_json::to_vec(&report).unwrap_or_default()))
 }
 
 /// Whether a later attempt could get a different answer.

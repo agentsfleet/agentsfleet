@@ -115,6 +115,8 @@ mod integration_runner_schedules_refusals;
 mod integration_runner_schedules_runs;
 #[path = "integration_runner_shapes.rs"]
 mod integration_runner_shapes;
+#[path = "integration_runner_wake.rs"]
+mod integration_runner_wake;
 #[path = "integration_rust_runner.rs"]
 mod integration_rust_runner;
 #[path = "integration_rust_runner_definitions.rs"]

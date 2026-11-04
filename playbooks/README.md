@@ -137,7 +137,7 @@ These routes deploy an installation that already passed the rebuild sequence.
 - `operations/jira_app_registration`: register the platform Jira app.
 - `operations/linear_app_registration`: register the platform Linear app.
 - `operations/model_catalogue`: prime and refresh the model catalogue.
-- `operations/observability`: set up and verify observability providers.
+- `operations/observability`: set up and verify observability providers; read a chat's round trip at p95 and p99 per fleet (`002_round_trip_percentiles.md`).
 - `operations/qstash_registration`: register QStash schedule credentials.
 - `operations/runner_onboarding`: prepare and enroll a runner.
 - `operations/slack_app_registration`: register the platform Slack app.

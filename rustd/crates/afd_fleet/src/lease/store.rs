@@ -12,6 +12,7 @@
 
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_dragonfly::doorbell::Waited;
 use afd_dragonfly::{Doorbell, Dragonfly, FleetStreams, OutboundQueue};
 
 /// Queue selection and lease writes use Postgres. Dragonfly carries the live
@@ -68,9 +69,17 @@ impl Leases {
         &self.entropy
     }
 
-    /// The doorbell every poll through this store takes rung partitions from.
-    pub(crate) const fn doorbell(&self) -> &Doorbell {
+    /// The doorbell every poll through this store takes rung partitions from,
+    /// and every held heartbeat waits on.
+    #[must_use]
+    pub const fn doorbell(&self) -> &Doorbell {
         &self.doorbell
+    }
+
+    /// Holds a runner's heartbeat until fresh work is admitted anywhere this
+    /// process hears of it, or `deadline`, unless `max` beats are held.
+    pub async fn wait_for_work(&self, deadline: std::time::Duration, max: usize) -> Waited {
+        self.doorbell.wait_for_ring(deadline, max).await
     }
 
     /// The fleet event streams, bound to this store's connection.

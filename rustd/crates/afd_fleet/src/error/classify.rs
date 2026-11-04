@@ -52,6 +52,14 @@ impl Error {
         matches!(self.inner.kind, ErrorKind::Rejected { .. })
     }
 
+    /// Whether a lease verb was refused because the fleet moved past the
+    /// lease. The fence logs its own event for it, so a caller that goes on
+    /// without the write logs nothing more.
+    #[must_use]
+    pub(crate) fn is_fence_refusal(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::StaleFence)
+    }
+
     /// The registry code this failure answers with.
     ///
     /// Exhaustive, so a new kind fails the build until it is given one — the
