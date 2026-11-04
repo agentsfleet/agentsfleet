@@ -75,6 +75,28 @@ fn a_release_signed_by_its_key_names_its_image() {
 }
 
 #[test]
+fn should_bind_external_inventory_to_the_signed_release_bytes() {
+    let signer = Signer::new();
+    let mut image = facts(IMAGE);
+    image["packages"] = json!([{
+        "package": "git", "version": "1:2.47.3-0+deb13u1", "architecture": "amd64",
+        "sha256": "1".repeat(64),
+        "copyright": {"path": "/usr/share/doc/git/copyright", "sha256": "2".repeat(64)}
+    }]);
+    image["package_metadata"] = json!("opaque bounded scanner evidence");
+    let bytes = manifest_bytes(&image);
+    let signature = signer.sign(&bytes);
+    let admitted = signer.release().verify(&bytes, &signature).unwrap();
+    assert_eq!(admitted.sha256(), sha256(IMAGE));
+    assert_eq!(admitted.length(), IMAGE.len() as u64);
+    image["package_metadata"] = json!("altered scanner evidence");
+    assert_eq!(
+        refusal(&signer.release(), &manifest_bytes(&image), &signature),
+        Some(ToolboxRefusal::Signature)
+    );
+}
+
+#[test]
 fn should_admit_each_approved_erofs_feature() {
     let signer = Signer::new();
     for features in APPROVED_FEATURES

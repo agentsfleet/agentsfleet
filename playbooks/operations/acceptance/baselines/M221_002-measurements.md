@@ -122,7 +122,7 @@ git grep -n -w -E 'apt|apt-get|dpkg|useradd|chpasswd'
 |----------------|-----------------------|
 | Executed inside a lease | `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox_size.rs`: one `dpkg-query` invocation; replace it with manifest-supplied licence expectations |
 | Image construction | `scripts/toolbox/build.sh`: capture package provenance before removal; retain host-tool inventory and architecture detection |
-| Host preparation | `scripts/toolbox/install-builder-tools.sh`, `deploy/local/codex-runner.Dockerfile`, `playbooks/lib/runner/prepare.sh`, `.github/workflows/test-integration-rustd.yml`: retain host package installation |
+| Host preparation | `.github/actions/build-toolbox/install-tools.sh`, `deploy/local/codex-runner.Dockerfile`, `playbooks/lib/runner/prepare.sh`, `.github/workflows/test-integration-rustd.yml`: retain host package installation |
 | Builder identity | `.github/actions/build-toolbox/action.yml`, `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox.rs`, `rustd/crates/afr_sandbox/src/toolbox/fixtures/release.json`: retain host fingerprints and assertions |
 | Host-only test messages | `deploy/baremetal/deploy_test.sh`, `playbooks/lib/egress_host_deps.sh`, `playbooks/lib/runner/runner_test.sh`: retain prerequisite diagnostics and setup tests |
 | Documentation | `docs/architecture/runner_execution.md`, `docs/development.md`, completed M75/M211/M220/M221/M238 specs, `docs/v2/reviews/m211-toolbox-spikes.md`, `playbooks/operations/acceptance/baselines/M221_001-6e4a02127b47.md`, `scripts/toolbox/manifest.txt`: retain historical and builder references; update current toolbox behaviour |
@@ -149,3 +149,34 @@ The separate shared dev runner's kernel inventory has not been read, and no host
 The final image needs independent payload reconciliation, complete Git and licence proofs, two reproducible builds and measured compressed savings.
 The canonical kernel lane, matched cold-cache samples and Rust patch coverage remain required.
 No first-use comparison or merged release is claimed here.
+
+## Simplified Perl-free candidate
+
+The owner requested only `build.sh` and `manifest.txt` in `scripts/toolbox/`.
+Finalization is now a temporary program emitted by the builder; scanner reconstruction lives in the existing deployment helper and its existing test suite.
+The existing installer moved beside the build action, and the existing sampler and its test moved under acceptance.
+
+`sudo -E make toolbox-image TOOLBOX_DIR=/audit/perl-free` completed with 133 retained packages and an image of 135,979,008 bytes.
+Its digest is `a3e4660a0f78c1b91261ee9051105f70b6e1cae08294b026e4dae2f0efb75279`; the adjacent release JSON is 322,909 bytes.
+The exact removal set is the manifest's eleven packages, including all Perl packages.
+
+This is 26,025,984 fewer bytes than the fresh unchanged image. It is local build evidence, not full qualification.
+
+A read-only bubblewrap root with a writable workspace passed 23 labelled common Git workflows using Debian Git 2.47.3 without Perl.
+The probe exercised local bare remotes, conflict/abort, rebase, interactive staging, worktrees, garbage collection, object verification and Unicode/executable payloads.
+It did not test external network transport or the complete production lease boundary.
+
+The consolidated scanner reconstruction passed on the mounted Perl-free image:
+`full scan: 1187 packages, 133 Debian packages, 10719 relationships` (Syft 1.54.1).
+The 1,054 vendored Rust package detections remain present. Full original-record comparison and same-database vulnerability parity still require qualification for this final candidate.
+`bash deploy/baremetal/toolbox_test.sh` reports `5 passed, 0 failed`, including successful reconstruction and malformed/tampered/bounded-input refusal cases.
+
+The complete original-record comparison caught missing control-file attribution in the first reconstruction.
+The builder now exports retained package control files as well as lists and checksums; the scanner treats them as data.
+The corrected image remains 135,979,008 bytes, with digest `0d8ef1a73c70b21faf9173d0b3d7751a95cd8aa6180e8398882c5c4ac9cd211f`.
+Its release JSON is 915,521 bytes, below admission's 1,048,576-byte bound.
+
+The independent baseline extraction was purged with dpkg, retaining its original database for scanning.
+Its complete Syft package records exactly match the reconstructed final image: `1187 packages; 10829 relationships`.
+Only the scan-directory source identifier and relationship ordering were normalized.
+Grype 0.120.1 with the same cached database and `--only-fixed` reports identical match records: `8 matches; 0 Critical`.

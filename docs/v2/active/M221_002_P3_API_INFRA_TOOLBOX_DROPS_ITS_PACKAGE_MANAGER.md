@@ -37,7 +37,7 @@ SPEC AUTHORING RULES:
 
 **Problem:** The read-only toolbox carries programs for installing packages and managing accounts. Leases cannot use them to change the image.
 
-**Solution summary:** Remove those packages after installation, retain Perl's Git dependencies, and extend the existing release manifest for scanning without dpkg.
+**Solution summary:** Remove the named packages and Perl after installation, qualify stock Git for supported workflows, and extend the existing release manifest for scanning without dpkg.
 
 **Design flow:** Install pinned packages → capture provenance and licences → remove named packages → capture remaining records → remove package-manager state → build image → scan and qualify → sign.
 
@@ -45,51 +45,41 @@ The scanner reads a temporary filesystem view containing the remaining package r
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Remove the toolbox package manager and qualify smaller Perl
+- **PR title (eventual):** Remove the toolbox package manager and Perl
 - **Intent:** Operators download a smaller image while supported lease tools behave as before.
-- **Authoring handshake:** Remove package-management payloads and qualify Perl for Git. ASSUMPTIONS I'M MAKING: package removal must preserve Python, licences and vulnerability detection.
-- **Implementer handshake:** Remove the eight approved packages after provenance capture, retain Git-required Perl and supported tools, and prove smaller bytes and unchanged first-use limits on the hosted Linux runner. Record this intent in the implementation PR Session Notes.
+- **Authoring handshake:** Remove package-management payloads and Perl while qualifying stock Git. ASSUMPTIONS I'M MAKING: package removal must preserve Python, licences and vulnerability detection.
+- **Implementer handshake:** Remove the eleven named packages after provenance capture, preserve supported tools, keep only build.sh and manifest.txt in scripts/toolbox/, and prove smaller bytes and unchanged first-use limits on the hosted Linux runner. Record this intent in the implementation PR Session Notes.
 
 ## Implementing agent — read these first
 
 1. `scripts/toolbox/build.sh` — pinned installation, provenance capture and image publication.
 2. `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox_size.rs` — licence proof currently calls dpkg inside a lease.
 3. `.github/actions/build-toolbox/action.yml` — mounted-image scanning and cache identity.
-4. `scripts/toolbox/measure_first_use.sh` — eight cold-cache commands, comparison validation and report publication.
+4. `playbooks/operations/acceptance/measure_toolbox_first_use.sh` — eight cold-cache commands, comparison validation and report publication.
 5. `docs/v2/done/M221_001_P3_API_INFRA_TOOLBOX_IMAGE_SHRINKS_KEEPING_ITS_TOOLS.md` — preserved behaviour and the original scope exclusions.
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
-| This spec under `docs/v2/pending/`, then `active/` and `done/` | CREATE, MOVE | Record design, decisions and proof |
-| `scripts/toolbox/build.sh` | EDIT | Run final package removal and publish retained inventory |
-| `scripts/toolbox/manifest.txt` | EDIT | Pin removal set and retained Perl packages |
-| `scripts/toolbox/finalize.py` | CREATE | Remove packages, preserve notices and collect final records |
-| `scripts/toolbox/finalize_payload.py` | CREATE | Capture and reconcile retained files and notice aliases |
-| `scripts/toolbox/package_records.py` | CREATE | Share typed Debian records between finalization and scan validation |
-| `scripts/toolbox/test_finalize.py` | CREATE | Test finalization input validation and reconciliation rules |
-| `scripts/toolbox/test_finalize.sh` | CREATE | Prove real package operations and refusal before publication |
-| `scripts/toolbox/scan.sh` | CREATE | Give Syft a temporary view containing package records |
-| `scripts/toolbox/scan_inventory.py` | CREATE | Validate and materialize remaining package records |
-| `scripts/toolbox/test_scan_inventory.py` | CREATE | Reject mismatched, oversized and malformed records |
-| `scripts/toolbox/test_scan.sh` | CREATE | Prove scanner completeness and mount cleanup |
-| `scripts/toolbox/compare_first_use.py` | CREATE | Assemble and grade matched samples using shared comparison rules |
-| `scripts/toolbox/measure_first_use.sh` | EDIT | Import shared commands and comparison rules |
-| `scripts/toolbox/test_measure_first_use.sh` | EDIT | Preserve sampler cancellation and publication proofs after extraction |
-| `scripts/toolbox/test_compare_first_use.py` | CREATE | Reject missing steps, bad samples and incompatible comparisons |
-| `.github/actions/build-toolbox/action.yml` | EDIT | Call the scanner helper and its fixture/cleanup suite |
-| `.github/workflows/test-integration-rustd.yml` | EDIT | Qualify matched images in the existing hosted Linux kernel job and retain evidence |
-| `make/test-unit.mk` | EDIT | Run Python suites in the runner unit shard and finalization proofs in the kernel target |
-| `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox_size.rs` | EDIT | Check licences without dpkg and tighten the size cap |
-| `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox_runtime.rs` | CREATE | Prove absent management tools and working Git dependencies |
-| `rustd/crates/afr_sandbox/examples/kernel_lane/main.rs` | EDIT | Register the new proof module |
-| `rustd/crates/afr_sandbox/examples/kernel_lane/trials.rs` | EDIT | Register runtime trials within the file limit |
-| `rustd/crates/afr_sandbox/src/toolbox/manifest/tests.rs` | EDIT | Prove the enriched signed manifest retains admission rules |
-| `playbooks/operations/acceptance/baselines/M221_002-first-use-amd64.json` | CREATE | Preserve all new samples and comparison results |
-| `playbooks/operations/acceptance/baselines/M221_002-measurements.md` | CREATE | Record build, tool, scan and coverage evidence |
-| `docs/architecture/runner_execution.md` | EDIT | Describe removal of package management and reduced Perl support |
-| `/workspace/docs/runners.mdx` and `/workspace/docs/changelog.mdx` on their own branch | EDIT | Explain observable runtime limitations after the implementation merges |
+| This spec under `active/`, then `done/` | EDIT, MOVE | Record current scope and proof |
+| `scripts/toolbox/build.sh` | EDIT | Finalize the disposable root and publish retained inventory |
+| `scripts/toolbox/manifest.txt` | EDIT | Name the exact eleven-package removal set |
+| `deploy/baremetal/toolbox.sh`, `toolbox_test.sh` | EDIT | Reconstruct bounded scanner records and test refusals |
+| `.github/actions/build-toolbox/action.yml` | EDIT | Scan a temporary overlay, preserving the read-only image |
+| `scripts/toolbox/install-builder-tools.sh` → `.github/actions/build-toolbox/install-tools.sh` | MOVE | Keep the existing builder setup beside its action |
+| `scripts/toolbox/measure_first_use.sh` → `playbooks/operations/acceptance/measure_toolbox_first_use.sh` | MOVE | Keep the existing sampler with acceptance evidence |
+| `scripts/toolbox/test_measure_first_use.sh` → `playbooks/operations/acceptance/test_toolbox_first_use.sh` | MOVE | Preserve sampler failure and interruption tests |
+| `.github/workflows/test-integration-rustd.yml` | EDIT | Qualify matched images in the existing hosted kernel job |
+| `deploy/local/orbstack.sh`, `make/test-unit.mk`, `docs/development.md` | EDIT | Update callers of moved scripts |
+| `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox_size.rs`, `toolbox.rs`, `tools.rs` | EDIT | Replace the lease-side dpkg licence check and prove Perl-free Git |
+| `rustd/crates/afr_sandbox/src/toolbox/manifest/tests.rs` | EDIT | Preserve signed admission with enriched JSON |
+| `playbooks/operations/acceptance/baselines/M221_002-first-use-amd64.json` | CREATE | Preserve actual matched samples |
+| `playbooks/operations/acceptance/baselines/M221_002-measurements.md` | EDIT | Record build, scan, tool and qualification evidence |
+| `docs/architecture/runner_execution.md` | EDIT | Describe runtime tool limits and external package records |
+| `/workspace/docs/runners.mdx`, `/workspace/docs/changelog.mdx`, own branch | EDIT | Publish observable runtime limits after product merge |
+
+No new source file belongs in `scripts/toolbox/`. Remove the seven implementation helpers added during the initial build; fold necessary logic into the existing builder, scanner support and tests.
 
 The admission implementation needs no new filesystem feature or signature format. Its existing byte, digest, architecture and feature checks remain authoritative.
 
@@ -111,7 +101,7 @@ The admission implementation needs no new filesystem feature or signature format
 | `orly gate work`, `verify`, `pr` | Yes | Preserve declared commands; record decisive output |
 | Linux kernel lane | Yes | Run the canonical target, including systemd startup checks |
 | Coverage | Yes | Measure changed Rust lines with the Linux kernel lane; no TypeScript source change planned |
-| File and function length | Yes | Separate finalization, scanning and runtime proofs; keep trial registration within 350 lines |
+| File and function length | Yes | Reuse existing files; keep source files within 350 lines and functions within 50 lines |
 | Secrets | Yes | Scan every commit without adding suppressions |
 
 ## Prior-Art / Reference Implementations
@@ -126,8 +116,8 @@ The admission implementation needs no new filesystem feature or signature format
 
 ### §1 — Remove runtime package management
 
-Keep the current snapshot and compression settings. Add `perl-base` and `perl-modules-5.40` to the retained `packages` input.
-The new `purge` input names exactly apt, dpkg, passwd, libapt-pkg7.0, sqv, debian-archive-keyring, perl and libperl5.40.
+Keep the current snapshot, compression settings and required packages.
+The `purge` input names exactly apt, dpkg, passwd, libapt-pkg7.0, sqv, debian-archive-keyring, perl, libperl5.40, perl-base, perl-modules-5.40 and liberror-perl.
 Reject duplicate names, a missing removal package, or overlap with required packages; do not recursively remove dependencies.
 
 Run finalization after provenance capture and existing documentation pruning, inside mmdebstrap's disposable root, before its tar export.
@@ -140,12 +130,12 @@ Capture these expectations before purge, independently of final status records.
 
 Use dpkg's explicit dependency and essential-package overrides only in the disposable root. Purge the other packages first and dpkg last.
 Read final status without invoking the removed manager; require the original installed set minus exactly the approved removal set.
-Capture status, `.list` and `.md5sums` records for export, then remove only `/var/lib/dpkg`, `/var/lib/apt` and `/var/cache/apt` state.
+Capture status and retained package info records, including file lists, checksums and control files for export, then remove only `/var/lib/dpkg`, `/var/lib/apt`, `/var/cache/apt` and `/var/lib/perl` state. Disable mmdebstrap's later apt cleanup because it recreates the removed state.
 
 Keep retained-owned configuration under `/etc/apt` and `/etc/dpkg`. Reconcile the realized retained payload again after cleanup, allowing only preserved-notice materialization and the named state removal.
 Verify required tools and identities before writing the inventory commitment and exporting metadata. Any failure prevents both image and release-manifest publication.
 
-- **Dimension 1.1** — Exact removal → `test_finalization_preserves_runtime_and_removes_management` (integration): the pinned root retains Python, Git, required Perl and account identities; removed payloads and state disappear.
+- **Dimension 1.1** — Exact removal → `test_finalization_preserves_runtime_and_removes_management` (integration): the pinned root retains Python, Git and account identities while removing Perl; removed payloads and state disappear.
 - **Dimension 1.2** — Refuse incomplete finalization → `test_finalization_refuses_incomplete_removal` (integration): inject a failing dpkg operation through the builder hook; require its diagnostic and neither published artifact.
 - **Dimension 1.3** — Preserve retained payload → `test_finalization_preserves_shared_licences_and_owned_files` (integration): compare hashes, modes and links; preserve notices and shared paths.
 - **Dimension 1.4** — Refuse payload loss → `test_finalization_refuses_missing_retained_payload` (integration): remove Python, a retained-owned configuration file or a shared notice; require a named-path failure and no publication.
@@ -163,9 +153,8 @@ Compare the unchanged and finalized trees: their Debian identities differ by exa
 Compare the finalized tree with original records against its reconstructed view: all package records, file evidence and relationships agree.
 Normalize only the scan-directory source identifier and relationship ordering; with one Grype database, vulnerability identities, severities, package identities and fixed versions must match.
 
-The build action runs Python suites and the scanner fixture/cleanup suite after its existing scanner-install step, on cache hits too.
-The runner unit shard runs Python suites without privileges; the kernel target runs `test_finalize.sh` with its existing builder prerequisites.
-The explicit hosted qualification run uses the real baseline and candidate for full scanner equivalence, with the same pinned scanner-install action.
+The existing `deploy/baremetal/toolbox_test.sh` tests the public reconstruction boundary without privileges.
+The explicit hosted qualification run uses the real baseline and candidate for scanner equivalence, with the same pinned scanner-install action.
 Scanner tests require Linux root, EROFS, OverlayFS, tmpfs, Syft and Grype; missing prerequisites fail explicitly.
 
 Reuse the sampler's signal-forwarding and child-reaping pattern. After success or interruption, unmount the view, temporary filesystem and image before deleting invocation-owned paths.
@@ -184,19 +173,17 @@ Promotion later signs the same release JSON bytes through the existing process.
 Read licence expectations from the adjacent release JSON, following the existing kernel toolbox helper. Replace the lease's dpkg-query call and fixed copyright count.
 Check each retained package's actual copyright hash, broken links, empty notices and unwanted documentation inside the lease.
 
-Use a separate fresh repository for each Git fixture and equivalent fixed inputs for baseline and candidate:
+Qualify Debian's existing Git executable without Perl. Use fixed identities, a writable workspace and local bare remotes.
+Exercise init, clone, add, commit, diff, branch, switch, merge, rebase, fetch, pull, push, config, status, log, show, tag, worktree, conflict/abort, interactive staging, gc, fsck, Unicode names and executable files.
+Assert output and repository/file effects. Do not claim external-network coverage from a local-remote test.
 
-- Request-pull: create a base commit and a topic commit adding `note.txt`, publish to a local bare repository, and request that range. Assert the base/topic identities, topic subject and one-file summary.
-- Filter-branch: rewrite two commits from author Before to After and remove `private.txt`, saving mappings in a state branch. Add a third commit and reload that state; assert changed identities, preserved old mappings, the new mapping, three After authors and no private file in rewritten trees.
-- Git.pm: use `Git->repository` to read HEAD and tracked files; compare with the fixture's expected commit and file set.
-- Bundled hook: execute `prepare-commit-msg.sample` on a message containing Git's help block; assert the help is removed, the message retained and the backup preserves the input. Load `JSON::PP` and `IPC::Open2`, used by `fsmonitor-watchman.sample`, without claiming Watchman itself is installed.
+Keep existing uv installation, Python import, Node test, Git commit and version proofs.
+General Perl programs and optional Perl helpers such as git send-email, git svn, git request-pull and git filter-branch are unsupported after the owner scope change.
+Do not replace Git with an incomplete alternative or introduce a custom Git build when the installed executable passes these workflows.
 
-Keep existing uv installation, Python import, Node test, Git commit and version proofs. General Perl programs may lose native modules such as Digest::SHA.
-A Git dependency failure blocks qualification and requires restoring its dependency; it cannot silently narrow supported Git behaviour.
-
-- **Dimension 3.1** — Keep Git's Perl paths → `test_toolbox_git_uses_reduced_perl` (integration): execute all isolated fixtures above and assert outputs plus repository/file effects.
-- **Dimension 3.2** — Remove management commands → `test_toolbox_has_no_package_or_account_manager` (integration): absolute and PATH invocations of apt, apt-get, dpkg, dpkg-query, useradd and chpasswd fail; root writes fail while workspace writes succeed.
-- **Dimension 3.3** — Preserve notices → `test_toolbox_keeps_copyright_and_drops_docs` (integration): every retained notice matches its hash; no broken links or unwanted documentation remain.
+- **Dimension 3.1** — Qualify Perl-free Git → existing `test_toolbox_can_run_real_tools` and expanded Git fixture (integration): core workflows pass with no Perl executable or installed Perl package.
+- **Dimension 3.2** — Remove management commands → expanded existing toolbox trial (integration): apt, apt-get, dpkg, dpkg-query, useradd and chpasswd are absent; root writes fail while workspace writes succeed.
+- **Dimension 3.3** — Preserve notices → `test_toolbox_keeps_copyright_and_drops_docs` (integration): every retained notice matches its manifest hash; no broken links or unwanted documentation remain.
 
 ### §4 — Measure and publish the result
 
@@ -209,42 +196,31 @@ Retain both images, adjacent manifests, raw samples, comparison results, revisio
 Two candidate builds must have identical image digests. The grader reads both actual images and adjacent manifests, verifies hashes/lengths, and requires candidate bytes below baseline bytes.
 The kernel size trial retains an architecture ceiling; tighten each ceiling only after measuring that architecture, preserving an explicit unmeasured status elsewhere.
 
-Share the sampler's eight command definitions, nearest-rank percentile calculation and 1.10 p99 ratio rule with `compare_first_use.py`.
-Its `measure` command declares twelve 20-sample blocks before execution: baseline, candidate, candidate, baseline, repeated three times.
-Run each block through M221's sampler, retaining all 120 cold samples per command and image.
+Reuse M221's existing sampler unchanged in substance: eight commands, nearest-rank percentiles and the 1.10 p99 ratio rule.
+Run 120 cold-cache samples per command for the fresh baseline, then 120 for the candidate with the baseline report supplied as the existing fourth argument.
+Preserve all raw samples, failed reports and attempts; no trimming or favourable-run selection. Check both report identities against actual image hashes, lengths and manifests.
+Read historical `selected` from `M221_001-first-use-arm64.json`. A compatible historical host also requires ratios at most 1.10 against that selection.
+An amd64 hosted runner is not comparable to the historical arm64 host; record `NOT_COMPARABLE` explicitly and retain the fresh same-host comparison as evidence.
 
-Write the envelope before sampling and update it atomically after every block. Preserve failures, incomplete blocks and previous attempts; no trimming or favourable-run selection.
-The `grade` command recomputes percentiles from finite positive raw samples, checks actual counts and exact commands, and rejects summaries that disagree.
-Both image identities must match the supplied artifacts; their manifests must agree on architecture, snapshot and builder versions.
-
-Read historical `selected` from `M221_001-first-use-arm64.json`. A compatible historical host also requires each candidate p99 ratio against its selected image to be at most 1.10.
-Incompatible history is explicitly `NOT_COMPARABLE`, with the architecture/kernel reason; it does not fail an otherwise complete fresh comparison.
-Incompatible fresh baseline/candidate metadata always fails qualification.
-
-Run `make test-runner-kernel` in full. Preserve four-lease observations and every existing asserted limit; observational percentiles do not imply an enforced threshold.
-Document reduced Perl support. Close only with green Continuous Integration (CI), a successful explicit qualification run, resolved Greptile findings and the authorized merge.
-Record the qualification run URL and tested image digest. Download its raw report into the acceptance baseline; verify later documentation-only commits leave the image digest unchanged.
-
-- **Dimension 4.1** — Preserve latency → `first_use_report_preserves_m221_budgets` (integration): all eight fresh p99 ratios are at most 1.10; compatible historical ratios also pass, or history states its incompatibility.
-- **Dimension 4.2** — Reject false evidence → `test_first_use_refuses_incomplete_or_mismatched_evidence` (unit): reject missing blocks/commands, nonfinite or nonpositive samples, false summaries, differing fresh hosts and wrong image identities.
-- **Dimension 4.3** — Shrink reproducibly → `test_first_use_requires_smaller_candidate`, `test_toolbox_image_fits_its_size_cap` and `test_toolbox_build_is_reproducible`: compare actual baseline/candidate bytes, enforce the architecture cap and match two candidate digests.
-- **Dimension 4.4** — Keep the lease path → `test_start_budgets_with_four_leases` (integration): the full canonical kernel lane passes and records its existing four-lease timing observations.
+- **Dimension 4.1** — Smaller reproducible image → existing `test_toolbox_rebuild_is_identical` plus matched artifact measurements (integration): two candidate images agree and are smaller than the fresh baseline.
+- **Dimension 4.2** — Preserve first use → existing sampler (acceptance): all eight p99 ratios are at most 1.10 with complete raw samples and matching artifact identities.
+- **Dimension 4.3** — Complete Linux qualification → `make test-runner-kernel` and `make test-coverage-runner-kernel`: all trials pass on the hosted runner with no weakened prerequisite.
 
 ## Interfaces
 
-`manifest.txt` gains one required `purge` line with the eight names in §1. Existing `packages` entries remain required runtime packages.
+`manifest.txt` gains one required `purge` line with the eleven names in §1. Existing `packages` entries remain required runtime packages.
 The release manifest keeps every existing identity field and filters `packages[]` to the final installed set, retaining each package's archive SHA-256 meaning.
 Each package entry adds `copyright: {path, sha256}`, naming its retained notice's absolute path and byte digest.
 
 `package_metadata` is base64 of deterministic gzip over UTF-8 JSON: `{"status":"Debian status text", "info":{"git.list":"file paths", "git.md5sums":"checksums"}}`.
-Include complete final status and each retained package's existing `.list`/`.md5sums` records. Status retains Debian source names and versions; absent Source means the binary identity.
+Include complete final status and each retained package's existing info records, including file lists, checksums and control files. Status retains Debian source names and versions; absent Source means the binary identity.
 Require exact package/version/architecture agreement with `packages[]`, unique identities, installed status and one file list per retained package.
 
 Canonical JSON uses Python's standard encoder with sorted keys, compact separators, ASCII escaping and no trailing newline. Gzip uses timestamp zero and no filename.
 The encoded release stays at most 1,048,576 bytes; decoded metadata stays at most 4,194,304 bytes, 512 packages and 1,024 info entries.
 Reject overflow while decompressing, duplicate keys/records, invalid text, unsupported names or paths before creating files.
 
-Info keys must be retained package basenames, optionally architecture-qualified, ending only in `.list` or `.md5sums`; reject separators and parent traversal.
+Info keys must be retained package basenames, optionally architecture-qualified, ending in `.list`, `.md5sums`, `.conffiles`, `.postinst`, `.postrm`, `.prerm`, `.preinst`, `.templates`, `.triggers`, `.config`, `.shlibs` or `.symbols`; reject separators and parent traversal.
 Materialize only `var/lib/dpkg/status` and `var/lib/dpkg/info/<validated basename>` in a new empty upper directory.
 Notice paths must identify `/usr/share/doc/<package>/copyright`; hashes describe resolved bytes, including materialized notices.
 
@@ -252,11 +228,7 @@ The finalizer writes `/etc/toolbox-inventory.sha256`: lowercase SHA-256 plus new
 The scanner checks that file from the read-only image before injecting records. A coherent omission from both external representations therefore fails with the original image.
 Admission still verifies the existing signed manifest fields and byte limit; it need not parse compressed metadata.
 
-The first-use envelope contains `baseline_revision`, artifact digests/lengths, and `attempts[]` with predeclared `order`, completed `blocks[]` and failure details.
-Each block holds its role and the sampler's unmodified report; attempts are append-only. The current candidate must have exactly one complete qualifying attempt, with no failed attempt for that same digest hidden by selection.
-The shared module exposes `measure BASELINE_IMAGE CANDIDATE_IMAGE REPORT HISTORICAL` and `grade REPORT HISTORICAL BASELINE_IMAGE CANDIDATE_IMAGE`.
-`test_scan.sh fixtures` runs the bounded scanner and cleanup cases; `test_scan.sh images BASELINE_IMAGE CANDIDATE_IMAGE` additionally proves full image equivalence.
-The hosted kernel workflow's explicit qualification input selects the second mode and retains its outputs with the measurement artifacts.
+The existing sampler report format and comparison validation remain authoritative. No new measurement framework or comparator module is introduced.
 
 ## Failure Modes
 
@@ -269,7 +241,7 @@ The hosted kernel workflow's explicit qualification input selects the second mod
 | Lost attribution | failure | Source or file records are omitted | Full scan comparison fails despite matching names | `test_scan_refuses_changed_source_or_file_evidence` |
 | Interrupted scan | failure | Signal at mount or scanner boundary | Reap child, unmount, detach loop, remove owned paths; no output | `test_scan_cleans_up_interrupted_mounts_and_children` |
 | Failed unmount | failure | Mount remains busy | Fail, report retained path and preserve mounted tree | `test_scan_retains_tree_when_unmount_fails` |
-| Git module unavailable | failure | Reduced Perl loses a reachable dependency | Git fixture fails; restore dependency before shipping | `test_toolbox_git_uses_reduced_perl` |
+| Supported Git workflow fails | failure | A supported workflow unexpectedly needs Perl | Git fixture fails; resolve before shipping | `test_toolbox_can_run_real_tools` |
 | Invalid measurement | failure | Missing samples, false summary or mismatched fresh host/image | Grader refuses qualification with the mismatch named | `test_first_use_refuses_incomplete_or_mismatched_evidence` |
 
 ## Invariants
@@ -288,10 +260,10 @@ N/A: no product event or metric changes. Release length, digest and existing ker
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|-----------|--------|----------|----------|-----------------|
 | R1 | Management payload absent; tools, Git and licences work | `make test-runner-kernel` | All trials pass; no skips | P0 | |
-| R2 | Candidate smaller and reproducible | R3 grader plus `make test-runner-kernel` | Actual candidate smaller than fresh baseline; cap and reproducibility trials pass | P0 | |
-| R3 | First-use budget preserved | `python3 scripts/toolbox/compare_first_use.py grade REPORT HISTORICAL BASELINE_IMAGE CANDIDATE_IMAGE` | Eight passing ratios, exact artifact identities and explicit historical status | P0 | |
-| R4 | Scan preserves retained evidence | `sudo -E bash scripts/toolbox/test_scan.sh images BASELINE_IMAGE CANDIDATE_IMAGE` with pinned scanners | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | |
-| R5 | Signed admission unchanged | `make test-unit-rustd-runner` | Runner and Python unit suites pass | P0 | |
+| R2 | Candidate smaller and reproducible | Matched image identity checks plus `make test-runner-kernel` | Actual candidate smaller than fresh baseline; cap and reproducibility trials pass | P0 | |
+| R3 | First-use budget preserved | `sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh CANDIDATE_IMAGE REPORT 120 BASELINE_REPORT` | Eight passing ratios, exact artifact identities and explicit historical status | P0 | |
+| R4 | Scan preserves retained evidence | Existing build-toolbox action and hosted image comparison with pinned scanners | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | |
+| R5 | Signed admission unchanged | `make test-unit-rustd-runner` | Runner and existing scanner boundary suites pass | P0 | |
 | R6 | Rust patch coverage | `make test-coverage-runner-kernel` and existing coverage merge job | Same revision; Rust patch at least 99%; no TypeScript source diff | P0 | |
 | S1 | Repository lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Repository unit tests | `make test-unit-all` | exit 0 | P0 | |
@@ -322,7 +294,7 @@ Repeat repository-wide word-boundary searches for apt, dpkg, useradd and chpassw
 ## Product Clarity (authoring record)
 
 1. **Successful user moment** — An operator downloads a smaller toolbox and runs the same supported Git and language-tool workflows.
-2. **Preserved user behaviour** — M221's tools, lease isolation and first-use limits hold; only the approved general Perl reduction changes language support.
+2. **Preserved user behaviour** — M221's tools, lease isolation and first-use limits hold; the owner-approved Perl removal changes optional language/helper support.
 3. **Optimal-way check** — Reuse dpkg and Syft while moving installation records out of the runtime image.
 4. **Rebuild-vs-iterate** — Extend the existing builder and kernel lane.
 5. **What we build** — Package removal, inventory-backed scanning, Git qualification and measured image reduction.
@@ -330,26 +302,31 @@ Repeat repository-wide word-boundary searches for apt, dpkg, useradd and chpassw
 7. **Fit with existing features** — Preserve signed admission and vulnerability gates.
 8. **Surface order** — Build and runtime checks first; publish the supported tool limits with the release.
 9. **Dashboard restraint** — N/A: no dashboard change.
-10. **Confused-user next step** — Consult the runner tool list and use a supported runtime instead of a removed Perl module.
+10. **Confused-user next step** — Consult the runner tool list and use a supported Git workflow or language runtime.
 
 ## Decomposition & alternatives (patch vs refactor)
 
 - **Chosen shape:** Package finalization, scanning, lease proofs and measurements form four ordered Sections.
 - **Ordinary apt purge:** Rejected because the measured removal plan also deletes Python.
 - **Hand-deleting package files:** Rejected because shared-file ownership and stale metadata need a second removal implementation.
-- **Perl-free Git:** Rejected because the current request-pull command fails without the interpreter.
-- **Perl-base alone:** Rejected because it omits module files used by Git helpers; retain the packaged modules while qualifying removal of native extensions.
+- **Perl-free stock Git:** Chosen after the owner narrowed support to common Git workflows. A fresh read-only-root probe passed 23 labelled workflows without Perl.
+- **Alternative Git implementation/custom build:** Unnecessary for the measured workflows; retain the packaged executable.
+- **Many new Python modules:** Rejected by the owner; reuse the existing builder, deployment support and tests.
 - **Patch-vs-refactor verdict:** A patch to the existing builder and proof paths. Record any crate reduction or race removal if implementation produces one.
 
 ## Discovery (consult log)
 
 - **Scope change:** M221_001 excluded apt and dpkg removal. Indy now requests: "Goal: the toolbox Enhanced Read-Only File System (EROFS) image drops the package manager."
 - **Database rationale:** M221 rejected deleting installed files while retaining records naming them. This work removes the manager and database together, retaining remaining-package records beside the image.
-- **Perl decision:** Indy: "Qualify a smaller Perl runtime for Git; allow reduced general Perl support (Recommended)".
+- **Initial Perl decision:** Indy: "Qualify a smaller Perl runtime for Git; allow reduced general Perl support (Recommended)".
+- **Superseding Perl direction:** Indy: "since i donot see a point to use perl, as its only for git", then supplied Git's official `NO_PERL=YesPlease` build documentation. Qualify the packaged Git executable without Perl before considering a custom build.
+- **File scope:** Indy: "I feel manifest.txt and build.sh in toolbox/ folder are sufficient" and "I dont want those gazillion scripts/toolbox/*.py? what can we do better here?". Keep that folder to those two files and reuse existing proof locations.
+- **Delivery:** Indy: "Yes update and push the PR"; update existing PR #800 with code and keep it in draft until qualification finishes.
 - **Source revision:** `11883fdab`; fresh origin/main fetch found M221_002 unused.
 - **Fresh baseline:** The unchanged amd64 build produces 162,004,992 bytes, digest `387fa1f1b6b4cbe686d78722e7a4cdb52926ddd26720e67a78ede1e22509f430`.
 - **Measured package behaviour:** Apt's purge simulation removes Python. Explicit dpkg removal of perl and libperl5.40 preserves four targeted Git checks but removes Digest::SHA.
 - **Evidence:** [M221_002-measurements.md](../../../playbooks/operations/acceptance/baselines/M221_002-measurements.md) records package sizes, the unchanged build, full scanner equivalence, Perl experiments and the classified reference sweep.
+- **Perl-free build:** 135,979,008 bytes, 133 retained packages, digest `a3e4660a0f78c1b91261ee9051105f70b6e1cae08294b026e4dae2f0efb75279`; local build evidence only.
 - **Remaining proof:** The final implementation still needs image, Git, latency, reproducibility, full kernel and coverage qualification.
 - **Model reviews:** Six brainstorm lenses and nine formal reviewers completed. Formal review produced eight Major actions and five Nits; all were accepted and incorporated into interfaces, proofs and wiring.
 - **Qualification host decision:** Indy selected "GitHub-hosted Linux runner (Recommended)" after the cloud host failed kernel prerequisites. The existing kernel workflow will supply full qualification; OrbStack access is unnecessary for this route.
