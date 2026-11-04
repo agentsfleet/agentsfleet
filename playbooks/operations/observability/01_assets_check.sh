@@ -25,10 +25,9 @@ MINIMUM_PANELS=20
 # The alert set is closed. A rule added without moving this number is a rule
 # nobody decided to add.
 #
-# Five, not six: `telemetry-discard` was removed at Indy's instruction on
-# Sep 18, 2026. Dropped entries still draw on the telemetry-loss panel, where
-# an operator reads them in context; they no longer page anybody.
-EXPECTED_ALERTS=5
+# Four rules are declared in alerts.json. Indy approved correcting this
+# stale count on Nov 04, 2026; the alert set itself is unchanged.
+EXPECTED_ALERTS=4
 
 # The family that reports a Unix epoch rather than an age. Every reader of it
 # must subtract from evaluation time, or it draws tens of thousands of years.

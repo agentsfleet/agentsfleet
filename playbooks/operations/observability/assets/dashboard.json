@@ -841,7 +841,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Outbound repair retries and stream reconnects. A sustained rise calls for checking the failed destination or datastore connection.",
+      "description": "Stream reconnects. A sustained rise calls for checking the datastore connection.",
       "fieldConfig": {
         "defaults": {
           "unit": "ops"
@@ -870,11 +870,6 @@
         }
       },
       "targets": [
-        {
-          "expr": "sum(rate(agentsfleet_repair_dispatch_retried_total[$__rate_interval]))",
-          "legendFormat": "repair dispatch retried",
-          "refId": "B"
-        },
         {
           "expr": "sum(rate(agentsfleet_sse_hub_reconnects_total[$__rate_interval]))",
           "legendFormat": "hub reconnects",
@@ -985,7 +980,7 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Age of the oldest unsettled admission and the oldest due verifier intent. These ages have different causes and no shared deadline.",
+      "description": "Age of the oldest unsettled admission.",
       "fieldConfig": {
         "defaults": {
           "unit": "s"
@@ -1018,11 +1013,6 @@
           "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds)",
           "legendFormat": "oldest unsettled admission",
           "refId": "A"
-        },
-        {
-          "expr": "max(agentsfleet_repair_dispatch_oldest_age_seconds)",
-          "legendFormat": "oldest due verifier intent",
-          "refId": "B"
         }
       ],
       "title": "Oldest thing still waiting",
