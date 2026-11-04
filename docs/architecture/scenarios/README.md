@@ -10,6 +10,7 @@ Each scenario follows one user outcome from its trigger to its result. Each page
 | [`two-fleets-github-slack.md`](./two-fleets-github-slack.md) | Two fleets in one workspace, one picture per step: a PR wakes one, a Slack mention wakes the other, a steer queues behind the first; the Slack answer returns to its thread and the PR answer stays in the dashboard. |
 | [`slack-incident-responder.md`](./slack-incident-responder.md) | A mention in a failed Continuous Integration (CI) run's Slack thread reaches exactly one fleet, which answers in that thread with GitHub and Grafana evidence; asked to, the channel's repairer opens one draft fix Pull Request (PR). Zero, one, and several fleets per channel. Built in M206; the live drill is pending. |
 | [`durable-repair.md`](./durable-repair.md) | Proposed unified development-autonomy scope: Jev goal decisions, an authorized externally opened PR, later-CI continuation and worker recovery; Grafana-only scheduled monitoring supplies the incident variant. Detailed design, implementation and acceptance remain pending. |
+| [`fleet-to-fleet.md`](./fleet-to-fleet.md) | Proposed: one fleet steers another by id through the existing steer path, and reads other fleets' status and answers with no API key. A chief-of-staff fleet and the responder-to-repairer crew. M239_001 owns the proofs. |
 
 The durable-repair scenario extends the current manual Slack/draft path; it does not mark that extension shipped.
 Production launch follows written M23x specifications and demonstrated development autonomy.
