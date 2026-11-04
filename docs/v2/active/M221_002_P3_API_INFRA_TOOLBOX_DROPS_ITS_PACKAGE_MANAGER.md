@@ -66,6 +66,8 @@ The scanner reads a temporary filesystem view containing the remaining package r
 | `scripts/toolbox/build.sh` | EDIT | Run final package removal and publish retained inventory |
 | `scripts/toolbox/manifest.txt` | EDIT | Pin removal set and retained Perl packages |
 | `scripts/toolbox/finalize.py` | CREATE | Remove packages, preserve notices and collect final records |
+| `scripts/toolbox/finalize_payload.py` | CREATE | Capture and reconcile retained files and notice aliases |
+| `scripts/toolbox/package_records.py` | CREATE | Share typed Debian records between finalization and scan validation |
 | `scripts/toolbox/test_finalize.py` | CREATE | Test finalization input validation and reconciliation rules |
 | `scripts/toolbox/test_finalize.sh` | CREATE | Prove real package operations and refusal before publication |
 | `scripts/toolbox/scan.sh` | CREATE | Give Syft a temporary view containing package records |
