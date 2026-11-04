@@ -443,19 +443,19 @@ Both purposes share the [provider reader and browser chat implementation](shared
 
 The CLI displays `Fleet created: installing`, each missing check and its action, the fleet ID, and a copyable resume command that reads the fresh tag then PATCHes active. It exits nonzero, preserving the creation replay key for explicit retry. An active fleet with a blocked initial run, or any schedule not `synced` (`failed`, `syncing`, or a status the CLI does not know), prints the partial outcome and actionable retry and exits nonzero, rather than claiming all requested work succeeded.
 
-### B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)
+### B. TRIGGER  (six producers, ONE ingress)
 
 Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: platform setup to fleet execution".
 
-The diagram's chunk-continuation entry records earlier behavior. Current [conversation compaction](context_lifecycle.md) continues the same run without adding an admission.
-Approval resolution still creates a continuation admission.
+[Conversation compaction](context_lifecycle.md) continues a run without a new admission. Only an approved gate admits a continuation.
 
 ```
    Common admission fields, stored in fleet.admissions.
    The row's UUIDv7 id is the canonical event identity across redelivery.
 
-       actor         steer:<user> | webhook:<source> | github-app | cron:<schedule>
-                     | continuation:<original_actor> | slack:<user>
+       actor         steer:<user> | steer:api | webhook:<source> | github-app
+                     | cron:<schedule_id> | continuation:<event_id> | slack:<user>
+                     | fleet:<fleet_id>  (proposed, scenarios/fleet-to-fleet.md)
        type          chat | webhook | cron | continuation
        workspace_id  <uuid>
        request       <opaque JSON — the message + metadata>
@@ -470,6 +470,12 @@ Approval resolution still creates a continuation admission.
                       created_at=<rfc3339>
                → 202 { event_id }                ← CLI uses event_id
                                                    to filter SSE frames
+
+   FLEET      proposed (scenarios/fleet-to-fleet.md): a fleet's run calls
+   STEER        fleet_steer → POST /v1/runners/me/leases/{lease_id}/steers
+               → the same INSERT: actor=fleet:<sender_fleet_id>  type=chat
+                 key <target_fleet_id>:<sender_event_id>:<n>
+                 reply copied from the sender's event; hop ≤ 2
 
    GITHUB    App posts pull_request or workflow_run
    APP         → POST /v1/ingress/github
@@ -514,19 +520,14 @@ Approval resolution still creates a continuation admission.
                       workspace_id=<ws>        request=<schedule-event-json>
                       created_at=<rfc3339>
 
-   CONTINUATION  agentsfleetd re-enqueue (chunk-continuation or
-                 user-resumed fulfillment)
-               → INSERT fleet.admissions
-                      actor=continuation:<original_actor>
-                      type=continuation
+   CONTINUATION  an approved gate resumes the run it parked
+               → INSERT fleet.admissions keyed by the gate's action
+                      actor=continuation:<parked_event_id>  type=continuation
                       workspace_id=<ws>  request=<continuation-msg>
-                      created_at=<rfc3339>
-                 The new event's row carries
-                 resumes_event_id=<immediate_parent_event_id>.
-                 Continuation actor is FLAT — never re-nests
-                 `continuation:` (a steer that chunks 3 times produces
-                 `actor=continuation:steer:kishore` on every continuation,
-                 not `continuation:continuation:continuation:...`).
+                      reply copied from the parked event (Reply::Inherit)
+                 The new row carries resumes_event_id=<parked_event_id>;
+                 the parked row is never reopened
+                 (afd_approval/src/inbox/resolve/mod.rs).
 
    All six producers commit the same admission shape to one ledger. The
    reasoning loop never branches on actor. Actor is metadata for the
@@ -546,36 +547,17 @@ Approval resolution still creates a continuation admission.
 
 The proposed [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
 
-`agentsfleetd` stores the desired schedule, pushes each requested mutation to
-QStash synchronously, and receives the fires. The runner owns no schedule
-timer ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
+`agentsfleetd` stores the desired schedule, pushes each mutation to QStash synchronously, and receives the fires. The runner owns no schedule timer ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 
-A schedule has one of three authors, recorded as its `source`: `trigger` for
-the cron trigger in the fleet's reviewed setup, `api` for a person, and `fleet` for the fleet itself,
-through its lease's schedules verb. The fleet is the lease's, so a body cannot
-name another; a fleet holds at most 16 schedules it made, and it can change or
-delete only those. A create, change or delete proves the lease again on the
-write's own transaction (`afd_fleet::lease::write_fence`), holding the lease row
-shared until the write commits, so a reclaim, renew or settle waits for it and
-an old holder resumed after a reclaim writes nothing: `UZ-RUN-005`, `current_state`
-`superseded`. A run-now admits through the same `schedule_fire` producer a
-QStash fire does, keyed `run:<event_id>` by the leased event so a reclaimed
-lease replays the run, and both record `actor=cron:<schedule_id>`. A run-now's
-refusals are listed in API reference › Runner plane (Run a schedule now). A
-schedule's runs are its history rows under that actor, read through slot 1700's
-`(fleet_id, actor, created_at, event_id)` index, so a page never walks the
-fleet's whole history. A `once` schedule (slot 1750) retires inside that one
-fire seam: the fire is admitted, then the schedule is claimed `deleting` and
-removed from QStash. A `once` fire is keyed by the schedule alone, so a run-now
-racing its QStash fire replays it rather than admitting a second run. A QStash
-fire dropped because the fleet takes no work also retires a `once` schedule,
-since its moment has passed; a retirement whose claim is held answers
-`UZ-SCHED-006`, so QStash repeats the fire. A `once` row keeps the instant it
-was set for (slot 1750, `fire_at`), and a sync after that instant removes one
-QStash never registered rather than registering an expression whose next match
-is a year away; one QStash already holds stays, so a delayed callback finds it.
-A pause that removes a one-off upstream puts its key back to its own id, so a
-resume after its moment retires it too.
+- **Three authors.** A schedule's `source` is `trigger`, `api` or `fleet`. `trigger` is the cron trigger in the reviewed setup, `api` a person, and `fleet` the fleet itself through its lease's schedules verb.
+- **A fleet edits only its own.** The fleet is the lease's, so a body cannot name another. A fleet holds at most 16 schedules it made and changes or deletes only those.
+- **Every write proves the lease again** on its own transaction (`afd_fleet::lease::write_fence`), holding the lease row shared until commit. A reclaim, renew or settle waits for it. An old holder resumed after a reclaim writes nothing: `UZ-RUN-005`, `current_state` `superseded`.
+- **Run-now** admits through the same `schedule_fire` producer a QStash fire does, keyed `run:<event_id>` by the leased event, so a reclaimed lease replays the run. Both record `actor=cron:<schedule_id>`. Its refusals are listed in API reference › Runner plane (Run a schedule now).
+- **A schedule's runs** are its history rows under that actor, read through slot 1700's `(fleet_id, actor, created_at, event_id)` index. A page never walks the fleet's whole history.
+- **A `once` schedule** (slot 1750) retires inside the fire seam: the fire is admitted, then the schedule is claimed `deleting` and removed from QStash. Its fire is keyed by the schedule alone, so a run-now racing the QStash fire replays it rather than admitting a second run.
+- **A dropped `once` fire** (the fleet takes no work) retires the schedule too, since its moment has passed. A retirement whose claim is held answers `UZ-SCHED-006`, so QStash repeats the fire.
+- **`fire_at`** (slot 1750) keeps the instant a `once` row was set for. A sync after that instant removes a `once` QStash never registered, rather than registering an expression whose next match is a year away. One QStash already holds stays, so a delayed callback finds it.
+- **A pause** that removes a one-off upstream puts its key back to its own id, so a resume after its moment retires it too.
 
 #### The webhook auth taxonomy
 
