@@ -103,7 +103,7 @@ Git `2.47.3` needs Perl for request-pull and some shell helpers.
 Removing the interpreter makes request-pull fail with `/usr/bin/perl: not found`.
 Interactive add, commit, diff and log still work in that exploratory root.
 
-Keeping perl-base alone loses File::Find from the exploratory import set; that probe did not execute a bundled hook.
+Keeping perl-base alone loses File::Find from the exploratory import set; that probe did not run a bundled hook.
 Keeping perl-base and perl-modules-5.40 passes the targeted request-pull, stateful filter-branch, Git.pm and hook-module checks.
 Those early checks reuse a repository, so final qualification must use isolated equivalent fixtures and assert their effects.
 
