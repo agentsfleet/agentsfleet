@@ -221,3 +221,54 @@ async fn test_unstarted_segment_is_absent() {
         );
     }
 }
+
+/// A lease carrying its window makes no memory read, so its terminal line has
+/// no memory segment; one without a window reads memory and times the read.
+#[tokio::test(start_paused = true)]
+async fn test_no_memory_read_on_a_window_lease() {
+    let capture = Capture::install();
+    let mut rig = Rig::new(
+        daemon(|_call| None),
+        FakeEngine::default(),
+        FakeAgent::new(Behaviour::Answer),
+    );
+    let mut windowed = lease(LEASE_ID, FLEET_ID);
+    windowed.memory = Some(afd_wire::memory::MemoryHydrateResponse {
+        memory: Vec::new(),
+        shared: Vec::new(),
+        publish: false,
+    });
+
+    rig.run(&windowed).await.unwrap();
+
+    let read = rig.calls().iter().any(|call| call.verb == Verb::Hydrate);
+    let line = capture.only(EVENT_COMPLETED);
+    assert_eq!((read, millis(&line, MEMORY_MS)), (false, None));
+}
+
+/// The lease without a window reads memory once and logs how long it took.
+#[tokio::test(start_paused = true)]
+async fn test_memory_read_without_a_window() {
+    let capture = Capture::install();
+    let mut rig = Rig::new(
+        move |call: &Call| {
+            if call.verb == Verb::Hydrate {
+                late(call, HYDRATE_TAKES)
+            } else {
+                daemon(|_call| None)(call)
+            }
+        },
+        FakeEngine::default(),
+        FakeAgent::new(Behaviour::Answer),
+    );
+
+    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
+
+    let reads = rig
+        .calls()
+        .iter()
+        .filter(|call| call.verb == Verb::Hydrate)
+        .count();
+    let line = capture.only(EVENT_COMPLETED);
+    assert_eq!((reads, millis(&line, MEMORY_MS)), (1, ms(HYDRATE_TAKES)));
+}

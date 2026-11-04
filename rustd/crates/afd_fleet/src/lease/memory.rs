@@ -33,13 +33,23 @@
 use afd_core::id::Uuid7;
 use afd_memory::Captured;
 use afd_wire::memory::{
-    MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
+    MemoryDelta, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
+    MemoryRecallResponse,
 };
 use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::fence::Fence;
 use crate::lease::pull::Plane;
+
+/// The lease a memory write is fenced on, by its four names.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Holder<'a> {
+    pub(crate) runner_id: &'a Uuid7,
+    pub(crate) fleet_id: &'a Uuid7,
+    pub(crate) lease_id: &'a str,
+    pub(crate) fencing_token: u64,
+}
 
 /// A run's memory was persisted.
 const EVENT_CAPTURED: &str = "memory_captured";
@@ -87,17 +97,33 @@ impl Plane {
         request: &MemoryPushRequest<'_>,
         now: Timestamp,
     ) -> Result<Captured> {
-        self.fenced(
+        let holder = Holder {
             runner_id,
             fleet_id,
-            &request.lease_id,
-            request.fencing_token,
-        )
-        .await?;
-        let counted = self
-            .memories
-            .capture(fleet_id, &request.memory, now)
+            lease_id: &request.lease_id,
+            fencing_token: request.fencing_token,
+        };
+        self.capture_for(holder, &request.memory, now).await
+    }
+
+    /// [`Plane::capture`]'s fence and write, for a caller holding the parts
+    /// rather than a push body: the report verb, whose body carries the run's
+    /// memory beside its result.
+    pub(crate) async fn capture_for(
+        &self,
+        holder: Holder<'_>,
+        memory: &[MemoryDelta<'_>],
+        now: Timestamp,
+    ) -> Result<Captured> {
+        let Holder {
+            runner_id,
+            fleet_id,
+            lease_id,
+            fencing_token,
+        } = holder;
+        self.fenced(runner_id, fleet_id, lease_id, fencing_token)
             .await?;
+        let counted = self.memories.capture(fleet_id, memory, now).await?;
 
         // The CONTENT is never logged — only the tallies and the scope.
         let fleet = fleet_id.as_str();

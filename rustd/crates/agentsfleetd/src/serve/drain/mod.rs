@@ -102,6 +102,9 @@ pub struct Drain {
     /// Recorded by the accept loop before it wakes any stopped waiters.
     at_close: Arc<AtomicUsize>,
     idle: Arc<Notify>,
+    /// Closed when accepting stops, so held heartbeats end at once rather
+    /// than keep the drain waiting until their deadline.
+    doorbell: Option<afd_dragonfly::Doorbell>,
 }
 
 impl Drain {
@@ -115,7 +118,15 @@ impl Drain {
             live: Arc::new(AtomicUsize::new(0)),
             at_close: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
+            doorbell: None,
         }
+    }
+
+    /// The same drain, closing `doorbell` when it stops accepting.
+    #[must_use]
+    pub fn with_doorbell(mut self, doorbell: afd_dragonfly::Doorbell) -> Self {
+        self.doorbell = Some(doorbell);
+        self
     }
 
     /// The token the accept loop selects on. Cancelled by [`Self::settle`], and
@@ -180,6 +191,9 @@ impl Drain {
     /// answer is always the same one — carry on to the supervisor.
     pub async fn settle(&self, bound: Duration) -> Settled {
         self.accepting.cancel();
+        if let Some(doorbell) = &self.doorbell {
+            doorbell.close();
+        }
         // Cancelling only ASKS the loop to stop; it is parked in `accept()` and
         // leaves on its next poll, so a connection can still be accepted and
         // counted in between. The loop records its close count before waking
@@ -205,8 +219,11 @@ impl Drain {
         drop(tokio::time::timeout(bound, self.idle()).await);
         let abandoned = self.in_flight();
         if abandoned > 0 {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
-                error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+                error_code,
                 in_flight = abandoned,
                 event = EVENT_DRAIN_TIMED_OUT,
                 "drain bound expired; in-flight requests will be cut"
@@ -220,16 +237,13 @@ impl Drain {
 
     /// Resolves once nothing is in flight.
     ///
-    /// The re-check after registering is load-bearing: `Notify` wakes only a
-    /// waiter that was already registered, so a guard dropped between the load
-    /// and the registration would notify nobody and this would wait out the
-    /// whole bound with an empty server. `enable()` registers first, then the
-    /// count is read again.
+    /// Registers, then reads the count: `Notify` wakes only a waiter already
+    /// registered, so a count read first could see a guard still live, miss
+    /// its drop before the registration, and wait out the whole bound with an
+    /// empty server. Registered first, a drop either lands before the read,
+    /// which sees zero, or after it, which wakes this waiter.
     async fn idle(&self) {
         loop {
-            if self.in_flight() == 0 {
-                return;
-            }
             let notified = self.idle.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();

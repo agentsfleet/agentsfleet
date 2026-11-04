@@ -139,6 +139,12 @@ Reading the row makes cordon, drain, revoke and delete effective across replicas
 
 For 20 hosts with one idle worker each, one poll per second gives approximately 72,000 fleet-discovery statements per hour.
 
+**Held heartbeats.** An idle host's heartbeat is held until the next ring or 10 s ([Runner Fleet](./runner_fleet.md) §"The held heartbeat"). It beats at its usual cadence while idle, and keeps one in-flight permit per host.
+
+Every admission, gate confirmation and approval resolution rings, and each ring wakes every held beat. Per ring, each idle host makes one immediate poll, and one re-beat after at least 250 ms.
+
+At 20 idle hosts and one ring a second, that adds about 40 requests a second. The idle poll volume above is unchanged, because `NO_WORK_RETRY_AFTER` stays 1 s. Revisit the ring-everyone wake above about 50 runner hosts.
+
 An empty ledger skips fleet scans. When unsettled admissions exist, server work grows with eligible active fleet population, including when all heads are parked.
 Measure that cost separately from the number of statements.
 

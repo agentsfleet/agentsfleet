@@ -104,6 +104,13 @@ pub struct Reconciled {
     /// The tokens the run's usage lines record, every renewal's and the
     /// report's: what its cost metrics and delivery span describe.
     pub tokens: RunTokens,
+    /// When the event was created, as the lease row carries it.
+    pub event_created_at: Timestamp,
+    /// When the lease was issued.
+    pub lease_created_at: Timestamp,
+    /// When `event_complete` was published; none on a repeated report, and
+    /// none when the settle closed no event row.
+    pub completed_at: Option<Timestamp>,
 }
 
 impl Plane {
@@ -158,11 +165,20 @@ impl Plane {
             now,
         );
 
+        // Boxed: the capture's state would otherwise ride inside every report
+        // future, past the large-future bound, for a step most reports skip.
+        Box::pin(self.capture_reported(runner_id, &lease, request, now)).await;
         match self.leases.commit_report(report).await? {
             Committed::Fenced => Err(stale_fence()),
             Committed::AlreadySettled => {
                 Self::record_repeat(&lease, lease_id);
-                Ok(reconciled(lease, Nanos::ZERO, true, RunTokens::default()))
+                Ok(reconciled(
+                    lease,
+                    Nanos::ZERO,
+                    true,
+                    RunTokens::default(),
+                    None,
+                ))
             }
             Committed::Settled {
                 settlement,
@@ -174,14 +190,16 @@ impl Plane {
                     self.settle_usage(settled).await;
                 }
                 self.release_usage(&lease_key, release_of(request)).await;
-                self.announce(runner_id, request, &lease, closed, charged, now)
+                let completed_at = self
+                    .announce(runner_id, request, &lease, closed, charged, now)
                     .await;
+                timing::completed(&lease, now, completed_at);
                 if let Some(owing) = owed {
                     self.queue_owed_answer(&owing, &lease, request.response_text.as_ref())
                         .await;
                 }
                 let tokens = self.leases.run_tokens(&lease_key).await;
-                Ok(reconciled(lease, charged, false, tokens))
+                Ok(reconciled(lease, charged, false, tokens, completed_at))
             }
         }
     }
@@ -265,7 +283,13 @@ fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String>
 /// Takes the lease BY VALUE: every string field moves into the answer rather
 /// than being cloned, which is why the two call sites read the lease's columns
 /// through this and not before it.
-fn reconciled(lease: Reported, charged: Nanos, repeated: bool, tokens: RunTokens) -> Reconciled {
+fn reconciled(
+    lease: Reported,
+    charged: Nanos,
+    repeated: bool,
+    tokens: RunTokens,
+    completed_at: Option<Timestamp>,
+) -> Reconciled {
     Reconciled {
         tokens,
         charged,
@@ -277,6 +301,9 @@ fn reconciled(lease: Reported, charged: Nanos, repeated: bool, tokens: RunTokens
         provider: lease.provider,
         model: lease.model,
         repeated,
+        event_created_at: lease.event_created_at,
+        lease_created_at: lease.lease_created_at,
+        completed_at,
     }
 }
 
@@ -302,7 +329,9 @@ fn posture_of(lease: &Reported) -> Posture {
     })
 }
 
+mod memory;
 mod steps;
+mod timing;
 mod tokens;
 
 #[cfg(test)]

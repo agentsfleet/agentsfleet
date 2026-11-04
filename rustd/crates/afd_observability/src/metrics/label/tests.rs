@@ -65,6 +65,10 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::DeliveryStage::ALL.len(),
         ),
         (
+            fleet::RUNNER_WAKE_ANSWERS_TOTAL.wire_name(),
+            fleet_labels::WakeAnswer::ALL.len(),
+        ),
+        (
             fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
             fleet_labels::HistoryCut::ALL.len(),
         ),

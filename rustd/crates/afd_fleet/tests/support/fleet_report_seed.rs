@@ -157,6 +157,30 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
 }
 
 impl Held {
+    /// Moves the fleet's live sequence one past the held lease, as a won claim
+    /// does before it expires the prior lease, and answers the new sequence.
+    pub(crate) async fn supersede(&self) -> u64 {
+        let mut connection = self
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection");
+        let live: i64 = sqlx::query_scalar(
+            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1
+             WHERE fleet_id = $1::uuid RETURNING fencing_token",
+        )
+        .bind(&self.fleet)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the held fleet has an affinity row");
+        assert!(
+            live > self.fence.as_i64(),
+            "the sequence must outrank the held lease, or this test proves nothing"
+        );
+        u64::try_from(live).expect("a sequence is never negative")
+    }
+
     /// Ages the lease's meter by one [`SLICE`], as a second of runtime would,
     /// and answers the stamp the next settle or renewal measures from.
     ///

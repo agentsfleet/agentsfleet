@@ -34,7 +34,7 @@ pub use test_util::boot_with_connector_boundary;
 
 use std::net::SocketAddr;
 
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Services as _};
 use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
@@ -201,6 +201,9 @@ async fn serve_plane(
     port: u16,
     supervisor: &mut Supervisor,
 ) -> Result<Booted, BootFailure> {
+    // Taken before the plane moves into the router: the drain closes it, so a
+    // held heartbeat never holds a deploy open.
+    let doorbell = runtime.plane.leases().leases.doorbell().clone();
     let router = afd_api::router::build(runtime.plane, admission);
     // The sweepers read through pools that are open by now. Starting them
     // after the socket would leave a window where the plane serves while
@@ -218,7 +221,7 @@ async fn serve_plane(
     )
     .await;
     report_workers(supervisor, &analytics);
-    let drain = Drain::new();
+    let drain = Drain::new().with_doorbell(doorbell);
     let address = listen(port, router, supervisor, drain.clone()).await?;
     announce_started(supervisor, analytics, address);
     Ok(Booted {

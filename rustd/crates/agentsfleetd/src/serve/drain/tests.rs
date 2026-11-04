@@ -268,3 +268,33 @@ async fn the_default_drain_is_an_open_one() {
     assert_eq!(drain.in_flight(), 0);
     assert_eq!(drain.settle(GENEROUS).await, Settled::EMPTY);
 }
+
+/// A heartbeat held on the doorbell ends the moment the drain stops
+/// accepting, so the drain is clean long before the hold's own deadline.
+#[tokio::test]
+async fn a_held_heartbeat_ends_when_the_drain_stops_accepting() {
+    let doorbell = afd_dragonfly::Doorbell::new();
+    let drain = Drain::new().with_doorbell(doorbell.clone());
+    let guard = drain.enter();
+    let held = tokio::spawn(async move {
+        let waited = doorbell
+            .wait_for_ring(std::time::Duration::from_secs(3_600), 1)
+            .await;
+        drop(guard);
+        waited
+    });
+    tokio::task::yield_now().await;
+
+    let settled = drain.settle(GENEROUS).await;
+
+    assert_eq!(
+        (settled, held.await.expect("the held beat's task finished")),
+        (
+            Settled {
+                in_flight_at_close: 1,
+                abandoned: 0
+            },
+            afd_dragonfly::doorbell::Waited::Deadline
+        )
+    );
+}

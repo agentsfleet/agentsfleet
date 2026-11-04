@@ -156,6 +156,7 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: 0,
+            segments: None,
         },
         checkpoint: ReportCheckpoint {
             last_event_id: Cow::Borrowed(&lease.event.event_id),
@@ -163,5 +164,6 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
         },
         tool_calls: None,
         held_until: None,
+        memory: Vec::new(),
     }
 }

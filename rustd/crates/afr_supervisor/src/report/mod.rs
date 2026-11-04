@@ -101,6 +101,7 @@ pub(crate) fn report<'a>(
         telemetry: ReportTelemetry {
             time_to_first_token_ms: narrow(first_chunk.map_or(0, saturating_millis)),
             wall_ms: saturating_millis(wall),
+            segments: None,
         },
         checkpoint: ReportCheckpoint {
             last_event_id: Cow::Borrowed(&lease.event.event_id),
@@ -109,6 +110,7 @@ pub(crate) fn report<'a>(
         tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
         // The wire still spells this instant as epoch milliseconds.
         held_until,
+        memory: Vec::new(),
     }
 }
 

@@ -69,6 +69,7 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
         selftest: None,
         holds: afd_wire::runner::HeldFleets::default(),
         closing: false,
+        wake: false,
     };
     let push = MemoryPushRequest {
         lease_id: LEASE_ID.into(),

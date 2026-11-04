@@ -207,9 +207,11 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         halt: Halt::new(shutdown),
         held: Notify::new(),
         whoami: Whoami::default(),
+        wake: crate::worker_pool::Wake::default(),
     });
     let (assignment, watching) = watch::channel(Assignment::initial());
     let heartbeat = Heartbeat::new(&lessee.plane, &probe, &lessee.holds)
+        .with_wake(&lessee.wake)
         .keep_beating(&assignment, &lessee.halt);
     let drainer = Drainer {
         spool: &lessee.spool,

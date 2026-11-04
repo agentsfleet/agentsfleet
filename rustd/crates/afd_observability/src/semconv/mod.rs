@@ -112,6 +112,27 @@ pub const ATTR_TENANT_ID: &str = "agentsfleet.tenant.id";
 /// The event a run executed.
 pub const ATTR_EVENT_ID: &str = "agentsfleet.event.id";
 
+/// Event creation to lease issue, both instants on the lease row.
+pub const ATTR_DELIVERY_QUEUE_WAIT_MS: &str = "agentsfleet.delivery.queue_wait_ms";
+
+/// The runner's memory read, when the lease carried no window.
+pub const ATTR_DELIVERY_MEMORY_MS: &str = "agentsfleet.delivery.memory_ms";
+
+/// The model's turns, as the runner measured them.
+pub const ATTR_DELIVERY_MODEL_MS: &str = "agentsfleet.delivery.model_ms";
+
+/// The tools those turns called, as the runner measured them.
+pub const ATTR_DELIVERY_TOOLS_MS: &str = "agentsfleet.delivery.tools_ms";
+
+/// How long the run's sandbox calls waited on the build.
+pub const ATTR_DELIVERY_SANDBOX_WAIT_MS: &str = "agentsfleet.delivery.sandbox_wait_ms";
+
+/// The runner's hold-or-destroy up to the start of its report post.
+pub const ATTR_DELIVERY_SETTLE_MS: &str = "agentsfleet.delivery.settle_ms";
+
+/// The report's receipt to the `event_complete` publish, on this daemon.
+pub const ATTR_DELIVERY_COMPLETE_MS: &str = "agentsfleet.delivery.complete_ms";
+
 /// Which direction a token count is: prompt, or completion.
 pub const ATTR_TOKEN_TYPE: &str = "gen_ai.token.type";
 
@@ -141,6 +162,13 @@ pub const DELIVERY_SPAN_KEYS: &[&str] = &[
     ATTR_WORKSPACE_ID,
     ATTR_TENANT_ID,
     ATTR_EVENT_ID,
+    ATTR_DELIVERY_QUEUE_WAIT_MS,
+    ATTR_DELIVERY_MEMORY_MS,
+    ATTR_DELIVERY_MODEL_MS,
+    ATTR_DELIVERY_TOOLS_MS,
+    ATTR_DELIVERY_SANDBOX_WAIT_MS,
+    ATTR_DELIVERY_SETTLE_MS,
+    ATTR_DELIVERY_COMPLETE_MS,
 ];
 
 // ---------------------------------------------------------------------------

@@ -22748,6 +22748,10 @@
                 "type": "null"
               }
             ]
+          },
+          "wake": {
+            "type": "boolean",
+            "description": "Hold this heartbeat until new work is admitted or the heartbeat\ninterval passes, so an idle worker polls at once. Send it only after a\nreply carried `woken`."
           }
         },
         "additionalProperties": false
@@ -22799,6 +22803,14 @@
           "status": {
             "$ref": "#/components/schemas/HeartbeatStatus",
             "description": "Whether to keep working, drain, or stop."
+          },
+          "woken": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether new work was admitted while this heartbeat was held; `false`\nfor a heartbeat that did not ask. Its presence means this daemon holds\nheartbeats. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           }
         }
       },
@@ -23176,6 +23188,19 @@
                 "type": "null"
               }
             ]
+          },
+          "memory": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MemoryHydrateResponse",
+                "description": "The fleet's memory window, as `GET /v1/runners/me/memory/{fleet_id}`\nreturns it. A daemon that reads a report's `memory` sends it on every\nlease, an empty window included. It is absent when the read failed; the\nrunner then reads memory itself."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "policy": {
             "$ref": "#/components/schemas/ExecutionPolicy",
@@ -26087,6 +26112,13 @@
             "type": "string",
             "description": "The lease being reported on."
           },
+          "memory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryDelta"
+            },
+            "description": "What the run learned, for the fleet's next run. Written before the\nreport settles, so the next lease's memory window holds it. Entries\npast 262144 bytes in total are dropped and counted, never refused.\nSend it only when the lease carried `memory`."
+          },
           "outcome": {
             "$ref": "#/components/schemas/Outcome",
             "description": "The binary verdict."
@@ -26144,6 +26176,17 @@
           "wall_ms"
         ],
         "properties": {
+          "segments": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunSegments",
+                "description": "Where the run's time went, segment by segment. Send it only when the\nlease carried `memory`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "time_to_first_token_ms": {
             "type": "integer",
             "format": "int32",
@@ -26488,6 +26531,58 @@
             "description": "When the row records it stopped working."
           }
         }
+      },
+      "RunSegments": {
+        "type": "object",
+        "description": "The runner's own segments of one run, in milliseconds on its clock.\n\nNot a partition of the run: the sandbox wait runs beside the model's\ntime. A segment the run never reached is absent, never zero.",
+        "properties": {
+          "memory_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The memory read, when the lease carried no window.",
+            "minimum": 0
+          },
+          "model_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The model's turns.",
+            "minimum": 0
+          },
+          "sandbox_wait_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long the turn's sandbox calls waited on the build.",
+            "minimum": 0
+          },
+          "settle_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Hold-or-destroy up to the start of the report post.",
+            "minimum": 0
+          },
+          "tools_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The tools those turns called.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "RunState": {
         "type": "string",
