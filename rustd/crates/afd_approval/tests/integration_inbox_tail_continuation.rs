@@ -181,7 +181,7 @@ async fn a_converged_continuation_announces_nothing() {
         .bind(lane.workspace.as_str())
         .bind(&actor)
         .bind(EventType::Continuation.as_str())
-        .bind(CONTINUATION_BODY)
+        .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(&predecessor)
         .bind(afd_core::event::status::RECEIVED)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))

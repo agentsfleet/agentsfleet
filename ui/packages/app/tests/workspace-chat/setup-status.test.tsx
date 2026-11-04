@@ -4,7 +4,7 @@ import { SetupProgress } from "@/components/domain/chat/SetupProgress";
 import { SetupChecks } from "@/components/domain/chat/SetupChecks";
 import { FleetSetupDetails } from "@/components/domain/chat/FleetSetupDetails";
 import { initialDefinition, safeActionHref } from "@/components/domain/chat/chat-defaults";
-import { FLEET, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { FAILED_SCHEDULE, FLEET, PENDING_SCHEDULE, REVIEW, SCHEDULE, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { NANOS_PER_USD } from "@/lib/types";
 
 afterEach(cleanup);
@@ -79,23 +79,23 @@ it("omits saved readiness disclosure when the fleet has no recorded checks", () 
 
 it("calls an active fleet ready only when every schedule is registered, and retries the rest", () => {
   const retry = vi.fn();
-  const synced = {schedule_id: "sched-ok", fleet_id: FLEET.id, sync: "synced"};
-  const failed = {schedule_id: "sched-bad", fleet_id: FLEET.id, sync: "failed", last_error: "scheduler refused"};
-  const unconfirmed = {schedule_id: "sched-wait", fleet_id: FLEET.id, sync: "syncing", last_error: null};
+  const synced = {...SCHEDULE, schedule_id: "sched-ok", sync: "synced"};
+  const failed = {...FAILED_SCHEDULE, schedule_id: "sched-bad", last_error: "Scheduler refused."};
+  const unconfirmed = {...PENDING_SCHEDULE, schedule_id: "sched-wait", last_error: null};
   const active = {...FLEET, status: "active", setup: {state: "ready", checks: []}};
   const view = render(<SetupProgress fleet={{...active, schedules: [synced]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
   expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Retry registration"})).toBeNull();
   view.rerender(<SetupProgress fleet={{...active, schedules: [synced, failed, unconfirmed]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
   expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
-  expect(screen.getByText("Schedule sched-bad is saved but not registered, so it will not fire (scheduler refused).")).toBeTruthy();
-  expect(screen.getByText(/Schedule sched-wait is saved but its registration was not confirmed/)).toBeTruthy();
+  expect(screen.getByText("Scheduler refused. Will retry on the next sync.")).toBeTruthy();
+  expect(screen.getByText("Scheduler sync has not been confirmed.")).toBeTruthy();
   const buttons = screen.getAllByRole("button", {name: "Retry registration"});
   expect(buttons).toHaveLength(2);
   fireEvent.click(buttons[0]!);
   expect(retry).toHaveBeenCalledWith(failed);
   view.rerender(<SetupProgress fleet={{...active, schedules: [{...failed, last_error: null}]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
-  expect(screen.getByText("Schedule sched-bad is saved but not registered, so it will not fire.")).toBeTruthy();
+  expect(screen.getByText("Scheduler sync failed. Will retry on the next sync.")).toBeTruthy();
 });
 
 it("shows unresolved defaults and the exact source and fleet revisions under review", () => {

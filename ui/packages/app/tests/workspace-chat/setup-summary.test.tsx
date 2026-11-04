@@ -69,7 +69,7 @@ it.each([
   {schedule: "invalid schedule", timezone: "Unknown/Timezone"},
 ])("shows schedule intent without predicting scheduler behavior: $schedule", (trigger) => {
   render(<SetupSummary definition={definition([{type: "cron", ...trigger}])} />);
-  expect(screen.getByText("Schedule requested. Save the fleet to activate it.")).toBeTruthy();
+  expect(screen.getByText(`Schedule: ${trigger.schedule} (${trigger.timezone}). Check registration in the fleet chat.`)).toBeTruthy();
   expect(screen.queryByText(/Next scheduled time|Timing could not be previewed/)).toBeNull();
 });
 

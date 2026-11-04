@@ -203,7 +203,12 @@ impl History {
         let mut connection = self.database.acquire().await?;
         let rows = scoped
             .bind(bound)
-            .bind(afd_admission::Producer::Steer.as_str())
+            .bind(
+                &[
+                    afd_admission::Producer::Steer.as_str(),
+                    afd_admission::Producer::ScheduleFire.as_str(),
+                ][..],
+            )
             .bind(status::QUEUED)
             .fetch_all(&mut *connection)
             .await

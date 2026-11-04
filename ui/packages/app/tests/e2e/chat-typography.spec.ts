@@ -6,6 +6,7 @@ import { expect, test as base, type Locator, type Page } from "@playwright/test"
 import { applicationCss } from "./fixtures/fleet-output-browser-assets";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
+import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
 
 const test = base.extend<object, {chatProbe: string}>({
   chatProbe: [async ({browserName}, provideProbe) => {
@@ -16,6 +17,11 @@ const test = base.extend<object, {chatProbe: string}>({
     const server = http.createServer((request, response) => {
       if (request.url === "/probe.js") {
         response.writeHead(200, {"content-type": "text/javascript"}); response.end(built.stdout);
+      } else if (request.url?.startsWith("/event-details?")) {
+        const query = new URL(request.url, "http://localhost").searchParams;
+        const owned = query.get("workspace") === SCHEDULE_EVENT.workspace_id && query.get("fleet") === SCHEDULE_EVENT.fleet_id;
+        response.writeHead(owned ? 200 : 404, {"content-type": "application/json"});
+        response.end(JSON.stringify({...SCHEDULE_EVENT, event_id: query.get("event"), response_text: "Native recorded support review."}));
       } else {
         response.writeHead(200, {"content-type": "text/html"});
         response.end(`<html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script type="module" src="/probe.js"></script></body></html>`);
@@ -205,6 +211,52 @@ test("three current repairs share the fleet conversation and leave its composer 
   const screenshot = info.outputPath("fleet-current-work-mobile.png");
   await page.screenshot({path: screenshot});
   await info.attach("fleet-current-work-mobile", {path: screenshot, contentType: "image/png"});
+});
+
+test("fleet_schedule_activity_rows_show_confirmed_facts", async ({page, chatProbe}, info) => {
+  const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+  const reads: string[] = []; page.on("request", request => {if (request.url().includes("/event-details?")) reads.push(request.url());});
+  await page.goto(`${chatProbe}?schedules=1`);
+  for (const fact of ["set up:", "registered with the scheduler:", "pause requested:", "removal requested:", "removed:"])
+    await expect(page.getByText(`Schedule At 9:00 AM (Asia/Kolkata) ${fact}`, {exact: false})).toBeVisible();
+  await expect(page.getByText(/could not sync:.*Scheduler refused. Will retry on the next sync./)).toBeVisible();
+  await expect(page.getByText("Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉")).toHaveCount(3);
+  await expect(page.getByText("Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉").first()).toHaveCSS("font-size", "14px");
+  await expect(page.getByText("Support queue reviewed.", {exact: true})).toBeVisible();
+  await expect(page.getByText(/Ran out of memory/)).toBeVisible();
+  await expect(page.getByRole("button", {name: "Run details"})).toHaveCount(2);
+  await expect(page.locator("pre")).toHaveCount(0);
+  expect(reads).toEqual([]);
+  const details = page.getByRole("button", {name: "Run details"}).first();
+  await expect(details).toHaveCSS("font-size", "14px");
+  await details.focus(); await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", {name: "Event details"});
+  await expect(dialog.getByText("Native recorded support review.", {exact: true})).toBeVisible();
+  const address = new URL(reads[0]!);
+  expect(Object.fromEntries(address.searchParams)).toEqual({workspace: SCHEDULE_EVENT.workspace_id, fleet: SCHEDULE_EVENT.fleet_id, event: SCHEDULE_EVENT.event_id});
+  await page.keyboard.press("Escape"); await expect(dialog).not.toBeVisible();
+  expect(errors).toEqual([]);
+  await info.attach("schedule-activity", {body: await page.screenshot({fullPage: true}), contentType: "image/png"});
+});
+
+test("saved_schedule_summaries_and_activity_survive_reload", async ({page, chatProbe}, info) => {
+  await page.goto(`${chatProbe}?schedules=1`);
+  const summary = page.getByRole("region", {name: "Schedules"});
+  await expect(summary.getByText("At 9:00 AM (Asia/Kolkata) · Registration pending", {exact: true})).toBeVisible();
+  await expect(summary.getByText("Review support failures — 東京 🦉", {exact: true})).toHaveCSS("font-size", "14px");
+  await expect(page.getByText(/Save the fleet to activate it/)).toHaveCount(0);
+  await page.getByRole("button", {name: "Retry registration"}).click();
+  await expect(summary.getByText("At 9:00 AM (Asia/Kolkata) · Active", {exact: true})).toBeVisible();
+  await expect(summary.getByRole("button", {name: "Retry registration"})).toHaveCount(0);
+  await expect(page.getByText(/could not sync:.*Will retry on the next sync/)).toBeVisible();
+  await page.getByRole("button", {name: "Deliver queued fire"}).click();
+  await expect(page.getByText("Queued support review completed.", {exact: true})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Run details"})).toHaveCount(3);
+  await page.reload();
+  await expect(page.getByText("Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉")).toHaveCount(3);
+  await expect(page.getByText(/registered with the scheduler:/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await info.attach("saved-schedule-reload", {body: await page.screenshot({fullPage: true}), contentType: "image/png"});
 });
 
 async function expectActivityGeometry(page: Page, action: Locator, tools: Locator, mobile: boolean) {

@@ -780,6 +780,73 @@ The existing unsigned schedule-header boundary remains unresolved and separate f
 Architecture now states acceptance-time database provenance without claiming signed schedule/revision identity.
 Other missing activity types remain inventory only, as Indy requested.
 
+## Schedule implementation and documentation publication
+
+Schedule mutations and fenced synchronization now record typed receipts on their owning transactions.
+Setup recipe receipts join the authoring commit; accepted fires retain their original message, description and admission identity.
+Queued schedule fires appear in the existing mixed history before leasing, without admitting work from receipts.
+
+The app decodes each new receipt kind, renders plain lifecycle/fire rows and opens the selected native run record after leasing.
+Current schedule controls retain retry actions and server-computed timing; activity and actions use the shared 14px text token.
+
+Unknown receipt fields stay hidden in both single and grouped rows.
+Open run details refresh on native status/update changes, preserving identity and cancellation guards.
+
+Astra found grouped payload disclosure and stale open details; both were corrected with regression scenarios.
+The first storage run also exposed missing-parent lookup bypassing the existing lost-lease guard; the transaction now preserves that refusal.
+
+The next run passed that regression and the new schedule scenarios, then failed in the once-run history fixture on mixed text/JSONB cached bindings.
+The shared statement's callers now bind SQLx JSON consistently.
+The corrected checkpoint passed `make test-integration-rustd`: 1,523 regular and three exclusive tests in `/tmp/m236-schedule-integration-final.log`.
+
+Astra subsequently found a parent/lease lock cycle in the new history scope.
+The added real-row regression failed at native finalization with Postgres `40P01` using `FOR UPDATE`.
+`/tmp/m236-schedule-lock-parent-red.log` records the database assertion, rather than a generic scenario timeout.
+
+With `FOR NO KEY UPDATE`, `make test-integration-rustd` passed 1,524 regular and three exclusive tests.
+`/tmp/m236-schedule-storage-verified.log` records the corrected result.
+It proves native finalization and session foreign-key progress; it does not show a terminal report or runner guard ran.
+
+Existing native decision scenarios now verify complete typed wire round-trips and compact/pretty diagnostics for dispatches and saved replays.
+They preserve call/model/revision identity while checking actual credentials, endpoint, question, evidence and answer-key values stay hidden.
+Astra closed both proof gaps in those checks; the real storage suite runs them without adding field-only test cases.
+
+`make test-coverage-all` passed after the final details-freshness correction: app 4,669, website 133, CLI 1,997 and design system 522 tests.
+All four package coverage gates reported 100%; the CLI retains 16 explicit live skips.
+The app reports 12,650 statements, 8,703 branches, 3,379 functions and 10,449 lines covered in `/tmp/m236-schedule-ui-coverage-verified.log`.
+
+All three new freshness scenarios fail against the former state/body selection, with 4,666 other tests passing.
+`/tmp/m236-details-freshness-parent-red.log` records that assertion failure; the corrected source was restored before final coverage.
+`make lint-app` passed in `/tmp/m236-schedule-app-lint-final-2.log`.
+
+`make dry-app` passed all 4,669 app unit tests and 58 desktop/mobile browser checks in `/tmp/m236-schedule-browser-final-pass.log`.
+The selected-event read uses the documented local HTTP boundary, not a live scheduler or authenticated production read.
+
+`make lint-rustd` passed after the diagnostic assertion-style correction in `/tmp/m236-schedule-rust-verified-2.log`.
+The subsequent unit build exhausted disk while linking, before tests could run.
+The failed build is recorded in `/tmp/m236-schedule-unit-libs.log`; no assertion or test threshold changed.
+
+Indy's approved `cargo clean` removed 17,902 files and recovered 19.4 GiB from this worktree's target directory.
+Completed storage results and saved coverage reports were retained; another worktree's target was untouched.
+The cold `make test-unit-rustd-daemon-libs` rerun passed 3,398 tests in `/tmp/m236-schedule-unit-libs-clean.log`.
+
+Docs PR 241 merged at `aa0fa1c5277ffe311d98148cf6145ee4bd1e941b`, consuming head `ed83c75`.
+Lint, secret scanning and Greptile Review succeeded on that head; consecutive final reads found no unresolved review threads.
+
+Orly doctor/work/verify/PR gates passed; 25 documentation checker tests passed, and Astra reported no residual finding across 81 manual-review rules.
+Pending current-work, completion-question and schedule features carry coming-soon notes.
+The docs checkout is clean on main at that merge; no further draft hold applies to that closed PR.
+
+Indy's merge instruction:
+
+> “PR241 - If this is green, greptile resolved in docs, merge the PR.”
+
+Implementation PR 803 remains draft and incomplete; its build and kernel coverage retries still fail during toolbox package setup.
+Do not report a passing Rust patch grade: the kernel report and combined grade are unavailable on the current pushed head.
+
+The latest “995” Rust request is conservatively interpreted as above 99.5% of changed lines.
+Make and Codecov now enforce 99.51% for the patch; existing workspace/per-file floors and exclusions are unchanged.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
@@ -791,7 +858,7 @@ Other missing activity types remain inventory only, as Indy requested.
 | Shorten fleet chat guidance | `SteerComposer.tsx` now reads “Change fleet defaults in Edit setup.” The existing action, hint and theme remain; controlled browser cases, app lint and 100% coverage pass. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. The scoped encryption component passes 68 tests and Astra review; native storage, transfer, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. Financial recovery retains progress across busy pages and cancellation. Exporter and structured-log scenarios check recovery attempts, age, latency and bounded labels. No benchmark result or complete DT performance trace is claimed. |
-| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; merge `d97b373` adds docs main `920933d`. Command-recovery guides are pushed as `ed1e1ea`; local validation and both published CI workflows passed. [Docs draft #241](https://github.com/agentsfleet/docs/pull/241) stays open; new API pages follow the lead merge. |
+| Architecture and companion docs | The prior 39-page architecture and 39-page public-documentation reviews remain attributed above. [Docs PR #241](https://github.com/agentsfleet/docs/pull/241) merged as `aa0fa1c5`, including schedule activity guides and explicit future-feature notes. All local docs gates, both CI jobs and Greptile passed; no unresolved threads remained. New API pages follow the lead merge. |
 | Runner hang and same-PR scope | Native ending guard, finite snapshots, cooperative waits and shared-link invalidation are implemented and reviewed. The final runner shard passed 1,602 tests; all Rust shards and all four 100% TypeScript gates have passing evidence. Clean integration passed 1,513 regular and three exclusive tests; final checkpoint verification passed. All changes stay in PR 803. |
-| Schedule activity and other event inventory | The reviewed M236 workstream 003 covers readable changes/sync/fire/outcome rows and the saved-summary bug. Runtime implementation and storage/browser checks remain pending. Other event types are inventoried without implementation. |
-| Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. Indy requested the early review [implementation draft #803](https://github.com/agentsfleet/agentsfleet/pull/803). Native decision, crypto and bounded financial recovery have component evidence. Remaining implementation and full readiness gates stay pending; leave both PRs in draft. |
+| Schedule activity and other event inventory | Backend transactions, fire snapshots, queued history, readable UI and native run details are implemented locally. All four TypeScript package coverage gates passed at 100%; 58 browser checks passed. Corrected storage passed 1,524 regular and three exclusive tests; the cold library unit gate passed 3,398. Other event types remain inventory only. |
+| Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. [Implementation draft #803](https://github.com/agentsfleet/agentsfleet/pull/803) retains the authorized single-PR scope and remains incomplete. Docs #241 merged under Indy's explicit green-check instruction. Full implementation, Rust coverage, CI and final review conditions still gate #803. |

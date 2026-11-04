@@ -548,6 +548,20 @@ The callback signature covers its destination URL, exact body and message identi
 Ingress selects the schedule through `Upstash-Schedule-Id`, outside that signature; cryptographic target and revision binding remain unresolved.
 Schedule activity snapshots describe database state at acceptance.
 
+Schedule history uses `afd_api_wire::activity::FleetActivity` and the existing `afd_events::activity` receipt writer.
+`afd_cron::store::history` records create/edit/pause/removal intent and fenced sync outcomes on the schedule transaction.
+Setup recipes append receipts to the author's transaction; confirmed deletion retains the held description and message.
+
+The transaction commits before its connection is released and the existing catch-up notice is published.
+These receipts admit no work and create no Durable Task.
+The history scope uses `FOR NO KEY UPDATE`, allowing a session's foreign-key check to progress during child-row waits.
+
+An accepted fire stores its message and resolved schedule description on the original cron admission.
+`afd_events::History::thread_page` includes queued `ScheduleFire` and `Steer` admissions, then reads the same identity after leasing.
+
+The app renders the message and recorded outcome directly; native run details become available once the event exists.
+Historical receipt snapshots stay separate from current registration and retry controls.
+
 The proposed [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
 
 `agentsfleetd` stores the desired schedule, pushes each requested mutation to

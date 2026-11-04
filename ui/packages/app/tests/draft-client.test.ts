@@ -5,7 +5,7 @@ import { DRAFT_STATE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
-import { ACCEPTED, DRAFT, DRAFT_ID, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PUBLICATION, REVIEW, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, PUBLICATION, REVIEW, SCHEDULE, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const {calls, ready, mutations} = fixture;
@@ -214,14 +214,14 @@ describe("private browser chat", () => {
   });
   it("never reports Apply as done while a returned schedule is unregistered, and retries it through :sync", async () => {
     fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
-    const failed = {schedule_id: "sched-1", fleet_id: FLEET_ID, sync: "failed", last_error: "refused"};
+    const failed = {...FAILED_SCHEDULE, schedule_id: "sched-1", last_error: "refused"};
     const instance = await ready(true); await instance.refreshSetup();
     fixture.override = ({path, method}) => {
       if (path.endsWith(`/fleets/${FLEET_ID}/revisions`) && method === "POST") {
         fixture.fleet = {...FLEET, setup_revision: "2", schedules: [failed]};
         return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"resource-two"', schedules: [failed]}, 201);
       }
-      if (path.endsWith(`/fleets/${FLEET_ID}/schedules/sched-1/sync`) && method === "POST") return response({...failed, sync: "synced", last_error: null});
+      if (path.endsWith(`/fleets/${FLEET_ID}/schedules/sched-1/sync`) && method === "POST") return response({...SCHEDULE, schedule_id: failed.schedule_id, last_error: null});
       return undefined;
     };
     await instance.apply();
@@ -233,12 +233,12 @@ describe("private browser chat", () => {
     expect(instance.getSnapshot().fleet).toMatchObject({setup_revision: "2", schedules: [{sync: "synced"}]});
   });
   it("updates the saved fleet's schedule after a retried registration", async () => {
-    const owed = {schedule_id: "sched-2", fleet_id: FLEET_ID, sync: "syncing", last_error: null};
-    const other = {schedule_id: "sched-3", fleet_id: FLEET_ID, sync: "synced", last_error: null};
+    const owed = {...PENDING_SCHEDULE, schedule_id: "sched-2", last_error: null};
+    const other = {...SCHEDULE, schedule_id: "sched-3", sync: "synced", last_error: null};
     const instance = await ready(true); await instance.refreshSetup();
     fixture.override = ({path, method}) => {
       if (path.endsWith("/fleets") && method === "POST") return response({...FLEET, schedules: [owed, other]}, 201);
-      if (path.endsWith("/schedules/sched-2/sync") && method === "POST") return response({...owed, sync: "synced"});
+      if (path.endsWith("/schedules/sched-2/sync") && method === "POST") return response({...SCHEDULE, schedule_id: owed.schedule_id, last_error: null});
       return undefined;
     };
     await instance.save();

@@ -17,6 +17,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+pub mod activity;
 pub mod admin;
 mod admin_catalogue;
 pub mod admin_library_native;

@@ -144,7 +144,7 @@ impl Directory {
             workspace,
             fleet,
             &previous.activity_id,
-            afd_events::activity::Activity::MemorySharingChanged {
+            afd_api_wire::activity::FleetActivity::MemorySharingChanged {
                 read: access.memory_reads_workspace,
                 publish: access.memory_publishes_workspace,
             },

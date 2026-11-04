@@ -23,7 +23,7 @@ UNION ALL
        NULL::text AS tool_calls
 FROM fleet.admissions a
 WHERE a.workspace_id = $1::uuid AND a.fleet_id = $2::uuid
-  AND a.producer = $6 AND a.delivered_at IS NULL AND a.settled_at IS NULL
+  AND a.producer = ANY($6) AND a.delivered_at IS NULL AND a.settled_at IS NULL
   AND (a.created_at, a.id::text) < ($3::timestamptz, $4)
 ORDER BY a.created_at DESC, a.id DESC
 LIMIT $5)

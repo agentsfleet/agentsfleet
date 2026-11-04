@@ -322,6 +322,7 @@ name = "afd_authoring"
 version = "0.73.0"
 dependencies = [
  "afd_admission",
+ "afd_api_wire",
  "afd_approval",
  "afd_billing",
  "afd_connector",
@@ -535,6 +536,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_dragonfly",
+ "afd_events",
  "afd_validate",
  "afd_wire",
  "backon",

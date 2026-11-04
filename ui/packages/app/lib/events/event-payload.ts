@@ -1,4 +1,5 @@
 import { EVENTS } from "@/lib/analytics/events";
+import { scheduleFireHeadline } from "./schedule-fire";
 
 // What a stored `request_json` payload says — parsing, headlines, and the
 // source reference and outbound link a recognised shape earns.
@@ -66,6 +67,10 @@ export function eventHeadlineFrom(
   if (eventType === EVENTS.model_changed) return MODEL_CHANGED_LABEL;
   const payload = parsePayload(requestJson);
   if (!payload) return neutralHeadline(eventType);
+  if (eventType === "cron") {
+    const message = text(payload, PAYLOAD_MESSAGE_KEY);
+    return scheduleFireHeadline(payload) ?? (message ? `Schedule fired: ${message}` : "Schedule fired");
+  }
   return (
     changeProposalHeadline(payload) ?? completedRunHeadline(payload) ?? neutralHeadline(eventType)
   );

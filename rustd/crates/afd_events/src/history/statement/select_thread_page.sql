@@ -22,7 +22,7 @@ UNION ALL
        NULL::text AS tool_calls
 FROM fleet.admissions a
 WHERE a.workspace_id = $1::uuid AND a.fleet_id = $2::uuid
-  AND a.producer = $4 AND a.delivered_at IS NULL AND a.settled_at IS NULL
+  AND a.producer = ANY($4) AND a.delivered_at IS NULL AND a.settled_at IS NULL
 ORDER BY a.created_at DESC, a.id DESC
 LIMIT $3)
 ORDER BY created_at DESC, event_id DESC
