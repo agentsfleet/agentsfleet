@@ -11,12 +11,12 @@ use sqlx::{
 use tokio::time::{Instant, timeout_at};
 
 use super::{TaskRefusal, TaskScope};
-use crate::error::{Error, ErrorKind, Result, query};
+use crate::error::{Result, query};
 
 /// Includes acquisition, transaction setup, rows and commit.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// Server cancellation frees lock waits even when a client stops receiving.
-const STATEMENT_TIMEOUT: &str = "3000ms";
+pub(super) const STATEMENT_TIMEOUT: &str = "3000ms";
 
 pub(super) async fn rows<R>(
     database: &Db,
@@ -42,7 +42,7 @@ where
                 .bind(scope.workspace_id.as_str())
                 .fetch_one(&mut *transaction)
                 .await
-                .map_err(failure(context))?;
+                .map_err(query(context))?;
             if !owned {
                 return Err(TaskRefusal::NotFound.into());
             }
@@ -50,7 +50,7 @@ where
         let rows = statement
             .fetch_all(&mut *transaction)
             .await
-            .map_err(failure(context))?;
+            .map_err(query(context))?;
         transaction.commit().await.map_err(query(context))?;
         Ok(rows)
     })
@@ -62,21 +62,6 @@ where
             // pool permit instead of returning a busy connection for reuse.
             drop(connection.detach());
             Err(source.into())
-        }
-    }
-}
-
-fn failure(context: &'static str) -> impl FnOnce(sqlx::Error) -> Error {
-    move |source| {
-        if source
-            .as_database_error()
-            .and_then(sqlx::error::DatabaseError::code)
-            .as_deref()
-            == Some("57014")
-        {
-            Error::from(ErrorKind::TaskReadCancelled { source })
-        } else {
-            query(context)(source)
         }
     }
 }

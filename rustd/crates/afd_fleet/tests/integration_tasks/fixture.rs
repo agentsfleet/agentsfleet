@@ -38,7 +38,7 @@ pub(super) struct Case {
 impl Case {
     async fn create(lane: &TestDatabase) -> Self {
         let actor = afd_events::steer_actor("native_task_owner");
-        let request = json!({"prompt": GOALS.join("; ")}).to_string();
+        let request = json!({"message": GOALS.join("; ")}).to_string();
         let held = held_admission(
             Fixtures::create_in_with_queue(lane.shared_handle()).await,
             &actor,
@@ -74,7 +74,11 @@ impl Case {
             held.fixtures.queue().clone(),
             Entropy::new(),
         );
-        let tasks = Tasks::new(held.leases.clone(), admissions.clone());
+        let tasks = Tasks::new(
+            held.leases.clone(),
+            admissions.clone(),
+            afd_fleet::task::TaskDependencies::from(&held.fixtures.plane()),
+        );
         Self {
             held,
             tasks,
@@ -128,7 +132,7 @@ impl Case {
 
     pub(super) async fn source(&self, producer: Producer, actor: &str) -> Uuid7 {
         let key = afd_db::test_util::mint_id();
-        let request = json!({"prompt": GOALS.join("; ")}).to_string();
+        let request = json!({"message": GOALS.join("; ")}).to_string();
         let admission = self
             .admissions
             .admit(Admission {

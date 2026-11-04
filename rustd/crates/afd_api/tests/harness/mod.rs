@@ -187,6 +187,23 @@ pub(crate) fn vault(database: Db) -> SecretVault {
     )
 }
 
+/// Uses the same native billing and vault facilities as the live router.
+pub(crate) fn task_dependencies(database: Db) -> afd_fleet::task::TaskDependencies {
+    afd_fleet::task::TaskDependencies {
+        admin_workspace: None,
+        biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
+            database.clone(),
+            Entropy::new(),
+            Arc::new(afd_core::clock::SystemClock),
+        )),
+        providers: afd_credential::provider::Providers::new(
+            database,
+            Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+            Entropy::new(),
+        ),
+    }
+}
+
 /// Seals raw provider signing bytes under the key and associated data the router reads.
 /// The workspace secret API accepts objects; raw Svix fixtures must keep that API's key private.
 pub(crate) fn raw_secret_envelope(

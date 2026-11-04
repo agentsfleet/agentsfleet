@@ -21,6 +21,8 @@ CREATE TABLE fleet.task_items (
 );
 
 CREATE INDEX idx_task_items_fleet_id ON fleet.task_items (fleet_id);
+CREATE INDEX idx_task_items_task_scope ON fleet.task_items (task_id, fleet_id, workspace_id)
+    WHERE task_id IS NOT NULL;
 
 CREATE FUNCTION fleet.task_items_refuse_update() RETURNS trigger AS $$
 BEGIN

@@ -276,6 +276,9 @@ getrandom = { version = "0.4.3", default-features = false }
 # than a new dependency.
 url = { version = "2.5.8", default-features = false }
 
+# Return completed SQL sessions to the pool; detach cancelled task transactions.
+scopeguard = "1.2.0"
+
 uuid = { version = "1.29.0", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.

@@ -41,4 +41,13 @@ pub(super) const TASK: &[Problem] = &[
             "This task or fleet reached its work limit. Progress has been retained.",
         ),
     },
+    Problem {
+        code: error_code::TASK_DECISION_UNAVAILABLE,
+        status: 503,
+        title: "Decision unavailable",
+        hint: "Check the saved decision profile, confirmed credit and platform-admin provider key. The saved input is retained.",
+        user_message: Some(
+            "The fleet could not assess this request. Your message has been retained.",
+        ),
+    },
 ];

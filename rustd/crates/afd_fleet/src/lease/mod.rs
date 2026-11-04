@@ -29,6 +29,7 @@ pub mod event;
 pub mod fence;
 pub mod finalize;
 pub mod history;
+pub(crate) mod holds;
 pub mod installed;
 pub mod issue;
 pub mod memory;

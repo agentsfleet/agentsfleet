@@ -71,7 +71,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
         <DraftReporter onDraft={onDraft} />
 
     </ChatComposerFrame>
-    <ChatComposerHint>Continue the conversation here. To change how your fleet works, choose <EditSetupButton inline />.</ChatComposerHint>
+    <ChatComposerHint>Change fleet defaults in <EditSetupButton inline />.</ChatComposerHint>
     </>
   );
 }

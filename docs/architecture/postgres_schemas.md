@@ -226,6 +226,8 @@ omit its model and review then resolves the tenant default.
 |---|---|---|
 | `runners` | An enrolled host: policy, health, self-test | optional reviewed decision-model selection; referenced models cannot be deleted |
 | `leases` | One fleet event handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, event, task or historical model revision |
+| `decision_calls` | Retained physical-call identity, frozen prices, reservations and canonical usage | opaque original ownership survives deletion; unresolved rows prevent whole-hold release |
+| `decision_payloads` | Bounded private evidence and answers for a call | fleet deletion removes payloads while accounting remains |
 | `fleet_slots` | Per-fleet claim: who may lease it, next fencing token, sticky runner, sandbox hold |  |
 | `events` | Append-only runner history | unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
 | `lifetime_counters` | Per-runner tallies |  |

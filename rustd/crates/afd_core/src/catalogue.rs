@@ -5,6 +5,7 @@
 //! name into them (`afd_admin::catalogue`).
 
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 
 /// Evidence and labels belonging to one exact provider/model identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +28,8 @@ pub struct Metadata {
 /// Every rate is integer nanodollars per million tokens. A missing cache-write
 /// rate is unknown or unsupported, never zero. Unspecified lifetimes must not
 /// be folded into either of the duration-specific categories.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Price {
     /// First instant this quote applies.
     pub effective_from: Timestamp,

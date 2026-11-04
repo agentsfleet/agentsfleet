@@ -83,13 +83,23 @@ afd_core::error_shell!(
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("the complete decision request cannot be represented within its reviewed bounds")]
+    DecisionRequest {
+        #[source]
+        source: garde::Report,
+    },
+    #[error("the native decision operation exceeded its deadline")]
+    DecisionDeadline {
+        #[source]
+        source: tokio::time::error::Elapsed,
+    },
     #[error("task progress could not be read before its deadline")]
     TaskReadTimeout {
         #[source]
         source: tokio::time::error::Elapsed,
     },
     #[error("the database cancelled an overdue task progress read")]
-    TaskReadCancelled {
+    TaskStatementCancelled {
         #[source]
         source: sqlx::Error,
     },

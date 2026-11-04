@@ -16,7 +16,16 @@ pub(super) async fn measure<T>(
     success: impl FnOnce(&T) -> TaskOutcome,
 ) -> Result<T> {
     let started = Instant::now();
+    let interrupted = scopeguard::guard(started, |started| {
+        producers::task::operation_completed(operation, TaskOutcome::Cancelled, started.elapsed());
+        tracing::info!(
+            event = "dt_operation_cancelled",
+            operation = operation.as_str(),
+            reason = "operation_dropped"
+        );
+    });
     let result = work.await;
+    let started = scopeguard::ScopeGuard::into_inner(interrupted);
     let outcome = match &result {
         Ok(value) => success(value),
         Err(error) => failure(error),
@@ -25,13 +34,15 @@ pub(super) async fn measure<T>(
     if let Err(error) = &result {
         tracing::warn!(event = "dt_operation_failed", operation = operation.as_str(),
             outcome = outcome.as_str(), error_code = %error.code(),
-            reason = error.task_read_timeout_reason().unwrap_or("operation_failed"));
+            reason = error.task_timeout_reason().or_else(|| error.decision_failure_reason()).unwrap_or("operation_failed"));
     }
     result
 }
 
 fn failure(error: &Error) -> TaskOutcome {
-    if error.task_read_timeout_reason().is_some() {
+    if error.task_timeout_reason().is_some()
+        || error.decision_failure_reason() == Some("decision_deadline")
+    {
         return TaskOutcome::Timeout;
     }
     match error.code() {
@@ -42,6 +53,7 @@ fn failure(error: &Error) -> TaskOutcome {
         error_code::TASK_REPLAY_CONFLICT => TaskOutcome::Conflict,
         error_code::TASK_INVALID_TARGET => TaskOutcome::Invalid,
         error_code::TASK_LIMIT_EXHAUSTED => TaskOutcome::Limit,
+        error_code::TASK_DECISION_UNAVAILABLE => TaskOutcome::Unavailable,
         _ if error.is_datastore_unavailable() => TaskOutcome::Unavailable,
         _ => TaskOutcome::Failed,
     }

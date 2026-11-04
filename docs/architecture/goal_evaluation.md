@@ -58,7 +58,9 @@ Existing Rig remains the coding-provider dependency; the decision client reuses 
 
 Nullable `decision_model_id` in the existing runner assignment selects reviewed decision metadata from the current model catalogue.
 Runner enrollment, edit and heartbeat carry the catalogue identity; lease issue freezes `DecisionAssignment` in its payload and `runner.leases.decision_snapshot`.
-Unconfigured hosts skip the catalogue read; reservations, credential dispatch and task-loop use remain pending.
+Unconfigured hosts skip the catalogue read.
+
+Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::task::decision`; runtime integration and acceptance remain pending.
 
 Decision-only entries carry their own price schedule and no fabricated coding rates.
 The current model selects an immutable reviewed revision; enabling or disabling it preserves that definition and prior call accounting.
@@ -222,7 +224,8 @@ Adoption preserves prior revisions, assessments, confirmed effects and cumulativ
 The model catalogue supplies supported types and evaluated model thresholds; fleet owners control the question text and criteria.
 
 The native policy parser, proposal-tool schema and UI/CLI question review are written; full runtime acceptance remains pending.
-Task adoption, accepted-policy dispatch and the runtime decision loop remain pending; the typed client and catalogue are separate implemented components.
+Native decision requests compile the accepted policy and complete task/source state.
+Task adoption and the runtime decision loop remain pending; the typed client and catalogue are separate implemented components.
 
 `DecisionPolicy` resolves `RoutingQuestions` and `CompletionQuestions` through the existing serde/garde parser.
 Each role requires its exact native criterion keys; all wording and criterion text are owner-editable.
@@ -386,7 +389,7 @@ Tests cover exactly 0.30/0.70 and values immediately on either side, including h
 | Bound | Proposed value |
 |---|---|
 | State | 16 KiB serialized UTF-8 JSON, including complete newest message and bounded trusted summaries. |
-| Questions | At most eight; at most 1 KiB each; no images, long-context header or external assets. |
+| Questions | At most eight; authored questions stay within 1 KiB each. Each compiled question permits 16 KiB for the complete native option set; no images, long-context header or external assets. |
 | Response | At most 64 KiB; exact question-key coverage and known options required. |
 | Call deadline | Three-second connect timeout; 12 seconds per physical request; 30 seconds total per logical decision. |
 | Retry | One retry after 429/529, at most two seconds of jittered backoff or Retry-After within the remaining deadline. |
@@ -439,13 +442,48 @@ Runtime-line counts in `meter_lease.sql` and `bill_expired_slice.sql` must exclu
 
 Reuse `afd_billing::price::{PriceBook, Rater}` with frozen decision tiers and platform posture.
 Do not pass decision usage through the coding lease's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
-The existing billing sweeper groups those three attributes with work identity; decision-call reservations and receipt integration remain pending.
+The existing billing sweeper groups those three attributes with work identity.
+
+Native reservations and PATCH receipts retain original ownership; renew/report receipt integration remains pending.
+
+### Running task authority and source attribution
+
+A routing call can assess human input B while task A holds the fleet's active lease.
+The wire task stamp still proves A's current generation, but intent charges remain attributable to B's source admission.
+Only a goal call carries A as its task-budget owner; both retain the issuing lease's original billing work identity.
+
+A source can be that lease's own admission or another eligible human input claimed under the same lease/fence.
+Claiming preserves the original message and does not accept an interpretation.
+Later task binding cannot transfer or duplicate the routing charge.
+
+Up to ten physical calls cover one whole-message assessment and four item assessments, each with at most one permitted retry.
+At two cents each, the conservative source reservation allowance is USD 0.20; smaller fleet, lease and credit limits still win.
+Pending reservations consume capacity; issued calls and unknown outcomes remain counted across replacement leases and later binding.
+
+This ceiling does not permit ten repeated whole-message classifications.
+Each logical assessment has a retained identity, immutable request snapshot and thirty-second deadline.
+One retry references its original physical call, preserves that assessment snapshot/deadline, and receives a distinct physical identity and usage line.
+
+Save bounded HTTP status and delay evidence; only 429/529 may permit the one retry.
+A delay over two seconds, an expired logical deadline or an unknown transport outcome refuses retry.
+No provider error body or raw header is retained as retry evidence.
+
+Resolve operation replay before rendering current state or reevaluating counters.
+Identical issued operations return their existing identity without credentials; changed request content conflicts.
+A reserved operation can complete its first issuance after confirmed funding, with one native compare-and-set winner.
+
+Late receipts authenticate the original runner, lease and fence, even when the current lease/task has changed or disappeared.
+Accounting and semantic usability remain separate; a stale receipt can settle its original charge but cannot advance work.
+The first unknown failure cannot be rewritten into throttling evidence; authoritative known usage may later reconcile it.
 
 A hold ceiling is absolute and monotonic, so repeating a two-cent ceiling cannot reserve another physical call.
 Compute the requested ceiling from all logged charges, current coding headroom and all unresolved physical-call reservations.
+The native funding gate refuses an unpriceable coding headroom; self-managed coding supplies a known zero headroom while platform decisions still require credit.
 
 Save call identity before releasing the connection for `Biller::reserve`, then recheck current authority and aggregate coverage before credential dispatch.
 Only confirmed `Hold::Held` admits a new paid decision; an unconfirmed or absent wallet cannot authorize provider spend.
+`dt_decision_funding_refused` distinguishes missing coding prices, insufficient credit, closed work and unconfirmed credit through bounded reasons.
+
 Resolve the platform-admin secret freshly after confirmation; missing or revoked keys do not select a tenant or environment substitute.
 
 One receipt recorder serves PATCH, renew and report.

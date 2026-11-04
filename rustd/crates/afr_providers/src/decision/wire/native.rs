@@ -10,7 +10,6 @@ use garde::Valid;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::super::validate;
 use crate::Result;
 
 pub(super) fn encode(
@@ -88,7 +87,7 @@ pub(super) fn answers(request: &Valid<DecisionRequest>, value: &Value) -> Decisi
         let Some(answer) = raw.normalize(&named.question) else {
             return invalid();
         };
-        if !validate::answer(&named.question, &answer) {
+        if !afd_wire::decision::answer_matches(&named.question, &answer) {
             return invalid();
         }
         answers.insert(named.name.clone(), answer);

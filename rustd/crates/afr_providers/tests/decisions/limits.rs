@@ -1,6 +1,6 @@
 //! Serialized-byte limits include escaping and complete combined questions.
 
-use afd_wire::decision::{DecisionApi, DecisionOutcome, DecisionQuestion, NoulCriteria};
+use afd_wire::decision::{ChoiceOption, DecisionApi, DecisionOutcome, DecisionQuestion};
 use afr_providers::decision::{DecisionClient, DecisionEvaluator as _};
 use garde::Unvalidated;
 use serde_json::Value;
@@ -39,22 +39,57 @@ pub(super) async fn escaped_state_and_complete_questions_keep_their_bounds() {
         "escaping counts against the limit"
     );
 
-    let mut oversized_question = fixture::request().into_inner();
-    oversized_question.questions[0].question = DecisionQuestion::Noul {
-        instructions: "q".repeat(512),
-        criteria: NoulCriteria {
-            yes: "y".repeat(512),
-            no: "n".repeat(512),
-        },
-    };
-    assert!(
-        Unvalidated::new(oversized_question).validate().is_err(),
-        "individually valid fields exceed the combined question bound"
-    );
+    complete_questions_keep_their_bound();
     assert_eq!(
         server.unconsumed(),
         0,
         "rejected data never becomes another request"
     );
     server.shutdown().await;
+}
+
+fn complete_questions_keep_their_bound() {
+    let mut request = fixture::request().into_inner();
+    let options = (0..16)
+        .map(|index| format!("t{index}"))
+        .chain(["new_work", "unclear"].map(str::to_owned))
+        .map(|value| ChoiceOption {
+            value,
+            description: "r".repeat(512),
+        })
+        .collect();
+    let question = &mut request
+        .questions
+        .first_mut()
+        .expect("complete question set")
+        .question;
+    *question = DecisionQuestion::Choice {
+        instructions: "Which task does this message refer to?".to_owned(),
+        options,
+    };
+    let bytes = serde_json::to_vec(question)
+        .expect("complete compiled question")
+        .len();
+    assert!(
+        bytes > 1024 && bytes <= 16_384,
+        "sixteen tasks and both reserved aliases remain intact"
+    );
+    let mut accepted = Unvalidated::new(request)
+        .validate()
+        .expect("a compiled association question can exceed the authored question limit")
+        .into_inner();
+    if let DecisionQuestion::Choice { options, .. } = &mut accepted
+        .questions
+        .first_mut()
+        .expect("same complete question set")
+        .question
+    {
+        for option in options {
+            option.description = "\n".repeat(512);
+        }
+    }
+    assert!(
+        Unvalidated::new(accepted).validate().is_err(),
+        "individually valid fields exceed the combined serialized question bound after escaping"
+    );
 }

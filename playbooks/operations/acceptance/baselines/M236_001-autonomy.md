@@ -527,14 +527,78 @@ This controlled browser proof does not establish live model authoring or full DT
 
 The companion setup guide is pushed in `0b2bc39`, after its work gate, complete site validation and secret scans passed.
 
+## Native decision accounting checkpoint
+
+The native component stores one physical-call intent, obtains confirmed whole-work credit, resolves fresh platform Secrets and commits one credential issuance.
+Replays contain saved request/results without the key.
+Typed receipts retain unknown reservations or record normalized usage at the frozen price under the original lease and payer, including after fleet deletion.
+
+The shared biller and SQL helpers remain the owners; no second task queue or executor is introduced.
+
+The requested `gpt-6-astra`, extra-high source review found an intent-receipt/issuance race.
+Receipts now take the existing optional fleet-slot lock before task/call locks, serializing actual overages with further physical issuance.
+Astra verified the correction and reported no residual material component findings; it ran no tests.
+
+Its serving revision and effective reasoning setting were not independently observable.
+
+`make lint-all` passed after merging main `bf3baa126`, including workspace/all-target/all-feature Clippy with warnings denied.
+`orly gate verify` then passed in `/tmp/m236-decisions-post-main-verify-2.log`, including changed prose and product-version checks.
+The earlier enclosing gate reported documentation paragraph and wording findings; their correction changed no runtime behavior.
+
+The new scenarios cover 100 concurrent replays, uncertainty/retry accounting, source/task budget ownership, deletion, funding recovery, cancellation and slot ordering.
+On integrated main `bf3baa126`, all eight pass within clean `make test-integration-rustd`: 1,502 regular tests and all three exclusive tests passed.
+The enclosing batch exited zero; `/tmp/m236-decisions-post-main-integration.log` retains its results.
+
+The funding scenario now also proves missing coding prices and unconfirmed credit preserve the same intent before fresh-key recovery.
+It checks the distinct bounded funding reasons alongside retained rows, one later charge and revoked-model disposition.
+The tests add no mutex; existing trace capture is acquired once per scenario before creating a lease.
+
+After merging main `bf3baa126`, `make test-unit-all` passed 1,594 runner, 141 daemon and 3,378 library tests, totaling 5,113 Rust tests.
+All four package coverage gates remain at 100%: app 4,653, website 133, CLI 1,997 and design system 522 tests.
+Sixteen CLI live tests remain explicitly skipped; `/tmp/m236-decisions-post-main-unit.log` records the complete results.
+
+The provider fixture now accepts an intact eighteen-option compiled question above 1 KiB, then rejects individually valid fields whose escaped representation exceeds 16 KiB.
+The authored-question limit remains separate and unchanged.
+
+The first integration build exhausted worker disk before tests ran.
+Targeted `cargo clean` reclaimed 7.8 GiB, then another 2.7 GiB after the complete unit run.
+No source, coverage report, floor or test exclusion was removed to recover space.
+
+Two further targeted cleanups reclaimed 1.3 GiB each around post-merge verification; `/tmp/m236-decisions-post-main-clean.log` records the second cleanup.
+
+Subsequent failures exposed missing migration expectations, nonstandard private column names and unregistered assembled SQL.
+Their fixes preserve every on-disk statement check and add both assembled queries to the existing positive preparation inventory.
+The native fixture also now prices its coding model and uses the actual steer `message` field.
+
+The Resume adjustment passed ten desktop/mobile production-component browser cases in `/tmp/m236-ui-polish-browser.log`.
+The same Resume geometry check fails against the previous component in `/tmp/m236-resume-parent-red.log`.
+These checks use controlled data and do not establish live DT acceptance.
+
+### Component file responsibilities
+
+| Owner | Change |
+|---|---|
+| `schema/2280_runner_decision_calls.sql`, `2290_runner_decision_payloads.sql`; migration, role and upgrade inventories | Retain financial call identity after live-owner deletion; cascade private request/results with their owners; enforce operation, retry and sequence uniqueness. |
+| `afd_fleet/src/task/decision/{ownership,prepare,compile,request,context}.rs` | Resolve trusted lease/source/task state and accepted criteria; compile complete bounded questions and native assessment identity. |
+| `afd_fleet/src/task/decision/{allocate,attempt,intent,fund,dispatch,row,replay,sql}.rs` and statements | Commit intent, bound retries, confirm whole-work credit, resolve fresh keys, issue once and return credential-free replays. |
+| `afd_fleet/src/task/decision/{account,journal,record,semantic}.rs` | Normalize usage, price the frozen quote, atomically record the original payer's charge and separately judge current answer usability. |
+| `afd_fleet/src/task/{transaction,fetch,observe}.rs`, error shell and existing lease owners | Bound database waits, release cancelled sessions and pool permits, record closed outcomes, include unresolved calls in holds and preserve those holds until reconciliation. |
+| `afd_billing/src/{rates,budget}.rs`, `{price,sql}/`; `afd_credential/src/{provider/decision,vault/mod}.rs` | Reuse existing rate, budget, biller and encrypted-vault facilities on the caller's bounded connection. No second ledger or secret store. |
+| `afd_wire/src/{decision,task}/`, `paths.rs`; `afd_api_runner` decision handlers; `afd_http` runner routes; `agentsfleetd` plane | Share typed answer validation, expose the two lease-scoped decision routes and supply only server-owned administrative credential context. Regenerated OpenAPI preserves every existing path. |
+| `ui/packages/app/components/{layout/DraftSidebarItem,domain/SteerComposer}.tsx`; browser and unit owners | Align Resume and its reachable Delete action; shorten guidance to “Change fleet defaults in Edit setup.” Shared typography and theme remain. |
+| Native lifecycle scenarios, HTTP refusal matrix, provider limits and SQL inventories | Prove complete flows and residual state together; retain negative controls and use actual native implementations and API-role databases. |
+| Owning architecture pages, metrics census, active spec and this ledger | Record actual boundaries, bounded funding diagnostics and operation cardinality, measured evidence and remaining work. |
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798 ancestry is retained; merge `205addaa2` also integrates PR 799/main `11883fdab`. Integrated provider-component gates passed; recheck before the next push and final ship. |
-| Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Physical calls, full agent/lease integration, waits, publication and recovery remain incomplete. |
+| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; post-merge lint, unit and clean integration gates passed. A fresh fetch still resolves to that integrated main. Repeat the freshness check at final ship. |
+| Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Native physical-call accounting passes unit/integration gates; full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
+| Align unfinished setup actions | `components/layout/DraftSidebarItem.tsx` uses shared grid columns: title, reachable Delete, then Resume. Desktop/mobile measurements, app lint and 100% coverage pass; the same geometry assertion fails against the previous component. Logs: `/tmp/m236-ui-polish-browser.log`, `/tmp/m236-resume-parent-red.log`. |
+| Shorten fleet chat guidance | `SteerComposer.tsx` now reads “Change fleet defaults in Edit setup.” The existing action, hint and theme remain; controlled browser cases, app lint and 100% coverage pass. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. SDK transfer, encryption, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |
-| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; pushed merge `9a70538` integrates latest main, followed by validated starter guide `0b2bc39`. The companion PR remains pending; new API pages follow the lead merge. |
+| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; pushed merge `d97b373` adds latest docs main `920933d`. Site validation, prose, work gate and branch secret scanning passed. The companion PR remains pending; new API pages follow the lead merge. |
 | Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. No feature PR exists; all required gates, actual-head Continuous Integration and Greptile resolution must precede the authorized merge. |

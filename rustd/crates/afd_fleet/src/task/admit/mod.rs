@@ -2,7 +2,7 @@
 
 mod insert;
 mod replay;
-mod source;
+pub(in crate::task) mod source;
 
 use afd_core::clock;
 use sqlx::Acquire as _;

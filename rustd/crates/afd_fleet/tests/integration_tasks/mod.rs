@@ -5,6 +5,7 @@
 mod bindings;
 mod capacity;
 mod controls;
+mod decisions;
 mod exhaustion;
 mod fixture;
 mod qualification;

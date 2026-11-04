@@ -4,7 +4,6 @@ mod client;
 mod document;
 mod observe;
 mod preflight;
-mod validate;
 mod wire;
 
 use afd_wire::decision::{DecisionRequest, DecisionResult};

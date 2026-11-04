@@ -260,6 +260,8 @@ async fn test_heartbeat_is_guarded_like_every_other_runner_verb() {
 
 mod authorization;
 
+mod decisions;
+
 mod memory;
 
 mod satellites;

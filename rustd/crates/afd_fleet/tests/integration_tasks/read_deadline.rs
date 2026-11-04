@@ -101,6 +101,7 @@ async fn single_pool(case: &Case) -> (Db, Tasks) {
             case.held.fixtures.queue().clone(),
             Entropy::new(),
         ),
+        afd_fleet::task::TaskDependencies::from(&case.held.fixtures.plane()),
     );
     (database, tasks)
 }

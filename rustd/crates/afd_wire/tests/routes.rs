@@ -30,6 +30,8 @@ fn test_route_templates_compose_from_their_segments() {
         ("schedule", paths::LEASE_SCHEDULE),
         ("schedule_runs", paths::LEASE_SCHEDULE_RUNS),
         ("messages", paths::LEASE_MESSAGES),
+        ("task_decisions", paths::LEASE_TASK_DECISIONS),
+        ("task_decision", paths::LEASE_TASK_DECISION),
     ];
     let rendered = routes
         .iter()
@@ -54,6 +56,8 @@ fn test_route_templates_compose_from_their_segments() {
     schedule         /v1/runners/me/leases/{lease_id}/schedules/{schedule_id}
     schedule_runs    /v1/runners/me/leases/{lease_id}/schedules/{schedule_id}/runs
     messages         /v1/runners/me/leases/{lease_id}/messages
+    task_decisions   /v1/runners/me/leases/{lease_id}/tasks/decisions
+    task_decision    /v1/runners/me/leases/{lease_id}/tasks/decisions/{call_id}
     ");
 }
 

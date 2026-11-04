@@ -19,6 +19,18 @@ pub struct DecisionUsage {
     pub cache_write_tokens: u32,
 }
 
+impl DecisionUsage {
+    /// Removes cache subsets exactly once before ordinary line pricing.
+    /// An inconsistent or overflowing report retains unknown accounting.
+    #[must_use]
+    pub fn uncached_input(&self) -> Option<u32> {
+        self.input_tokens.checked_sub(
+            self.cached_input_tokens
+                .checked_add(self.cache_write_tokens)?,
+        )
+    }
+}
+
 /// Native probability answers after exact question/type/option validation.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

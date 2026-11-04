@@ -68,6 +68,7 @@ afd_gate.workspace = true
 afd_core.workspace = true
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
+scopeguard.workspace = true
 # `fleet.events`. The table's statements moved out of this crate's
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on leases, money, policy and four sweepers.
@@ -128,11 +129,15 @@ serde_json.workspace = true
 tracing.workspace = true
 # Task progress reads bound both connection acquisition and connected queries.
 tokio = { workspace = true, features = ["time"] }
+# Both HTTP and internal decision owners accept already validated wire input.
+garde.workspace = true
+# An encoded one-use credential is wiped if issuance or response construction fails.
+zeroize.workspace = true
 
 [dev-dependencies]
+afd_vault.workspace = true
 # Reviewed decision fixtures use the same native catalogue mutations as operators.
 afd_admin.workspace = true
-garde.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
@@ -141,7 +146,6 @@ afd_events = { workspace = true, features = ["test-util"] }
 # The credential plane moved out; its client and the zeroizing wrapper are
 # still what the lease suite constructs a stub broker with.
 reqwest.workspace = true
-zeroize.workspace = true
 afd_credential = { workspace = true, features = ["test-util"] }
 afd_runner = { workspace = true, features = ["test-util"] }
 # The suites need REAL parallelism: every contention proof in this crate — the

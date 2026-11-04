@@ -1,8 +1,10 @@
 WITH held AS MATERIALIZED (
-    SELECT l.fleet_id::text, l.workspace_id::text, l.tenant_id::text,
+    SELECT l.id::text AS lease_id, l.fleet_id::text, l.workspace_id::text, l.tenant_id::text,
            e.event_id AS source_admission_id, l.task_id::text,
            l.fencing_token AS fence, s.fencing_token AS live_fence,
            f.head_revision_id::text AS revision_id,
+           f.status AS fleet_status, f.name AS fleet_name,
+           l.decision_snapshot,
            l.lease_expires_at, s.lease_expires_at AS slot_expires_at
     FROM runner.leases l
     JOIN runner.fleet_slots s ON s.fleet_id = l.fleet_id
@@ -14,7 +16,9 @@ WITH held AS MATERIALIZED (
 ), instant AS MATERIALIZED (
     SELECT clock_timestamp() AS checked_at FROM held
 )
-SELECT held.fleet_id, held.workspace_id, held.tenant_id, held.source_admission_id,
-       held.task_id, held.fence, held.live_fence, held.revision_id
+SELECT held.lease_id, held.fleet_id, held.workspace_id, held.tenant_id, held.source_admission_id,
+       held.task_id, held.fence, held.live_fence, held.revision_id,
+       held.fleet_status, held.fleet_name,
+       held.decision_snapshot, instant.checked_at
 FROM held CROSS JOIN instant
 WHERE held.lease_expires_at > instant.checked_at AND held.slot_expires_at > instant.checked_at

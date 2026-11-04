@@ -119,6 +119,8 @@ Large repositories use a retained verified base plus incremental chunks, as defi
 
 The branch defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; authenticated list/detail reads share the daemon task owner.
 Native bind/control and authenticated reads are implemented; public control routes and task-bound runtime integration remain pending.
+Native decision reservation and receipt handlers use the same task owner; [goal evaluation](goal_evaluation.md) records their accounting and remaining runtime boundaries.
+
 List reads return unfinished work, while detail retains terminal outcomes.
 
 The inline chat panel reads these native rows and lazy-loads saved criteria; committed bind/control changes publish `task_changed` on the existing fleet stream.
@@ -351,7 +353,9 @@ The task runtime/deadline policy cannot override a smaller existing lease, credi
 
 ## Proposed native API
 
-Runner routes require `Guard::RunnerBearer`, the authenticated owning runner, live lease/fence and current task generation.
+New runner dispatch and task transitions require `Guard::RunnerBearer`, the owning runner, a live lease/fence and current task generation.
+Accounting receipts instead authenticate the retained original call owner and fence; they can record late usage without advancing work.
+
 Person routes require the existing workspace guard, child ownership lookup and `FleetRead` or `FleetWrite` as shown.
 Return 404 for wrong-workspace children and 409 for stale generations without exposing foreign state.
 
@@ -373,7 +377,7 @@ The following proposed endpoints extend those existing resource families:
 | `POST L/tasks/bindings` | Source admission, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
 | `GET L/tasks/inputs?starting_after=<cursor>&limit=4` | Returns eligible human messages in sequence and current task summaries, scoped to the source conversation. Machine work rows do not obstruct steering. Does not consume them. |
 | `POST L/tasks/input-receipts` | Source admission/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
-| `POST L/tasks/decisions` | Reserve a physical decision call with purpose, request/question digests and maximum cost; 201 returns call identity, resolved rate/version policy and frozen decision profile and scoped provider credential material. |
+| `POST L/tasks/decisions` | Reserve a physical call for a message, pinned item or goal action group, with an optional retry parent; 201 returns its frozen request/profile and trusted-supervisor credential response. Native code owns digests, rates, limits and deadlines. |
 | `PATCH L/tasks/decisions/{call_id}` | Bounded typed answers, actual resolved model and usage or explicit unknown outcome; 200 returns native disposition and settled/reserved usage. |
 | `POST L/tasks/effects` | Immutable source item/cursor, operation identity, expected head, tested tree and supported changes; reserve and issue one bounded native publication synchronously. Confirmed creation returns 201; confirmed replay 200; unknown outcome returns 409 without retrying the mutation. |
 | `GET L/tasks/effects?ordinal_after=<watermark>&starting_after=<cursor>&limit=50` | 200 returns the selected task's ordered effects after its checkpoint watermark, including unresolved and newly confirmed effects. Replacement workers need no previously returned effect identity. |
@@ -391,7 +395,9 @@ The following proposed endpoints extend those existing resource families:
 | `GET F/tasks/{task_id}` | `FleetRead`; 200 returns progress, accepted questions/criteria and setup revision, assessments/evidence and ETag, with local versus published file labels. |
 | `PATCH F/tasks/{task_id}` | `FleetWrite` and `If-Match`; lifecycle control or explicit reviewed `goal_revision_id` adoption with expected generation/operation identity; 200 returns state/version, ETag and any in-flight effect warning. Adoption invalidates old assessments without resetting usage or expanding authority. |
 
-All runner mutation bodies include fencing token, task identity when already bound, expected generation and operation identity.
+New dispatch and task-transition bodies include the fence, current running task when bound, expected generation and operation identity.
+Late decision receipts carry their original call/fence; current task ownership is not a prerequisite for accounting.
+
 Bound control requests to 128 KiB and checkpoint manifest pages to 1 MiB.
 Publication permits at most 32 changed regular-file paths, 1 MiB total decoded content and a 2-MiB encoded request.
 
@@ -488,6 +494,7 @@ Task rows and canonical billing lines remain the source of truth; emit signals f
 | Is work advancing? | `dt_transition`; counts by bounded state/reason and current-state gauges through existing census machinery. |
 | Are steers accepted and waits waking? | `dt_input_accepted`, `dt_wake_claimed`; accepted/replayed/stale outcomes and due-wake delay. |
 | What do decisions cost? | `dt_decision_recorded`; provider/purpose/outcome counts and latency. Existing billing records hold per-model tokens, cache categories and cost exactly once. |
+| Why could a decision not start? | `dt_decision_funding_refused` names the bounded funding reason and lease; `agentsfleet_task_operations_total` and `agentsfleet_task_operation_seconds` measure native outcomes and latency without identity labels. |
 | Are writes confirmed? | `dt_effect_uncertain` plus native effect outcomes; uncertain/reconciled/refused/confirmed state and reconciliation latency. |
 | How expensive is save/restore? | `dt_checkpoint_published`; capture/upload/verify/restore duration, unique uploaded/reused/readback bytes and quota/integrity failures. |
 | What does the person see? | `task_decision_started`, `task_decision_completed`, `task_transfer_progress`; current provider, stage and acknowledged progress through existing CLI/browser activity. |

@@ -12,6 +12,7 @@ const CONTEXT: &str = "prove durable task lease ownership";
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct LeaseRow {
+    pub lease_id: String,
     pub fleet_id: String,
     pub workspace_id: String,
     pub tenant_id: String,
@@ -20,6 +21,11 @@ pub(super) struct LeaseRow {
     pub fence: i64,
     pub live_fence: i64,
     pub revision_id: Option<String>,
+    pub fleet_status: String,
+    pub fleet_name: String,
+    pub decision_snapshot: Option<sqlx::types::Json<afd_wire::decision::DecisionAssignment>>,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    pub checked_at: jiff::Timestamp,
 }
 
 pub(super) async fn lease_scope(database: &Db, presented: TaskLease<'_>) -> Result<TaskScope> {

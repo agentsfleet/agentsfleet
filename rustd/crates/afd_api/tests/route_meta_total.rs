@@ -88,8 +88,8 @@ const AUTHORING_CONTEXT_ADDITIONS: usize = 1;
 /// The first-trigger Svix URL was replaced by the existing per-source route.
 const RETIRED_WEBHOOK_ROUTES: usize = 1;
 
-/// Current-work collection and task detail.
-const DURABLE_TASK_ADDITIONS: usize = 2;
+/// Current-work collection/detail and lease-scoped decision reservation/receipt.
+const DURABLE_TASK_ADDITIONS: usize = 4;
 
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES

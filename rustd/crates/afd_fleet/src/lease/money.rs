@@ -90,6 +90,24 @@ impl Plane {
     /// Free what is left of `lease_id`'s hold, charging anything still
     /// unsettled first.
     pub(crate) async fn release_usage(&self, lease_id: &Uuid7, why: Release) {
+        match self.leases.decisions_pending(lease_id).await {
+            Ok(false) => {}
+            Ok(true) => {
+                tracing::info!(
+                    work_id = lease_id.as_str(),
+                    event = EVENT_RELEASE_DEFERRED,
+                    reason = "decision_pending",
+                    "physical decision accounting keeps the hold open"
+                );
+                return;
+            }
+            Err(fault) => {
+                tracing::warn!(work_id = lease_id.as_str(), event = EVENT_RELEASE_DEFERRED,
+                    error_code = %fault.code(), reason = "decision_lookup_failed",
+                    "the hold remains open until decision accounting can be checked");
+                return;
+            }
+        }
         let work = WorkKey::FleetLease(lease_id.clone());
         if let Err(fault) = self.biller.release(&work, why).await {
             let work_id = lease_id.as_str();

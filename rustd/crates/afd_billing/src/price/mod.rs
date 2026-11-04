@@ -8,6 +8,8 @@
 use afd_core::catalogue::Price;
 use afd_core::id::Uuid7;
 use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+use serde::{Deserialize, Serialize};
 use sqlx::PgExecutor;
 
 use crate::error::{query, row_malformed};
@@ -19,8 +21,10 @@ pub use self::rate::{RatedLine, Rater, Window};
 
 /// What a statement here was doing, for [`query`].
 const CONTEXT_LOAD: &str = "read a model's price book";
+const CONTEXT_DECISION: &str = "read the frozen revision's decision price book";
 /// The table a malformed price id is reported against.
 const TABLE_PRICES: &str = "model.platform_model_prices";
+const TABLE_DECISION_PRICES: &str = "model.decision_prices";
 /// The column a malformed price id is reported against.
 const COLUMN_ID: &str = "id";
 
@@ -28,9 +32,10 @@ const COLUMN_ID: &str = "id";
 ///
 /// The id is what a usage line records as the price it was charged at, so a
 /// charge can always be traced to the exact published rate.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Tier {
-    /// `model.platform_model_prices.id`.
+    /// Opaque coding or decision quote identity, retained beside its values.
     pub id: Uuid7,
     /// The rates and their evidence.
     pub price: Price,
@@ -53,7 +58,8 @@ impl Tier {
 }
 
 /// Every published tier of one model, across all its dates.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PriceBook {
     tiers: Vec<Tier>,
 }
@@ -83,11 +89,38 @@ impl PriceBook {
             .fetch_all(executor)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-        let tiers = rows
-            .into_iter()
-            .map(PriceColumns::tier)
-            .collect::<Result<Vec<_>>>()?;
-        Ok(Self { tiers })
+        Self::from_rows(rows, TABLE_PRICES)
+    }
+
+    /// Reads the dated tiers for the lease's saved model/revision identity.
+    /// It does not follow the model's current revision pointer or coding rates.
+    /// Callers retain this book before dispatch and rate later receipts from it.
+    ///
+    /// # Errors
+    /// Preserves statement failures and malformed stored quote identities.
+    pub async fn load_decision<'e>(
+        executor: impl PgExecutor<'e>,
+        model: &Uuid7,
+        revision: &Uuid7,
+        at: Timestamp,
+    ) -> Result<Self> {
+        let rows = sqlx::query_as(sql::SELECT_DECISION_PRICE_BOOK)
+            .bind(model.as_str())
+            .bind(revision.as_str())
+            .bind(at.to_sqlx())
+            .fetch_all(executor)
+            .await
+            .map_err(query(CONTEXT_DECISION))?;
+        Self::from_rows(rows, TABLE_DECISION_PRICES)
+    }
+
+    fn from_rows(rows: Vec<PriceColumns>, table: &'static str) -> Result<Self> {
+        Ok(Self {
+            tiers: rows
+                .into_iter()
+                .map(|row| row.tier(table))
+                .collect::<Result<Vec<_>>>()?,
+        })
     }
 
     /// The tier a request of `whole_prompt` tokens made at `at` is priced at.
@@ -104,7 +137,7 @@ impl PriceBook {
     }
 }
 
-/// `model.platform_model_prices` read by column name.
+/// Coding and decision quotes share the same named projection.
 #[derive(Debug, sqlx::FromRow)]
 pub(crate) struct PriceColumns {
     id: String,
@@ -129,8 +162,8 @@ impl PriceColumns {
     ///
     /// # Errors
     /// The row's id is not a `UUIDv7`.
-    pub(crate) fn tier(self) -> Result<Tier> {
-        let id = Uuid7::parse(&self.id).map_err(row_malformed(TABLE_PRICES, COLUMN_ID))?;
+    fn tier(self, table: &'static str) -> Result<Tier> {
+        let id = Uuid7::parse(&self.id).map_err(row_malformed(table, COLUMN_ID))?;
         Ok(Tier {
             id,
             price: Price {

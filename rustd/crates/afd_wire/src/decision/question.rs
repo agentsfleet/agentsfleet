@@ -103,7 +103,7 @@ pub struct DecisionRequest {
     pub questions: Vec<NamedQuestion>,
 }
 
-fn state_bound<C: ?Sized>(state: &serde_json::Value, _context: &C) -> garde::Result {
+pub(crate) fn state_bound<C: ?Sized>(state: &serde_json::Value, _context: &C) -> garde::Result {
     if !(state.is_string() || state.is_object() || state.is_array()) {
         return Err(garde::Error::new(
             "state must be text, an object or an array",

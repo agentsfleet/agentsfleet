@@ -123,10 +123,18 @@ impl Vault {
     /// distinction in the log instead.
     pub async fn open(&self, key: KeyRef<'_>) -> Result<Option<SecretBytes>> {
         let mut connection = self.database.acquire().await?;
+        self.open_on(&mut connection, key).await
+    }
+
+    pub(crate) async fn open_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        key: KeyRef<'_>,
+    ) -> Result<Option<SecretBytes>> {
         let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
             .bind(key.workspace_id.as_str())
             .bind(key.name)
-            .fetch_optional(&mut *connection)
+            .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_SECRET))?;
 
