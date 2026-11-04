@@ -508,7 +508,7 @@ Approval resolution still creates a continuation admission.
    CRON      QStash calls POST /v1/ingress/qstash/schedules
                → agentsfleetd verifies the signature with its boot-loaded
                  current or next signing key
-               → checks the stored schedule generation and Fleet state
+               → resolves the schedule header and checks current schedule/Fleet state
                → INSERT fleet.admissions with the scheduler replay key
                       actor=cron:<schedule_id>  type=cron
                       workspace_id=<ws>        request=<schedule-event-json>
@@ -543,6 +543,10 @@ Approval resolution still creates a continuation admission.
 ```
 
 #### QStash owns the clock
+
+The callback signature covers its destination URL, exact body and message identity.
+Ingress selects the schedule through `Upstash-Schedule-Id`, outside that signature; cryptographic target and revision binding remain unresolved.
+Schedule activity snapshots describe database state at acceptance.
 
 The proposed [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
 

@@ -15,6 +15,7 @@
 **Depends on:** M235 bounded repair and M230 compaction; PRs #798–#800 ancestry is retained and PR #802/main `1920ff345` is integrated. Combined-branch verification and final ship gates remain pending.
 **Provenance:** agent-drafted from Indy's decisions; historical scenario reviews plus a fresh-context Astra design review and verified correction pass
 **Canonical architecture:** `docs/architecture/scenarios/durable-repair.md` owns the combined outcome; topic pages retain their existing mechanisms
+**Additional authorized work:** [Runner deadline correction](M236_002_P1_INFRA_OBS_RUNNER_ENDING_DEADLINE.md), [schedule activity](M236_003_P1_API_DOCS_OBS_UI_FLEET_SCHEDULE_ACTIVITY.md) and the [pending signal audit](../pending/M240_001_P1_INFRA_OBS_EXECUTOR_SIGNAL_ISOLATION_AUDIT.md) stay in PR #803, per Indy's “no new PR”.
 ## Overview
 
 **Goal (testable):** An authorized repair continues toward its reviewed goal across later CI results and worker replacement, while human conversation neither restarts the task nor widens its authority.
