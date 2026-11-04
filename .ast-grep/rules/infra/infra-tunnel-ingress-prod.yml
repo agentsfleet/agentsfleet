@@ -1,0 +1,42 @@
+# The tunnel is the API's only way in. Its prod config routes the API host to
+# the private address, and its LAST route refuses everything else, so a new
+# route can never land after the fallback. A presence rule scoped to one file:
+# it goes silent if that file is renamed.
+id: infra-tunnel-ingress-prod
+language: Yaml
+severity: error
+message: the prod tunnel routes api.agentsfleet.net to http://agentsfleetd-prod.internal:3000, then falls back to http_status:404 last
+files:
+  - deploy/fly/cloudflared-prod/config.yml
+rule:
+  kind: stream
+  not:
+    has:
+      stopBy: end
+      kind: block_mapping_pair
+      all:
+        - has:
+            field: key
+            regex: '^ingress$'
+        - has:
+            stopBy: end
+            kind: block_sequence_item
+            all:
+              - has:
+                  stopBy: end
+                  kind: block_mapping_pair
+                  regex: '^hostname:\s*["'']?api\.agentsfleet\.net["'']?$'
+              - has:
+                  stopBy: end
+                  kind: block_mapping_pair
+                  regex: '^service:\s*["'']?http://agentsfleetd-prod\.internal:3000["'']?$'
+        - has:
+            stopBy: end
+            kind: block_sequence_item
+            nthChild:
+              position: 1
+              reverse: true
+            has:
+              stopBy: end
+              kind: block_mapping_pair
+              regex: '^service:\s*["'']?http_status:404["'']?$'

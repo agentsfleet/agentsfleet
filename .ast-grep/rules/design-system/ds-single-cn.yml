@@ -1,6 +1,6 @@
 # A second cn drifts from the design system's tailwind-merge configuration.
-# That the one cn still exists is checked by
-# scripts/check_design_system_source.py.
+# That the one cn still exists is the design-system typecheck's to prove:
+# src/index.ts re-exports it, so `tsrs --noEmit` fails the moment it is gone.
 id: ds-single-cn
 language: Tsx
 severity: error

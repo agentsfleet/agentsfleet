@@ -1,0 +1,31 @@
+id: wf-collector-org-dev
+valid:
+  - |
+    jobs:
+      d:
+        steps:
+          - env:
+              FLY_ORG: agentsfleet-dev
+            run: |
+              flyctl secrets set GRAFANA_TOKEN="$T" --app "$OTLP_COLLECTOR_APP"
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set TUNNEL_TOKEN="$T"
+invalid:
+  - |
+    jobs:
+      d:
+        steps:
+          - env:
+              FLY_ORG: agentsfleet-prod
+            run: |
+              flyctl secrets set GRAFANA_TOKEN="$T" --app "$OTLP_COLLECTOR_APP"
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set GRAFANA_TOKEN="$T" --app "$OTLP_COLLECTOR_APP"

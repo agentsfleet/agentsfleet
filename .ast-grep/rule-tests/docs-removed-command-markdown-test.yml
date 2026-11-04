@@ -1,0 +1,11 @@
+id: docs-removed-command-markdown
+valid:
+  - |
+    Run `agentsfleet secret create`.
+invalid:
+  - |
+    Run `agentsfleet secret add`.
+  - |
+    ```
+    agentsfleet install
+    ```

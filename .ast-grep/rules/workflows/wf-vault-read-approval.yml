@@ -1,0 +1,54 @@
+# The runner playbooks read the vault, and playbooks/lib/common.sh refuses unless
+# the caller sets ALLOW_VAULT_READS: "1". A step without it fails on the host
+# after the build has spent its time. The presence half is scoped to two
+# files: renaming either leaves it matching nothing, silently.
+id: wf-vault-read-approval
+language: Yaml
+severity: error
+message: 'every step that runs a runner playbook needs `ALLOW_VAULT_READS: "1"`'
+files:
+  - .github/workflows/deploy-dev-metal.yml
+  - .github/workflows/release.yml
+rule:
+  any:
+    - kind: stream
+      not:
+        has:
+          stopBy: end
+          kind: block_mapping_pair
+          all:
+            - has:
+                field: key
+                regex: '^run$'
+            - has:
+                field: value
+                regex: 'playbooks/(lib/runner|founding/0[58]_runner_bootstrap_\w+)/'
+    - kind: block_mapping
+      has:
+        kind: block_mapping_pair
+        all:
+          - has:
+              field: key
+              regex: '^run$'
+          - has:
+              field: value
+              regex: 'playbooks/(lib/runner|founding/0[58]_runner_bootstrap_\w+)/'
+      not:
+        has:
+          kind: block_mapping_pair
+          all:
+            - has:
+                field: key
+                regex: '^env$'
+            - has:
+                field: value
+                has:
+                  stopBy: end
+                  kind: block_mapping_pair
+                  all:
+                    - has:
+                        field: key
+                        regex: '^ALLOW_VAULT_READS$'
+                    - has:
+                        field: value
+                        regex: '^["'']?1["'']?$'

@@ -1,0 +1,34 @@
+# DOC-09: a removed command is never spelled where a customer reads it.
+# The same rule in three grammars, because one rule id has one language.
+id: docs-removed-command
+language: Tsx
+severity: error
+message: names a removed command (DOC-09)
+note: 'Replacements: install -> agentsfleet chat --library <LIBRARY_ID> --revision <REVISION_ID>; library create -> agentsfleet chat --publish <LABEL>; fleet update -> agentsfleet chat --fleet <FLEET_ID> --setup-revision <N>; workspace, fleet-key, secret and tenant provider add -> the same command with create.'
+files:
+  - src/**/*.ts
+  - src/**/*.tsx
+  - src/**/*.js
+  - cli/src/**/*.ts
+  - cli/src/**/*.tsx
+  - cli/src/**/*.js
+  - public/**/*.ts
+  - public/**/*.tsx
+  - public/**/*.js
+  - ui/packages/app/**/*.ts
+  - ui/packages/app/**/*.tsx
+  - ui/packages/app/**/*.js
+  - tests/fixtures/**/*.ts
+  - tests/fixtures/**/*.tsx
+  - tests/fixtures/**/*.js
+ignores:
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/*_test.*"
+rule:
+  regex: 'agentsfleet (install|library create|fleet update|workspace add|fleet-key add|secret add|tenant provider add)'
+  any:
+    - kind: string
+    - kind: template_string
+    - kind: comment
+    - kind: jsx_text

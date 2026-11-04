@@ -1,0 +1,23 @@
+# Both deploy entry points run the deployment stage of the preflight gate before
+# anything ships. A presence rule scoped to two files: renaming either leaves it
+# matching nothing, silently.
+id: wf-deployment-gate
+language: Yaml
+severity: error
+message: run `STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh` before deploying
+files:
+  - .github/workflows/deploy-dev.yml
+  - .github/workflows/release.yml
+rule:
+  kind: stream
+  not:
+    has:
+      stopBy: end
+      kind: block_mapping_pair
+      all:
+        - has:
+            field: key
+            regex: '^run$'
+        - has:
+            field: value
+            regex: 'STAGE=deployment \./playbooks/founding/02_preflight/00_gate.sh'

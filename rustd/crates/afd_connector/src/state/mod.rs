@@ -70,20 +70,6 @@ const MAC_SEP: char = '.';
 /// otherwise be one construction serving two purposes.
 const SUBJECT_TAG_PREFIX: &str = "subject:v1:";
 
-/// A state that was minted, and the nonce that makes it single-use.
-///
-/// Both, because they are written to two different places: the state goes into
-/// the provider's URL and the nonce into this daemon's own store. A mint that
-/// answered only the state would leave the caller re-deriving the nonce by
-/// parsing what it just built.
-#[derive(Debug, Clone)]
-pub struct Minted {
-    /// What rides the provider's `state` query parameter.
-    pub state: String,
-    /// What the single-use slot is remembered under.
-    pub nonce: String,
-}
-
 /// Why a presented state is not one this daemon will act on.
 ///
 /// Distinguished for the LOG and collapsed for the answer: an operator reading

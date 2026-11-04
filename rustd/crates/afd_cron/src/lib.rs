@@ -58,7 +58,7 @@ pub use self::fire::{ACTOR_PREFIX, Fire, Fired, schedule_actor};
 pub use self::model::{
     DesiredStatus, FLEET_SCHEDULES_MAX, MAX_SCHEDULES_PER_FLEET, Schedule, Source, SyncStatus,
 };
-pub use self::qstash::QStash;
+pub use self::qstash::{Attempts, QStash};
 pub use self::recipe::{Inherited, Recipe, RecipeSet};
 pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{

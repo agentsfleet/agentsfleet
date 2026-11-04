@@ -1,0 +1,24 @@
+# A named read of `process.env` or `Bun.env` happens only in
+# cli/src/constants/env.ts, so renaming one is a single visible diff. Passing
+# the whole object along (a default for an injectable env) is left alone, and
+# so are named reads on that injected object (`env.BROWSER`): the rule sees the
+# global, not the parameter.
+id: cli-env-read
+language: Tsx
+severity: error
+message: read an environment variable by name only in cli/src/constants/env.ts
+files:
+  - cli/src/**/*.ts
+  - cli/src/**/*.js
+ignores:
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/*_test.*"
+  - cli/src/constants/env.ts
+rule:
+  any:
+    - pattern: process.env.$NAME
+    - pattern: process.env?.$NAME
+    - pattern: process.env[$KEY]
+    - pattern: Bun.env.$NAME
+    - pattern: Bun.env[$KEY]

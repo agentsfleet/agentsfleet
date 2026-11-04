@@ -1,0 +1,19 @@
+# The musl builder image's tag is derived from
+# playbooks/operations/ci_rust_images/versions.env, as make/build.mk does. A
+# literal tag keeps compiling on the old toolchain after a bump, because the
+# old tag still pulls. The derived form has `$` after the colon, a literal has
+# a digit. Comments count.
+id: wf-builder-literal
+language: Yaml
+severity: error
+message: pins a literal builder tag; derive it from playbooks/operations/ci_rust_images/versions.env
+files:
+  - .github/workflows/*.yml
+rule:
+  regex: 'ghcr\.io/agentsfleet/ci-rust-alpine:[0-9]'
+  any:
+    - kind: string_scalar
+    - kind: double_quote_scalar
+    - kind: single_quote_scalar
+    - kind: block_scalar
+    - kind: comment

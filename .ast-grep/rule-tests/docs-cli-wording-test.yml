@@ -1,0 +1,15 @@
+id: docs-cli-wording
+valid:
+  - |
+    program.command("ls").description("List fleets.");
+  - |
+    const s = { description: "List fleets." };
+  - |
+    const note = "leverage";
+invalid:
+  - |
+    program.command("run").description("Execute a fleet.");
+  - |
+    const s = { description: "A powerful command." };
+  - |
+    cmd.description(`Leverage ${x}`);

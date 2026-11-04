@@ -78,7 +78,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -157,13 +156,9 @@ dependencies = [
  "afd_core",
  "afd_cron",
  "afd_crypto",
- "afd_db",
- "afd_events",
- "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_gate",
  "afd_http",
- "afd_identity",
  "afd_ingress",
  "afd_observability",
  "afd_vault",
@@ -191,7 +186,6 @@ dependencies = [
  "afd_validate",
  "afd_wire",
  "axum",
- "const_format",
  "garde",
  "http",
  "jiff",
@@ -246,11 +240,9 @@ dependencies = [
  "afd_db",
  "afd_dragonfly",
  "afd_events",
- "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
  "afd_http",
- "afd_ingress",
  "afd_mail",
  "afd_memory",
  "afd_observability",
@@ -258,7 +250,6 @@ dependencies = [
  "afd_tenant",
  "afd_validate",
  "afd_vault",
- "afd_webhook",
  "afd_wire",
  "axum",
  "const_format",
@@ -270,7 +261,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "url",
  "utoipa",
 ]
 
@@ -541,6 +531,7 @@ dependencies = [
  "afd_dragonfly",
  "afd_validate",
  "afd_wire",
+ "backon",
  "base64 0.23.1",
  "const_format",
  "garde",
@@ -616,7 +607,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -628,7 +618,6 @@ dependencies = [
  "afd_core",
  "afd_db",
  "afd_dragonfly",
- "afd_observability",
  "afd_sse",
  "afd_wire",
  "base64 0.23.1",
@@ -636,14 +625,12 @@ dependencies = [
  "garde",
  "jiff",
  "jiff-sqlx",
- "redis",
  "serde",
  "serde_json",
  "sqlx",
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -678,7 +665,6 @@ dependencies = [
  "futures-util",
  "jiff",
  "jiff-sqlx",
- "redis",
  "reqwest",
  "serde",
  "serde_json",
@@ -757,7 +743,6 @@ dependencies = [
  "afd_events",
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
- "afd_observability",
  "afd_wire",
  "base64 0.23.1",
  "jiff",
@@ -767,7 +752,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -885,7 +869,6 @@ dependencies = [
  "sha2 0.11.1",
  "sqlx",
  "thiserror",
- "tokio",
  "tracing",
 ]
 
@@ -1259,7 +1242,6 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tracing",
- "url",
 ]
 
 [[package]]
@@ -1411,7 +1393,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "url",
 ]
 
 [[package]]

@@ -581,15 +581,10 @@ axum = { version = "0.8.9", default-features = false, features = [
 # prevent, silently. `keys_and_config/mod.rs`'s spread assertion is what catches a
 # future edit that drops it again.
 backon = { version = "1.6.0", default-features = false, features = ["std", "tokio-sleep"] }
-# Tower is the middleware algebra axum composes; `tower-http` carries the
-# ready-made layers. The admission ceiling is ours (it counts in-flight
-# requests per route CLASS, which no off-the-shelf layer knows about), but the
-# request-id, timeout and body-limit layers are not worth rewriting.
+# Tower is the middleware algebra axum composes. The admission ceiling is ours:
+# it counts in-flight requests per route CLASS, which no off-the-shelf layer
+# knows about.
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
-tower-http = { version = "0.7.1", default-features = false, features = [
-    "limit",
-    "trace",
-] }
 # The HTTP/1 connection underneath axum, taken DIRECTLY rather than through
 # `axum::serve`, for one reason: `axum::serve` exposes no way to bound the
 # header buffer, and §5's Dimension 5.3 is precisely a bound on the header
@@ -642,10 +637,6 @@ crc16 = { version = "0.4.0", default-features = false }
 # act a per-key race needs. Where a map is keyed by something many tasks
 # touch at once, this is the shape, not `Mutex<HashMap>`.
 dashmap = { version = "6.2.1", default-features = false }
-# An `Arc` swapped atomically: readers load it without a lock and a writer
-# replaces it whole. Where a value is read on every request and changed almost
-# never — which store a workspace's memory lives in — this is the shape.
-arc-swap = { version = "1.9.3", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and
@@ -797,8 +788,6 @@ lettre = { version = "0.11.23", default-features = false, features = [
 # Reviewed snapshots of the rendered email, so a template change shows up as a
 # diff in review rather than as a surprise in an inbox.
 insta = { version = "1.49.0", default-features = false }
-# A directory walk for the source-reading tests, so none hand-writes the recursion.
-walkdir = { version = "2.5.0", default-features = false }
 # The subscriber, which §6 wires to OTLP. It is a dev-dependency until then for
 # a reason worth stating: `tracing::warn!` checks whether its callsite is
 # ENABLED before it evaluates its arguments, so with no subscriber installed a

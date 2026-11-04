@@ -1,0 +1,25 @@
+# The tailnet policy a human pastes into Tailscale decides who reaches the
+# runner hosts. A "*" in a grant's src, dst or ip opens every device or port
+# to the whole tailnet, and nothing else refuses it before it is applied.
+id: infra-tailnet-no-wildcard
+language: Json
+severity: error
+message: a tailnet grant names "*"; grant the tags and ports it needs
+files:
+  - playbooks/founding/02_preflight/tailnet-policy.hujson
+rule:
+  kind: string
+  regex: '^"\*"$'
+  inside:
+    kind: array
+    inside:
+      kind: pair
+      has:
+        field: key
+        regex: '^"(src|dst|ip)"$'
+      inside:
+        stopBy: end
+        kind: pair
+        has:
+          field: key
+          regex: '^"grants"$'

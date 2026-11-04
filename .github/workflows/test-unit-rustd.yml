@@ -148,6 +148,11 @@ jobs:
           bun-version: 1.4.4
       - name: Install root dependencies
         run: bun install --frozen-lockfile
+      # lint-rustd fails on unused dependencies through `cargo shear`; the
+      # version matches CARGO_SHEAR_VERSION in make/quality.mk.
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
+        with:
+          tool: cargo-shear@1.14.0
       - name: Lint the Rust workspace
         run: make lint-rustd
 

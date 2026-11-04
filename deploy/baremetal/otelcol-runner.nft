@@ -1,0 +1,9 @@
+# One atomic, idempotent transaction. Keep this boundary in place on stop.
+add table inet agentsfleet_otel
+flush table inet agentsfleet_otel
+table inet agentsfleet_otel {
+  chain output {
+    type filter hook output priority -10; policy accept;
+    ip daddr 127.0.0.1 tcp dport 4318 meta skuid != 0 drop
+  }
+}

@@ -42,7 +42,7 @@ openapi = [
 # Each dependency is added by the module that uses it: `unreachable_pub` and
 # `unused_crate_dependencies` are how Invariant 2 is a fact rustc checks rather
 # than a claim, and a manifest listing crates nothing imports would make the
-# graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
+# graph a wish. axum/tower/afd_core arrive with the admission layer
 # and the envelope writer.
 [dependencies]
 afd_api_ingress.workspace = true

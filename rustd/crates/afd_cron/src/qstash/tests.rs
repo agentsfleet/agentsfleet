@@ -52,3 +52,11 @@ fn an_answer_that_is_not_the_scheduler_shape_is_refused() {
     confirmed(SENT.to_owned(), r#"{"id":"fleet-schedule-x"}"#)
         .expect_err("JSON without the scheduler's id field confirms nothing");
 }
+
+#[test]
+fn the_waits_between_three_attempts_add_up_to_at_most_one_point_two_seconds() {
+    // Jitter can stretch a wait to twice its delay: the first 200ms delay to
+    // 400ms, and the second, doubled to the 800ms cap, to 800ms. The budget
+    // assertion beside the schedule adds this to the attempts' timeouts.
+    assert_eq!(super::retry::longest_waits(), 1_200);
+}

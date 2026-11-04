@@ -1,0 +1,30 @@
+[Unit]
+Description=agentsfleet runner telemetry collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=otelcol-runner
+Group=otelcol-runner
+# + runs only this admission step as root. A rule-load failure prevents bind.
+ExecStartPre=+/usr/sbin/nft -f /etc/agentsfleet/otelcol-runner.nft
+ExecStart=/usr/local/bin/otelcol-contrib --config=/etc/agentsfleet/otelcol-runner.yml
+EnvironmentFile=/etc/agentsfleet/otelcol-runner.env
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+MemoryMax=256M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+LockPersonality=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

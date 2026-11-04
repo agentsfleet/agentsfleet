@@ -1,0 +1,27 @@
+id: wf-vault-read-approval
+valid:
+  - |
+    jobs:
+      d:
+        steps:
+          - env:
+              ALLOW_VAULT_READS: "1"
+            run: ./playbooks/lib/runner/deploy.sh
+invalid:
+  - |
+    jobs:
+      d:
+        steps:
+          - run: ./playbooks/lib/runner/deploy.sh
+  - |
+    jobs:
+      d:
+        steps:
+          - env:
+              ALLOW_VAULT_READS: "0"
+            run: ./playbooks/founding/05_runner_bootstrap_dev/00_gate.sh
+  - |
+    jobs:
+      d:
+        steps:
+          - run: echo no runner here

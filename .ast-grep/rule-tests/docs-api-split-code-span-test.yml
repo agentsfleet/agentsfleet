@@ -1,0 +1,9 @@
+id: docs-api-split-code-span
+valid:
+  - |
+    {"description": "Returns `UZ-RUN-018`."}
+  - |
+    {"description": "- `a`\n- `b`"}
+invalid:
+  - |
+    {"description": "Returns `UZ- RUN-018`."}

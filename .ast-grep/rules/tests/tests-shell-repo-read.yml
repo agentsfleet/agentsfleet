@@ -1,0 +1,57 @@
+# A test calls the code it proves; it never reads the repository's files. See
+# tests-js-repo-read for why.
+#
+# A read is a reading command (`cat`, `grep`, `sed`, `jq`, ...) or an input
+# redirection, whose own words anchor the path in the repository: `BASH_SOURCE`,
+# `git rev-parse --show-toplevel`, `dirname "$0"`, `$ROOT`, `$(pwd)` or `../`.
+# Handing the file to something that runs it is calling the code: a read piped
+# into `bash`, redirected into a copy, or fed to `bash <`. A path reached
+# through a variable is not followed.
+id: tests-shell-repo-read
+language: Bash
+severity: error
+message: a test reads a repository file; call the code, or move the check to a lint
+files:
+  - "**/*_test.sh"
+  - "**/{test,tests,__tests__}/**/*.sh"
+ignores:
+  - "**/node_modules/**"
+  - "**/target/**"
+utils:
+  anchored:
+    regex: 'BASH_SOURCE|rev-parse --show-toplevel|dirname\s+"?\$0|\$\{?(repo_root|REPO_ROOT|ROOT)\b|\$\(pwd\)|(^|[^\w/$.])\.\./'
+  fixture:
+    regex: '(^|[/"''`\s(,])(fixtures|testdata|__fixtures__|__snapshots__|golden)([/"''`\s),]|$)'
+  piped-to-shell:
+    inside:
+      stopBy: end
+      kind: pipeline
+      has:
+        kind: command
+        has: { field: name, regex: '^(bash|sh)$' }
+  copied:
+    inside:
+      kind: redirected_statement
+      has: { kind: file_redirect, regex: '^>\s*"?\$\w' }
+rule:
+  any:
+    - kind: command
+      all:
+        - has: { field: name, regex: '^(cat|grep|egrep|fgrep|rg|sed|awk|head|tail|jq|yq|cut|sort|diff|cmp)$' }
+        - matches: anchored
+        - not: { matches: fixture }
+        - not: { matches: piped-to-shell }
+        - not: { matches: copied }
+    # cmd < "$(git rev-parse --show-toplevel)/x" and $(< ../x); never `bash < x`.
+    - kind: file_redirect
+      all:
+        - regex: '^<\s*[^&(<]'
+        - matches: anchored
+        - not: { matches: fixture }
+        - not:
+            inside:
+              kind: redirected_statement
+              has:
+                field: body
+                kind: command
+                has: { field: name, regex: '^(bash|sh)$' }

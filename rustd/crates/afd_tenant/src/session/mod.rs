@@ -47,8 +47,8 @@ use jiff::Timestamp;
 // and the login is this module's.
 pub use afd_dragonfly::session::SessionStatus;
 
+use crate::Result;
 use crate::error;
-use crate::{Error, Result};
 
 pub use self::fingerprint::Fingerprint;
 pub use self::input::{Approval, Opening};
@@ -307,9 +307,6 @@ fn expiry_of(now: Timestamp) -> Timestamp {
 fn parse_id(session_id: &str) -> Result<Uuid7> {
     Uuid7::parse(session_id).map_err(|_shape| error::session_missing())
 }
-
-/// The refusal type this module answers with.
-pub type SessionError = Error;
 
 mod response;
 pub use self::response::{Opened, Redeemed, Waiting};
