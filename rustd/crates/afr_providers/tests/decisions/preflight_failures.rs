@@ -10,7 +10,7 @@ use afr_telemetry::{
 use garde::Unvalidated;
 use serde_json::{Value, json};
 
-use super::fixture::{self, Reply, Server};
+use super::fixture::{self, Reply, Server, replaced as changed};
 
 #[tokio::test]
 async fn invalid_responses_retain_usage_without_returning_trusted_answers() {
@@ -52,18 +52,12 @@ async fn profile_refusals_cost_no_physical_send() {
         let profile = Unvalidated::new(profile)
             .validate()
             .expect("profile shape is valid; capability/endpoint judgment is native");
+        let client = DecisionClient::new(profile, fixture::credential())
+            .expect("the production guarded client can be constructed");
         let (tally, received) = Tally::new();
-        let error = scoped(
-            tally,
-            DecisionClient::with_client(
-                server.client.clone(),
-                profile.clone(),
-                fixture::credential(),
-            )
-            .evaluate(&fixture::request()),
-        )
-        .await
-        .expect_err("preflight refuses predictably");
+        let error = scoped(tally, client.evaluate(&fixture::request()))
+            .await
+            .expect_err("preflight refuses predictably");
         assert!(error.decision_not_sent());
         assert_eq!(
             received
@@ -101,14 +95,6 @@ async fn profile_refusals_cost_no_physical_send() {
     super::limits::escaped_state_and_complete_questions_keep_their_bounds().await;
 }
 
-fn changed(original: &Value, path: &str, replacement: Value) -> Value {
-    let mut document = original.clone();
-    *document
-        .pointer_mut(path)
-        .expect("fault path exists in the external fixture") = replacement;
-    document
-}
-
 fn invalid_cases() -> Vec<(&'static str, Value, DecisionInvalid)> {
     let original = fixture::native_reply();
     let mut cases = vec![
@@ -142,7 +128,34 @@ fn invalid_cases() -> Vec<(&'static str, Value, DecisionInvalid)> {
         ),
     ];
     cases.extend(probability_faults(&original));
+    cases.extend(typed_value_faults(&original));
     cases
+}
+
+fn typed_value_faults(original: &Value) -> Vec<(&'static str, Value, DecisionInvalid)> {
+    vec![
+        (
+            "negative integral probability",
+            changed(original, "/answers/matches/noul", json!(-1)),
+            DecisionInvalid::Answers,
+        ),
+        (
+            "null probability",
+            changed(original, "/answers/matches/noul", Value::Null),
+            DecisionInvalid::Answers,
+        ),
+        (
+            "shifted score levels",
+            changed(
+                original,
+                "/answers/risk",
+                json!({"type":"score", "score":1.0, "confidence":0.8,
+                    "probabilities":{"1":1.0,"2":0.0},
+                    "legend":{"0":"Low","1":"High"}}),
+            ),
+            DecisionInvalid::Answers,
+        ),
+    ]
 }
 
 fn probability_faults(original: &Value) -> Vec<(&'static str, Value, DecisionInvalid)> {

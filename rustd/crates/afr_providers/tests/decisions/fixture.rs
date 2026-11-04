@@ -258,3 +258,30 @@ pub(super) fn native_reply() -> Value {
         "risk":{"type":"score", "score":0.2, "confidence":0.8, "probabilities":{"0":0.8, "1":0.2}, "legend":{"0":"Low", "1":"High"}}
     }})
 }
+
+pub(super) fn openai_reply() -> Value {
+    json!({
+        "model":"evaluated-model-1", "usage":{"input_tokens":100, "output_tokens":3, "input_tokens_details":{"cached_tokens":20, "cache_write_tokens":10}},
+        "answers":[
+            {"name":"risk", "type":"score", "score":0.2, "confidence":0.8, "probabilities":[{"value":0,"label":"0","probability":0.8},{"value":1,"label":"1","probability":0.2}]},
+            {"name":"matches", "type":"predicate", "probability":0.99},
+            {"name":"next", "type":"choice", "choice":"WAIT", "confidence":0.96, "probabilities":[{"value":"WAIT","probability":0.98},{"value":"DONE","probability":0.02}]}
+        ]
+    })
+}
+
+pub(super) fn envelope(api: DecisionApi, document: Value) -> Value {
+    if api == DecisionApi::Cloudflare {
+        json!({"success":true,"result":document,"errors":[]})
+    } else {
+        document
+    }
+}
+
+pub(super) fn replaced(original: &Value, path: &str, replacement: Value) -> Value {
+    let mut document = original.clone();
+    *document
+        .pointer_mut(path)
+        .expect("fault path exists in the external fixture") = replacement;
+    document
+}

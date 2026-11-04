@@ -18,35 +18,11 @@ pub(super) fn encode(
     request: &Valid<DecisionRequest>,
 ) -> Result<Vec<u8>> {
     let document = match profile.api {
-        DecisionApi::Openai => openai::encode(profile, request),
+        DecisionApi::Openai => openai::encode(profile, request)?,
         DecisionApi::Typesafe | DecisionApi::Perplexity | DecisionApi::Cloudflare => {
-            native::encode(profile, request)
+            native::encode(profile, request)?
         }
     };
-    let questions = document
-        .get("questions")
-        .ok_or(ErrorKind::DecisionPreflight {
-            reason: "the decision request has no questions",
-        })?;
-    let values: Vec<&Value> = match questions {
-        Value::Object(values) => values.values().collect(),
-        Value::Array(values) => values.iter().collect(),
-        _ => {
-            return Err(ErrorKind::DecisionPreflight {
-                reason: "the decision question representation is invalid",
-            }
-            .into());
-        }
-    };
-    for question in values {
-        if !afd_wire::decision::serialized_within(question, afd_wire::decision::QUESTION_MAX_BYTES)
-        {
-            return Err(ErrorKind::DecisionPreflight {
-                reason: "an encoded decision question exceeds its byte bound",
-            }
-            .into());
-        }
-    }
     let body = serde_json::to_vec(&document)?;
     if body.len() > profile.input_max_bytes as usize {
         return Err(ErrorKind::DecisionPreflight {
@@ -55,6 +31,16 @@ pub(super) fn encode(
         .into());
     }
     Ok(body)
+}
+
+fn bounded_question(question: Value) -> Result<Value> {
+    if !afd_wire::decision::serialized_within(&question, afd_wire::decision::QUESTION_MAX_BYTES) {
+        return Err(ErrorKind::DecisionPreflight {
+            reason: "an encoded decision question exceeds its byte bound",
+        }
+        .into());
+    }
+    Ok(question)
 }
 
 pub(super) fn decode(

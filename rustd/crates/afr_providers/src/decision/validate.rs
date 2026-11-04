@@ -67,13 +67,10 @@ fn score_distribution(levels: usize, score: f64, probabilities: &BTreeMap<u32, f
         return false;
     }
     let mut expected = 0.0;
-    for index in 0..levels {
-        let Ok(index) = u32::try_from(index) else {
+    for ((&index, &probability), expected_index) in probabilities.iter().zip(0_u32..) {
+        if index != expected_index {
             return false;
-        };
-        let Some(probability) = probabilities.get(&index) else {
-            return false;
-        };
+        }
         expected += f64::from(index) * probability;
     }
     (score - expected).abs() <= ROUNDING_TOLERANCE

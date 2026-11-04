@@ -11,8 +11,12 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::validate;
+use crate::Result;
 
-pub(super) fn encode(profile: &Valid<DecisionProfile>, request: &Valid<DecisionRequest>) -> Value {
+pub(super) fn encode(
+    profile: &Valid<DecisionProfile>,
+    request: &Valid<DecisionRequest>,
+) -> Result<Value> {
     let questions: BTreeMap<_, _> = request
         .questions
         .iter()
@@ -37,10 +41,10 @@ pub(super) fn encode(profile: &Valid<DecisionProfile>, request: &Valid<DecisionR
                     levels,
                 } => json!({"type":"score", "instructions":instructions, "criteria":levels}),
             };
-            (&named.name, value)
+            super::bounded_question(value).map(|value| (&named.name, value))
         })
-        .collect();
-    json!({"model":profile.model, "state":request.state, "questions":questions})
+        .collect::<Result<_>>()?;
+    Ok(json!({"model":profile.model, "state":request.state, "questions":questions}))
 }
 
 #[derive(Deserialize)]

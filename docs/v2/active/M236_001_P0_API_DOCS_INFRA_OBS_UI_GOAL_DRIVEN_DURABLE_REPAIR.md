@@ -12,7 +12,7 @@
 **Baseline revision:** 2f8c878c09e9c4048da1724385ec58746d348ed4
 **Test Baseline:** Rust unit=4972 after the approved Rig upgrade; JavaScript and integration baselines pending
 **Baseline evidence:** playbooks/operations/acceptance/baselines/M236_001-autonomy.md
-**Depends on:** M235 bounded repair and M230 compaction; merged PR #798 integrated from main at fde5859717c73ea52d02d84d2408b8f00efcae82; final ship gates remain pending.
+**Depends on:** M235 bounded repair and M230 compaction; PRs #798 and #799 integrated through main `11883fdab`; integrated provider-component gates passed; final ship gates remain pending.
 **Provenance:** agent-drafted from Indy's decisions; historical scenario reviews plus a fresh-context Astra design review and verified correction pass
 **Canonical architecture:** `docs/architecture/scenarios/durable-repair.md` owns the combined outcome; topic pages retain their existing mechanisms
 ## Overview
@@ -76,7 +76,7 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,context,decision,coverage,billing_sweep}.rs`, `lease/{report,renew,usage}/`, `lease/sql/{meter.rs,meter_lease.sql,bill_expired_slice.sql}`; tests | CREATE / EDIT | guarded DT ownership, lifecycle scenarios with gated accepted-plan fixtures, bounded reads, effects, snapshots and settlement integration |
 | `rustd/crates/afd_wire/src/{lease,policy,report}/`; matching wire tests | EDIT | explicit task generation, goal revision and decision/evidence boundaries |
 | `rustd/crates/afr_agent/src/{prompt,loop}/`; matching agent tests | EDIT | current intent, consumed human input and goal-aware action/decision loop |
-| `rustd/crates/afr_agent/src/decision/{mod,questions,routing,goal}.rs`; `afr_providers/src/{decision/,lib.rs,error/,retry/}`; `afd_fleet_runtime/src/{config/,definition/}`; `afd_authoring/src/model/provider/{prompt.rs,prompt/*.md}`; existing authoring review/Apply owners and tests | CREATE / EDIT | one typed decision trait/client; customer-owned instructions/questions; Markdown authoring guidance; linkable starters reuse immutable Library copies and existing setup chat |
+| `rustd/crates/afr_agent/src/decision/{mod,questions,routing,goal}.rs`; `afr_providers/src/{decision/,lib.rs,error/,retry/}`, `afr_providers/tests/decisions/`; `afd_fleet_runtime/src/{config/,definition/}`; `afd_authoring/src/model/provider/{prompt.rs,prompt/*.md}`; existing authoring review/Apply owners and tests | CREATE / EDIT | one typed decision trait/client; customer-owned instructions/questions; Markdown authoring guidance; linkable starters reuse immutable Library copies and existing setup chat |
 | `rustd/crates/afd_gate/src/policy/`; `rustd/crates/afd_credential/src/credential/github/`; matching policy tests | EDIT | reviewed task/existing-PR authority and selected publication precondition |
 | `rustd/crates/afr_supervisor/src/{holds,lease_loop}/`; matching recovery tests | EDIT | compatible task-bound workspace recovery and effect reconciliation |
 | `rustd/crates/afd_api_ingress/src/handler/webhook/{app_route.rs,github/}`; `afd_ingress/src/app/`; `afd_cron/src/fire/`; `agentsfleetd/src/sweepers/{mod.rs,tasks.rs}` and supervisor inventory/tests | EDIT / CREATE | signed completion matching, existing scheduler observation and supervised bounded task maintenance |

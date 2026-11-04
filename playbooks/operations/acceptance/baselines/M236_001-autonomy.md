@@ -431,14 +431,69 @@ The log is `/tmp/m236-task-lifecycle-focus.log`; this scoped pass does not repla
 The clean `make test-integration-rustd` rerun then passed 1,483 regular tests and all three exclusive tests.
 The log is `/tmp/m236-task-lifecycle-integration-final.log`; its recorded exit status is zero.
 
+## Native lifecycle coverage result
+
+The [four-shard measurement](https://github.com/agentsfleet/agentsfleet/actions/runs/41751320421) completed successfully at `b5db2b455` with the approved worker resources.
+Its unchanged merge gate measured 99.5583% workspace coverage: 78,893 of 79,243 executable lines, with 350 missed.
+All four raw reports and revision stamps were verified against that commit.
+
+Manual workflow dispatch leaves the patch base empty, so that green run did not grade patch or touched-file coverage.
+The unchanged merge gate was rerun with explicit base `fde5859717c73ea52d02d84d2408b8f00efcae82` in a clean checkout of the same commit.
+It measured 96.0133% patch coverage: 2,601 of 2,709 changed lines; 30 of 113 touched files missed the separate 99% floor.
+
+The log is `/tmp/m236-coverage-b5db2b455-vs-fde585971.log`.
+Those results fail the required patch/file floors; they precede the subsequent main integration and cannot grade that integrated source.
+No coverage floor, assertion, exclusion or report counter was changed.
+
+A temporary source mutation inverted the native machine-source guard in the isolated verification checkout.
+The qualification scenario failed at its authority assertion when the mutated owner allocated bindings; the original source was restored byte-for-byte.
+The deciding output is retained in `/tmp/m236-source-authority-mutant.log`; the verification checkout is clean.
+
+Main advanced to `11883fdab` while coverage ran; merge `205addaa2` integrates it before the next feature push.
+Astra found no material merge defect in the combined decision/memory lease payload, parallel context reads or gate registration.
+The integrated provider-component gates below subsequently passed.
+
+## Provider validation with integrated main
+
+Decision encoding now checks each question before collection, removing an unnecessary temporary reference vector and unreachable representation errors.
+Score validation walks borrowed, ordered entries instead of repeatedly looking them up.
+The duplicate-key parser retains ambiguity detection while removing JSON visitor paths its decoder cannot call.
+
+Three cohesive HTTP scenarios exercise 54 exchanges across the four protocols, alongside the existing transport, deadline and preflight cases.
+They compare complete outcomes, reported identity, retained usage, credential placement, physical-send counts and scoped measurements together.
+The scenarios add no mutex or process-wide capture lock.
+
+Astra found masking errors in the first duplicate fixtures and an incomplete model-identity assertion.
+The corrected fixtures append duplicates to complete valid distributions and compare the entire `DecisionResult`.
+The shifted-score fixture also preserves a matching weighted score, so removing contiguity validation would incorrectly accept it.
+
+The first lint pass requested a borrowed measurement slice; that mechanical correction is applied.
+`orly doctor`, `orly gate work` and `orly gate verify` passed; verification includes `make lint-all` and version agreement at 0.73.0.
+The final verification log is `/tmp/m236-main-provider-verify-final.log`.
+
+`make test-unit-all` passed 1,593 runner, 141 daemon and 3,377 library tests, with all four TypeScript coverage gates at 100%.
+The app passed 4,653 tests; website 133, CLI 1,997 and design system 522; 16 CLI live-acceptance tests remained explicitly skipped.
+The log is `/tmp/m236-main-provider-unit-all.log`; these results do not establish live acceptance.
+
+Clean `make test-integration-rustd` passed 1,494 regular tests and all three exclusive tests.
+The log is `/tmp/m236-main-provider-integration.log`; the enclosing batch recorded exit zero.
+A fresh fetch confirmed main remained `11883fdab`, an ancestor of the integrated branch.
+
+The companion documentation branch also integrates its latest main in `9a70538` and is pushed.
+Its work gate passed 25 checks; full documentation verification and the branch secret scan passed.
+The logs are `/tmp/m236-docs-main-work.log`, `/tmp/m236-docs-main-verify.log` and `/tmp/m236-docs-main-secrets.log`.
+
+Fresh Rust patch coverage against integrated main remains pending.
+Physical decision reservations, runtime integration and R2 recovery remain unfinished.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798 ancestry is retained by `28bc628aad363d18498c1a15d5c0a9d85b0a9c37`; main remained an ancestor at the latest checkpoint push. Recheck before push and ship. |
+| Integrate merged main before shipping | PR 798 ancestry is retained; merge `205addaa2` also integrates PR 799/main `11883fdab`. Integrated provider-component gates passed; recheck before the next push and final ship. |
 | Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Physical calls, full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Eight final production-component browser checks passed for typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. SDK transfer, encryption, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |
-| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning architecture corrections are applied; docs commit `6d595a5` adds setup-criteria and Current work guides with full documentation validation. The companion PR remains pending; new API pages follow the lead merge. |
+| Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning architecture corrections are applied; docs commit `6d595a5` adds setup-criteria and Current work guides; pushed merge `9a70538` integrates latest main and passes full validation. The companion PR remains pending; new API pages follow the lead merge. |
 | Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. No feature PR exists; all required gates, actual-head Continuous Integration and Greptile resolution must precede the authorized merge. |
