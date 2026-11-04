@@ -279,6 +279,14 @@ fn confirmed(sent: String, body: &str) -> Result<Registered> {
 
 mod retry;
 
+/// The retry schedule's floor, bound for the retry suite so the least wait it
+/// asserts follows the schedule instead of a copied number.
+#[cfg(feature = "test-util")]
+pub mod retry_schedule {
+    /// The first wait between attempts; the second doubles from it.
+    pub const FIRST_DELAY: std::time::Duration = super::retry::FIRST_DELAY;
+}
+
 #[cfg(test)]
 mod tests;
 

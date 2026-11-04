@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 use afd_core::id::Uuid7;
 use afd_cron::Attempts;
 use afd_cron::error::detail::UPSTREAM_UNAVAILABLE;
+use afd_cron::qstash::retry_schedule::FIRST_DELAY;
 use afd_cron::qstash::{QStash, Registered};
 use afd_cron::upstream_id;
 
@@ -28,9 +29,10 @@ use self::stub_scheduler::{StubScheduler, client_at, unreachable_client};
 /// The schedule every push names.
 const SCHEDULE: &str = "019329c5-0000-7000-8000-0000000000de";
 
-/// The shortest the two waits between three attempts can add up to: the
-/// first delay is at least 200ms and the second at least 400ms.
-const LEAST_WAIT: Duration = Duration::from_millis(600);
+/// The shortest the two waits between three attempts can add up to: jitter
+/// only lengthens a wait, so the first is at least `FIRST_DELAY` and the
+/// second, doubled from it, at least twice that.
+const LEAST_WAIT: Duration = FIRST_DELAY.saturating_mul(3);
 
 fn schedule() -> Uuid7 {
     Uuid7::parse(SCHEDULE).expect("a canonical identifier")
