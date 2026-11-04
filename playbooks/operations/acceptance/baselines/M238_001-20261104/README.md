@@ -113,3 +113,12 @@ issues after the reducer labels and variable-state drift repairs. Review receipt
 `4c125fe4-e860-439a-83ad-8e9214f0ef1b` remains incomplete for the manual witnesses
 and alert-count blocker. Native adversarial receipt
 `74460351-c444-4c32-8e72-95fba3a9f355` completed cleanly.
+
+The full `orly gate verify` passed documentation checks, source-rule tests,
+Rust formatting and Clippy, website lint and the version check. It stopped at
+app lint because the configured `AGENTSFLEET_UI_ENV_FILE` path did not exist.
+
+The narrow rerun `AGENTSFLEET_UI_ENV_FILE=/tmp/m238-ui-runtime.env make lint-app`
+passed, using an empty task-owned file and the already supplied runtime
+variables. The original environment file selector was not modified. Full
+verification and publication remain blocked by the alert-count decision.
