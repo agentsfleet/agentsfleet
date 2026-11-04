@@ -9,6 +9,7 @@ use afd_core::id::Uuid7;
 /// read.
 #[derive(Debug, sqlx::FromRow)]
 struct FireRow {
+    scheduled_at: Option<jiff_sqlx::Timestamp>,
     /// The fleet to wake, as text.
     fleet_id: String,
     /// The fleet's workspace, as text.
@@ -27,6 +28,7 @@ impl FireRow {
     /// The target this row names; ids and the intent word parse here.
     fn parse(self) -> Result<FireTarget> {
         Ok(FireTarget {
+            scheduled_at: self.scheduled_at.map(jiff_sqlx::Timestamp::to_jiff),
             fleet: Uuid7::parse(&self.fleet_id)
                 .map_err(|_shape| error::row_unreadable(COLUMN_FLEET))?,
             workspace: Uuid7::parse(&self.workspace_id)

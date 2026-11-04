@@ -23,6 +23,7 @@ test-util = ["afd_core/test-util", "dep:jiff", "dep:jiff-sqlx"]
 [dependencies]
 # The wire codes a datastore failure answers.
 afd_core.workspace = true
+afd_observability.workspace = true
 sqlx.workspace = true
 # The seed fixtures stamp `TIMESTAMPTZ(3)` columns with `jiff::Timestamp`.
 # Optional — only `test-util` writes a row.

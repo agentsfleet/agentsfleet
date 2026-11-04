@@ -241,3 +241,57 @@ async fn test_a_zero_floor_warms_nothing() {
     assert_eq!(db.warm(Duration::from_secs(10)).await, 0);
     assert_eq!(db.size(), 0, "nothing was opened");
 }
+
+/// Held connections, pending requests and cancellation are observations of the real pool.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_pool_snapshot_tracks_use_and_cancelled_waiters() {
+    let database = TestDatabase::shared();
+    let db = database
+        .open(
+            DbRole::Api,
+            &[
+                ("DATABASE_POOL_SIZE_API", "1"),
+                ("DATABASE_ACQUIRE_TIMEOUT_MS_API", "5000"),
+            ],
+        )
+        .await;
+    let held = db
+        .acquire()
+        .await
+        .expect("the real pool opens a connection");
+    let observed = db.snapshot().expect("an open pool has a reading");
+    assert_eq!(
+        (
+            observed.open,
+            observed.idle,
+            observed.capacity,
+            observed.waiting
+        ),
+        (1, 0, 1, 0)
+    );
+    let waiting = db.clone();
+    let request = tokio::spawn(async move { waiting.acquire().await });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while db.snapshot().unwrap().waiting == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the request waits behind the held connection");
+    assert_eq!(db.snapshot().unwrap().waiting, 1);
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+    assert_eq!(db.snapshot().unwrap().waiting, 0);
+    drop(held);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while db.snapshot().unwrap().idle != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("SQLx returns the held connection");
+    assert_eq!(db.snapshot().unwrap().open, 1);
+    db.close().await;
+    assert_eq!(db.snapshot(), None);
+}

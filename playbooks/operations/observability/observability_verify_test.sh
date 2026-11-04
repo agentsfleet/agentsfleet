@@ -52,7 +52,10 @@ case "$url" in
     [ "${MOCK_DRIFT:-}" != folder ] || title=wrong
     jq -n --arg title "$title" '{spec:{title:$title}}'
     ;;
-  */dashboards/agentsfleet-runtime-dev)
+  */dashboards/agentsfleet-runtime-dev*)
+    dashboard_name="${url##*/}"
+    suffix="${dashboard_name#agentsfleet-runtime-dev}"
+    dashboard_asset="$PROVIDER_DIR/assets/dashboard$suffix.json"
     # The stub renders through the SAME function the apply and the drift check
     # use. A fourth hand-rolled copy of the substitution list is how a
     # placeholder added to the asset made this stub serve a dashboard that
@@ -64,7 +67,7 @@ case "$url" in
       OBS_PROMETHEUS_UID=prometheus-main
       OBS_ENVIRONMENT=development
       OBS_DASHBOARD_NAME=agentsfleet-runtime-dev
-      obs_render_dashboard "$rendered" "$PROVIDER_DIR"
+      obs_render_dashboard "$rendered" "$PROVIDER_DIR" "$dashboard_asset"
     )
     spec="$(cat "$rendered")"
     rm -f "$rendered"
@@ -73,6 +76,9 @@ case "$url" in
         jq '(first(.panels[] | select((.targets // []) | length > 0)) |
              .targets[0].expr) = "drift"' <<<"$spec"
       )"
+    fi
+    if [ "${MOCK_DRIFT:-}" = table_mode ]; then
+      spec="$(jq '(.panels[] | select(.type == "table") | .targets[0].instant) = false' <<<"$spec")"
     fi
     if [ "${MOCK_DRIFT:-}" = tempo_query ]; then
       spec="$(jq '(.panels[] | select(.datasource.type == "tempo") | .targets[0].query) = "drift"' <<<"$spec")"
@@ -102,7 +108,7 @@ case "$url" in
     [ "${MOCK_DRIFT:-}" != dashboard_metadata ] || folder=wrong
     jq -n \
       --arg folder "$folder" \
-      --arg name agentsfleet-runtime-dev \
+      --arg name "$dashboard_name" \
       --argjson spec "$spec" \
       '{
         metadata:{name:$name,annotations:{"grafana.app/folder":$folder}},
@@ -183,6 +189,7 @@ test_should_reject_each_resource_drift() {
     'dashboard_metadata|dashboard metadata drifted'
     'dashboard_query|dashboard queries drifted'
     'tempo_query|dashboard queries drifted'
+    'table_mode|dashboard queries drifted'
     'tempo_reducer|dashboard queries drifted'
     'tempo_variable|dashboard variables drifted'
     'tempo_variable_type|dashboard variables drifted'

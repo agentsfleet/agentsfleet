@@ -35,12 +35,24 @@ views; new measurements begin when their producers are deployed.
 | `playbooks/operations/observability/` | EDIT | Apply and verify every dashboard; clear labels, live-query and evidence guidance |
 | `docs/metrics.census.tsv` | EDIT | Declare new daemon families and bounded labels |
 | `docs/metrics.runner.census.tsv` | EDIT if needed | Declare only runner measurements not already recorded |
+| `rustd/crates/afd_admin/` | EDIT | Bounded canonical catalogue snapshots |
+| `rustd/crates/afd_api/` | EDIT | Matched-template request timing |
+| `rustd/crates/afd_api_runner/` | EDIT | Distinguish first report settlement from its repeated successful acknowledgements |
+| `rustd/crates/afd_api_ingress/` | EDIT | Verified schedule callback outcomes |
+| `rustd/crates/afd_authoring/` | EDIT | Attribute private model calls to the actual provider |
+| `rustd/crates/afr_supervisor/` | EDIT | Count inline memory and fallback choices at the actual branch |
+| `rustd/crates/afr_providers/` | EDIT | Attribute actual runner model calls |
+| `rustd/crates/afd_wire/` | EDIT | Internal optional token observations, without serialized API changes |
 | `rustd/crates/afd_observability/` | EDIT | Typed instruments, observations, metadata and export proofs |
 | `rustd/crates/afd_db/` | EDIT | Actual pool occupancy, capacity, acquisition wait and outcomes |
 | `rustd/crates/afd_cron/` | EDIT | Accepted/replayed fires, dispatch lag and failed/stale targets |
 | `rustd/crates/afd_inference/` | EDIT | First-token and terminal timing for individual provider attempts |
 | `rustd/crates/afr_telemetry/` | EDIT if needed | Model attribution and missing runner measurements |
 | `rustd/crates/agentsfleetd/` | EDIT | Connect boot-owned readings without blocking collection callbacks |
+| `scripts/collector_temporality_test.py` | EDIT | Exercise all three real metrics pipelines |
+| `scripts/runner_collector_admission_test.py` | CREATE | Prove the nftables rule rejects a non-root sandbox identity |
+| `scripts/fixtures/` | CREATE | Isolated collector admission test image |
+| `make/quality.mk` | EDIT | Run the new infrastructure proof automatically |
 | `deploy/baremetal/` | CREATE/EDIT | Dedicated runner collector, bounded export and host admission rules |
 | `docs/architecture/observability.md` | EDIT | Current producer ownership, collector wiring and metric contracts |
 
@@ -80,7 +92,7 @@ owners rather than adding parallel exporters or duplicate stores.
 
 ### Section 2 — Model usage, latency and capabilities
 
-- **Dimension 2.1** — Each physical model attempt records first-token and terminal
+- **Dimension 2.1** — Each provider stream request records first-token and terminal
   latency, including errors, timeouts and cancellation; run time remains separate.
 - **Dimension 2.2** — Model identity is normalized before metrics; input, output,
   cache tokens and spend retain existing accounting and replay semantics.
@@ -93,7 +105,7 @@ owners rather than adding parallel exporters or duplicate stores.
 - **Dimension 3.1** — Existing start, wait, release, reuse, tool and limit signals
   reach the dedicated runner collector, with bounded resources and retry state.
 - **Dimension 3.2** — Non-root sandbox processes cannot submit to the host OTLP
-  receiver. Runner logs are forwarded only after the reviewed allowlist.
+  receiver. No logs pipeline is enabled; journald stays local until its separate allowlist is implemented.
 - **Dimension 3.3** — Real sandbox and model calls produce joinable traces and
   truthful metrics; preparation, waiting and execution remain separate.
 
@@ -124,6 +136,8 @@ Streaming-zero loss in the managed Tempo datasource remains an external visual
 blocker until an editable non-streaming connection is available.
 
 ## Invariants
+
+The runner collector uses memory_limiter 200 MiB, MemoryMax 256 MiB, an in-memory queue of 1,000 batches and retry at most 300 seconds. It has no disk queue or off-host log retention; trace admission keeps the runner's 256-per-lease and 128-per-second limits. Host credential deployment waits on the explicit M233_002 D1 choice between the existing grafana-dev key and a dedicated write-only key.
 
 Collector failure never blocks a run. Database callbacks load snapshots only.
 The daemon exports verb facts; the runner exports facts no verb carries.
@@ -177,3 +191,68 @@ unbuilt in M233_002 section 2; routing through Fly would violate the current
 architecture. Pool occupancy and schedule health are absent from the daemon
 census. Individual provider-attempt timing exists in content-free stream logs,
 while existing daemon model-duration metrics describe an entire invocation.
+
+Design review: current daemon boot opens the API-role pool alone; only pools actually opened receive occupancy readings. An acquisition is measured once across the existing retry, and cancellation drops its pending guard. Provider terminal time/cause must be latched before optional usage recovery. Capability snapshots require a bounded vendor-model catalogue, expiry and removal semantics; raw custom model strings are not labels.
+
+Nov 04 implementation checkpoint: added daemon pool, API, scheduler and model
+observations, plus runner per-model calls and token observations. Focused
+`afd_inference`, `afr_telemetry` and `afd_observability` tests passed before the
+additional abandonment-usage refinement. The daemon and supervisor compile
+with all features. Six dashboard assets now have exact per-page inventories;
+the nine negative asset cases and three drift suites pass. Live apply and
+native review are still being checked. These are inner-loop results, not a
+repository gate or coverage claim. New instrumentation has not been deployed.
+
+Indy review, Nov 04: remove duplicated queue depth/age and general lease-poll
+cost from Scheduler. Keep runner wakeups only in Chat latency, where they
+explain #799. Scheduler now owns scheduled triggers, durable fires, verified
+callbacks, one-shot dispatch lag and sync outcomes. Blank model-call panels
+remain pending the new producer deployment and isolated runner export.
+
+Runner collector assets are drafted in `deploy/baremetal/otelcol-runner.{yml,nft,service}`
+and `install-collector.sh`. The real contrib 0.164.0 binary validates the config.
+Release archive hashes were read from upstream's per-architecture `.sha256`
+assets. These assets are not installed on dev. Host execution and the D1 key
+choice remain pending; local syntax validation does not prove sandbox rejection.
+
+Live recheck after Indy's question, Nov 04, 2026, 07:40 UTC:
+`flyctl` confirms `otelcol-dev` machine `812d66a974ed38` is started,
+running contrib 0.164.0; daemon machine `48ee32df500958` is also started.
+The daemon has both `OTEL_EXPORTER_OTLP_ENDPOINT` and
+`OTEL_EXPORTER_OTLP_HEADERS` configured (values not printed).
+The collector's 100 buffered log records from 07:39:06–07:40:01 UTC include
+11 HTTP 400 export failures. At 07:39:11 it reports “invalid temporality and
+type combination” for `agentsfleet_fleet_delivery_stage_seconds` and
+`agentsfleet.billing.credit.consumed`, dropping 56 items in that export.
+Thus Fly collector presence is verified, but healthy metric delivery is not.
+The prior user-facing wording blurred this existing Fly collector with the
+proposed runner-host collector. No direct live runner-host inspection was
+performed in this recheck; the host's current export configuration remains
+unverified, rather than inferred from missing Grafana samples.
+
+Live drop diagnosis, Nov 04, 2026, 07:54 UTC: Grafana reports approximately
+6.008 extrapolated `gen_ai.provider.name` / `unmapped_provider` attribute
+omissions in the preceding hour. This counter omits an attribute and does
+not count a whole span as lost. Daemon export-discard, runner export-discard
+and runner span-suppression queries returned no series; absence is not zero
+and does not disprove collector-side loss. Split Overview's combined panel
+into Attribute omissions and Export loss with explicit ownership.
+Direct runner-host recheck is blocked by the managed executor's current
+`vpn_configured: false` and empty TCP grants; no live host claim is made.
+
+The Overview split is applied to dev and `04_verify.sh` confirms all six
+live dashboards match the current assets. Ten asset negative cases and all
+three drift suites pass, including the new UID/table-mode checks. The vault's
+dev runner target is `debian@zombie-dev-worker-ant`; the supported executor
+network policy has VPN disabled and no TCP grants, so direct host inspection
+still cannot proceed here. No Tailscale client was installed or network route
+changed to work around this boundary. Running collector config remains unchanged.
+
+Indy requested pushing the refinement before completing validation, then
+starting the remaining checks. This commit is a draft checkpoint, not a
+completion or coverage claim. Repository integration, final coverage and CI
+remain pending; the runner-host diagnosis is owned by Indy's other session.
+Live audit checked all 62 PromQL targets: 14 returned finite values, 48 were
+empty and none returned a query error. The last-24-hour Tempo searches returned
+daemon delivery spans but no runner.lease, chat or execute_tool spans. This
+proves missing runner telemetry in the queried datasource, not collector absence.

@@ -28,6 +28,13 @@ mod tests;
 /// file its producers are graded against.
 pub const CENSUS: &str = include_str!("../../../../../docs/metrics.runner.census.tsv");
 
+/// Individual provider stream duration, attributed to a catalogue model.
+pub const MODEL_CALL_DURATION: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_model_call_duration_seconds");
+/// First nonempty text for a provider stream, absent if it produced none.
+pub const MODEL_FIRST_TOKEN: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_model_first_token_duration_seconds");
+
 /// Model turn wall time, by provider and outcome.
 pub const PROVIDER_TURN_DURATION: Declared<HistogramKind> =
     Declared::new("agentsfleet_runner_provider_turn_duration_seconds");
@@ -93,6 +100,12 @@ pub fn registry() -> afd_observability::Result<Registry> {
 #[derive(Debug)]
 pub struct Families {
     turns: Histogram<f64>,
+    memory_sources: Counter<u64>,
+    model_calls: Histogram<f64>,
+    model_tokens: Counter<u64>,
+    model_cache_read: Counter<u64>,
+    model_cache_write: Counter<u64>,
+    model_first: Histogram<f64>,
     retries: Counter<u64>,
     sandbox_starts: Histogram<f64>,
     sandbox_waits: Histogram<f64>,
@@ -116,6 +129,12 @@ impl Families {
     pub fn claim(instruments: &Instruments) -> afd_observability::Result<Self> {
         Ok(Self {
             turns: instruments.histogram_f64(&PROVIDER_TURN_DURATION)?,
+            memory_sources: instruments.counter_u64(&MEMORY_SOURCES)?,
+            model_calls: instruments.histogram_f64(&MODEL_CALL_DURATION)?,
+            model_tokens: instruments.counter_u64(&MODEL_TOKENS)?,
+            model_cache_read: instruments.counter_u64(&MODEL_CACHE_READ)?,
+            model_cache_write: instruments.counter_u64(&MODEL_CACHE_WRITE)?,
+            model_first: instruments.histogram_f64(&MODEL_FIRST_TOKEN)?,
             retries: instruments.counter_u64(&PROVIDER_RETRIES)?,
             sandbox_starts: instruments.histogram_f64(&SANDBOX_START_DURATION)?,
             sandbox_waits: instruments.histogram_f64(&SANDBOX_WAIT_DURATION)?,
@@ -133,6 +152,64 @@ impl Families {
 }
 
 impl Recorder for Families {
+    fn memory_source(&self, source: crate::labels::MemorySource) {
+        self.memory_sources.add(
+            1,
+            &[KeyValue::new(
+                afd_observability::semconv::LABEL_SOURCE,
+                source.as_str(),
+            )],
+        );
+    }
+
+    fn model_tokens(
+        &self,
+        model: &str,
+        provider: Provider,
+        usage: afd_wire::usage::ObservedTokens,
+    ) {
+        use afd_observability::semconv::{ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL, ATTR_TOKEN_TYPE};
+        let mut base = vec![KeyValue::new(ATTR_REQUEST_MODEL, model.to_owned())];
+        if let Some(name) = afd_observability::semconv::provider::normalize(provider.as_str()) {
+            base.push(KeyValue::new(ATTR_PROVIDER_NAME, name));
+        }
+        for (kind, count) in [("input", usage.input), ("output", usage.output)] {
+            if let Some(count) = count {
+                let mut labels = base.clone();
+                labels.push(KeyValue::new(ATTR_TOKEN_TYPE, kind));
+                self.model_tokens.add(count, &labels);
+            }
+        }
+        if let Some(count) = usage.cache_read {
+            self.model_cache_read.add(count, &base);
+        }
+        if let Some(count) = usage.cache_write {
+            self.model_cache_write.add(count, &base);
+        }
+    }
+
+    fn model_call(
+        &self,
+        model: &str,
+        provider: Provider,
+        outcome: crate::labels::CallOutcome,
+        elapsed: Duration,
+        first_text: Option<Duration>,
+    ) {
+        use afd_observability::semconv::{ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL};
+        let mut labels = vec![
+            KeyValue::new(ATTR_REQUEST_MODEL, model.to_owned()),
+            KeyValue::new(LABEL_OUTCOME, outcome.as_str()),
+        ];
+        if let Some(name) = afd_observability::semconv::provider::normalize(provider.as_str()) {
+            labels.push(KeyValue::new(ATTR_PROVIDER_NAME, name));
+        }
+        self.model_calls.record(elapsed.as_secs_f64(), &labels);
+        if let Some(first) = first_text {
+            self.model_first.record(first.as_secs_f64(), &labels);
+        }
+    }
+
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
         self.turns.record(
             elapsed.as_secs_f64(),
@@ -222,3 +299,17 @@ impl Recorder for Families {
         );
     }
 }
+
+/// Provider-reported prompt and completion tokens.
+pub const MODEL_TOKENS: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_model_tokens_total");
+/// Cache-read subset of prompt tokens.
+pub const MODEL_CACHE_READ: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_model_cache_read_tokens_total");
+/// Cache-write subset of prompt tokens.
+pub const MODEL_CACHE_WRITE: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_model_cache_write_tokens_total");
+
+/// Inline windows and hydration fallback choices, counted once per working lease.
+pub const MEMORY_SOURCES: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_memory_sources_total");

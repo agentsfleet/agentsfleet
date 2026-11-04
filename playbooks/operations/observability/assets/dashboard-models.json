@@ -1,0 +1,821 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Live measurements. Missing telemetry stays absent; measured zero stays zero. Aggregate metrics cover the selected datasource; fleet selection applies only to trace panels.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Chat latency",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-chat",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "API & Database",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-api-db",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Scheduler",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-scheduler",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Models",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-models",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
+    {
+      "title": "Sandbox",
+      "type": "link",
+      "url": "/d/__DASHBOARD_UID__-sandbox",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 130,
+      "title": "Calls",
+      "type": "timeseries",
+      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_model_call_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "Daemon \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_runner_model_call_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "Runner \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 131,
+      "title": "First text p95",
+      "type": "timeseries",
+      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(.95, sum by (le, gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_model_first_token_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "Daemon \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(.95, sum by (le, gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_runner_model_first_token_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "Runner \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 132,
+      "title": "Call p95",
+      "type": "timeseries",
+      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(.95, sum by (le, gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_model_call_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "Daemon \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(.95, sum by (le, gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_runner_model_call_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "Runner \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 133,
+      "title": "Tokens",
+      "type": "timeseries",
+      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name, gen_ai_token_type) (rate(agentsfleet_model_tokens_total[$__rate_interval]))",
+          "legendFormat": "Daemon \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}} \u00b7 {{gen_ai_token_type}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name, gen_ai_token_type) (rate(agentsfleet_runner_model_tokens_total[$__rate_interval]))",
+          "legendFormat": "Runner \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}} \u00b7 {{gen_ai_token_type}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tps",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 134,
+      "title": "Cache reads",
+      "type": "timeseries",
+      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_model_cache_read_tokens_total[$__rate_interval]))",
+          "legendFormat": "Daemon \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_runner_model_cache_read_tokens_total[$__rate_interval]))",
+          "legendFormat": "Runner \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tps",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 135,
+      "title": "Cache writes",
+      "type": "timeseries",
+      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_model_cache_write_tokens_total[$__rate_interval]))",
+          "legendFormat": "Daemon \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (gen_ai_request_model, gen_ai_provider_name) (rate(agentsfleet_runner_model_cache_write_tokens_total[$__rate_interval]))",
+          "legendFormat": "Runner \u00b7 {{gen_ai_provider_name}} \u00b7 {{gen_ai_request_model}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tps",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 136,
+      "title": "Call outcomes",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_request_model, outcome) (rate(agentsfleet_model_call_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "Daemon \u00b7 {{gen_ai_request_model}} \u00b7 {{outcome}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (gen_ai_request_model, outcome) (rate(agentsfleet_runner_model_call_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "Runner \u00b7 {{gen_ai_request_model}} \u00b7 {{outcome}}",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 137,
+      "title": "Token limits",
+      "type": "table",
+      "description": "Verified context and configured output limits; stale metadata expires after two minutes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (gen_ai_request_model, gen_ai_provider_name, limit) (agentsfleet_model_limit_tokens)",
+          "legendFormat": "Token limits",
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          },
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "renameByName": {
+              "gen_ai_request_model": "Model",
+              "gen_ai_provider_name": "Provider",
+              "limit": "Limit",
+              "capability": "Feature",
+              "Value": "Tokens"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 138,
+      "title": "Route features",
+      "type": "table",
+      "description": "Tools and tool-result image transport from the configured route. This does not claim verified vision or reasoning capability. Zero means unsupported; absent means unknown.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (gen_ai_request_model, gen_ai_provider_name, capability) (agentsfleet_model_route_capability)",
+          "legendFormat": "Route features",
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          },
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No samples"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "renameByName": {
+              "gen_ai_request_model": "Model",
+              "gen_ai_provider_name": "Provider",
+              "limit": "Limit",
+              "capability": "Feature",
+              "Value": "Supported"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 139,
+      "title": "Catalogue age",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(agentsfleet_model_catalog_snapshot_age_seconds)",
+          "legendFormat": "Catalogue age",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 140,
+      "title": "Catalogue clipped",
+      "type": "timeseries",
+      "description": "One means the 256-model bound clipped the snapshot.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(agentsfleet_model_catalog_clipped)",
+          "legendFormat": "Catalogue clipped",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 141,
+      "title": "Credits consumed",
+      "type": "timeseries",
+      "description": "Credits per second, from billing. These are credits, not a currency conversion.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROMETHEUS_UID__"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(agentsfleet_billing_credit_consumed[$__rate_interval])) / 1e9",
+          "legendFormat": "Credits consumed",
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROMETHEUS_UID__"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: credits/s",
+          "noValue": "No samples",
+          "links": [
+            {
+              "title": "Model traces",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "agentsfleet",
+    "__ENVIRONMENT__"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "tempo",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "hide": 2
+      },
+      {
+        "name": "fleet_id",
+        "label": "Fleet (traces)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 2
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Models \u00b7 __ENVIRONMENT__",
+  "uid": "__DASHBOARD_UID__-models",
+  "version": 2
+}

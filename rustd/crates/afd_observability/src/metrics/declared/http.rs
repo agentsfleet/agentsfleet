@@ -49,3 +49,7 @@ pub const OTLP_ENTRIES_DISCARDED_TOTAL: Declared<CounterKind> =
 /// Labels: `attribute,reason`.
 pub const OTEL_ATTRIBUTE_OMITTED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_otel_attribute_omitted_total");
+
+/// Matched-route latency until response headers; cancellation is a separate outcome.
+pub const API_REQUEST_DURATION: Declared<crate::metrics::family::HistogramKind> =
+    Declared::new("agentsfleet_api_request_duration_seconds");

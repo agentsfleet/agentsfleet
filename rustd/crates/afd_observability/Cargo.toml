@@ -81,3 +81,18 @@ path = "tests/observability_suite.rs"
 [[test]]
 name = "runner_fault_label"
 path = "tests/runner_fault_label.rs"
+
+[[test]]
+name = "database_observations"
+path = "tests/database_observations.rs"
+required-features = ["test-util"]
+
+[[test]]
+name = "model_observations"
+path = "tests/model_observations.rs"
+required-features = ["test-util"]
+
+[[test]]
+name = "scheduler_observations"
+path = "tests/scheduler_observations.rs"
+required-features = ["test-util"]

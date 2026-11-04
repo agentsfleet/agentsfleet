@@ -117,8 +117,12 @@ fn test_every_runner_census_family_has_a_producer() {
 }
 
 /// Each family, and how many series its closed sets can produce.
-fn label_products() -> [(&'static str, usize); 13] {
+fn label_products() -> [(&'static str, usize); 14] {
     [
+        (
+            super::MEMORY_SOURCES.wire_name(),
+            crate::labels::MemorySource::ALL.len(),
+        ),
         (
             PROVIDER_TURN_DURATION.wire_name(),
             Provider::count() * TurnOutcome::ALL.len(),
@@ -159,7 +163,11 @@ fn label_products() -> [(&'static str, usize); 13] {
 fn test_runner_ceilings_admit_their_label_product() {
     let registry = registry().expect("the runner census reads");
     let listed: BTreeSet<&str> = label_products().iter().map(|(name, _)| *name).collect();
-    let declared: BTreeSet<&str> = registry.families().map(|family| &*family.name).collect();
+    let declared: BTreeSet<&str> = registry
+        .families()
+        .filter(|family| matches!(family.policy, Policy::Fixed { .. }))
+        .map(|family| &*family.name)
+        .collect();
     assert_eq!(
         listed, declared,
         "every census family has its label product checked"
@@ -191,7 +199,26 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
     let families = Families::claim(&instruments).expect("the census is claimed");
     let elapsed = Duration::from_millis(5);
 
+    families.memory_source(crate::labels::MemorySource::Inline);
+    families.memory_source(crate::labels::MemorySource::Fallback);
     families.turn(Provider::of("anthropic"), TurnOutcome::Completed, elapsed);
+    families.model_call(
+        "claude-fixture",
+        Provider::of("anthropic"),
+        crate::labels::CallOutcome::Completed,
+        elapsed,
+        Some(elapsed),
+    );
+    families.model_tokens(
+        "claude-fixture",
+        Provider::of("anthropic"),
+        afd_wire::usage::ObservedTokens {
+            input: Some(10),
+            output: Some(3),
+            cache_read: Some(4),
+            cache_write: Some(2),
+        },
+    );
     families.retry(Provider::of("anthropic"), RetryReason::RateLimited);
     families.sandbox_start(SandboxStart::Ready, elapsed);
     families.sandbox_wait(SandboxWait::Ready, elapsed);
@@ -208,7 +235,8 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
 
     let exported: BTreeMap<String, BTreeSet<String>> = exported.try_iter().collect();
     let registry = registry().expect("the runner census reads");
-    for (name, _product) in label_products() {
+    for family in registry.families() {
+        let name = family.name.as_ref();
         let written = exported
             .get(name)
             .unwrap_or_else(|| unreachable!("`{name}` was never exported: {exported:?}"));
@@ -224,4 +252,24 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
             "`{name}` writes the keys its row declares"
         );
     }
+}
+
+#[test]
+fn model_families_use_the_shared_cost_ceiling() {
+    let registry = registry().expect("the runner census reads");
+    let expected: BTreeSet<_> = [
+        super::MODEL_CALL_DURATION.wire_name(),
+        super::MODEL_FIRST_TOKEN.wire_name(),
+        super::MODEL_TOKENS.wire_name(),
+        super::MODEL_CACHE_READ.wire_name(),
+        super::MODEL_CACHE_WRITE.wire_name(),
+    ]
+    .into_iter()
+    .collect();
+    let actual: BTreeSet<_> = registry
+        .families()
+        .filter(|family| matches!(family.policy, Policy::SharedCost))
+        .map(|family| family.name.as_ref())
+        .collect();
+    assert_eq!(actual, expected);
 }

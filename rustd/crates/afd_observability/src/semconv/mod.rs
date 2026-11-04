@@ -283,6 +283,15 @@ pub const LABEL_WORK_TYPE: &str = "work_type";
 /// to be written by hand, and a constant with no column is a key nothing
 /// exports.
 pub const CENSUS_LABEL_KEYS: &[&str] = &[
+    LABEL_SOURCE,
+    ATTR_TOKEN_TYPE,
+    ATTR_HTTP_ROUTE,
+    ATTR_HTTP_REQUEST_METHOD,
+    LABEL_ROLE,
+    LABEL_STATE,
+    LABEL_LIMIT,
+    LABEL_CAPABILITY,
+    LABEL_STATUS_CLASS,
     ATTR_REQUEST_MODEL,
     LABEL_REASON,
     LABEL_SIGNAL,
@@ -297,3 +306,17 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_WORK_TYPE,
     ATTR_PROVIDER_NAME,
 ];
+
+/// Role of a database connection pool.
+pub const LABEL_ROLE: &str = "role";
+/// A closed inventory or connection state.
+pub const LABEL_STATE: &str = "state";
+/// A model's configured limit kind.
+pub const LABEL_LIMIT: &str = "limit";
+/// A configured model-route capability.
+pub const LABEL_CAPABILITY: &str = "capability";
+/// Bounded response class, including cancelled requests.
+pub const LABEL_STATUS_CLASS: &str = "status_class";
+
+/// Bounded origin of a measurement or lease input.
+pub const LABEL_SOURCE: &str = "source";

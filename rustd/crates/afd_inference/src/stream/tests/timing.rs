@@ -57,12 +57,12 @@ async fn a_failed_sdk_fold_keeps_partial_usage_and_emits_one_failure() {
     );
     let partial = turn.finish().await.response;
     let captured = afd_core::test_util::trace::Capture::install();
-    let (turn, physical) = open(Box::pin(stream::empty()), TurnControl::default());
+    let (mut turn, physical) = open(Box::pin(stream::empty()), TurnControl::default());
     let result = finish_response(
         Err(ProviderError::Truncated),
         partial,
-        turn.recovery,
-        turn.trace,
+        &turn.recovery,
+        turn.trace.take().unwrap(),
     )
     .await;
     assert_eq!(result.cause, Some(FailureCause::Provider));
