@@ -290,7 +290,7 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Dev pickup, Nov 04, 2026:** Same ten M238 chats: daemon `runner_lease_issued` queue waits, in event order, 260, 253, 272, 215, 180, 261, 232, 196, 213, 265 ms. p50 242.5 ms ≤250 ms; max 272 ms ≤1,000 ms. Both Dimension 4.1 numerical limits pass. Retrieved from original daemon records in Loki after the Fly log buffer advanced; the requested Fly witness is unavailable. Event identities and raw records: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` and `daemon-lease-lines-loki.json` beside it.
+- **Dev pickup, Nov 04, 2026:** Same ten M238 chats: daemon `runner_lease_issued` queue waits, in event order, 260, 253, 272, 215, 180, 261, 232, 196, 213, 265 ms. p50 242.5 ms ≤250 ms; max 272 ms ≤1,000 ms. Both Dimension 4.1 numerical limits pass. Retrieved from original daemon records in Loki after the Fly log buffer advanced; the requested Fly witness is unavailable. Event identities and raw records: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` and `receipt.json` beside it.
 
 - **Consults** — Measured on dev, Oct 12, 2026, during M213_001's close-out: four steers picked up in 1.9 s, 2.2 s, 2.95 s and 3.8 s; four workers poll about once a second each (`runner_lease_no_work` bursts in `flyctl logs`); the dev host reaches the API in about 60 ms, so the network is not the wait. `READY_PARTITIONS` is 16 (`afd_dragonfly/src/ready/partition/mod.rs:31`) and `NO_WORK_RETRY_AFTER` is 1 s (`afd_core/src/timing.rs:74`).
   > Indy (2026-10-12): "How do we make this performant? and reduce 1.2s to may be 500ms? What is causign the 1.2s, can we add logging tracing to the code to see what happens?" — context: the request this spec answers.

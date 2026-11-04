@@ -26,7 +26,7 @@ Whether local blocks are enabled remains unverified.
 
 Successful search proves daemon trace export and post-deploy settlement.
 
-Values below use Grafana 12.4.0's percentile reducer: sort numeric samples, then select index `Math.round((n−1)q)` (`packages/grafana-data/src/transformations/fieldReducer.ts`, `calculatePercentile`). With ten samples, both p95 and p99 select the maximum. They were computed from datasource results, not witnessed in Explore.
+Values below use Grafana's percentile reducer: sort numeric samples, then select index `Math.round((n−1)q)` (`packages/grafana-data/src/transformations/fieldReducer.ts`, `calculatePercentile`). With ten samples, both p95 and p99 select the maximum. They were computed from datasource results, not witnessed in Explore.
 
 Search with `select(span."agentsfleet.delivery.model_ms")` also returned the model attribute.
 
@@ -57,7 +57,7 @@ Both documented `histogram_quantile` queries over `rate(agentsfleet_fleet_delive
 
 The rejection also names lease-history, invocation-duration, token-usage, cache-read and billing-consumed families.
 
-The census declares these families delta; `deploy/fly/otelcol-dev/config.yml` forwards them unchanged.
+The deployed collector forwarded these delta families unchanged. PR #801 adds delta-to-cumulative conversion; deployment remains pending.
 
 A collector fix is required; Indy later requested that it ship with this evidence and dashboard in one pull request. Empty results do not mean zero latency.
 
@@ -69,7 +69,7 @@ A collector fix is required; Indy later requested that it ship with this evidenc
 
 The message body is only `a lease was issued`, so body-text filters for the event name returned nothing.
 
-`daemon-lease-lines-loki.json` preserves the records.
+`receipt.json` preserves the event identities, queue values and original log lines. The historical archive linked in that receipt retains complete structured log metadata and datasource frames.
 
 This is a different retrieval source from the requested Fly witness.
 
@@ -88,57 +88,32 @@ This is a different retrieval source from the requested Fly witness.
 
 p50 242.5 ms ≤250 ms; max 272 ms ≤1,000 ms. Both numerical limits pass. Delivery-span queue values differ from the later lease-issue log readings and must not replace these ten values.
 
-## Local verification
+## Evidence files
 
-`observability_verify_test.sh`: 3 passed, 0 failed, including acceptance of saved
-variable values and reordered objects, and rejection of changed queries,
-reducers or variable definitions. `shellcheck --severity=error -x` passed for
-all four changed observability scripts.
+- `receipt.json`: release proof, ten span measurements, ten daemon lease logs,
+  query outcomes, wake counters and the later six-dashboard data audit.
+- `grafana-explore-search.png`: native Explore search witness.
+- `collector-rejection.log`: original collector rejection evidence.
 
-`make check-version`: all versions match `0.73.0`. `orly gate work
---accept-dirty` passed. Gitleaks found no leaks in the staged changes or the
-50 KB evidence directory.
+Redundant individual query JSON files were consolidated. Full raw responses
+remain in the Git revision linked by the receipt.
 
-The initial `make check-playbooks` run failed in the new source-assets regression because the
-existing gate expects five alerts while `origin/main` has four. The alert set
-is unchanged here.
+## Current verification
 
-Correcting `EXPECTED_ALERTS` in `01_assets_check.sh` awaited
-owner approval under the repository's gate-edit rule. A separate collector
-patch and local conversion proof exist outside this branch; deployment-config
-edits also awaited owner approval at that point. No pull request or live apply is claimed.
+Six focused dashboards are applied to dev; `04_verify.sh` confirms live
+resource agreement. Ten asset cases and three drift suites pass. These prove
+asset behavior, not complete telemetry: the later audit ran 62 metric queries,
+14 returned finite values and 48 were empty, with no query errors. Tempo found
+daemon delivery spans but no runner.lease, chat or execute_tool spans over the
+preceding 24 hours. This does not prove the runner host lacks a collector.
 
-Review: gstack and repository standards review found zero remaining actionable
-issues after the reducer labels and variable-state drift repairs. Review receipt
-`4c125fe4-e860-439a-83ad-8e9214f0ef1b` initially retained the manual witnesses
-and alert-count blocker.
+The managed Tempo datasource is read-only and still enables Search streaming.
+Its plugin drops measured numeric zeros during streaming conversion; backend
+search frames preserve all ten Tools and Settle zeros. A non-streaming
+connection or a vendor fix is required before those rendered tiles can be
+accepted. Memory and Sandbox wait were genuinely absent in these ten chats.
 
-The alert correction is approved below, and the Explore
-query screenshot is now recorded; rendered-row validation remains open. Native adversarial receipt
-`74460351-c444-4c32-8e72-95fba3a9f355` completed cleanly.
-
-The full `orly gate verify` passed documentation checks, source-rule tests,
-Rust formatting and Clippy, website lint and the version check. It stopped at
-app lint because the configured `AGENTSFLEET_UI_ENV_FILE` path did not exist.
-
-The narrow rerun `AGENTSFLEET_UI_ENV_FILE=/tmp/m238-ui-runtime.env make lint-app`
-passed, using an empty task-owned file and the already supplied runtime
-variables. The original environment file selector was not modified. That initial
-run preceded the approved alert-count correction below.
-
-## Owner approval — Nov 04, 2026
-
-Indy: "1. Okay go" and "2. Yes go" approved the alert-count correction and the
-separate dev/prod collector conversion fix.
-
-The count is corrected to four
-without changing the alert set.
-
-Indy subsequently requested "i nee 1 PR". The collector repair, dashboard row,
-and recorded results therefore ship in one pull request; merging remains Indy's.
-
-After the approved count correction, the source-ownership check exposed two
-stale `agentsfleet_repair_dispatch_*` targets with no census entry or producer.
-Those targets were removed; their panels retain their supported queries.
-Asset checks now pass, including 9 positive/negative cases; drift checks pass
-3 cases, including saved variable selections.
+PR #801 remains draft. The collector conversion, new instrumentation and
+coverage requirements need final gates and deployment before live acceptance.
+Merging remains Indy's. The parallel runner-host investigation supplies its
+current export configuration; this VM cannot directly inspect that host.

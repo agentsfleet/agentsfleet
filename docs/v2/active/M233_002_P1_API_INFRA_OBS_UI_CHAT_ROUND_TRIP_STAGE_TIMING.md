@@ -221,7 +221,7 @@ Each panel requests a span table with at most 1,000 matches, keeps its numeric f
 
 - **Dimension 4.1** — The asset check accepts only the declared Tempo variable beside the pinned Prometheus datasource and refuses foreign datasources or unscoped fleet queries → Test `observability_assets_test.sh`.
 - **Dimension 4.2** — The drift check compares Tempo queries, datasource identity, reducers and variable definitions → Test `test_should_reject_each_resource_drift` in `observability_verify_test.sh`.
-- **Dimension 4.3** — PARTIAL — Grafana's datasource API returns ten delivery spans with numeric segment fields; the Explore query screenshot is recorded and the rendered-row witness remains unavailable. Evidence: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` and `grafana-datasource-frames.json` beside it. No deployment of the dashboard asset is claimed.
+- **Dimension 4.3** — PARTIAL — Grafana's datasource API returns ten delivery spans with numeric segment fields; the Explore query screenshot is recorded and the rendered-row witness remains unavailable. Evidence: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` and `receipt.json` beside it (raw frames retained in its linked historical archive). No deployment of the dashboard asset is claimed.
 
 ### Shipped predecessor scope
 

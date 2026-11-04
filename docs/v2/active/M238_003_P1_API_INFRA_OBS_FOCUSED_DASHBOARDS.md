@@ -49,6 +49,9 @@ views; new measurements begin when their producers are deployed.
 | `rustd/crates/afd_inference/` | EDIT | First-token and terminal timing for individual provider attempts |
 | `rustd/crates/afr_telemetry/` | EDIT if needed | Model attribution and missing runner measurements |
 | `rustd/crates/agentsfleetd/` | EDIT | Connect boot-owned readings without blocking collection callbacks |
+| `playbooks/operations/acceptance/baselines/M238_001-20261104/` | CONSOLIDATE | One compact receipt, native screenshot and rejection log; raw history retained |
+| `docs/v2/active/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md` | EDIT | Point evidence at the compact receipt |
+| `docs/v2/done/M225_001_P1_API_OBS_LEASE_PICKUP_WAKE_HINT.md` | EDIT | Preserve the ten original queue readings through the consolidated receipt |
 | `scripts/collector_temporality_test.py` | EDIT | Exercise all three real metrics pipelines |
 | `scripts/runner_collector_admission_test.py` | CREATE | Prove the nftables rule rejects a non-root sandbox identity |
 | `scripts/fixtures/` | CREATE | Isolated collector admission test image |
@@ -163,12 +166,12 @@ apply/verify scripts, including negative mutations.
 
 | ID | Criterion | Verify | Expected | Priority | Graded |
 |---|---|---|---|---|---|
-| R1 | Pool and schedule observations are real and replay-safe | Focused Rust tests, then repository integration | pass | P0 | |
-| R2 | Model timing and metadata preserve source semantics | Producer/export and stream tests | pass | P0 | |
-| R3 | Runner signals arrive through the isolated collector | Collector tests and dev probe | pass | P0 | |
-| R4 | Six dashboards apply, render and pass drift checks | Observability scripts and native renders | pass | P0 | |
-| R5 | Changed Rust files exceed 99%; TypeScript stays 100% | Coverage and GitHub CI | pass | P0 | |
-| R6 | Repository gates and secrets checks | `orly gate pr`, gitleaks | pass | P0 | |
+| R1 | Pool and schedule observations are real and replay-safe | `make test-integration-rustd` | 0 failed | P0 | |
+| R2 | Model timing and metadata preserve source semantics | `make test-unit-all` | 0 failed | P0 | |
+| R3 | Runner signals arrive through the isolated collector | `make check-collector-temporality check-runner-collector-admission`, then live probe | 4 pipeline + 2 admission tests pass; live export verified | P0 | |
+| R4 | Six dashboards apply, render and pass drift checks | `bash playbooks/operations/observability/01_assets_check.sh`; `OBS_ENV=dev ALLOW_VAULT_READS=1 bash playbooks/operations/observability/04_verify.sh`, native review | 6 dashboards match; 0 query errors; live samples verified | P0 | |
+| R5 | Changed Rust files exceed 99%; TypeScript stays 100% | `make test-coverage-rustd`; `make test-coverage-all`; GitHub CI | changed Rust >99%, TypeScript 100% | P0 | |
+| R6 | Repository gates and secrets checks | `orly gate pr`, gitleaks | 0 failures and 0 leaks | P0 | |
 
 ## Dead Code Sweep
 
@@ -256,3 +259,10 @@ Live audit checked all 62 PromQL targets: 14 returned finite values, 48 were
 empty and none returned a query error. The last-24-hour Tempo searches returned
 daemon delivery spans but no runner.lease, chat or execute_tool spans. This
 proves missing runner telemetry in the queried datasource, not collector absence.
+
+Review follow-up: seed known SDK usage before any finish await, restart an
+existing collector after installation, and clean temporary files on EXIT.
+The code fixes are pushed in `783b4cef0`; the earlier checkpoint gate was
+stopped for these changes and will rerun. Consolidated duplicate evidence
+responses into one receipt while retaining all ten segment observations and
+original queue-log values. No runner host or Fly collector deployment performed.
