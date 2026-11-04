@@ -1,11 +1,11 @@
 # M238_003: Focused live dashboards
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1
-**Branch:** chore/m238-dev-round-trip
-**Pull request:** #801
+**Branch:** chore/m238-dashboard-spec-closeout
+**Pull request:** #801 (implementation); separate documentation closeout
 **Baseline:** ffde2699b39cca1463542c53782ebec52044c838
-**Open acceptance:** Final repository and coverage gates; live samples from the new producers; Tempo zero-value display. Indy accepted the real-sandbox admission witness as pending.
+**Closeout:** Indy requested closure. His visual review and live acceptance remain pending in the closeout record below.
 
 ## Overview
 
@@ -86,44 +86,46 @@ owners rather than adding parallel exporters or duplicate stores.
 
 ## Sections
 
+DONE records implementation closure at Indy’s request. The acceptance rubric and closeout record retain checks that still need evidence.
+
 ### Section 1 — Pool and scheduler health
 
-- **Dimension 1.1** — Pool readings reflect the actual role's total, idle, used,
+- **Dimension 1.1** — **DONE** — Pool readings reflect the actual role's total, idle, used,
   capacity and pending acquisitions; closing a pool cannot fabricate capacity.
-- **Dimension 1.2** — Acquire success, timeout, dependency failure and cancellation
+- **Dimension 1.2** — **DONE** — Acquire success, timeout, dependency failure and cancellation
   leave accurate duration/outcome readings, with no leaked pending count.
-- **Dimension 1.3** — Schedule outcomes distinguish one accepted fire from its
+- **Dimension 1.3** — **DONE** — Schedule outcomes distinguish one accepted fire from its
   retries, stale targets and dependency failures. Dispatch lag uses a measured
   scheduled instant and remains absent when that instant is unknown.
 
 ### Section 2 — Model usage, latency and capabilities
 
-- **Dimension 2.1** — Each provider stream request records first-token and terminal
+- **Dimension 2.1** — **DONE** — Each provider stream request records first-token and terminal
   latency, including errors, timeouts and cancellation; run time remains separate.
-- **Dimension 2.2** — Model identity is normalized before metrics; input, output,
+- **Dimension 2.2** — **DONE** — Model identity is normalized before metrics; input, output,
   cache tokens and spend retain existing accounting and replay semantics.
-- **Dimension 2.3** — Capability and limit tables use the same catalogue facts as
+- **Dimension 2.3** — **DONE** — Capability and limit tables use the same catalogue facts as
   the product. Missing metadata stays absent, and removed entries do not leave
   an indefinitely live capability claim.
 
 ### Section 3 — Actual sandbox runs and runner export
 
-- **Dimension 3.1** — Existing start, wait, release, reuse, tool and limit signals
+- **Dimension 3.1** — **DONE** — Existing start, wait, release, reuse, tool and limit signals
   reach the dedicated runner collector, with bounded resources and retry state.
-- **Dimension 3.2** — Non-root sandbox processes cannot submit to the host OTLP
+- **Dimension 3.2** — **DONE** — Non-root sandbox processes cannot submit to the host OTLP
   receiver. No logs pipeline is enabled; journald stays local until its separate allowlist is implemented.
-- **Dimension 3.3** — Real sandbox and model calls produce joinable traces and
+- **Dimension 3.3** — **DONE** — Real sandbox and model calls produce joinable traces and
   truthful metrics; preparation, waiting and execution remain separate.
 
 ### Section 4 — Six concise dashboards
 
-- **Dimension 4.1** — Overview links to five focused dashboards; titles are short
+- **Dimension 4.1** — **DONE** — Overview links to five focused dashboards; titles are short
   and units, filters and percentile labels are consistent.
-- **Dimension 4.2** — Apply and drift verification cover every declared dashboard,
+- **Dimension 4.2** — **DONE** — Apply and drift verification cover every declared dashboard,
   reject missing/foreign sources and detect query, reducer and variable drift.
-- **Dimension 4.3** — Every query names a family in a producer census or uses
+- **Dimension 4.3** — **DONE** — Every query names a family in a producer census or uses
   declared delivery-span attributes; unavailable data is never replaced by zero.
-- **Dimension 4.4** — Retain a compact acceptance receipt and screenshots;
+- **Dimension 4.4** — **DONE** — Retain a compact acceptance receipt and screenshots;
   dashboard definitions remain separate from diagnostic data.
 
 ## Interfaces
@@ -179,9 +181,11 @@ Named proofs for the new mechanisms:
 
 ## Acceptance Rubric
 
+These grades preserve the recorded evidence. Closing the spec does not turn a pending check into a pass.
+
 | ID | Criterion | Verify | Expected | Priority | Graded |
 |---|---|---|---|---|---|
-| R1 | Pool and schedule observations are real and replay-safe | `make test-integration-rustd` | 0 failed | P0 | PASS on `93bb96acf`; recheck after merging #802 |
+| R1 | Pool and schedule observations are real and replay-safe | `make test-integration-rustd` | 0 failed | P0 | PASS on `1bb7e7fcf`; local integration passed in 16 minutes, 23 seconds |
 | R2 | Model timing and metadata preserve source semantics | `make test-unit-all` | 0 failed | P0 | PENDING — full unit gate |
 | R3 | Runner signals arrive through the isolated collector | `make check-collector-temporality check-runner-collector-admission`, then live probe | 4 pipeline + 2 admission tests pass; live export verified | P0 | PARTIAL — collector proofs and real runner export pass; actual sandbox witness pending with Indy’s acceptance |
 | R4 | Six dashboards apply, render and pass drift checks | `bash playbooks/operations/observability/01_assets_check.sh`; `OBS_ENV=dev ALLOW_VAULT_READS=1 bash playbooks/operations/observability/04_verify.sh`, native review | 6 dashboards match; 0 query errors; live samples verified | P0 | PARTIAL — six dashboards apply/render/match; new producer samples await deployment |
@@ -367,3 +371,30 @@ turn/call/token exports. Public aliases are deduplicated before counting label
 products; existing runner cardinality ceilings still pass unchanged. Private
 names and endpoint URLs remain absent or `_other`. Historical omissions remain
 historical; the daemon and runner binaries must be deployed for new attribution.
+
+
+### Owner-requested closeout
+
+Indy requested: "Can you move the spec to done? Send a another PR".
+He added: "Indy will eyeball bad confirm later".
+This closes the implementation record and leaves his visual confirmation pending.
+
+The six dashboards and their 57 panel names are live, as recorded above.
+The provider fix is in #801; it needs deployed daemon and runner binaries before new samples can prove attribution.
+Historical provider omissions cannot be recovered from the missing attributes.
+
+The following acceptance work remains visible after closure:
+
+- Indy reviews the six dashboards and confirms the displayed measurements.
+- Post-deployment checks confirm new producer samples, including Fireworks attribution for hosted MiniMax calls.
+- The managed Tempo datasource still needs a resolution for its zero-value display defect.
+- The actual-sandbox admission witness remains pending under Indy’s earlier acceptance: "i think we are good, the sandbox wont reach yet".
+- Final repository and coverage results must be recorded for the exact reviewed revision.
+
+The latest local integration gate passed on `1bb7e7fcf` in 16 minutes, 23 seconds.
+The focused provider run passed 195 tests.
+Three coverage reports measure all 38 changed Rust files above 99%; the missing kernel report prevents a final coverage claim.
+
+At this checkpoint, the kernel reproducibility and toolbox checks failed.
+These results remain incomplete; this documentation move does not waive either gate.
+M233_002 stays active for its separate unfinished timing requirements.
