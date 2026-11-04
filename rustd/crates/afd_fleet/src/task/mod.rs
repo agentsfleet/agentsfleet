@@ -14,6 +14,8 @@ mod read;
 mod refusal;
 mod row;
 mod sql;
+#[cfg(feature = "test-util")]
+mod test_util;
 mod types;
 
 use std::pin::Pin;
