@@ -283,7 +283,6 @@ pub const LABEL_WORK_TYPE: &str = "work_type";
 /// to be written by hand, and a constant with no column is a key nothing
 /// exports.
 pub const CENSUS_LABEL_KEYS: &[&str] = &[
-    LABEL_SOURCE,
     ATTR_TOKEN_TYPE,
     ATTR_HTTP_ROUTE,
     ATTR_HTTP_REQUEST_METHOD,
@@ -317,6 +316,3 @@ pub const LABEL_LIMIT: &str = "limit";
 pub const LABEL_CAPABILITY: &str = "capability";
 /// Bounded response class, including cancelled requests.
 pub const LABEL_STATUS_CLASS: &str = "status_class";
-
-/// Bounded origin of a measurement or lease input.
-pub const LABEL_SOURCE: &str = "source";

@@ -267,3 +267,6 @@ afd_observability::closed_set! {
         Fallback => "fallback"
     }
 }
+
+/// The bounded origin of a lease memory window.
+pub const LABEL_MEMORY_SOURCE: &str = "source";

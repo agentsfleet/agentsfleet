@@ -156,7 +156,7 @@ impl Recorder for Families {
         self.memory_sources.add(
             1,
             &[KeyValue::new(
-                afd_observability::semconv::LABEL_SOURCE,
+                crate::labels::LABEL_MEMORY_SOURCE,
                 source.as_str(),
             )],
         );
