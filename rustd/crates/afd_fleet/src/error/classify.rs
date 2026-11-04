@@ -25,6 +25,23 @@ use super::{
 };
 
 impl Error {
+    pub(crate) fn is_decision_lock_busy(&self) -> bool {
+        let ErrorKind::Query { source, .. } = &self.inner.kind else {
+            return false;
+        };
+        source
+            .as_database_error()
+            .and_then(sqlx::error::DatabaseError::code)
+            .as_deref()
+            == Some("55P03")
+    }
+
+    pub(crate) fn is_decision_recovery_outage(&self) -> bool {
+        self.is_datastore_unavailable()
+            || matches!(&self.inner.kind,
+            ErrorKind::Query { source, .. } if afd_db::error::is_connection_lost(source))
+    }
+
     pub(crate) const fn decision_failure_reason(&self) -> Option<&'static str> {
         match self.inner.kind {
             ErrorKind::DecisionRequest { .. } => Some("request_bounds"),

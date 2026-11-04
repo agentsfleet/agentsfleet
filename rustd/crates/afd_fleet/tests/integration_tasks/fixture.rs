@@ -97,6 +97,10 @@ impl Case {
         }
     }
 
+    pub(super) async fn sibling(&self) -> Self {
+        Self::create(&self.held.fixtures.shared_lane()).await
+    }
+
     pub(super) fn plan(&self, digest: &str, count: usize) -> PreparedPlan {
         self.source_plan(
             id(&self.held.event_id),

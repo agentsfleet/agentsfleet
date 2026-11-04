@@ -48,7 +48,12 @@ pub const BILLING: &str = "sweeper:billing";
 /// Called after the datastores are open and before the listener binds: a
 /// sweeper touching a pool that is not yet connected would fail its first pass
 /// for a reason that has nothing to do with the rows it reads.
-pub fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
+pub fn spawn(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    analytics: &Analytics,
+    tasks: afd_fleet::task::Tasks,
+) {
     let liveness = Liveness::new(database.clone(), Entropy::new());
     supervisor.spawn(LIVENESS, move |token| sweep::run(liveness, token));
 
@@ -64,5 +69,5 @@ pub fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) 
 
     // Usage logged without its settlement, and holds outlived by their lease:
     // money the request path owes and could not finish.
-    billing::spawn(supervisor, database);
+    billing::spawn(supervisor, database, tasks);
 }

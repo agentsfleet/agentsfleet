@@ -10,6 +10,8 @@ mod dispatch;
 mod fund;
 mod intent;
 mod journal;
+mod locks;
+mod maintenance;
 mod ownership;
 mod prepare;
 mod quote;
@@ -27,7 +29,7 @@ use std::fmt;
 use afd_core::id::Uuid7;
 use afd_wire::task::{DecisionReceiptInput, DecisionReceiptResult, DecisionReservationInput};
 
-use super::{TaskLease, Tasks};
+use super::{DecisionMaintenance, DecisionMaintenanceCursor, TaskLease, Tasks};
 use crate::Result;
 
 /// Full assembled budget query for the database statement inventory.
@@ -38,7 +40,18 @@ pub const DECISION_BUDGET_STATEMENT: &str = sql::BUDGET;
 #[cfg(feature = "test-util")]
 pub const LOCKED_DECISION_CALL_STATEMENT: &str = sql::FIND_CALL;
 
+/// Production candidate query for real database range-plan measurements.
+#[cfg(feature = "test-util")]
+pub const EXPIRED_DECISION_CALLS_STATEMENT: &str = sql::EXPIRED_UNISSUED;
+
 const OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+pub(super) async fn maintain(
+    tasks: &Tasks,
+    cursor: &mut DecisionMaintenanceCursor,
+) -> Result<DecisionMaintenance> {
+    maintenance::maintain(tasks, cursor).await
+}
 
 /// Encoded trusted response; Debug cannot expose its one-use credential.
 pub struct ReservedDecision {

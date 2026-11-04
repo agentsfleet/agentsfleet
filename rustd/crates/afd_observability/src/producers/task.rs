@@ -11,7 +11,7 @@ use crate::error::Result;
 use crate::metrics::{
     declared::task as declared,
     instrument::Instruments,
-    label::task::{TaskOperation, TaskOutcome},
+    label::task::{DecisionRecoveryOutcome, TaskOperation, TaskOutcome},
 };
 use crate::{producers::installed, semconv};
 
@@ -20,6 +20,8 @@ use crate::{producers::installed, semconv};
 pub struct Handles {
     operations: Counter<u64>,
     latency: Histogram<f64>,
+    recovery_attempts: Counter<u64>,
+    recovery_overdue: Histogram<f64>,
 }
 
 impl Handles {
@@ -27,6 +29,10 @@ impl Handles {
         Ok(Self {
             operations: instruments.counter_u64(&declared::TASK_OPERATIONS_TOTAL)?,
             latency: instruments.histogram_f64(&declared::TASK_OPERATION_SECONDS)?,
+            recovery_attempts: instruments
+                .counter_u64(&declared::DECISION_RECOVERY_ATTEMPTS_TOTAL)?,
+            recovery_overdue: instruments
+                .histogram_f64(&declared::DECISION_RECOVERY_OVERDUE_SECONDS)?,
         })
     }
 
@@ -45,5 +51,17 @@ impl Handles {
 pub fn operation_completed(operation: TaskOperation, outcome: TaskOutcome, elapsed: Duration) {
     if let Some(producers) = installed() {
         producers.task.record(operation, outcome, elapsed);
+    }
+}
+
+/// One finished candidate attempt; retries remain visible as further attempts.
+pub fn recovery_candidate_completed(outcome: DecisionRecoveryOutcome, overdue: Duration) {
+    if let Some(producers) = installed() {
+        let attributes = [KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str())];
+        producers.task.recovery_attempts.add(1, &attributes);
+        producers
+            .task
+            .recovery_overdue
+            .record(overdue.as_secs_f64(), &[]);
     }
 }

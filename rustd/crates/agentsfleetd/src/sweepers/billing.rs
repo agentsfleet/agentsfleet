@@ -8,6 +8,7 @@ use std::time::Duration;
 use afd_billing::biller::Biller;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _, Tasks};
 
 use crate::supervisor::Supervisor;
 
@@ -21,11 +22,12 @@ const FAILED: &str = "billing_sweep_failed";
 /// A pass settled or released something the request path left behind.
 const COMPLETED: &str = "billing_sweep_completed";
 
-pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
+pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, tasks: Tasks) {
     let database = database.clone();
     let biller: Arc<dyn Biller> = crate::billing::biller(database.clone());
     let entropy = Entropy::new();
     supervisor.spawn(super::BILLING, move |stop| async move {
+        let mut decision_cursor = DecisionMaintenanceCursor::default();
         let mut interval = tokio::time::interval(INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -33,6 +35,9 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
+            // The owner records bounded failure diagnostics itself. A failed
+            // recovery pass must not prevent the remaining financial repairs.
+            let _decision_recovery = tasks.maintain_decisions(&mut decision_cursor).await;
             sweep_leases(&database, biller.as_ref(), &entropy).await;
             release_attempts(&database, biller.as_ref()).await;
         }

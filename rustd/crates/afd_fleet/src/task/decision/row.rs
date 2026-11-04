@@ -72,7 +72,15 @@ pub(super) async fn find(
     connection: &mut PgConnection,
     lookup: Lookup<'_>,
 ) -> Result<Option<Call>> {
-    statement(sql::FIND_CALL, lookup)
+    find_with(connection, lookup, super::locks::Mode::Wait).await
+}
+
+pub(super) async fn find_with(
+    connection: &mut PgConnection,
+    lookup: Lookup<'_>,
+    mode: super::locks::Mode,
+) -> Result<Option<Call>> {
+    statement(mode.statement(sql::FIND_CALL, sql::TRY_CALL), lookup)
         .fetch_optional(connection)
         .await
         .map_err(query("lock retained physical decision"))
