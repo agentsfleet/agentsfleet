@@ -1,6 +1,6 @@
 //! Predictable capability, endpoint and input failures cost no provider call.
 
-use afd_wire::decision::{DecisionProfile, DecisionQuestion, DecisionRequest};
+use afd_wire::decision::{DecisionProfile, DecisionRequest};
 use garde::Valid;
 use url::Url;
 
@@ -28,11 +28,10 @@ pub(super) fn check(
         }
         .into());
     }
-    let supported = request.questions.iter().all(|named| match &named.question {
-        DecisionQuestion::Noul { .. } => profile.capabilities.noul,
-        DecisionQuestion::Choice { .. } => profile.capabilities.choice,
-        DecisionQuestion::Score { .. } => profile.capabilities.score,
-    });
+    let supported = request
+        .questions
+        .iter()
+        .all(|named| profile.capabilities.supports(&named.question));
     if !supported {
         return Err(ErrorKind::DecisionPreflight {
             reason: "the decision profile lacks a required question capability",

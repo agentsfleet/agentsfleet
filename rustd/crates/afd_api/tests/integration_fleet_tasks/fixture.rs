@@ -63,7 +63,11 @@ impl<'lane> Tasks<'lane> {
         );
         let admissions =
             afd_admission::Admissions::new(self.base.database.clone(), queue, Entropy::new());
-        afd_fleet::task::Tasks::new(leases, admissions)
+        afd_fleet::task::Tasks::new(
+            leases,
+            admissions,
+            harness::task_dependencies(self.base.database.clone()),
+        )
     }
 
     async fn seed(&self) {

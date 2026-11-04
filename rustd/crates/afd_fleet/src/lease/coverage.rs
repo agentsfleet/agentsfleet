@@ -28,7 +28,7 @@ use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
-use crate::error::{Result, budget_exhausted, lease_lost, renewal_no_credits};
+use crate::error::{ErrorKind, Result, budget_exhausted, lease_lost, renewal_no_credits};
 use crate::lease::pull::Plane;
 use crate::lease::renew::Renewing;
 use afd_billing::budget::{self, Verdict};
@@ -83,15 +83,15 @@ impl Plane {
         now: Timestamp,
     ) -> Result<()> {
         let posture = super::renew::posture_of(lease);
-        let held: core::result::Result<Hold, afd_billing::Error> = async {
+        let held: Result<Hold> = async {
             let estimate = self
                 .accounts
                 .estimate(posture, &lease.provider, &lease.model, now)
                 .await?;
             let work = WorkKey::FleetLease(lease_key.clone());
-            let spent = {
+            let ceiling = {
                 let mut connection = self.leases.pool().acquire().await?;
-                afd_billing::ledger::charged_so_far(&mut *connection, &work).await?
+                super::holds::ceiling_on(&mut connection, lease_key, estimate.floor()).await?
             };
             let ask = Reservation {
                 work,
@@ -99,9 +99,9 @@ impl Plane {
                     tenant: lease.tenant_id.clone(),
                     workspace: lease.workspace_id.clone(),
                 },
-                ceiling: spent.saturating_add(estimate.floor()),
+                ceiling,
             };
-            self.biller.reserve(&ask).await
+            Ok(self.biller.reserve(&ask).await?)
         }
         .await;
 
@@ -120,11 +120,13 @@ impl Plane {
             // The hold was released, which only a report or the sweeper does
             // once the lease ended: there is no live run left to renew.
             Ok(Hold::Closed) => Err(lease_lost()),
-            Err(fault) if fault.is_wallet_missing() => Ok(()),
+            Err(fault) if matches!(fault.kind(), ErrorKind::Billing { source } if source.is_wallet_missing()) => {
+                Ok(())
+            }
             // Fail OPEN: the balance could not be read at all, which says
             // nothing about whether it covers the run.
             Err(fault) => {
-                admit_unreadable("balance", lease, lease_id, &crate::Error::from(fault));
+                admit_unreadable("balance", lease, lease_id, &fault);
                 Ok(())
             }
         }

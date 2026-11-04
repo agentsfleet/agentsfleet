@@ -70,6 +70,7 @@ impl Fleet {
             tasks: afd_fleet::task::Tasks::new(
                 afd_fleet::lease::Leases::new(database.clone(), queue.clone(), Entropy::new()),
                 ledger.clone(),
+                task_dependencies(database.clone()),
             ),
             authoring: authoring.drafts,
             authoring_setup: authoring.setup,

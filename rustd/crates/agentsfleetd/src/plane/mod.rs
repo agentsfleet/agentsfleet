@@ -180,7 +180,14 @@ impl ServingPlane {
             broker,
             biller,
         );
-        let tasks = afd_fleet::task::Tasks::new(leases.leases.clone(), task_admissions);
+        let tasks = afd_fleet::task::Tasks::new(
+            leases.leases.clone(),
+            task_admissions,
+            afd_fleet::task::TaskDependencies {
+                admin_workspace: platform_admin_workspace.clone(),
+                ..afd_fleet::task::TaskDependencies::from(&leases)
+            },
+        );
         Self {
             authoring,
             tenant,

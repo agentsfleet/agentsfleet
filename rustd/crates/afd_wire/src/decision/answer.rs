@@ -2,12 +2,15 @@
 
 use std::collections::BTreeMap;
 
-use afd_wire::decision::{DecisionAnswer, DecisionQuestion};
+use super::{DecisionAnswer, DecisionQuestion};
 
 /// Provider-rounded probability totals may differ by at most one ten-thousandth.
 const ROUNDING_TOLERANCE: f64 = 0.0001;
 
-pub(super) fn answer(question: &DecisionQuestion, answer: &DecisionAnswer) -> bool {
+/// Checks the complete typed distribution against its accepted question.
+/// This validates evidence shape; it grants no authority or completion.
+#[must_use]
+pub fn answer_matches(question: &DecisionQuestion, answer: &DecisionAnswer) -> bool {
     match (question, answer) {
         (DecisionQuestion::Noul { .. }, DecisionAnswer::Noul { noul }) => probability(*noul),
         (

@@ -97,10 +97,18 @@ impl Leases {
         runner_id: &Uuid7,
     ) -> Result<Option<Renewing>> {
         let mut connection = self.pool().acquire().await?;
+        Self::load_for_renew_on(&mut connection, lease_id, runner_id).await
+    }
+
+    pub(crate) async fn load_for_renew_on(
+        connection: &mut sqlx::PgConnection,
+        lease_id: &str,
+        runner_id: &Uuid7,
+    ) -> Result<Option<Renewing>> {
         let found: Option<LeaseForRenew> = sqlx::query_as(sql::renew::SELECT_LEASE_FOR_RENEW)
             .bind(lease_id)
             .bind(runner_id.as_str())
-            .fetch_optional(&mut *connection)
+            .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
         found.map(LeaseForRenew::into_renewing).transpose()

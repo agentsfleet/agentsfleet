@@ -1,5 +1,6 @@
 //! Bounded typed decisions; native authority and transitions remain with callers.
 
+mod answer;
 mod assignment;
 mod config;
 mod question;
@@ -9,11 +10,13 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 pub use afd_validate::serialized_within;
+pub use answer::answer_matches;
 pub use assignment::DecisionAssignment;
 pub use config::{
     DecisionConfiguration, DecisionModelSettings, DecisionThreshold, GoalDecisionPolicy,
     IntentDecisionPolicy,
 };
+pub(crate) use question::state_bound;
 pub use question::{ChoiceOption, DecisionQuestion, DecisionRequest, NamedQuestion, NoulCriteria};
 pub use result::{DecisionAnswer, DecisionInvalid, DecisionOutcome, DecisionResult, DecisionUsage};
 
@@ -21,8 +24,9 @@ pub use result::{DecisionAnswer, DecisionInvalid, DecisionOutcome, DecisionResul
 pub const STATE_MAX_BYTES: usize = 16 * 1024;
 /// Maximum typed questions in one physical request.
 pub const QUESTIONS_MAX: usize = 8;
-/// Maximum serialized representation of one named question.
-pub const QUESTION_MAX_BYTES: usize = 1024;
+/// Maximum compiled question, including all native candidate options.
+/// Authored questions retain their separate 1 KiB setup bound.
+pub const QUESTION_MAX_BYTES: usize = 16 * 1024;
 /// Maximum response collected from the provider.
 pub const REPLY_MAX_BYTES: usize = 64 * 1024;
 
@@ -52,6 +56,17 @@ pub enum DecisionPurpose {
     Goal,
 }
 
+impl DecisionPurpose {
+    /// Canonical purpose used by native accounting and protocol records.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Intent => "intent",
+            Self::Goal => "goal",
+        }
+    }
+}
+
 /// Capabilities reviewed with a catalogue profile; unsupported work is refused.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +78,18 @@ pub struct DecisionCapabilities {
     pub choice: bool,
     /// Ordered rubric and full distribution.
     pub score: bool,
+}
+
+impl DecisionCapabilities {
+    /// Whether this reviewed capability set represents the complete question type.
+    #[must_use]
+    pub const fn supports(self, question: &DecisionQuestion) -> bool {
+        match question {
+            DecisionQuestion::Noul { .. } => self.noul,
+            DecisionQuestion::Choice { .. } => self.choice,
+            DecisionQuestion::Score { .. } => self.score,
+        }
+    }
 }
 
 /// Non-secret catalogue metadata frozen for a lease's selected decision model.

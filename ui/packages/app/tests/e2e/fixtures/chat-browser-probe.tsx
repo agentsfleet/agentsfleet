@@ -8,6 +8,9 @@ import { SetupChecks } from "@/components/domain/chat/SetupChecks";
 import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/FleetMessageRow";
 import { ChatFailure } from "@/components/domain/chat/ChatFailure";
 import { TaskFixture } from "./task-browser-probe";
+import { DraftSidebarItem } from "@/components/layout/DraftSidebarItem";
+import { CHAT_ACTIVITY } from "@/lib/api/draft-summary";
+import { Section } from "@agentsfleet/design-system";
 
 const client = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
 const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, model: MODEL.ref, models: [MODEL], messages: [
@@ -21,12 +24,20 @@ const query = new URLSearchParams(location.search);
 const blank = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
 const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
 createRoot(root).render(query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
-  <DraftConversation client={client} view={blank} workspace={WORKSPACE} />
+  <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
 </main> : query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Typography fixture · deterministic conversation</p>
   <DraftConversation client={client} view={view} workspace={WORKSPACE} />
 </main>);
 window.addEventListener("pagehide", () => client.dispose(), {once: true});
+
+function UnfinishedFixture() {
+  return <Section aria-label="Unfinished setups" className="mt-xl gap-md border-t border-border pt-xl">
+    <h2 className="text-body font-semibold">Unfinished setups</h2>
+    <DraftSidebarItem card={{id: DRAFT.id, title: DRAFT.title, detail: "In progress", activity: CHAT_ACTIVITY.draft}}
+      workspace={WORKSPACE} active={false} disabled={false} onNavigate={() => {}} onDelete={() => {}} />
+  </Section>;
+}
 
 function SetupFixture() {
   const checks = [{kind: "model", subject: "platform-default", state: "ready"},

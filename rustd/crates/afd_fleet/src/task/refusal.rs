@@ -22,6 +22,10 @@ pub enum TaskRefusal {
     InvalidTarget,
     /// An admitted work or capacity allowance is exhausted.
     LimitExhausted,
+    /// The saved profile, confirmed credit or platform credential is unavailable.
+    DecisionUnavailable,
+    /// A physical cost exceeded its reservation; related paid work is blocked.
+    DecisionOverage,
 }
 
 impl TaskRefusal {
@@ -33,7 +37,8 @@ impl TaskRefusal {
             Self::StaleState => error_code::TASK_STALE_STATE,
             Self::ReplayConflict => error_code::TASK_REPLAY_CONFLICT,
             Self::InvalidTarget => error_code::TASK_INVALID_TARGET,
-            Self::LimitExhausted => error_code::TASK_LIMIT_EXHAUSTED,
+            Self::LimitExhausted | Self::DecisionOverage => error_code::TASK_LIMIT_EXHAUSTED,
+            Self::DecisionUnavailable => error_code::TASK_DECISION_UNAVAILABLE,
         }
     }
 
@@ -46,6 +51,12 @@ impl TaskRefusal {
             Self::ReplayConflict => "the task operation conflicts with its saved interpretation",
             Self::InvalidTarget => "the task has no accepted native target binding",
             Self::LimitExhausted => "the task allowance or unfinished-task capacity is exhausted",
+            Self::DecisionUnavailable => {
+                "the fleet cannot currently obtain a funded reviewed decision"
+            }
+            Self::DecisionOverage => {
+                "a decision cost exceeded its reservation; related paid work is blocked"
+            }
         }
     }
 }

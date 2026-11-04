@@ -145,9 +145,18 @@ impl Leases {
     /// daemon cannot read, as [`Self::installed`] does.
     pub(crate) async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
         let mut connection = self.pool().acquire().await?;
+        Self::stored_config_on(&mut connection, fleet_id.as_str(), None).await
+    }
+
+    pub(crate) async fn stored_config_on(
+        connection: &mut sqlx::PgConnection,
+        fleet_id: &str,
+        revision_id: Option<&str>,
+    ) -> Result<Option<FleetConfig>> {
         let document: Option<String> = sqlx::query_scalar(sql::fleet::SELECT_FLEET_CONFIG)
-            .bind(fleet_id.as_str())
-            .fetch_optional(&mut *connection)
+            .bind(fleet_id)
+            .bind(revision_id)
+            .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_STORED_CONFIG))?;
         document

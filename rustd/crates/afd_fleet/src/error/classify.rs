@@ -25,6 +25,14 @@ use super::{
 };
 
 impl Error {
+    pub(crate) const fn decision_failure_reason(&self) -> Option<&'static str> {
+        match self.inner.kind {
+            ErrorKind::DecisionRequest { .. } => Some("request_bounds"),
+            ErrorKind::DecisionDeadline { .. } => Some("decision_deadline"),
+            _ => None,
+        }
+    }
+
     /// Whether the datastore could not be reached at all.
     ///
     /// The question the runner plane turns on: a caller answering this `true`
@@ -37,7 +45,7 @@ impl Error {
         match self.inner.kind {
             ErrorKind::Datastore { .. }
             | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskReadCancelled { .. } => true,
+            | ErrorKind::TaskStatementCancelled { .. } => true,
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
@@ -46,10 +54,10 @@ impl Error {
     }
 
     /// Bounded diagnostic for task-read performance, without query text.
-    pub(crate) const fn task_read_timeout_reason(&self) -> Option<&'static str> {
+    pub(crate) const fn task_timeout_reason(&self) -> Option<&'static str> {
         match self.inner.kind {
             ErrorKind::TaskReadTimeout { .. } => Some("read_deadline"),
-            ErrorKind::TaskReadCancelled { .. } => Some("statement_deadline"),
+            ErrorKind::TaskStatementCancelled { .. } => Some("statement_deadline"),
             _ => None,
         }
     }
@@ -108,9 +116,12 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
+            ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => {
+                error_code::TASK_DECISION_UNAVAILABLE
+            }
             ErrorKind::Datastore { .. }
             | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskReadCancelled { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            | ErrorKind::TaskStatementCancelled { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Authoring { ref source } => source.code(),
@@ -170,6 +181,7 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> &'static str {
         match self.inner.kind {
+            ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::task::TaskRefusal::DecisionUnavailable.detail(),
             // The one kind whose sentence the CALL SITE chose: a rejection
             // names the field it refused. Every other kind's sentence is
             // decided here or by the crate it delegates to, so no handler can
@@ -180,7 +192,7 @@ impl Error {
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Authoring { ref source } => source.detail(),
             ErrorKind::Admission { ref source } => source.detail(),
-            ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskReadCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
+            ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
             // is told the same thing because there is nothing it can do about

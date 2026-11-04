@@ -15,6 +15,10 @@ closed_set! {
         Resume => "resume",
         /// Fence future task effects.
         Cancel => "cancel",
+        /// Reserve funding and issue one physical decision credential.
+        DecisionReserve => "decision_reserve",
+        /// Record one canonical result or retained accounting uncertainty.
+        DecisionRecord => "decision_record",
     }
 }
 
@@ -35,10 +39,12 @@ closed_set! {
         Conflict => "conflict",
         /// Capacity or a cumulative allowance is exhausted.
         Limit => "limit",
-        /// A required datastore did not answer.
+        /// A required prerequisite or dependency is unavailable.
         Unavailable => "unavailable",
         /// An acquisition, query or connected read exceeded its native deadline.
         Timeout => "timeout",
+        /// The caller dropped the operation before a result was returned.
+        Cancelled => "cancelled",
         /// Another native error prevented completion.
         Failed => "failed",
     }

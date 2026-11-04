@@ -32,13 +32,12 @@ pub(super) fn decode(value: Option<&Value>) -> Option<DecisionUsage> {
         Some(_) => return None,
         None => (raw.cached_input_tokens, raw.cache_write_tokens),
     };
-    if cached.checked_add(written)? > raw.input_tokens {
-        return None;
-    }
-    Some(DecisionUsage {
+    let usage = DecisionUsage {
         input_tokens: raw.input_tokens,
         output_tokens: raw.output_tokens,
         cached_input_tokens: cached,
         cache_write_tokens: written,
-    })
+    };
+    usage.uncached_input()?;
+    Some(usage)
 }

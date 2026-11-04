@@ -6630,6 +6630,301 @@
         ]
       }
     },
+    "/v1/runners/me/leases/{lease_id}/tasks/decisions": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Reserve a physical task decision",
+        "description": "Uses the lease's reviewed decision profile, native source and accepted questions. Confirmed credit and fresh platform Secrets are required before one credential response. Identical retries return saved state without another credential.",
+        "operationId": "runner_reserve_task_decision",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Original lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionReservationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved call without another credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReservationResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "One physical send authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReservationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/decisions/{call_id}": {
+      "patch": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Record a physical task decision receipt",
+        "description": "Accounts usage under the original runner, lease and fence, even after live work is removed. Known charges and unknown reservations are independent of answer usability. Canonical retries do not charge twice.",
+        "operationId": "runner_record_task_decision",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Original lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "call_id",
+            "in": "path",
+            "description": "Native physical decision call UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionReceiptInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Current accounting and answer disposition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReceiptResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/me/leases/{lease_id}/tool-calls": {
       "post": {
         "tags": [
@@ -21026,6 +21321,115 @@
           }
         }
       },
+      "DecisionAnswer": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Probability of yes; thresholds remain native policy.",
+            "required": [
+              "noul",
+              "type"
+            ],
+            "properties": {
+              "noul": {
+                "type": "number",
+                "format": "double",
+                "description": "Probability from zero to one."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "noul"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Categorical choice with its complete probability distribution.",
+            "required": [
+              "choice",
+              "probabilities",
+              "type"
+            ],
+            "properties": {
+              "choice": {
+                "type": "string",
+                "description": "Selected option identity."
+              },
+              "confidence": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Provider-native confidence, absent when unavailable."
+              },
+              "probabilities": {
+                "type": "object",
+                "description": "Probability of every allowed option.",
+                "additionalProperties": {
+                  "type": "number",
+                  "format": "double"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "choice"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Probability-weighted ordered rubric.",
+            "required": [
+              "score",
+              "probabilities",
+              "type"
+            ],
+            "properties": {
+              "confidence": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Provider-native confidence, absent when unavailable."
+              },
+              "probabilities": {
+                "type": "object",
+                "description": "Distribution over zero-based levels.",
+                "additionalProperties": {
+                  "type": "number",
+                  "format": "double"
+                },
+                "propertyNames": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "score": {
+                "type": "number",
+                "format": "double",
+                "description": "Expected zero-based level."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "score"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Native probability answers after exact question/type/option validation."
+      },
       "DecisionApi": {
         "type": "string",
         "description": "Native decision protocols; none is a structured-chat substitute.",
@@ -21035,6 +21439,85 @@
           "perplexity",
           "cloudflare"
         ]
+      },
+      "DecisionAssessment": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Interpret the complete admitted message against current work.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "message"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Check one action in a complete, pinned bounded interpretation.",
+            "required": [
+              "ordinal",
+              "interpretation_digest",
+              "source_start",
+              "source_end",
+              "kind"
+            ],
+            "properties": {
+              "interpretation_digest": {
+                "type": "string",
+                "description": "Digest of the complete proposed interpretation, not model wording."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "item"
+                ]
+              },
+              "ordinal": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Zero-based action within the four-item native interpretation.",
+                "minimum": 0
+              },
+              "source_end": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Exclusive byte boundary, checked against the native source text."
+              },
+              "source_start": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Inclusive byte boundary in the original complete human message."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Assess one completed action group against its task's accepted goal.",
+            "required": [
+              "action_group_id",
+              "kind"
+            ],
+            "properties": {
+              "action_group_id": {
+                "type": "string",
+                "description": "Trusted supervisor identity retained through this logical assessment."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "goal"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "The native meaning being assessed, independently of its physical calls."
       },
       "DecisionAssignment": {
         "type": "object",
@@ -21065,6 +21548,17 @@
         },
         "additionalProperties": false
       },
+      "DecisionCallState": {
+        "type": "string",
+        "description": "Native physical-call lifecycle; unresolved calls retain their reservation.",
+        "enum": [
+          "reserved",
+          "issued",
+          "known",
+          "unknown",
+          "not_sent"
+        ]
+      },
       "DecisionCapabilities": {
         "type": "object",
         "description": "Capabilities reviewed with a catalogue profile; unsupported work is refused.",
@@ -21088,6 +21582,57 @@
           }
         },
         "additionalProperties": false
+      },
+      "DecisionDispatch": {
+        "type": "object",
+        "description": "One-use material for the trusted supervisor, outside model and sandbox state.\nThe shared redaction owner supplies credential-safe Debug formatting.",
+        "required": [
+          "assessment_id",
+          "attempt",
+          "assignment",
+          "request",
+          "api_key",
+          "expires_at"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "Fresh platform-admin secret; immediately move into the existing guard."
+          },
+          "assessment_id": {
+            "type": "string",
+            "description": "Stable logical assessment shared by its at most two physical calls."
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/DecisionAssignment",
+            "description": "Reviewed selection already frozen on the original lease."
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Zero for the original call, one for its approved throttling retry.",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Native issuance deadline; the client also bounds its physical timeout."
+          },
+          "request": {
+            "$ref": "#/components/schemas/DecisionRequest",
+            "description": "Native call identity, evidence and accepted questions for this send."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionInvalid": {
+        "type": "string",
+        "description": "Why a readable provider response cannot drive a native transition.",
+        "enum": [
+          "model",
+          "usage",
+          "answers"
+        ]
       },
       "DecisionModelSettings": {
         "type": "object",
@@ -21172,6 +21717,80 @@
         },
         "additionalProperties": false
       },
+      "DecisionNotSentCause": {
+        "type": "string",
+        "description": "Failures that prove the SDK never sent a physical provider request.",
+        "enum": [
+          "preflight",
+          "build"
+        ]
+      },
+      "DecisionOutcome": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Complete typed evidence, still subject to native thresholds and authority.",
+            "required": [
+              "answers",
+              "outcome"
+            ],
+            "properties": {
+              "answers": {
+                "type": "object",
+                "description": "Exact reviewed question-key coverage.",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/DecisionAnswer"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "answered"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The provider declined at least one required question.",
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "refused"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The response cannot authorize a semantic transition.",
+            "required": [
+              "reason",
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "invalid"
+                ]
+              },
+              "reason": {
+                "$ref": "#/components/schemas/DecisionInvalid",
+                "description": "Bounded native diagnostic, without provider text."
+              }
+            }
+          }
+        ],
+        "description": "A readable physical result, separately from whether it may advance work."
+      },
       "DecisionProfile": {
         "type": "object",
         "description": "Non-secret catalogue metadata frozen for a lease's selected decision model.",
@@ -21227,6 +21846,14 @@
           }
         },
         "additionalProperties": false
+      },
+      "DecisionPurpose": {
+        "type": "string",
+        "description": "Why the native runtime reserved a physical decision call.",
+        "enum": [
+          "intent",
+          "goal"
+        ]
       },
       "DecisionQuestion": {
         "oneOf": [
@@ -21314,6 +21941,444 @@
         ],
         "description": "The typed question forms used for intent and goal evaluation."
       },
+      "DecisionReceipt": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A decoded provider result, including refused/invalid semantic answers.",
+            "required": [
+              "result",
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "provider"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/DecisionResult",
+                "description": "Known usage is preserved independently of semantic acceptance."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The physical outcome remains unknown; no zero-cost line is inserted.",
+            "required": [
+              "cause",
+              "outcome"
+            ],
+            "properties": {
+              "cause": {
+                "$ref": "#/components/schemas/DecisionUnavailableCause",
+                "description": "Bounded cause, never raw provider text or endpoint data."
+              },
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "unknown"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The supervisor proved that no provider request was sent.",
+            "required": [
+              "cause",
+              "outcome"
+            ],
+            "properties": {
+              "cause": {
+                "$ref": "#/components/schemas/DecisionNotSentCause",
+                "description": "Unknown transport outcomes cannot inhabit this proved-unsent type."
+              },
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "not_sent"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Usage remains accountable when semantics or current task authority fail."
+      },
+      "DecisionReceiptInput": {
+        "type": "object",
+        "description": "PATCH and late renew/report receipts share the same native recorder.",
+        "required": [
+          "fencing_token",
+          "receipt"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The original call's fence, not permission to advance a later task.",
+            "minimum": 0
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/DecisionReceipt",
+            "description": "Canonical physical result or explicit uncertainty."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionReceiptResult": {
+        "type": "object",
+        "description": "Confirms receipt accounting without claiming goal completion.",
+        "required": [
+          "call_id",
+          "state",
+          "replayed",
+          "disposition",
+          "reserved_nanos"
+        ],
+        "properties": {
+          "call_id": {
+            "type": "string",
+            "description": "Original native call identity, even after lease deletion."
+          },
+          "charged_nanos": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact native charge when priced or proved unsent; absent while unknown."
+          },
+          "disposition": {
+            "$ref": "#/components/schemas/DecisionRecordDisposition",
+            "description": "Current semantic usability; never an authority grant."
+          },
+          "overage_nanos": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Known cost above this call's provisional credit; related paid work stops."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "Identical saved receipt, with no new charge or counter movement."
+          },
+          "reserved_nanos": {
+            "type": "string",
+            "description": "Remaining provisional credit, without claiming an unknown cost is zero."
+          },
+          "state": {
+            "$ref": "#/components/schemas/DecisionCallState",
+            "description": "Current durable accounting state."
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionUsage",
+                "description": "Normalized provider categories, including known usage awaiting pricing."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionRecordDisposition": {
+        "type": "string",
+        "description": "Semantic usability is separate from a recorded charge and native authority.",
+        "enum": [
+          "current",
+          "stale",
+          "unusable"
+        ]
+      },
+      "DecisionRecorded": {
+        "type": "object",
+        "description": "Recover a confirmed decision after an acknowledgement or worker was lost.",
+        "required": [
+          "request",
+          "result",
+          "disposition"
+        ],
+        "properties": {
+          "disposition": {
+            "$ref": "#/components/schemas/DecisionRecordDisposition",
+            "description": "Saved results confer no authority when their context is stale."
+          },
+          "request": {
+            "$ref": "#/components/schemas/DecisionRequest",
+            "description": "Exact original evidence and accepted questions, not a fresh rendering."
+          },
+          "result": {
+            "$ref": "#/components/schemas/DecisionResult",
+            "description": "Original provider result, independently revalidated by native code."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionRequest": {
+        "type": "object",
+        "description": "One physical request, reserved natively before any transport sends it.",
+        "required": [
+          "call_id",
+          "purpose",
+          "state",
+          "questions"
+        ],
+        "properties": {
+          "call_id": {
+            "type": "string",
+            "description": "Native physical call identity for accounting and reconciliation."
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/DecisionPurpose",
+            "description": "Runtime-owned intent or goal purpose."
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedQuestion"
+            },
+            "description": "Complete reviewed question set; partial delivery is forbidden."
+          },
+          "state": {
+            "description": "Complete evidence. Oversize input is refused, never silently shortened."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionReservationInput": {
+        "type": "object",
+        "description": "Reserve one physical attempt; native code supplies the accepted questions.",
+        "required": [
+          "operation_id",
+          "fencing_token",
+          "source_admission_id",
+          "assessment",
+          "evidence"
+        ],
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/DecisionAssessment",
+            "description": "Logical role; native state derives its identity and accepted questions."
+          },
+          "evidence": {
+            "description": "Caller evidence stays data alongside native source and task identities."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing fleet-slot fence issued with the lease.",
+            "minimum": 0
+          },
+          "operation_id": {
+            "type": "string",
+            "description": "Retry identity of this reservation request, not a second physical send."
+          },
+          "retry_of": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First physical call when requesting its one permitted throttling retry."
+          },
+          "source_admission_id": {
+            "type": "string",
+            "description": "Admitted source whose meaning the call is assessing."
+          },
+          "task": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionTaskVersion",
+                "description": "The current task and generation, including while routing another input.\nOnly a goal call debits this task; intent retains source attribution."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionReservationResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A newly committed native issuance permits this one physical send.",
+            "required": [
+              "call_id",
+              "dispatch",
+              "status"
+            ],
+            "properties": {
+              "call_id": {
+                "type": "string",
+                "description": "Native physical call, independent of the caller's operation id."
+              },
+              "dispatch": {
+                "$ref": "#/components/schemas/DecisionDispatch",
+                "description": "Contains credentials and is never included in model-visible output."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "dispatch"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The saved attempt is recoverable, but its credential is not replayed.",
+            "required": [
+              "call_id",
+              "state",
+              "status"
+            ],
+            "properties": {
+              "call_id": {
+                "type": "string",
+                "description": "Native physical call being reconciled."
+              },
+              "recorded": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DecisionRecorded",
+                    "description": "Saved data, without credentials, for a confirmed prior physical call."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "$ref": "#/components/schemas/DecisionCallState",
+                "description": "Authoritative accounting state."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "existing"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Reservation replay never issues a second credential for the same call."
+      },
+      "DecisionResult": {
+        "type": "object",
+        "description": "Usage is retained even when the semantic result is refused or stale.",
+        "required": [
+          "result"
+        ],
+        "properties": {
+          "reported_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-reported name, without claiming an observable serving revision."
+          },
+          "result": {
+            "$ref": "#/components/schemas/DecisionOutcome",
+            "description": "Native interpretation of this physical response."
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionUsage",
+                "description": "Measured usage, or an unknown reservation when unavailable."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionRetryDelay": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "No provider delay; the caller still applies bounded jitter.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unspecified"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Delay fits the approved two-second retry budget.",
+            "required": [
+              "milliseconds",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "within_budget"
+                ]
+              },
+              "milliseconds": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Earliest retry, relative to the recorded failure.",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The provider requested more time than this logical decision permits.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "too_long"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Provider delay evidence without retaining raw headers or private text."
+      },
+      "DecisionTaskVersion": {
+        "type": "object",
+        "description": "Task identity and generation supplied from the native lease context.",
+        "required": [
+          "task_id",
+          "generation"
+        ],
+        "properties": {
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Expected current task generation, without resetting cumulative usage.",
+            "minimum": 0
+          },
+          "task_id": {
+            "type": "string",
+            "description": "The current lease's objective; not another task selected by model text."
+          }
+        },
+        "additionalProperties": false
+      },
       "DecisionThreshold": {
         "type": "object",
         "description": "Probability and native confidence requirements, in integer basis points.",
@@ -21334,6 +22399,120 @@
             "format": "int32",
             "description": "The selected option's required probability; 10,000 means one.",
             "maximum": 10000,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionUnavailableCause": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The physical deadline elapsed without complete usage.",
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "timeout"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The transport failed after native issuance.",
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "transport"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "An HTTP refusal carried no normalized usage.",
+            "required": [
+              "status",
+              "retry_delay",
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "provider_status"
+                ]
+              },
+              "retry_delay": {
+                "$ref": "#/components/schemas/DecisionRetryDelay",
+                "description": "A long delay remains evidence and cannot become an immediate retry."
+              },
+              "status": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Status is recorded independently of any untrusted error body.",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reply size, JSON or response shape prevented complete accounting.",
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "response"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Value-free physical failure; only recorded 429/529 evidence permits retry."
+      },
+      "DecisionUsage": {
+        "type": "object",
+        "description": "Measured provider token categories, without multiplying per-question totals.",
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "cached_input_tokens",
+          "cache_write_tokens"
+        ],
+        "properties": {
+          "cache_write_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cache writes, already included in `input_tokens`.",
+            "minimum": 0
+          },
+          "cached_input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Input tokens served from cache, already included in `input_tokens`.",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Complete input total, including cache reads and writes.",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Completion tokens, including any provider-reported reasoning.",
             "minimum": 0
           }
         },

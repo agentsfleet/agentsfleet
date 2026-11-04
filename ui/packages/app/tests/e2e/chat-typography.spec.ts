@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { expect, test as base, type Locator, type Page } from "@playwright/test";
 import { applicationCss } from "./fixtures/fleet-output-browser-assets";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
+import { DRAFT } from "@/tests/helpers/draft-fixtures";
 
 const test = base.extend<object, {chatProbe: string}>({
   chatProbe: [async ({browserName}, provideProbe) => {
@@ -61,6 +62,22 @@ test("the pull request starter remains editable and readable before any setup re
   const suggestion = page.getByRole("button", {name: "Review pull requests", exact: true});
   const input = page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"});
   await expect(input).toHaveValue("");
+  const unfinished = page.getByRole("region", {name: "Unfinished setups"});
+  const resume = unfinished.getByRole("link", {name: DRAFT.title});
+  const remove = unfinished.getByRole("button", {name: `Delete chat: ${DRAFT.title}`});
+  const composerBefore = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();
+  const row = await resume.boundingBox();
+  const action = await resume.getByText("Resume", {exact: true}).boundingBox();
+  if (!composerBefore || !row || !action) throw new Error("Unfinished setup and composer geometry must be available");
+  expect(Math.abs(row.x - composerBefore.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(row.x + row.width - composerBefore.x - composerBefore.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(row.x + row.width - action.x - action.width - 15)).toBeLessThanOrEqual(1);
+  await resume.hover(); await expect(remove).toHaveCSS("opacity", "1");
+  const removeBox = await remove.boundingBox();
+  if (!removeBox) throw new Error("The delete control must remain reachable");
+  expect(removeBox.x + removeBox.width).toBeLessThanOrEqual(action.x);
+  expect(await resume.getByText("Resume", {exact: true}).boundingBox()).toEqual(action);
+  await resume.focus(); await page.keyboard.press("Tab"); await expect(remove).toBeFocused();
   await suggestion.focus(); await page.keyboard.press("Enter");
   await expect(input).toHaveValue(/Does the review cover the requested pull request at its current head\?/);
   await expect(input).toHaveValue(/Are the findings supported by concrete code or check evidence\?/);

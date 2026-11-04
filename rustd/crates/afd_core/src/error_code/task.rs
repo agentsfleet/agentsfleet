@@ -12,3 +12,5 @@ pub const TASK_REPLAY_CONFLICT: ErrorCode = ErrorCode::declare("UZ-DT-003");
 pub const TASK_INVALID_TARGET: ErrorCode = ErrorCode::declare("UZ-DT-004");
 /// A task allowance or the unfinished-objective capacity was exhausted.
 pub const TASK_LIMIT_EXHAUSTED: ErrorCode = ErrorCode::declare("UZ-DT-005");
+/// A reviewed decision profile, confirmed funding or its platform key is unavailable.
+pub const TASK_DECISION_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-DT-006");

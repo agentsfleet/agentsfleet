@@ -19,6 +19,7 @@ pub(crate) mod activity;
 pub(crate) mod authoring;
 pub(crate) mod context;
 pub(crate) mod credential;
+pub(crate) mod decisions;
 pub(crate) mod enrolment;
 pub(crate) mod heartbeat;
 pub(crate) mod lease;

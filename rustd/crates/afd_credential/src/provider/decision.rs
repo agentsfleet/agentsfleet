@@ -39,20 +39,47 @@ impl Providers {
             })
             .await?
             .ok_or(ErrorKind::DecisionCredentialMissing { api })?;
-        let stored: StoredKey =
-            afd_core::json::object_from_slice(body.expose()).map_err(|source| {
-                ErrorKind::DecisionCredentialInvalid {
-                    api,
-                    source: Unreadable::from(source),
-                }
-            })?;
-        if stored.api_key.is_empty() {
-            return Err(ErrorKind::DecisionCredentialMissing { api }.into());
-        }
-        Ok(stored.api_key)
+        decode(body.expose(), api)
+    }
+
+    /// Fresh resolution on a caller's bounded SQL session, without lifecycle locks.
+    ///
+    /// # Errors
+    /// Preserves the vault, absence and typed parsing failures of the owned read.
+    #[tracing::instrument(name = "decision_credential_resolve", skip_all, fields(decision_api = ?api))]
+    pub async fn resolve_decision_key_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        admin: &Uuid7,
+        api: DecisionApi,
+    ) -> Result<SecretString> {
+        let body = self
+            .vault()
+            .open_on(
+                connection,
+                KeyRef {
+                    workspace_id: admin,
+                    name: bag(api),
+                },
+            )
+            .await?
+            .ok_or(ErrorKind::DecisionCredentialMissing { api })?;
+        decode(body.expose(), api)
     }
 }
 
+fn decode(body: &[u8], api: DecisionApi) -> Result<SecretString> {
+    let stored: StoredKey = afd_core::json::object_from_slice(body).map_err(|source| {
+        ErrorKind::DecisionCredentialInvalid {
+            api,
+            source: Unreadable::from(source),
+        }
+    })?;
+    if stored.api_key.is_empty() {
+        return Err(ErrorKind::DecisionCredentialMissing { api }.into());
+    }
+    Ok(stored.api_key)
+}
 /// Fixed bag names are independent of tenant model names and endpoint text.
 const fn bag(api: DecisionApi) -> &'static str {
     match api {

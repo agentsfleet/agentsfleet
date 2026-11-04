@@ -37,6 +37,8 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::ContextCheckpoint => {
             get(handler::runner::context::load::<D>).put(handler::runner::context::put::<D>)
         }
+        RunnerRoute::TaskDecisions => post(handler::runner::decisions::reserve::<D>),
+        RunnerRoute::TaskDecision => patch(handler::runner::decisions::record::<D>),
         RunnerRoute::MemoryHydrate => get(handler::runner::memory::hydrate::<D>),
         RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
         RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),

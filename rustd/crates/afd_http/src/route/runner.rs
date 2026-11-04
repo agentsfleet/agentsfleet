@@ -24,6 +24,10 @@ pub enum RunnerRoute {
     SelfRecord,
     /// Private context checkpoint for a branch of a live lease.
     ContextCheckpoint,
+    /// Reserve a physical decision with accepted native questions and credit.
+    TaskDecisions,
+    /// Record one original-owner decision result, including late usage.
+    TaskDecision,
     /// The runner's heartbeat.
     Heartbeat,
     /// Claiming a lease.
@@ -68,6 +72,8 @@ impl RunnerRoute {
     pub const ALL: &'static [Self] = &[
         Self::SelfRecord,
         Self::ContextCheckpoint,
+        Self::TaskDecisions,
+        Self::TaskDecision,
         Self::Heartbeat,
         Self::Lease,
         Self::Report,
@@ -101,6 +107,7 @@ impl RunnerRoute {
             Self::ContextCheckpoint => &[Verb::Get, Verb::Put],
             Self::Schedules | Self::ScheduleRuns => &[Verb::Get, Verb::Post],
             Self::Schedule => &[Verb::Patch, Verb::Delete],
+            Self::TaskDecision => &[Verb::Patch],
             Self::SelfRecord | Self::MemoryHydrate => &[Verb::Get],
             Self::Heartbeat
             | Self::Lease
@@ -115,6 +122,7 @@ impl RunnerRoute {
             | Self::MemoryCapture
             | Self::MemoryRecall
             | Self::ToolCalls
+            | Self::TaskDecisions
             | Self::Messages => &[Verb::Post],
         }
     }
@@ -128,6 +136,8 @@ impl RunnerRoute {
         let template = match self {
             Self::SelfRecord => paths::RUNNER_SELF,
             Self::ContextCheckpoint => paths::LEASE_CONTEXT,
+            Self::TaskDecisions => paths::LEASE_TASK_DECISIONS,
+            Self::TaskDecision => paths::LEASE_TASK_DECISION,
             Self::Heartbeat => paths::RUNNER_HEARTBEATS,
             Self::Lease => paths::RUNNER_LEASES,
             Self::Report => paths::RUNNER_REPORTS,

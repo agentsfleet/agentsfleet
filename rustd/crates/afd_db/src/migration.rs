@@ -201,6 +201,8 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("2250_model_decision_prices.sql"),
     migration!("2260_runner_decision_model.sql"),
     migration!("2270_runner_lease_decisions.sql"),
+    migration!("2280_runner_decision_calls.sql"),
+    migration!("2290_runner_decision_payloads.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

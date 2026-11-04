@@ -115,3 +115,9 @@ pub const LEASE_MESSAGES: &str = concatcp!(LEASE, LEASE_MESSAGES_SUFFIX);
 
 /// Private working notes for one branch of a live lease.
 pub const LEASE_CONTEXT: &str = concatcp!(LEASE, "context-checkpoints/{branch_id}");
+
+/// Physical decision reservations owned by the existing fenced lease.
+pub const LEASE_TASK_DECISIONS: &str = concatcp!(LEASE, "tasks/decisions");
+
+/// Original-owner accounting for one reserved physical decision call.
+pub const LEASE_TASK_DECISION: &str = concatcp!(LEASE_TASK_DECISIONS, "/{call_id}");

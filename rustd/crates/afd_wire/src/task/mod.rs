@@ -3,11 +3,19 @@
 //! A task is an owner across leases. Its generation, a lease fence and a
 //! checkpoint generation remain separate counters with separate purposes.
 
+mod assessment;
 mod context;
+mod decision;
 mod limits;
 mod state;
 
+pub use assessment::{DecisionAssessment, DecisionRetryDelay, DecisionUnavailableCause};
 pub use context::TaskContext;
+pub use decision::{
+    DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt,
+    DecisionReceiptInput, DecisionReceiptResult, DecisionRecordDisposition, DecisionRecorded,
+    DecisionReservationInput, DecisionReservationResult, DecisionTaskVersion,
+};
 pub use limits::{TaskLimits, TaskUsage};
 pub use state::TaskState;
 

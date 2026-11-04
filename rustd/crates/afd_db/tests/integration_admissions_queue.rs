@@ -24,8 +24,10 @@ const MODEL_DECISIONS_MIGRATION: i64 = 2240;
 const DECISION_PRICES_MIGRATION: i64 = 2250;
 const RUNNER_DECISION_MODEL_MIGRATION: i64 = 2260;
 const LEASE_DECISION_SNAPSHOT_MIGRATION: i64 = 2270;
+const DECISION_CALLS_MIGRATION: i64 = 2280;
+const DECISION_PAYLOADS_MIGRATION: i64 = 2290;
 
-// M230 can land before M226: its higher slot must not hide the queue upgrade.
+// A higher dispatch slot must not hide an unapplied queue upgrade.
 static DISPATCH_ONLY: std::sync::LazyLock<Vec<afd_db::migration::Migration>> =
     std::sync::LazyLock::new(|| {
         afd_db::migration::MIGRATIONS
@@ -155,6 +157,8 @@ async fn test_receipt_drop_migration_applies_populated() {
             DECISION_PRICES_MIGRATION,
             RUNNER_DECISION_MODEL_MIGRATION,
             LEASE_DECISION_SNAPSHOT_MIGRATION,
+            DECISION_CALLS_MIGRATION,
+            DECISION_PAYLOADS_MIGRATION,
         ]
     );
     let mut connection = db.acquire().await.expect("database");

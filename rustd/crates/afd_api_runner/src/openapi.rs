@@ -31,6 +31,8 @@ afd_http::plane_collector! {
         crate::handler::runner::authoring::renew::handle,
         crate::handler::runner::authoring::report::handle,
         crate::handler::runner::credential::handle,
+        crate::handler::runner::decisions::reserve,
+        crate::handler::runner::decisions::record,
         crate::handler::runner::context::load,
         crate::handler::runner::context::put,
         crate::handler::runner::enrolment::handle,

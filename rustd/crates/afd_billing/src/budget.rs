@@ -86,11 +86,22 @@ impl Verdict {
 /// monthly ceiling — not an implicit one derived from the daily.
 #[must_use]
 pub fn covers(budget: Budget, spend: Spend) -> Verdict {
-    if spend.day.has_reached(Nanos::from_ceiling(budget.daily())) {
+    against(budget, spend, Nanos::has_reached)
+}
+
+/// Whether the complete projected charge and reservation total fits the budget.
+/// Equality is allowed because this total already includes the proposed spend.
+#[must_use]
+pub fn covers_reservation(budget: Budget, projected: Spend) -> Verdict {
+    against(budget, projected, |spent, limit| spent > limit)
+}
+
+fn against(budget: Budget, spend: Spend, exceeds: impl Fn(Nanos, Nanos) -> bool) -> Verdict {
+    if exceeds(spend.day, Nanos::from_ceiling(budget.daily())) {
         return Verdict::DayExceeded;
     }
     match budget.monthly() {
-        Some(monthly) if spend.month.has_reached(Nanos::from_ceiling(monthly)) => {
+        Some(monthly) if exceeds(spend.month, Nanos::from_ceiling(monthly)) => {
             Verdict::MonthExceeded
         }
         _ => Verdict::Admit,

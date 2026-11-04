@@ -8,10 +8,10 @@ use super::super::{PreparedPlan, TaskLease, TaskRefusal, guard::LeaseRow, sql};
 use crate::error::{Result, query};
 
 #[derive(sqlx::FromRow)]
-pub(super) struct Source {
+pub(in crate::task) struct Source {
     actor: String,
     producer: String,
-    request_json: String,
+    pub(in crate::task) request_json: String,
     pub(super) reply_provider: Option<String>,
     pub(super) reply_address: Option<String>,
     input_claim_lease_id: Option<String>,
@@ -24,23 +24,42 @@ pub(super) async fn lock(
     current: &LeaseRow,
     plan: &PreparedPlan,
 ) -> Result<Source> {
+    let source = load(connection, current, &plan.source_admission_id).await?;
+    check_claim(&source, lease, current, &plan.source_admission_id)?;
+    Ok(source)
+}
+
+pub(in crate::task) async fn load(
+    connection: &mut PgConnection,
+    current: &LeaseRow,
+    admission: &afd_core::id::Uuid7,
+) -> Result<Source> {
     let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
-        .bind(plan.source_admission_id.as_str())
+        .bind(admission.as_str())
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(connection)
         .await
         .map_err(query("lock durable task source"))?
         .ok_or(TaskRefusal::NotFound)?;
-    let owns_claim = source.input_claim_lease_id.as_deref() == Some(lease.lease_id.as_str())
-        && source.input_claim_fence == Some(current.fence);
-    if plan.source_admission_id.as_str() != current.source_admission_id && !owns_claim {
-        return Err(TaskRefusal::StaleState.into());
-    }
     Ok(source)
 }
 
-pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) -> Result<()> {
+pub(in crate::task) fn check_claim(
+    source: &Source,
+    lease: TaskLease<'_>,
+    current: &LeaseRow,
+    admission: &afd_core::id::Uuid7,
+) -> Result<()> {
+    let owns_claim = source.input_claim_lease_id.as_deref() == Some(lease.lease_id.as_str())
+        && source.input_claim_fence == Some(current.fence);
+    if admission.as_str() != current.source_admission_id && !owns_claim {
+        return Err(TaskRefusal::StaleState.into());
+    }
+    Ok(())
+}
+
+pub(in crate::task) fn check_human(source: &Source) -> Result<()> {
     // The Slack person-link adapter is added at the input boundary; no machine
     // actor is allowed to stand in for a person while that adapter is absent.
     if source.producer != Producer::Steer.as_str()
@@ -49,6 +68,11 @@ pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) ->
     {
         return Err(TaskRefusal::InvalidTarget.into());
     }
+    Ok(())
+}
+
+pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) -> Result<()> {
+    check_human(source)?;
     if current.revision_id.as_deref() != Some(plan.accepted_revision_id.as_str()) {
         return Err(TaskRefusal::StaleState.into());
     }
