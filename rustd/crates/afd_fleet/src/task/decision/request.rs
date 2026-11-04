@@ -16,6 +16,8 @@ use crate::{
     task::{TaskRefusal, TaskSnapshot},
 };
 
+const _: () = assert!(usize::BITS >= u32::BITS);
+
 #[derive(Serialize)]
 struct State<'a> {
     source_admission_id: &'a str,
@@ -38,7 +40,7 @@ struct Objective<'a> {
 
 pub(super) fn compile(
     call: &Uuid7,
-    input: &DecisionReservationInput,
+    input: &garde::Valid<DecisionReservationInput>,
     source: &str,
     context: &AssessedContext,
     task: Option<&TaskSnapshot>,
@@ -46,13 +48,17 @@ pub(super) fn compile(
     questions: Vec<NamedQuestion>,
 ) -> Result<DecisionRequest> {
     let message = afd_wire::event::message_of(source);
-    let assessed_message = if matches!(
-        input.assessment,
-        afd_wire::task::DecisionAssessment::Item { .. }
-    ) {
-        Some(assessed(&message, &input.assessment)?)
-    } else {
-        None
+    let assessed_message = match &input.assessment {
+        afd_wire::task::DecisionAssessment::Item {
+            source_start,
+            source_end,
+            ..
+        } => {
+            // Validation proves nonnegative offsets; the width assertion preserves every u32.
+            let span = (source_start.unsigned_abs() as usize)..(source_end.unsigned_abs() as usize);
+            Some(message.get(span).ok_or(TaskRefusal::InvalidTarget)?)
+        }
+        _ => None,
     };
     let state = State {
         source_admission_id: &input.source_admission_id,
@@ -76,34 +82,4 @@ pub(super) fn compile(
         state: serde_json::to_value(state).map_err(afd_core::json::Unreadable::from)?,
         questions,
     })
-}
-
-fn assessed<'a>(
-    message: &'a str,
-    assessment: &afd_wire::task::DecisionAssessment,
-) -> Result<&'a str> {
-    match assessment {
-        afd_wire::task::DecisionAssessment::Item {
-            source_start,
-            source_end,
-            ..
-        } => {
-            let start = usize::try_from(*source_start).map_err(|source| {
-                crate::error::Error::from(crate::error::ErrorKind::TaskCounter {
-                    column: "source_start",
-                    source,
-                })
-            })?;
-            let end = usize::try_from(*source_end).map_err(|source| {
-                crate::error::Error::from(crate::error::ErrorKind::TaskCounter {
-                    column: "source_end",
-                    source,
-                })
-            })?;
-            message
-                .get(start..end)
-                .ok_or_else(|| TaskRefusal::InvalidTarget.into())
-        }
-        _ => Ok(message),
-    }
 }

@@ -1,4 +1,4 @@
-//! Concurrent retries produce one grant and one canonical original-owner charge.
+//! Concurrent replays and independent operations share one grant and charge.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -17,16 +17,24 @@ use super::{
     fixture::{Decisions, known, request},
 };
 
+#[derive(Clone, Copy)]
+enum Operations {
+    Same,
+    Independent,
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn concurrent_decision_replays_issue_one_key_and_account_one_complete_line() {
-    exercise(replays).await;
+    for operations in [Operations::Same, Operations::Independent] {
+        exercise(async |case| replays(case, operations).await).await;
+    }
 }
 
-async fn replays(case: &Case) {
+async fn replays(case: &Case, operations: Operations) {
     let fixture = Decisions::create(case).await;
     let input = fixture.reservation(DecisionAssessment::Message, None);
-    let replies = contend(&fixture, &input).await;
+    let replies = contend(&fixture, &input, operations).await;
     assert_eq!(replies.iter().filter(|(issued, _)| *issued).count(), 1);
     let body = &replies
         .iter()
@@ -42,7 +50,18 @@ async fn replays(case: &Case) {
             .iter()
             .all(|(_, body)| body.get("call_id") == Some(&json!(call)))
     );
+    let expected = json!({"status":"existing", "call_id":call, "state":"issued"});
+    for (_, body) in replies.iter().filter(|(issued, _)| !issued) {
+        assert_eq!(body, &expected);
+    }
     assert_eq!(fixture.counts().await, (1, 1, 0));
+    let request = compiled_request(&fixture, body);
+    accounted(&fixture, call, &request).await;
+    saved_replay(&fixture, &input, &request).await;
+    fixture.model.finish().await;
+}
+
+fn compiled_request(fixture: &Decisions<'_>, body: &Value) -> afd_wire::decision::DecisionRequest {
     assert_eq!(
         body.pointer("/dispatch/assignment"),
         Some(&serde_json::to_value(&fixture.assignment).expect("frozen assignment"))
@@ -64,29 +83,41 @@ async fn replays(case: &Case) {
         request.state.get("assessed_message").is_none(),
         "whole messages are not copied twice"
     );
-    accounted(&fixture, call, &request).await;
-    saved_replay(&fixture, &input, &request).await;
-    fixture.model.finish().await;
+    request
 }
 
 async fn contend(
     fixture: &Decisions<'_>,
     input: &garde::Valid<afd_wire::task::DecisionReservationInput>,
+    operations: Operations,
 ) -> Vec<(bool, Value)> {
     const CALLERS: usize = 100;
     let barrier = Barrier::new(CALLERS);
     let active = AtomicUsize::new(0);
     let peak = AtomicUsize::new(0);
-    let replies = join_all((0..CALLERS).map(|_| async {
-        barrier.wait().await;
-        peak.fetch_max(
-            active.fetch_add(1, Ordering::Relaxed) + 1,
-            Ordering::Relaxed,
-        );
-        let _active = scopeguard::guard((), |()| {
-            active.fetch_sub(1, Ordering::Relaxed);
-        });
-        fixture.reserve(input).await
+    let peers = match operations {
+        Operations::Same => Vec::new(),
+        Operations::Independent => (1..CALLERS)
+            .map(|_| fixture.reservation(DecisionAssessment::Message, None))
+            .collect::<Vec<_>>(),
+    };
+    let requests = match operations {
+        Operations::Same => vec![input; CALLERS],
+        Operations::Independent => std::iter::once(input).chain(peers.iter()).collect(),
+    };
+    let replies = join_all(requests.into_iter().map(|input| {
+        let (barrier, active, peak) = (&barrier, &active, &peak);
+        async move {
+            barrier.wait().await;
+            peak.fetch_max(
+                active.fetch_add(1, Ordering::Relaxed) + 1,
+                Ordering::Relaxed,
+            );
+            let _active = scopeguard::guard((), |()| {
+                active.fetch_sub(1, Ordering::Relaxed);
+            });
+            fixture.reserve(input).await
+        }
     }))
     .await;
     assert!(peak.load(Ordering::Relaxed) > 1);
