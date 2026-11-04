@@ -49,7 +49,7 @@ const CALL_BUDGET: Duration = Duration::from_secs(10);
 
 /// The longest the waits between attempts add up to: each delay doubles from
 /// `FIRST_DELAY` up to `MAX_DELAY`, and jitter adds up to one more of it.
-const fn longest_waits() -> u128 {
+pub(super) const fn longest_waits() -> u128 {
     let (mut total, mut delay, mut retry) = (0, FIRST_DELAY.as_millis(), 1);
     while retry < ATTEMPTS {
         total += 2 * delay;
