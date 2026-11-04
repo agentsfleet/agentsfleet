@@ -54,6 +54,9 @@ sha2.workspace = true
 # The QStash JWT verifier. Pinned to an explicit `Validation` — see `verifier`
 # on why every default this crate does not want is turned off by name.
 jsonwebtoken.workspace = true
+# The retry loop and jittered schedule a transient scheduler failure is sent
+# again on, the same crate and curve `afd_outbound` delivers through.
+backon.workspace = true
 # The QStash management calls. Both published SDK crates are unmaintained and
 # force older transitive versions; a typed outcome classification is the
 # deliverable and this is the client the rest of the workspace already uses.

@@ -1,0 +1,20 @@
+# DOC-05 and DOC-07: a plain word, never a marketing one.
+# Published API prose lives in the generated document, so the fix lands in the
+# Rust annotation that emits it. Only `summary` and `description` values count.
+id: docs-api-wording
+language: Json
+severity: error
+message: published API prose uses a word DOC-05 or DOC-07 bans
+note: 'DOC-05 bans utilise, facilitate, leverage, orchestrate, instantiate, terminate, provision, execute, persist, hydrate and artifact, in every form. DOC-07 bans powerful, revolutionary, enterprise-grade, seamless, cutting-edge, robust, next-generation, world-class and intelligent.'
+files:
+  - public/openapi.json
+rule:
+  kind: pair
+  all:
+    - has:
+        field: key
+        regex: '^"(summary|description)"$'
+    - has:
+        field: value
+        kind: string
+        regex: '(?i)(?:\b|\\n)(utilis(e|es|ed|ing)|facilitat(e|es|ed|ing)|leverag(e|es|ed|ing)|orchestrat(e|es|ed|ing|ion)|instantiat(e|es|ed|ing|ion)|terminat(e|es|ed|ing|ion|al)|provision(s|ed|ing)?|execut(e|es|ed|ing|ion)|persist(s|ed|ing|ent|ence)?|hydrat(e|es|ed|ing|ion)|artifacts?|powerful|revolutionary|enterprise-grade|seamless|cutting-edge|robust|next-generation|world-class|intelligent)\b'

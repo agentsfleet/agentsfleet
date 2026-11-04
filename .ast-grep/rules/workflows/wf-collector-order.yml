@@ -1,0 +1,44 @@
+# The collector's Fly app is created before its secrets are set: `flyctl secrets
+# set` on an app that does not exist fails the deploy after the build. The
+# stand-up step is the one whose script sets GRAFANA secrets on the collector
+# app (`$OTLP_COLLECTOR_APP`); the daemon's own secrets step reads GRAFANA too.
+# Order is read as "a create precedes a secrets call" in that script. The
+# presence half is scoped to two files: renaming either leaves it matching
+# nothing, silently.
+id: wf-collector-order
+language: Yaml
+severity: error
+message: the collector stand-up must run `ensure_fly_app.sh --create-only` before `flyctl secrets set`
+files:
+  - .github/workflows/deploy-dev-fly.yml
+  - .github/workflows/release.yml
+rule:
+  any:
+    - kind: stream
+      not:
+        has:
+          stopBy: end
+          kind: block_mapping_pair
+          all:
+            - has:
+                field: key
+                regex: '^run$'
+            - has:
+                field: value
+                all:
+                  - regex: 'flyctl secrets set'
+                  - regex: 'GRAFANA'
+                  - regex: 'OTLP_COLLECTOR_APP'
+    - kind: block_mapping_pair
+      all:
+        - has:
+            field: key
+            regex: '^run$'
+        - has:
+            field: value
+            all:
+              - regex: 'flyctl secrets set'
+              - regex: 'GRAFANA'
+              - regex: 'OTLP_COLLECTOR_APP'
+              - not:
+                  regex: '(?s)ensure_fly_app\.sh --create-only.*flyctl secrets set'

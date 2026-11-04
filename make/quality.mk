@@ -2,13 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: _model_allowlist_check lint-all lint-source lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-tests-call-code check-gh-actions-valid check-playbooks check-playbooks-refs
-
-check-documentation-rules:  ## Check public API and command help text
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_parity_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_parity.py
+.PHONY: _model_allowlist_check lint-all lint-source lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-gh-actions-valid check-playbooks check-playbooks-refs
 
 ACTIONLINT ?= actionlint
 
@@ -18,12 +12,14 @@ ACTIONLINT ?= actionlint
 # version package.json pins; a missing binary fails rather than fetching
 # whatever the registry serves. `--skip-snapshot-tests`: a rule test proves
 # which cases match, not the label layout ast-grep would snapshot.
+# `--no-ignore hidden`: ast-grep skips dot-directories by default, and the
+# workflow rules live in .github/. Ignored files stay ignored.
 AST_GREP := bunx --no-install ast-grep
 
-lint-source:  ## Source rules over app, CLI, design system and Rust (ast-grep test + scan)
+lint-source:  ## Source rules over code, docs, tests, workflows and infra (ast-grep test + scan)
 	@echo "→ [source] ast-grep rule tests, then the scan..."
 	@$(AST_GREP) test --skip-snapshot-tests
-	@$(AST_GREP) scan
+	@$(AST_GREP) scan --no-ignore hidden
 	@echo "✓ [source] clean"
 
 lint-website:  ## Lint website only (Oxlint + tsrs)
@@ -36,25 +32,16 @@ lint-app: lint-source  ## Lint ui/packages/app only (Oxlint + tsrs + source rule
 	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
-	@echo "→ [app] Source rules ast-grep cannot hold: one event catalog, the journeys project runs the execution spec..."
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source.py
 	@echo "✓ [app] Lint passed"
 
 lint-design-system: lint-source  ## Lint ui/packages/design-system only (Oxlint + tsrs + source rules)
 	@echo "→ [design-system] Running Oxlint + TypeScript check..."
 	@cd ui/packages/design-system && bun run lint
-	@echo "→ [design-system] Source rules ast-grep cannot hold: text contrast on every surface, the guarded files exist..."
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source.py
 	@echo "✓ [design-system] Lint passed"
 
-lint-cli: check-documentation-rules lint-source  ## Lint agentsfleet CLI and its public text
+lint-cli: lint-source  ## Lint agentsfleet CLI and its public text
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsrs..."
 	@cd cli && bun run lint
-	@echo "→ [agentsfleet] Source rules ast-grep cannot hold: one env spelling..."
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source.py
 	@echo "✓ [agentsfleet] Lint passed"
 
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
@@ -77,9 +64,12 @@ _model_allowlist_check:
 # exists in a test file is still a violation; excluding them is how a test file
 # becomes the place lint rules go to die.
 RUSTD_DIR := rustd
+# The version CI installs too (`.github/workflows/test-unit-rustd.yml`).
+CARGO_SHEAR_VERSION := 1.14.0
 
-lint-rustd: lint-source  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
+lint-rustd: lint-source  ## Lint the Rust workspace (rustfmt + clippy + cargo shear, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@command -v cargo-shear >/dev/null 2>&1 || { echo "✗ cargo-shear not found. Install via: mise use -g cargo:cargo-shear@$(CARGO_SHEAR_VERSION)"; exit 1; }
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage_test.py
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates
@@ -88,6 +78,11 @@ lint-rustd: lint-source  ## Lint the Rust workspace (rustfmt + clippy, warnings 
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
 	  cargo clippy --workspace --all-targets --all-features -- -D warnings
+	@# Rustc's dead-code lints stop at a crate's edge: a dependency nothing names
+	@# compiles silently. `cargo shear` fails on unused and misplaced
+	@# dependencies by source scan. Its unlinked-file notes stay warnings, because
+	@# every suite that includes a module through `#[path]` reads as unlinked.
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] cargo shear" -- cargo shear --locked
 
 SHELLCHECK ?= shellcheck
 
@@ -109,29 +104,16 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-tests-call-code check-gh-actions-valid check-playbooks check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-gh-actions-valid check-playbooks check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
-check-tests-call-code:  ## No test reads a repository file in place of calling code
-	@# A test calls the code it proves; a test that reads a repository file
-	@# asserts on text instead (docs/architecture/testing.md).
-	@echo "→ [tests] No test reads a repository file..."
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_tests_call_code_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_tests_call_code.py
-
-check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check
+check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
 	@echo "→ [gh-actions] Running actionlint on workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
 	@$(ACTIONLINT) .github/workflows/*.yml
-	@# What the deploy workflows run and in which order, which actionlint
-	@# cannot see: the collector app exists before `flyctl secrets set`
-	@# addresses it, Discord routes by stage, the connector's signing secret
-	@# and vault row are both seeded, the daemon's own log level is set, no
-	@# workflow pastes a literal builder tag, and every third-party action is
-	@# pinned to a full commit, which Dependabot (.github/dependabot.yml) moves.
-	@echo "→ [gh-actions] Deploy workflows run the right steps in the right order..."
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules.py
+	@# What the workflows run, which actionlint cannot see (pins, step order,
+	@# retired secrets), is ast-grep's: .ast-grep/rules/workflows/, run by
+	@# lint-source.
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference

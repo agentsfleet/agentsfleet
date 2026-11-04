@@ -133,7 +133,9 @@ fn switching_to_an_unknown_tokenizer_cannot_reuse_an_openai_count() {
         "unknown-provider/model-next",
     ] {
         let switched = route.measure_input(model, &body).unwrap();
-        assert!(switched > known * 2, "{model}");
+        // The proxy adds a quarter to the `o200k_base` count this body has
+        // under `gpt-5.6-terra`, so the switched estimate is strictly above it.
+        assert!(switched > known, "{model}: {switched} <= {known}");
         assert_eq!(route.measure_input("gpt-5.6-terra", &body).unwrap(), known);
     }
 }
@@ -141,9 +143,12 @@ fn switching_to_an_unknown_tokenizer_cannot_reuse_an_openai_count() {
 #[test]
 fn literal_special_tokens_never_become_installed_control_tokens() {
     let text = CORPUS[5];
-    assert!(crate::input_tokens("gpt-4o", text) > 6);
+    let ordinary = crate::input_tokens("gpt-4o", text);
+    assert!(ordinary > 6);
+    // Equal only if the proxy also reads special-token spellings as text: an
+    // installed control token would collapse each into one and count lower.
     assert_eq!(
         crate::input_tokens("unknown-provider/model-next", text),
-        text.len()
+        (ordinary * 5).div_ceil(4)
     );
 }

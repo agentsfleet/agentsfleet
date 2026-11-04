@@ -1,0 +1,22 @@
+# The release pins the production API's machine count and proves it: one step
+# declares DESIRED_API_MACHINES, scales to it, and fails unless that many
+# machines exist and run. A presence rule scoped to one file: it goes silent if
+# release.yml is renamed. `.github/` is hidden, so the scan needs
+# `--no-ignore hidden` to read it.
+id: infra-fly-scale
+language: Yaml
+severity: error
+message: release.yml declares DESIRED_API_MACHINES, scales the production API to it with `flyctl scale count`, and tests both TOTAL and RUNNING against it in one step
+files:
+  - .github/workflows/release.yml
+rule:
+  kind: stream
+  not:
+    has:
+      stopBy: end
+      kind: block_scalar
+      all:
+        - regex: '(?m)^\s*DESIRED_API_MACHINES=[0-9]+\s*$'
+        - regex: 'flyctl scale count "\$DESIRED_API_MACHINES"'
+        - regex: 'test "\$TOTAL" -eq "\$DESIRED_API_MACHINES"'
+        - regex: 'test "\$RUNNING" -eq "\$DESIRED_API_MACHINES"'

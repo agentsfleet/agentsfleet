@@ -68,16 +68,18 @@ An incomplete response, tool call, malformed summary or missing usage cannot pub
 Validation proves the document's shape and source identity; it cannot prove that the model preserved every relevant fact.
 
 Token measurement uses `tiktoken-rs` through `afd_inference/src/budget.rs` for recognized model encodings.
-Other models reserve one token per UTF-8 byte.
+Other models get the `o200k_base` count plus a quarter, rounded up (`PROXY_HEADROOM_PERCENT`).
+That headroom is provisional. The `model_input_calibration` trace records each call's estimate beside the provider's reported input, and per-model ratios read from it replace the single number.
 Measurement covers the serialized provider request, including tools and replay data, plus 32 tokens per history message.
 
 This is an admission estimate; provider-reported usage determines accounting.
 Each physical request is checked, including ordinary turns, tool continuations and summary calls.
 After publishing a summary, preparation measures the shorter continuation again before sending it.
 
-An OpenAI-compatible transport does not establish a model's tokenizer: unrecognized models still use the byte fallback, which can trigger compaction early.
+An OpenAI-compatible transport does not establish a model's tokenizer: an unrecognized model gets the `o200k_base` estimate, never an exact count.
 
-Serialized JSON tokenization and byte fallback are estimates, not proven upper bounds on the provider's formatted input.
+Serialized JSON tokenization and the `o200k_base` estimate are not proven upper bounds on the provider's formatted input.
+A model whose vocabulary makes about a third more tokens than `o200k_base` can pass its working window before compaction fires.
 The [token counting decision rubric](../reviews/pr784-tokenizer-evaluation.md) records the candidate comparison and required model/request tests.
 
 Near capacity, both hosts can confirm the prepared request through the selected native Responses, Messages or Gemini API.

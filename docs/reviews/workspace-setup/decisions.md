@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-10-14
+verified: 2026-11-04
 product_version: 0.60.0
 executable: false
 ---
@@ -27,7 +27,7 @@ Later reviewers should assess enforcement and missing proof without reopening se
 | L5 | A Command-Line Interface (CLI) install returning `installing` prints missing checks and a retry command, then exits nonzero. |
 | L6 | Save and Save and run now. API start choices `none` and `run_now`; reviewed triggers remain identical. |
 | L7 | Save never publishes to Library automatically. Save to library is explicit. |
-| L8 | The separate schedule fix ships stable prefixed provider IDs. A follow-up adds a distinct content revision, a revision-bearing signed destination, and an owned-prefix sweep. |
+| L8 | The separate schedule fix ships stable prefixed provider IDs. |
 | L9 | Tokenizer-counted caps: 32,768 input per call; 8,192 output across a turn. |
 | L10 | Keep the creator-private draft progress stream. |
 | L11 | One Library collection: `/fleet-libraries`. |
@@ -54,7 +54,7 @@ Review reports describe the packet they inspected. The canonical architecture an
 
 Indy's latest instruction: “Yes go, jpon rewrite should we write the specs, ideally i want the cutover in 1PR that you are on now.” The chat cutover and existing website, analytics, and branding batch share `feat/website-completion` and its existing worktree. This owner instruction overrides the repository's general preference for separate backend and interface pull requests; sections retain independent proof requirements.
 
-L8 remains a follow-up. The separately owned schedule fix is a prerequisite to final schedule verification; it is not claimed merged or tested here. Published changes use the [public change handoff](public-changes.md) for a separate `~/Projects/docs` branch. That repository is not edited here.
+Published changes use the [public change handoff](public-changes.md) for a separate `~/Projects/docs` branch. That repository is not edited here.
 
 ## Limits
 

@@ -21,9 +21,9 @@ Single-sourced in `ui/packages/app/lib/analytics/events.ts` (`EVENTS`,
 object-first past tense (`fleet_created`, `api_key_minted`). Props carry IDs,
 names, and enum values only — never a token, raw API key, credential payload,
 or free-text from a sensitive field. Call sites import `EVENTS` +
-`captureProductEvent`; the `app-event-literal` rule in
-`scripts/check_app_source.py` (run by `make lint-all`) fails on any bare
-event-name literal outside the catalog. Catalog captures bypass the legacy `sanitizeProps` allowlist (its
+`captureProductEvent`, whose event parameter is typed `EventName`
+(`ui/packages/app/lib/analytics/posthog.ts`), so a misspelt event name fails
+the typecheck. Catalog captures bypass the legacy `sanitizeProps` allowlist (its
 closed key set would silently drop event-specific keys) — the `EventProps`
 types are the compile-time guard, and the emit path allowlists every payload
 against the `EVENT_PROP_KEYS` runtime mirror, so a spread or widened argument

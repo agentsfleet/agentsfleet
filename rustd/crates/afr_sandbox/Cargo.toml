@@ -90,11 +90,6 @@ jiff.workspace = true
 afr_providers.workspace = true
 axum = { workspace = true, features = ["json"] }
 hyper.workspace = true
-hyper-util.workspace = true
-rcgen.workspace = true
-reqwest.workspace = true
-rustls.workspace = true
-tokio-rustls.workspace = true
 # The kernel lane drives the runner's real sandbox-side tools through its
 # catalog, with a lease whose egress sends nothing.
 afr_egress = { workspace = true, features = ["test-util"] }

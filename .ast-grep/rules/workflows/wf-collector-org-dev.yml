@@ -1,0 +1,42 @@
+# The collector stand-up creates its app in the dev Fly organisation; without
+# FLY_ORG the create lands in the token's default organisation. Scoped to one
+# file: renaming the workflow leaves it matching nothing, silently.
+id: wf-collector-org-dev
+language: Yaml
+severity: error
+message: 'the collector stand-up step needs `FLY_ORG: agentsfleet-dev`'
+files:
+  - .github/workflows/deploy-dev-fly.yml
+rule:
+  kind: block_mapping
+  has:
+    kind: block_mapping_pair
+    all:
+      - has:
+          field: key
+          regex: '^run$'
+      - has:
+          field: value
+          all:
+            - regex: 'flyctl secrets set'
+            - regex: 'GRAFANA'
+            - regex: 'OTLP_COLLECTOR_APP'
+  not:
+    has:
+      kind: block_mapping_pair
+      all:
+        - has:
+            field: key
+            regex: '^env$'
+        - has:
+            field: value
+            has:
+              stopBy: end
+              kind: block_mapping_pair
+              all:
+                - has:
+                    field: key
+                    regex: '^FLY_ORG$'
+                - has:
+                    field: value
+                    regex: '^["'']?agentsfleet-dev["'']?$'

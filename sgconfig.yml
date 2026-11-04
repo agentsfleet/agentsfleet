@@ -2,8 +2,8 @@
 # `make lint-source` runs `ast-grep test` (each rule refuses the regression it
 # was written for) and then `ast-grep scan` (the tree is clean).
 #
-# Rules that compare two files, count across the tree, run a tool or compute a
-# value stay in the Python lints under scripts/.
+# Rules that compare two files, count across the tree, run a tool or compute
+# a value were dropped rather than kept in hand-written lints.
 ruleDirs:
   - .ast-grep/rules
 utilDirs:

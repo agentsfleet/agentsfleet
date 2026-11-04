@@ -1,0 +1,65 @@
+# A test calls the code it proves; it never reads the repository's files. See
+# tests-js-repo-read for why.
+#
+# A read is `include_str!`, `include_bytes!`, an `fs` read or walk, `File::open`
+# or `WalkDir::new` whose own arguments anchor the path in the crate:
+# `env!("CARGO_MANIFEST_DIR")`, a `../` literal, a relative `Path::new` or
+# `PathBuf::from`, or a relative path literal handed whole to the read. A path
+# through a fixture directory is the test's own input. A path reached through a
+# variable is not followed.
+#
+# This rule covers `#[cfg(test)]` code outside test files; tests-rust-repo-read
+# covers the test files themselves, whole.
+id: tests-rust-cfg-test-repo-read
+language: Rust
+severity: error
+message: a test reads a repository file; call the code, or move the check to a lint
+files:
+  - "**/*.rs"
+ignores:
+  - "**/target/**"
+  - "**/tests/**"
+  - "**/tests.rs"
+  - "**/*_tests.rs"
+utils:
+  anchored:
+    regex: 'env!\(\s*"CARGO_MANIFEST_DIR"\s*\)|"(\.\./)+|(Path::new|PathBuf::from)\(\s*&?"[^/]'
+  # Cargo runs a test from the crate, so a relative path literal handed whole
+  # to a read names a crate file. Joined onto a temporary directory, the same
+  # literal names the test's own file, so only the whole argument counts.
+  direct:
+    regex: '^\(\s*&?"([^/"\n][^"\n]*/[^"\n]*|[^/"\n][^"\n]*\.[A-Za-z0-9]+)"\s*\)$'
+  fixture:
+    regex: '(^|[/"''`\s(,])(fixtures|testdata|__fixtures__|__snapshots__|golden)([/"''`\s),]|$)'
+  read-of-repository:
+    all:
+      - any: [{ matches: anchored }, { matches: direct }]
+      - not: { matches: fixture }
+  # Inside another macro a call is tokens; this catches the read spelled there
+  # with its anchor in the first argument.
+  read-in-tokens:
+    regex: '(\bfs::(read_to_string|read|read_dir)|\bFile::open|\binclude_(str|bytes)!|\bWalkDir::new)\s*\(\s*&?(env!\(\s*"CARGO_MANIFEST_DIR"|"(\.\./)+|(Path::new|PathBuf::from)\(\s*&?"[^/])'
+  read:
+    any:
+      # include_str!("../schema.sql"), include_bytes!("data/x.bin")
+      - kind: macro_invocation
+        all:
+          - has: { field: macro, regex: '^include_(str|bytes)$' }
+          - has: { kind: token_tree, matches: read-of-repository }
+      # std::fs::read_to_string(Path::new("docs/x.md")), File::open("x.json")
+      - kind: call_expression
+        all:
+          - has:
+              field: function
+              regex: '(^|::)fs::(read_to_string|read|read_dir)$|(^|::)File::open$|^(read_to_string|read_dir)$|(^|::)WalkDir::new$'
+          - has: { field: arguments, matches: read-of-repository }
+      # assert!(fs::read_to_string(env!("CARGO_MANIFEST_DIR")).is_ok())
+      - kind: token_tree
+        all:
+          - matches: read-in-tokens
+          - not: { matches: fixture }
+          - not: { has: { kind: token_tree, stopBy: end, matches: read-in-tokens } }
+rule:
+  all:
+    - matches: read
+    - matches: rust-in-cfg-test

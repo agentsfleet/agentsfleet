@@ -1,0 +1,42 @@
+# The notify action defaults `webhook-item` to the development webhook and reads
+# the webhook from the vault, so a workflow that names no route posts to CI and
+# never to release. A presence rule scoped to one file: renaming the action
+# leaves it matching nothing, silently.
+id: wf-notify-default
+language: Yaml
+severity: error
+message: the notify action must default webhook-item to discord-ci-webhook and read it from the vault
+files:
+  - .github/actions/notify-discord/action.yml
+rule:
+  kind: stream
+  any:
+    - not:
+        has:
+          stopBy: end
+          kind: block_mapping_pair
+          all:
+            - has:
+                field: key
+                regex: '^webhook-item$'
+            - has:
+                field: value
+                has:
+                  stopBy: end
+                  kind: block_mapping_pair
+                  all:
+                    - has:
+                        field: key
+                        regex: '^default$'
+                    - has:
+                        field: value
+                        regex: '^["'']?discord-ci-webhook["'']?$'
+    - not:
+        has:
+          stopBy: end
+          regex: 'op://\$\{\{ inputs\.vault \}\}/\$\{\{ inputs\.webhook-item \}\}/credential'
+          any:
+            - kind: string_scalar
+            - kind: double_quote_scalar
+            - kind: single_quote_scalar
+            - kind: block_scalar

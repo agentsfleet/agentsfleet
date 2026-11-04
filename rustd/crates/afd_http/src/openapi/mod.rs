@@ -78,9 +78,6 @@ pub const PAYLOAD_TOO_LARGE: &str = "The request body exceeds this endpoint's si
 /// The request was read and its content cannot be acted on.
 pub const UNPROCESSABLE: &str = "The request format is valid, but its content cannot be processed";
 
-/// A dependency of this request failed.
-pub const FAILED_DEPENDENCY: &str = "A dependency of this request failed";
-
 /// The instance is at its ceiling.
 pub const TOO_MANY_REQUESTS: &str = "A request or capacity limit has been reached";
 

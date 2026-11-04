@@ -1,0 +1,18 @@
+# DOC-09: a removed command is never spelled where a customer reads it.
+# The same rule in three grammars, because one rule id has one language.
+id: docs-removed-command-markdown
+language: Markdown
+severity: error
+message: names a removed command (DOC-09)
+note: 'Replacements: install -> agentsfleet chat --library <LIBRARY_ID> --revision <REVISION_ID>; library create -> agentsfleet chat --publish <LABEL>; fleet update -> agentsfleet chat --fleet <FLEET_ID> --setup-revision <N>; workspace, fleet-key, secret and tenant provider add -> the same command with create.'
+files:
+  - src/**/*.md
+  - cli/src/**/*.md
+  - public/**/*.md
+  - ui/packages/app/**/*.md
+  - tests/fixtures/**/*.md
+rule:
+  regex: 'agentsfleet (install|library create|fleet update|workspace add|fleet-key add|secret add|tenant provider add)'
+  any:
+    - kind: inline
+    - kind: code_fence_content

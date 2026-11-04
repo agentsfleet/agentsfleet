@@ -1,0 +1,34 @@
+id: infra-tunnel-ingress-prod
+valid:
+  - |
+    ingress:
+      - hostname: api.agentsfleet.net
+        service: http://agentsfleetd-prod.internal:3000
+      - service: http_status:404
+  - |
+    ingress:
+      - hostname: "api.agentsfleet.net"
+        service: "http://agentsfleetd-prod.internal:3000"
+      - service: "http_status:404"
+invalid:
+  - |
+    ingress:
+      - hostname: other.example.com
+        service: http://agentsfleetd-prod.internal:3000
+      - service: http_status:404
+  - |
+    ingress:
+      - hostname: api.agentsfleet.net
+        service: http://elsewhere.internal:3000
+      - service: http_status:404
+  - |
+    ingress:
+      - service: http_status:404
+      - hostname: api.agentsfleet.net
+        service: http://agentsfleetd-prod.internal:3000
+  - |
+    ingress:
+      - hostname: api.agentsfleet.net
+        service: http://agentsfleetd-prod.internal:3000
+  - |
+    tunnel: abc
