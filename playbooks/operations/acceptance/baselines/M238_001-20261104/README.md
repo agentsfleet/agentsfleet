@@ -99,14 +99,14 @@ all four changed observability scripts.
 --accept-dirty` passed. Gitleaks found no leaks in the staged changes or the
 50 KB evidence directory.
 
-`make check-playbooks` fails in the new source-assets regression because the
+The initial `make check-playbooks` run failed in the new source-assets regression because the
 existing gate expects five alerts while `origin/main` has four. The alert set
 is unchanged here.
 
-Correcting `EXPECTED_ALERTS` in `01_assets_check.sh` awaits
+Correcting `EXPECTED_ALERTS` in `01_assets_check.sh` awaited
 owner approval under the repository's gate-edit rule. A separate collector
 patch and local conversion proof exist outside this branch; deployment-config
-edits also await owner approval. No pull request or live apply is claimed.
+edits also awaited owner approval at that point. No pull request or live apply is claimed.
 
 Review: gstack and repository standards review found zero remaining actionable
 issues after the reducer labels and variable-state drift repairs. Review receipt
@@ -123,8 +123,8 @@ app lint because the configured `AGENTSFLEET_UI_ENV_FILE` path did not exist.
 
 The narrow rerun `AGENTSFLEET_UI_ENV_FILE=/tmp/m238-ui-runtime.env make lint-app`
 passed, using an empty task-owned file and the already supplied runtime
-variables. The original environment file selector was not modified. Full
-verification and publication remain blocked by the alert-count decision.
+variables. The original environment file selector was not modified. That initial
+run preceded the approved alert-count correction below.
 
 ## Owner approval — Nov 04, 2026
 
