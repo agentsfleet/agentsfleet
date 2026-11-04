@@ -119,3 +119,98 @@ pub(crate) fn shell_inherits_sandbox(lane: &Lane) -> Result<(), Failed> {
         format!("no route out, got {:?}", reach.text),
     )
 }
+
+/// Core Git workflows use the packaged executable without Perl. Remotes stay local.
+pub(crate) const GIT_WORKFLOWS: &str = r"
+python3 -I - <<'PY'
+import json, os, shutil, subprocess, tempfile
+from pathlib import Path
+
+assert os.statvfs('/').f_flag & os.ST_RDONLY
+ENV = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
+ENV.update(GIT_CONFIG_NOSYSTEM='1', GIT_TERMINAL_PROMPT='0',
+           GIT_AUTHOR_NAME='Fixture', GIT_AUTHOR_EMAIL='fixture@example.invalid',
+           GIT_COMMITTER_NAME='Fixture', GIT_COMMITTER_EMAIL='fixture@example.invalid',
+           GIT_AUTHOR_DATE='2026-01-01T00:00:00Z', GIT_COMMITTER_DATE='2026-01-01T00:00:00Z',
+           GIT_ALLOW_PROTOCOL='file')
+def git(directory, *args):
+    result = subprocess.run(['git', *args], cwd=directory, env=ENV, capture_output=True, text=True)
+    assert result.returncode == 0, (args, result.returncode, result.stdout, result.stderr)
+    return result.stdout.strip()
+def commit(directory, subject):
+    git(directory, 'add', '.')
+    git(directory, 'commit', '-qm', subject)
+    return git(directory, 'rev-parse', 'HEAD')
+
+assert shutil.which('perl') is None
+assert not Path('/usr/bin/perl').exists()
+with tempfile.TemporaryDirectory(dir='/workspace', prefix='git-no-perl-') as temporary:
+    root = Path(temporary)
+    seed = root/'seed'; seed.mkdir()
+    git(seed, 'init', '-q', '-b', 'main')
+    (seed/'README').write_text('base\n')
+    base = commit(seed, 'Base')
+    git(seed, 'branch', 'topic')
+    git(seed, 'switch', '-q', 'topic')
+    (seed/'café.txt').write_text('Unicode payload\n')
+    (seed/'run.sh').write_text('#!/bin/sh\nprintf done\n'); (seed/'run.sh').chmod(0o755)
+    topic = commit(seed, 'Topic')
+    assert '+Unicode payload' in git(seed, 'diff', base, topic, '--', 'café.txt')
+    assert '100755' in git(seed, 'ls-tree', 'HEAD', 'run.sh')
+    git(seed, 'switch', '-q', 'main')
+    git(seed, 'merge', '--no-ff', '-qm', 'Merge topic', 'topic')
+    assert len(git(seed, 'rev-list', '--parents', '-n', '1', 'HEAD').split()) == 3
+    remote = root/'remote.git'
+    git(root, 'clone', '-q', '--bare', str(seed), str(remote))
+    work = root/'work'; peer = root/'peer'
+    git(root, 'clone', '-q', str(remote), str(work))
+    git(root, 'clone', '-q', str(remote), str(peer))
+    assert git(work, 'config', '--get', 'remote.origin.url') == str(remote)
+    git(work, 'switch', '-qc', 'local')
+    (work/'local.txt').write_text('local\n'); original_local = commit(work, 'Local')
+    (peer/'remote.txt').write_text('remote\n'); remote_commit = commit(peer, 'Remote')
+    git(peer, 'push', '-q', 'origin', 'main')
+    git(work, 'fetch', '-q', 'origin')
+    git(work, 'rebase', 'origin/main')
+    rebased = git(work, 'rev-parse', 'HEAD')
+    assert rebased != original_local
+    assert git(work, 'rev-parse', 'HEAD^') == remote_commit
+    assert (work/'remote.txt').read_text() == 'remote\n'
+    git(work, 'switch', '-q', 'main')
+    git(work, 'pull', '--ff-only', 'origin', 'main')
+    assert git(work, 'rev-parse', 'HEAD') == remote_commit
+    git(work, 'merge', '--ff-only', 'local')
+    git(work, 'push', '-q', 'origin', 'main')
+    assert git(root, '--git-dir', str(remote), 'rev-parse', 'main') == rebased
+    assert git(work, 'log', '-2', '--format=%s').splitlines() == ['Local', 'Remote']
+    assert git(work, 'status', '--porcelain') == ''
+    git(work, 'tag', '-a', 'proof', '-m', 'Proof')
+    assert git(work, 'rev-parse', 'proof^{}') == rebased
+    linked = root/'linked'
+    git(work, 'worktree', 'add', '--detach', str(linked), 'HEAD')
+    assert (linked/'café.txt').read_text() == 'Unicode payload\n'
+    assert git(linked, 'status', '--porcelain') == ''
+    git(work, 'worktree', 'remove', str(linked))
+    git(work, 'switch', '-qc', 'conflict')
+    (work/'README').write_text('conflicting change\n'); commit(work, 'Conflict')
+    git(work, 'switch', '-q', 'main')
+    (work/'README').write_text('main change\n'); commit(work, 'Main change')
+    result = subprocess.run(['git','merge','conflict'], cwd=work, env=ENV, capture_output=True, text=True)
+    assert result.returncode == 1 and 'UU README' in git(work,'status','--porcelain'), result
+    git(work, 'merge', '--abort')
+    assert (work/'README').read_text() == 'main change\n'
+    assert git(work,'status','--porcelain') == ''
+    (work/'README').write_text('main change\nstaged\n')
+    result = subprocess.run(['git','add','-p','README'], cwd=work, env=ENV, input='y\n', capture_output=True, text=True)
+    assert result.returncode == 0 and '+staged' in git(work,'diff','--cached'), result
+    git(work,'commit','-qm','Interactive staging')
+    git(work,'gc','--prune=now')
+    git(work,'fsck','--full')
+    assert git(work,'show','--format=%s','--no-patch','HEAD') == 'Interactive staging'
+    assert git(work,'show','HEAD:local.txt') == 'local'
+    print(json.dumps({'git':git(work,'--version'), 'perl':shutil.which('perl'),
+        'passed':['init','clone','add','commit','diff','branch','switch','merge','rebase',
+                  'fetch','pull','push','config','status','log','show','tag','worktree',
+                  'merge conflict and abort','interactive staging','gc','fsck','Unicode and executable files']}))
+PY
+";

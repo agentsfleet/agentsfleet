@@ -286,6 +286,14 @@ The toolbox device stays buffered, though direct I/O kept the host from caching 
 
 Nothing reopens the image by path after its hash is taken, so a file substituted at that path never reaches the kernel's filesystem parser. A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the admitted file; a directory named after a digest proves nothing. Each lease holds the image it runs on; past the current and previous releases, an image nothing holds is unmounted at the next admission or retention pass, and the startup sweep removes whatever an interrupted stage left. Host root is inside the trust boundary: it controls the runner, the kernel and the mounts, and no integrity mechanism protects a tenant from it.
 
+**Runtime package set.** The image contains neither apt, dpkg, passwd-package commands nor Perl. The pinned Debian Git executable supports common repository workflows without Perl. Optional Perl helpers, including send-email, svn, request-pull and filter-branch, are unsupported.
+
+Python and Node remain available, and project dependencies install into the writable workspace.
+
+The existing signed release JSON records retained package versions, archive digests and copyright hashes. Its bounded compressed `package_metadata` preserves the final Debian status and package info records, including file lists, checksums and control files. The image commits to those records in `/etc/toolbox-inventory.sha256`.
+
+The build scanner verifies image identity and that commitment, reconstructs records in a temporary OverlayFS upper layer, and scans the complete view. The shipped image has no package database; runner admission keeps its existing signature, byte, digest, architecture and filesystem-feature checks (`scripts/toolbox/build.sh`, `.github/actions/build-toolbox/action.yml`).
+
 **Tools a fleet adds.** A self-contained tool ships as a prebuilt pack at `/opt/tools/<digest>`, with its own dependency closure, an explicit `PATH` entry and the toolbox digests it works with, mounted before the sandbox is made. A tool that changes system libraries gets a complete image profile instead. Project dependencies install into `/workspace` with locked versions and tenant-scoped caches, charged to the lease's time and disk. No package is installed at lease admission. Trees that must merge use a read-only OverlayFS with several `lowerdir` entries and no `upperdir` or `workdir`. Two Debian installations assembled apart are never overlaid, because apt has not resolved the combination. Packs are built when a fleet first needs one.
 
 **Format.** EROFS with LZ4HC stays the default, with its features pinned at build. A switch to zstd (Linux 6.10 and later), to an uncompressed image or to SquashFS must make the image at least 20% smaller with no more than a 10% p99 regression in first use, on the same package tree and workload.
