@@ -42,9 +42,9 @@ actual_queries="$work_dir/actual-queries"
 # text panel — carries an empty array in the asset, and Grafana drops the field
 # entirely on the way back. Iterating the absent field is what turned a
 # faithfully applied dashboard into "queries drifted".
-jq -S '[.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
+jq -S '[.panels[] | {id,title,description,type,gridPos,unit:.fieldConfig.defaults.unit,noValue:(.fieldConfig.defaults.noValue // null),displayName:(.fieldConfig.defaults.displayName // null),datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,legendFormat:(.legendFormat // ""),instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
   "$expected_dashboard" >"$expected_queries"
-jq -S '[.spec.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
+jq -S '[.spec.panels[] | {id,title,description,type,gridPos,unit:.fieldConfig.defaults.unit,noValue:(.fieldConfig.defaults.noValue // null),displayName:(.fieldConfig.defaults.displayName // null),datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,legendFormat:(.legendFormat // ""),instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
   <<<"$dashboard" >"$actual_queries"
 
 if ! jq -e \
@@ -60,7 +60,7 @@ if ! jq -e \
   exit 1
 fi
 if ! cmp -s "$expected_queries" "$actual_queries"; then
-  echo "ERROR: $OBS_ENVIRONMENT Grafana dashboard queries drifted" >&2
+  echo "ERROR: $OBS_ENVIRONMENT Grafana dashboard content drifted" >&2
   exit 1
 fi
 
@@ -92,12 +92,15 @@ while IFS= read -r expected; do
     --arg folder "$OBS_FOLDER_NAME" \
     --arg datasource "$OBS_PROMETHEUS_UID" \
     --arg expression "$(jq -r '.expr' <<<"$expected")" \
+    --arg dashboard "$OBS_DASHBOARD_NAME$(jq -r '.dashboardSuffix // ""' <<<"$expected")" \
+    --argjson panel "$(jq -r '.panelId' <<<"$expected")" \
     '
       .metadata.name == $name and
       .metadata.annotations["grafana.app/folder"] == $folder and
       .spec.expressions.A.datasourceUID == $datasource and
       .spec.expressions.A.model.expr == $expression and
-      .spec.expressions.A.source == true
+      .spec.expressions.A.source == true and
+      .spec.panelRef.dashboardUID == $dashboard and .spec.panelRef.panelID == $panel
     ' <<<"$actual" >/dev/null; then
     echo "ERROR: Grafana alert drifted: $name" >&2
     exit 1

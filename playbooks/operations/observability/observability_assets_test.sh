@@ -9,7 +9,9 @@ passed=0
 
 check_case() {
   local label="$1" mutation="$2" expected="$3" result=0
-  jq "$mutation" "$SCRIPT_DIR/assets/dashboard-chat.json" >"$work_dir/dashboard-chat.json"
+  local asset="${4:-dashboard-chat.json}"
+  cp "$SCRIPT_DIR"/assets/*.json "$work_dir/"
+  jq "$mutation" "$SCRIPT_DIR/assets/$asset" >"$work_dir/$asset"
   OBS_ASSETS_DIR="$work_dir" bash "$SCRIPT_DIR/01_assets_check.sh" >"$work_dir/output" 2>&1 || result=$?
   if { [ "$expected" = pass ] && [ "$result" -ne 0 ]; } ||
     { [ "$expected" = fail ] && [ "$result" -eq 0 ]; }; then
@@ -40,5 +42,12 @@ check_case 'an unknown metric refused' \
   '.panels[0].targets[0].expr = "agentsfleet_unowned_probe"' fail
 
 check_case 'an incorrect dashboard UID refused' '.uid = "__DASHBOARD_UID__"' fail
+
+check_case 'an alert pointing at a missing panel refused' '.[0].panelId = 999' fail alerts.json
+check_case 'an alert pointing at an unknown dashboard refused' '.[0].dashboardSuffix = "-foreign"' fail alerts.json
+
+check_case 'an overview suffix alias refused' '.[0].dashboardSuffix = "overview" | .[0].panelId = 6' fail alerts.json
+
+check_case 'a non-string alert dashboard suffix refused' '.[0].dashboardSuffix = 1' fail alerts.json
 
 echo "$passed passed, 0 failed"

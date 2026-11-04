@@ -49,6 +49,7 @@ views; new measurements begin when their producers are deployed.
 | `rustd/crates/afd_inference/` | EDIT | First-token and terminal timing for individual provider attempts |
 | `rustd/crates/afr_telemetry/` | EDIT if needed | Model attribution and missing runner measurements |
 | `rustd/crates/agentsfleetd/` | EDIT | Connect boot-owned readings without blocking collection callbacks |
+| `rustd/crates/afd_fleet/tests/support/fleet_report_reads.rs` | EDIT | Isolate proposed catalogue keys after the full integration run exposed a duplicate primary key |
 | `playbooks/operations/acceptance/baselines/M238_001-20261104/` | CONSOLIDATE | One compact receipt, native screenshot and rejection log; raw history retained |
 | `docs/v2/active/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md` | EDIT | Point evidence at the compact receipt |
 | `docs/v2/done/M225_001_P1_API_OBS_LEASE_PICKUP_WAKE_HINT.md` | EDIT | Preserve the ten original queue readings through the consolidated receipt |
@@ -300,3 +301,24 @@ failures, caller/deadline stream outcomes, schedule health and reconciliation
 errors, snapshot Debug privacy, daemon pool callbacks and sampler snapshots.
 The latest global line floor passed (99.6040%), but patch/per-file floors did
 not. No completion or >99% changed-file claim is made yet.
+
+Operator-link review: two API alerts retained links to their former Overview
+panels after the dashboard split, and runner-silent referenced a removed panel.
+Restore Heartbeat age in Overview, bind API alerts to API & Database, and grade
+all alert dashboard/panel references in both asset and live drift checks.
+This changes navigation only; alert rules and their four-rule count stay intact.
+
+The coverage run on `ced6ac502` measured 99.6966% overall and 99.6487% of
+changed lines. One touched file remains below the per-file floor: daemon
+export startup, failure flush and the supervised sampler. Add a real-boot
+collector witness in its own test binary so it owns the process subscriber.
+The local integration run also exposed a shared model seed's fixed primary
+key colliding during concurrent inserts; propose a fresh key per attempt while
+retaining the existing provider/model upsert. No coverage floor is changed.
+
+Indy approved the live inventory's proposed names: "yes update them".
+Update all 57 panel titles and purpose descriptions across the six dashboards.
+Keep sampling limits, overlapping chat segments, metadata expiry and missing-data
+meaning in the tooltips. Queries, reducers, units and alert conditions retain
+their measured meaning. Asset checks and live drift verification cover the
+presentation as well as the linked dashboard and panel for each alert.

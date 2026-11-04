@@ -77,6 +77,21 @@ case "$url" in
              .targets[0].expr) = "drift"' <<<"$spec"
       )"
     fi
+    if [ "${MOCK_DRIFT:-}" = null_to_zero ]; then
+      spec="$(jq '.panels[0].fieldConfig.defaults.noValue = "0"' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = panel_unit ]; then
+      spec="$(jq '.panels[0].fieldConfig.defaults.unit = "bytes"' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = panel_title ]; then
+      spec="$(jq '.panels[0].title = "drift"' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = panel_description ]; then
+      spec="$(jq '.panels[0].description = "drift"' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = panel_legend ]; then
+      spec="$(jq '.panels[0].targets[0].legendFormat = "drift"' <<<"$spec")"
+    fi
     if [ "${MOCK_DRIFT:-}" = table_mode ]; then
       spec="$(jq '(.panels[] | select(.type == "table") | .targets[0].instant) = false' <<<"$spec")"
     fi
@@ -126,6 +141,10 @@ case "$url" in
       source "$PROVIDER_DIR/lib.sh"
       obs_render_alerts "$rendered" "$PROVIDER_DIR"
     )
+    alert="$(jq -c --arg name "$base_name" '.[] | select(.name == $name)' "$rendered")"
+    link="$(jq -r '.dashboardSuffix // ""' <<<"$alert")"
+    panel="$(jq -r .panelId <<<"$alert")"
+    [ "${MOCK_DRIFT:-}" != alert_link ] || panel=999
     expression="$(
       jq -r --arg name "$base_name" '.[] | select(.name == $name) | .expr' "$rendered"
     )"
@@ -134,12 +153,14 @@ case "$url" in
     jq -n \
       --arg name "$name" \
       --arg expression "$expression" \
+      --arg dashboard "agentsfleet-runtime-dev$link" \
+      --argjson panel "$panel" \
       '{
         metadata:{
           name:$name,
           annotations:{"grafana.app/folder":"agentsfleet-dev"},
         },
-        spec:{expressions:{A:{
+        spec:{panelRef:{dashboardUID:$dashboard,panelID:$panel},expressions:{A:{
           datasourceUID:"prometheus-main",
           model:{expr:$expression},
           source:true
@@ -187,15 +208,21 @@ test_should_reject_each_resource_drift() {
   local -a cases=(
     'folder|folder drifted'
     'dashboard_metadata|dashboard metadata drifted'
-    'dashboard_query|dashboard queries drifted'
-    'tempo_query|dashboard queries drifted'
-    'table_mode|dashboard queries drifted'
-    'tempo_reducer|dashboard queries drifted'
+    'dashboard_query|dashboard content drifted'
+    'tempo_query|dashboard content drifted'
+    'table_mode|dashboard content drifted'
+    'panel_unit|dashboard content drifted'
+    'null_to_zero|dashboard content drifted'
+    'panel_title|dashboard content drifted'
+    'panel_description|dashboard content drifted'
+    'panel_legend|dashboard content drifted'
+    'tempo_reducer|dashboard content drifted'
     'tempo_variable|dashboard variables drifted'
     'tempo_variable_type|dashboard variables drifted'
     'tempo_variable_multi|dashboard variables drifted'
     'tempo_variable_all|dashboard variables drifted'
     'alert|Grafana alert drifted'
+    'alert_link|Grafana alert drifted'
   )
 
   for drift_expected in "${cases[@]}"; do

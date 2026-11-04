@@ -58,9 +58,9 @@
   "panels": [
     {
       "id": 130,
-      "title": "Calls",
+      "title": "Model call rate",
       "type": "timeseries",
-      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "description": "Actual calls per second by provider and model, with daemon and runner separate.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -120,9 +120,9 @@
     },
     {
       "id": 131,
-      "title": "First text p95",
+      "title": "First text delay p95",
       "type": "timeseries",
-      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "description": "Time until the first nonempty model text; absent if no text arrived.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -182,9 +182,9 @@
     },
     {
       "id": 132,
-      "title": "Call p95",
+      "title": "Model response time p95",
       "type": "timeseries",
-      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "description": "Complete model-stream duration, including recorded failure and cancellation outcomes.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -244,9 +244,9 @@
     },
     {
       "id": 133,
-      "title": "Tokens",
+      "title": "Token usage",
       "type": "timeseries",
-      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "description": "Provider-reported input and output tokens per second by model.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -306,9 +306,9 @@
     },
     {
       "id": 134,
-      "title": "Cache reads",
+      "title": "Cached tokens read",
       "type": "timeseries",
-      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "description": "Cache-read tokens per second; a subset of input tokens.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -368,9 +368,9 @@
     },
     {
       "id": 135,
-      "title": "Cache writes",
+      "title": "Tokens written to cache",
       "type": "timeseries",
-      "description": "Daemon and runner calls shown separately. Usage is provider-reported; cache counts are subsets of input tokens, never extra tokens.",
+      "description": "Provider-reported cache-write tokens per second; do not add cache counts to input totals.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -430,9 +430,9 @@
     },
     {
       "id": 136,
-      "title": "Call outcomes",
+      "title": "Model call results",
       "type": "timeseries",
-      "description": "",
+      "description": "Call rates by model and outcome, with daemon and runner separate.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -492,9 +492,9 @@
     },
     {
       "id": 137,
-      "title": "Token limits",
+      "title": "Context and output limits",
       "type": "table",
-      "description": "Verified context and configured output limits; stale metadata expires after two minutes.",
+      "description": "Verified context limits and configured output limits from the model catalogue. Snapshots expire after two minutes. Missing metadata stays unknown.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -509,7 +509,7 @@
         {
           "refId": "A",
           "expr": "max by (gen_ai_request_model, gen_ai_provider_name, limit) (agentsfleet_model_limit_tokens)",
-          "legendFormat": "Token limits",
+          "legendFormat": "Context and output limits",
           "range": false,
           "datasource": {
             "type": "prometheus",
@@ -557,9 +557,9 @@
     },
     {
       "id": 138,
-      "title": "Route features",
+      "title": "Supported request features",
       "type": "table",
-      "description": "Tools and tool-result image transport from the configured route. This does not claim verified vision or reasoning capability. Zero means unsupported; absent means unknown.",
+      "description": "Configured-route support for tools and tool-result image transport; not verified model intelligence or vision. Snapshots expire after two minutes. Missing metadata stays unknown.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -574,7 +574,7 @@
         {
           "refId": "A",
           "expr": "max by (gen_ai_request_model, gen_ai_provider_name, capability) (agentsfleet_model_route_capability)",
-          "legendFormat": "Route features",
+          "legendFormat": "Supported request features",
           "range": false,
           "datasource": {
             "type": "prometheus",
@@ -622,9 +622,9 @@
     },
     {
       "id": 139,
-      "title": "Catalogue age",
+      "title": "Model data age",
       "type": "timeseries",
-      "description": "",
+      "description": "Time since the last successful catalogue snapshot.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -639,7 +639,7 @@
         {
           "refId": "A",
           "expr": "max(agentsfleet_model_catalog_snapshot_age_seconds)",
-          "legendFormat": "Catalogue age",
+          "legendFormat": "Model data age",
           "range": true,
           "datasource": {
             "type": "prometheus",
@@ -674,9 +674,9 @@
     },
     {
       "id": 140,
-      "title": "Catalogue clipped",
+      "title": "Model list truncated",
       "type": "timeseries",
-      "description": "One means the 256-model bound clipped the snapshot.",
+      "description": "Whether the 256-model snapshot cap omitted catalogue entries.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -691,7 +691,7 @@
         {
           "refId": "A",
           "expr": "max(agentsfleet_model_catalog_clipped)",
-          "legendFormat": "Catalogue clipped",
+          "legendFormat": "Model list truncated",
           "range": true,
           "datasource": {
             "type": "prometheus",
@@ -726,9 +726,9 @@
     },
     {
       "id": 141,
-      "title": "Credits consumed",
+      "title": "Credit usage rate",
       "type": "timeseries",
-      "description": "Credits per second, from billing. These are credits, not a currency conversion.",
+      "description": "Billing credits consumed per second; not currency or a per-provider invoice.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
@@ -743,7 +743,7 @@
         {
           "refId": "A",
           "expr": "sum(rate(agentsfleet_billing_credit_consumed[$__rate_interval])) / 1e9",
-          "legendFormat": "Credits consumed",
+          "legendFormat": "Credit usage rate",
           "range": true,
           "datasource": {
             "type": "prometheus",
