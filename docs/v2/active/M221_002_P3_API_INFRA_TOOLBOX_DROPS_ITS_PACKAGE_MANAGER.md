@@ -15,7 +15,7 @@ SPEC AUTHORING RULES:
 
 **Date:** Nov 04, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P3, reduce toolbox download and storage bytes
 
@@ -48,7 +48,7 @@ The scanner reads a temporary filesystem view containing the remaining package r
 - **PR title (eventual):** Remove the toolbox package manager and qualify smaller Perl
 - **Intent:** Operators download a smaller image while supported lease tools behave as before.
 - **Authoring handshake:** Remove package-management payloads and qualify Perl for Git. ASSUMPTIONS I'M MAKING: package removal must preserve Python, licences and vulnerability detection.
-- **Implementer handshake:** Record the same intent in Pull Request (PR) Session Notes before changing source.
+- **Implementer handshake:** Remove the eight approved packages after provenance capture, retain Git-required Perl and supported tools, and prove smaller bytes and unchanged first-use limits on the hosted Linux runner. Record this intent in the implementation PR Session Notes.
 
 ## Implementing agent — read these first
 
