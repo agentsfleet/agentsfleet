@@ -9,23 +9,5 @@ files:
   - cli/src/program/**/*.ts
 rule:
   all:
-    - any:
-        - kind: string
-        - kind: template_string
+    - matches: cli-help-text
     - regex: '(?:^|[^\w\\])(?:\w(?:[\w''-]*\w)?\b(?:[^\w.!?\\''-]|\\.)*[.!?]*){25,}\w'
-    - any:
-        - inside:
-            kind: pair
-            has:
-              field: key
-              regex: '^description$'
-        - inside:
-            kind: arguments
-            inside:
-              kind: call_expression
-              has:
-                field: function
-                kind: member_expression
-                has:
-                  field: property
-                  regex: '^description$'

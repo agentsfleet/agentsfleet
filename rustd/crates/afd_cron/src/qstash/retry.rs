@@ -24,10 +24,10 @@
 
 use std::time::Duration;
 
-use backon::ExponentialBuilder;
+use backon::{ExponentialBuilder, Retryable as _};
 use reqwest::StatusCode;
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 use crate::store::SYNC_LEASE;
 
 /// How many times one call is sent before its failure is recorded on the row.
@@ -39,20 +39,67 @@ const FIRST_DELAY: Duration = Duration::from_millis(200);
 /// The ceiling one wait may reach before jitter.
 const MAX_DELAY: Duration = Duration::from_millis(800);
 
-/// The longest one attempt may take, from connecting to the answer's last
-/// byte. Five seconds is the save path's own wait for a schedule sync, so the
-/// first attempt alone fits inside it.
-pub(super) const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(5);
+/// The longest one attempt may take, from connecting to the answer's last byte.
+pub(super) const ATTEMPT_TIMEOUT: Duration = Duration::from_millis(2500);
 
-// Jitter adds up to one more delay to each wait, so a wait stays under twice
-// `MAX_DELAY`. Every attempt timing out, with every wait at its longest, still
-// ends while the fence is held.
+/// The longest a retried call may take: the bound one attempt had before calls
+/// were retried, and under the CLI's 15-second request timeout, so a caller
+/// gets the row's "saved, not live" answer instead of its own timeout.
+const CALL_BUDGET: Duration = Duration::from_secs(10);
+
+/// The longest the waits between attempts add up to: each delay doubles from
+/// `FIRST_DELAY` up to `MAX_DELAY`, and jitter adds up to one more of it.
+const fn longest_waits() -> u128 {
+    let (mut total, mut delay, mut retry) = (0, FIRST_DELAY.as_millis(), 1);
+    while retry < ATTEMPTS {
+        total += 2 * delay;
+        delay = if 2 * delay < MAX_DELAY.as_millis() {
+            2 * delay
+        } else {
+            MAX_DELAY.as_millis()
+        };
+        retry += 1;
+    }
+    total
+}
+
+// Every attempt timing out, with every wait at its longest, still answers
+// inside the call budget, and the budget inside the fence the syncer holds.
 const _: () = assert!(
-    ATTEMPT_TIMEOUT.as_millis() * ATTEMPTS as u128
-        + 2 * MAX_DELAY.as_millis() * (ATTEMPTS as u128 - 1)
-        < SYNC_LEASE.as_millis(),
-    "every attempt and every jittered wait must end inside the sync fence"
+    ATTEMPT_TIMEOUT.as_millis() * ATTEMPTS as u128 + longest_waits() <= CALL_BUDGET.as_millis()
+        && CALL_BUDGET.as_millis() < SYNC_LEASE.as_millis(),
+    "every attempt and wait must end inside the call budget, and the budget inside the sync fence"
 );
+
+/// How many times a scheduler call is sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Attempts {
+    /// Sent once. For a caller syncing many schedules under one deadline, where
+    /// repeating one would leave the rest unsynced.
+    Once,
+    /// Sent again on a failure that can heal, on [`schedule`].
+    Retried,
+}
+
+/// Sends `call` once, or again while it fails in a way that [`heals`],
+/// recording each repeat under `schedule_id`.
+pub(super) async fn send<T, F, Fut>(attempts: Attempts, schedule_id: &str, mut call: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    if attempts == Attempts::Once {
+        return call().await;
+    }
+    let mut repeat = 0;
+    call.retry(schedule())
+        .when(heals)
+        .notify(|error, delay| {
+            repeat += 1;
+            log(schedule_id, repeat, error, delay);
+        })
+        .await
+}
 
 /// The waits one call's attempts are spread over.
 ///
@@ -75,12 +122,15 @@ pub(super) fn heals(error: &Error) -> bool {
     matches!(error.kind(), ErrorKind::UpstreamUnreachable { .. })
 }
 
-/// Records a repeat before its wait.
-pub(super) fn log(error: &Error, delay: Duration) {
+/// Records a repeat before its wait: which schedule, which repeat, and why.
+pub(super) fn log(schedule_id: &str, attempt: usize, error: &Error, delay: Duration) {
     let delay_ms = delay.as_millis();
+    let error_code = error.code();
     tracing::debug!(
+        schedule_id,
+        attempt,
         delay_ms,
-        error_code = %error.code(),
+        error_code = %error_code,
         event = EVENT_RETRYING
     );
 }

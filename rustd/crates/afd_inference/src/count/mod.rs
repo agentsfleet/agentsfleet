@@ -118,15 +118,11 @@ impl Configured<'_> {
 
     /// Native counting is restricted to documented APIs on the selected origin, near capacity.
     ///
-    /// # Errors
-    /// The current request cannot be encoded for local estimation.
-    pub fn needs_native_count(&self, model: &str, request: &CompletionRequest) -> Result<bool> {
-        Ok(self.near_capacity(self.measure_input(model, request)?, request))
-    }
-
-    /// Whether `input` plus the request's output allowance reaches the
-    /// confirmation threshold on a route that can count natively.
-    fn near_capacity(&self, input: u64, request: &CompletionRequest) -> bool {
+    /// `input` is `request`'s local measurement, already taken by the caller:
+    /// with the `o200k_base` estimate a measurement is a full encoding pass, so
+    /// none is repeated here.
+    #[must_use]
+    pub fn needs_native_count(&self, input: u64, request: &CompletionRequest) -> bool {
         let output = request
             .max_tokens
             .unwrap_or(u64::from(self.settings.max_output_tokens));
@@ -151,7 +147,7 @@ impl Configured<'_> {
         // The local count just taken decides, rather than a second encoding
         // pass over the same request.
         let mut count = self.input_count(model, request)?;
-        if self.near_capacity(count.tokens, request) {
+        if self.needs_native_count(count.tokens, request) {
             count.tokens = native::count(self, model, key, request, transport, control).await?;
             count.method = "provider_count";
         }

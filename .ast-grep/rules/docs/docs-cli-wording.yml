@@ -10,23 +10,5 @@ files:
   - cli/src/program/**/*.ts
 rule:
   all:
-    - any:
-        - kind: string
-        - kind: template_string
+    - matches: cli-help-text
     - regex: '(?i)(?:\b|\\n)(utilis(e|es|ed|ing)|facilitat(e|es|ed|ing)|leverag(e|es|ed|ing)|orchestrat(e|es|ed|ing|ion)|instantiat(e|es|ed|ing|ion)|terminat(e|es|ed|ing|ion|al)|provision(s|ed|ing)?|execut(e|es|ed|ing|ion)|persist(s|ed|ing|ent|ence)?|hydrat(e|es|ed|ing|ion)|artifacts?|powerful|revolutionary|enterprise-grade|seamless|cutting-edge|robust|next-generation|world-class|intelligent)\b'
-    - any:
-        - inside:
-            kind: pair
-            has:
-              field: key
-              regex: '^description$'
-        - inside:
-            kind: arguments
-            inside:
-              kind: call_expression
-              has:
-                field: function
-                kind: member_expression
-                has:
-                  field: property
-                  regex: '^description$'

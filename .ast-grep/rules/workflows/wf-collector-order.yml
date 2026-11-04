@@ -18,27 +18,10 @@ rule:
       not:
         has:
           stopBy: end
-          kind: block_mapping_pair
-          all:
-            - has:
-                field: key
-                regex: '^run$'
-            - has:
-                field: value
-                all:
-                  - regex: 'flyctl secrets set'
-                  - regex: 'GRAFANA'
-                  - regex: 'OTLP_COLLECTOR_APP'
-    - kind: block_mapping_pair
-      all:
-        - has:
-            field: key
-            regex: '^run$'
+          matches: wf-collector-standup
+    - all:
+        - matches: wf-collector-standup
         - has:
             field: value
-            all:
-              - regex: 'flyctl secrets set'
-              - regex: 'GRAFANA'
-              - regex: 'OTLP_COLLECTOR_APP'
-              - not:
-                  regex: '(?s)ensure_fly_app\.sh --create-only.*flyctl secrets set'
+            not:
+              regex: '(?s)ensure_fly_app\.sh --create-only.*flyctl secrets set'

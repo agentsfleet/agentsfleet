@@ -144,11 +144,8 @@ fn switching_to_an_unknown_tokenizer_cannot_reuse_an_openai_count() {
 fn literal_special_tokens_never_become_installed_control_tokens() {
     let text = CORPUS[5];
     let ordinary = crate::input_tokens("gpt-4o", text);
-    assert!(ordinary > 6);
+    assert_eq!(ordinary, 19);
     // Equal only if the proxy also reads special-token spellings as text: an
     // installed control token would collapse each into one and count lower.
-    assert_eq!(
-        crate::input_tokens("unknown-provider/model-next", text),
-        (ordinary * 5).div_ceil(4)
-    );
+    assert_eq!(crate::input_tokens("unknown-provider/model-next", text), 24);
 }

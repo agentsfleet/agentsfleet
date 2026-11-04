@@ -13,7 +13,7 @@ Status: D1 and an interim D2 decided; D3 and D4 open.
 Indy's decision on 2026-11-04 picked "o200k × 1.25" with the note “i just need an estimation for now”:
 
 - **D1:** keep `tiktoken-rs`.
-- **D2, interim:** every model without a local tokenizer is estimated as its `o200k_base` count plus a quarter (`PROXY_HEADROOM_PERCENT` in `rustd/crates/afd_inference/src/budget.rs`). This is Option A with one provisional multiplier in place of measured per-model values.
+- **D2, interim:** every model without a local tokenizer is estimated as its `o200k_base` count plus a quarter (`PROXY_HEADROOM_PERCENT` in `rustd/crates/afd_inference/src/budget.rs`). This is Option A with one provisional multiplier in place of measured per-model values, and unlike Option A it also moves Ollama and configured models off the byte count.
 - **Per-model values later** come from the existing `model_input_calibration` trace, which records `measured_input_tokens` beside `actual_input_tokens` for every call. Reading it may make the paid run in D4 unnecessary.
 
 ## What it is
@@ -23,12 +23,12 @@ It closes the two items M230_003 left open: live-provider count agreement and se
 
 ## Why it exists
 
-Nineteen of the 20 catalogue models have no local tokenizer, so they count one token per input byte.
+Before interim D2, nineteen of the 20 catalogue models had no local tokenizer, so they counted one token per input byte.
 `tiktoken_rs::tokenizer::get_tokenizer` resolves only `gpt-5.6-terra` (to `o200k_base`). Every Claude, GPT-6, Fireworks, OpenRouter, Groq, Mistral and Gemini entry returns `None`.
 The fallback lives in `rustd/crates/afd_inference/src/budget.rs` (`input_tokens`).
 
 Both hosts plan compaction from that estimate (`afr_agent/src/loop/context/estimate.rs`, `afd_authoring/src/model/context/estimate.rs`).
-Measured against `o200k_base`, one token per byte overcounts typical input by 1.8× to 4.9×:
+Measured against `o200k_base`, one token per byte overcounted typical input by 1.8× to 4.9×:
 
 | Content | Bytes | `o200k_base` tokens | Bytes per token |
 |---|---:|---:|---:|
@@ -37,7 +37,7 @@ Measured against `o200k_base`, one token per byte overcounts typical input by 1.
 | Request JSON with tool calls | 12,702 | 3,896 | 3.26 |
 | Logs with identifiers | 9,840 | 5,360 | 1.84 |
 
-Compaction fires at 90 percent of the window as estimated (`afd_context/src/window.rs`, `COMPACT_PERCENT`), so a fleet compacts after roughly a fifth to half of its real window.
+Compaction fires at 90 percent of the window as estimated (`afd_context/src/window.rs`, `COMPACT_PERCENT`), so a fleet compacted after roughly a fifth to half of its real window.
 The three native routes (OpenAI Responses, Anthropic Messages, native Gemini) count natively only at dispatch, to size the output allowance, once the inflated estimate passes 80 percent (`afd_inference/src/count/mod.rs`, `CONFIRM_PERCENT`). The compaction planner never sees that count.
 
 ## How it behaves

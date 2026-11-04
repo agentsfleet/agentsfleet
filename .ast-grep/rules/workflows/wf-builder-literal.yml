@@ -2,7 +2,7 @@
 # playbooks/operations/ci_rust_images/versions.env, as make/build.mk does. A
 # literal tag keeps compiling on the old toolchain after a bump, because the
 # old tag still pulls. The derived form has `$` after the colon, a literal has
-# a digit. Comments count, as they did in the line scan this replaces.
+# a digit. Comments count.
 id: wf-builder-literal
 language: Yaml
 severity: error

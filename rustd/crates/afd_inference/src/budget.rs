@@ -10,7 +10,8 @@ use super::{Configured, Result, error::ErrorKind};
 /// Claude, Gemini and the open-weight models publish no `tiktoken` vocabulary,
 /// and their own vocabularies cut text into more pieces than `o200k_base` on
 /// some content. Compaction fires at 90 percent of the estimate and the usable
-/// ceiling is 95 percent, so a quarter of headroom keeps a model whose
+/// ceiling is 95 percent (`COMPACT_PERCENT`, `SAFE_PERCENT` in
+/// `afd_context/src/window.rs`), so a quarter of headroom keeps a model whose
 /// vocabulary makes up to about a third more tokens inside its window.
 /// Provisional: the `model_input_calibration` trace records this estimate
 /// beside the provider's reported input, and per-model ratios read from it

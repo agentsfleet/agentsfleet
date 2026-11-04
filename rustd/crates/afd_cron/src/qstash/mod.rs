@@ -19,8 +19,9 @@
 //! times on a short schedule; see [`retry`].
 
 use afd_core::id::Uuid7;
-use backon::Retryable as _;
 use url::Url;
+
+pub use self::retry::Attempts;
 
 use crate::error::{self, Result};
 use crate::upstream::{HEADER_SCHEDULE_ID, upstream_id};
@@ -161,20 +162,20 @@ impl QStash {
     /// Reports a scheduler that could not be reached, and one that answered and
     /// refused — see the module note on why those are two failures. An answer
     /// naming any id but the one sent is refused too; see [`confirmed`]. A
-    /// failure that can heal is reported only after [`retry`]'s last attempt.
+    /// failure that can heal is reported only after the last of `attempts`.
     pub async fn upsert(
         &self,
         schedule: &Uuid7,
         cron: &str,
         timezone: &str,
         message: &str,
+        attempts: Attempts,
     ) -> Result<Registered> {
         let id = upstream_id(schedule);
-        (|| self.upsert_once(&id, cron, timezone, message))
-            .retry(retry::schedule())
-            .when(retry::heals)
-            .notify(retry::log)
-            .await
+        retry::send(attempts, &id, || {
+            self.upsert_once(&id, cron, timezone, message)
+        })
+        .await
     }
 
     /// One push of the schedule filed under `id`.
@@ -223,12 +224,11 @@ impl QStash {
     ///
     /// # Errors
     /// As [`Self::upsert`].
-    pub async fn remove(&self, provider_schedule_id: &str) -> Result<()> {
-        (|| self.remove_once(provider_schedule_id))
-            .retry(retry::schedule())
-            .when(retry::heals)
-            .notify(retry::log)
-            .await
+    pub async fn remove(&self, provider_schedule_id: &str, attempts: Attempts) -> Result<()> {
+        retry::send(attempts, provider_schedule_id, || {
+            self.remove_once(provider_schedule_id)
+        })
+        .await
     }
 
     /// One removal of the schedule filed under `provider_schedule_id`.
