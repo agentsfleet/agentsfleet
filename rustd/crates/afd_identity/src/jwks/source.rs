@@ -60,15 +60,6 @@ impl StaticKeySet {
         }
     }
 
-    /// Replaces what the next fetch will answer — an issuer rotating its keys.
-    pub fn publish(&self, document: impl Into<Box<[u8]>>) {
-        let mut held = self
-            .document
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *held = document.into();
-    }
-
     /// How many times the document has been read.
     ///
     /// The number Dimension 4.2 asserts on: a key-id miss must move this by
