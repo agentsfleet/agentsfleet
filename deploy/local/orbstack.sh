@@ -23,7 +23,7 @@ process.exit(rows.some(row => row.name === Bun.argv[1]) ? 0 : 1);
   orb -m "$ACCEPTANCE_LOCAL_RUNNER_MACHINE" bash -s -- "$DEV_ROOT" <<'LINUX'
 set -euo pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
-if ! command -v cargo >/dev/null || ! command -v mmdebstrap >/dev/null || ! command -v bwrap >/dev/null; then
+if ! command -v cargo >/dev/null || ! command -v mmdebstrap >/dev/null || ! command -v bwrap >/dev/null || ! command -v jq >/dev/null; then
   bash "$1/.github/actions/build-toolbox/install-tools.sh" build-essential pkg-config libssl-dev bubblewrap ca-certificates git
 fi
 if ! command -v cargo >/dev/null; then
